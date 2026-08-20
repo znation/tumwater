@@ -5,7 +5,7 @@ import { loadConfig } from "./config.js";
 import { currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
 import { enqueuePrompt } from "./inbox.js";
-import { formatEvent, logEvent, readEvents } from "./events.js";
+import { formatEvent, logEvent, readEvents, subscribeEvents } from "./events.js";
 import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
@@ -80,14 +80,18 @@ async function cmdRun(root: string): Promise<void> {
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
+  const enabled = Object.entries(config.roles)
+    .filter(([, rc]) => rc.enabled)
+    .map(([id]) => id);
   process.stdout.write(`automaton running on branch ${mainBranch} — Ctrl+C to stop\n`);
-  await runOrchestrator({
-    root,
-    config,
-    mainBranch,
-    signal: controller.signal,
-    onEvent: (line) => process.stdout.write(line + "\n"),
-  });
+  process.stdout.write(`loops: ${enabled.join(", ")}\n`);
+  process.stdout.write("watch: `automaton tui` or `automaton logs -f` in another terminal; events stream below\n\n");
+  const unsubscribe = subscribeEvents((e) => process.stdout.write(formatEvent(e) + "\n"));
+  try {
+    await runOrchestrator({ root, config, mainBranch, signal: controller.signal });
+  } finally {
+    unsubscribe();
+  }
 }
 
 async function cmdLogs(root: string, args: string[]): Promise<void> {

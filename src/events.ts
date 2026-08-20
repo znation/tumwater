@@ -3,12 +3,23 @@ import path from "node:path";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
 
-/** Append one event to the project's events.jsonl. */
+type EventListener = (event: HarnessEvent) => void;
+const listeners = new Set<EventListener>();
+
+/** Get notified of every event logged in this process (e.g. to narrate `automaton run`).
+ * Returns an unsubscribe function. */
+export function subscribeEvents(listener: EventListener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Append one event to the project's events.jsonl and notify in-process subscribers. */
 export function logEvent(root: string, event: Omit<HarnessEvent, "ts"> & { ts?: number }): HarnessEvent {
   const full: HarnessEvent = { ts: Date.now(), ...event } as HarnessEvent;
   const file = eventsLogPath(root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.appendFileSync(file, JSON.stringify(full) + "\n");
+  for (const listener of listeners) listener(full);
   return full;
 }
 

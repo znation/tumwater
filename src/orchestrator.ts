@@ -61,8 +61,6 @@ export interface RunOptions {
   root: string;
   config: AutomatonConfig;
   mainBranch: string;
-  /** Called after every scheduling decision worth narrating (for headless output). */
-  onEvent?: (line: string) => void;
   signal: AbortSignal;
 }
 
@@ -128,8 +126,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
           await semaphore.acquire();
           try {
             if (signal.aborted) return;
-            const outcome = await runner.tick();
-            opts.onEvent?.(`${runner.role}: ${outcome.result}${outcome.summary ? ` — ${outcome.summary}` : ""}`);
+            await runner.tick();
           } finally {
             semaphore.release();
           }

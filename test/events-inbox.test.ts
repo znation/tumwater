@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { formatEvent, logEvent, readEvents } from "../src/events.js";
+import { formatEvent, logEvent, readEvents, subscribeEvents } from "../src/events.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./util.js";
@@ -42,6 +42,16 @@ test("formatEvent renders each type as one line", () => {
   assert.match(formatEvent(cases[1] as never), /tidy up/);
   assert.match(formatEvent(cases[2] as never), /boom/);
   assert.match(formatEvent(cases[3] as never), /abcdef12/);
+});
+
+test("subscribeEvents sees logged events until unsubscribed", () => {
+  const dir = tmpdir();
+  const seen: string[] = [];
+  const unsubscribe = subscribeEvents((e) => seen.push(e.type));
+  logEvent(dir, { loop: "x", type: "tick_start", tick: 1 });
+  unsubscribe();
+  logEvent(dir, { loop: "x", type: "tick_end", tick: 1, result: "no_change" });
+  assert.deepEqual(seen, ["tick_start"]);
 });
 
 test("inbox is FIFO and dequeues to empty", () => {
