@@ -1,0 +1,70 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import {
+  NOTHING_TO_DO,
+  buildDirectorPrompt,
+  buildTickPrompt,
+  extractSummary,
+  isNothingToDo,
+  readInitialPrompt,
+} from "../src/prompt.js";
+import { readmeTemplate } from "../src/init.js";
+import { ROLES, roleById } from "../src/roles.js";
+import { tmpdir } from "./util.js";
+
+test("readInitialPrompt extracts the managed block", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "README.md"), readmeTemplate("proj", "Build a thing.\nWith care."));
+  assert.equal(readInitialPrompt(dir), "Build a thing.\nWith care.");
+});
+
+test("readInitialPrompt is empty without README or markers", () => {
+  const dir = tmpdir();
+  assert.equal(readInitialPrompt(dir), "");
+  fs.writeFileSync(path.join(dir, "README.md"), "# hi\n");
+  assert.equal(readInitialPrompt(dir), "");
+});
+
+test("buildTickPrompt includes role, project prompt, rules, and extras", () => {
+  const role = roleById("coverage");
+  assert.ok(role);
+  const prompt = buildTickPrompt({ role, initialPrompt: "Make a CLI.", extraInstructions: "Prefer vitest." });
+  assert.match(prompt, /"coverage" loop/);
+  assert.match(prompt, /Make a CLI\./);
+  assert.match(prompt, /Prefer vitest\./);
+  assert.match(prompt, new RegExp(NOTHING_TO_DO));
+  assert.match(prompt, /SUMMARY:/);
+  assert.match(prompt, /ONE focused task/);
+});
+
+test("every catalog role produces a prompt mentioning its id", () => {
+  for (const role of ROLES) {
+    const prompt = buildTickPrompt({ role, initialPrompt: "" });
+    assert.match(prompt, new RegExp(`"${role.id}" loop`));
+  }
+});
+
+test("buildDirectorPrompt embeds the user request", () => {
+  const prompt = buildDirectorPrompt("add dark mode", "Make a CLI.");
+  assert.match(prompt, /<user-request>\nadd dark mode\n<\/user-request>/);
+  assert.match(prompt, /SUMMARY:/);
+});
+
+test("extractSummary finds the SUMMARY line anywhere in the reply", () => {
+  assert.equal(extractSummary("did stuff\nSUMMARY: add foo helper\n"), "add foo helper");
+  assert.equal(extractSummary("SUMMARY:    trimmed   "), "trimmed");
+  assert.equal(extractSummary("no summary here"), null);
+  assert.equal(extractSummary(""), null);
+});
+
+test("extractSummary truncates absurdly long summaries", () => {
+  const summary = extractSummary(`SUMMARY: ${"x".repeat(500)}`);
+  assert.ok(summary && summary.length <= 100);
+});
+
+test("isNothingToDo detects the sentinel", () => {
+  assert.ok(isNothingToDo(`some reasoning\n${NOTHING_TO_DO}`));
+  assert.ok(!isNothingToDo("all done\nSUMMARY: x"));
+});

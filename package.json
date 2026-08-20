@@ -1,0 +1,22 @@
+{
+  "name": "automaton",
+  "version": "0.1.0",
+  "description": "Opinionated autonomous development harness built on pi. You write the initial prompt; role-driven loops build the project.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "automaton": "dist/src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc && node --test 'dist/test/*.test.js'",
+    "automaton": "node dist/src/cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,190 @@
+import type { AutomatonConfig, LoopState, PiRunResult, TickResult } from "./types.js";
+import { DIRECTOR_ROLE, roleById } from "./roles.js";
+import {
+  aheadOfMain,
+  commitAll,
+  ensureWorktree,
+  ffMergeToMain,
+  gitTry,
+  headOf,
+  isDirty,
+  mergeMainIntoBranch,
+  resetWorktreeToMain,
+} from "./git.js";
+import { withLock } from "./lock.js";
+import { logEvent } from "./events.js";
+import { runPi } from "./pi.js";
+import {
+  buildDirectorPrompt,
+  buildTickPrompt,
+  extractSummary,
+  isNothingToDo,
+  readInitialPrompt,
+} from "./prompt.js";
+import { dequeuePrompt } from "./inbox.js";
+import { loadLoopState, nextBackoffSeconds, saveLoopState } from "./state.js";
+import { mergeLockDir, piLogPath, sessionDir } from "./paths.js";
+
+export interface TickOutcome {
+  result: TickResult;
+  summary?: string;
+  commit?: string;
+}
+
+/** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
+export class LoopRunner {
+  state: LoopState;
+
+  constructor(
+    readonly root: string,
+    readonly role: string,
+    readonly config: AutomatonConfig,
+    readonly mainBranch: string,
+    readonly signal?: AbortSignal,
+  ) {
+    this.state = loadLoopState(root, role);
+    this.state.running = false;
+  }
+
+  private save(): void {
+    saveLoopState(this.root, this.state);
+  }
+
+  /** Decide the prompt for this tick, or null to skip (director with empty inbox). */
+  private tickPrompt(): string | null {
+    const initialPrompt = readInitialPrompt(this.root);
+    if (this.role === DIRECTOR_ROLE) {
+      const userPrompt = dequeuePrompt(this.root);
+      if (!userPrompt) return null;
+      return buildDirectorPrompt(userPrompt, initialPrompt);
+    }
+    const role = roleById(this.role);
+    if (!role) throw new Error(`unknown role: ${this.role}`);
+    return buildTickPrompt({
+      role,
+      initialPrompt,
+      extraInstructions: this.config.roles[this.role]?.instructions,
+    });
+  }
+
+  /** Merge the worktree branch into main under the shared merge lock. */
+  private async merge(wt: string, summary: string): Promise<TickResult> {
+    return withLock(mergeLockDir(this.root), async () => {
+      if (!(await mergeMainIntoBranch(wt, this.mainBranch))) return "merge_conflict";
+      if (!(await ffMergeToMain(this.root, this.role, this.mainBranch))) return "merge_blocked";
+      const commit = await headOf(this.root, this.mainBranch);
+      logEvent(this.root, { loop: this.role, type: "merged", commit, summary });
+      return "changed";
+    });
+  }
+
+  /** Salvage commits left on the branch by a previous run whose merge never landed. */
+  private async recoverLeftover(wt: string): Promise<void> {
+    const ahead = await aheadOfMain(wt, this.mainBranch).catch(() => 0);
+    if (ahead <= 0) return;
+    const result = await this.merge(wt, `recovered leftover work from ${this.role}`);
+    if (result !== "changed") {
+      logEvent(this.root, {
+        loop: this.role,
+        type: "warning",
+        message: `discarding ${ahead} unmergeable leftover commit(s) (${result})`,
+      });
+    }
+  }
+
+  async tick(): Promise<TickOutcome> {
+    const s = this.state;
+    s.ticks += 1;
+    s.running = true;
+    s.lastTickStartedAt = Date.now();
+    const tick = s.ticks;
+    this.save();
+    logEvent(this.root, { loop: this.role, type: "tick_start", tick });
+
+    let outcome: TickOutcome;
+    try {
+      outcome = await this.runTick();
+    } catch (err) {
+      outcome = { result: "error" };
+      s.lastError = err instanceof Error ? err.message : String(err);
+    }
+
+    s.running = false;
+    s.lastTickEndedAt = Date.now();
+    s.lastResult = outcome.result;
+    if (outcome.summary) s.lastSummary = outcome.summary;
+    if (outcome.result === "changed") {
+      s.commits += 1;
+      s.backoffSeconds = 0;
+      s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
+    } else if (outcome.result === "skipped") {
+      // Director idles until the inbox has work; no backoff bookkeeping.
+      s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
+    } else {
+      s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, this.config);
+      s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
+    }
+    s.lastMainHead = (await gitTry(this.root, "rev-parse", this.mainBranch)) ?? s.lastMainHead;
+    this.save();
+    logEvent(this.root, {
+      loop: this.role,
+      type: "tick_end",
+      tick,
+      result: outcome.result,
+      summary: outcome.summary,
+      error: s.lastError,
+    });
+    return outcome;
+  }
+
+  private async runTick(): Promise<TickOutcome> {
+    const s = this.state;
+    s.lastError = undefined;
+
+    const prompt = this.tickPrompt();
+    if (prompt === null) return { result: "skipped" };
+
+    const wt = await ensureWorktree(this.root, this.role, this.mainBranch);
+    await this.recoverLeftover(wt);
+    await resetWorktreeToMain(wt, this.mainBranch);
+
+    const pi: PiRunResult = await runPi({
+      cwd: wt,
+      prompt,
+      config: this.config,
+      sessionDir: sessionDir(this.root, this.role),
+      sessionName: `automaton-${this.role}-${s.ticks}`,
+      rawLogFile: piLogPath(this.root, this.role),
+      signal: this.signal,
+    });
+
+    s.totalTokens += pi.totalTokens;
+    s.totalCostUsd += pi.costUsd;
+
+    const changed = await isDirty(wt);
+    if (!pi.ok && !changed) {
+      s.lastError = pi.errorMessage ?? "pi failed";
+      return { result: "error" };
+    }
+    if (!changed) {
+      if (!isNothingToDo(pi.finalText)) {
+        logEvent(this.root, {
+          loop: this.role,
+          type: "warning",
+          message: "pi finished without changes and without declaring nothing-to-do",
+        });
+      }
+      return { result: "no_change" };
+    }
+
+    const summary = extractSummary(pi.finalText) ?? `${this.role} tick ${s.ticks}`;
+    const message = `automaton(${this.role}): ${summary}`;
+    const commit = await commitAll(wt, message);
+    const result = await this.merge(wt, summary);
+    if (result !== "changed") {
+      s.lastError = `merge failed: ${result}`;
+      return { result, summary, commit };
+    }
+    return { result, summary, commit };
+  }
+}

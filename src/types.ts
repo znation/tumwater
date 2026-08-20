@@ -1,0 +1,96 @@
+/** Shared types for the automaton harness. */
+
+/** Per-role configuration in automaton.json. */
+export interface RoleConfig {
+  enabled: boolean;
+  /** Extra instructions appended to this role's prompt. */
+  instructions?: string;
+}
+
+/** Idle backoff: how long a loop sleeps after a tick that changed nothing. */
+export interface BackoffConfig {
+  /** Seconds to sleep after the first no-change tick. */
+  initialSeconds: number;
+  /** Multiplier applied on each consecutive no-change tick. */
+  factor: number;
+  /** Ceiling in seconds. */
+  maxSeconds: number;
+}
+
+/** The tracked automaton.json config. */
+export interface AutomatonConfig {
+  /** pi provider name; omitted = pi's own default. */
+  provider?: string;
+  /** pi model pattern; omitted = pi's own default. */
+  model?: string;
+  /** pi thinking level; omitted = pi's own default. */
+  thinking?: string;
+  /** Extra argv passed straight to pi. */
+  piArgs: string[];
+  /** Max pi runs in flight at once across all loops. */
+  maxConcurrent: number;
+  /** Minimum seconds between two ticks of the same loop, even when woken early. */
+  minTickIntervalSeconds: number;
+  /** Hard cap on a single pi run, in seconds. */
+  tickTimeoutSeconds: number;
+  idleBackoff: BackoffConfig;
+  roles: Record<string, RoleConfig>;
+}
+
+export type TickResult =
+  | "changed" // pi made changes; committed and merged to main
+  | "no_change" // pi decided there was nothing to do
+  | "merge_conflict" // change was made but could not be merged; discarded next tick
+  | "merge_blocked" // fast-forward into main failed (e.g. dirty primary checkout)
+  | "error" // pi errored or timed out
+  | "skipped"; // nothing to run (e.g. director with an empty inbox)
+
+/** Persisted per-loop state in .automaton/state/<role>.json. */
+export interface LoopState {
+  role: string;
+  ticks: number;
+  commits: number;
+  /** Epoch ms before which the loop must not run again. */
+  nextRunAt: number;
+  /** Current backoff in seconds (0 = not backing off). */
+  backoffSeconds: number;
+  /** main HEAD observed at the end of the last tick; a different HEAD wakes the loop. */
+  lastMainHead: string;
+  lastResult?: TickResult;
+  lastSummary?: string;
+  lastTickStartedAt?: number;
+  lastTickEndedAt?: number;
+  /** True while a tick is in flight (best-effort; cleared on orchestrator start). */
+  running?: boolean;
+  totalTokens: number;
+  totalCostUsd: number;
+  lastError?: string;
+}
+
+/** One line in .automaton/log/events.jsonl. */
+export interface HarnessEvent {
+  ts: number;
+  loop: string;
+  type:
+    | "tick_start"
+    | "tick_end"
+    | "merged"
+    | "wake"
+    | "orchestrator_start"
+    | "orchestrator_stop"
+    | "prompt_enqueued"
+    | "warning";
+  [key: string]: unknown;
+}
+
+/** Distilled result of one pi run. */
+export interface PiRunResult {
+  ok: boolean;
+  /** Text of the last assistant message. */
+  finalText: string;
+  totalTokens: number;
+  costUsd: number;
+  stopReason?: string;
+  errorMessage?: string;
+  timedOut: boolean;
+}

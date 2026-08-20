@@ -1,0 +1,43 @@
+{
+  "piArgs": [],
+  "maxConcurrent": 3,
+  "minTickIntervalSeconds": 20,
+  "tickTimeoutSeconds": 1800,
+  "idleBackoff": {
+    "initialSeconds": 120,
+    "factor": 2,
+    "maxSeconds": 3600
+  },
+  "roles": {
+    "organize": {
+      "enabled": true
+    },
+    "coverage": {
+      "enabled": true
+    },
+    "clean": {
+      "enabled": true
+    },
+    "dry": {
+      "enabled": true
+    },
+    "feature": {
+      "enabled": true
+    },
+    "bugfix": {
+      "enabled": true
+    },
+    "plan": {
+      "enabled": true
+    },
+    "readme": {
+      "enabled": true
+    },
+    "improve": {
+      "enabled": true
+    },
+    "director": {
+      "enabled": true
+    }
+  }
+}
