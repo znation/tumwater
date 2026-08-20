@@ -68,6 +68,27 @@ test("the director only runs when the inbox has work", () => {
   assert.equal(eligible.reason, "inbox");
 });
 
+test("the director ignores the min gap and backoff: queued prompts run back to back", () => {
+  const r = runner("director");
+  const now = Date.now();
+  r.state.lastTickEndedAt = now - 1000; // Just finished — a role loop would be gated.
+  r.state.nextRunAt = now + 3600_000; // Even a (stale) backoff must not block prompts.
+  assert.equal(isEligible(r, now, "abc", 1).run, true);
+  assert.equal(isEligible(r, now, "abc", 0).run, false);
+});
+
+test("fairOrder puts the director first even when it ticked most recently", () => {
+  const director = runner("director");
+  director.state.lastTickEndedAt = 9999;
+  const feature = runner("feature");
+  feature.state.lastTickEndedAt = 1;
+  const fresh = runner("clean");
+  assert.deepEqual(
+    fairOrder([feature, fresh, director]).map((r) => r.role),
+    ["director", "clean", "feature"],
+  );
+});
+
 test("role catalog puts shipping work before hygiene", () => {
   const ids = ROLES.map((r) => r.id);
   assert.deepEqual(ids.slice(0, 4), ["feature", "bugfix", "plan", "readme"]);

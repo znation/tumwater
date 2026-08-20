@@ -72,14 +72,17 @@ export function isEligible(
   inboxCount: number,
 ): { run: boolean; reason?: string } {
   const s = runner.state;
-  const minGap = runner.config.minTickIntervalSeconds * 1000;
-  const sinceLast = now - (s.lastTickEndedAt ?? 0);
   if (s.running) return { run: false };
-  if (sinceLast < minGap) return { run: false };
 
+  // The director carries the user's own requests: no min-gap, no backoff — a queued
+  // prompt runs as soon as the previous one finishes.
   if (runner.role === DIRECTOR_ROLE) {
     return inboxCount > 0 ? { run: true, reason: "inbox" } : { run: false };
   }
+
+  const minGap = runner.config.minTickIntervalSeconds * 1000;
+  const sinceLast = now - (s.lastTickEndedAt ?? 0);
+  if (sinceLast < minGap) return { run: false };
   if (now >= s.nextRunAt) {
     return { run: true, reason: s.ticks === 0 ? "startup" : "scheduled" };
   }
@@ -90,13 +93,17 @@ export function isEligible(
   return { run: false };
 }
 
-/** Fair scheduling order for one poll's eligible loops: least-recently-ticked first, so
- * loops alternate instead of the same ones re-claiming freed slots. Never-run loops tie
- * at zero and the stable sort keeps them in role-catalog (priority) order. */
+/** Fair scheduling order for one poll's eligible loops: the director always leads (it runs
+ * the user's prompts), then least-recently-ticked first, so loops alternate instead of the
+ * same ones re-claiming freed slots. Never-run loops tie at zero and the stable sort keeps
+ * them in role-catalog (priority) order. */
 export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
-  return [...runners].sort(
-    (a, b) => (a.state.lastTickEndedAt ?? 0) - (b.state.lastTickEndedAt ?? 0),
-  );
+  return [...runners].sort((a, b) => {
+    if ((a.role === DIRECTOR_ROLE) !== (b.role === DIRECTOR_ROLE)) {
+      return a.role === DIRECTOR_ROLE ? -1 : 1;
+    }
+    return (a.state.lastTickEndedAt ?? 0) - (b.state.lastTickEndedAt ?? 0);
+  });
 }
 
 /** Run all enabled loops until the signal aborts. */
@@ -136,13 +143,16 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
           logEvent(root, { loop: runner.role, type: "wake", reason });
         }
         runner.state.running = true; // Reserve before the semaphore wait so we don't double-schedule.
+        // The director never queues behind role loops: a user prompt starts immediately,
+        // even when maxConcurrent slots are busy.
+        const usesSlot = runner.role !== DIRECTOR_ROLE;
         const task = (async () => {
-          await semaphore.acquire();
+          if (usesSlot) await semaphore.acquire();
           try {
             if (signal.aborted) return;
             await runner.tick();
           } finally {
-            semaphore.release();
+            if (usesSlot) semaphore.release();
           }
         })();
         inFlight.add(task);

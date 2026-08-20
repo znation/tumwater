@@ -53,7 +53,9 @@ per enabled role. Every loop tick:
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
 The director loop is special: it executes prompts you type into the TUI (or `automaton prompt`),
-queued in a file-based inbox. Everything is local git; no remotes are ever touched. Runtime state
+queued in a file-based inbox. It always has priority — a queued prompt starts immediately,
+outside the `maxConcurrent` limit and ahead of every role loop, and queued prompts run back to
+back with no cooldown between them. Everything is local git; no remotes are ever touched. Runtime state
 lives in `.automaton/` (gitignored); durable state (plans, bugs, status, config) lives in tracked
 markdown and `automaton.json`.
 
