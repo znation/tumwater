@@ -105,8 +105,14 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
     }, opts.config.tickTimeoutSeconds * 1000);
 
-    const onAbort = () => child.kill("SIGTERM");
+    let aborted = false;
+    const onAbort = () => {
+      aborted = true;
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+    };
     opts.signal?.addEventListener("abort", onAbort, { once: true });
+    if (opts.signal?.aborted) onAbort();
 
     child.stdout.on("data", (chunk: Buffer) => {
       parser.feed(chunk.toString("utf8"), (line) => rawLog.write(line + "\n"));
@@ -133,22 +139,26 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         costUsd: 0,
         errorMessage: `failed to spawn pi: ${err.message}`,
         timedOut: false,
+        aborted,
       });
     });
 
     child.on("close", (code) => {
       const failed =
-        timedOut || parser.stopReason === "error" || (code !== 0 && !parser.finalText.trim());
+        aborted || timedOut || parser.stopReason === "error" || (code !== 0 && !parser.finalText.trim());
       finish({
         ok: !failed,
         finalText: parser.finalText,
         totalTokens: parser.totalTokens,
         costUsd: parser.costUsd,
         stopReason: parser.stopReason,
-        errorMessage: timedOut
-          ? `timed out after ${opts.config.tickTimeoutSeconds}s`
-          : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
+        errorMessage: aborted
+          ? "aborted by harness shutdown"
+          : timedOut
+            ? `timed out after ${opts.config.tickTimeoutSeconds}s`
+            : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
         timedOut,
+        aborted,
       });
     });
   });

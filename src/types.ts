@@ -43,6 +43,7 @@ export type TickResult =
   | "merge_conflict" // change was made but could not be merged; discarded next tick
   | "merge_blocked" // fast-forward into main failed (e.g. dirty primary checkout)
   | "error" // pi errored or timed out
+  | "aborted" // harness shutdown killed the run mid-tick; partial work discarded
   | "skipped"; // nothing to run (e.g. director with an empty inbox)
 
 /** Persisted per-loop state in .automaton/state/<role>.json. */
@@ -93,4 +94,6 @@ export interface PiRunResult {
   stopReason?: string;
   errorMessage?: string;
   timedOut: boolean;
+  /** The run was killed because the harness is shutting down. */
+  aborted: boolean;
 }

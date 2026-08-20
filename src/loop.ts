@@ -21,7 +21,7 @@ import {
   isNothingToDo,
   readInitialPrompt,
 } from "./prompt.js";
-import { dequeuePrompt } from "./inbox.js";
+import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { loadLoopState, nextBackoffSeconds, saveLoopState } from "./state.js";
 import { mergeLockDir, piLogPath, sessionDir } from "./paths.js";
 
@@ -34,6 +34,8 @@ export interface TickOutcome {
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
   state: LoopState;
+  /** The raw user prompt a director tick is executing, so an aborted tick can re-queue it. */
+  private pendingUserPrompt: string | null = null;
 
   constructor(
     readonly root: string,
@@ -56,6 +58,7 @@ export class LoopRunner {
     if (this.role === DIRECTOR_ROLE) {
       const userPrompt = dequeuePrompt(this.root);
       if (!userPrompt) return null;
+      this.pendingUserPrompt = userPrompt;
       return buildDirectorPrompt(userPrompt, initialPrompt);
     }
     const role = roleById(this.role);
@@ -120,6 +123,9 @@ export class LoopRunner {
     } else if (outcome.result === "skipped") {
       // Director idles until the inbox has work; no backoff bookkeeping.
       s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
+    } else if (outcome.result === "aborted") {
+      // Shutdown, not a verdict about the project: resume promptly on restart.
+      s.nextRunAt = Date.now();
     } else {
       s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, this.config);
       s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
@@ -160,6 +166,18 @@ export class LoopRunner {
 
     s.totalTokens += pi.totalTokens;
     s.totalCostUsd += pi.costUsd;
+
+    // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
+    // The next tick's reset discards them.
+    if (pi.aborted) {
+      if (this.pendingUserPrompt) enqueuePrompt(this.root, this.pendingUserPrompt);
+      return { result: "aborted" };
+    }
+    this.pendingUserPrompt = null;
+    if (pi.timedOut) {
+      s.lastError = pi.errorMessage ?? "timed out";
+      return { result: "error" };
+    }
 
     const changed = await isDirty(wt);
     if (!pi.ok && !changed) {
