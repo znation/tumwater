@@ -1,5 +1,8 @@
 /** The opinionated role catalog. Every loop runs one role; a role's `find` text is
- * the role-specific "find something to do" half of the tick prompt. */
+ * the role-specific "find something to do" half of the tick prompt.
+ *
+ * Order matters: it is the scheduling priority when loops are otherwise tied
+ * (e.g. the startup burst), so shipping work (feature, bugfix) outranks hygiene. */
 
 export interface Role {
   id: string;
@@ -11,36 +14,6 @@ export interface Role {
 export const DIRECTOR_ROLE = "director";
 
 export const ROLES: Role[] = [
-  {
-    id: "organize",
-    title: "code organizer",
-    find: `Find ONE way the code could be better organized: a file that has grown too many
-responsibilities, a module in the wrong directory, a missing separation between layers, or
-inconsistent file naming. Restructure that one thing, updating all imports/references so the
-project still builds and tests still pass.`,
-  },
-  {
-    id: "coverage",
-    title: "test coverage improver",
-    find: `Find ONE meaningful gap in unit test coverage: an untested module, branch, or edge case
-that could plausibly break. Write focused unit tests for it using the project's existing test
-framework (or the language's standard one if none exists yet). Run the tests and make them pass.
-Prefer testing real behavior over trivial assertions.`,
-  },
-  {
-    id: "clean",
-    title: "code cleaner",
-    find: `Find ONE piece of unclean code: dead code, misleading names, commented-out blocks,
-overly clever constructs, missing or wrong doc comments on public surfaces, or inconsistent style.
-Clean that one thing without changing behavior. Keep the diff tight.`,
-  },
-  {
-    id: "dry",
-    title: "repetition remover",
-    find: `Find ONE instance of meaningful repetition: duplicated logic, copy-pasted blocks, or
-parallel structures that should share a helper. Factor it out into a single well-named place and
-update all call sites. Do not abstract things that are merely superficially similar.`,
-  },
   {
     id: "feature",
     title: "feature implementer",
@@ -75,6 +48,36 @@ status section (between the automaton:status markers) to reflect reality: what w
 progress, how to build/run/test. Fix any documentation that has drifted from the code. Never edit
 the initial prompt between the automaton:prompt markers. If the README is already accurate,
 there is nothing to do.`,
+  },
+  {
+    id: "organize",
+    title: "code organizer",
+    find: `Find ONE way the code could be better organized: a file that has grown too many
+responsibilities, a module in the wrong directory, a missing separation between layers, or
+inconsistent file naming. Restructure that one thing, updating all imports/references so the
+project still builds and tests still pass.`,
+  },
+  {
+    id: "coverage",
+    title: "test coverage improver",
+    find: `Find ONE meaningful gap in unit test coverage: an untested module, branch, or edge case
+that could plausibly break. Write focused unit tests for it using the project's existing test
+framework (or the language's standard one if none exists yet). Run the tests and make them pass.
+Prefer testing real behavior over trivial assertions.`,
+  },
+  {
+    id: "clean",
+    title: "code cleaner",
+    find: `Find ONE piece of unclean code: dead code, misleading names, commented-out blocks,
+overly clever constructs, missing or wrong doc comments on public surfaces, or inconsistent style.
+Clean that one thing without changing behavior. Keep the diff tight.`,
+  },
+  {
+    id: "dry",
+    title: "repetition remover",
+    find: `Find ONE instance of meaningful repetition: duplicated logic, copy-pasted blocks, or
+parallel structures that should share a helper. Factor it out into a single well-named place and
+update all call sites. Do not abstract things that are merely superficially similar.`,
   },
   {
     id: "improve",

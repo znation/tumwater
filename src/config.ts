@@ -8,7 +8,7 @@ export function defaultConfig(): AutomatonConfig {
   for (const id of allRoleIds()) roles[id] = { enabled: true };
   return {
     piArgs: [],
-    maxConcurrent: 3,
+    maxConcurrent: 6,
     minTickIntervalSeconds: 20,
     tickTimeoutSeconds: 1800,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Semaphore, isEligible } from "../src/orchestrator.js";
+import { Semaphore, fairOrder, isEligible } from "../src/orchestrator.js";
+import { ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig } from "../src/config.js";
 import { nextBackoffSeconds } from "../src/state.js";
@@ -65,6 +66,28 @@ test("the director only runs when the inbox has work", () => {
   const eligible = isEligible(r, Date.now(), "abc", 2);
   assert.equal(eligible.run, true);
   assert.equal(eligible.reason, "inbox");
+});
+
+test("role catalog puts shipping work before hygiene", () => {
+  const ids = ROLES.map((r) => r.id);
+  assert.deepEqual(ids.slice(0, 4), ["feature", "bugfix", "plan", "readme"]);
+  for (const hygiene of ["organize", "coverage", "clean", "dry"]) {
+    assert.ok(ids.indexOf(hygiene) > ids.indexOf("readme"), `${hygiene} should rank below readme`);
+  }
+});
+
+test("fairOrder alternates loops: least-recently-ticked first, catalog order for fresh ties", () => {
+  const recent = runner("feature");
+  recent.state.lastTickEndedAt = 2000;
+  const stale = runner("dry");
+  stale.state.lastTickEndedAt = 1000;
+  const freshA = runner("bugfix");
+  const freshB = runner("clean");
+  const ordered = fairOrder([recent, freshA, stale, freshB]);
+  assert.deepEqual(
+    ordered.map((r) => r.role),
+    ["bugfix", "clean", "dry", "feature"],
+  );
 });
 
 test("backoff grows by the factor and caps at max", () => {

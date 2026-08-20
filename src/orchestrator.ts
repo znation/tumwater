@@ -90,6 +90,15 @@ export function isEligible(
   return { run: false };
 }
 
+/** Fair scheduling order for one poll's eligible loops: least-recently-ticked first, so
+ * loops alternate instead of the same ones re-claiming freed slots. Never-run loops tie
+ * at zero and the stable sort keeps them in role-catalog (priority) order. */
+export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
+  return [...runners].sort(
+    (a, b) => (a.state.lastTickEndedAt ?? 0) - (b.state.lastTickEndedAt ?? 0),
+  );
+}
+
 /** Run all enabled loops until the signal aborts. */
 export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const { root, config, mainBranch, signal } = opts;
@@ -115,9 +124,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
       const inboxCount = inboxSize(root);
       const now = Date.now();
 
+      const reasons = new Map<LoopRunner, string | undefined>();
       for (const runner of runners) {
         const { run, reason } = isEligible(runner, now, mainHead, inboxCount);
-        if (!run || signal.aborted) continue;
+        if (run) reasons.set(runner, reason);
+      }
+      for (const runner of fairOrder([...reasons.keys()])) {
+        if (signal.aborted) continue;
+        const reason = reasons.get(runner);
         if (reason && reason !== "scheduled" && reason !== "startup") {
           logEvent(root, { loop: runner.role, type: "wake", reason });
         }
