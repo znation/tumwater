@@ -52,6 +52,16 @@ test("buildDirectorPrompt embeds the user request", () => {
   assert.match(prompt, /SUMMARY:/);
 });
 
+test("buildDirectorPrompt routes work to the specialist loops instead of implementing", () => {
+  const prompt = buildDirectorPrompt("add dark mode", "Make a CLI.");
+  assert.match(prompt, /project-level command/);
+  assert.match(prompt, /do NOT implement substantial\nwork yourself/);
+  assert.match(prompt, /plan for it in PLANS\.md/);
+  assert.match(prompt, /record it in BUGS\.md/);
+  assert.match(prompt, /Do not build\n {2}it now/);
+  assert.match(prompt, /Do not fix it now/);
+});
+
 test("extractSummary finds the SUMMARY line anywhere in the reply", () => {
   assert.equal(extractSummary("did stuff\nSUMMARY: add foo helper\n"), "add foo helper");
   assert.equal(extractSummary("SUMMARY:    trimmed   "), "trimmed");

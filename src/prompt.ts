@@ -57,10 +57,12 @@ export function buildTickPrompt(input: TickPromptInput): string {
   return parts.join("\n\n");
 }
 
-/** The prompt for a director tick, which executes a user request verbatim. */
+/** The prompt for a director tick, which routes a user request into the project. */
 export function buildDirectorPrompt(userPrompt: string, initialPrompt: string): string {
   const parts = [
-    `You are the "director" loop of automaton, an autonomous development harness. The user has sent the project a request; carry it out now.`,
+    `You are the "director" loop of automaton, an autonomous development harness. The user steers
+the project by sending it requests; one has just arrived. Other specialist loops continuously
+implement planned features from PLANS.md and fix bugs from BUGS.md.`,
     `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by the harness after you finish.`,
   ];
   if (initialPrompt) {
@@ -68,9 +70,19 @@ export function buildDirectorPrompt(userPrompt: string, initialPrompt: string): 
   }
   parts.push(`The user's request:\n<user-request>\n${userPrompt.trim()}\n</user-request>`);
   parts.push(
-    `If the request is a task, do it completely. If it is guidance or a decision (e.g. "prefer X",
-"drop feature Y"), record it where future loops will see it: README.md, PLANS.md, or BUGS.md as
-appropriate. If it is a question, answer it in your final reply and also record anything durable.`,
+    `Interpret the request as a project-level command and route it — do NOT implement substantial
+work yourself:
+- A feature request or substantial change: write a concrete plan for it in PLANS.md (goal,
+  approach, files touched, acceptance criteria) so the feature loop implements it. Do not build
+  it now.
+- A bug report: record it in BUGS.md (symptom, how to reproduce, suspected cause — investigate
+  briefly to sharpen the report) so the bugfix loop fixes it. Do not fix it now.
+- Guidance, a decision, or a constraint (e.g. "prefer X", "drop feature Y"): record it durably
+  where future loops will see it — README.md, PLANS.md, or BUGS.md as appropriate — and remove
+  anything it supersedes.
+- A question: answer it in your final reply, and record anything durable it surfaced.
+- Only a trivially small direct edit (fix a typo, tweak a doc line, adjust a config value the
+  user explicitly stated) may be done immediately instead of routed.`,
   );
   parts.push(COMMON_RULES.trim());
   return parts.join("\n\n");
