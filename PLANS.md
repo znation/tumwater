@@ -77,7 +77,7 @@ glance without mental arithmetic.
   `status.split("\n").length`, so the extra row is accounted for automatically — verify this holds.
 - The browser GUI table (`src/gui.ts`) is out of scope; user asked for the TUI only.
 
-**Files touched:** `src/status.ts`, `test/lock-status.test.ts`.
+**Files touched:** `src/status.ts`, `test/status.test.ts`.
 
 **Acceptance criteria:**
 - With multiple loops having non-zero `totalTokens`/`totalCostUsd`, both the TUI table and
@@ -85,7 +85,7 @@ glance without mental arithmetic.
   token values (compact-formatted) and whose cost cell equals `$<sum to 2 decimals>`.
 - The totals row is separated from data rows by a separator line and stays column-aligned; an empty
   state set (all zeros) renders `0` / `$0.00` without breaking alignment.
-- Unit test in `test/lock-status.test.ts` asserts the totals row values for a multi-loop snapshot;
+- Unit test in `test/status.test.ts` asserts the totals row values for a multi-loop snapshot;
   `npm test` passes.
 
 ### Decompose requests into sub-plans/sub-bugs when routing (planned 2026-08-21)
