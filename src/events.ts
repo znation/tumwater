@@ -18,9 +18,17 @@ export function subscribeEvents(listener: EventListener): () => void {
  * harness event log is small per event, so a fixed cap keeps logEvent config-free. */
 const EVENTS_MAX_BYTES = 16 * 1024 * 1024;
 
+/** An event to log. `logEvent` stamps `ts`; event-specific extra fields (tick, summary, …)
+ * are allowed via the index signature. */
+export interface HarnessEventInput {
+  loop: string;
+  type: HarnessEvent["type"];
+  [key: string]: unknown;
+}
+
 /** Append one event to the project's events.jsonl and notify in-process subscribers. */
-export function logEvent(root: string, event: Omit<HarnessEvent, "ts"> & { ts?: number }): HarnessEvent {
-  const full: HarnessEvent = { ts: Date.now(), ...event } as HarnessEvent;
+export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
+  const full = { ts: Date.now(), ...event };
   const file = eventsLogPath(root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   rotateIfLarge(file, EVENTS_MAX_BYTES);
