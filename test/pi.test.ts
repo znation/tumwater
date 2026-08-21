@@ -14,6 +14,21 @@ test("parser keeps the last non-empty assistant text and sums usage", () => {
   assert.equal(parser.stopReason, "stop");
 });
 
+test("parser keeps a sentinel declared in an intermediate message (regression)", () => {
+  const parser = new PiStreamParser();
+  parser.feed(assistantLine("AUTOMATON_NOTHING_TO_DO", { tokens: 10 }) + "\n");
+  parser.feed(assistantLine("all done", { tokens: 5 }) + "\n");
+  assert.equal(parser.finalText, "all done", "finalText stays the last message");
+  assert.ok(parser.declaredNothingToDo, "sentinel from an earlier turn is not lost");
+});
+
+test("parser does not flag nothing-to-do when no message carries the sentinel", () => {
+  const parser = new PiStreamParser();
+  parser.feed(assistantLine("thinking about it") + "\n");
+  parser.feed(assistantLine("all done\nSUMMARY: x") + "\n");
+  assert.equal(parser.declaredNothingToDo, false);
+});
+
 test("parser handles chunked lines and ignores noise", () => {
   const parser = new PiStreamParser();
   const line = assistantLine("hello", { tokens: 5 });

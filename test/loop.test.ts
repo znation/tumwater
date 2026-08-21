@@ -6,6 +6,7 @@ import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
+import { readEvents } from "../src/events.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
@@ -52,6 +53,51 @@ test("a nothing-to-do tick backs off without committing", async () => {
       config.idleBackoff.initialSeconds * config.idleBackoff.factor,
     );
     assert.ok(runner.state.nextRunAt > Date.now());
+  } finally {
+    restore();
+  }
+});
+
+test("a nothing-to-do declaration in an intermediate turn does not warn (regression)", async () => {
+  const repo = await initializedRepo();
+  // pi declares nothing-to-do, then emits a closing remark afterwards; no file changes.
+  const restore = fakePi(
+    `printf '%s\n' '${assistantLine("AUTOMATON_NOTHING_TO_DO")}'\n` +
+      `printf '%s\n' '${assistantLine("all done")}'`,
+  );
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    const warnings = readEvents(repo).filter((e) => e.type === "warning");
+    assert.deepEqual(warnings, [], "no spurious warning when the sentinel was declared mid-run");
+  } finally {
+    restore();
+  }
+});
+
+test("a non-compliant tick warns and notes a truncated final message", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(`printf '%s\n' '${assistantLine("hmm, let me think", { stopReason: "length" })}'`);
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    const [warning] = readEvents(repo).filter((e) => e.type === "warning");
+    assert.ok(warning, "expected exactly one warning");
+    assert.match(String(warning.message), /stopReason=length/);
+  } finally {
+    restore();
+  }
+});
+
+test("a silent tick warns that no assistant text was captured", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(`exit 0`);
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    const [warning] = readEvents(repo).filter((e) => e.type === "warning");
+    assert.ok(warning, "expected exactly one warning");
+    assert.match(String(warning.message), /no assistant text/);
   } finally {
     restore();
   }
