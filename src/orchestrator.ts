@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AutomatonConfig } from "./types.js";
+import { enabledRoleIds } from "./config.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry } from "./git.js";
@@ -109,9 +110,7 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
 /** Run all enabled loops until the signal aborts. */
 export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const { root, config, mainBranch, signal } = opts;
-  const enabled = Object.entries(config.roles)
-    .filter(([, rc]) => rc.enabled)
-    .map(([id]) => id);
+  const enabled = enabledRoleIds(config);
   if (enabled.length === 0) throw new Error("no roles enabled in automaton.json");
 
   const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
