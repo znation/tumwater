@@ -241,10 +241,7 @@ export class LoopRunner {
     const message = `automaton(${this.role}): ${summary}`;
     const commit = await commitAll(wt, message);
     const result = await this.merge(wt, summary);
-    if (result !== "changed") {
-      s.lastError = `merge failed: ${result}`;
-      return { result, summary, commit };
-    }
+    if (result !== "changed") s.lastError = `merge failed: ${result}`;
     return { result, summary, commit };
   }
 }
