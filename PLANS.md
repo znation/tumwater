@@ -5,7 +5,35 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Decompose requests into sub-plans/sub-bugs when routing (planned 2026-08-21)
+
+**Goal:** Whenever a loop decides to put something into PLANS.md or BUGS.md — the director routing a
+user prompt, or any role interpreting README.md/PLANS.md and recording a new plan or bug — it should
+first consider whether the item can be broken down into independent subparts. If decomposition makes
+sense, record each part as its own plan/bug entry (cross-referencing its siblings) instead of one
+monolithic entry; otherwise keep it single.
+
+**Approach:** Add shared decomposition guidance to `src/prompt.ts` and include it at every point where
+bug/feature categorization happens:
+- In `buildDirectorPrompt`'s routing block, add a rule alongside the existing feature/bug bullets:
+  before recording, consider whether the request decomposes into independent subparts (separate
+  features or bugs); if so, record each as its own PLANS.md/BUGS.md entry that cross-references its
+  siblings; otherwise keep it single.
+- Reuse the same guidance in role find prompts that create entries: at minimum `plan` (interprets
+  README.md/initial prompt → PLANS.md) and `bugfix`'s "record a newly discovered bug" path, so loops
+decompose consistently rather than only the director doing it. Define the text once (exported from one
+module) to avoid drift between prompts.
+
+**Files touched:** `src/prompt.ts`, `src/roles.ts`, `test/prompt.test.ts`.
+
+**Acceptance criteria:**
+- The director prompt instructs decomposition into multiple plans/bugs when a request has independent
+  subparts, and says to keep it single otherwise; a unit test asserts the guidance is present in
+  `buildDirectorPrompt` output.
+- The `plan` role's tick prompt (and `bugfix`'s new-bug recording instruction) contain equivalent
+  guidance; unit tests assert presence for those roles too.
+- The guidance text is defined once and shared, not copy-pasted with drift.
+- `npm test` passes.
 
 ## Done
 
