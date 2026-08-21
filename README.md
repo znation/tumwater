@@ -38,9 +38,11 @@ v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `promp
 implemented with all nine roles plus the director loop (which has absolute scheduling priority
 and routes feature/bug requests into PLANS.md/BUGS.md). Merge conflicts get one pi-driven
 resolution attempt; roles can override provider/model/thinking; logs rotate and old pi sessions
-are pruned. 72 unit tests pass. Known issues (BUGS.md): the TUI status table scrolls off-screen
-as recent activity grows, and LM Studio's log fills with WARN lines while loops run (cause under
-investigation). No plans pending in PLANS.md.
+are pruned. 81 unit tests pass. Known issues (BUGS.md): a spurious "pi finished without changes"
+warning on some no-op ticks, the TUI status table wrapping past narrow terminals, that same
+table scrolling off-screen as recent activity grows, and LM Studio's log filling with WARN lines
+while loops run (cause under investigation). Two plans pending in PLANS.md: a totals row for
+tokens and cost in the status table, and decomposing routed requests into sub-plans/sub-bugs.
 <!-- automaton:status:end -->
 
 ## How it works
@@ -50,7 +52,9 @@ PLANS.md, BUGS.md, and automaton.json, and commits them. `automaton run` then st
 per enabled role. Every loop tick:
 
 1. Resets its persistent worktree (`.automaton/worktrees/<role>`, branch `automaton/<role>`) to main.
-2. Builds a role-specific "find something to do" prompt and runs `pi --print --mode json` in the worktree.
+2. Builds a role-specific "find something to do" prompt and runs `pi --print --mode json` in the
+   worktree, resuming the loop's own pi session from earlier ticks (`--continue`) so context
+   carries over; pi auto-compacts when it nears the model's window.
 3. If pi changed files: commits, merges main into the branch, and fast-forwards main — all under a
    merge lock shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
    capped) and sleeps.
