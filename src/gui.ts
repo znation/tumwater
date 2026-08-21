@@ -33,7 +33,7 @@ const PAGE = `<!doctype html>
   body { background:#101418; color:#d6dde4; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
          max-width:1100px; margin:2rem auto; padding:0 1rem; }
   h1 { font-size:16px; font-weight:600; } h1 .muted, .muted { color:#7a8794; font-weight:400; }
-  table { border-collapse:collapse; width:100%; margin:1rem 0; }
+  table { border-collapse:collapse; width:100%; margin:1rem 0; font-size:12px; }
   th,td { text-align:left; padding:4px 10px 4px 0; border-bottom:1px solid #1e2831; white-space:nowrap; }
   td.wide { white-space:normal; }
   th { color:#7a8794; font-weight:500; }
