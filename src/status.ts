@@ -1,11 +1,9 @@
-import fs from "node:fs";
 import path from "node:path";
 import type { LoopState } from "./types.js";
 import { enabledRoleIds, loadConfig } from "./config.js";
 import { loadLoopState } from "./state.js";
 import { inboxSize } from "./inbox.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./orchestrator.js";
-import { automatonDir } from "./paths.js";
 import { readLiveProgress } from "./progress.js";
 
 export interface StatusSnapshot {
@@ -98,8 +96,4 @@ export function renderStatus(root: string, snap: StatusSnapshot): string {
   lines.push(widths.map((w) => "-".repeat(w)).join("  "));
   for (const r of rows) lines.push(fmt(r));
   return lines.join("\n");
-}
-
-export function projectInitialized(root: string): boolean {
-  return fs.existsSync(path.join(root, "automaton.json")) || fs.existsSync(automatonDir(root));
 }
