@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { AutomatonConfig, PiRunResult } from "./types.js";
-import { rotateIfLarge } from "./events.js";
+import { rotateIfLarge } from "./files.js";
 
 interface PiMessage {
   role: string;
