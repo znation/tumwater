@@ -4,7 +4,8 @@ import type { AutomatonConfig } from "./types.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry } from "./git.js";
-import { logEvent, pruneOldFiles } from "./events.js";
+import { logEvent } from "./events.js";
+import { pruneOldFiles } from "./files.js";
 import { inboxSize } from "./inbox.js";
 import { orchestratorStatePath, sessionsRootDir } from "./paths.js";
 
