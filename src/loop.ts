@@ -18,7 +18,7 @@ import {
 } from "./git.js";
 import { withLock } from "./lock.js";
 import { logEvent } from "./events.js";
-import { runPi } from "./pi.js";
+import { SPAWN_ERROR_PREFIX, runPi } from "./pi.js";
 import {
   buildConflictPrompt,
   buildDirectorPrompt,
@@ -208,8 +208,9 @@ export class LoopRunner {
       signal: this.signal,
     });
 
-    // The run created (or extended) a session file; later ticks resume it.
-    if (!pi.errorMessage?.startsWith("failed to spawn pi")) s.hasSession = true;
+    // The run created (or extended) a session file; later ticks resume it. A spawn failure
+    // never creates one, so don't mark the session resumable in that case.
+    if (!pi.errorMessage?.startsWith(SPAWN_ERROR_PREFIX)) s.hasSession = true;
     s.totalTokens += pi.totalTokens;
     s.totalCostUsd += pi.costUsd;
 
