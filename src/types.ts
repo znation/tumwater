@@ -102,6 +102,10 @@ export interface PiRunResult {
   ok: boolean;
   /** Text of the last assistant message. */
   finalText: string;
+  /** True when any assistant message in the run declared nothing-to-do (the sentinel).
+   * Covers the whole reply, not just the last message, so a sentinel emitted in an
+   * intermediate turn is not lost to a later closing remark. */
+  nothingToDo: boolean;
   totalTokens: number;
   costUsd: number;
   stopReason?: string;

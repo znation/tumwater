@@ -24,7 +24,6 @@ import {
   buildDirectorPrompt,
   buildTickPrompt,
   extractSummary,
-  isNothingToDo,
   readInitialPrompt,
 } from "./prompt.js";
 import { configForRole } from "./config.js";
@@ -232,11 +231,20 @@ export class LoopRunner {
       return { result: "error" };
     }
     if (!changed) {
-      if (!isNothingToDo(pi.finalText)) {
+      if (!pi.nothingToDo) {
+        // No sentinel anywhere in the reply. Make the warning diagnosable: surface an
+        // abnormal stopReason (e.g. "length" = truncated final message, so a cut-off
+        // sentinel is distinguishable from plain non-compliance) and note when pi
+        // produced no assistant text at all.
+        const notes: string[] = [];
+        if (pi.stopReason && pi.stopReason !== "stop") notes.push(`stopReason=${pi.stopReason}`);
+        if (!pi.finalText.trim()) notes.push("no assistant text");
         logEvent(this.root, {
           loop: this.role,
           type: "warning",
-          message: "pi finished without changes and without declaring nothing-to-do",
+          message:
+            `pi finished without changes and without declaring nothing-to-do` +
+            (notes.length ? ` (${notes.join(", ")})` : ""),
         });
       }
       return { result: "no_change" };

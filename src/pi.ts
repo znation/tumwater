@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { AutomatonConfig, PiRunResult } from "./types.js";
 import { rotateIfLarge } from "./files.js";
+import { isNothingToDo } from "./prompt.js";
 
 interface PiMessage {
   role: string;
@@ -23,6 +24,9 @@ function messageText(msg: PiMessage): string {
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";
+  /** True once any assistant message contains the nothing-to-do sentinel, so a
+   * declaration in an intermediate turn survives later messages overwriting finalText. */
+  declaredNothingToDo = false;
   totalTokens = 0;
   costUsd = 0;
   stopReason: string | undefined;
@@ -53,6 +57,7 @@ export class PiStreamParser {
     const msg = event.message;
     const text = messageText(msg);
     if (text.trim()) this.finalText = text;
+    if (isNothingToDo(text)) this.declaredNothingToDo = true;
     this.totalTokens += msg.usage?.totalTokens ?? 0;
     this.costUsd += msg.usage?.cost?.total ?? 0;
     this.stopReason = msg.stopReason;
@@ -150,6 +155,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       finish({
         ok: false,
         finalText: "",
+        nothingToDo: false,
         totalTokens: 0,
         costUsd: 0,
         errorMessage: `${SPAWN_ERROR_PREFIX}: ${err.message}`,
@@ -164,6 +170,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       finish({
         ok: !failed,
         finalText: parser.finalText,
+        nothingToDo: parser.declaredNothingToDo,
         totalTokens: parser.totalTokens,
         costUsd: parser.costUsd,
         stopReason: parser.stopReason,
