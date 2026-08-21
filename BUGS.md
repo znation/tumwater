@@ -5,6 +5,42 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### TUI: status table wider than terminal — rows wrap to two lines, misaligning everything (reported 2026-08-20)
+
+**Symptom:** In `automaton tui`, the live-updating loop status table is sometimes rendered wider
+than the current terminal. Each affected row then wraps onto a second visual line, so columns no
+longer line up and the whole screen looks misaligned. It appears intermittently — only when some
+cell's content makes the table exceed `process.stdout.columns` (e.g. right after a tick with a long
+summary, or while a loop is working with a long state cell).
+
+**How to reproduce:** Run `automaton run` with several roles enabled and let ticks complete so at
+least one loop has a non-trivial `last result — <summary>` (summaries are up to ~72 chars) and/or a
+working loop whose state cell is long (`working 5m03s · turn 4 · ctx 12.3k · Bash`, plus
+`no pi output for …`). Open `automaton tui` in a terminal narrower than the rendered table (e.g.
+80–120 columns). The table rows wrap mid-row; the wrapped continuation lines are not column-aligned,
+misaligning the rest of the screen. Resizing the terminal wider makes it disappear — confirming
+the table is content-sized, not terminal-sized.
+
+**Suspected cause:** `renderStatus` (`src/status.ts`) sizes every column to its widest cell with no
+cap: `widths = cols.map((c, i) => Math.max(c.length, ...rows.map(...)))`. The two unbounded cells
+are:
+- `state`: `workingDetail()` can exceed ~60 chars (elapsed · turn · ctx · tool · quiet-for suffix).
+- `last result`: `${lastResult} — ${lastSummary}` where the summary is up to ~72+ chars.
+
+Worst-case table width easily exceeds 180 columns. Neither `renderStatus` nor its TUI caller
+(`src/tui.ts` `render()`) knows or enforces the terminal width, so rows longer than
+columns wrap in the terminal instead of being truncated. The one-shot `automaton status` command
+has the same unbounded-width behavior (shared function).
+
+**Fix guidance:** Make the table width-aware: pass a max width into `renderStatus` (TUI passes
+`process.stdout.columns`; the CLI can pass its own stdout columns or leave it uncapped) and truncate
+wide cells with an ellipsis so total row width ≤ max. Truncate the widest offenders first (`last
+result`, then `state`) while keeping fixed narrow columns intact; keep the header/separator rows in
+sync. This is closely related to the vertical-overflow bug below (same root cause: render output not
+bounded by terminal size) — fix both together if convenient, and make sure the TUI's line-budgeting
+then counts visual lines correctly.
+Files: `src/status.ts`, `src/tui.ts` (and possibly `src/cli.ts` for the one-shot command).
+
 ### TUI: status table scrolls off the top of the screen as recent activity grows (reported 2026-08-20)
 
 **Symptom:** In `automaton tui`, once the "recent activity" list has accumulated a number of
