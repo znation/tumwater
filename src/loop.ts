@@ -110,6 +110,7 @@ export class LoopRunner {
       config: configForRole(this.config, this.role),
       sessionDir: sessionDir(this.root, this.role),
       sessionName: `automaton-${this.role}-${this.state.ticks}-conflict`,
+      continueSession: this.state.hasSession,
       rawLogFile: piLogPath(this.root, this.role),
       signal: this.signal,
     });
@@ -202,10 +203,13 @@ export class LoopRunner {
       config: configForRole(this.config, this.role),
       sessionDir: sessionDir(this.root, this.role),
       sessionName: `automaton-${this.role}-${s.ticks}`,
+      continueSession: s.hasSession,
       rawLogFile: piLogPath(this.root, this.role),
       signal: this.signal,
     });
 
+    // The run created (or extended) a session file; later ticks resume it.
+    if (!pi.errorMessage?.startsWith("failed to spawn pi")) s.hasSession = true;
     s.totalTokens += pi.totalTokens;
     s.totalCostUsd += pi.costUsd;
 

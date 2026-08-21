@@ -73,6 +73,9 @@ export interface LoopState {
   lastTickEndedAt?: number;
   /** True while a tick is in flight (best-effort; cleared on orchestrator start). */
   running?: boolean;
+  /** True once this loop has a pi session to resume; ticks then run with --continue so
+   * the loop keeps its accumulated context (pi auto-compacts when it grows too large). */
+  hasSession?: boolean;
   totalTokens: number;
   totalCostUsd: number;
   lastError?: string;

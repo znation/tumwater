@@ -67,15 +67,24 @@ export interface PiRunOptions {
   config: AutomatonConfig;
   sessionDir: string;
   sessionName: string;
+  /** Resume the loop's most recent session in sessionDir instead of starting fresh,
+   * so context persists across ticks. pi auto-compacts when the context nears the
+   * model's window, so a resumed session never overflows. */
+  continueSession?: boolean;
   /** Raw pi JSON event lines are appended here for observability. */
   rawLogFile: string;
   signal?: AbortSignal;
 }
 
 /** Build the pi argv for one tick. Exported for tests. */
-export function piArgs(opts: Pick<PiRunOptions, "config" | "sessionDir" | "sessionName">): string[] {
+export function piArgs(
+  opts: Pick<PiRunOptions, "config" | "sessionDir" | "sessionName" | "continueSession">,
+): string[] {
   const { config } = opts;
-  const args = ["--print", "--mode", "json", "--session-dir", opts.sessionDir, "-n", opts.sessionName];
+  const args = ["--print", "--mode", "json", "--session-dir", opts.sessionDir];
+  // Each role has its own session dir, so --continue resumes that role's session.
+  if (opts.continueSession) args.push("--continue");
+  else args.push("-n", opts.sessionName);
   if (config.provider) args.push("--provider", config.provider);
   if (config.model) args.push("--model", config.model);
   if (config.thinking) args.push("--thinking", config.thinking);
