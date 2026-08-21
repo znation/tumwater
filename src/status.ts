@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { LoopState } from "./types.js";
-import { loadConfig } from "./config.js";
+import { enabledRoleIds, loadConfig } from "./config.js";
 import { loadLoopState } from "./state.js";
 import { inboxSize } from "./inbox.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./orchestrator.js";
@@ -17,9 +17,7 @@ export interface StatusSnapshot {
 
 export function snapshot(root: string): StatusSnapshot {
   const config = loadConfig(root);
-  const roles = Object.entries(config.roles)
-    .filter(([, rc]) => rc.enabled)
-    .map(([id]) => id);
+  const roles = enabledRoleIds(config);
   const info = readOrchestratorInfo(root);
   return {
     running: orchestratorAlive(root),
