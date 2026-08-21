@@ -5,40 +5,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Web GUI
-
-Goal: browser-based equivalent of the TUI — loop table, live event feed, main prompt box.
-Approach: a `automaton gui` command starting a small zero-dependency HTTP server that serves a
-single-page dashboard, reads the same `.automaton/state` + `events.jsonl` files the TUI reads,
-and POSTs prompts into the inbox. Poll or SSE for updates.
-Files: `src/gui.ts`, `src/cli.ts`, tests.
-Acceptance: `automaton gui` opens a dashboard showing the same data as `automaton status`,
-prompts typed in the browser reach the director loop.
-
-### pi-driven merge conflict resolution
-
-Goal: stop discarding work when a branch conflicts with main.
-Approach: on `merge_conflict`, run a dedicated pi prompt inside the conflicted worktree asking it
-to resolve conflict markers, then re-verify and merge. Cap at one attempt per tick.
-Files: `src/loop.ts`, `src/git.ts`, tests.
-Acceptance: a conflicting tick lands as a merge commit instead of being dropped.
-
-### Per-role model/effort overrides
-
-Goal: cheap models for mechanical roles (clean, dry, readme), strong models for feature/bugfix.
-Approach: allow `provider`/`model`/`thinking` inside each role's entry in `automaton.json`,
-falling back to the top-level values.
-Files: `src/types.ts`, `src/config.ts`, `src/pi.ts`, `src/loop.ts`, tests.
-Acceptance: config round-trips and the pi argv reflects the role override.
-
-### Log rotation and session pruning
-
-Goal: keep `.automaton/` from growing without bound on long runs.
-Approach: size-capped rotation of `events.jsonl` and per-role pi logs; prune pi session files
-older than N days.
-Files: `src/events.ts`, `src/pi.ts`, tests.
-Acceptance: logs stay under the configured cap across many ticks.
+_None yet._
 
 ## Done
 
-_None yet._
+### Web GUI (done 2026-08-20)
+
+`automaton gui [--port N]` serves a zero-dependency browser dashboard on 127.0.0.1 (default
+port 7180): loop table with live working detail, event feed, and a prompt box that queues to
+the director. Reads the same `.automaton/state` + `events.jsonl` files as the TUI, polling
+every second. Files: `src/gui.ts`, `src/cli.ts`.
+
+### pi-driven merge conflict resolution (done 2026-08-20)
+
+On a merge conflict, the loop re-runs the merge leaving markers in place, asks pi to resolve
+them (one attempt per tick, honoring both sides' intent), verifies no markers remain, and
+concludes the merge; unresolvable conflicts abort cleanly as before. Files: `src/loop.ts`,
+`src/git.ts`, `src/prompt.ts`.
+
+### Per-role model/effort overrides (done 2026-08-20)
+
+Each role entry in `automaton.json` may set `provider`/`model`/`thinking`, falling back to the
+top-level values — cheap models for mechanical roles, strong ones for feature/bugfix. Files:
+`src/types.ts`, `src/config.ts`, `src/loop.ts`.
+
+### Log rotation and session pruning (done 2026-08-20)
+
+`events.jsonl` and per-role pi logs rotate to `<file>.1` past a size cap (`logMaxBytes`,
+default 16MB); pi session files older than `sessionRetentionDays` (default 7) are pruned at
+orchestrator start. Files: `src/events.ts`, `src/pi.ts`, `src/orchestrator.ts`.

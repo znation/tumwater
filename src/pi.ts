@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { AutomatonConfig, PiRunResult } from "./types.js";
+import { rotateIfLarge } from "./events.js";
 
 interface PiMessage {
   role: string;
@@ -87,6 +88,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
   return new Promise((resolve) => {
     fs.mkdirSync(opts.sessionDir, { recursive: true });
     fs.mkdirSync(path.dirname(opts.rawLogFile), { recursive: true });
+    rotateIfLarge(opts.rawLogFile, opts.config.logMaxBytes);
     const rawLog = fs.createWriteStream(opts.rawLogFile, { flags: "a" });
     const parser = new PiStreamParser();
     let stderr = "";

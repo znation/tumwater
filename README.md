@@ -34,9 +34,11 @@ locally and keep all project state within the git repo.
 ## Status
 
 <!-- automaton:status:start -->
-v0.1: working harness. `init`, `run`, `tui`, `status`, `logs`, and `prompt` commands are
-implemented with all nine roles plus the director loop. 51 unit tests pass. A GUI is planned
-(see PLANS.md); observability today is TUI + status + JSONL logs.
+v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `prompt` commands are
+implemented with all nine roles plus the director loop (which has absolute scheduling priority
+and routes feature/bug requests into PLANS.md/BUGS.md). Merge conflicts get one pi-driven
+resolution attempt; roles can override provider/model/thinking; logs rotate and old pi sessions
+are pruned. 72 unit tests pass.
 <!-- automaton:status:end -->
 
 ## How it works
@@ -68,6 +70,7 @@ cd your-project        # any git repo
 automaton init "Build a tiny markdown-to-html converter CLI in Python."
 automaton run          # terminal 1: the loops (Ctrl+C to stop)
 automaton tui          # terminal 2: dashboard + main prompt
+automaton gui          # or the same dashboard at http://127.0.0.1:7180
 automaton status       # one-shot table
 automaton logs -f      # follow harness events
 automaton prompt "prefer no third-party deps"

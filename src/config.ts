@@ -11,6 +11,8 @@ export function defaultConfig(): AutomatonConfig {
     maxConcurrent: 6,
     minTickIntervalSeconds: 20,
     tickTimeoutSeconds: 1800,
+    logMaxBytes: 16 * 1024 * 1024,
+    sessionRetentionDays: 7,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },
     roles,
   };
@@ -37,4 +39,17 @@ export function loadConfig(root: string): AutomatonConfig {
 
 export function saveConfig(root: string, config: AutomatonConfig): void {
   fs.writeFileSync(configPath(root), JSON.stringify(config, null, 2) + "\n");
+}
+
+/** The config as seen by one role's pi runs: role-level provider/model/thinking
+ * overrides applied over the top-level values. */
+export function configForRole(config: AutomatonConfig, role: string): AutomatonConfig {
+  const rc = config.roles[role];
+  if (!rc) return config;
+  return {
+    ...config,
+    provider: rc.provider ?? config.provider,
+    model: rc.model ?? config.model,
+    thinking: rc.thinking ?? config.thinking,
+  };
 }

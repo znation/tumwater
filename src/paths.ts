@@ -35,8 +35,12 @@ export function piLogPath(root: string, role: string): string {
   return path.join(automatonDir(root), "log", `${role}.pi.jsonl`);
 }
 
+export function sessionsRootDir(root: string): string {
+  return path.join(automatonDir(root), "sessions");
+}
+
 export function sessionDir(root: string, role: string): string {
-  return path.join(automatonDir(root), "sessions", role);
+  return path.join(sessionsRootDir(root), role);
 }
 
 export function inboxDir(root: string): string {

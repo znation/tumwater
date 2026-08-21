@@ -1,26 +1,33 @@
 import type { AutomatonConfig, LoopState, PiRunResult, TickResult } from "./types.js";
 import { DIRECTOR_ROLE, roleById } from "./roles.js";
 import {
+  abortMerge,
   aheadOfMain,
   commitAll,
+  commitMergeResolution,
+  conflictedFiles,
   ensureWorktree,
   ffMergeToMain,
   gitTry,
+  hasConflictMarkers,
   headOf,
   isDirty,
   mergeMainIntoBranch,
+  mergeMainLeaveConflicts,
   resetWorktreeToMain,
 } from "./git.js";
 import { withLock } from "./lock.js";
 import { logEvent } from "./events.js";
 import { runPi } from "./pi.js";
 import {
+  buildConflictPrompt,
   buildDirectorPrompt,
   buildTickPrompt,
   extractSummary,
   isNothingToDo,
   readInitialPrompt,
 } from "./prompt.js";
+import { configForRole } from "./config.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { loadLoopState, nextBackoffSeconds, saveLoopState } from "./state.js";
 import { mergeLockDir, piLogPath, sessionDir } from "./paths.js";
@@ -70,8 +77,17 @@ export class LoopRunner {
     });
   }
 
-  /** Merge the worktree branch into main under the shared merge lock. */
+  /** Merge the worktree branch into main under the shared merge lock. On conflict,
+   * makes one pi-driven resolution attempt (outside the lock) before giving up. */
   private async merge(wt: string, summary: string): Promise<TickResult> {
+    const first = await this.tryMerge(wt, summary);
+    if (first !== "merge_conflict") return first;
+    logEvent(this.root, { loop: this.role, type: "warning", message: "merge conflict — asking pi to resolve" });
+    if (!(await this.resolveConflict(wt))) return "merge_conflict";
+    return this.tryMerge(wt, summary);
+  }
+
+  private async tryMerge(wt: string, summary: string): Promise<TickResult> {
     return withLock(mergeLockDir(this.root), async () => {
       if (!(await mergeMainIntoBranch(wt, this.mainBranch))) return "merge_conflict";
       if (!(await ffMergeToMain(this.root, this.role, this.mainBranch))) return "merge_blocked";
@@ -79,6 +95,32 @@ export class LoopRunner {
       logEvent(this.root, { loop: this.role, type: "merged", commit, summary });
       return "changed";
     });
+  }
+
+  /** Re-run the conflicting merge leaving markers in place, let pi resolve them, and
+   * conclude the merge. Returns true when the branch now contains a clean merge of main. */
+  private async resolveConflict(wt: string): Promise<boolean> {
+    const state = await mergeMainLeaveConflicts(wt, this.mainBranch);
+    if (state === "clean") return true;
+    if (state === "failed") return false;
+    const files = await conflictedFiles(wt);
+    const pi = await runPi({
+      cwd: wt,
+      prompt: buildConflictPrompt(this.role, files),
+      config: configForRole(this.config, this.role),
+      sessionDir: sessionDir(this.root, this.role),
+      sessionName: `automaton-${this.role}-${this.state.ticks}-conflict`,
+      rawLogFile: piLogPath(this.root, this.role),
+      signal: this.signal,
+    });
+    this.state.totalTokens += pi.totalTokens;
+    this.state.totalCostUsd += pi.costUsd;
+    if (!pi.ok || hasConflictMarkers(wt, files)) {
+      await abortMerge(wt);
+      return false;
+    }
+    await commitMergeResolution(wt);
+    return true;
   }
 
   /** Salvage commits left on the branch by a previous run whose merge never landed. */
@@ -157,7 +199,7 @@ export class LoopRunner {
     const pi: PiRunResult = await runPi({
       cwd: wt,
       prompt,
-      config: this.config,
+      config: configForRole(this.config, this.role),
       sessionDir: sessionDir(this.root, this.role),
       sessionName: `automaton-${this.role}-${s.ticks}`,
       rawLogFile: piLogPath(this.root, this.role),

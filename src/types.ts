@@ -5,6 +5,12 @@ export interface RoleConfig {
   enabled: boolean;
   /** Extra instructions appended to this role's prompt. */
   instructions?: string;
+  /** pi provider override for this role; falls back to the top-level value. */
+  provider?: string;
+  /** pi model override for this role; falls back to the top-level value. */
+  model?: string;
+  /** pi thinking-level override for this role; falls back to the top-level value. */
+  thinking?: string;
 }
 
 /** Idle backoff: how long a loop sleeps after a tick that changed nothing. */
@@ -33,6 +39,10 @@ export interface AutomatonConfig {
   minTickIntervalSeconds: number;
   /** Hard cap on a single pi run, in seconds. */
   tickTimeoutSeconds: number;
+  /** Rotate events.jsonl and per-role pi logs when they exceed this size. */
+  logMaxBytes: number;
+  /** Delete pi session files older than this many days at orchestrator start. */
+  sessionRetentionDays: number;
   idleBackoff: BackoffConfig;
   roles: Record<string, RoleConfig>;
 }

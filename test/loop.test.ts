@@ -6,7 +6,7 @@ import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
-import { assistantLine, fakePi, makeRepo, sh } from "./util.js";
+import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
@@ -152,6 +152,60 @@ test("a timed-out tick reports an error and never commits partial work", async (
     assert.match(runner.state.lastError ?? "", /timed out/);
     assert.equal(sh(repo, "git", "rev-parse", "main"), before);
     assert.ok(runner.state.backoffSeconds > 0);
+  } finally {
+    restore();
+  }
+});
+
+test("a merge conflict is resolved by a second pi run and lands as a merge commit", async () => {
+  const repo = await initializedRepo();
+  const marker = path.join(tmpdir(), "phase");
+  // Phase 1 (the tick): edit seed.txt on the branch AND advance main with a conflicting
+  // edit. Phase 2 (the resolution run): replace the conflict markers with a resolution.
+  const restore = fakePi(
+    [
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
+      `  echo branch change > seed.txt`,
+      `  echo main change > "${repo}/seed.txt"`,
+      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      `else`,
+      `  echo resolved > seed.txt`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed");
+    assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
+    assert.ok(sh(repo, "git", "log", "--merges", "--oneline").length > 0, "landed as a merge commit");
+  } finally {
+    restore();
+  }
+});
+
+test("an unresolvable conflict aborts cleanly and reports merge_conflict", async () => {
+  const repo = await initializedRepo();
+  const marker = path.join(tmpdir(), "phase");
+  const restore = fakePi(
+    [
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
+      `  echo branch change > seed.txt`,
+      `  echo main change > "${repo}/seed.txt"`,
+      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      `fi`, // Phase 2 does nothing: the conflict markers stay.
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "merge_conflict");
+    assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n", "main keeps its version");
+    assert.ok(!sh(repo, "git", "-C", ".automaton/worktrees/improve", "status", "--porcelain").includes("UU"));
   } finally {
     restore();
   }

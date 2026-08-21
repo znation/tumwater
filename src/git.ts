@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import { branchName, worktreePath } from "./paths.js";
 
@@ -118,6 +119,56 @@ export async function mergeMainIntoBranch(wt: string, mainBranch: string): Promi
     await gitTry(wt, "merge", "--abort");
     return false;
   }
+}
+
+/** Merge main into the worktree branch, leaving conflict markers in place for a
+ * resolver to work on. "clean" = merged (or already up to date); "conflict" = the
+ * merge stopped on conflicts and the worktree holds them; "failed" = anything else
+ * (aborted and cleaned up). */
+export async function mergeMainLeaveConflicts(
+  wt: string,
+  mainBranch: string,
+): Promise<"clean" | "conflict" | "failed"> {
+  try {
+    await git(wt, ...COMMIT_IDENT, "merge", "--no-edit", mainBranch);
+    return "clean";
+  } catch {
+    const unmerged = await gitTry(wt, "diff", "--name-only", "--diff-filter=U");
+    if (unmerged?.trim()) return "conflict";
+    await gitTry(wt, "merge", "--abort");
+    return "failed";
+  }
+}
+
+/** Paths currently in conflict (unmerged) in the worktree. */
+export async function conflictedFiles(wt: string): Promise<string[]> {
+  const out = await gitTry(wt, "diff", "--name-only", "--diff-filter=U");
+  return out ? out.split("\n").filter(Boolean) : [];
+}
+
+export async function abortMerge(wt: string): Promise<void> {
+  await gitTry(wt, "merge", "--abort");
+}
+
+/** True if any of the given files still contains a git conflict marker.
+ * A deleted file counts as resolved (the resolver chose the deletion). */
+export function hasConflictMarkers(wt: string, files: string[]): boolean {
+  const marker = /^(<{7}|={7}|>{7})( |$)/m;
+  return files.some((f) => {
+    const p = path.join(wt, f);
+    try {
+      return marker.test(fs.readFileSync(p, "utf8"));
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Conclude an in-progress merge with everything in the worktree as the resolution. */
+export async function commitMergeResolution(wt: string): Promise<string> {
+  await git(wt, "add", "-A");
+  await git(wt, ...COMMIT_IDENT, "commit", "--no-edit");
+  return headOf(wt, "HEAD");
 }
 
 /** Fast-forward main to the role branch, without touching any remote.

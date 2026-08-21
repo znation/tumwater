@@ -3,6 +3,38 @@ import path from "node:path";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
 
+/** Keep an append-only log bounded: over `maxBytes` it is renamed to `<file>.1`
+ * (replacing any previous rotation) and a fresh file starts. Returns true if rotated. */
+export function rotateIfLarge(file: string, maxBytes: number): boolean {
+  try {
+    if (fs.statSync(file).size <= maxBytes) return false;
+    fs.renameSync(file, file + ".1");
+    return true;
+  } catch {
+    return false; // Missing file or racing rotation; nothing to do.
+  }
+}
+
+/** Delete regular files under `dir` (recursively) older than `days` days. */
+export function pruneOldFiles(dir: string, days: number): number {
+  if (!fs.existsSync(dir)) return 0;
+  const cutoff = Date.now() - days * 24 * 3600 * 1000;
+  let pruned = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (!entry.isFile()) continue;
+    const file = path.join(entry.parentPath, entry.name);
+    try {
+      if (fs.statSync(file).mtimeMs < cutoff) {
+        fs.rmSync(file);
+        pruned += 1;
+      }
+    } catch {
+      // Vanished mid-scan; skip.
+    }
+  }
+  return pruned;
+}
+
 type EventListener = (event: HarnessEvent) => void;
 const listeners = new Set<EventListener>();
 
@@ -13,11 +45,16 @@ export function subscribeEvents(listener: EventListener): () => void {
   return () => listeners.delete(listener);
 }
 
+/** events.jsonl rotation threshold. Role pi logs use the configurable logMaxBytes; the
+ * harness event log is small per event, so a fixed cap keeps logEvent config-free. */
+const EVENTS_MAX_BYTES = 16 * 1024 * 1024;
+
 /** Append one event to the project's events.jsonl and notify in-process subscribers. */
 export function logEvent(root: string, event: Omit<HarnessEvent, "ts"> & { ts?: number }): HarnessEvent {
   const full: HarnessEvent = { ts: Date.now(), ...event } as HarnessEvent;
   const file = eventsLogPath(root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
+  rotateIfLarge(file, EVENTS_MAX_BYTES);
   fs.appendFileSync(file, JSON.stringify(full) + "\n");
   for (const listener of listeners) listener(full);
   return full;

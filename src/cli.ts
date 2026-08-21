@@ -9,6 +9,7 @@ import { formatEvent, logEvent, readEvents, subscribeEvents } from "./events.js"
 import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
+import { startGui } from "./gui.js";
 import { eventsLogPath } from "./paths.js";
 
 const HELP = `automaton — autonomous development harness built on pi
@@ -17,6 +18,7 @@ Usage:
   automaton init <prompt...>        Initialize this repo (or --file <prompt.md>)
   automaton run                     Run all enabled loops (headless; Ctrl+C stops)
   automaton tui                     Dashboard + prompt input (observes a running \`automaton run\`)
+  automaton gui [--port N]          Same dashboard in the browser (default port 7180)
   automaton status                  One-shot status table
   automaton logs [-f] [-n N]        Show (and follow) harness events
   automaton prompt <text...>        Queue a prompt for the director loop
@@ -140,6 +142,16 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       await runTui(root);
       break;
+    case "gui": {
+      await requireReadyRepo(root);
+      const portFlag = args.indexOf("--port");
+      const port = portFlag >= 0 ? parseInt(args[portFlag + 1] ?? "", 10) : 7180;
+      if (!Number.isFinite(port)) fail("--port needs a number");
+      await startGui(root, port);
+      process.stdout.write(`automaton gui at http://127.0.0.1:${port} — Ctrl+C to stop\n`);
+      await new Promise(() => {}); // Serve until Ctrl+C.
+      break;
+    }
     case "status":
       await requireReadyRepo(root);
       process.stdout.write(renderStatus(root, snapshot(root)) + "\n");

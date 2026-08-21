@@ -4,9 +4,9 @@ import type { AutomatonConfig } from "./types.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry } from "./git.js";
-import { logEvent } from "./events.js";
+import { logEvent, pruneOldFiles } from "./events.js";
 import { inboxSize } from "./inbox.js";
-import { orchestratorStatePath } from "./paths.js";
+import { orchestratorStatePath, sessionsRootDir } from "./paths.js";
 
 const POLL_MS = 2000;
 
@@ -122,6 +122,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
   fs.writeFileSync(infoFile, JSON.stringify(info, null, 2));
   logEvent(root, { loop: "harness", type: "orchestrator_start", pid: process.pid, roles: enabled });
+
+  const pruned = pruneOldFiles(sessionsRootDir(root), config.sessionRetentionDays);
+  if (pruned > 0) {
+    logEvent(root, { loop: "harness", type: "warning", message: `pruned ${pruned} old pi session file(s)` });
+  }
 
   const inFlight = new Set<Promise<void>>();
 
