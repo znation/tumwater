@@ -41,7 +41,8 @@ resolution attempt; roles can override provider/model/thinking; logs rotate and 
 are pruned. 81 unit tests pass. Known issues (BUGS.md): a spurious "pi finished without changes"
 warning on some no-op ticks, the TUI status table wrapping past narrow terminals, that same
 table scrolling off-screen as recent activity grows, and LM Studio's log filling with WARN lines
-while loops run (cause under investigation). Two plans pending in PLANS.md: a totals row for
+while loops run (cause under investigation). Three plans pending in PLANS.md: renaming the
+project from automaton to tumwater (package, CLI command, state dir, docs), a totals row for
 tokens and cost in the status table, and decomposing routed requests into sub-plans/sub-bugs.
 <!-- automaton:status:end -->
 
