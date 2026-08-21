@@ -56,8 +56,9 @@ export async function hasCommits(root: string): Promise<boolean> {
   return (await gitTry(root, "rev-parse", "--verify", "HEAD")) !== null;
 }
 
-export async function headOf(root: string, ref: string): Promise<string> {
-  return git(root, "rev-parse", "--verify", ref);
+/** The commit that `ref` points to in `cwd`. */
+export async function headOf(cwd: string, ref: string): Promise<string> {
+  return git(cwd, "rev-parse", "--verify", ref);
 }
 
 /** The branch the primary checkout has, or null when detached. */
