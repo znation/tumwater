@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig, saveConfig } from "./config.js";
-import { git, gitTry, hasCommits, isGitRepo } from "./git.js";
+import { COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START } from "./prompt.js";
 import { STATE_DIR, configPath } from "./paths.js";
 
@@ -98,9 +98,8 @@ export async function initProject(root: string, initialPrompt: string): Promise<
     const staged = await gitTry(root, "diff", "--cached", "--quiet");
     if (staged === null) {
       // Non-zero exit = something is staged.
-      const flags = ["-c", "user.name=automaton", "-c", "user.email=automaton@localhost"];
       const message = (await hasCommits(root)) ? "automaton: init harness files" : "automaton: init";
-      await git(root, ...flags, "commit", "-m", message, "--", ...created);
+      await git(root, ...COMMIT_IDENT, "commit", "-m", message, "--", ...created);
       committed = true;
     }
   }

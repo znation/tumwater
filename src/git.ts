@@ -7,7 +7,7 @@ import { branchName, worktreePath } from "./paths.js";
 const execFileAsync = promisify(execFile);
 
 /** Identity used for harness-authored commits so ticks work without global git config. */
-const COMMIT_IDENT = [
+export const COMMIT_IDENT = [
   "-c",
   "user.name=automaton",
   "-c",
