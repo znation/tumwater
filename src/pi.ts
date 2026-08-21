@@ -92,6 +92,10 @@ export function piArgs(
   return args;
 }
 
+/** Prefix of PiRunResult.errorMessage when the pi process never started; no session file
+ * exists then, so callers must not treat the run as having created one. */
+export const SPAWN_ERROR_PREFIX = "failed to spawn pi";
+
 /** Run pi non-interactively in a worktree and distill the result. Never throws. */
 export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
   return new Promise((resolve) => {
@@ -148,7 +152,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         finalText: "",
         totalTokens: 0,
         costUsd: 0,
-        errorMessage: `failed to spawn pi: ${err.message}`,
+        errorMessage: `${SPAWN_ERROR_PREFIX}: ${err.message}`,
         timedOut: false,
         aborted,
       });
