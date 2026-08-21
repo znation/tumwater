@@ -5,6 +5,51 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### Spurious warning "pi finished without changes and without declaring nothing-to-do" (reported 2026-08-21)
+
+**Symptom:** Intermittently, the recent activity log (TUI/GUI event feed, `events.jsonl`) shows
+`<role> warning: pi finished without changes and without declaring nothing-to-do`. The user sees it
+as confusing noise: some of these ticks are ones where pi genuinely found nothing to do but did
+declare it, so the warning is at least sometimes wrong — and when it is right (model misbehaved),
+the message gives no clue why.
+
+**How to reproduce:** Run `automaton run` with real pi for a while; the warning appears on random
+ticks. The core defect is unit-testable without pi: feed `PiStreamParser` two assistant
+`message_end` events — first text `AUTOMATON_NOTHING_TO_DO`, then any other non-empty text (e.g.
+"all done") — and observe that `finalText` is only the last message, so `isNothingToDo(finalText)`
+is false even though pi declared nothing-to-do. That is exactly the state `runTick`
+(`src/loop.ts`) warns on: pi ok + worktree clean per `isDirty` (`git status --porcelain`) + no
+sentinel in `finalText`.
+
+**Suspected causes (in decreasing order of likelihood):**
+1. **Sentinel lost because only the last assistant message is kept.** `PiStreamParser.feedLine`
+   (`src/pi.ts`) overwrites: `if (text.trim()) this.finalText = text;`. In a multi-turn run, if
+   the model declares nothing-to-do in an intermediate turn and then emits another assistant
+   message afterwards (e.g. one more tool call plus a closing remark), the sentinel is gone by the
+   time `runTick` checks it → spurious warning.
+2. **Model non-compliance.** The model ends without emitting the exact sentinel line (paraphrases
+   instead). The prompt does instruct it explicitly (`COMMON_RULES`, `src/prompt.ts`), but weaker
+   models or long runs may not comply. This is a *correct* warning, but indistinguishable from
+   cause 1 in the log.
+3. **Truncated final reply.** If pi's last message hits max output tokens (stopReason `length`),
+   the sentinel gets cut off → no changes + no sentinel → warning with zero diagnostic info about
+   why. `PiRunResult.stopReason` is captured by the parser but never used in `loop.ts` or in the
+   event message.
+4. **Lenient `ok`.** A non-zero pi exit code *with* non-empty text counts as success (close handler,
+   `src/pi.ts`: `failed = … || (code !== 0 && !parser.finalText.trim())`) with no errorMessage, so a
+   failed run can surface as this warning instead of an error event.
+
+**Fix guidance:**
+- Make sentinel detection cover the whole reply: accumulate all assistant text in
+  `PiStreamParser` (or set a flag when any message contains the sentinel) and check that in
+  `runTick`, while keeping `finalText` as the last message for `extractSummary`. This kills cause 1.
+- Make the warning diagnosable: include `stopReason` in the event message (e.g. append
+  `(stopReason=length)` when set), so truncated replies are distinguishable from plain
+  non-compliance. Consider a distinct message when `finalText` is empty.
+- Optionally tighten cause 4 (treat non-zero exit as failure even with text, or at least surface
+  stderr) — judge whether that belongs in this fix; it changes error-event behavior.
+Files: `src/pi.ts`, `src/loop.ts` (and `test/pi.test.ts`).
+
 ### TUI: status table wider than terminal — rows wrap to two lines, misaligning everything (reported 2026-08-20)
 
 **Symptom:** In `automaton tui`, the live-updating loop status table is sometimes rendered wider
