@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { loadConfig } from "./config.js";
+import { enabledRoleIds, loadConfig } from "./config.js";
 import { currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
 import { enqueuePrompt } from "./inbox.js";
@@ -82,9 +82,7 @@ async function cmdRun(root: string): Promise<void> {
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
-  const enabled = Object.entries(config.roles)
-    .filter(([, rc]) => rc.enabled)
-    .map(([id]) => id);
+  const enabled = enabledRoleIds(config);
   process.stdout.write(`automaton running on branch ${mainBranch} — Ctrl+C to stop\n`);
   process.stdout.write(`loops: ${enabled.join(", ")}\n`);
   process.stdout.write("watch: `automaton tui` or `automaton logs -f` in another terminal; events stream below\n\n");

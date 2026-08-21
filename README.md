@@ -38,7 +38,9 @@ v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `promp
 implemented with all nine roles plus the director loop (which has absolute scheduling priority
 and routes feature/bug requests into PLANS.md/BUGS.md). Merge conflicts get one pi-driven
 resolution attempt; roles can override provider/model/thinking; logs rotate and old pi sessions
-are pruned. 72 unit tests pass.
+are pruned. 72 unit tests pass. Known issues (BUGS.md): the TUI status table scrolls off-screen
+as recent activity grows, and LM Studio's log fills with WARN lines while loops run (cause under
+investigation). No plans pending in PLANS.md.
 <!-- automaton:status:end -->
 
 ## How it works

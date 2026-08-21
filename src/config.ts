@@ -41,6 +41,13 @@ export function saveConfig(root: string, config: AutomatonConfig): void {
   fs.writeFileSync(configPath(root), JSON.stringify(config, null, 2) + "\n");
 }
 
+/** Ids of the enabled roles, in config.roles order (catalog order for known ids). */
+export function enabledRoleIds(config: AutomatonConfig): string[] {
+  return Object.entries(config.roles)
+    .filter(([, rc]) => rc.enabled)
+    .map(([id]) => id);
+}
+
 /** The config as seen by one role's pi runs: role-level provider/model/thinking
  * overrides applied over the top-level values. */
 export function configForRole(config: AutomatonConfig, role: string): AutomatonConfig {
