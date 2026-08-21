@@ -5,6 +5,36 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Totals row for tokens and cost in the status table (planned 2026-08-21)
+
+**Goal:** The TUI live table (and the one-shot `automaton status`, which shares the renderer) shows a
+totals row summing the `tokens` and `cost` columns across all loops, so total usage is visible at a
+glance without mental arithmetic.
+
+**Approach:** In `renderStatus` (`src/status.ts`), after the per-loop rows append one totals row:
+- Label cell in the first column (e.g. `total`); leave `state`, `last tick`, and `last result` cells
+  empty or `-`. Sum `s.totalTokens` over `snap.loops` for the tokens cell and `s.totalCostUsd` for
+  the cost cell.
+- Format the summed tokens with the existing compact `tokens()` helper (e.g. `123.4k`) so the row
+  does not widen the table — important while the open table-width bug is unfixed; format cost as
+  `$X.XX` like per-loop rows.
+- Visually separate it from data rows with a thin separator line above it (matching the existing
+  header separator style), keeping column alignment via the same `widths`/`fmt` logic.
+- No changes needed in `src/tui.ts`: its line budgeting already counts
+  `status.split("\n").length`, so the extra row is accounted for automatically — verify this holds.
+- The browser GUI table (`src/gui.ts`) is out of scope; user asked for the TUI only.
+
+**Files touched:** `src/status.ts`, `test/lock-status.test.ts`.
+
+**Acceptance criteria:**
+- With multiple loops having non-zero `totalTokens`/`totalCostUsd`, both the TUI table and
+  `automaton status` output end with a totals row whose tokens cell equals the sum of per-loop
+  token values (compact-formatted) and whose cost cell equals `$<sum to 2 decimals>`.
+- The totals row is separated from data rows by a separator line and stays column-aligned; an empty
+  state set (all zeros) renders `0` / `$0.00` without breaking alignment.
+- Unit test in `test/lock-status.test.ts` asserts the totals row values for a multi-loop snapshot;
+  `npm test` passes.
+
 ### Decompose requests into sub-plans/sub-bugs when routing (planned 2026-08-21)
 
 **Goal:** Whenever a loop decides to put something into PLANS.md or BUGS.md — the director routing a
