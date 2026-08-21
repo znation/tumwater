@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { piArgs } from "../src/pi.js";
-import { pruneOldFiles, rotateIfLarge } from "../src/events.js";
+import { pruneOldFiles, rotateIfLarge } from "../src/files.js";
 import { statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
 import { inboxSize } from "../src/inbox.js";
