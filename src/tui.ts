@@ -1,6 +1,6 @@
 import readline from "node:readline";
-import { readEvents, formatEvent, logEvent } from "./events.js";
-import { enqueuePrompt } from "./inbox.js";
+import { readEvents, formatEvent } from "./events.js";
+import { submitPrompt } from "./inbox.js";
 import { renderStatus, snapshot } from "./status.js";
 
 const CLEAR = "\x1b[2J\x1b[H";
@@ -57,8 +57,7 @@ export async function runTui(root: string): Promise<void> {
         const prompt = input.trim();
         input = "";
         if (prompt) {
-          enqueuePrompt(root, prompt);
-          logEvent(root, { loop: "director", type: "prompt_enqueued", preview: prompt.slice(0, 80) });
+          submitPrompt(root, prompt);
           flash = "queued for the director loop";
           flashUntil = Date.now() + 3000;
         }

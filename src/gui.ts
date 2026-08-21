@@ -1,6 +1,6 @@
 import http from "node:http";
-import { formatEvent, logEvent, readEvents } from "./events.js";
-import { enqueuePrompt } from "./inbox.js";
+import { formatEvent, readEvents } from "./events.js";
+import { submitPrompt } from "./inbox.js";
 import { loopPhase, snapshot } from "./status.js";
 
 /** JSON payload for GET /api/status. */
@@ -128,8 +128,7 @@ export function startGui(root: string, port: number): Promise<http.Server> {
           res.end(JSON.stringify({ error: "text required" }));
           return;
         }
-        enqueuePrompt(root, text.trim());
-        logEvent(root, { loop: "director", type: "prompt_enqueued", preview: text.trim().slice(0, 80) });
+        submitPrompt(root, text);
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } else {

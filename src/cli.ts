@@ -4,8 +4,8 @@ import path from "node:path";
 import { enabledRoleIds, loadConfig } from "./config.js";
 import { currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
-import { enqueuePrompt } from "./inbox.js";
-import { formatEvent, logEvent, readEvents, subscribeEvents } from "./events.js";
+import { submitPrompt } from "./inbox.js";
+import { formatEvent, readEvents, subscribeEvents } from "./events.js";
 import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
@@ -162,8 +162,7 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       const text = args.join(" ").trim();
       if (!text) fail("prompt text required");
-      enqueuePrompt(root, text);
-      logEvent(root, { loop: "director", type: "prompt_enqueued", preview: text.slice(0, 80) });
+      submitPrompt(root, text);
       process.stdout.write("queued for the director loop\n");
       break;
     }
