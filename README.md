@@ -38,7 +38,7 @@ v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `promp
 implemented with all nine roles plus the director loop (which has absolute scheduling priority
 and routes feature/bug requests into PLANS.md/BUGS.md). Merge conflicts get one pi-driven
 resolution attempt; roles can override provider/model/thinking; logs rotate and old pi sessions
-are pruned. 81 unit tests pass. Known issues (BUGS.md): a spurious "pi finished without changes"
+are pruned. 92 unit tests pass. Known issues (BUGS.md): a spurious "pi finished without changes"
 warning on some no-op ticks, the TUI status table wrapping past narrow terminals, that same
 table scrolling off-screen as recent activity grows, and LM Studio's log filling with WARN lines
 while loops run (cause under investigation). Three plans pending in PLANS.md: renaming the
