@@ -1,7 +1,7 @@
 import readline from "node:readline";
 import { readEvents, formatEvent } from "./events.js";
 import { submitPrompt } from "./inbox.js";
-import { renderStatus, snapshot } from "./status.js";
+import { clipToWidth, renderStatus, snapshot } from "./status.js";
 
 const CLEAR = "\x1b[2J\x1b[H";
 const DIM = "\x1b[2m";
@@ -19,11 +19,9 @@ export async function runTui(root: string): Promise<void> {
   let flash = "";
   let flashUntil = 0;
 
-  // Every rendered line is clipped to the terminal width, so one logical line is always
-  // one visual line and the height budget below is exact — nothing wraps, nothing scrolls
-  // the table off the top.
-  const clip = (line: string, width: number) =>
-    line.length <= width ? line : line.slice(0, Math.max(1, width - 1)) + "…";
+  // Every rendered line is clipped to the terminal width (clipToWidth), so one logical
+  // line is always one visual line and the height budget below is exact — nothing wraps,
+  // nothing scrolls the table off the top.
 
   const render = () => {
     const rows = process.stdout.rows ?? 40;
@@ -33,7 +31,7 @@ export async function runTui(root: string): Promise<void> {
     const statusLines = status.split("\n").length;
     const eventBudget = Math.max(3, rows - statusLines - 6);
     const events = readEvents(root, eventBudget)
-      .map((e) => clip(formatEvent(e), width))
+      .map((e) => clipToWidth(formatEvent(e), width))
       .slice(-eventBudget);
 
     const parts = [
@@ -43,8 +41,10 @@ export async function runTui(root: string): Promise<void> {
       events.length ? events.map((e) => `${DIM}${e}${RESET}`).join("\n") : `${DIM}(no events yet)${RESET}`,
       "",
     ];
-    if (flash && Date.now() < flashUntil) parts.push(`${BOLD}${clip(flash, width)}${RESET}`);
-    parts.push(`${DIM}${clip("type a prompt for the project, Enter to send · Ctrl+C to quit", width)}${RESET}`);
+    if (flash && Date.now() < flashUntil) parts.push(`${BOLD}${clipToWidth(flash, width)}${RESET}`);
+    parts.push(
+      `${DIM}${clipToWidth("type a prompt for the project, Enter to send · Ctrl+C to quit", width)}${RESET}`,
+    );
     // Show the tail of a long prompt so the cursor position stays visible.
     const inputView = input.length > width - 3 ? "…" + input.slice(-(width - 4)) : input;
     parts.push(`> ${inputView}`);

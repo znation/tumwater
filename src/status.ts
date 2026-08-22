@@ -72,8 +72,10 @@ export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: str
   return "queued";
 }
 
-/** Truncate to `width` with a trailing ellipsis when over. */
-function clip(text: string, width: number): string {
+/** Truncate to `width` with a trailing ellipsis when over. The result never exceeds
+ * `width` characters (even at width ≤ 1), so clipped lines cannot wrap in a terminal of
+ * that many columns. Shared by the status table and the TUI's line rendering. */
+export function clipToWidth(text: string, width: number): string {
   if (text.length <= width) return text;
   return width <= 1 ? text.slice(0, width) : text.slice(0, width - 1) + "…";
 }
@@ -130,7 +132,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   }
 
   const fmt = (r: string[]) =>
-    r.map((cell, i) => clip(cell, widths[i] ?? 0).padEnd(widths[i] ?? 0)).join("  ").trimEnd();
+    r.map((cell, i) => clipToWidth(cell, widths[i] ?? 0).padEnd(widths[i] ?? 0)).join("  ").trimEnd();
   const separator = widths.map((w) => "-".repeat(w)).join("  ");
   lines.push(fmt(cols));
   lines.push(separator);
@@ -143,6 +145,6 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   if (maxWidth === undefined) return finished;
   return finished
     .split("\n")
-    .map((line) => clip(line, maxWidth))
+    .map((line) => clipToWidth(line, maxWidth))
     .join("\n");
 }
