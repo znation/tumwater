@@ -84,10 +84,23 @@ parallel structures that should share a helper. Factor it out into a single well
 update all call sites. Do not abstract things that are merely superficially similar.`,
   },
   {
+    id: "perf",
+    title: "performance optimizer",
+    find: `Examine the code for places with a CLEAR performance win: work that is redundantly
+recomputed or re-read, obviously wasteful algorithms or data structures on a hot or growing path
+(e.g. rescanning a whole file or list where an increment or index would do), blocking I/O that
+serializes what could overlap, unnecessary subprocess spawns, or unbounded growth that degrades
+over time. Pick the ONE with the best ratio of measured benefit to risk and implement it.
+Before changing anything, convince yourself the cost is real (measure or reason from actual data
+sizes — a quick timing in a scratch script is ideal); after, verify the behavior is unchanged and
+note the expected or measured improvement in your summary. Do NOT micro-optimize cold paths or
+trade away clarity for speculative gains; if no clear win exists, there is nothing to do.`,
+  },
+  {
     id: "improve",
     title: "general improver",
     find: `Find ONE concrete improvement that none of the other roles would obviously make:
-better error messages, a performance win, stronger types, a missing input validation, developer
+better error messages, stronger types, a missing input validation, developer
 ergonomics, tooling. Make that one improvement, keeping the project building and tests passing.`,
   },
 ];

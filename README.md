@@ -83,9 +83,9 @@ tumwater logs -f      # follow harness events
 tumwater prompt "prefer no third-party deps"
 ```
 
-Roles: `organize`, `coverage`, `clean`, `dry`, `feature`, `bugfix`, `plan`, `readme`, `improve`,
-`director`. Enable/disable them, pick pi's provider/model/thinking level, and tune backoff in
-`tumwater.json`.
+Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
+`improve`, `director`. Enable/disable them, pick pi's provider/model/thinking level, and tune
+backoff in `tumwater.json`.
 
 ## Notes on local model servers
 

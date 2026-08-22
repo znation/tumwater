@@ -19,6 +19,20 @@ test("plan and bugfix role prompts include the shared decomposition guidance", (
   }
 });
 
+test("the perf role hunts measured wins and refuses speculative micro-optimization", async () => {
+  const { roleById } = await import("../src/roles.js");
+  const { buildTickPrompt } = await import("../src/prompt.js");
+  const role = roleById("perf");
+  assert.ok(role, "perf role exists");
+  assert.equal(role.title, "performance optimizer");
+  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  assert.match(prompt, /"perf" loop/);
+  assert.match(prompt, /CLEAR performance win/);
+  assert.match(prompt, /measure or reason from actual data/);
+  assert.match(prompt, /Do NOT micro-optimize cold paths/);
+  assert.match(prompt, /nothing to do/);
+});
+
 test("guidance is a single shared constant, not drifting copies", () => {
   // Both consumers embed the exported constant verbatim; a reworded copy would fail the
   // includes() checks above. This guards the constant itself against becoming trivial.
