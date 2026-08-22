@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderStatus } from "../src/status.js";
+import { clipToWidth, renderStatus } from "../src/status.js";
 import type { StatusSnapshot } from "../src/status.js";
 import { freshLoopState } from "../src/state.js";
 import { tmpdir } from "./util.js";
@@ -65,4 +65,15 @@ test("narrow terminals never receive a wrapping line even below column minimums"
       assert.ok(line.length <= width, `width ${width} violated: ${line.length}`);
     }
   }
+});
+
+test("clipToWidth never exceeds the requested width, even at degenerate widths", () => {
+  const text = "a much longer line than any of these widths";
+  assert.equal(clipToWidth(text, 100), text, "shorter-than-width text is untouched");
+  assert.equal(clipToWidth("abcd", 4), "abcd", "exact-fit text is untouched");
+  for (const width of [0, 1, 2, 5, 80]) {
+    const clipped = clipToWidth(text, width);
+    assert.ok(clipped.length <= width, `width ${width} violated: ${clipped.length}`);
+  }
+  assert.match(clipToWidth(text, 5), /…$/, "over-wide text ends in an ellipsis");
 });
