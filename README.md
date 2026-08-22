@@ -39,8 +39,9 @@ implemented with ten roles plus the director loop (absolute scheduling priority;
 feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Loops persist
 their pi sessions across ticks and self-heal from context overflows; merge conflicts get one
 pi-driven resolution attempt; roles can override provider/model/thinking; logs rotate and old
-pi sessions are pruned; the TUI/status table is width-aware with a totals row. No open bugs;
-PLANS.md backlog is empty.
+pi sessions are pruned; the TUI/status table is width-aware with a totals row. No open bugs.
+In progress: two PLANS.md plans await the feature loop — per-role pi transcripts via
+`tumwater logs --role`, and absolute last-result timestamps in the GUI/TUI tables.
 <!-- tumwater:status:end -->
 
 ## How it works
