@@ -24,6 +24,26 @@ test("readEvents skips corrupt lines", () => {
   assert.equal(readEvents(dir).length, 2);
 });
 
+// Reference implementation: read the whole file (what readEvents used to do).
+function referenceTail(root: string, limit: number) {
+  const lines = fs.readFileSync(eventsLogPath(root), "utf8").split("\n").filter(Boolean);
+  return lines.slice(-limit).map((l) => JSON.parse(l));
+}
+
+test("readEvents matches a full-file read on a log past the tail-scan threshold", () => {
+  const dir = tmpdir();
+  // ~150 bytes per event; 4000 events ≈ 600KB, well over the 256KB threshold.
+  for (let i = 0; i < 4000; i++) {
+    logEvent(dir, { loop: "clean", type: "warning", message: `event number ${i} with some padding to grow the file` });
+  }
+  assert.ok(fs.statSync(eventsLogPath(dir)).size > 256 * 1024);
+  for (const limit of [1, 7, 40, 200, 3999]) {
+    const got = readEvents(dir, limit).map((e) => e.message as string);
+    const want = referenceTail(dir, limit).map((e: { message?: unknown }) => String(e.message));
+    assert.deepEqual(got, want, `limit ${limit}`);
+  }
+});
+
 test("formatEvent renders each type as one line", () => {
   const cases = [
     { ts: 0, loop: "clean", type: "tick_start", tick: 3 },
