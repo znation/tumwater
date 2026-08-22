@@ -92,6 +92,13 @@ backoff in `tumwater.json`.
   configured thinking level per turn; GGUF models that only expose an on/off reasoning toggle make
   LM Studio warn and fall back to `on`. Reasoning stays enabled; no tumwater or pi change needed.
   To silence it, set a thinking level the model supports (or none) in `tumwater.json` / pi settings.
+- **"terminated" tick errors after ~20 minutes**: pi's HTTP client (undici) applies an idle
+  timeout (`httpIdleTimeoutMs` in pi's settings.json, default 300000 = 5 min) to both response
+  headers and gaps between body chunks. A local server prefilling a large context under
+  concurrent load can take longer than that to stream its first byte, so the request is severed
+  ("terminated"), pi's retries die the same way, and the tick fails after ~4 × 5 min. Fix: set
+  `"httpIdleTimeoutMs": 0` (disabled) in `~/.pi/agent/settings.json` — the harness's own
+  `tickTimeoutSeconds` remains the hang guard.
 - **Context accounting**: declare an honest `contextWindow` for the model in pi's `models.json` —
   it is what triggers pi's auto-compaction. With LM Studio's unified KV cache, concurrent requests
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full

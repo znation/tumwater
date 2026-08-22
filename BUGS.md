@@ -9,6 +9,23 @@ _None yet._
 
 ## Fixed
 
+### Ticks failing with "terminated" after ~20 minutes under concurrent load (reported 2026-08-22, fixed 2026-08-22)
+
+**Symptom:** Loops intermittently ended ticks with `error — terminated` after almost exactly
+20m20s; pi's retries (3) all failed the same way. LM Studio's server log showed no errors, and
+session contexts were well under the model window, ruling out context overflow.
+
+**Cause:** pi sets undici's `headersTimeout`/`bodyTimeout` from its `httpIdleTimeoutMs` setting
+(default 300000 ms). With several loops prefilling tens of thousands of tokens concurrently on a
+local server, a turn can take >5 minutes before the first response byte, so undici severs the
+connection — undici's error string is "terminated" — and each retry repeats the same doomed
+prefill: initial attempt + 3 retries × 5 min ≈ 20m20s.
+
+**Fix:** `"httpIdleTimeoutMs": 0` (disabled) in `~/.pi/agent/settings.json`; the harness's
+`tickTimeoutSeconds` (90 min) remains the guard against truly hung runs. Documented in README
+("Notes on local model servers"). No tumwater code change needed — the existing
+consecutive-error session reset already contained the blast radius.
+
 ### TUI: status table wider than terminal — rows wrapped and misaligned (reported 2026-08-20, fixed 2026-08-21)
 
 **Fix:** `renderStatus` now takes a max width (the TUI passes `process.stdout.columns`, the
