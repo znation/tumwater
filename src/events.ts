@@ -37,11 +37,56 @@ export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
   return full;
 }
 
-/** Read the last `limit` events (best-effort; skips malformed lines). */
+/** Files at or under this size are read whole; larger ones get a tail window. */
+const TAIL_SCAN_THRESHOLD = 256 * 1024;
+/** Chunk size for the backwards tail scan of a large event log. */
+const TAIL_CHUNK_BYTES = 64 * 1024;
+
+/** Read the last `limit` events (best-effort; skips malformed lines).
+ * Observers poll this every second and only ever need the tail, so past
+ * TAIL_SCAN_THRESHOLD we read just enough bytes from the end of the file to cover
+ * `limit` lines instead of rescanning the whole log (which grows up to
+ * EVENTS_MAX_BYTES between rotations). */
 export function readEvents(root: string, limit = 200): HarnessEvent[] {
   const file = eventsLogPath(root);
-  if (!fs.existsSync(file)) return [];
-  const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
+  let size: number;
+  try {
+    size = fs.statSync(file).size;
+  } catch {
+    return []; // No log yet.
+  }
+  if (size === 0) return [];
+
+  let text: string;
+  if (size <= TAIL_SCAN_THRESHOLD) {
+    text = fs.readFileSync(file, "utf8");
+  } else {
+    const fd = fs.openSync(file, "r");
+    try {
+      // fstat on the opened inode stays correct even if rotation renames the file mid-read.
+      size = fs.fstatSync(fd).size;
+      let end = size;
+      const parts: Buffer[] = [];
+      let newlines = 0;
+      for (;;) {
+        const len = Math.min(TAIL_CHUNK_BYTES, end);
+        const buf = Buffer.alloc(len);
+        const got = fs.readSync(fd, buf, 0, len, end - len);
+        if (got === 0) break; // File shrank under us; use what we have.
+        parts.unshift(buf.subarray(0, got));
+        for (let i = 0; i < got; i++) if (buf[i] === 10) newlines++;
+        end -= got;
+        // limit+1 newlines guarantees `limit` complete lines after the first one
+        // (the partial leading line, if any, is unparseable and skipped below).
+        if (newlines >= limit + 1 || end <= 0) break;
+      }
+      text = Buffer.concat(parts).toString("utf8");
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  const lines = text.split("\n").filter(Boolean);
   const tail = lines.slice(-limit);
   const events: HarnessEvent[] = [];
   for (const line of tail) {
