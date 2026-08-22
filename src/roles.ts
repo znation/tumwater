@@ -1,11 +1,5 @@
 import { DECOMPOSITION_GUIDANCE } from "./prompt.js";
 
-/** The opinionated role catalog. Every loop runs one role; a role's `find` text is
- * the role-specific "find something to do" half of the tick prompt.
- *
- * Order matters: it is the scheduling priority when loops are otherwise tied
- * (e.g. the startup burst), so shipping work (feature, bugfix) outranks hygiene. */
-
 export interface Role {
   id: string;
   title: string;
@@ -15,6 +9,11 @@ export interface Role {
 
 export const DIRECTOR_ROLE = "director";
 
+/** The opinionated role catalog. Every loop runs one role; a role's `find` text is
+ * the role-specific "find something to do" half of the tick prompt.
+ *
+ * Order matters: it is the scheduling priority when loops are otherwise tied
+ * (e.g. the startup burst), so shipping work (feature, bugfix) outranks hygiene. */
 export const ROLES: Role[] = [
   {
     id: "feature",
