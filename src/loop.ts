@@ -172,6 +172,22 @@ export class LoopRunner {
       s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, this.config);
       s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
     }
+    // Self-heal from a poisoned session: whatever the error, repeated failures in a row
+    // mean the accumulated context is more likely hurting than helping.
+    if (outcome.result === "error") {
+      s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
+      if (s.consecutiveErrors >= 2 && s.hasSession) {
+        s.hasSession = false;
+        s.consecutiveErrors = 0;
+        logEvent(this.root, {
+          loop: this.role,
+          type: "warning",
+          message: "two consecutive error ticks — starting a fresh pi session next tick",
+        });
+      }
+    } else if (outcome.result === "changed" || outcome.result === "no_change") {
+      s.consecutiveErrors = 0;
+    }
     s.lastMainHead = (await gitTry(this.root, "rev-parse", this.mainBranch)) ?? s.lastMainHead;
     this.save();
     logEvent(this.root, {
@@ -212,6 +228,17 @@ export class LoopRunner {
     if (!pi.errorMessage?.startsWith(SPAWN_ERROR_PREFIX)) s.hasSession = true;
     s.totalTokens += pi.totalTokens;
     s.totalCostUsd += pi.costUsd;
+
+    // A session the provider rejects as too large can never be resumed successfully
+    // (e.g. the model's real context is smaller than pi believes): drop it now.
+    if (pi.contextExceeded && s.hasSession) {
+      s.hasSession = false;
+      logEvent(this.root, {
+        loop: this.role,
+        type: "warning",
+        message: "provider rejected the context as too large — starting a fresh pi session next tick",
+      });
+    }
 
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.

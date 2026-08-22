@@ -76,6 +76,8 @@ export interface LoopState {
   /** True once this loop has a pi session to resume; ticks then run with --continue so
    * the loop keeps its accumulated context (pi auto-compacts when it grows too large). */
   hasSession?: boolean;
+  /** Consecutive error ticks; repeated errors drop the session as a self-healing measure. */
+  consecutiveErrors?: number;
   totalTokens: number;
   totalCostUsd: number;
   lastError?: string;
@@ -113,4 +115,6 @@ export interface PiRunResult {
   timedOut: boolean;
   /** The run was killed because the harness is shutting down. */
   aborted: boolean;
+  /** The provider rejected the context as too large; the resumed session is poisoned. */
+  contextExceeded: boolean;
 }

@@ -31,6 +31,10 @@ export class PiStreamParser {
   costUsd = 0;
   stopReason: string | undefined;
   errorMessage: string | undefined;
+  /** True when any event reports the provider rejecting the context as too large
+   * (e.g. LM Studio's "Context size has been exceeded"). The session is then poisoned:
+   * resuming it can never succeed, so the loop must start fresh. */
+  contextExceeded = false;
   private buffer = "";
 
   feed(chunk: string, onLine?: (line: string) => void): void {
@@ -47,11 +51,16 @@ export class PiStreamParser {
   }
 
   private feedLine(line: string): void {
-    let event: { type?: string; message?: PiMessage };
+    let event: { type?: string; message?: PiMessage; errorMessage?: string; finalError?: string };
     try {
       event = JSON.parse(line);
     } catch {
       return; // Non-JSON noise on stdout; ignore.
+    }
+    // Context-overflow errors often surface only in retry events, not the final message.
+    const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded|exceeds? (the )?context|too (long|large) for .*context/i;
+    for (const text of [event.errorMessage, event.finalError, event.message?.errorMessage]) {
+      if (text && CONTEXT_ERROR.test(text)) this.contextExceeded = true;
     }
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;
@@ -161,6 +170,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         errorMessage: `${SPAWN_ERROR_PREFIX}: ${err.message}`,
         timedOut: false,
         aborted,
+        contextExceeded: false,
       });
     });
 
@@ -181,6 +191,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
             : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
         timedOut,
         aborted,
+        contextExceeded: parser.contextExceeded,
       });
     });
   });

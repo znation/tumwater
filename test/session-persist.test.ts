@@ -49,6 +49,66 @@ test("a loop's pi session persists across ticks", async () => {
   }
 });
 
+test("parser flags context-exceeded errors surfaced in retry events", async () => {
+  const { PiStreamParser } = await import("../src/pi.js");
+  const parser = new PiStreamParser();
+  parser.feed(
+    JSON.stringify({
+      type: "auto_retry_start",
+      attempt: 3,
+      errorMessage:
+        'Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}',
+    }) + "\n",
+  );
+  assert.equal(parser.contextExceeded, true);
+  const clean = new PiStreamParser();
+  clean.feed(JSON.stringify({ type: "auto_retry_start", errorMessage: "Connection error." }) + "\n");
+  assert.equal(clean.contextExceeded, false);
+});
+
+test("a context-exceeded error drops the poisoned session immediately", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "context overflow test");
+  const argsFile = path.join(tmpdir(), "argv.log");
+  const restore = fakePi(
+    [
+      `flags=""`,
+      `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
+      `echo "run:$flags" >> "${argsFile}"`,
+      `printf '%s\n' '${JSON.stringify({ type: "auto_retry_end", success: false, attempt: 3, finalError: "Context size has been exceeded." })}'`,
+      `exit 1`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    runner.state.hasSession = true; // Pretend earlier ticks built up a session.
+    assert.equal((await runner.tick()).result, "error");
+    assert.equal(runner.state.hasSession, false, "poisoned session dropped");
+    await runner.tick();
+    const runs = fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
+    assert.ok(runs[1] && !runs[1].includes("--continue"), "next tick starts fresh");
+  } finally {
+    restore();
+  }
+});
+
+test("two consecutive error ticks drop the session as self-healing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "consecutive error test");
+  const restore = fakePi(`echo boom >&2\nexit 1`);
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    await runner.tick();
+    assert.equal(runner.state.hasSession, true, "one error keeps the session");
+    assert.equal(runner.state.consecutiveErrors, 1);
+    await runner.tick();
+    assert.equal(runner.state.hasSession, false, "second consecutive error drops it");
+    assert.equal(runner.state.consecutiveErrors, 0);
+  } finally {
+    restore();
+  }
+});
+
 test("a spawn failure does not mark a session as resumable", async () => {
   const repo = makeRepo();
   await initProject(repo, "spawn failure test");
