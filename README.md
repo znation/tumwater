@@ -87,6 +87,19 @@ Roles: `organize`, `coverage`, `clean`, `dry`, `feature`, `bugfix`, `plan`, `rea
 `director`. Enable/disable them, pick pi's provider/model/thinking level, and tune backoff in
 `automaton.json`.
 
+## Notes on local model servers
+
+- **LM Studio WARN flood** (`Reasoning setting 'high' is not supported by model '…'. Supported
+  settings: 'on', 'off'. Falling back to reasoning setting 'on'.`): benign. pi requests its
+  configured thinking level per turn; GGUF models that only expose an on/off reasoning toggle make
+  LM Studio warn and fall back to `on`. Reasoning stays enabled; no automaton or pi change needed.
+  To silence it, set a thinking level the model supports (or none) in `automaton.json` / pi settings.
+- **Context accounting**: declare an honest `contextWindow` for the model in pi's `models.json` —
+  it is what triggers pi's auto-compaction. With LM Studio's unified KV cache, concurrent requests
+  share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full
+  window. A session that overruns the server's real limit fails with "Context size has been
+  exceeded"; the harness detects this and starts that loop a fresh session.
+
 ## Development
 
 ```
