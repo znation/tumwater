@@ -57,6 +57,13 @@ export function buildTickPrompt(input: TickPromptInput): string {
   return parts.join("\n\n");
 }
 
+/** Shared guidance for any loop about to record a plan or bug: split independent parts
+ * into their own entries. Defined once so the director and role prompts cannot drift. */
+export const DECOMPOSITION_GUIDANCE = `Before recording a plan or bug, consider whether it
+decomposes into independent subparts (separate features, or separate bugs). If it does, record
+each part as its own PLANS.md/BUGS.md entry that cross-references its siblings, so loops can pick
+them up independently; if the parts are not truly independent, keep a single entry.`;
+
 /** The prompt for a director tick, which routes a user request into the project. */
 export function buildDirectorPrompt(userPrompt: string, initialPrompt: string): string {
   const parts = [
@@ -82,7 +89,8 @@ work yourself:
   anything it supersedes.
 - A question: answer it in your final reply, and record anything durable it surfaced.
 - Only a trivially small direct edit (fix a typo, tweak a doc line, adjust a config value the
-  user explicitly stated) may be done immediately instead of routed.`,
+  user explicitly stated) may be done immediately instead of routed.
+- ${DECOMPOSITION_GUIDANCE}`,
   );
   parts.push(COMMON_RULES.trim());
   return parts.join("\n\n");

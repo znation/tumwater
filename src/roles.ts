@@ -1,3 +1,5 @@
+import { DECOMPOSITION_GUIDANCE } from "./prompt.js";
+
 /** The opinionated role catalog. Every loop runs one role; a role's `find` text is
  * the role-specific "find something to do" half of the tick prompt.
  *
@@ -28,7 +30,8 @@ date). If PLANS.md is empty or everything is done, there is nothing to do.`,
     find: `Open BUGS.md and pick the SINGLE most important open bug. Reproduce it if possible,
 fix it, add a regression test, and update BUGS.md to mark it fixed (move it to a Fixed section
 with the date). If you discover a new bug while investigating but cannot fix it in this run,
-record it in BUGS.md instead. If BUGS.md has no open bugs, look briefly for one obvious latent
+record it in BUGS.md instead. ${DECOMPOSITION_GUIDANCE}
+If BUGS.md has no open bugs, look briefly for one obvious latent
 bug in the code; if you find none, there is nothing to do.`,
   },
   {
@@ -37,7 +40,8 @@ bug in the code; if you find none, there is nothing to do.`,
     find: `Think about what this project needs next, guided by its initial prompt in README.md and
 what already exists. Choose ONE unplanned feature or improvement worth doing and write a concrete
 plan for it: a short markdown section in PLANS.md (goal, approach, files touched, acceptance
-criteria). Do not implement it. If PLANS.md already has several unimplemented plans, prefer
+criteria). Do not implement it. ${DECOMPOSITION_GUIDANCE}
+If PLANS.md already has several unimplemented plans, prefer
 refining the weakest existing plan over adding another.`,
   },
   {
