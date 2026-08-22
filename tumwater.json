@@ -2,11 +2,11 @@
   "piArgs": [],
   "maxConcurrent": 4,
   "minTickIntervalSeconds": 20,
-  "tickTimeoutSeconds": 5400,
+  "tickTimeoutSeconds": 54000,
   "idleBackoff": {
     "initialSeconds": 120,
     "factor": 2,
-    "maxSeconds": 3600
+    "maxSeconds": 36000
   },
   "roles": {
     "feature": {
