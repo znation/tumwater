@@ -19,13 +19,8 @@ import {
 import { withLock } from "./lock.js";
 import { logEvent } from "./events.js";
 import { SPAWN_ERROR_PREFIX, runPi } from "./pi.js";
-import {
-  buildConflictPrompt,
-  buildDirectorPrompt,
-  buildTickPrompt,
-  extractSummary,
-  readInitialPrompt,
-} from "./prompt.js";
+import { buildConflictPrompt, buildDirectorPrompt, buildTickPrompt, extractSummary } from "./prompt.js";
+import { readInitialPrompt } from "./readme.js";
 import { configForRole } from "./config.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { loadLoopState, nextBackoffSeconds, saveLoopState } from "./state.js";

@@ -2,25 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig, saveConfig } from "./config.js";
 import { COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
-import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START } from "./prompt.js";
+import { readmeTemplate } from "./readme.js";
 import { STATE_DIR, configPath } from "./paths.js";
-
-export function readmeTemplate(projectName: string, initialPrompt: string): string {
-  return `# ${projectName}
-
-## Initial prompt
-
-${PROMPT_START}
-${initialPrompt.trim()}
-${PROMPT_END}
-
-## Status
-
-${STATUS_START}
-_No status yet. The readme loop keeps this section up to date._
-${STATUS_END}
-`;
-}
 
 export const PLANS_TEMPLATE = `# Plans
 

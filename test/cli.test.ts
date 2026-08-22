@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { initProject } from "../src/init.js";
-import { readInitialPrompt } from "../src/prompt.js";
+import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize } from "../src/inbox.js";
 import { makeRepo, sh, tmpdir } from "./util.js";

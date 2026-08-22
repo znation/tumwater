@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { readInitialPrompt } from "../src/prompt.js";
+import { readInitialPrompt } from "../src/readme.js";
 import { loadConfig } from "../src/config.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 

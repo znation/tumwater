@@ -1,25 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { Role } from "./roles.js";
 
 /** Sentinel a loop's pi run outputs when it found nothing worth doing. */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
-
-export const PROMPT_START = "<!-- tumwater:prompt:start -->";
-export const PROMPT_END = "<!-- tumwater:prompt:end -->";
-export const STATUS_START = "<!-- tumwater:status:start -->";
-export const STATUS_END = "<!-- tumwater:status:end -->";
-
-/** The project's initial prompt, extracted from README.md's managed section. */
-export function readInitialPrompt(root: string): string {
-  const readme = path.join(root, "README.md");
-  if (!fs.existsSync(readme)) return "";
-  const text = fs.readFileSync(readme, "utf8");
-  const start = text.indexOf(PROMPT_START);
-  const end = text.indexOf(PROMPT_END);
-  if (start < 0 || end < 0 || end < start) return "";
-  return text.slice(start + PROMPT_START.length, end).trim();
-}
 
 const COMMON_RULES = `
 Rules for this run:

@@ -8,9 +8,8 @@ import {
   buildTickPrompt,
   extractSummary,
   isNothingToDo,
-  readInitialPrompt,
 } from "../src/prompt.js";
-import { readmeTemplate } from "../src/init.js";
+import { readInitialPrompt, readmeTemplate } from "../src/readme.js";
 import { ROLES, roleById } from "../src/roles.js";
 import { tmpdir } from "./util.js";
 
