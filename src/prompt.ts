@@ -23,17 +23,26 @@ export interface TickPromptInput {
   extraInstructions?: string;
 }
 
-/** The full prompt for one role-loop tick. */
-export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, extraInstructions } = input;
+/** Shared opening of every loop prompt: where the run happens and why the project exists.
+ * Defined once so the tick and director prompts cannot drift. */
+function sharedPreamble(initialPrompt: string): string[] {
   const parts = [
-    `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by the harness after you finish.`,
   ];
   if (initialPrompt) {
     parts.push(`The project's initial prompt — its reason to exist — is:\n<project-prompt>\n${initialPrompt}\n</project-prompt>`);
   }
-  parts.push(`Your task this run:\n${role.find.trim()}`);
+  return parts;
+}
+
+/** The full prompt for one role-loop tick. */
+export function buildTickPrompt(input: TickPromptInput): string {
+  const { role, initialPrompt, extraInstructions } = input;
+  const parts = [
+    `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
+    ...sharedPreamble(initialPrompt),
+    `Your task this run:\n${role.find.trim()}`,
+  ];
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   parts.push(COMMON_RULES.trim());
   return parts.join("\n\n");
@@ -52,12 +61,9 @@ export function buildDirectorPrompt(userPrompt: string, initialPrompt: string): 
     `You are the "director" loop of tumwater, an autonomous development harness. The user steers
 the project by sending it requests; one has just arrived. Other specialist loops continuously
 implement planned features from PLANS.md and fix bugs from BUGS.md.`,
-    `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by the harness after you finish.`,
+    ...sharedPreamble(initialPrompt),
+    `The user's request:\n<user-request>\n${userPrompt.trim()}\n</user-request>`,
   ];
-  if (initialPrompt) {
-    parts.push(`The project's initial prompt — its reason to exist — is:\n<project-prompt>\n${initialPrompt}\n</project-prompt>`);
-  }
-  parts.push(`The user's request:\n<user-request>\n${userPrompt.trim()}\n</user-request>`);
   parts.push(
     `Interpret the request as a project-level command and route it — do NOT implement substantial
 work yourself:

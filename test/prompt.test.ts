@@ -45,6 +45,26 @@ test("every catalog role produces a prompt mentioning its id", () => {
   }
 });
 
+test("tick and director prompts share one worktree + initial-prompt preamble", () => {
+  const role = roleById("coverage");
+  assert.ok(role);
+  // Both builders spread sharedPreamble(initialPrompt); a reworded copy in either would
+  // fail these includes() checks.
+  const shared = [
+    "You work in a dedicated git worktree of this project; your changes will be committed and merged to main by the harness after you finish.",
+    "<project-prompt>\nMake a CLI.\n</project-prompt>",
+  ];
+  const prompts = [
+    buildTickPrompt({ role, initialPrompt: "Make a CLI." }),
+    buildDirectorPrompt("add dark mode", "Make a CLI."),
+  ];
+  for (const prompt of prompts) {
+    for (const piece of shared) {
+      assert.ok(prompt.includes(piece), `missing shared preamble: ${piece.slice(0, 48)}…`);
+    }
+  }
+});
+
 test("buildDirectorPrompt embeds the user request", () => {
   const prompt = buildDirectorPrompt("add dark mode", "Make a CLI.");
   assert.match(prompt, /<user-request>\nadd dark mode\n<\/user-request>/);
