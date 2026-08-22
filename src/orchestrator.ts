@@ -8,7 +8,7 @@ import { gitTry } from "./git.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles } from "./files.js";
 import { inboxSize } from "./inbox.js";
-import { migrateLegacyState, orchestratorStatePath, sessionsRootDir } from "./paths.js";
+import { orchestratorStatePath, sessionsRootDir } from "./paths.js";
 
 const POLL_MS = 2000;
 
@@ -111,7 +111,6 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
 /** Run all enabled loops until the signal aborts. */
 export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const { root, config, mainBranch, signal } = opts;
-  migrateLegacyState(root);
   const enabled = enabledRoleIds(config);
   if (enabled.length === 0) throw new Error("no roles enabled in tumwater.json");
 

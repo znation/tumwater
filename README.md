@@ -34,16 +34,13 @@ locally and keep all project state within the git repo.
 ## Status
 
 <!-- tumwater:status:start -->
-v0.1: working harness, freshly renamed from "automaton" to "tumwater" (state and branches from
-old checkouts migrate automatically; after pulling this change, rebuild and relink —
-`npm run build && npm link` — for the `tumwater` command to appear on PATH). `init`, `run`,
-`tui`, `gui`, `status`, `logs`, and `prompt` commands are implemented with all nine roles plus
-the director loop (absolute scheduling priority; routes feature/bug requests into
-PLANS.md/BUGS.md, decomposing independent subparts). Loops persist their pi sessions across
-ticks and self-heal from context overflows; merge conflicts get one pi-driven resolution
-attempt; roles can override provider/model/thinking; logs rotate and old pi sessions are
-pruned; the TUI/status table is width-aware with a totals row. No open bugs; PLANS.md backlog
-is empty.
+v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `prompt` commands are
+implemented with ten roles plus the director loop (absolute scheduling priority; routes
+feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Loops persist
+their pi sessions across ticks and self-heal from context overflows; merge conflicts get one
+pi-driven resolution attempt; roles can override provider/model/thinking; logs rotate and old
+pi sessions are pruned; the TUI/status table is width-aware with a totals row. No open bugs;
+PLANS.md backlog is empty.
 <!-- tumwater:status:end -->
 
 ## How it works

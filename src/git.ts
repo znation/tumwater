@@ -81,12 +81,7 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   }
   // A stale registration (dir deleted, worktree still known) blocks `worktree add`.
   await gitTry(root, "worktree", "prune");
-  let branchExists = (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
-  // Adopt a branch created under the project's old name so leftover work isn't orphaned.
-  const legacyBranch = `automaton/${role}`;
-  if (!branchExists && (await gitTry(root, "rev-parse", "--verify", `refs/heads/${legacyBranch}`)) !== null) {
-    branchExists = (await gitTry(root, "branch", "-m", legacyBranch, branch)) !== null;
-  }
+  const branchExists = (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
   if (branchExists) {
     await git(root, "worktree", "add", wt, branch);
   } else {

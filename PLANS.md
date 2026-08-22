@@ -9,16 +9,6 @@ _None yet._
 
 ## Done
 
-### Rename project from "automaton" to "tumwater" (planned 2026-08-21, done 2026-08-21)
-
-Shipped: package/bin/scripts renamed; CLI help, status header, GUI title, prompts (including the
-nothing-to-do sentinel, now `TUMWATER_NOTHING_TO_DO`), markers (`<!-- tumwater:… -->`), state dir
-`.tumwater/`, config `tumwater.json`, branches `tumwater/<role>`, session names, and commit
-prefixes. `migrateLegacyState` (src/paths.ts) transparently renames a legacy `.automaton/` dir and
-`automaton.json` on every CLI entry and orchestrator start (old worktrees are dropped and
-recreated); `ensureWorktree` adopts `automaton/<role>` branches by renaming them. Historical
-Done/Fixed entries below keep the old name by design. Rebuild + relink for the new command name.
-
 ### Totals row for tokens and cost in the status table (planned 2026-08-21, done 2026-08-21)
 
 `renderStatus` appends a separator plus a `total` row summing tokens (compact-formatted) and cost
@@ -33,9 +23,9 @@ test/decompose.test.ts.
 
 ### Web GUI (done 2026-08-20)
 
-`automaton gui [--port N]` serves a zero-dependency browser dashboard on 127.0.0.1 (default
+`tumwater gui [--port N]` serves a zero-dependency browser dashboard on 127.0.0.1 (default
 port 7180): loop table with live working detail, event feed, and a prompt box that queues to
-the director. Reads the same `.automaton/state` + `events.jsonl` files as the TUI, polling
+the director. Reads the same `.tumwater/state` + `events.jsonl` files as the TUI, polling
 every second. Files: `src/gui.ts`, `src/cli.ts`.
 
 ### pi-driven merge conflict resolution (done 2026-08-20)
@@ -47,7 +37,7 @@ concludes the merge; unresolvable conflicts abort cleanly as before. Files: `src
 
 ### Per-role model/effort overrides (done 2026-08-20)
 
-Each role entry in `automaton.json` may set `provider`/`model`/`thinking`, falling back to the
+Each role entry in `tumwater.json` may set `provider`/`model`/`thinking`, falling back to the
 top-level values — cheap models for mechanical roles, strong ones for feature/bugfix. Files:
 `src/types.ts`, `src/config.ts`, `src/loop.ts`.
 

@@ -1,30 +1,7 @@
-import fs from "node:fs";
 import path from "node:path";
 
 /** All harness runtime state lives under <repo>/.tumwater (gitignored). */
 export const STATE_DIR = ".tumwater";
-
-/** Pre-rename names (the project used to be called "automaton"). Only the migration
- * below may reference them. */
-const LEGACY_STATE_DIR = ".automaton";
-const LEGACY_CONFIG_FILE = "automaton.json";
-
-/** Adopt runtime state from a repo initialized under the project's old name: renames
- * `.automaton/` to `.tumwater/` and `automaton.json` to `tumwater.json` when the new
- * names don't exist yet. Worktrees under the old dir are dropped (their git metadata
- * points at the old path); loops recreate them on the next tick. Idempotent. */
-export function migrateLegacyState(root: string): void {
-  const legacyDir = path.join(root, LEGACY_STATE_DIR);
-  const newDir = tumwaterDir(root);
-  if (fs.existsSync(legacyDir) && !fs.existsSync(newDir)) {
-    fs.renameSync(legacyDir, newDir);
-    fs.rmSync(path.join(newDir, "worktrees"), { recursive: true, force: true });
-  }
-  const legacyConfig = path.join(root, LEGACY_CONFIG_FILE);
-  if (fs.existsSync(legacyConfig) && !fs.existsSync(configPath(root))) {
-    fs.renameSync(legacyConfig, configPath(root));
-  }
-}
 
 export function tumwaterDir(root: string): string {
   return path.join(root, STATE_DIR);

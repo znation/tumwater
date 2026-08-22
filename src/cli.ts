@@ -10,7 +10,7 @@ import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
 import { startGui } from "./gui.js";
-import { eventsLogPath, migrateLegacyState } from "./paths.js";
+import { eventsLogPath } from "./paths.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
 
@@ -129,8 +129,6 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   const root = process.cwd();
-  // A repo initialized under the project's old name migrates transparently.
-  migrateLegacyState(root);
   switch (command) {
     case "init":
       await cmdInit(root, args);

@@ -34,7 +34,7 @@ thinking level), and it is benign: pi forwards its configured thinking level, th
 exposes an on/off reasoning toggle, and LM Studio falls back to `on` with reasoning still enabled.
 One WARN per request, no behavioral impact. Documented in README ("Notes on local model servers")
 with the silencing option (configure a supported thinking level). No code change warranted at the
-automaton layer.
+tumwater layer.
 
 ### Spurious warning "pi finished without changes and without declaring nothing-to-do" (reported 2026-08-21, fixed 2026-08-21)
 
