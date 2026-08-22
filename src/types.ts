@@ -1,6 +1,6 @@
-/** Shared types for the automaton harness. */
+/** Shared types for the tumwater harness. */
 
-/** Per-role configuration in automaton.json. */
+/** Per-role configuration in tumwater.json. */
 export interface RoleConfig {
   enabled: boolean;
   /** Extra instructions appended to this role's prompt. */
@@ -23,8 +23,8 @@ export interface BackoffConfig {
   maxSeconds: number;
 }
 
-/** The tracked automaton.json config. */
-export interface AutomatonConfig {
+/** The tracked tumwater.json config. */
+export interface TumwaterConfig {
   /** pi provider name; omitted = pi's own default. */
   provider?: string;
   /** pi model pattern; omitted = pi's own default. */
@@ -56,7 +56,7 @@ export type TickResult =
   | "aborted" // harness shutdown killed the run mid-tick; partial work discarded
   | "skipped"; // nothing to run (e.g. director with an empty inbox)
 
-/** Persisted per-loop state in .automaton/state/<role>.json. */
+/** Persisted per-loop state in .tumwater/state/<role>.json. */
 export interface LoopState {
   role: string;
   ticks: number;
@@ -83,7 +83,7 @@ export interface LoopState {
   lastError?: string;
 }
 
-/** One line in .automaton/log/events.jsonl. */
+/** One line in .tumwater/log/events.jsonl. */
 export interface HarnessEvent {
   ts: number;
   loop: string;

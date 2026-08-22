@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { AutomatonConfig } from "./types.js";
+import type { TumwaterConfig } from "./types.js";
 import { enabledRoleIds } from "./config.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
@@ -8,7 +8,7 @@ import { gitTry } from "./git.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles } from "./files.js";
 import { inboxSize } from "./inbox.js";
-import { orchestratorStatePath, sessionsRootDir } from "./paths.js";
+import { migrateLegacyState, orchestratorStatePath, sessionsRootDir } from "./paths.js";
 
 const POLL_MS = 2000;
 
@@ -61,7 +61,7 @@ export function orchestratorAlive(root: string): boolean {
 
 export interface RunOptions {
   root: string;
-  config: AutomatonConfig;
+  config: TumwaterConfig;
   mainBranch: string;
   signal: AbortSignal;
 }
@@ -111,8 +111,9 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
 /** Run all enabled loops until the signal aborts. */
 export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const { root, config, mainBranch, signal } = opts;
+  migrateLegacyState(root);
   const enabled = enabledRoleIds(config);
-  if (enabled.length === 0) throw new Error("no roles enabled in automaton.json");
+  if (enabled.length === 0) throw new Error("no roles enabled in tumwater.json");
 
   const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));

@@ -31,7 +31,7 @@ test("saveLoopState creates the state dir and round-trips without leaving a temp
   s.ticks = 7;
   s.totalTokens = 123456;
   s.lastResult = "changed";
-  saveLoopState(dir, s); // .automaton/ does not exist yet
+  saveLoopState(dir, s); // .tumwater/ does not exist yet
   assert.ok(fs.existsSync(statePath(dir, "feature")));
   const stateDir = path.dirname(statePath(dir, "feature"));
   assert.deepEqual(fs.readdirSync(stateDir), ["feature.json"], "no .tmp leftovers");

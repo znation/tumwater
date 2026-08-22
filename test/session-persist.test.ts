@@ -29,7 +29,7 @@ test("a loop's pi session persists across ticks", async () => {
       `flags=""`,
       `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
       `echo "run:$flags" >> "${argsFile}"`,
-      `printf '%s\n' '${assistantLine("AUTOMATON_NOTHING_TO_DO")}'`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );
   try {

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export function tmpdir(prefix = "automaton-test-"): string {
+export function tmpdir(prefix = "tumwater-test-"): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 

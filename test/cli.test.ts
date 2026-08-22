@@ -34,8 +34,8 @@ test("help and no command print usage", async () => {
     const r = await cli(dir, ...args);
     assert.equal(r.code, 0);
     assert.match(r.stdout, /Usage:/);
-    assert.match(r.stdout, /automaton init/);
-    assert.match(r.stdout, /automaton prompt/);
+    assert.match(r.stdout, /tumwater init/);
+    assert.match(r.stdout, /tumwater prompt/);
   }
 });
 
@@ -60,16 +60,16 @@ test("status refuses repos that are not ready", async () => {
   assert.equal(r.code, 1);
   assert.match(r.stderr, /not a git repository/);
 
-  // A git repo without automaton.json.
+  // A git repo without tumwater.json.
   const bare = makeRepo();
   r = await cli(bare, "status");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /not initialized/);
 
-  // automaton.json present but no commits yet.
+  // tumwater.json present but no commits yet.
   const uncommitted = tmpdir();
   sh(uncommitted, "git", "init", "-b", "main");
-  fs.writeFileSync(path.join(uncommitted, "automaton.json"), JSON.stringify(defaultConfig()));
+  fs.writeFileSync(path.join(uncommitted, "tumwater.json"), JSON.stringify(defaultConfig()));
   r = await cli(uncommitted, "status");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /no commits yet/);
@@ -80,7 +80,7 @@ test("init creates the harness files and is idempotent", async () => {
   let r = await cli(repo, "init", "Build a todo CLI.");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /created README\.md/);
-  for (const f of ["README.md", "PLANS.md", "BUGS.md", "automaton.json"]) {
+  for (const f of ["README.md", "PLANS.md", "BUGS.md", "tumwater.json"]) {
     assert.ok(fs.existsSync(path.join(repo, f)), `${f} exists`);
   }
   r = await cli(repo, "init", "Build a todo CLI.");

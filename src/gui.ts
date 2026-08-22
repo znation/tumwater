@@ -27,7 +27,7 @@ export function statusPayload(root: string): object {
 
 const PAGE = `<!doctype html>
 <meta charset="utf-8">
-<title>automaton</title>
+<title>tumwater</title>
 <style>
   :root { color-scheme: dark; }
   body { background:#101418; color:#d6dde4; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -47,7 +47,7 @@ const PAGE = `<!doctype html>
            padding:8px 16px; font:inherit; cursor:pointer; }
   #flash { color:#7fd88f; margin-left:8px; }
 </style>
-<h1>automaton <span class="muted" id="header">connecting…</span></h1>
+<h1>tumwater <span class="muted" id="header">connecting…</span></h1>
 <form id="promptform">
   <input id="prompt" placeholder="type a prompt for the project — it runs immediately via the director loop" autocomplete="off">
   <button>send</button><span id="flash"></span>

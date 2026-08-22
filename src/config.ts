@@ -1,9 +1,9 @@
 import fs from "node:fs";
-import type { AutomatonConfig, RoleConfig } from "./types.js";
+import type { TumwaterConfig, RoleConfig } from "./types.js";
 import { allRoleIds } from "./roles.js";
 import { configPath } from "./paths.js";
 
-export function defaultConfig(): AutomatonConfig {
+export function defaultConfig(): TumwaterConfig {
   const roles: Record<string, RoleConfig> = {};
   for (const id of allRoleIds()) roles[id] = { enabled: true };
   return {
@@ -18,13 +18,13 @@ export function defaultConfig(): AutomatonConfig {
   };
 }
 
-/** Load automaton.json, filling in defaults for anything missing. */
-export function loadConfig(root: string): AutomatonConfig {
+/** Load tumwater.json, filling in defaults for anything missing. */
+export function loadConfig(root: string): TumwaterConfig {
   const file = configPath(root);
   const base = defaultConfig();
   if (!fs.existsSync(file)) return base;
-  const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<AutomatonConfig>;
-  const merged: AutomatonConfig = {
+  const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<TumwaterConfig>;
+  const merged: TumwaterConfig = {
     ...base,
     ...raw,
     idleBackoff: { ...base.idleBackoff, ...(raw.idleBackoff ?? {}) },
@@ -37,12 +37,12 @@ export function loadConfig(root: string): AutomatonConfig {
   return merged;
 }
 
-export function saveConfig(root: string, config: AutomatonConfig): void {
+export function saveConfig(root: string, config: TumwaterConfig): void {
   fs.writeFileSync(configPath(root), JSON.stringify(config, null, 2) + "\n");
 }
 
 /** Ids of the enabled roles, in config.roles order (catalog order for known ids). */
-export function enabledRoleIds(config: AutomatonConfig): string[] {
+export function enabledRoleIds(config: TumwaterConfig): string[] {
   return Object.entries(config.roles)
     .filter(([, rc]) => rc.enabled)
     .map(([id]) => id);
@@ -50,7 +50,7 @@ export function enabledRoleIds(config: AutomatonConfig): string[] {
 
 /** The config as seen by one role's pi runs: role-level provider/model/thinking
  * overrides applied over the top-level values. */
-export function configForRole(config: AutomatonConfig, role: string): AutomatonConfig {
+export function configForRole(config: TumwaterConfig, role: string): TumwaterConfig {
   const rc = config.roles[role];
   if (!rc) return config;
   return {

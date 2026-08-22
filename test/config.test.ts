@@ -23,7 +23,7 @@ test("loadConfig without a file returns defaults", () => {
 test("loadConfig merges partial files over defaults", () => {
   const dir = tmpdir();
   fs.writeFileSync(
-    path.join(dir, "automaton.json"),
+    path.join(dir, "tumwater.json"),
     JSON.stringify({
       model: "sonnet",
       idleBackoff: { maxSeconds: 60 },

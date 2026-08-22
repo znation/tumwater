@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { AutomatonConfig, LoopState } from "./types.js";
+import type { TumwaterConfig, LoopState } from "./types.js";
 import { statePath } from "./paths.js";
 
 export function freshLoopState(role: string): LoopState {
@@ -35,7 +35,7 @@ export function saveLoopState(root: string, state: LoopState): void {
 }
 
 /** Next backoff after a no-change tick: initial on the first, then multiplied, capped. */
-export function nextBackoffSeconds(current: number, config: AutomatonConfig): number {
+export function nextBackoffSeconds(current: number, config: TumwaterConfig): number {
   const { initialSeconds, factor, maxSeconds } = config.idleBackoff;
   if (current <= 0) return Math.min(initialSeconds, maxSeconds);
   return Math.min(current * factor, maxSeconds);

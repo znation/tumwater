@@ -48,9 +48,9 @@ refining the weakest existing plan over adding another.`,
     id: "readme",
     title: "README maintainer",
     find: `Read README.md and compare it against the actual state of the project. Update the
-status section (between the automaton:status markers) to reflect reality: what works, what is in
+status section (between the tumwater:status markers) to reflect reality: what works, what is in
 progress, how to build/run/test. Fix any documentation that has drifted from the code. Never edit
-the initial prompt between the automaton:prompt markers. If the README is already accurate,
+the initial prompt between the tumwater:prompt markers. If the README is already accurate,
 there is nothing to do.`,
   },
   {

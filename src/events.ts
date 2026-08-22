@@ -7,7 +7,7 @@ import { rotateIfLarge } from "./files.js";
 type EventListener = (event: HarnessEvent) => void;
 const listeners = new Set<EventListener>();
 
-/** Get notified of every event logged in this process (e.g. to narrate `automaton run`).
+/** Get notified of every event logged in this process (e.g. to narrate `tumwater run`).
  * Returns an unsubscribe function. */
 export function subscribeEvents(listener: EventListener): () => void {
   listeners.add(listener);

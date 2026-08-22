@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import type { AutomatonConfig, PiRunResult } from "./types.js";
+import type { TumwaterConfig, PiRunResult } from "./types.js";
 import { rotateIfLarge } from "./files.js";
 import { isNothingToDo } from "./prompt.js";
 
@@ -78,7 +78,7 @@ export class PiStreamParser {
 export interface PiRunOptions {
   cwd: string;
   prompt: string;
-  config: AutomatonConfig;
+  config: TumwaterConfig;
   sessionDir: string;
   sessionName: string;
   /** Resume the loop's most recent session in sessionDir instead of starting fresh,

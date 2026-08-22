@@ -86,13 +86,13 @@ const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
 ];
 const COLUMN_GAP = 2;
 
-/** Render the status table shared by `automaton status` and the TUI. When `maxWidth` is
+/** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is
  * given, wide cells are clipped so no line exceeds it (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
   const name = path.basename(path.resolve(root));
   const lines: string[] = [];
-  const header = snap.running ? `running (pid ${snap.pid})` : "not running — start with `automaton run`";
-  lines.push(`automaton · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}`);
+  const header = snap.running ? `running (pid ${snap.pid})` : "not running — start with `tumwater run`";
+  lines.push(`tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}`);
   lines.push("");
   const cols = ["loop", "state", "ticks", "commits", "tokens", "cost", "last tick", "last result"];
   const rows = snap.loops.map((s) => [

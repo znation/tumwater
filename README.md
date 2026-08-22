@@ -1,11 +1,11 @@
-# automaton
+# tumwater
 
 An opinionated autonomous development harness built on [pi](https://github.com/badlogic/pi-mono).
 You write the initial prompt; a fleet of role-driven loops builds the project with immense effort.
 
 ## Initial prompt
 
-<!-- automaton:prompt:start -->
+<!-- tumwater:prompt:start -->
 Idea: agentic harness
 
 Opinionated. Built on pi. Lots of autonomous loops. You only write the markdown/initial prompt.
@@ -29,30 +29,30 @@ specific. Each loop has a role:
 Assumptions: run within a git repo dir. Each loop uses a persistent git workspace and branch.
 Each loop keeps itself synced up with git main. Don't involve git remotes at all; do everything
 locally and keep all project state within the git repo.
-<!-- automaton:prompt:end -->
+<!-- tumwater:prompt:end -->
 
 ## Status
 
-<!-- automaton:status:start -->
-v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `prompt` commands are
-implemented with all nine roles plus the director loop (which has absolute scheduling priority
-and routes feature/bug requests into PLANS.md/BUGS.md). Merge conflicts get one pi-driven
-resolution attempt; roles can override provider/model/thinking; logs rotate and old pi sessions
-are pruned. 92 unit tests pass. Known issues (BUGS.md): a spurious "pi finished without changes"
-warning on some no-op ticks, the TUI status table wrapping past narrow terminals, that same
-table scrolling off-screen as recent activity grows, and LM Studio's log filling with WARN lines
-while loops run (cause under investigation). Three plans pending in PLANS.md: renaming the
-project from automaton to tumwater (package, CLI command, state dir, docs), a totals row for
-tokens and cost in the status table, and decomposing routed requests into sub-plans/sub-bugs.
-<!-- automaton:status:end -->
+<!-- tumwater:status:start -->
+v0.1: working harness, freshly renamed from "automaton" to "tumwater" (state and branches from
+old checkouts migrate automatically; after pulling this change, rebuild and relink —
+`npm run build && npm link` — for the `tumwater` command to appear on PATH). `init`, `run`,
+`tui`, `gui`, `status`, `logs`, and `prompt` commands are implemented with all nine roles plus
+the director loop (absolute scheduling priority; routes feature/bug requests into
+PLANS.md/BUGS.md, decomposing independent subparts). Loops persist their pi sessions across
+ticks and self-heal from context overflows; merge conflicts get one pi-driven resolution
+attempt; roles can override provider/model/thinking; logs rotate and old pi sessions are
+pruned; the TUI/status table is width-aware with a totals row. No open bugs; PLANS.md backlog
+is empty.
+<!-- tumwater:status:end -->
 
 ## How it works
 
-`automaton init "<prompt>"` seeds a git repo with README.md (your prompt + a status section),
-PLANS.md, BUGS.md, and automaton.json, and commits them. `automaton run` then starts one loop
+`tumwater init "<prompt>"` seeds a git repo with README.md (your prompt + a status section),
+PLANS.md, BUGS.md, and tumwater.json, and commits them. `tumwater run` then starts one loop
 per enabled role. Every loop tick:
 
-1. Resets its persistent worktree (`.automaton/worktrees/<role>`, branch `automaton/<role>`) to main.
+1. Resets its persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`) to main.
 2. Builds a role-specific "find something to do" prompt and runs `pi --print --mode json` in the
    worktree, resuming the loop's own pi session from earlier ticks (`--continue`) so context
    carries over; pi auto-compacts when it nears the model's window.
@@ -61,12 +61,12 @@ per enabled role. Every loop tick:
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
-The director loop is special: it executes prompts you type into the TUI (or `automaton prompt`),
+The director loop is special: it executes prompts you type into the TUI (or `tumwater prompt`),
 queued in a file-based inbox. It always has priority — a queued prompt starts immediately,
 outside the `maxConcurrent` limit and ahead of every role loop, and queued prompts run back to
 back with no cooldown between them. Everything is local git; no remotes are ever touched. Runtime state
-lives in `.automaton/` (gitignored); durable state (plans, bugs, status, config) lives in tracked
-markdown and `automaton.json`.
+lives in `.tumwater/` (gitignored); durable state (plans, bugs, status, config) lives in tracked
+markdown and `tumwater.json`.
 
 ## Usage
 
@@ -74,26 +74,26 @@ markdown and `automaton.json`.
 npm install && npm run build
 
 cd your-project        # any git repo
-automaton init "Build a tiny markdown-to-html converter CLI in Python."
-automaton run          # terminal 1: the loops (Ctrl+C to stop)
-automaton tui          # terminal 2: dashboard + main prompt
-automaton gui          # or the same dashboard at http://127.0.0.1:7180
-automaton status       # one-shot table
-automaton logs -f      # follow harness events
-automaton prompt "prefer no third-party deps"
+tumwater init "Build a tiny markdown-to-html converter CLI in Python."
+tumwater run          # terminal 1: the loops (Ctrl+C to stop)
+tumwater tui          # terminal 2: dashboard + main prompt
+tumwater gui          # or the same dashboard at http://127.0.0.1:7180
+tumwater status       # one-shot table
+tumwater logs -f      # follow harness events
+tumwater prompt "prefer no third-party deps"
 ```
 
 Roles: `organize`, `coverage`, `clean`, `dry`, `feature`, `bugfix`, `plan`, `readme`, `improve`,
 `director`. Enable/disable them, pick pi's provider/model/thinking level, and tune backoff in
-`automaton.json`.
+`tumwater.json`.
 
 ## Notes on local model servers
 
 - **LM Studio WARN flood** (`Reasoning setting 'high' is not supported by model '…'. Supported
   settings: 'on', 'off'. Falling back to reasoning setting 'on'.`): benign. pi requests its
   configured thinking level per turn; GGUF models that only expose an on/off reasoning toggle make
-  LM Studio warn and fall back to `on`. Reasoning stays enabled; no automaton or pi change needed.
-  To silence it, set a thinking level the model supports (or none) in `automaton.json` / pi settings.
+  LM Studio warn and fall back to `on`. Reasoning stays enabled; no tumwater or pi change needed.
+  To silence it, set a thinking level the model supports (or none) in `tumwater.json` / pi settings.
 - **Context accounting**: declare an honest `contextWindow` for the model in pi's `models.json` —
   it is what triggers pi's auto-compaction. With LM Studio's unified KV cache, concurrent requests
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full

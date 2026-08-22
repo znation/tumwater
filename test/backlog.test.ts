@@ -30,7 +30,7 @@ test("configForRole applies role overrides over top-level pi settings", () => {
 test("role overrides flow through to the pi argv and round-trip via config files", () => {
   const dir = tmpdir();
   fs.writeFileSync(
-    path.join(dir, "automaton.json"),
+    path.join(dir, "tumwater.json"),
     JSON.stringify({ model: "cheap", roles: { bugfix: { enabled: true, model: "expensive", provider: "anthropic" } } }),
   );
   const config = loadConfig(dir);
@@ -84,7 +84,7 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
   const base = `http://127.0.0.1:${addr.port}`;
   try {
     const page = await (await fetch(base + "/")).text();
-    assert.match(page, /<title>automaton<\/title>/);
+    assert.match(page, /<title>tumwater<\/title>/);
 
     const status = (await (await fetch(base + "/api/status")).json()) as ReturnType<typeof statusPayload> & {
       running: boolean;

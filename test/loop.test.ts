@@ -26,7 +26,7 @@ test("a tick that changes files commits and merges to main", async () => {
     assert.equal(outcome.result, "changed");
     assert.equal(outcome.summary, "add hello file");
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")));
-    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /automaton\(improve\): add hello file/);
+    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
     assert.equal(runner.state.commits, 1);
     assert.equal(runner.state.backoffSeconds, 0);
     assert.equal(runner.state.totalTokens, 42);
@@ -37,7 +37,7 @@ test("a tick that changes files commits and merges to main", async () => {
 
 test("a nothing-to-do tick backs off without committing", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("AUTOMATON_NOTHING_TO_DO")}'`);
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   try {
     const config = defaultConfig();
     const runner = new LoopRunner(repo, "clean", config, "main");
@@ -62,7 +62,7 @@ test("a nothing-to-do declaration in an intermediate turn does not warn (regress
   const repo = await initializedRepo();
   // pi declares nothing-to-do, then emits a closing remark afterwards; no file changes.
   const restore = fakePi(
-    `printf '%s\n' '${assistantLine("AUTOMATON_NOTHING_TO_DO")}'\n` +
+    `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'\n` +
       `printf '%s\n' '${assistantLine("all done")}'`,
   );
   try {
@@ -141,7 +141,7 @@ test("worktree changes commit even when pi forgets the summary line", async () =
     const runner = new LoopRunner(repo, "dry", defaultConfig(), "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "changed");
-    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /automaton\(dry\): dry tick 1/);
+    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(dry\): dry tick 1/);
   } finally {
     restore();
   }
@@ -251,7 +251,7 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
     const outcome = await runner.tick();
     assert.equal(outcome.result, "merge_conflict");
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n", "main keeps its version");
-    assert.ok(!sh(repo, "git", "-C", ".automaton/worktrees/improve", "status", "--porcelain").includes("UU"));
+    assert.ok(!sh(repo, "git", "-C", ".tumwater/worktrees/improve", "status", "--porcelain").includes("UU"));
   } finally {
     restore();
   }

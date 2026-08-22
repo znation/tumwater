@@ -1,4 +1,4 @@
-import type { AutomatonConfig, LoopState, PiRunResult, TickResult } from "./types.js";
+import type { TumwaterConfig, LoopState, PiRunResult, TickResult } from "./types.js";
 import { DIRECTOR_ROLE, roleById } from "./roles.js";
 import {
   abortMerge,
@@ -46,7 +46,7 @@ export class LoopRunner {
   constructor(
     readonly root: string,
     readonly role: string,
-    readonly config: AutomatonConfig,
+    readonly config: TumwaterConfig,
     readonly mainBranch: string,
     readonly signal?: AbortSignal,
   ) {
@@ -108,7 +108,7 @@ export class LoopRunner {
       prompt: buildConflictPrompt(this.role, files),
       config: configForRole(this.config, this.role),
       sessionDir: sessionDir(this.root, this.role),
-      sessionName: `automaton-${this.role}-${this.state.ticks}-conflict`,
+      sessionName: `tumwater-${this.role}-${this.state.ticks}-conflict`,
       continueSession: this.state.hasSession,
       rawLogFile: piLogPath(this.root, this.role),
       signal: this.signal,
@@ -217,7 +217,7 @@ export class LoopRunner {
       prompt,
       config: configForRole(this.config, this.role),
       sessionDir: sessionDir(this.root, this.role),
-      sessionName: `automaton-${this.role}-${s.ticks}`,
+      sessionName: `tumwater-${this.role}-${s.ticks}`,
       continueSession: s.hasSession,
       rawLogFile: piLogPath(this.root, this.role),
       signal: this.signal,
@@ -278,7 +278,7 @@ export class LoopRunner {
     }
 
     const summary = extractSummary(pi.finalText) ?? `${this.role} tick ${s.ticks}`;
-    const message = `automaton(${this.role}): ${summary}`;
+    const message = `tumwater(${this.role}): ${summary}`;
     const commit = await commitAll(wt, message);
     const result = await this.merge(wt, summary);
     if (result !== "changed") s.lastError = `merge failed: ${result}`;

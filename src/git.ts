@@ -9,9 +9,9 @@ const execFileAsync = promisify(execFile);
 /** Identity used for harness-authored commits so ticks work without global git config. */
 export const COMMIT_IDENT = [
   "-c",
-  "user.name=automaton",
+  "user.name=tumwater",
   "-c",
-  "user.email=automaton@localhost",
+  "user.email=tumwater@localhost",
 ];
 
 export class GitError extends Error {
@@ -81,7 +81,12 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   }
   // A stale registration (dir deleted, worktree still known) blocks `worktree add`.
   await gitTry(root, "worktree", "prune");
-  const branchExists = (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
+  let branchExists = (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
+  // Adopt a branch created under the project's old name so leftover work isn't orphaned.
+  const legacyBranch = `automaton/${role}`;
+  if (!branchExists && (await gitTry(root, "rev-parse", "--verify", `refs/heads/${legacyBranch}`)) !== null) {
+    branchExists = (await gitTry(root, "branch", "-m", legacyBranch, branch)) !== null;
+  }
   if (branchExists) {
     await git(root, "worktree", "add", wt, branch);
   } else {

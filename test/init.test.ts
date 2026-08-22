@@ -12,12 +12,12 @@ test("initProject creates and commits the harness files", async () => {
   const result = await initProject(repo, "Build a todo CLI.");
   assert.deepEqual(
     [...result.created].sort(),
-    [".gitignore", "BUGS.md", "PLANS.md", "README.md", "automaton.json"],
+    [".gitignore", "BUGS.md", "PLANS.md", "README.md", "tumwater.json"],
   );
   assert.ok(result.committed);
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");
   assert.equal(readInitialPrompt(repo), "Build a todo CLI.");
-  assert.match(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), /^\.automaton\/$/m);
+  assert.match(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), /^\.tumwater\/$/m);
   assert.ok(loadConfig(repo).roles.director?.enabled);
 });
 

@@ -50,7 +50,7 @@ _None yet._
 _None yet._
 `;
 
-/** Add the automaton state dir to .gitignore if it isn't ignored yet. */
+/** Add the tumwater state dir to .gitignore if it isn't ignored yet. */
 function ensureGitignore(root: string): boolean {
   const file = path.join(root, ".gitignore");
   const entry = `${STATE_DIR}/`;
@@ -65,14 +65,14 @@ export interface InitResult {
   committed: boolean;
 }
 
-/** Initialize a repo for automaton: README (with prompt + status), PLANS, BUGS,
- * automaton.json, .gitignore — then commit whatever was created. */
+/** Initialize a repo for tumwater: README (with prompt + status), PLANS, BUGS,
+ * tumwater.json, .gitignore — then commit whatever was created. */
 export async function initProject(root: string, initialPrompt: string): Promise<InitResult> {
   if (!(await isGitRepo(root))) {
     throw new Error(`${root} is not a git repository (run \`git init\` first)`);
   }
   if (!initialPrompt.trim()) {
-    throw new Error("an initial prompt is required: automaton init <prompt | --file prompt.md>");
+    throw new Error("an initial prompt is required: tumwater init <prompt | --file prompt.md>");
   }
 
   const created: string[] = [];
@@ -88,7 +88,7 @@ export async function initProject(root: string, initialPrompt: string): Promise<
   write("BUGS.md", BUGS_TEMPLATE);
   if (!fs.existsSync(configPath(root))) {
     saveConfig(root, defaultConfig());
-    created.push("automaton.json");
+    created.push("tumwater.json");
   }
   if (ensureGitignore(root)) created.push(".gitignore");
 
@@ -98,7 +98,7 @@ export async function initProject(root: string, initialPrompt: string): Promise<
     const staged = await gitTry(root, "diff", "--cached", "--quiet");
     if (staged === null) {
       // Non-zero exit = something is staged.
-      const message = (await hasCommits(root)) ? "automaton: init harness files" : "automaton: init";
+      const message = (await hasCommits(root)) ? "tumwater: init harness files" : "tumwater: init";
       await git(root, ...COMMIT_IDENT, "commit", "-m", message, "--", ...created);
       committed = true;
     }

@@ -48,7 +48,7 @@ test("commitAll stages everything and ffMergeToMain lands it while root is on ma
   const wt = await ensureWorktree(repo, "improve", "main");
   fs.writeFileSync(path.join(wt, "new.txt"), "hi\n");
   assert.ok(await isDirty(wt));
-  const commit = await commitAll(wt, "automaton(improve): add new.txt");
+  const commit = await commitAll(wt, "tumwater(improve): add new.txt");
   assert.ok(!(await isDirty(wt)));
   assert.equal(await aheadOfMain(wt, "main"), 1);
 
@@ -64,7 +64,7 @@ test("ffMergeToMain works via ref push when root is on another branch", async ()
   sh(repo, "git", "checkout", "-b", "scratch");
   const wt = await ensureWorktree(repo, "improve", "main");
   fs.writeFileSync(path.join(wt, "other.txt"), "x\n");
-  const commit = await commitAll(wt, "automaton(improve): add other.txt");
+  const commit = await commitAll(wt, "tumwater(improve): add other.txt");
   assert.ok(await ffMergeToMain(repo, "improve", "main"));
   assert.equal(await headOf(repo, "main"), commit);
 });

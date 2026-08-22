@@ -9,10 +9,10 @@ const BOLD = "\x1b[1m";
 const RESET = "\x1b[0m";
 
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
- * typed prompts into the inbox. Works alongside (not instead of) `automaton run`. */
+ * typed prompts into the inbox. Works alongside (not instead of) `tumwater run`. */
 export async function runTui(root: string): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error("automaton tui needs an interactive terminal");
+    throw new Error("tumwater tui needs an interactive terminal");
   }
 
   let input = "";

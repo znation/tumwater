@@ -10,27 +10,27 @@ import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
 import { startGui } from "./gui.js";
-import { eventsLogPath } from "./paths.js";
+import { eventsLogPath, migrateLegacyState } from "./paths.js";
 
-const HELP = `automaton — autonomous development harness built on pi
+const HELP = `tumwater — autonomous development harness built on pi
 
 Usage:
-  automaton init <prompt...>        Initialize this repo (or --file <prompt.md>)
-  automaton run                     Run all enabled loops (headless; Ctrl+C stops)
-  automaton tui                     Dashboard + prompt input (observes a running \`automaton run\`)
-  automaton gui [--port N]          Same dashboard in the browser (default port 7180)
-  automaton status                  One-shot status table
-  automaton logs [-f] [-n N]        Show (and follow) harness events
-  automaton prompt <text...>        Queue a prompt for the director loop
-  automaton help | version
+  tumwater init <prompt...>        Initialize this repo (or --file <prompt.md>)
+  tumwater run                     Run all enabled loops (headless; Ctrl+C stops)
+  tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
+  tumwater gui [--port N]          Same dashboard in the browser (default port 7180)
+  tumwater status                  One-shot status table
+  tumwater logs [-f] [-n N]        Show (and follow) harness events
+  tumwater prompt <text...>        Queue a prompt for the director loop
+  tumwater help | version
 
 The harness runs inside a git repo. Each role loop owns a persistent worktree and branch
-under .automaton/, does one task per tick with pi, commits, and merges to main. Loops back
+under .tumwater/, does one task per tick with pi, commits, and merges to main. Loops back
 off while the project is quiet and wake when main moves. Everything is local: no remotes.
 `;
 
 function fail(message: string): never {
-  process.stderr.write(`automaton: ${message}\n`);
+  process.stderr.write(`tumwater: ${message}\n`);
   process.exit(1);
 }
 
@@ -42,10 +42,10 @@ async function resolveMainBranch(root: string): Promise<string> {
 
 async function requireReadyRepo(root: string): Promise<void> {
   if (!(await isGitRepo(root))) fail("not a git repository (run `git init` first)");
-  if (!fs.existsSync(path.join(root, "automaton.json"))) {
-    fail("not initialized (run `automaton init <prompt>` first)");
+  if (!fs.existsSync(path.join(root, "tumwater.json"))) {
+    fail("not initialized (run `tumwater init <prompt>` first)");
   }
-  if (!(await hasCommits(root))) fail("the repo has no commits yet; `automaton init` creates the first one");
+  if (!(await hasCommits(root))) fail("the repo has no commits yet; `tumwater init` creates the first one");
 }
 
 async function cmdInit(root: string, args: string[]): Promise<void> {
@@ -64,7 +64,7 @@ async function cmdInit(root: string, args: string[]): Promise<void> {
     return;
   }
   process.stdout.write(`created ${result.created.join(", ")}${result.committed ? " (committed)" : ""}\n`);
-  process.stdout.write("next: `automaton run` in one terminal, `automaton tui` in another\n");
+  process.stdout.write("next: `tumwater run` in one terminal, `tumwater tui` in another\n");
 }
 
 async function cmdRun(root: string): Promise<void> {
@@ -83,9 +83,9 @@ async function cmdRun(root: string): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   const enabled = enabledRoleIds(config);
-  process.stdout.write(`automaton running on branch ${mainBranch} — Ctrl+C to stop\n`);
+  process.stdout.write(`tumwater running on branch ${mainBranch} — Ctrl+C to stop\n`);
   process.stdout.write(`loops: ${enabled.join(", ")}\n`);
-  process.stdout.write("watch: `automaton tui` or `automaton logs -f` in another terminal; events stream below\n\n");
+  process.stdout.write("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n\n");
   const unsubscribe = subscribeEvents((e) => process.stdout.write(formatEvent(e) + "\n"));
   try {
     await runOrchestrator({ root, config, mainBranch, signal: controller.signal });
@@ -129,6 +129,8 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   const root = process.cwd();
+  // A repo initialized under the project's old name migrates transparently.
+  migrateLegacyState(root);
   switch (command) {
     case "init":
       await cmdInit(root, args);
@@ -146,7 +148,7 @@ async function main(): Promise<void> {
       const port = portFlag >= 0 ? parseInt(args[portFlag + 1] ?? "", 10) : 7180;
       if (!Number.isFinite(port)) fail("--port needs a number");
       await startGui(root, port);
-      process.stdout.write(`automaton gui at http://127.0.0.1:${port} — Ctrl+C to stop\n`);
+      process.stdout.write(`tumwater gui at http://127.0.0.1:${port} — Ctrl+C to stop\n`);
       await new Promise(() => {}); // Serve until Ctrl+C.
       break;
     }
@@ -184,7 +186,7 @@ async function main(): Promise<void> {
       process.stdout.write(HELP);
       break;
     default:
-      fail(`unknown command: ${command} (try \`automaton help\`)`);
+      fail(`unknown command: ${command} (try \`tumwater help\`)`);
   }
 }
 

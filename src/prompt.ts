@@ -3,12 +3,12 @@ import path from "node:path";
 import type { Role } from "./roles.js";
 
 /** Sentinel a loop's pi run outputs when it found nothing worth doing. */
-export const NOTHING_TO_DO = "AUTOMATON_NOTHING_TO_DO";
+export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
 
-export const PROMPT_START = "<!-- automaton:prompt:start -->";
-export const PROMPT_END = "<!-- automaton:prompt:end -->";
-export const STATUS_START = "<!-- automaton:status:start -->";
-export const STATUS_END = "<!-- automaton:status:end -->";
+export const PROMPT_START = "<!-- tumwater:prompt:start -->";
+export const PROMPT_END = "<!-- tumwater:prompt:end -->";
+export const STATUS_START = "<!-- tumwater:status:start -->";
+export const STATUS_END = "<!-- tumwater:status:end -->";
 
 /** The project's initial prompt, extracted from README.md's managed section. */
 export function readInitialPrompt(root: string): string {
@@ -28,8 +28,8 @@ Rules for this run:
 - Leave the project working: if it has a build or test command, run it and fix what you broke.
 - Never create, amend, or revert git commits, branches, or merges — the harness handles all git
   operations. Reading git history is fine.
-- Never touch the .automaton directory or automaton.json.
-- Never edit the initial prompt block in README.md (between the automaton:prompt markers).
+- Never touch the .tumwater directory or tumwater.json.
+- Never edit the initial prompt block in README.md (between the tumwater:prompt markers).
 - If you find nothing worth doing for your role right now, make no changes and reply with the
   single line ${NOTHING_TO_DO} instead.
 - If you did make changes, end your reply with a line in exactly this form:
@@ -45,7 +45,7 @@ export interface TickPromptInput {
 export function buildTickPrompt(input: TickPromptInput): string {
   const { role, initialPrompt, extraInstructions } = input;
   const parts = [
-    `You are the "${role.id}" loop (${role.title}) of automaton, an autonomous development harness.`,
+    `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by the harness after you finish.`,
   ];
   if (initialPrompt) {
@@ -67,7 +67,7 @@ them up independently; if the parts are not truly independent, keep a single ent
 /** The prompt for a director tick, which routes a user request into the project. */
 export function buildDirectorPrompt(userPrompt: string, initialPrompt: string): string {
   const parts = [
-    `You are the "director" loop of automaton, an autonomous development harness. The user steers
+    `You are the "director" loop of tumwater, an autonomous development harness. The user steers
 the project by sending it requests; one has just arrived. Other specialist loops continuously
 implement planned features from PLANS.md and fix bugs from BUGS.md.`,
     `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by the harness after you finish.`,
@@ -98,7 +98,7 @@ work yourself:
 
 /** The prompt for resolving merge conflicts left in a loop's worktree. */
 export function buildConflictPrompt(roleId: string, files: string[]): string {
-  return `You are the "${roleId}" loop of automaton, an autonomous development harness. A git merge
+  return `You are the "${roleId}" loop of tumwater, an autonomous development harness. A git merge
 of main into your work branch stopped on conflicts; the conflict markers are sitting in the
 worktree now. Resolve them.
 
@@ -112,7 +112,7 @@ the two changes are genuinely alternatives. Keep the project building and its te
 Rules for this run:
 - Edit files only. Never run any git command that changes state (no add, commit, merge, reset,
   checkout) — the harness concludes the merge for you. Reading git state is fine.
-- Never touch the .automaton directory or automaton.json.
+- Never touch the .tumwater directory or tumwater.json.
 - When every marker is resolved and the project is consistent, just stop.`;
 }
 
