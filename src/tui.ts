@@ -19,13 +19,22 @@ export async function runTui(root: string): Promise<void> {
   let flash = "";
   let flashUntil = 0;
 
+  // Every rendered line is clipped to the terminal width, so one logical line is always
+  // one visual line and the height budget below is exact — nothing wraps, nothing scrolls
+  // the table off the top.
+  const clip = (line: string, width: number) =>
+    line.length <= width ? line : line.slice(0, Math.max(1, width - 1)) + "…";
+
   const render = () => {
     const rows = process.stdout.rows ?? 40;
+    const width = process.stdout.columns ?? 120;
     const snap = snapshot(root);
-    const status = renderStatus(root, snap);
+    const status = renderStatus(root, snap, width);
     const statusLines = status.split("\n").length;
     const eventBudget = Math.max(3, rows - statusLines - 6);
-    const events = readEvents(root, eventBudget).map(formatEvent).slice(-eventBudget);
+    const events = readEvents(root, eventBudget)
+      .map((e) => clip(formatEvent(e), width))
+      .slice(-eventBudget);
 
     const parts = [
       status,
@@ -34,9 +43,11 @@ export async function runTui(root: string): Promise<void> {
       events.length ? events.map((e) => `${DIM}${e}${RESET}`).join("\n") : `${DIM}(no events yet)${RESET}`,
       "",
     ];
-    if (flash && Date.now() < flashUntil) parts.push(`${BOLD}${flash}${RESET}`);
-    parts.push(`${DIM}type a prompt for the project, Enter to send · Ctrl+C to quit${RESET}`);
-    parts.push(`> ${input}`);
+    if (flash && Date.now() < flashUntil) parts.push(`${BOLD}${clip(flash, width)}${RESET}`);
+    parts.push(`${DIM}${clip("type a prompt for the project, Enter to send · Ctrl+C to quit", width)}${RESET}`);
+    // Show the tail of a long prompt so the cursor position stays visible.
+    const inputView = input.length > width - 3 ? "…" + input.slice(-(width - 4)) : input;
+    parts.push(`> ${inputView}`);
     process.stdout.write(CLEAR + parts.join("\n"));
   };
 

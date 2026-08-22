@@ -72,8 +72,23 @@ export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: str
   return "queued";
 }
 
-/** Render the status table shared by `automaton status` and the TUI. */
-export function renderStatus(root: string, snap: StatusSnapshot): string {
+/** Truncate to `width` with a trailing ellipsis when over. */
+function clip(text: string, width: number): string {
+  if (text.length <= width) return text;
+  return width <= 1 ? text.slice(0, width) : text.slice(0, width - 1) + "…";
+}
+
+/** Columns allowed to shrink when the table is wider than the terminal, widest offender
+ * first: `last result` (holds the tick summary), then `state` (live working detail). */
+const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
+  { index: 7, minWidth: 12 },
+  { index: 1, minWidth: 12 },
+];
+const COLUMN_GAP = 2;
+
+/** Render the status table shared by `automaton status` and the TUI. When `maxWidth` is
+ * given, wide cells are clipped so no line exceeds it (terminal rows never wrap). */
+export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
   const name = path.basename(path.resolve(root));
   const lines: string[] = [];
   const header = snap.running ? `running (pid ${snap.pid})` : "not running — start with `automaton run`";
@@ -90,10 +105,44 @@ export function renderStatus(root: string, snap: StatusSnapshot): string {
     ago(s.lastTickEndedAt),
     s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
   ]);
-  const widths = cols.map((c, i) => Math.max(c.length, ...rows.map((r) => (r[i] ?? "").length)));
-  const fmt = (r: string[]) => r.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join("  ");
+  const totalsRow = [
+    "total",
+    "",
+    "",
+    "",
+    tokens(snap.loops.reduce((sum, s) => sum + s.totalTokens, 0)),
+    `$${snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0).toFixed(2)}`,
+    "",
+    "",
+  ];
+  const allRows = [...rows, totalsRow];
+  const widths = cols.map((c, i) => Math.max(c.length, ...allRows.map((r) => (r[i] ?? "").length)));
+
+  if (maxWidth !== undefined) {
+    let overflow = widths.reduce((a, b) => a + b, 0) + COLUMN_GAP * (cols.length - 1) - maxWidth;
+    for (const { index, minWidth } of FLEXIBLE_COLUMNS) {
+      if (overflow <= 0) break;
+      const current = widths[index] ?? 0;
+      const reduction = Math.min(overflow, Math.max(0, current - minWidth));
+      widths[index] = current - reduction;
+      overflow -= reduction;
+    }
+  }
+
+  const fmt = (r: string[]) =>
+    r.map((cell, i) => clip(cell, widths[i] ?? 0).padEnd(widths[i] ?? 0)).join("  ").trimEnd();
+  const separator = widths.map((w) => "-".repeat(w)).join("  ");
   lines.push(fmt(cols));
-  lines.push(widths.map((w) => "-".repeat(w)).join("  "));
+  lines.push(separator);
   for (const r of rows) lines.push(fmt(r));
-  return lines.join("\n");
+  lines.push(separator);
+  lines.push(fmt(totalsRow));
+  // The header line (and any residual overflow past the columns' minimums) is clipped too,
+  // so no status line ever wraps in a terminal of `maxWidth` columns.
+  const finished = lines.join("\n");
+  if (maxWidth === undefined) return finished;
+  return finished
+    .split("\n")
+    .map((line) => clip(line, maxWidth))
+    .join("\n");
 }

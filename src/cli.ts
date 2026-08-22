@@ -152,7 +152,9 @@ async function main(): Promise<void> {
     }
     case "status":
       await requireReadyRepo(root);
-      process.stdout.write(renderStatus(root, snapshot(root)) + "\n");
+      process.stdout.write(
+        renderStatus(root, snapshot(root), process.stdout.isTTY ? process.stdout.columns : undefined) + "\n",
+      );
       break;
     case "logs":
       await requireReadyRepo(root);
