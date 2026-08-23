@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
+import { configForRole, defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import { tmpdir } from "./util.js";
 
@@ -45,4 +45,19 @@ test("saveConfig round-trips", () => {
   config.provider = "anthropic";
   saveConfig(dir, config);
   assert.deepEqual(loadConfig(dir), config);
+});
+
+test("configForRole applies role overrides over top-level pi settings", () => {
+  const config = defaultConfig();
+  config.provider = "top-provider";
+  config.model = "top-model";
+  config.roles.feature = { enabled: true, model: "strong-model", thinking: "high" };
+  const feature = configForRole(config, "feature");
+  assert.equal(feature.provider, "top-provider");
+  assert.equal(feature.model, "strong-model");
+  assert.equal(feature.thinking, "high");
+  const clean = configForRole(config, "clean");
+  assert.equal(clean.model, "top-model");
+  assert.equal(clean.thinking, undefined);
+  assert.deepEqual(configForRole(config, "nonexistent"), config);
 });
