@@ -40,11 +40,13 @@ feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). L
 their pi sessions across ticks and self-heal from context overflows; merge conflicts get one
 pi-driven resolution attempt; roles can override provider/model/thinking; `tumwater.json` is
 validated on load/save with actionable errors; logs rotate and old pi sessions are pruned; the
-TUI/status table is width-aware with a totals row. One open bug (BUGS.md): ticks in flight when
-the machine sleeps fail after wake with LM Studio's "predict stream timed out" error.
-Per-loop pi transcripts are observable with `tumwater logs --role <id>` (run separators,
-abbreviated thinking, assistant text, tool calls; `-f` follows live). In progress: one
-PLANS.md plan awaits the feature loop — absolute last-result timestamps in the GUI/TUI tables.
+TUI/status table is width-aware with a totals row; transient sleep/wake "predict stream timed
+out" failures are retried once without dropping healthy sessions. Per-loop pi transcripts are
+observable with `tumwater logs --role <id>` (run separators, abbreviated thinking, assistant
+text, tool calls; `-f` follows live). One open bug (BUGS.md): the director loses queued user
+prompts when its tick fails without landing work. In progress: two PLANS.md plans await the
+feature loop — surfacing per-role pi transcripts in the TUI/GUI, and absolute last-result
+timestamps in the GUI/TUI tables.
 <!-- tumwater:status:end -->
 
 ## How it works
