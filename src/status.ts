@@ -25,20 +25,24 @@ export function snapshot(root: string): StatusSnapshot {
   };
 }
 
+/** Compact whole-second duration: `45s`, `12m`, or `3h`. Shared by ago/inFuture so
+ * their s/m/h bucketing (thresholds and rounding) cannot drift. */
+function humanSeconds(s: number): string {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${Math.round(s / 3600)}h`;
+}
+
 function ago(ts: number | undefined): string {
   if (!ts) return "-";
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  return `${Math.round(s / 3600)}h ago`;
+  return `${humanSeconds(s)} ago`;
 }
 
 function inFuture(ts: number): string {
   const s = Math.round((ts - Date.now()) / 1000);
   if (s <= 0) return "now";
-  if (s < 60) return `in ${s}s`;
-  if (s < 3600) return `in ${Math.round(s / 60)}m`;
-  return `in ${Math.round(s / 3600)}h`;
+  return `in ${humanSeconds(s)}`;
 }
 
 function duration(ms: number): string {
