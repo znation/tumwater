@@ -398,6 +398,61 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
   }
 });
 
+test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {
+  const repo = await initializedRepo();
+  const counter = path.join(tmpdir(), "runs");
+  // pi's own retry machinery reports the idle-stream timeout in an event, then the same
+  // run recovers and finishes normally: the harness must not re-run a healthy result.
+  const restore = fakePi(
+    [
+      `echo run >> "${counter}"`,
+      `printf '%s\n' '${JSON.stringify({ type: "auto_retry_start", attempt: 1, errorMessage: "Engine protocol predict stream timed out after 600000ms without receiving data." })}'`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change", "the recovered run's verdict stands");
+    assert.ok(!runner.state.lastError);
+    // Exactly one pi invocation: no harness-level retry of an already-healthy run.
+    assert.equal(fs.readFileSync(counter, "utf8").trim().split("\n").length, 1);
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      !warnings.some((w) => /retrying the pi run once/.test(w)),
+      `no retry warning expected: ${JSON.stringify(warnings)}`,
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a transient timeout that also hits the harness timeout is not retried", async () => {
+  const repo = await initializedRepo();
+  const counter = path.join(tmpdir(), "runs");
+  // The machine sleeps long enough that pi reports the idle-stream timeout AND the
+  // harness's own tick timeout fires: retrying would just burn another full timeout.
+  const restore = fakePi(
+    [
+      `echo run >> "${counter}"`,
+      `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
+      `exec sleep 30`,
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.tickTimeoutSeconds = 1;
+    const runner = new LoopRunner(repo, "clean", config, "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.match(runner.state.lastError ?? "", /timed out/);
+    // Exactly one pi invocation: the harness timeout suppresses the transient retry.
+    assert.equal(fs.readFileSync(counter, "utf8").trim().split("\n").length, 1);
+  } finally {
+    restore();
+  }
+});
+
 test("a transient timeout on both attempts errors without dropping the healthy session (regression)", async () => {
   const repo = await initializedRepo();
   // Every pi run (tick + retry) hits the idle-stream timeout: the machine keeps sleeping.
