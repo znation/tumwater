@@ -5,24 +5,50 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Surface per-role pi transcripts in the TUI/GUI (planned 2026-08-23)
+### Surface per-role pi transcripts in the TUI/GUI (planned 2026-08-23, refined 2026-08-23)
 
 **Goal:** The `tumwater logs --role` transcript should also be visible from the dashboards —
-a per-loop detail pane in the TUI and/or an `/api/transcript?role=` endpoint rendered by the
-GUI. Follow-up to the now-done CLI transcript; completes "observable by gui/tui/log".
+a per-loop detail pane in the TUI and an `/api/transcript?role=` endpoint rendered by the GUI.
+Follow-up to the now-done CLI transcript; completes "observable by gui/tui/log".
 
 **Approach:** Build on `src/transcript.ts`: `readTranscript(root, role, limit)` already returns
 rendered lines for the last N entries (run separators, abbreviated thinking, assistant text,
-tool calls). The TUI can show them when a loop row is selected; the GUI can fetch
-`/api/transcript?role=<id>&n=N` alongside `/api/status`. Both dashboards poll every second, so
-re-reading per poll is fine at current log sizes (the file rotates at `logMaxBytes`); keep the
-entry limit modest (~50) and render read-only. No new state, scheduling, or git paths.
+tool calls). Neither dashboard has any per-loop selection today — every TUI keypress feeds the
+prompt input line and GUI rows are inert — so this plan adds one minimal interaction to each:
 
-**Files touched:** `src/tui.ts`, `src/gui-page.ts`; tests as warranted.
+- TUI (`src/tui.ts`): add a single toggle key, **Ctrl+T**, that cycles the "recent activity"
+  section through the roles shown in the status table (position 0 = today's events view; then
+  `snap.loops`' roles in order). In transcript mode render a header line (`transcript: <role> —
+  Ctrl+T to cycle`) plus dimmed transcript lines, taking the tail of
+  `readTranscript(root, role, N)` sliced so it fits the existing `eventBudget`. The pane occupies
+  exactly the same vertical slot as recent activity, so the height-budget math and the
+  one-logical-line-per-visual-line invariant (the fix behind two old TUI bugs) are untouched;
+  every line still goes through `clipToWidth`. No cursor/selection machinery; prompt input and
+  Ctrl+C behavior unchanged.
+- GUI (`src/gui.ts` + `src/gui-page.ts`): add a GET `/api/transcript?role=<id>&n=N` route next
+to `/api/status`: validate the id against `allRoleIds()` (unknown → 400 with a clear message),
+default n=50, respond `{ lines: readTranscript(root, role, n) }`. In the page, make each row's
+loop name a link that toggles a transcript panel below the table (one open at a time; clicking
+again or another row closes/switches it), rendered as preformatted text in the existing #feed
+style. The panel re-fetches on the same 1s poll while open, so it stays live like the rest of
+the page.
 
-**Acceptance criteria:** Selecting/opening a loop in the TUI or GUI shows its recent pi
-transcript with the same rendering as `tumwater logs --role <id>`; width-awareness preserved;
-`npm test` passes.
+Both dashboards poll every second, so re-reading per poll is fine at current log sizes (the file
+rotates at `logMaxBytes`); keep the entry limit modest and render read-only. No new state,
+scheduling, or git paths.
+
+**Files touched:** `src/tui.ts`, `src/gui.ts` (new route), `src/gui-page.ts`; extend
+`test/gui.test.ts` for the endpoint (valid role, unknown role → 400, no log yet). Transcript
+rendering itself is already covered by test/transcript.test.ts.
+
+**Acceptance criteria:**
+- GUI: clicking a loop's name shows its recent transcript below the table with the same lines as
+  `tumwater logs --role <id>`; unknown role → 400 error, no log yet → friendly empty state;
+  panel updates on the existing poll.
+- TUI: Ctrl+T cycles events → each enabled role's transcript and back; the header names the
+  current role; the table stays pinned at top with no wrapped lines (height-budget invariant
+  preserved); prompt input and Ctrl+C behavior unchanged.
+- `npm test` passes; no changes to scheduling/state/git paths.
 
 ### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21, refined 2026-08-23)
 
