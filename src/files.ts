@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** File-maintenance helpers shared by the event log, per-role pi logs (size-based
- * rotation), and pi session files (age-based pruning). */
+/** Shared file helpers: size-based rotation for append-only logs, age-based pruning of
+ * pi session files, and complete-line tail reading for incrementally consumed JSONL logs. */
 
 /** Keep an append-only log bounded: over `maxBytes` it is renamed to `<file>.1`
  * (replacing any previous rotation) and a fresh file starts. Returns true if rotated. */
@@ -34,4 +34,30 @@ export function pruneOldFiles(dir: string, days: number): number {
     }
   }
   return pruned;
+}
+
+/** Read [offset, size) and split into complete lines. `end` is the offset just past the
+ * last newline: a trailing partial line (torn write in flight) is NOT consumed, so it is
+ * re-read next poll once its writer has written the newline instead of being parsed torn
+ * or lost. Shared by progress.ts's incremental pi-log tail reader and the CLI's `logs -f`
+ * follow loop. */
+export function readCompleteLines(file: string, offset: number, size: number): { lines: string[]; end: number } {
+  const len = size - offset;
+  if (len <= 0) return { lines: [], end: offset };
+  const fd = fs.openSync(file, "r");
+  try {
+    const buf = Buffer.alloc(len);
+    const got = fs.readSync(fd, buf, 0, len, offset);
+    if (got <= 0) return { lines: [], end: offset }; // Shrank under us; caller reseeds next poll.
+    let complete = got;
+    if (buf[got - 1] !== 10) {
+      const lastNl = buf.lastIndexOf(10, got - 1);
+      if (lastNl < 0) return { lines: [], end: offset }; // No newline yet; wait for the rest.
+      complete = lastNl + 1;
+    }
+    const text = buf.toString("utf8", 0, complete);
+    return { lines: text.split("\n"), end: offset + complete };
+  } finally {
+    fs.closeSync(fd);
+  }
 }

@@ -39,22 +39,31 @@ Implementation:
 - New module `src/transcript.ts`. Expose `readTranscript(root, role, limit): string[]`
   (rendered lines for the last `limit` *entries*, oldest first; an entry is one run separator or
   one assistant turn's line block) plus a pure formatter over raw JSONL lines so tests need no
-  files. Read the whole current file — it rotates at `logMaxBytes` (default 16MB), trivial to
-  parse for a one-shot CLI command; do not inherit progress.ts's 4MB hot-path tail cap, but
-  extract its private `tailLines` into a shared helper with a size parameter so both call sites
-  reuse one reader. Handle a missing file gracefully (return []).
+  files. Handle a missing file gracefully (return []).
+- Reading: reuse files.ts's shared helper `readCompleteLines(file, offset, size)` (already
+  exported; used by progress.ts's incremental tail and the CLI's `logs -f`); it returns only
+  complete lines and leaves a torn trailing partial line unconsumed. One-shot
+  mode reads the whole current file in one call (offset 0 → size): the log rotates at
+  `logMaxBytes` (default 16MB), trivial to parse for a CLI command. Do NOT use progress.ts's
+  incremental `tails` cache or its 4MB seed window — those exist for per-second TUI/GUI polling,
+  and a short-lived CLI process just reads fresh.
+- `-f` mode: copy cmdLogs' current follow pattern as-is — watchFile at the same 500ms cadence,
+  `readCompleteLines(file, offset, size)` per poll, and advance the offset only to its returned
+  `end` (the last complete newline), so a line straddling a poll boundary is re-read next poll
+  instead of being lost. Render only when a complete renderable line (`agent_start`, assistant
+  `message_end`, `auto_retry_start`) arrives, so each turn prints exactly once.
 - CLI (`src/cli.ts`): extend the existing `logs` command with a `--role <id>` flag.
   `tumwater logs --role feature [-n N]` prints that loop's transcript (last N entries, default
-  ~50). Support `-f` to follow the live log using the same byte-offset/watchFile logic as
-  today's `logs -f`, but buffer partial trailing bytes and render only when a complete
-  renderable line (`agent_start`, assistant `message_end`, `auto_retry_start`) arrives, so each
-  turn prints exactly once. Validate the id against `allRoleIds()`; unknown id → clear error +
-  non-zero exit, role with no log yet → friendly "no transcript yet for <role>".
+  ~50); parse `-n` via cmdLogs' existing private helper `parseCountFlag` (same file) so invalid
+  values get the same clear error as today's `logs -n`. Validate the id against `allRoleIds()`;
+  unknown id → clear error + non-zero exit, role with no log yet → friendly "no transcript yet
+  for <role>".
 - Read-only: never touches scheduling, loop state, or git. When `--role` is absent, existing
   harness-event behavior is unchanged.
 
-**Files touched:** `src/transcript.ts` (new), `src/cli.ts`, `test/transcript.test.ts` (new);
-possibly `src/progress.ts` only to export/share the tail reader (prefer reuse over duplicating).
+**Files touched:** `src/transcript.ts` (new), `src/cli.ts`, and `test/transcript.test.ts`
+(new). No changes needed in progress.ts or files.ts — `readCompleteLines` is already
+exported from files.ts; its incremental cache stays private to the hot path.
 
 **Acceptance criteria:**
 - `tumwater logs --role <id>` prints that loop's recent pi activity as readable lines — run
@@ -64,8 +73,9 @@ possibly `src/progress.ts` only to export/share the tail reader (prefer reuse ov
   skipped without failing.
 - Unknown role id → clear error and non-zero exit; a role with no log yet → friendly message,
   no crash.
-- `-f` appends new entries as they arrive (same offset logic as `logs -f`), rendering each
-  assistant turn exactly once when its `message_end` lands.
+- `-f` appends new entries as they arrive (byte-offset watchFile like `logs -f`, but the offset
+  advances only past complete lines), rendering each assistant turn exactly once when its
+  `message_end` lands.
 - Existing `tumwater logs` output is byte-for-byte unchanged when `--role` is absent.
 - `npm test` passes; no changes to scheduling/state/git paths.
 
@@ -73,7 +83,7 @@ possibly `src/progress.ts` only to export/share the tail reader (prefer reuse ov
 `/api/transcript?role=` endpoint) builds on this formatter but is deliberately out of scope here
 so this stays one focused, shippable change; record it as its own PLANS.md entry once this lands.
 
-### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21)
+### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21, refined 2026-08-23)
 
 **Goal:** Both live tables — the TUI/one-shot status table and the web GUI loop table — show
 when a loop's last result happened as an absolute wall-clock time, not only relative "3m ago".
@@ -87,16 +97,21 @@ e.g. `14:32:05 · 3m ago` (absolute local time first, relative after). Format as
   prefix with `MM-DD` when older than a day so multi-day runs stay unambiguous; keep `-` for loops
   that never ticked. If instead you add a dedicated column, note the `FLEXIBLE_COLUMNS` indices in
   `renderStatus` are positional (7 = last result, 1 = state) and must be renumbered.
-- GUI (`src/gui.ts`): add a `last tick` column to the HTML table header and render it client-side
-  from `l.lastTickEndedAt` (e.g. `new Date(ts).toLocaleTimeString()`), `-` when null. The payload
-  already carries the value; only the `<thead>` row and the row-building JS change.
+- GUI (`src/gui-page.ts` — the dashboard HTML template was extracted from `gui.ts` into the
+  `GUI_PAGE` constant, so all UI edits go there; `gui.ts` only serves it and needs no change):
+  add a `last tick` column to the `<thead>` row, inserted between `cost` and `last result` to
+  match the TUI's column order, and render it client-side in `refresh()`'s row builder from
+  `l.lastTickEndedAt`, `-` when null. Format with local `HH:MM:SS`, prefixed with `MM-DD` when
+  older than a day — mirroring the TUI rule so the "older than a day includes the date" criterion
+  holds in both tables, not just the TUI (a bare `toLocaleTimeString()` would miss it). The
+  payload already carries the value; only the `<thead>` row and the row-building JS change.
 - Keep the TUI width-awareness contract: no rendered line may exceed `maxWidth`; the wider cell is
   fine because `last tick` is not in `FLEXIBLE_COLUMNS`, but verify a narrow terminal (e.g. 80 cols)
   still clips cleanly — if the combined cell makes overflow worse, consider making it shrinkable.
 
-**Files touched:** `src/status.ts`, `src/gui.ts`, `test/status-render.test.ts` (extend for the new
-cell format; add a narrow-width case), optionally a small test for the GUI payload/HTML column if
-one exists or is cheap to add.
+**Files touched:** `src/status.ts`, `src/gui-page.ts`, `test/status-render.test.ts` (extend for
+the new cell format; add a narrow-width case), and optionally extend `test/gui.test.ts` to assert
+the served page contains the new column header.
 
 **Acceptance criteria:**
 - TUI and one-shot status show an absolute local timestamp of the last tick end alongside the

@@ -1,11 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Semaphore, fairOrder, isEligible } from "../src/orchestrator.js";
+import fs from "node:fs";
+import path from "node:path";
+import {
+  Semaphore,
+  fairOrder,
+  isEligible,
+  orchestratorAlive,
+  readOrchestratorInfo,
+  runOrchestrator,
+} from "../src/orchestrator.js";
 import { ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
-import { defaultConfig } from "../src/config.js";
-import { nextBackoffSeconds } from "../src/state.js";
-import { makeRepo } from "./util.js";
+import { defaultConfig, loadConfig } from "../src/config.js";
+import { initProject } from "../src/init.js";
+import { readEvents } from "../src/events.js";
+import { loadLoopState, nextBackoffSeconds } from "../src/state.js";
+import { orchestratorStatePath } from "../src/paths.js";
+import { assistantLine, fakePi, makeRepo, tmpdir } from "./util.js";
 
 function runner(role: string): LoopRunner {
   return new LoopRunner(makeRepo(), role, defaultConfig(), "main");
@@ -121,4 +133,83 @@ test("backoff grows by the factor and caps at max", () => {
     seen.push(backoff);
   }
   assert.deepEqual(seen, [10, 30, 50, 50]);
+});
+
+// --- Orchestrator lifecycle (info file, alive check, run/shutdown) ---
+
+test("readOrchestratorInfo and orchestratorAlive handle missing, valid, dead-pid, and corrupt state", () => {
+  const dir = tmpdir();
+  assert.equal(readOrchestratorInfo(dir), null);
+  assert.equal(orchestratorAlive(dir), false);
+
+  const file = orchestratorStatePath(dir);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Our own pid is alive; a huge one is not.
+  for (const [pid, alive] of [
+    [process.pid, true],
+    [999_999_999, false],
+  ] as const) {
+    fs.writeFileSync(file, JSON.stringify({ pid, startedAt: Date.now(), roles: ["clean"] }));
+    assert.equal(readOrchestratorInfo(dir)?.pid, pid);
+    assert.equal(orchestratorAlive(dir), alive);
+  }
+
+  // A torn write must not crash observers (TUI/GUI poll this every second).
+  fs.writeFileSync(file, "{ not json");
+  assert.equal(readOrchestratorInfo(dir), null);
+  assert.equal(orchestratorAlive(dir), false);
+});
+
+test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "orchestrator lifecycle test");
+  const config = loadConfig(repo);
+  for (const id of Object.keys(config.roles)) {
+    if (!["clean", "dry"].includes(id)) config.roles[id]!.enabled = false;
+  }
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const controller = new AbortController();
+  try {
+    const done = runOrchestrator({ root: repo, config, mainBranch: "main", signal: controller.signal });
+    // The info file is written before the first poll; wait for it.
+    const deadline = Date.now() + 5000;
+    while (!readOrchestratorInfo(repo) && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 25));
+    const info = readOrchestratorInfo(repo);
+    assert.ok(info, "orchestrator state file exists while running");
+    assert.equal(info.pid, process.pid);
+    assert.deepEqual([...info.roles].sort(), ["clean", "dry"]);
+    assert.ok(orchestratorAlive(repo), "a live orchestrator reports alive");
+
+    setTimeout(() => controller.abort(), 1200);
+    await done;
+
+    // Shutdown removed the state file and logged both lifecycle events.
+    assert.equal(readOrchestratorInfo(repo), null, "state file removed on shutdown");
+    const types = readEvents(repo).map((e) => e.type);
+    assert.ok(types.includes("orchestrator_start"));
+    assert.ok(types.includes("orchestrator_stop"));
+    // Both enabled roles got their startup tick.
+    for (const role of ["clean", "dry"])
+      assert.ok(loadLoopState(repo, role).ticks >= 1, `${role} should have ticked`);
+  } finally {
+    restore();
+    controller.abort();
+  }
+});
+
+test("runOrchestrator refuses to start with no roles enabled", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "no roles test");
+  const config = loadConfig(repo);
+  for (const id of Object.keys(config.roles)) config.roles[id]!.enabled = false;
+  const controller = new AbortController();
+  try {
+    await assert.rejects(
+      runOrchestrator({ root: repo, config, mainBranch: "main", signal: controller.signal }),
+      /no roles enabled/,
+    );
+  } finally {
+    controller.abort();
+  }
 });

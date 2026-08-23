@@ -38,9 +38,11 @@ v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `promp
 implemented with ten roles plus the director loop (absolute scheduling priority; routes
 feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Loops persist
 their pi sessions across ticks and self-heal from context overflows; merge conflicts get one
-pi-driven resolution attempt; roles can override provider/model/thinking; logs rotate and old
-pi sessions are pruned; the TUI/status table is width-aware with a totals row. No open bugs.
-In progress: two PLANS.md plans await the feature loop — per-role pi transcripts via
+pi-driven resolution attempt; roles can override provider/model/thinking; `tumwater.json` is
+validated on load/save with actionable errors; logs rotate and old pi sessions are pruned; the
+TUI/status table is width-aware with a totals row. One open bug (BUGS.md): ticks in flight when
+the machine sleeps fail after wake with LM Studio's "predict stream timed out" error. In
+progress: two PLANS.md plans await the feature loop — per-role pi transcripts via
 `tumwater logs --role`, and absolute last-result timestamps in the GUI/TUI tables.
 <!-- tumwater:status:end -->
 

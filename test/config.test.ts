@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { configForRole, defaultConfig, loadConfig, saveConfig } from "../src/config.js";
+import { configForRole, defaultConfig, loadConfig, saveConfig, validateConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import { tmpdir } from "./util.js";
 
@@ -60,4 +60,80 @@ test("configForRole applies role overrides over top-level pi settings", () => {
   assert.equal(clean.model, "top-model");
   assert.equal(clean.thinking, undefined);
   assert.deepEqual(configForRole(config, "nonexistent"), config);
+});
+
+function validationError(raw: unknown): string {
+  try {
+    validateConfig(raw);
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  throw new Error("validateConfig did not throw");
+}
+
+test("validateConfig accepts defaults and fully valid overrides", () => {
+  assert.doesNotThrow(() => validateConfig(defaultConfig()));
+  assert.doesNotThrow(() =>
+    validateConfig({
+      provider: "lmstudio",
+      model: "qwen",
+      thinking: "high",
+      piArgs: ["--foo"],
+      maxConcurrent: 2,
+      minTickIntervalSeconds: 0,
+      tickTimeoutSeconds: 60,
+      logMaxBytes: 1024,
+      sessionRetentionDays: 3,
+      idleBackoff: { initialSeconds: 5, factor: 1.5, maxSeconds: 60 },
+      roles: { feature: { enabled: false, model: "big", instructions: "be careful" } },
+    }),
+  );
+});
+
+test("validateConfig reports every invalid value in one error", () => {
+  const msg = validationError({
+    maxConcurrent: -3,
+    tickTimeoutSeconds: "90m",
+    logMaxBytes: 0,
+    piArgs: "--verbose",
+    idleBackoff: { factor: 0 },
+    roles: { clean: { enabled: "false" } },
+  });
+  assert.match(msg, /^invalid tumwater\.json:/);
+  for (const field of [
+    "maxConcurrent must be an integer of at least 1 (got -3)",
+    'tickTimeoutSeconds must be a number greater than 0 (got "90m")',
+    "logMaxBytes must be a number greater than 0 (got 0)",
+    'piArgs must be an array of strings (got "--verbose")',
+    "idleBackoff.factor must be a number of at least 1 (got 0)",
+    'roles.clean.enabled must be true or false (got "false")',
+  ]) {
+    assert.ok(msg.includes(field), `error message should mention: ${field}`);
+  }
+});
+
+test("validateConfig rejects non-object top levels and bad containers", () => {
+  for (const raw of [null, 42, "hi", [1]]) {
+    assert.match(validationError(raw), /tumwater\.json must be a JSON object/);
+  }
+  assert.match(validationError({ roles: "oops" }), /roles must be an object mapping role ids to settings/);
+  assert.match(validationError({ idleBackoff: 5 }), /idleBackoff must be an object/);
+  assert.match(validationError({ roles: { clean: "nope" } }), /roles\.clean must be an object/);
+});
+
+test("loadConfig rejects malformed JSON and invalid values with actionable messages", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
+  assert.throws(() => loadConfig(dir), /tumwater\.json is not valid JSON/);
+
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ maxConcurrent: 0 }));
+  assert.throws(() => loadConfig(dir), /maxConcurrent must be an integer of at least 1 \(got 0\)/);
+});
+
+test("saveConfig refuses to persist invalid configs", () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.maxConcurrent = -1;
+  assert.throws(() => saveConfig(dir, config), /maxConcurrent must be an integer of at least 1/);
+  assert.ok(!fs.existsSync(path.join(dir, "tumwater.json")), "nothing written on invalid config");
 });

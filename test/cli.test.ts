@@ -120,3 +120,41 @@ test("prompt queues for the director and logs an event; empty text fails", async
   assert.equal(r.code, 0);
   assert.match(r.stdout, /user prompt queued: add dark mode/);
 });
+
+test("logs -n validates its value instead of misbehaving", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs validation");
+
+  // Unvalidated, these made readEvents' slice(-limit) dump the whole log (NaN/0)
+  // or drop leading lines (negative).
+  for (const bad of ["abc", "0", "-5", "2.5"]) {
+    const r = await cli(repo, "logs", "-n", bad);
+    assert.equal(r.code, 1, `-n ${bad} should fail`);
+    assert.match(r.stderr, /-n needs a positive integer/);
+  }
+
+  // A bare -n used to silently fall back to the default of 50.
+  const noValue = await cli(repo, "logs", "-n");
+  assert.equal(noValue.code, 1);
+  assert.match(noValue.stderr, /-n needs a value/);
+
+  // A valid -n still works.
+  const ok = await cli(repo, "logs", "-n", "3");
+  assert.equal(ok.code, 0);
+});
+
+test("gui --port validates its range instead of listening on an unexpected port", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli gui validation");
+
+  // Port 0 would listen on an ephemeral port while printing http://127.0.0.1:0.
+  for (const bad of ["0", "-1", "99999", "abc"]) {
+    const r = await cli(repo, "gui", "--port", bad);
+    assert.equal(r.code, 1, `--port ${bad} should fail`);
+    assert.match(r.stderr, /--port must be an integer between 1 and 65535/);
+  }
+
+  const noValue = await cli(repo, "gui", "--port");
+  assert.equal(noValue.code, 1);
+  assert.match(noValue.stderr, /--port needs a value/);
+});

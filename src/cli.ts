@@ -7,6 +7,7 @@ import { initProject } from "./init.js";
 import { submitPrompt } from "./inbox.js";
 import { formatEvent, readEvents, subscribeEvents } from "./events.js";
 import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
+import { readCompleteLines } from "./files.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
 import { startGui } from "./gui.js";
@@ -32,6 +33,27 @@ off while the project is quiet and wake when main moves. Everything is local: no
 function fail(message: string): never {
   process.stderr.write(`tumwater: ${message}\n`);
   process.exit(1);
+}
+
+/** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
+ * Unvalidated, NaN/0/negative limits make readEvents' `slice(-limit)` dump the whole log
+ * (or drop leading lines) instead of showing the requested tail. */
+function parseCountFlag(flag: string, raw: string | undefined): number {
+  if (raw === undefined) fail(`${flag} needs a value`);
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) fail(`${flag} needs a positive integer (got ${JSON.stringify(raw)})`);
+  return n;
+}
+
+/** Parse the `--port` flag value: an integer in 1..65535, or fail with a clear message.
+ * Port 0 would make Node pick an ephemeral port while the CLI prints :0 — a URL that
+ * cannot be opened; out-of-range values only fail later via Node's raw RangeError. */
+function parsePortFlag(raw: string | undefined): number {
+  if (raw === undefined) fail("--port needs a value");
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 65535)
+    fail(`--port must be an integer between 1 and 65535 (got ${JSON.stringify(raw)})`);
+  return n;
 }
 
 async function resolveMainBranch(root: string): Promise<string> {
@@ -97,7 +119,7 @@ async function cmdRun(root: string): Promise<void> {
 async function cmdLogs(root: string, args: string[]): Promise<void> {
   const follow = args.includes("-f") || args.includes("--follow");
   const nFlag = args.indexOf("-n");
-  const limit = nFlag >= 0 ? parseInt(args[nFlag + 1] ?? "50", 10) : 50;
+  const limit = nFlag >= 0 ? parseCountFlag("-n", args[nFlag + 1]) : 50;
   for (const e of readEvents(root, limit)) process.stdout.write(formatEvent(e) + "\n");
   if (!follow) return;
   const file = eventsLogPath(root);
@@ -107,21 +129,19 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   fs.watchFile(file, { interval: 500 }, () => {
     const size = fs.statSync(file).size;
     if (size <= offset) {
-      offset = size;
+      offset = size; // Rotated or truncated.
       return;
     }
-    const fd = fs.openSync(file, "r");
-    const buf = Buffer.alloc(size - offset);
-    fs.readSync(fd, buf, 0, buf.length, offset);
-    fs.closeSync(fd);
-    offset = size;
-    for (const line of buf.toString("utf8").split("\n").filter(Boolean)) {
+    // Advance only past complete lines so an event straddling a poll boundary is not lost.
+    const { lines, end } = readCompleteLines(file, offset, size);
+    for (const line of lines.filter(Boolean)) {
       try {
         process.stdout.write(formatEvent(JSON.parse(line)) + "\n");
       } catch {
-        // Torn write; the next change event re-reads from the new offset.
+        // Non-JSON noise; skip.
       }
     }
+    offset = end;
   });
   await new Promise(() => {}); // Follow until Ctrl+C.
 }
@@ -143,8 +163,7 @@ async function main(): Promise<void> {
     case "gui": {
       await requireReadyRepo(root);
       const portFlag = args.indexOf("--port");
-      const port = portFlag >= 0 ? parseInt(args[portFlag + 1] ?? "", 10) : 7180;
-      if (!Number.isFinite(port)) fail("--port needs a number");
+      const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
       await startGui(root, port);
       process.stdout.write(`tumwater gui at http://127.0.0.1:${port} — Ctrl+C to stop\n`);
       await new Promise(() => {}); // Serve until Ctrl+C.
