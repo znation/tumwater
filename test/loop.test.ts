@@ -257,6 +257,91 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
   }
 });
 
+test("leftover commits from a failed merge are recovered on the next tick", async () => {
+  const repo = await initializedRepo();
+  const m1 = path.join(tmpdir(), "phase1");
+  const m2 = path.join(tmpdir(), "phase2");
+  // Phase 1 (tick 1): edit seed.txt on the branch AND advance main with a conflicting
+  // edit. Phase 2 (tick 1's resolution run): leave the markers — the merge fails and the
+  // tick's commit is left stranded on the branch. Phase 3 (tick 2's recovery run):
+  // resolve them this time. Phase 4 (tick 2's own tick): nothing to do.
+  const restore = fakePi(
+    [
+      `if [ ! -f "${m1}" ]; then`,
+      `  touch "${m1}"`,
+      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
+      `  echo branch change > seed.txt`,
+      `  echo main change > "${repo}/seed.txt"`,
+      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      `elif [ ! -f "${m2}" ]; then`,
+      `  touch "${m2}"`, // Unresolvable on the first attempt.
+      `else`,
+      `  if grep -q '<<<<<<<' seed.txt 2>/dev/null; then echo resolved > seed.txt`,
+      `  else printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; fi`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "merge_conflict");
+    // The tick's commit is stranded on the branch: that is what recovery must salvage.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
+
+    const second = await runner.tick();
+    assert.equal(second.result, "no_change", "tick 2 itself found nothing to do");
+    // The stranded work landed on main via recovery.
+    assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
+    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    assert.ok(
+      merged.some((e) => String(e.summary) === "recovered leftover work from improve"),
+      "recovery is recorded as a merge of the leftover work",
+    );
+    // The branch is reset to main afterwards, so nothing is stranded twice.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+  } finally {
+    restore();
+  }
+});
+
+test("unmergeable leftover commits are discarded with a warning on the next tick", async () => {
+  const repo = await initializedRepo();
+  const m1 = path.join(tmpdir(), "phase1");
+  // Phase 1 (tick 1): branch edit + conflicting main advance. Every conflict-resolution
+  // run (detected by markers in seed.txt) leaves the markers: unresolvable, both ticks.
+  const restore = fakePi(
+    [
+      `if [ ! -f "${m1}" ]; then`,
+      `  touch "${m1}"`,
+      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
+      `  echo branch change > seed.txt`,
+      `  echo main change > "${repo}/seed.txt"`,
+      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      `elif grep -q '<<<<<<<' seed.txt 2>/dev/null; then`,
+      `  : # leave the markers in place (unresolvable)`,
+      `else`,
+      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "merge_conflict");
+    assert.equal((await runner.tick()).result, "no_change");
+
+    // Recovery gave up: the discard is warned about and main keeps its version.
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.some((w) => /discarding 1 unmergeable leftover commit\(s\) \(merge_conflict\)/.test(w)),
+      `expected a discard warning, got: ${JSON.stringify(warnings)}`,
+    );
+    assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n");
+    // The stranded commit is gone (reset to main), so it cannot resurface on tick 3.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+  } finally {
+    restore();
+  }
+});
+
 test("concurrent-main-advance still merges (merge commit path)", async () => {
   const repo = await initializedRepo();
   // The fake pi advances main itself mid-tick, simulating another loop landing work.
