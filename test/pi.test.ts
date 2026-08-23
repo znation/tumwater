@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { PiStreamParser, piArgs } from "../src/pi.js";
-import { defaultConfig } from "../src/config.js";
-import { assistantLine } from "./util.js";
+import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
+import { assistantLine, tmpdir } from "./util.js";
 
 test("parser keeps the last non-empty assistant text and sums usage", () => {
   const parser = new PiStreamParser();
@@ -82,4 +84,19 @@ test("piArgs omits unset options", () => {
   assert.ok(!args.includes("--provider"));
   assert.ok(!args.includes("--model"));
   assert.ok(!args.includes("--thinking"));
+});
+
+test("role overrides flow through to the pi argv and round-trip via config files", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "tumwater.json"),
+    JSON.stringify({ model: "cheap", roles: { bugfix: { enabled: true, model: "expensive", provider: "anthropic" } } }),
+  );
+  const config = loadConfig(dir);
+  const args = piArgs({ config: configForRole(config, "bugfix"), sessionDir: "/tmp/s", sessionName: "n" });
+  assert.ok(args.includes("expensive"));
+  assert.ok(args.includes("anthropic"));
+  const cheap = piArgs({ config: configForRole(config, "clean"), sessionDir: "/tmp/s", sessionName: "n" });
+  assert.ok(cheap.includes("cheap"));
+  assert.ok(!cheap.includes("anthropic"));
 });
