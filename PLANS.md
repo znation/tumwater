@@ -5,7 +5,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Per-role pi transcript via `tumwater logs --role` (planned 2026-08-21)
+### Per-role pi transcript via `tumwater logs --role` (planned 2026-08-21, refined 2026-08-23)
 
 **Goal:** Let a user see what a specific loop's pi actually did — its transcript of tool
 calls and assistant messages — with `tumwater logs --role <id>`. Today only harness events
@@ -14,17 +14,41 @@ pi JSONL at `.tumwater/log/<role>.pi.jsonl` and no command reads it. The initial
 loops must be "observable by gui/tui/log" — this closes the per-loop-work half of that.
 
 **Approach:**
-- New module `src/transcript.ts`. It tail-reads a role's pi JSONL (reuse/extract the
-  tail-bytes reader from `progress.ts`, which currently keeps its `tailLines` private), parses
-  each JSON line, and renders readable lines: session boundaries as separators, tool calls via
-  the already-exported `describeToolCall` (e.g. `→ bash npm test`, `→ read loop.ts`), assistant
-  text as an indented snippet truncated per line with a cap, and thinking blocks abbreviated.
-  Skip non-JSON/noise lines; handle a missing file gracefully. Expose something like
-  `readTranscript(root, role, limit): string[]` (newest last) for tests.
+The raw log is pi's *streaming* event stream: ~95% of its lines are `message_update` deltas
+(`thinking_delta`, `text_delta`, `toolcall_delta`) that must never be rendered. Render only
+from complete events (shapes verified against real logs in `.tumwater/log/`):
+
+- `agent_start` — bare `{type:"agent_start"}`, one per pi run, including resumed runs (unlike
+  `session`, which fires only for fresh sessions) → separator line between runs. It carries no
+timestamp; if a time is wanted, stamp it from the epoch-ms `timestamp` of the first user
+  message in that run.
+- `message_end` with `message.role === "assistant"` — exactly one per completed assistant turn
+  (the same invariant `progress.ts` already uses to count turns); its `content[]` holds the full
+  blocks, so no delta reconstruction is needed. Per block: `{type:"thinking", thinking}` → one
+  abbreviated line (~80 chars, e.g. `· there's a merge conflict…` — note the field is
+  `thinking`, not `text`); `{type:"text", text}` → indented lines truncated to ~120 cols,
+  capped at 4 lines per message then `…`; `{type:"toolCall", name, arguments}` →
+  `→ read PLANS.md` via the already-exported `describeToolCall(name, arguments)`.
+- `auto_retry_start` — `{attempt, maxAttempts, errorMessage}` → warning line (e.g.
+  `⚠ retry 1/3: terminated`) so failed attempts are visible in the transcript.
+- Everything else is skipped: all `message_update` deltas, `tool_execution_*`, `turn_*`,
+  `agent_end`/`agent_settled`, and user messages — in particular never dump the multi-KB tick
+  prompt that arrives as a user message each run.
+
+Implementation:
+- New module `src/transcript.ts`. Expose `readTranscript(root, role, limit): string[]`
+  (rendered lines for the last `limit` *entries*, oldest first; an entry is one run separator or
+  one assistant turn's line block) plus a pure formatter over raw JSONL lines so tests need no
+  files. Read the whole current file — it rotates at `logMaxBytes` (default 16MB), trivial to
+  parse for a one-shot CLI command; do not inherit progress.ts's 4MB hot-path tail cap, but
+  extract its private `tailLines` into a shared helper with a size parameter so both call sites
+  reuse one reader. Handle a missing file gracefully (return []).
 - CLI (`src/cli.ts`): extend the existing `logs` command with a `--role <id>` flag.
-  `tumwater logs --role feature [-n N]` prints that loop's transcript (last N entries,
-  default ~50). Support `-f` to follow the live log using the same offset/watchFile logic as
-  today's `logs -f`. Validate the id against `allRoleIds()`; unknown id → clear error +
+  `tumwater logs --role feature [-n N]` prints that loop's transcript (last N entries, default
+  ~50). Support `-f` to follow the live log using the same byte-offset/watchFile logic as
+  today's `logs -f`, but buffer partial trailing bytes and render only when a complete
+  renderable line (`agent_start`, assistant `message_end`, `auto_retry_start`) arrives, so each
+  turn prints exactly once. Validate the id against `allRoleIds()`; unknown id → clear error +
   non-zero exit, role with no log yet → friendly "no transcript yet for <role>".
 - Read-only: never touches scheduling, loop state, or git. When `--role` is absent, existing
   harness-event behavior is unchanged.
@@ -33,18 +57,21 @@ loops must be "observable by gui/tui/log" — this closes the per-loop-work half
 possibly `src/progress.ts` only to export/share the tail reader (prefer reuse over duplicating).
 
 **Acceptance criteria:**
-- `tumwater logs --role <id>` prints that loop's recent pi activity as readable lines (tool
-calls + assistant text), newest last, honoring `-n N`; tool labels match `describeToolCall`.
+- `tumwater logs --role <id>` prints that loop's recent pi activity as readable lines — run
+  separators, one-line abbreviated thinking, indented assistant text, tool calls labeled via
+  `describeToolCall` — oldest first within the window, honoring `-n N`.
+- No streaming-delta or user-prompt content ever appears in output; non-JSON/torn lines are
+  skipped without failing.
 - Unknown role id → clear error and non-zero exit; a role with no log yet → friendly message,
-  no crash. Non-JSON/noise lines are skipped without failing.
-- `-f` follows the live log, appending new entries as they arrive (same offset logic as
-  `logs -f`).
+  no crash.
+- `-f` appends new entries as they arrive (same offset logic as `logs -f`), rendering each
+  assistant turn exactly once when its `message_end` lands.
 - Existing `tumwater logs` output is byte-for-byte unchanged when `--role` is absent.
 - `npm test` passes; no changes to scheduling/state/git paths.
 
 **Non-goal / follow-up:** Surfacing the transcript in the TUI/GUI (a per-loop detail pane or a
-`/api/transcript?role=` endpoint) is an independent UI-layer task that builds on this formatter;
-it is deliberately out of scope here so this stays one focused, shippable change.
+`/api/transcript?role=` endpoint) builds on this formatter but is deliberately out of scope here
+so this stays one focused, shippable change; record it as its own PLANS.md entry once this lands.
 
 ### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21)
 
