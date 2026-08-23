@@ -9,6 +9,7 @@ import { initProject } from "./init.js";
 import { submitPrompt } from "./inbox.js";
 import { formatEvent, readEvents, subscribeEvents } from "./events.js";
 import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
+import { findOnPath } from "./pi.js";
 import { readCompleteLines } from "./files.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
@@ -94,6 +95,10 @@ async function cmdInit(root: string, args: string[]): Promise<void> {
 
 async function cmdRun(root: string): Promise<void> {
   await requireReadyRepo(root);
+  // Fail fast instead of starting loops whose every tick dies with "spawn pi ENOENT".
+  if (!findOnPath("pi")) {
+    fail("pi not found on PATH — install it (https://github.com/badlogic/pi-mono) or add its bin directory to your PATH");
+  }
   if (orchestratorAlive(root)) fail("an orchestrator is already running for this repo");
   const config = loadConfig(root);
   const mainBranch = await resolveMainBranch(root);
