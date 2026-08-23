@@ -5,83 +5,24 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Per-role pi transcript via `tumwater logs --role` (planned 2026-08-21, refined 2026-08-23)
+### Surface per-role pi transcripts in the TUI/GUI (planned 2026-08-23)
 
-**Goal:** Let a user see what a specific loop's pi actually did — its transcript of tool
-calls and assistant messages — with `tumwater logs --role <id>`. Today only harness events
-(tick start/end, merged, wake, warnings) are surfaced; each loop's real work lives in the raw
-pi JSONL at `.tumwater/log/<role>.pi.jsonl` and no command reads it. The initial prompt says
-loops must be "observable by gui/tui/log" — this closes the per-loop-work half of that.
+**Goal:** The `tumwater logs --role` transcript should also be visible from the dashboards —
+a per-loop detail pane in the TUI and/or an `/api/transcript?role=` endpoint rendered by the
+GUI. Follow-up to the now-done CLI transcript; completes "observable by gui/tui/log".
 
-**Approach:**
-The raw log is pi's *streaming* event stream: ~95% of its lines are `message_update` deltas
-(`thinking_delta`, `text_delta`, `toolcall_delta`) that must never be rendered. Render only
-from complete events (shapes verified against real logs in `.tumwater/log/`):
+**Approach:** Build on `src/transcript.ts`: `readTranscript(root, role, limit)` already returns
+rendered lines for the last N entries (run separators, abbreviated thinking, assistant text,
+tool calls). The TUI can show them when a loop row is selected; the GUI can fetch
+`/api/transcript?role=<id>&n=N` alongside `/api/status`. Both dashboards poll every second, so
+re-reading per poll is fine at current log sizes (the file rotates at `logMaxBytes`); keep the
+entry limit modest (~50) and render read-only. No new state, scheduling, or git paths.
 
-- `agent_start` — bare `{type:"agent_start"}`, one per pi run, including resumed runs (unlike
-  `session`, which fires only for fresh sessions) → separator line between runs. It carries no
-timestamp; if a time is wanted, stamp it from the epoch-ms `timestamp` of the first user
-  message in that run.
-- `message_end` with `message.role === "assistant"` — exactly one per completed assistant turn
-  (the same invariant `progress.ts` already uses to count turns); its `content[]` holds the full
-  blocks, so no delta reconstruction is needed. Per block: `{type:"thinking", thinking}` → one
-  abbreviated line (~80 chars, e.g. `· there's a merge conflict…` — note the field is
-  `thinking`, not `text`); `{type:"text", text}` → indented lines truncated to ~120 cols,
-  capped at 4 lines per message then `…`; `{type:"toolCall", name, arguments}` →
-  `→ read PLANS.md` via the already-exported `describeToolCall(name, arguments)`.
-- `auto_retry_start` — `{attempt, maxAttempts, errorMessage}` → warning line (e.g.
-  `⚠ retry 1/3: terminated`) so failed attempts are visible in the transcript.
-- Everything else is skipped: all `message_update` deltas, `tool_execution_*`, `turn_*`,
-  `agent_end`/`agent_settled`, and user messages — in particular never dump the multi-KB tick
-  prompt that arrives as a user message each run.
+**Files touched:** `src/tui.ts`, `src/gui-page.ts`; tests as warranted.
 
-Implementation:
-- New module `src/transcript.ts`. Expose `readTranscript(root, role, limit): string[]`
-  (rendered lines for the last `limit` *entries*, oldest first; an entry is one run separator or
-  one assistant turn's line block) plus a pure formatter over raw JSONL lines so tests need no
-  files. Handle a missing file gracefully (return []).
-- Reading: reuse files.ts's shared helper `readCompleteLines(file, offset, size)` (already
-  exported; used by progress.ts's incremental tail and the CLI's `logs -f`); it returns only
-  complete lines and leaves a torn trailing partial line unconsumed. One-shot
-  mode reads the whole current file in one call (offset 0 → size): the log rotates at
-  `logMaxBytes` (default 16MB), trivial to parse for a CLI command. Do NOT use progress.ts's
-  incremental `tails` cache or its 4MB seed window — those exist for per-second TUI/GUI polling,
-  and a short-lived CLI process just reads fresh.
-- `-f` mode: copy cmdLogs' current follow pattern as-is — watchFile at the same 500ms cadence,
-  `readCompleteLines(file, offset, size)` per poll, and advance the offset only to its returned
-  `end` (the last complete newline), so a line straddling a poll boundary is re-read next poll
-  instead of being lost. Render only when a complete renderable line (`agent_start`, assistant
-  `message_end`, `auto_retry_start`) arrives, so each turn prints exactly once.
-- CLI (`src/cli.ts`): extend the existing `logs` command with a `--role <id>` flag.
-  `tumwater logs --role feature [-n N]` prints that loop's transcript (last N entries, default
-  ~50); parse `-n` via cmdLogs' existing private helper `parseCountFlag` (same file) so invalid
-  values get the same clear error as today's `logs -n`. Validate the id against `allRoleIds()`;
-  unknown id → clear error + non-zero exit, role with no log yet → friendly "no transcript yet
-  for <role>".
-- Read-only: never touches scheduling, loop state, or git. When `--role` is absent, existing
-  harness-event behavior is unchanged.
-
-**Files touched:** `src/transcript.ts` (new), `src/cli.ts`, and `test/transcript.test.ts`
-(new). No changes needed in progress.ts or files.ts — `readCompleteLines` is already
-exported from files.ts; its incremental cache stays private to the hot path.
-
-**Acceptance criteria:**
-- `tumwater logs --role <id>` prints that loop's recent pi activity as readable lines — run
-  separators, one-line abbreviated thinking, indented assistant text, tool calls labeled via
-  `describeToolCall` — oldest first within the window, honoring `-n N`.
-- No streaming-delta or user-prompt content ever appears in output; non-JSON/torn lines are
-  skipped without failing.
-- Unknown role id → clear error and non-zero exit; a role with no log yet → friendly message,
-  no crash.
-- `-f` appends new entries as they arrive (byte-offset watchFile like `logs -f`, but the offset
-  advances only past complete lines), rendering each assistant turn exactly once when its
-  `message_end` lands.
-- Existing `tumwater logs` output is byte-for-byte unchanged when `--role` is absent.
-- `npm test` passes; no changes to scheduling/state/git paths.
-
-**Non-goal / follow-up:** Surfacing the transcript in the TUI/GUI (a per-loop detail pane or a
-`/api/transcript?role=` endpoint) builds on this formatter but is deliberately out of scope here
-so this stays one focused, shippable change; record it as its own PLANS.md entry once this lands.
+**Acceptance criteria:** Selecting/opening a loop in the TUI or GUI shows its recent pi
+transcript with the same rendering as `tumwater logs --role <id>`; width-awareness preserved;
+`npm test` passes.
 
 ### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21, refined 2026-08-23)
 
@@ -121,6 +62,18 @@ the served page contains the new column header.
 - Existing width-awareness behavior is preserved (no line exceeds `maxWidth`); `npm test` passes.
 
 ## Done
+
+### Per-role pi transcript via `tumwater logs --role` (planned 2026-08-21, refined 2026-08-23, done 2026-08-23)
+
+`tumwater logs --role <id> [-n N] [-f]` renders a loop's raw pi JSONL into readable transcript
+lines: run separators stamped from the first user message of each run, one-line abbreviated
+thinking (~80 chars), indented assistant text (capped at 4 lines per message), tool calls via
+describeToolCall, and retry warnings; streaming deltas and multi-KB tick prompts are never
+shown. `-f` follows the live log with byte-offset/watchFile, advancing only past complete
+lines, so each turn prints exactly once when its `message_end` lands. New module src/transcript.ts
+(pure formatter over JSONL lines + incremental renderer) tested in test/transcript.test.ts;
+one-shot and follow both read through files.ts's shared `readCompleteLines`, which never
+consumes a torn trailing line. TUI/GUI surfacing is recorded as its own plan.
 
 ### Totals row for tokens and cost in the status table (planned 2026-08-21, done 2026-08-21)
 
