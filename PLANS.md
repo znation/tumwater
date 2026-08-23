@@ -47,16 +47,17 @@ Implementation:
   `logMaxBytes` (default 16MB), trivial to parse for a CLI command. Do NOT use progress.ts's
   incremental `tails` cache or its 4MB seed window — those exist for per-second TUI/GUI polling,
   and a short-lived CLI process just reads fresh.
-- `-f` mode: keep an offset at the last complete newline across watchFile polls (same 500ms
-  cadence as today's `logs -f`) and render only when a complete renderable line (`agent_start`,
-  assistant `message_end`, `auto_retry_start`) arrives, so each turn prints exactly once. Do not
-  copy cmdLogs' follow quirk of advancing the offset past a torn trailing line *before* parsing
-  (that silently drops events straddling poll boundaries); `readCompleteLines` avoids it by
-  design — advance only to its returned `end`.
+- `-f` mode: copy cmdLogs' current follow pattern as-is — watchFile at the same 500ms cadence,
+  `readCompleteLines(file, offset, size)` per poll, and advance the offset only to its returned
+  `end` (the last complete newline), so a line straddling a poll boundary is re-read next poll
+  instead of being lost. Render only when a complete renderable line (`agent_start`, assistant
+  `message_end`, `auto_retry_start`) arrives, so each turn prints exactly once.
 - CLI (`src/cli.ts`): extend the existing `logs` command with a `--role <id>` flag.
   `tumwater logs --role feature [-n N]` prints that loop's transcript (last N entries, default
-  ~50). Validate the id against `allRoleIds()`; unknown id → clear error + non-zero exit, role
-  with no log yet → friendly "no transcript yet for <role>".
+  ~50); parse `-n` via cmdLogs' existing private helper `parseCountFlag` (same file) so invalid
+  values get the same clear error as today's `logs -n`. Validate the id against `allRoleIds()`;
+  unknown id → clear error + non-zero exit, role with no log yet → friendly "no transcript yet
+  for <role>".
 - Read-only: never touches scheduling, loop state, or git. When `--role` is absent, existing
   harness-event behavior is unchanged.
 
