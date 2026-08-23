@@ -7,7 +7,7 @@ import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
-import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import { assistantLine, errorLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
@@ -357,6 +357,121 @@ test("concurrent-main-advance still merges (merge commit path)", async () => {
     const outcome = await runner.tick();
     assert.equal(outcome.result, "changed");
     assert.ok(fs.existsSync(path.join(repo, "slow.txt")));
+  } finally {
+    restore();
+  }
+});
+
+test("a transient model-server timeout is retried once and the tick succeeds (regression)", async () => {
+  const repo = await initializedRepo();
+  const marker = path.join(tmpdir(), "phase");
+  // Attempt 1 (the tick's pi run): LM Studio kills an idle predict stream after a machine
+  // sleep. Attempt 2 (the harness retry, detected by the phase file): a fresh request
+  // succeeds within seconds of the wake.
+  const restore = fakePi(
+    [
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
+      `  exit 1`,
+      `else`,
+      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
+    assert.ok(!runner.state.lastError);
+    assert.ok(
+      !runner.state.consecutiveErrors,
+      "a transient failure does not count toward session poisoning",
+    );
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.some((w) => /retrying the pi run once/.test(w)),
+      `expected a retry warning, got: ${JSON.stringify(warnings)}`,
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {
+  const repo = await initializedRepo();
+  const counter = path.join(tmpdir(), "runs");
+  // pi's own retry machinery reports the idle-stream timeout in an event, then the same
+  // run recovers and finishes normally: the harness must not re-run a healthy result.
+  const restore = fakePi(
+    [
+      `echo run >> "${counter}"`,
+      `printf '%s\n' '${JSON.stringify({ type: "auto_retry_start", attempt: 1, errorMessage: "Engine protocol predict stream timed out after 600000ms without receiving data." })}'`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change", "the recovered run's verdict stands");
+    assert.ok(!runner.state.lastError);
+    // Exactly one pi invocation: no harness-level retry of an already-healthy run.
+    assert.equal(fs.readFileSync(counter, "utf8").trim().split("\n").length, 1);
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      !warnings.some((w) => /retrying the pi run once/.test(w)),
+      `no retry warning expected: ${JSON.stringify(warnings)}`,
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a transient timeout that also hits the harness timeout is not retried", async () => {
+  const repo = await initializedRepo();
+  const counter = path.join(tmpdir(), "runs");
+  // The machine sleeps long enough that pi reports the idle-stream timeout AND the
+  // harness's own tick timeout fires: retrying would just burn another full timeout.
+  const restore = fakePi(
+    [
+      `echo run >> "${counter}"`,
+      `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
+      `exec sleep 30`,
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.tickTimeoutSeconds = 1;
+    const runner = new LoopRunner(repo, "clean", config, "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.match(runner.state.lastError ?? "", /timed out/);
+    // Exactly one pi invocation: the harness timeout suppresses the transient retry.
+    assert.equal(fs.readFileSync(counter, "utf8").trim().split("\n").length, 1);
+  } finally {
+    restore();
+  }
+});
+
+test("a transient timeout on both attempts errors without dropping the healthy session (regression)", async () => {
+  const repo = await initializedRepo();
+  // Every pi run (tick + retry) hits the idle-stream timeout: the machine keeps sleeping.
+  const restore = fakePi(
+    `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'\nexit 1`,
+  );
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.match(runner.state.lastError ?? "", /predict stream timed out/);
+    // The session is healthy (the world froze): it must survive and not be counted.
+    assert.ok(!runner.state.consecutiveErrors, "transient errors do not count toward consecutiveErrors");
+    assert.equal(runner.state.hasSession, true, "the healthy session is kept for the next tick");
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      !warnings.some((w) => /fresh pi session/.test(w)),
+      `no session-reset warning expected, got: ${JSON.stringify(warnings)}`,
+    );
   } finally {
     restore();
   }
