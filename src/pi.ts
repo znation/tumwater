@@ -106,6 +106,24 @@ export function piArgs(
   return args;
 }
 
+/** Locate an executable on PATH the same way spawn() would resolve it: a regular file
+ * with the execute bit in some PATH directory. Returns its absolute path, or null when
+ * missing (or not executable), so callers can fail fast with a clear message instead of
+ * letting every tick die with "spawn <name> ENOENT". */
+export function findOnPath(name: string, pathEnv: string = process.env.PATH ?? ""): string | null {
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, name);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK); // Directories pass X_OK; require a file.
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {
+      // Not in this directory; keep looking.
+    }
+  }
+  return null;
+}
+
 /** Prefix of PiRunResult.errorMessage when the pi process never started; no session file
  * exists then, so callers must not treat the run as having created one. */
 export const SPAWN_ERROR_PREFIX = "failed to spawn pi";

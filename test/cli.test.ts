@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,12 +20,18 @@ interface CliResult {
   stderr: string;
 }
 
-function cli(cwd: string, ...args: string[]): Promise<CliResult> {
+/** Run the CLI with an explicit env override (merged over process.env). The timeout
+ * bounds tests that would otherwise hang if a command regresses to not exiting. */
+function cliWithEnv(cwd: string, env: NodeJS.ProcessEnv, args: string[]): Promise<CliResult> {
   return new Promise((resolve) => {
-    execFile(process.execPath, [CLI, ...args], { cwd }, (err, stdout, stderr) => {
+    execFile(process.execPath, [CLI, ...args], { cwd, env: { ...process.env, ...env }, timeout: 20_000 }, (err, stdout, stderr) => {
       resolve({ code: err ? Number(err.code ?? 1) : 0, stdout, stderr });
     });
   });
+}
+
+function cli(cwd: string, ...args: string[]): Promise<CliResult> {
+  return cliWithEnv(cwd, {}, args);
 }
 
 test("help and no command print usage", async () => {
@@ -141,6 +147,22 @@ test("logs -n validates its value instead of misbehaving", async () => {
   // A valid -n still works.
   const ok = await cli(repo, "logs", "-n", "3");
   assert.equal(ok.code, 0);
+});
+
+test("run fails fast with a clear message when pi is missing from PATH", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run validation");
+
+  // A PATH that has git (so the repo checks pass) but no pi: without the startup check,
+  // the orchestrator would start and every tick of every loop would die with
+  // "failed to spawn pi: spawn pi ENOENT".
+  const binDir = tmpdir();
+  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+
+  const r = await cliWithEnv(repo, { PATH: binDir }, ["run"]);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /pi not found on PATH/);
 });
 
 test("gui --port validates its range instead of listening on an unexpected port", async () => {
