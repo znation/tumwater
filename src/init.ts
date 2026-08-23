@@ -5,7 +5,7 @@ import { COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
 import { readmeTemplate } from "./readme.js";
 import { STATE_DIR, configPath } from "./paths.js";
 
-export const PLANS_TEMPLATE = `# Plans
+const PLANS_TEMPLATE = `# Plans
 
 Planned features, written by the plan loop and implemented by the feature loop.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
@@ -19,7 +19,7 @@ _None yet._
 _None yet._
 `;
 
-export const BUGS_TEMPLATE = `# Bugs
+const BUGS_TEMPLATE = `# Bugs
 
 Known bugs, recorded by any loop and fixed by the bugfix loop.
 Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs to Fixed.
