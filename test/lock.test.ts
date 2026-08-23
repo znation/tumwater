@@ -50,3 +50,41 @@ test("withLock steals a lock held by a dead pid", async () => {
   );
   assert.ok(ran);
 });
+
+test("withLock steals an old lock even when its pid is still alive", async () => {
+  // A SIGKILLed harness leaves the lock dir behind; if that pid was later reused by
+  // another live process, only the age check can break the deadlock.
+  const lock = path.join(tmpdir(), "x.lock");
+  fs.mkdirSync(lock);
+  fs.writeFileSync(path.join(lock, "pid"), String(process.pid)); // alive on purpose
+  const elevenMinutesAgo = new Date(Date.now() - 11 * 60 * 1000);
+  fs.utimesSync(lock, elevenMinutesAgo, elevenMinutesAgo);
+  let ran = false;
+  await withLock(
+    lock,
+    async () => {
+      ran = true;
+    },
+    5000,
+  );
+  assert.ok(ran, "stale-by-age lock is stolen despite a live pid");
+});
+
+test("withLock times out instead of breaking a fresh lock held by a live pid", async () => {
+  const lock = path.join(tmpdir(), "x.lock");
+  fs.mkdirSync(lock);
+  fs.writeFileSync(path.join(lock, "pid"), String(process.pid)); // alive + fresh mtime
+  let ran = false;
+  await assert.rejects(
+    withLock(
+      lock,
+      async () => {
+        ran = true;
+      },
+      700,
+    ),
+    /timed out acquiring lock/,
+  );
+  assert.ok(!ran, "must not enter the critical section of a live holder");
+  assert.ok(fs.existsSync(lock), "the foreign lock is left untouched");
+});
