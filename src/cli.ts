@@ -35,6 +35,27 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+/** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
+ * Unvalidated, NaN/0/negative limits make readEvents' `slice(-limit)` dump the whole log
+ * (or drop leading lines) instead of showing the requested tail. */
+function parseCountFlag(flag: string, raw: string | undefined): number {
+  if (raw === undefined) fail(`${flag} needs a value`);
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) fail(`${flag} needs a positive integer (got ${JSON.stringify(raw)})`);
+  return n;
+}
+
+/** Parse the `--port` flag value: an integer in 1..65535, or fail with a clear message.
+ * Port 0 would make Node pick an ephemeral port while the CLI prints :0 — a URL that
+ * cannot be opened; out-of-range values only fail later via Node's raw RangeError. */
+function parsePortFlag(raw: string | undefined): number {
+  if (raw === undefined) fail("--port needs a value");
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 65535)
+    fail(`--port must be an integer between 1 and 65535 (got ${JSON.stringify(raw)})`);
+  return n;
+}
+
 async function resolveMainBranch(root: string): Promise<string> {
   const branch = await currentBranch(root);
   if (!branch) fail("the repo's primary checkout is detached; check out your main branch first");
@@ -98,7 +119,7 @@ async function cmdRun(root: string): Promise<void> {
 async function cmdLogs(root: string, args: string[]): Promise<void> {
   const follow = args.includes("-f") || args.includes("--follow");
   const nFlag = args.indexOf("-n");
-  const limit = nFlag >= 0 ? parseInt(args[nFlag + 1] ?? "50", 10) : 50;
+  const limit = nFlag >= 0 ? parseCountFlag("-n", args[nFlag + 1]) : 50;
   for (const e of readEvents(root, limit)) process.stdout.write(formatEvent(e) + "\n");
   if (!follow) return;
   const file = eventsLogPath(root);
@@ -142,8 +163,7 @@ async function main(): Promise<void> {
     case "gui": {
       await requireReadyRepo(root);
       const portFlag = args.indexOf("--port");
-      const port = portFlag >= 0 ? parseInt(args[portFlag + 1] ?? "", 10) : 7180;
-      if (!Number.isFinite(port)) fail("--port needs a number");
+      const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
       await startGui(root, port);
       process.stdout.write(`tumwater gui at http://127.0.0.1:${port} — Ctrl+C to stop\n`);
       await new Promise(() => {}); // Serve until Ctrl+C.
