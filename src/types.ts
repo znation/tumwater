@@ -117,4 +117,8 @@ export interface PiRunResult {
   aborted: boolean;
   /** The provider rejected the context as too large; the resumed session is poisoned. */
   contextExceeded: boolean;
+  /** True when any event reported the model server killing an idle predict stream (LM
+   * Studio's "Engine protocol predict stream timed out", e.g. after OS sleep). A transient
+   * failure of the world, not of the session: one fresh retry usually succeeds. */
+  transientServerTimeout: boolean;
 }

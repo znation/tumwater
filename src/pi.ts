@@ -35,6 +35,10 @@ export class PiStreamParser {
    * (e.g. LM Studio's "Context size has been exceeded"). The session is then poisoned:
    * resuming it can never succeed, so the loop must start fresh. */
   contextExceeded = false;
+  /** True when any event reports the model server killing an idle predict stream
+   * (LM Studio's "Engine protocol predict stream timed out", e.g. after OS sleep).
+   * Transient: the session is healthy and a fresh attempt usually succeeds. */
+  transientServerTimeout = false;
   private buffer = "";
 
   feed(chunk: string, onLine?: (line: string) => void): void {
@@ -60,7 +64,11 @@ export class PiStreamParser {
     // Context-overflow errors often surface only in retry events, not the final message.
     const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded|exceeds? (the )?context|too (long|large) for .*context/i;
     for (const text of [event.errorMessage, event.finalError, event.message?.errorMessage]) {
-      if (text && CONTEXT_ERROR.test(text)) this.contextExceeded = true;
+      if (!text) continue;
+      if (CONTEXT_ERROR.test(text)) this.contextExceeded = true;
+      // Kept narrow on purpose: a false positive would mask real repeated failures from
+      // the session-poisoning heuristic and trigger needless retries.
+      if (TRANSIENT_SERVER_TIMEOUT.test(text)) this.transientServerTimeout = true;
     }
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;
@@ -128,6 +136,11 @@ export function findOnPath(name: string, pathEnv: string = process.env.PATH ?? "
  * exists then, so callers must not treat the run as having created one. */
 export const SPAWN_ERROR_PREFIX = "failed to spawn pi";
 
+/** LM Studio kills predict streams idle >600 s (e.g. the machine slept mid-run) and reports
+ * it back through pi as a server error on an assistant message. Fresh requests succeed
+ * within seconds of a wake, so this is retryable — unlike every other error class. */
+export const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
+
 /** Run pi non-interactively in a worktree and distill the result. Never throws. */
 export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
   return new Promise((resolve) => {
@@ -189,6 +202,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         timedOut: false,
         aborted,
         contextExceeded: false,
+        transientServerTimeout: false,
       });
     });
 
@@ -210,6 +224,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         timedOut,
         aborted,
         contextExceeded: parser.contextExceeded,
+        transientServerTimeout: parser.transientServerTimeout,
       });
     });
   });
