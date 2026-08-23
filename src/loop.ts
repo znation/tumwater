@@ -91,6 +91,25 @@ export class LoopRunner {
     });
   }
 
+  /** Run pi for this loop in worktree `wt` with the shared per-loop wiring (role config,
+   * session dir and resume flag, raw log) and fold the run's tokens/cost into the state. */
+  private async runRolePi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
+    const s = this.state;
+    const pi = await runPi({
+      cwd: wt,
+      prompt,
+      config: configForRole(this.config, this.role),
+      sessionDir: sessionDir(this.root, this.role),
+      sessionName,
+      continueSession: s.hasSession,
+      rawLogFile: piLogPath(this.root, this.role),
+      signal: this.signal,
+    });
+    s.totalTokens += pi.totalTokens;
+    s.totalCostUsd += pi.costUsd;
+    return pi;
+  }
+
   /** Re-run the conflicting merge leaving markers in place, let pi resolve them, and
    * conclude the merge. Returns true when the branch now contains a clean merge of main. */
   private async resolveConflict(wt: string): Promise<boolean> {
@@ -98,18 +117,11 @@ export class LoopRunner {
     if (state === "clean") return true;
     if (state === "failed") return false;
     const files = await conflictedFiles(wt);
-    const pi = await runPi({
-      cwd: wt,
-      prompt: buildConflictPrompt(this.role, files),
-      config: configForRole(this.config, this.role),
-      sessionDir: sessionDir(this.root, this.role),
-      sessionName: `tumwater-${this.role}-${this.state.ticks}-conflict`,
-      continueSession: this.state.hasSession,
-      rawLogFile: piLogPath(this.root, this.role),
-      signal: this.signal,
-    });
-    this.state.totalTokens += pi.totalTokens;
-    this.state.totalCostUsd += pi.costUsd;
+    const pi = await this.runRolePi(
+      wt,
+      buildConflictPrompt(this.role, files),
+      `tumwater-${this.role}-${this.state.ticks}-conflict`,
+    );
     if (!pi.ok || hasConflictMarkers(wt, files)) {
       await abortMerge(wt);
       return false;
@@ -207,22 +219,11 @@ export class LoopRunner {
     await this.recoverLeftover(wt);
     await resetWorktreeToMain(wt, this.mainBranch);
 
-    const pi: PiRunResult = await runPi({
-      cwd: wt,
-      prompt,
-      config: configForRole(this.config, this.role),
-      sessionDir: sessionDir(this.root, this.role),
-      sessionName: `tumwater-${this.role}-${s.ticks}`,
-      continueSession: s.hasSession,
-      rawLogFile: piLogPath(this.root, this.role),
-      signal: this.signal,
-    });
+    const pi = await this.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`);
 
     // The run created (or extended) a session file; later ticks resume it. A spawn failure
     // never creates one, so don't mark the session resumable in that case.
     if (!pi.errorMessage?.startsWith(SPAWN_ERROR_PREFIX)) s.hasSession = true;
-    s.totalTokens += pi.totalTokens;
-    s.totalCostUsd += pi.costUsd;
 
     // A session the provider rejects as too large can never be resumed successfully
     // (e.g. the model's real context is smaller than pi believes): drop it now.
