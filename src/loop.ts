@@ -30,6 +30,9 @@ export interface TickOutcome {
   result: TickResult;
   summary?: string;
   commit?: string;
+  /** True when an error tick was caused by a transient model-server timeout (e.g. machine
+   * sleep): the session is healthy, so it must not count toward session poisoning. */
+  transient?: boolean;
 }
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
@@ -92,10 +95,12 @@ export class LoopRunner {
   }
 
   /** Run pi for this loop in worktree `wt` with the shared per-loop wiring (role config,
-   * session dir and resume flag, raw log) and fold the run's tokens/cost into the state. */
+   * session dir and resume flag, raw log) and fold the run's tokens/cost into the state.
+   * A transient model-server timeout (e.g. the machine slept mid-run) gets exactly one
+   * bounded retry: fresh requests succeed quickly after a wake. */
   private async runRolePi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
     const s = this.state;
-    const pi = await runPi({
+    const opts = {
       cwd: wt,
       prompt,
       config: configForRole(this.config, this.role),
@@ -104,7 +109,21 @@ export class LoopRunner {
       continueSession: s.hasSession,
       rawLogFile: piLogPath(this.root, this.role),
       signal: this.signal,
-    });
+    };
+    const pi = await runPi(opts);
+    if (!pi.aborted && !pi.timedOut && pi.transientServerTimeout && !pi.ok) {
+      logEvent(this.root, {
+        loop: this.role,
+        type: "warning",
+        message:
+          "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
+      });
+      // Resume whatever session the first attempt created or extended; it is healthy.
+      const retry = await runPi({ ...opts, continueSession: true });
+      s.totalTokens += pi.totalTokens + retry.totalTokens;
+      s.totalCostUsd += pi.costUsd + retry.costUsd;
+      return retry;
+    }
     s.totalTokens += pi.totalTokens;
     s.totalCostUsd += pi.costUsd;
     return pi;
@@ -180,8 +199,9 @@ export class LoopRunner {
       s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
     }
     // Self-heal from a poisoned session: whatever the error, repeated failures in a row
-    // mean the accumulated context is more likely hurting than helping.
-    if (outcome.result === "error") {
+    // mean the accumulated context is more likely hurting than helping. A transient
+    // model-server timeout says nothing about session health — don't count it.
+    if (outcome.result === "error" && !outcome.transient) {
       s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
       if (s.consecutiveErrors >= 2 && s.hasSession) {
         s.hasSession = false;
@@ -251,7 +271,7 @@ export class LoopRunner {
     const changed = await isDirty(wt);
     if (!pi.ok && !changed) {
       s.lastError = pi.errorMessage ?? "pi failed";
-      return { result: "error" };
+      return { result: "error", transient: pi.transientServerTimeout || undefined };
     }
     if (!changed) {
       if (!pi.nothingToDo) {

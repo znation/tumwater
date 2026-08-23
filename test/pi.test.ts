@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { PiStreamParser, piArgs } from "../src/pi.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
-import { assistantLine, tmpdir } from "./util.js";
+import { assistantLine, errorLine, tmpdir } from "./util.js";
 
 test("parser keeps the last non-empty assistant text and sums usage", () => {
   const parser = new PiStreamParser();
@@ -53,6 +53,25 @@ test("parser records error messages and clears them after a later success", () =
   parser.feed(assistantLine("recovered") + "\n");
   assert.equal(parser.errorMessage, undefined);
   assert.equal(parser.stopReason, "stop");
+});
+
+test("parser flags the LM Studio predict-stream timeout as a transient server failure (regression)", () => {
+  const parser = new PiStreamParser();
+  parser.feed(
+    errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.") + "\n",
+  );
+  assert.equal(parser.transientServerTimeout, true);
+  assert.equal(parser.contextExceeded, false, "a timeout is not a context overflow");
+  assert.equal(parser.stopReason, "error");
+});
+
+test("parser does not flag other errors as transient server timeouts", () => {
+  const parser = new PiStreamParser();
+  parser.feed(errorLine("Connection error.") + "\n");
+  parser.feed(
+    JSON.stringify({ type: "error", errorMessage: "request timed out after 30s" }) + "\n",
+  );
+  assert.equal(parser.transientServerTimeout, false);
 });
 
 test("parser ignores user message_end events", () => {

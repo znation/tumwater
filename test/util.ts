@@ -49,3 +49,11 @@ export function assistantLine(text: string, opts: { tokens?: number; cost?: numb
     },
   });
 }
+
+/** A pi JSON line for an assistant message_end that ended in a server error. */
+export function errorLine(errorMessage: string): string {
+  return JSON.stringify({
+    type: "message_end",
+    message: { role: "assistant", content: [], stopReason: "error", errorMessage },
+  });
+}
