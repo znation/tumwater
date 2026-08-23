@@ -81,7 +81,7 @@ change there — its incremental cache stays private to the hot path).
 `/api/transcript?role=` endpoint) builds on this formatter but is deliberately out of scope here
 so this stays one focused, shippable change; record it as its own PLANS.md entry once this lands.
 
-### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21)
+### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21, refined 2026-08-23)
 
 **Goal:** Both live tables — the TUI/one-shot status table and the web GUI loop table — show
 when a loop's last result happened as an absolute wall-clock time, not only relative "3m ago".
@@ -95,16 +95,21 @@ e.g. `14:32:05 · 3m ago` (absolute local time first, relative after). Format as
   prefix with `MM-DD` when older than a day so multi-day runs stay unambiguous; keep `-` for loops
   that never ticked. If instead you add a dedicated column, note the `FLEXIBLE_COLUMNS` indices in
   `renderStatus` are positional (7 = last result, 1 = state) and must be renumbered.
-- GUI (`src/gui.ts`): add a `last tick` column to the HTML table header and render it client-side
-  from `l.lastTickEndedAt` (e.g. `new Date(ts).toLocaleTimeString()`), `-` when null. The payload
-  already carries the value; only the `<thead>` row and the row-building JS change.
+- GUI (`src/gui-page.ts` — the dashboard HTML template was extracted from `gui.ts` into the
+  `GUI_PAGE` constant, so all UI edits go there; `gui.ts` only serves it and needs no change):
+  add a `last tick` column to the `<thead>` row, inserted between `cost` and `last result` to
+  match the TUI's column order, and render it client-side in `refresh()`'s row builder from
+  `l.lastTickEndedAt`, `-` when null. Format with local `HH:MM:SS`, prefixed with `MM-DD` when
+  older than a day — mirroring the TUI rule so the "older than a day includes the date" criterion
+  holds in both tables, not just the TUI (a bare `toLocaleTimeString()` would miss it). The
+  payload already carries the value; only the `<thead>` row and the row-building JS change.
 - Keep the TUI width-awareness contract: no rendered line may exceed `maxWidth`; the wider cell is
   fine because `last tick` is not in `FLEXIBLE_COLUMNS`, but verify a narrow terminal (e.g. 80 cols)
   still clips cleanly — if the combined cell makes overflow worse, consider making it shrinkable.
 
-**Files touched:** `src/status.ts`, `src/gui.ts`, `test/status-render.test.ts` (extend for the new
-cell format; add a narrow-width case), optionally a small test for the GUI payload/HTML column if
-one exists or is cheap to add.
+**Files touched:** `src/status.ts`, `src/gui-page.ts`, `test/status-render.test.ts` (extend for
+the new cell format; add a narrow-width case), and optionally extend `test/gui.test.ts` to assert
+the served page contains the new column header.
 
 **Acceptance criteria:**
 - TUI and one-shot status show an absolute local timestamp of the last tick end alongside the

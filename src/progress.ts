@@ -101,8 +101,9 @@ export function parseProgress(lines: string[], quietMs: number): LiveProgress {
 
 /** Read [offset, size) and split into complete lines. `end` is the offset just past the
  * last newline: a trailing partial line (torn write in flight) is NOT consumed, so it is
- * re-read next poll once pi has written its newline instead of being parsed torn or lost. */
-function readCompleteLines(file: string, offset: number, size: number): { lines: string[]; end: number } {
+ * re-read next poll once pi has written its newline instead of being parsed torn or lost.
+ * Shared by readLiveProgress's incremental tail and the CLI's `logs -f` follow loop. */
+export function readCompleteLines(file: string, offset: number, size: number): { lines: string[]; end: number } {
   const len = size - offset;
   if (len <= 0) return { lines: [], end: offset };
   const fd = fs.openSync(file, "r");
