@@ -70,3 +70,45 @@ test("readLiveProgress reads the loop's raw log and reports quiet time", () => {
   assert.ok(p.quietMs < 5000);
   assert.equal(readLiveProgress(root, "never-ran"), null);
 });
+
+test("readLiveProgress accumulates appended lines across polls", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, SESSION + "\n");
+  assert.equal(readLiveProgress(root, "clean")?.turns, 0);
+  fs.appendFileSync(file, assistantLine("one", { tokens: 100 }) + "\n");
+  assert.equal(readLiveProgress(root, "clean")?.turns, 1);
+  fs.appendFileSync(file, toolStart("bash", { command: "npm test" }) + "\n");
+  const p = readLiveProgress(root, "clean");
+  assert.equal(p?.toolCalls, 1);
+  assert.equal(p?.lastTool, "bash npm test");
+});
+
+test("readLiveProgress does not count a torn trailing line until it is complete", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, SESSION + "\n");
+  fs.appendFileSync(file, '{"type":"message_end","mess'); // torn write, no newline
+  assert.equal(readLiveProgress(root, "clean")?.turns, 0);
+  assert.equal(readLiveProgress(root, "clean")?.turns, 0); // still incomplete: not counted twice or lost
+  fs.appendFileSync(file, 'age":{"role":"assistant","usage":{"totalTokens":42}}}' + "\n");
+  const p = readLiveProgress(root, "clean");
+  assert.equal(p?.turns, 1);
+  assert.equal(p?.contextTokens, 42);
+});
+
+test("readLiveProgress reseeds when the log is rotated (renamed) mid-observation", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, SESSION + "\n" + assistantLine("old tick", { tokens: 999 }) + "\n");
+  assert.equal(readLiveProgress(root, "clean")?.turns, 1);
+  // rotateIfLarge renames the log and a fresh file starts for the next run.
+  fs.renameSync(file, file + ".1");
+  fs.writeFileSync(file, SESSION + "\n" + assistantLine("new tick", { tokens: 7 }) + "\n");
+  const p = readLiveProgress(root, "clean");
+  assert.equal(p?.turns, 1);
+  assert.equal(p?.contextTokens, 7);
+});
