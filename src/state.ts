@@ -3,6 +3,7 @@ import path from "node:path";
 import type { TumwaterConfig, LoopState } from "./types.js";
 import { statePath } from "./paths.js";
 
+/** A new LoopState for one role, before its first tick. */
 export function freshLoopState(role: string): LoopState {
   return {
     role,
@@ -16,6 +17,8 @@ export function freshLoopState(role: string): LoopState {
   };
 }
 
+/** Load the loop's persisted state; never throws — a missing or unreadable file yields a
+ * fresh state, and fields absent from an older file fall back to defaults. */
 export function loadLoopState(root: string, role: string): LoopState {
   const file = statePath(root, role);
   if (!fs.existsSync(file)) return freshLoopState(role);
@@ -26,6 +29,8 @@ export function loadLoopState(root: string, role: string): LoopState {
   }
 }
 
+/** Persist the loop's state atomically (tmp file + rename), so a crash mid-write cannot
+ * leave a torn file behind. */
 export function saveLoopState(root: string, state: LoopState): void {
   const file = statePath(root, state.role);
   fs.mkdirSync(path.dirname(file), { recursive: true });
