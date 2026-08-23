@@ -7,6 +7,7 @@ import { initProject } from "./init.js";
 import { submitPrompt } from "./inbox.js";
 import { formatEvent, readEvents, subscribeEvents } from "./events.js";
 import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
+import { readCompleteLines } from "./progress.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
 import { startGui } from "./gui.js";
@@ -107,21 +108,19 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   fs.watchFile(file, { interval: 500 }, () => {
     const size = fs.statSync(file).size;
     if (size <= offset) {
-      offset = size;
+      offset = size; // Rotated or truncated.
       return;
     }
-    const fd = fs.openSync(file, "r");
-    const buf = Buffer.alloc(size - offset);
-    fs.readSync(fd, buf, 0, buf.length, offset);
-    fs.closeSync(fd);
-    offset = size;
-    for (const line of buf.toString("utf8").split("\n").filter(Boolean)) {
+    // Advance only past complete lines so an event straddling a poll boundary is not lost.
+    const { lines, end } = readCompleteLines(file, offset, size);
+    for (const line of lines.filter(Boolean)) {
       try {
         process.stdout.write(formatEvent(JSON.parse(line)) + "\n");
       } catch {
-        // Torn write; the next change event re-reads from the new offset.
+        // Non-JSON noise; skip.
       }
     }
+    offset = end;
   });
   await new Promise(() => {}); // Follow until Ctrl+C.
 }
