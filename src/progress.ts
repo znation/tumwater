@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { readCompleteLines } from "./files.js";
 import { piLogPath } from "./paths.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
@@ -97,31 +98,6 @@ export function parseProgress(lines: string[], quietMs: number): LiveProgress {
   const progress = freshProgress(quietMs);
   for (const line of lines) feedLine(progress, line);
   return progress;
-}
-
-/** Read [offset, size) and split into complete lines. `end` is the offset just past the
- * last newline: a trailing partial line (torn write in flight) is NOT consumed, so it is
- * re-read next poll once pi has written its newline instead of being parsed torn or lost.
- * Shared by readLiveProgress's incremental tail and the CLI's `logs -f` follow loop. */
-export function readCompleteLines(file: string, offset: number, size: number): { lines: string[]; end: number } {
-  const len = size - offset;
-  if (len <= 0) return { lines: [], end: offset };
-  const fd = fs.openSync(file, "r");
-  try {
-    const buf = Buffer.alloc(len);
-    const got = fs.readSync(fd, buf, 0, len, offset);
-    if (got <= 0) return { lines: [], end: offset }; // Shrank under us; caller reseeds next poll.
-    let complete = got;
-    if (buf[got - 1] !== 10) {
-      const lastNl = buf.lastIndexOf(10, got - 1);
-      if (lastNl < 0) return { lines: [], end: offset }; // No newline yet; wait for the rest.
-      complete = lastNl + 1;
-    }
-    const text = buf.toString("utf8", 0, complete);
-    return { lines: text.split("\n"), end: offset + complete };
-  } finally {
-    fs.closeSync(fd);
-  }
 }
 
 /** Live progress for a loop's in-flight tick, or null when there is no log yet.

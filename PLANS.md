@@ -40,8 +40,9 @@ Implementation:
   (rendered lines for the last `limit` *entries*, oldest first; an entry is one run separator or
   one assistant turn's line block) plus a pure formatter over raw JSONL lines so tests need no
   files. Handle a missing file gracefully (return []).
-- Reading: reuse progress.ts's `readCompleteLines(file, offset, size)` — export it from there;
-  it returns only complete lines and leaves a torn trailing partial line unconsumed. One-shot
+- Reading: reuse files.ts's shared helper `readCompleteLines(file, offset, size)` (already
+  exported; used by progress.ts's incremental tail and the CLI's `logs -f`); it returns only
+  complete lines and leaves a torn trailing partial line unconsumed. One-shot
   mode reads the whole current file in one call (offset 0 → size): the log rotates at
   `logMaxBytes` (default 16MB), trivial to parse for a CLI command. Do NOT use progress.ts's
   incremental `tails` cache or its 4MB seed window — those exist for per-second TUI/GUI polling,
@@ -59,9 +60,9 @@ Implementation:
 - Read-only: never touches scheduling, loop state, or git. When `--role` is absent, existing
   harness-event behavior is unchanged.
 
-**Files touched:** `src/transcript.ts` (new), `src/cli.ts`, `test/transcript.test.ts` (new),
-and `src/progress.ts` to export `readCompleteLines` (one-line visibility change; no behavior
-change there — its incremental cache stays private to the hot path).
+**Files touched:** `src/transcript.ts` (new), `src/cli.ts`, and `test/transcript.test.ts`
+(new). No changes needed in progress.ts or files.ts — `readCompleteLines` is already
+exported from files.ts; its incremental cache stays private to the hot path.
 
 **Acceptance criteria:**
 - `tumwater logs --role <id>` prints that loop's recent pi activity as readable lines — run

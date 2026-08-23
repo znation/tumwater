@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { describeToolCall, parseProgress, readCompleteLines, readLiveProgress } from "../src/progress.js";
+import { describeToolCall, parseProgress, readLiveProgress } from "../src/progress.js";
 import { piLogPath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
 
@@ -97,23 +97,6 @@ test("readLiveProgress does not count a torn trailing line until it is complete"
   const p = readLiveProgress(root, "clean");
   assert.equal(p?.turns, 1);
   assert.equal(p?.contextTokens, 42);
-});
-
-test("readCompleteLines returns only complete lines and stops at the last newline", () => {
-  const file = path.join(tmpdir(), "log.jsonl");
-  fs.writeFileSync(file, 'a\n{"torn":"mes'); // trailing partial line (no newline)
-  let r = readCompleteLines(file, 0, fs.statSync(file).size);
-  assert.deepEqual(r.lines.filter(Boolean), ["a"]);
-  assert.equal(r.end, 2); // just past the first \n; the torn tail is not consumed
-
-  fs.appendFileSync(file, 'sage"}\n');
-  r = readCompleteLines(file, r.end, fs.statSync(file).size);
-  assert.deepEqual(r.lines.filter(Boolean), ['{"torn":"message"}']); // re-read once complete
-
-  // No growth and no newline yet: nothing consumed.
-  const empty = path.join(tmpdir(), "empty.jsonl");
-  fs.writeFileSync(empty, "abc");
-  assert.deepEqual(readCompleteLines(empty, 0, 3), { lines: [], end: 0 });
 });
 
 test("readLiveProgress reseeds when the log is rotated (renamed) mid-observation", () => {

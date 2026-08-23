@@ -7,7 +7,7 @@ import { initProject } from "./init.js";
 import { submitPrompt } from "./inbox.js";
 import { formatEvent, readEvents, subscribeEvents } from "./events.js";
 import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
-import { readCompleteLines } from "./progress.js";
+import { readCompleteLines } from "./files.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
 import { startGui } from "./gui.js";
