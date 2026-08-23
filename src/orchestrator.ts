@@ -38,6 +38,9 @@ export interface OrchestratorInfo {
   roles: string[];
 }
 
+/** Read the running orchestrator's info file; null when it is missing or unreadable.
+ * Never throws — a torn write (e.g. a crash mid-write) must not take down observers
+ * that poll this every second (TUI, GUI, status). */
 export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
   const file = orchestratorStatePath(root);
   if (!fs.existsSync(file)) return null;
@@ -48,6 +51,7 @@ export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
   }
 }
 
+/** True when the recorded orchestrator's pid is still alive (signal-0 probe). */
 export function orchestratorAlive(root: string): boolean {
   const info = readOrchestratorInfo(root);
   if (!info) return false;
