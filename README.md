@@ -41,9 +41,10 @@ their pi sessions across ticks and self-heal from context overflows; merge confl
 pi-driven resolution attempt; roles can override provider/model/thinking; `tumwater.json` is
 validated on load/save with actionable errors; logs rotate and old pi sessions are pruned; the
 TUI/status table is width-aware with a totals row. One open bug (BUGS.md): ticks in flight when
-the machine sleeps fail after wake with LM Studio's "predict stream timed out" error. In
-progress: two PLANS.md plans await the feature loop — per-role pi transcripts via
-`tumwater logs --role`, and absolute last-result timestamps in the GUI/TUI tables.
+the machine sleeps fail after wake with LM Studio's "predict stream timed out" error.
+Per-loop pi transcripts are observable with `tumwater logs --role <id>` (run separators,
+abbreviated thinking, assistant text, tool calls; `-f` follows live). In progress: one
+PLANS.md plan awaits the feature loop — absolute last-result timestamps in the GUI/TUI tables.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -80,6 +81,7 @@ tumwater tui          # terminal 2: dashboard + main prompt
 tumwater gui          # or the same dashboard at http://127.0.0.1:7180
 tumwater status       # one-shot table
 tumwater logs -f      # follow harness events
+tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
 tumwater prompt "prefer no third-party deps"
 ```
 

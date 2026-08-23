@@ -2,6 +2,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { enabledRoleIds, loadConfig } from "./config.js";
+import { allRoleIds } from "./roles.js";
+import { createTranscriptRenderer } from "./transcript.js";
 import { currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
 import { submitPrompt } from "./inbox.js";
@@ -11,7 +13,7 @@ import { readCompleteLines } from "./files.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
 import { startGui } from "./gui.js";
-import { eventsLogPath } from "./paths.js";
+import { eventsLogPath, piLogPath } from "./paths.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
 
@@ -22,6 +24,7 @@ Usage:
   tumwater gui [--port N]          Same dashboard in the browser (default port 7180)
   tumwater status                  One-shot status table
   tumwater logs [-f] [-n N]        Show (and follow) harness events
+  tumwater logs --role <id> [-f]   Show (and follow) that loop's pi transcript
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater help | version
 
@@ -120,6 +123,14 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   const follow = args.includes("-f") || args.includes("--follow");
   const nFlag = args.indexOf("-n");
   const limit = nFlag >= 0 ? parseCountFlag("-n", args[nFlag + 1]) : 50;
+  const roleFlag = args.indexOf("--role");
+  if (roleFlag >= 0) {
+    const role = args[roleFlag + 1];
+    if (!role) fail("--role needs a role id (e.g. `--role feature`)");
+    if (!allRoleIds().includes(role)) fail(`unknown role: ${role} (valid ids: ${allRoleIds().join(", ")})`);
+    await cmdLogsTranscript(root, role, limit, follow);
+    return;
+  }
   for (const e of readEvents(root, limit)) process.stdout.write(formatEvent(e) + "\n");
   if (!follow) return;
   const file = eventsLogPath(root);
@@ -141,6 +152,64 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
         // Non-JSON noise; skip.
       }
     }
+    offset = end;
+  });
+  await new Promise(() => {}); // Follow until Ctrl+C.
+}
+
+/** `tumwater logs --role <id>`: print (and optionally follow) one loop's pi transcript —
+ * run separators, abbreviated thinking, assistant text, and tool calls. Read-only; the raw
+ * log is pi's streaming event stream, so only complete renderable events are shown. */
+async function cmdLogsTranscript(root: string, role: string, limit: number, follow: boolean): Promise<void> {
+  const file = piLogPath(root, role);
+  let size = 0;
+  try {
+    size = fs.statSync(file).size;
+  } catch {
+    // No log yet.
+  }
+
+  const renderer = createTranscriptRenderer();
+  const printEntry = (lines: string[]) => {
+    if (lines.length > 0) process.stdout.write(lines.join("\n") + "\n");
+  };
+
+  // Initial window: the last `limit` entries of what is on disk. The offset stops at the
+  // last complete newline, so a torn trailing line is re-read once it completes instead of lost.
+  let offset = 0;
+  if (size > 0) {
+    const { lines, end } = readCompleteLines(file, 0, size);
+    const entries: string[][] = [];
+    for (const line of lines) {
+      const out = renderer.feed(line);
+      if (out.length > 0) entries.push(out);
+    }
+    // A run that started but produced no renderable event yet still gets its separator.
+    const tail = renderer.flush();
+    if (tail.length > 0) entries.push(tail);
+    for (const entry of entries.slice(-limit)) printEntry(entry);
+    offset = end;
+  } else {
+    process.stdout.write(`no transcript yet for ${role}\n`);
+  }
+  if (!follow) return;
+
+  // Follow: same byte-offset/watchFile pattern as `logs -f`, advancing only to the returned
+  // end so each turn prints exactly once when its message_end lands.
+  fs.watchFile(file, { interval: 500 }, () => {
+    let st: fs.Stats;
+    try {
+      st = fs.statSync(file);
+    } catch {
+      return; // Not (re)created yet.
+    }
+    if (st.size < offset) {
+      offset = st.size; // Rotated or truncated.
+      return;
+    }
+    if (st.size === offset) return;
+    const { lines, end } = readCompleteLines(file, offset, st.size);
+    for (const line of lines) printEntry(renderer.feed(line));
     offset = end;
   });
   await new Promise(() => {}); // Follow until Ctrl+C.
