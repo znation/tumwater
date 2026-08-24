@@ -55,51 +55,6 @@ one README line documenting live vs restart-only settings.
   is fixed.
 - `maxConcurrent`/`sessionRetentionDays` documented as restart-only; `npm test` passes.
 
-### Surface per-role pi transcripts in the TUI/GUI (planned 2026-08-23, refined 2026-08-23)
-
-**Goal:** The `tumwater logs --role` transcript should also be visible from the dashboards —
-a per-loop detail pane in the TUI and an `/api/transcript?role=` endpoint rendered by the GUI.
-Follow-up to the now-done CLI transcript; completes "observable by gui/tui/log".
-
-**Approach:** Build on `src/transcript.ts`: `readTranscript(root, role, limit)` already returns
-rendered lines for the last N entries (run separators, abbreviated thinking, assistant text,
-tool calls). Neither dashboard has any per-loop selection today — every TUI keypress feeds the
-prompt input line and GUI rows are inert — so this plan adds one minimal interaction to each:
-
-- TUI (`src/tui.ts`): add a single toggle key, **Ctrl+T**, that cycles the "recent activity"
-  section through the roles shown in the status table (position 0 = today's events view; then
-  `snap.loops`' roles in order). In transcript mode render a header line (`transcript: <role> —
-  Ctrl+T to cycle`) plus dimmed transcript lines, taking the tail of
-  `readTranscript(root, role, N)` sliced so it fits the existing `eventBudget`. The pane occupies
-  exactly the same vertical slot as recent activity, so the height-budget math and the
-  one-logical-line-per-visual-line invariant (the fix behind two old TUI bugs) are untouched;
-  every line still goes through `clipToWidth`. No cursor/selection machinery; prompt input and
-  Ctrl+C behavior unchanged.
-- GUI (`src/gui.ts` + `src/gui-page.ts`): add a GET `/api/transcript?role=<id>&n=N` route next
-to `/api/status`: validate the id against `allRoleIds()` (unknown → 400 with a clear message),
-default n=50, respond `{ lines: readTranscript(root, role, n) }`. In the page, make each row's
-loop name a link that toggles a transcript panel below the table (one open at a time; clicking
-again or another row closes/switches it), rendered as preformatted text in the existing #feed
-style. The panel re-fetches on the same 1s poll while open, so it stays live like the rest of
-the page.
-
-Both dashboards poll every second, so re-reading per poll is fine at current log sizes (the file
-rotates at `logMaxBytes`); keep the entry limit modest and render read-only. No new state,
-scheduling, or git paths.
-
-**Files touched:** `src/tui.ts`, `src/gui.ts` (new route), `src/gui-page.ts`; extend
-`test/gui.test.ts` for the endpoint (valid role, unknown role → 400, no log yet). Transcript
-rendering itself is already covered by test/transcript.test.ts.
-
-**Acceptance criteria:**
-- GUI: clicking a loop's name shows its recent transcript below the table with the same lines as
-  `tumwater logs --role <id>`; unknown role → 400 error, no log yet → friendly empty state;
-  panel updates on the existing poll.
-- TUI: Ctrl+T cycles events → each enabled role's transcript and back; the header names the
-  current role; the table stays pinned at top with no wrapped lines (height-budget invariant
-  preserved); prompt input and Ctrl+C behavior unchanged.
-- `npm test` passes; no changes to scheduling/state/git paths.
-
 ### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21, refined 2026-08-23)
 
 **Goal:** Both live tables — the TUI/one-shot status table and the web GUI loop table — show
@@ -138,6 +93,18 @@ the served page contains the new column header.
 - Existing width-awareness behavior is preserved (no line exceeds `maxWidth`); `npm test` passes.
 
 ## Done
+
+### Surface per-role pi transcripts in the TUI/GUI (planned 2026-08-23, refined 2026-08-23, done 2026-08-24)
+
+TUI: Ctrl+T cycles the activity pane between recent events and each loop's transcript (header
+`transcript: <role> — Ctrl+T to cycle`), occupying exactly the same slot and height budget as
+recent activity so the no-wrap invariant holds; the view index clamps when roles change, and an
+empty log shows "(no transcript yet)". GUI: GET `/api/transcript?role=&n=` (unknown role or bad
+n → 400 with a clear message; default n=50) plus a click-to-toggle transcript panel below the
+loop table that re-fetches on the existing 1s poll and shows "(no transcript yet for this loop)"
+when empty. Tests in test/gui.test.ts cover endpoint validation and parse every inline `<script>`
+body so unparseable page JS can never ship silently (regression for a bare-`\n` template-literal
+bug that blanked the dashboard). Files: src/tui.ts, src/gui.ts, src/gui-page.ts, test/gui.test.ts.
 
 ### Per-role pi transcript via `tumwater logs --role` (planned 2026-08-21, refined 2026-08-23, done 2026-08-23)
 
