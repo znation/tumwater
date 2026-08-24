@@ -10,7 +10,7 @@ import { submitPrompt } from "./inbox.js";
 import { formatEvent, readEvents, subscribeEvents } from "./events.js";
 import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
 import { findOnPath } from "./pi.js";
-import { readCompleteLines } from "./files.js";
+import { followFile, readCompleteLines } from "./files.js";
 import { renderStatus, snapshot } from "./status.js";
 import { runTui } from "./tui.js";
 import { startGui } from "./gui.js";
@@ -141,25 +141,13 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   const file = eventsLogPath(root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   if (!fs.existsSync(file)) fs.writeFileSync(file, "");
-  let offset = fs.statSync(file).size;
-  fs.watchFile(file, { interval: 500 }, () => {
-    const size = fs.statSync(file).size;
-    if (size <= offset) {
-      offset = size; // Rotated or truncated.
-      return;
+  await followFile(file, fs.statSync(file).size, (line) => {
+    try {
+      process.stdout.write(formatEvent(JSON.parse(line)) + "\n");
+    } catch {
+      // Non-JSON noise; skip.
     }
-    // Advance only past complete lines so an event straddling a poll boundary is not lost.
-    const { lines, end } = readCompleteLines(file, offset, size);
-    for (const line of lines.filter(Boolean)) {
-      try {
-        process.stdout.write(formatEvent(JSON.parse(line)) + "\n");
-      } catch {
-        // Non-JSON noise; skip.
-      }
-    }
-    offset = end;
   });
-  await new Promise(() => {}); // Follow until Ctrl+C.
 }
 
 /** `tumwater logs --role <id>`: print (and optionally follow) one loop's pi transcript —
@@ -199,25 +187,8 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
   }
   if (!follow) return;
 
-  // Follow: same byte-offset/watchFile pattern as `logs -f`, advancing only to the returned
-  // end so each turn prints exactly once when its message_end lands.
-  fs.watchFile(file, { interval: 500 }, () => {
-    let st: fs.Stats;
-    try {
-      st = fs.statSync(file);
-    } catch {
-      return; // Not (re)created yet.
-    }
-    if (st.size < offset) {
-      offset = st.size; // Rotated or truncated.
-      return;
-    }
-    if (st.size === offset) return;
-    const { lines, end } = readCompleteLines(file, offset, st.size);
-    for (const line of lines) printEntry(renderer.feed(line));
-    offset = end;
-  });
-  await new Promise(() => {}); // Follow until Ctrl+C.
+  // Follow: shared with `logs -f`; each turn prints exactly once when its message_end lands.
+  await followFile(file, offset, (line) => printEntry(renderer.feed(line)));
 }
 
 async function main(): Promise<void> {
