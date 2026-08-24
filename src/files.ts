@@ -66,9 +66,9 @@ export function readCompleteLines(file: string, offset: number, size: number): {
 /** Follow an append-only file from byte `offset`, delivering every complete line at or past
  * it exactly once — both what is already on disk and everything appended later. Polls every
  * `intervalMs` (default 500ms — the harness's follow cadence); a torn trailing line without
- * its newline is held back until completed, and rotation/truncation (file shrinks) resets to
- * the new size. A missing file simply delivers nothing until it appears. Returns a stop
- * function that ends polling.
+ * its newline is held back until completed, and rotation/truncation (file shrinks) restarts
+ * from the beginning of the new content. A missing file simply delivers nothing until it
+ * appears. Returns a stop function that ends polling.
  *
  * Polling is unconditional (setInterval + stat) rather than fs.watchFile's change detection:
  * watchFile only fires when the stat differs from its asynchronously established baseline, so

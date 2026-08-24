@@ -8,6 +8,55 @@ const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
 const RESET = "\x1b[0m";
 
+/** The key fields applyKey cares about (a structural subset of readline.Key, so tests can
+ * pass plain objects without a TTY). */
+export interface KeyLike {
+  name?: string;
+  ctrl?: boolean;
+  meta?: boolean;
+}
+
+/** Apply one keypress to the prompt text (pure, so it is unit-testable without a TTY).
+ * Printable characters insert at the cursor; backspace deletes before it, delete after it,
+ * and left/right move it. Control/meta combinations are ignored. Returns the new state;
+ * an out-of-range cursor is clamped instead of corrupting the edit. */
+export function applyKey(
+  text: string,
+  cursor: number,
+  str: string | undefined,
+  key: KeyLike,
+): { text: string; cursor: number } {
+  const c = Math.max(0, Math.min(cursor, text.length));
+  switch (key.name) {
+    case "left":
+      return { text, cursor: Math.max(0, c - 1) };
+    case "right":
+      return { text, cursor: Math.min(text.length, c + 1) };
+    case "backspace":
+      if (c === 0) return { text, cursor: 0 };
+      return { text: text.slice(0, c - 1) + text.slice(c), cursor: c - 1 };
+    case "delete":
+      if (c >= text.length) return { text, cursor: c };
+      return { text: text.slice(0, c) + text.slice(c + 1), cursor: c };
+  }
+  if (str && !key.ctrl && !key.meta && str >= " ") {
+    return { text: text.slice(0, c) + str + text.slice(c), cursor: c + 1 };
+  }
+  return { text, cursor: c };
+}
+
+/** The visible slice of the prompt line for a terminal `width` columns: the whole text
+ * when it fits, otherwise a window that keeps the cursor at (or near) the right edge so
+ * mid-text edits stay visible. With the "> " prefix the rendered line never exceeds
+ * `width` columns for width >= 4, preserving the one-logical-line-per-visual-line invariant.
+ */
+export function renderInputView(text: string, cursor: number, width: number): string {
+  const room = Math.max(1, width - 3); // headroom for the "> " prefix and a leading ellipsis
+  if (text.length <= room) return text;
+  const start = Math.max(0, Math.min(cursor - (room - 1), text.length - room));
+  return (start > 0 ? "…" : "") + text.slice(start, start + room);
+}
+
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
  * typed prompts into the inbox. Works alongside (not instead of) `tumwater run`. */
 export async function runTui(root: string): Promise<void> {
@@ -16,6 +65,7 @@ export async function runTui(root: string): Promise<void> {
   }
 
   let input = "";
+  let cursor = 0;
   let flash = "";
   let flashUntil = 0;
 
@@ -45,9 +95,8 @@ export async function runTui(root: string): Promise<void> {
     parts.push(
       `${DIM}${clipToWidth("type a prompt for the project, Enter to send · Ctrl+C to quit", width)}${RESET}`,
     );
-    // Show the tail of a long prompt so the cursor position stays visible.
-    const inputView = input.length > width - 3 ? "…" + input.slice(-(width - 4)) : input;
-    parts.push(`> ${inputView}`);
+    // Window long prompts around the cursor so its position stays visible.
+    parts.push(`> ${renderInputView(input, cursor, width)}`);
     process.stdout.write(CLEAR + parts.join("\n"));
   };
 
@@ -67,15 +116,16 @@ export async function runTui(root: string): Promise<void> {
       if (key.name === "return") {
         const prompt = input.trim();
         input = "";
+        cursor = 0;
         if (prompt) {
           submitPrompt(root, prompt);
           flash = "queued for the director loop";
           flashUntil = Date.now() + 3000;
         }
-      } else if (key.name === "backspace") {
-        input = input.slice(0, -1);
-      } else if (str && !key.ctrl && !key.meta && str >= " ") {
-        input += str;
+      } else {
+        const next = applyKey(input, cursor, str, key);
+        input = next.text;
+        cursor = next.cursor;
       }
       render();
     });
