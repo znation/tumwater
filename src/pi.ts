@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
@@ -132,6 +132,14 @@ export function findOnPath(name: string, pathEnv: string = process.env.PATH ?? "
   return null;
 }
 
+/** Terminate a pi child: SIGTERM now, escalating to SIGKILL after 10 s if it is still
+ * alive. The escalation timer is unref'd so a clean exit does not keep the harness process
+ * alive. Shared by the tick-timeout and harness-shutdown paths. */
+function terminateChild(child: ChildProcess): void {
+  child.kill("SIGTERM");
+  setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+}
+
 /** Prefix of PiRunResult.errorMessage when the pi process never started; no session file
  * exists then, so callers must not treat the run as having created one. */
 export const SPAWN_ERROR_PREFIX = "failed to spawn pi";
@@ -161,15 +169,13 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
 
     const timeout = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+      terminateChild(child);
     }, opts.config.tickTimeoutSeconds * 1000);
 
     let aborted = false;
     const onAbort = () => {
       aborted = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+      terminateChild(child);
     };
     opts.signal?.addEventListener("abort", onAbort, { once: true });
     if (opts.signal?.aborted) onAbort();
