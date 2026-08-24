@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Shared file helpers: size-based rotation for append-only logs, age-based pruning of
- * pi session files, and complete-line tail reading for incrementally consumed JSONL logs. */
+ * pi session files, and complete-line tail reading/following for incrementally consumed
+ * JSONL logs. */
 
 /** Keep an append-only log bounded: over `maxBytes` it is renamed to `<file>.1`
  * (replacing any previous rotation) and a fresh file starts. Returns true if rotated. */
@@ -60,4 +61,30 @@ export function readCompleteLines(file: string, offset: number, size: number): {
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/** Follow an append-only file, invoking `onLine` for each newly completed line as it is
+ * appended. Polls with watchFile every 500ms starting at `startOffset`; the offset advances
+ * only past complete lines (readCompleteLines), so a write straddling a poll boundary is
+ * re-read once it completes instead of being lost, and rotation/truncation resets to the new
+ * size. A missing file (not created yet) is skipped until it appears. Returns a promise that
+ * never resolves — await it to follow until interrupted. */
+export function followFile(file: string, startOffset: number, onLine: (line: string) => void): Promise<void> {
+  let offset = startOffset;
+  fs.watchFile(file, { interval: 500 }, () => {
+    let size: number;
+    try {
+      size = fs.statSync(file).size;
+    } catch {
+      return; // Not (re)created yet.
+    }
+    if (size <= offset) {
+      offset = size; // Rotated or truncated.
+      return;
+    }
+    const { lines, end } = readCompleteLines(file, offset, size);
+    for (const line of lines.filter(Boolean)) onLine(line);
+    offset = end;
+  });
+  return new Promise(() => {}); // Follow until interrupted.
 }
