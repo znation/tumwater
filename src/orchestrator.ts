@@ -8,29 +8,10 @@ import { gitTry } from "./git.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles } from "./files.js";
 import { inboxSize } from "./inbox.js";
+import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath, sessionsRootDir } from "./paths.js";
 
 const POLL_MS = 2000;
-
-/** Simple counting semaphore bounding concurrent pi runs. */
-export class Semaphore {
-  private waiters: Array<() => void> = [];
-  constructor(private available: number) {}
-
-  async acquire(): Promise<void> {
-    if (this.available > 0) {
-      this.available -= 1;
-      return;
-    }
-    await new Promise<void>((resolve) => this.waiters.push(resolve));
-  }
-
-  release(): void {
-    const next = this.waiters.shift();
-    if (next) next();
-    else this.available += 1;
-  }
-}
 
 export interface OrchestratorInfo {
   pid: number;
