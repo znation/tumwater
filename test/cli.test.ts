@@ -8,6 +8,7 @@ import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize } from "../src/inbox.js";
+import { piLogPath } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
@@ -179,4 +180,81 @@ test("gui --port validates its range instead of listening on an unexpected port"
   const noValue = await cli(repo, "gui", "--port");
   assert.equal(noValue.code, 1);
   assert.match(noValue.stderr, /--port needs a value/);
+});
+
+// --- logs --role (per-role pi transcript) ---
+
+test("logs --role validates the role id and reports a missing transcript", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "transcript cli test");
+
+  let r = await cli(repo, "logs", "--role");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--role needs a role id/);
+
+  r = await cli(repo, "logs", "--role", "bogus");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
+
+  // A valid id whose loop never ran: friendly message, exit 0.
+  r = await cli(repo, "logs", "--role", "clean");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no transcript yet for clean/);
+});
+test("logs --role prints the rendered pi transcript and -n limits entries", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "transcript cli render test");
+  const TS1 = 1787222691956;
+  const TS2 = TS1 + 3_600_000;
+  const file = piLogPath(repo, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    [
+      JSON.stringify({ type: "session", version: 3, id: "x" }),
+      JSON.stringify({ type: "agent_start" }),
+      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "tick prompt one (must not appear)" }], timestamp: TS1 } }),
+      JSON.stringify({ type: "message_update", delta: { type: "text_delta", textDelta: "streaming noise" } }),
+      JSON.stringify({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "look at the files first" },
+            { type: "text", text: "Reading PLANS.md." },
+            { type: "toolCall", id: "c1", name: "read", arguments: { path: "/repo/PLANS.md" } },
+          ],
+          stopReason: "stop",
+        },
+      }),
+      JSON.stringify({ type: "agent_start" }),
+      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "tick prompt two (must not appear)" }], timestamp: TS2 } }),
+      JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "second run done" }], stopReason: "stop" } }),
+    ].join("\n") + "\n",
+  );
+
+  const p = (n: number) => String(n).padStart(2, "0");
+  const stamp = (ts: number) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  };
+
+  let r = await cli(repo, "logs", "--role", "clean");
+  assert.equal(r.code, 0);
+  // Both runs render in order: separator stamped from the user message, then the turn.
+  assert.ok(r.stdout.includes(`── run @ ${stamp(TS1)} ──`), r.stdout);
+  assert.ok(r.stdout.includes("· look at the files first"), r.stdout);
+  assert.ok(r.stdout.includes("  Reading PLANS.md."), r.stdout);
+  assert.ok(r.stdout.includes("→ read PLANS.md"), r.stdout);
+  assert.ok(r.stdout.includes(`── run @ ${stamp(TS2)} ──`), r.stdout);
+  assert.ok(r.stdout.includes("  second run done"), r.stdout);
+  // User prompts and streaming deltas never leak into the transcript.
+  assert.ok(!r.stdout.includes("must not appear"));
+  assert.ok(!r.stdout.includes("streaming noise"));
+
+  // -n limits to the last N entries: only the second run's turn remains.
+  r = await cli(repo, "logs", "--role", "clean", "-n", "1");
+  assert.equal(r.code, 0);
+  assert.ok(!r.stdout.includes("Reading PLANS.md."), r.stdout);
+  assert.ok(r.stdout.includes("  second run done"), r.stdout);
 });

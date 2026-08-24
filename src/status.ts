@@ -68,6 +68,9 @@ export function workingDetail(root: string, s: LoopState): string {
   return parts.join(" · ");
 }
 
+/** Human label of where a loop is in its cycle (stopped / working / waiting for prompts /
+ * sleeping / queued). Pass `root` so an in-flight tick expands into live detail
+ * (elapsed · turn · ctx · tool); without it a working loop shows plain "working". */
 export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: string): string {
   if (!orchestratorRunning) return "stopped";
   if (s.running) return root ? workingDetail(root, s) : "working";

@@ -129,6 +129,7 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
     const outcome = await runner.tick();
     assert.equal(outcome.result, "changed");
     assert.ok(fs.existsSync(path.join(repo, "request.txt")));
+    assert.equal(inboxSize(repo), 0, "a fulfilled prompt is not re-queued");
   } finally {
     restore();
   }
@@ -180,6 +181,54 @@ test("an aborted director tick re-queues the user prompt", async () => {
     assert.equal(outcome.result, "aborted");
     assert.equal(inboxSize(repo), 1, "prompt is back in the inbox");
     assert.equal(dequeuePrompt(repo), "important request");
+  } finally {
+    restore();
+  }
+});
+
+test("a failing director tick re-queues the user prompt (regression)", async () => {
+  const repo = await initializedRepo();
+  // pi fails hard: non-zero exit, no assistant text, and no file changes.
+  const restore = fakePi(`echo 'pi exploded' >&2\nexit 1`);
+  try {
+    enqueuePrompt(repo, "please do the thing");
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
+    assert.equal(dequeuePrompt(repo), "please do the thing");
+  } finally {
+    restore();
+  }
+});
+
+test("a timed-out director tick re-queues the user prompt (regression)", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(`exec sleep 30`);
+  try {
+    enqueuePrompt(repo, "important request");
+    const config = defaultConfig();
+    config.tickTimeoutSeconds = 1;
+    const runner = new LoopRunner(repo, "director", config, "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.match(runner.state.lastError ?? "", /timed out/);
+    assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
+    assert.equal(dequeuePrompt(repo), "important request");
+  } finally {
+    restore();
+  }
+});
+
+test("a director tick that handles a prompt with no file changes does not re-queue it", async () => {
+  const repo = await initializedRepo();
+  // pi answers the question in its reply and changes nothing: that IS fulfillment.
+  const restore = fakePi(`printf '%s\n' '${assistantLine("The answer is 42.")}'`);
+  try {
+    enqueuePrompt(repo, "what is the answer?");
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal(inboxSize(repo), 0, "a handled prompt must not loop back into the inbox");
   } finally {
     restore();
   }
