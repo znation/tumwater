@@ -51,8 +51,8 @@ export const GUI_PAGE = `<!doctype html>
       const lines = Array.isArray(d.lines) ? d.lines : [];
       panel.hidden = false;
       panel.innerHTML = "<span class='muted'>transcript: " + esc(transcriptRole) +
-        " — click the loop name again to close</span>\n" +
-        (lines.length ? lines.map(esc).join("\n") : "(no transcript yet for this loop)");
+        " — click the loop name again to close</span>\\n" +
+        (lines.length ? lines.map(esc).join("\\n") : "(no transcript yet for this loop)");
     } catch { /* keep the previous panel content on a failed poll */ }
   }
   async function refresh() {

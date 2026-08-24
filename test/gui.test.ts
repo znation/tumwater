@@ -92,3 +92,15 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
     server.close();
   }
 });
+
+test("the dashboard page's inline script is syntactically valid JavaScript", async () => {
+  // Regression: the page is authored inside a TS template literal, where a bare \n becomes a
+  // REAL newline in the served page — splitting the page's own string literals and killing the
+  // whole script with a syntax error ("Unexpected EOF"). Parse every <script> body for real.
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const scripts = [...GUI_PAGE.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
+  assert.ok(scripts.length >= 1, "page has an inline script");
+  for (const body of scripts) {
+    assert.doesNotThrow(() => new Function(body), "inline script must parse");
+  }
+});
