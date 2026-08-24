@@ -5,24 +5,52 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Director loses queued user prompts when a tick fails without landing work (reported 2026-08-23)
-
-**Symptom:** A prompt submitted via TUI/GUI/`tumwater prompt` is dequeued from the inbox at the
-start of the director's tick (`tickPrompt()` in `src/loop.ts`). If that tick then ends with an
-error and no file changes (pi failure, timeout, spawn error), the raw user prompt is never
-re-queued — it is silently lost. Only an aborted tick (harness shutdown) re-queues it today.
-
-**How to reproduce:** Queue a prompt for the director; make its pi run fail hard without any file
-changes (e.g. `pi` exits non-zero with no assistant text); after the error tick the inbox is
-empty and the request never runs again.
-
-**Suspected cause / notes for the fixer:** The re-queue in `runTick` only covers `pi.aborted`. A
-fix should re-queue on unfulfilled outcomes (error without changes) but NOT on `no_change` — a
-question-type prompt is legitimately answered with no file changes, and re-queuing those would
-loop forever. Merge failures need no re-queue: the work stays on the branch and
-`recoverLeftover` lands it on a later tick. Files: `src/loop.ts`, `test/loop.test.ts`.
+_None yet._
 
 ## Fixed
+
+### Clean conflict resolutions rejected as conflicted when files contain seven-equals lines (found by bugfix loop 2026-08-23, fixed 2026-08-23)
+
+**Symptom:** When a merge conflict in a file containing a line that starts with exactly seven `=`
+characters — e.g. a markdown setext heading (`History` / `=======`) or an RST section underline of
+length 7 — was resolved correctly by pi, the harness still flagged it as unresolved:
+`hasConflictMarkers` matched its bare-separator pattern against legitimate content, so
+`resolveConflict` aborted the merge and discarded the work. The next tick's `recoverLeftover`
+re-merged, hit the same conflict, pi re-resolved correctly, got rejected again — an endless
+token-burning loop that never landed (backoff only spaces out the retries). Found by latent-bug
+sweep; reproduced with a scratch script before fixing.
+
+**Cause:** The marker regex `/^(<{7}|={7}|>{7})( |$)/m` treated any line starting with exactly
+seven equals as a leftover conflict separator. Git's real separator is always part of a block that
+also carries `<<<<<<< ` and `>>>>>>> ` start/end markers, but content lines of exactly seven `=`
+are common in docs (setext/RST underlines matching a 7-character heading such as "History",
+"Summary", or "License").
+
+**Fix:** `hasConflictMarkers` now checks only the start/end marker patterns (`^<{7}( |$)` /
+`^>{7}( |$)`) — every real conflict block carries them, and content lines starting with seven `<`
+or `>` are far rarer than seven-`=` underlines. A resolver that leaves only a bare separator line
+behind is treated as resolved; its stray line is content the project's own tests can catch.
+Regression tests: unit tests in test/git.test.ts (leftover blocks still detected, setext
+underlines not flagged, deleted files count as resolved) and an end-to-end tick test in
+test/loop.test.ts where a clean resolution of a conflicted markdown file with a 7-character setext
+heading lands on main. Files: `src/git.ts`, `test/git.test.ts`, `test/loop.test.ts`.
+
+### Director loses queued user prompts when a tick fails without landing work (reported 2026-08-23, fixed 2026-08-23)
+
+**Symptom:** A prompt submitted via TUI/GUI/`tumwater prompt` is dequeued from the inbox at the
+start of the director's tick (`tickPrompt()` in `src/loop.ts`). If that tick then ended with an
+error and no file changes (pi failure, timeout, spawn error), the raw user prompt was never
+re-queued — it was silently lost. Only an aborted tick (harness shutdown) re-queued it.
+
+**Fix:** `runTick` now captures the dequeued prompt before clearing `pendingUserPrompt` and
+re-queues it on every unfulfilled outcome: abort (existing), harness timeout, and pi failure
+without changes. A `no_change` outcome is deliberately NOT re-queued — a question-type prompt is
+legitimately answered with no file changes, and re-queuing those would loop forever. Merge
+failures are also not re-queued: the work stays on the branch and `recoverLeftover` lands it on a
+later tick (re-queueing there would run the request twice). Regression tests in
+test/loop.test.ts: failing-tick and timed-out-tick re-queue cases, plus guards that fulfilled
+(changed) and handled-without-changes (no_change) prompts are not re-queued. Files:
+`src/loop.ts`, `test/loop.test.ts`.
 
 ### Ticks fail with "Engine protocol predict stream timed out" after machine sleep/wake (reported 2026-08-23, fixed 2026-08-23)
 

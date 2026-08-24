@@ -129,6 +129,7 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
     const outcome = await runner.tick();
     assert.equal(outcome.result, "changed");
     assert.ok(fs.existsSync(path.join(repo, "request.txt")));
+    assert.equal(inboxSize(repo), 0, "a fulfilled prompt is not re-queued");
   } finally {
     restore();
   }
@@ -180,6 +181,54 @@ test("an aborted director tick re-queues the user prompt", async () => {
     assert.equal(outcome.result, "aborted");
     assert.equal(inboxSize(repo), 1, "prompt is back in the inbox");
     assert.equal(dequeuePrompt(repo), "important request");
+  } finally {
+    restore();
+  }
+});
+
+test("a failing director tick re-queues the user prompt (regression)", async () => {
+  const repo = await initializedRepo();
+  // pi fails hard: non-zero exit, no assistant text, and no file changes.
+  const restore = fakePi(`echo 'pi exploded' >&2\nexit 1`);
+  try {
+    enqueuePrompt(repo, "please do the thing");
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
+    assert.equal(dequeuePrompt(repo), "please do the thing");
+  } finally {
+    restore();
+  }
+});
+
+test("a timed-out director tick re-queues the user prompt (regression)", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(`exec sleep 30`);
+  try {
+    enqueuePrompt(repo, "important request");
+    const config = defaultConfig();
+    config.tickTimeoutSeconds = 1;
+    const runner = new LoopRunner(repo, "director", config, "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.match(runner.state.lastError ?? "", /timed out/);
+    assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
+    assert.equal(dequeuePrompt(repo), "important request");
+  } finally {
+    restore();
+  }
+});
+
+test("a director tick that handles a prompt with no file changes does not re-queue it", async () => {
+  const repo = await initializedRepo();
+  // pi answers the question in its reply and changes nothing: that IS fulfillment.
+  const restore = fakePi(`printf '%s\n' '${assistantLine("The answer is 42.")}'`);
+  try {
+    enqueuePrompt(repo, "what is the answer?");
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal(inboxSize(repo), 0, "a handled prompt must not loop back into the inbox");
   } finally {
     restore();
   }
@@ -357,6 +406,42 @@ test("concurrent-main-advance still merges (merge commit path)", async () => {
     const outcome = await runner.tick();
     assert.equal(outcome.result, "changed");
     assert.ok(fs.existsSync(path.join(repo, "slow.txt")));
+  } finally {
+    restore();
+  }
+});
+
+test("a clean resolution of a conflicted file with setext underlines lands (regression)", async () => {
+  const repo = await initializedRepo();
+  // docs.md uses a setext heading whose underline is exactly seven '=' — legitimate content
+  // that the old marker check mistook for an unresolved conflict separator.
+  fs.writeFileSync(path.join(repo, "docs.md"), "History\n=======\n\nFirst entry.\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "docs with setext heading");
+  const marker = path.join(tmpdir(), "phase");
+  // Phase 1 (the tick): both sides edit the same line. Phase 2 (the resolution run):
+  // combine them, keeping the setext underline — no real conflict markers remain.
+  const restore = fakePi(
+    [
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch docs edit")}'`,
+      `  printf 'History\\n=======\\n\\nBranch entry.\\n' > docs.md`,
+      `  printf 'History\\n=======\\n\\nMain entry.\\n' > "${repo}/docs.md"`,
+      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main docs edit"`,
+      `else`,
+      `  printf 'History\\n=======\\n\\nBranch entry.\\nMain entry.\\n' > docs.md`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed", "a clean resolution must not be rejected as conflicted");
+    assert.equal(
+      fs.readFileSync(path.join(repo, "docs.md"), "utf8"),
+      "History\n=======\n\nBranch entry.\nMain entry.\n",
+    );
   } finally {
     restore();
   }
