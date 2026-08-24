@@ -5,6 +5,64 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### PRINCIPLES.md — positive design principles injected into every prompt (planned 2026-08-24)
+
+Full plan: [plans/principles.md](plans/principles.md). Every project gets a tracked
+PRINCIPLES.md — the codified taste of the project, phrased as positive principles (per HN/chermi:
+LLMs follow positive constraints far better than prohibitions) — seeded at init, injected into
+every tick and director prompt, editable only by the director and steward. First item of the
+"Senior Tumwater" report sequence; the review gate and refusal plans both lint against it.
+
+### Adversarial review gate before merge (planned 2026-08-24)
+
+Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
+fresh-session pi run (no author context; own model override via a `review` pseudo-role) reviews
+each committed tick against PRINCIPLES.md and replies `VERDICT: approve|reject` with reasons.
+Rejects reset the branch, record reasons, and inject them into the author's next tick; md-only
+diffs are exempt so notes stay cheap. The report's highest-leverage item — we have merged broken
+work twice for lack of it.
+
+### The right to refuse, and friction as a signal (planned 2026-08-24)
+
+Full plan: [plans/refusal-and-thrash.md](plans/refusal-and-thrash.md). A new
+`TUMWATER_REFUSED: <reason>` sentinel and `refused` tick outcome let a loop decline work that
+would harm the architecture, recording the objection in PLANS.md/BUGS.md (that md edit merges;
+any code half-work is discarded). High-friction ticks (turn/time thresholds) are flagged in the
+commit body and events — matsemann's "difficulty is a signal" restored as data.
+
+### Self-explaining commit bodies (planned 2026-08-24)
+
+Full plan: [plans/commit-bodies.md](plans/commit-bodies.md). Reply contract grows WHY/RISK/
+VERIFIED lines after SUMMARY; commits get that body plus a harness-stamped trailer (tick, turns,
+peak ctx). Gives the reviewer, steward, and human a paper trail of claimed understanding
+(TonyAlicea10's do-i-understand, inverted for agents). NOTE: a director-routed request for more
+descriptive commit messages may already exist in this file — merge the entries before
+implementing.
+
+### Questions outbox — loops that know when to ask (planned 2026-08-24)
+
+Full plan: [plans/questions-outbox.md](plans/questions-outbox.md). A tracked QUESTIONS.md
+(Open/Answered) any loop appends to when a decision is genuinely the user's — context, options,
+and the loop's recommendation — surfaced as a `questions: N` badge in status/TUI/GUI; answers
+flow back by editing the file or via the director. Loops never block on their own questions.
+The report's answer to "software lacks victory conditions": be excellent at requesting them.
+
+### Steward role — whole-system judgment on a slow clock (planned 2026-08-24)
+
+Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
+~6 h cadence (adds per-role `minTickIntervalSeconds`) that re-reads the initial prompt,
+PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move: prune/merge
+plans (the only role allowed to delete entries), flag drift, keep the complexity budget honest.
+The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes mandatory.
+
+### QA role — exercising the product like a user (planned 2026-08-24)
+
+Full plan: [plans/qa-role.md](plans/qa-role.md). A `qa` role that follows the README verbatim in
+a scratch dir — build, run, curl — one flow per tick, filing reproducible bugs in BUGS.md (its
+only write). Hard safety rails: time-limit every process, ephemeral ports, no source edits. The
+structural fix for green-suite-but-broken-product (the GUI page incident shipped through 180
+passing tests).
+
 ### Live-reload tumwater.json while the harness is running (planned 2026-08-23)
 
 **Goal:** Edits to `tumwater.json` should steer a *running* fleet without a restart —
