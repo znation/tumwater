@@ -9,6 +9,7 @@ import {
   ensureWorktree,
   ffMergeToMain,
   hasCommits,
+  hasConflictMarkers,
   headOf,
   isDirty,
   isGitRepo,
@@ -102,4 +103,28 @@ test("resetWorktreeToMain discards commits and untracked files", async () => {
   assert.equal(await aheadOfMain(wt, "main"), 0);
   assert.ok(!fs.existsSync(path.join(wt, "junk.txt")));
   assert.ok(!fs.existsSync(path.join(wt, "untracked.txt")));
+});
+
+test("hasConflictMarkers detects leftover conflict blocks", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "full.txt"),
+    "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\n",
+  );
+  // A partial resolution that keeps only the start marker is still unresolved.
+  fs.writeFileSync(path.join(dir, "partial.txt"), "<<<<<<< HEAD\nours\n");
+  assert.ok(hasConflictMarkers(dir, ["full.txt", "partial.txt"]));
+});
+
+test("hasConflictMarkers does not flag setext/RST underlines of seven equals (regression)", () => {
+  const dir = tmpdir();
+  // A correctly resolved file that keeps a markdown setext heading whose underline is
+  // exactly seven '=' — legitimate content, not a conflict separator.
+  fs.writeFileSync(path.join(dir, "docs.md"), "History\n=======\n\nFirst entry.\nSecond entry.\n");
+  assert.ok(!hasConflictMarkers(dir, ["docs.md"]));
+});
+
+test("hasConflictMarkers treats a deleted file as resolved", () => {
+  const dir = tmpdir();
+  assert.ok(!hasConflictMarkers(dir, ["gone.txt"]));
 });

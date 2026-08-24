@@ -40,8 +40,8 @@ export function pruneOldFiles(dir: string, days: number): number {
 /** Read [offset, size) and split into complete lines. `end` is the offset just past the
  * last newline: a trailing partial line (torn write in flight) is NOT consumed, so it is
  * re-read next poll once its writer has written the newline instead of being parsed torn
- * or lost. Shared by progress.ts's incremental pi-log tail reader and the CLI's `logs -f`
- * follow loop. */
+ * or lost. Shared by every JSONL reader that consumes incrementally — progress.ts's live
+ * tail, followFile, and the transcript one-shot reads (transcript.ts, cli.ts). */
 export function readCompleteLines(file: string, offset: number, size: number): { lines: string[]; end: number } {
   const len = size - offset;
   if (len <= 0) return { lines: [], end: offset };
