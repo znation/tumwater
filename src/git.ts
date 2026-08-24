@@ -154,7 +154,12 @@ export async function abortMerge(wt: string): Promise<void> {
 /** True if any of the given files still contains a git conflict marker.
  * A deleted file counts as resolved (the resolver chose the deletion). */
 export function hasConflictMarkers(wt: string, files: string[]): boolean {
-  const marker = /^(<{7}|={7}|>{7})( |$)/m;
+  // Only start/end markers are checked: every real conflict block carries them, while a bare
+  // `=======` line is legitimate content (a markdown setext or RST underline of exactly seven
+  // characters), and flagging it would reject clean resolutions forever. A resolver that
+  // leaves only a separator line behind is treated as resolved; its stray line is content the
+  // project's own tests can catch.
+  const marker = /^(<{7}|>{7})( |$)/m;
   return files.some((f) => {
     const p = path.join(wt, f);
     try {

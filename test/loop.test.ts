@@ -411,6 +411,42 @@ test("concurrent-main-advance still merges (merge commit path)", async () => {
   }
 });
 
+test("a clean resolution of a conflicted file with setext underlines lands (regression)", async () => {
+  const repo = await initializedRepo();
+  // docs.md uses a setext heading whose underline is exactly seven '=' — legitimate content
+  // that the old marker check mistook for an unresolved conflict separator.
+  fs.writeFileSync(path.join(repo, "docs.md"), "History\n=======\n\nFirst entry.\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "docs with setext heading");
+  const marker = path.join(tmpdir(), "phase");
+  // Phase 1 (the tick): both sides edit the same line. Phase 2 (the resolution run):
+  // combine them, keeping the setext underline — no real conflict markers remain.
+  const restore = fakePi(
+    [
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch docs edit")}'`,
+      `  printf 'History\\n=======\\n\\nBranch entry.\\n' > docs.md`,
+      `  printf 'History\\n=======\\n\\nMain entry.\\n' > "${repo}/docs.md"`,
+      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main docs edit"`,
+      `else`,
+      `  printf 'History\\n=======\\n\\nBranch entry.\\nMain entry.\\n' > docs.md`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed", "a clean resolution must not be rejected as conflicted");
+    assert.equal(
+      fs.readFileSync(path.join(repo, "docs.md"), "utf8"),
+      "History\n=======\n\nBranch entry.\nMain entry.\n",
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("a transient model-server timeout is retried once and the tick succeeds (regression)", async () => {
   const repo = await initializedRepo();
   const marker = path.join(tmpdir(), "phase");
