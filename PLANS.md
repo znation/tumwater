@@ -5,6 +5,56 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Live-reload tumwater.json while the harness is running (planned 2026-08-23)
+
+**Goal:** Edits to `tumwater.json` should steer a *running* fleet without a restart —
+enable/disable roles, switch per-role provider/model/thinking/instructions, tune backoff and
+tick intervals. Today the config is loaded exactly once in `cmdRun` (cli.ts) and passed into
+each `LoopRunner`, so mid-run edits do nothing until Ctrl+C + re-`run`. It is also inconsistent:
+`snapshot()` reads fresh config for every dashboard render, so a disabled role disappears from
+the TUI/GUI table while its loop keeps ticking in the background.
+
+**Approach:** One reload point shared by all loops — the orchestrator's poll cycle (every
+`POLL_MS`, 2s) — not per-runner file reads:
+- New non-throwing loader in `src/config.ts`: `loadConfigSafe(root): { config?: TumwaterConfig;
+  error?: string }` wrapping the existing validating `loadConfig`.
+- In `runOrchestrator`'s poll loop (src/orchestrator.ts), call it once per cycle. On success:
+  push the fresh object into every runner (`runner.config = fresh`) and create a new
+  `LoopRunner` for any role that is enabled but has no runner yet, so enabling a role mid-run
+  starts it. On failure: keep last-known-good configs, log one `warning` event per *distinct*
+  error text (track the last-warned string so a broken file does not spam an event every 2s),
+  and recover silently once the file is fixed.
+- Role disable: in `isEligible`, return `{ run: false }` when the runner's fresh config has its
+  role disabled — no slot reserved, no tick started. Track the previous cycle's enabled set in
+  the poll loop and log a one-shot `warning` on each transition ("role X disabled — stopping
+ticks" / "role X enabled — starting ticks"). Re-enabling resumes within one cycle because the
+  runner and its persisted state survive.
+- Make `LoopRunner.config` assignable (drop `readonly`, src/loop.ts) — every downstream read
+  already goes through it: `configForRole` (provider/model/thinking/instructions),
+  `minTickIntervalSeconds` (`isEligible`'s min-gap and the runner's scheduling),
+  `tickTimeoutSeconds`, backoff via `nextBackoffSeconds`, and `logMaxBytes` for log rotation in
+  `runPi`.
+- Restart-only settings: `maxConcurrent` (the Semaphore is created once at startup) and
+  `sessionRetentionDays` (pruning runs only at orchestrator start). Note both as restart-only in
+  the README's usage section. The dashboard needs no change — `snapshot()` already reflects fresh
+  config, so disabled roles leave the tables exactly when their ticks stop.
+
+**Files touched:** `src/config.ts`, `src/orchestrator.ts`, `src/loop.ts` (one-line visibility
+change), tests in `test/orchestrator.test.ts` / a new focused test file for reload behavior;
+one README line documenting live vs restart-only settings.
+
+**Acceptance criteria:**
+- Editing tumwater.json while running changes backoff/tick intervals and per-role
+  provider/model/thinking/instructions for subsequent ticks within ~2s, no restart (test with the
+  fake pi shim: mutate the file between ticks; assert e.g. a new model reaches pi's argv or a new
+  minTickInterval gates scheduling).
+- Disabling a role mid-run stops its next tick (no further `tick_start` events); re-enabling
+  resumes within one poll cycle; enabling a role that was not running at startup starts it.
+- A broken tumwater.json mid-run does not stop the harness: ticks continue with last-known-good
+  config, exactly one warning event per distinct error text, and behavior recovers when the file
+  is fixed.
+- `maxConcurrent`/`sessionRetentionDays` documented as restart-only; `npm test` passes.
+
 ### Surface per-role pi transcripts in the TUI/GUI (planned 2026-08-23, refined 2026-08-23)
 
 **Goal:** The `tumwater logs --role` transcript should also be visible from the dashboards —
