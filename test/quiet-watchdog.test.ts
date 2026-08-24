@@ -30,7 +30,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
     const outcome = await runner.tick();
     assert.ok(Date.now() - started < 30_000, "killed by the watchdog, not the tick timeout");
     assert.equal(outcome.result, "error");
-    assert.match(runner.state.lastError ?? "", /killed as hung: no pi output/);
+    assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
     assert.equal(sh(repo, "git", "rev-parse", "main"), before, "nothing landed on main");
     assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
   } finally {
@@ -77,4 +77,50 @@ test("config validation accepts 0 and rejects negatives for quietTimeoutSeconds"
   validateConfig({ quietTimeoutSeconds: 1800 });
   assert.throws(() => validateConfig({ quietTimeoutSeconds: -5 }), /quietTimeoutSeconds/);
   assert.throws(() => validateConfig({ quietTimeoutSeconds: "long" }), /quietTimeoutSeconds/);
+});
+
+test("a zombie stream dripping content-free keepalive updates is killed as hung", async () => {
+  const repo = await (async () => {
+    const r = makeRepo();
+    await initProject(r, "zombie stream test");
+    return r;
+  })();
+  // Emits an identical empty message_update every 200ms forever — bytes without progress,
+  // exactly what a dead generation's kept-alive connection looks like.
+  const keepalive = JSON.stringify({
+    type: "message_update",
+    message: { role: "assistant", content: [], usage: { totalTokens: 0 } },
+  });
+  const restore = fakePi(
+    [`while true; do`, `  printf '%s\n' '${keepalive}'`, `  sleep 0.2`, `done`].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.quietTimeoutSeconds = 1;
+    config.tickTimeoutSeconds = 3600;
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const started = Date.now();
+    const outcome = await runner.tick();
+    assert.ok(Date.now() - started < 30_000, "killed by the progress watchdog");
+    assert.equal(outcome.result, "error");
+    assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
+  } finally {
+    restore();
+  }
+});
+
+test("message updates whose content grows count as progress and keep the run alive", async () => {
+  const { PiStreamParser } = await import("../src/pi.js");
+  const parser = new PiStreamParser();
+  const update = (text: string) =>
+    JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text }] } }) + "\n";
+  parser.feed(update("a"));
+  parser.feed(update("ab"));
+  const afterGrowth = parser.progressCount;
+  assert.ok(afterGrowth >= 2, "growing updates are progress");
+  parser.feed(update("ab"));
+  parser.feed(update("ab"));
+  assert.equal(parser.progressCount, afterGrowth, "size-identical keepalive updates are not progress");
+  parser.feed(JSON.stringify({ type: "turn_end" }) + "\n");
+  assert.equal(parser.progressCount, afterGrowth + 1, "structural events are progress");
 });

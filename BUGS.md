@@ -9,6 +9,26 @@ _None yet._
 
 ## Fixed
 
+### Zombie streams defeat the quiet watchdog: loops stuck for hours on "turn 1" (reported 2026-08-24, fixed 2026-08-24)
+
+**Symptom:** Several loops showed `working <hours> · turn 1` (director 6h, perf 9h) with LM Studio
+mostly idle. Their pi logs held one `turn_start` and then thousands of `message_update` events —
+each with completely empty content (0 chars, 0 tokens) — arriving every few seconds for hours. The
+generation behind the request was dead (severed by sleep/wake or stuck in the server queue), but
+the connection stayed open dripping keepalive updates. Those bytes reset the quiet watchdog's
+clock, data-on-the-wire satisfied pi's HTTP idle timeout, and the tick timeout was hours away — so
+nothing fired.
+
+**Fix:** The watchdog now measures **progress, not bytes**. `PiStreamParser.progressCount`
+increments for structural events (turns, tool calls, message boundaries, retries) and for
+`message_update` only when the streamed content actually grew (chars + tokens above the message's
+high-water mark). `runPi`'s quiet check kills the child when no *progress* happens for
+`quietTimeoutSeconds`; content-free keepalives no longer reset it. stderr still counts as
+progress (crash traces are meaningful). Error message is now "killed as hung: no pi progress
+for over Ns". Regression tests: an endless empty-keepalive stream is killed within the window; a
+slow-but-growing stream and structural events keep a run alive. Files: `src/pi.ts`,
+`test/quiet-watchdog.test.ts`.
+
 ### Loop hung ~10 hours on an interactive command; no guard fired (reported 2026-08-24, fixed 2026-08-24)
 
 **Symptom:** The feature loop showed `working 9h48m · … · no pi output for 6h58m` while LM Studio

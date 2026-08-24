@@ -39,6 +39,12 @@ export class PiStreamParser {
    * (LM Studio's "Engine protocol predict stream timed out", e.g. after OS sleep).
    * Transient: the session is healthy and a fresh attempt usually succeeds. */
   transientServerTimeout = false;
+  /** Incremented for every parsed event that represents real forward progress. A
+   * message_update counts only when its streamed content actually GREW — zombie streams
+   * (a dead generation whose connection stays open) drip content-free keepalive updates
+   * for hours, and those must not reset the harness's hang watchdog. */
+  progressCount = 0;
+  private updateContentHighWater = 0;
   private buffer = "";
 
   feed(chunk: string, onLine?: (line: string) => void): void {
@@ -70,6 +76,27 @@ export class PiStreamParser {
       // the session-poisoning heuristic and trigger needless retries.
       if (TRANSIENT_SERVER_TIMEOUT.test(text)) this.transientServerTimeout = true;
     }
+    if (event.type === "message_update") {
+      // Progress only when the streamed message got longer (content chars or tokens).
+      const msg = event.message;
+      let chars = 0;
+      for (const c of (msg?.content ?? []) as Array<Record<string, unknown>>) {
+        for (const key of ["text", "thinking"]) {
+          const v = c[key];
+          if (typeof v === "string") chars += v.length;
+        }
+      }
+      const grew = chars + (msg?.usage?.totalTokens ?? 0);
+      if (grew > this.updateContentHighWater) {
+        this.updateContentHighWater = grew;
+        this.progressCount += 1;
+      }
+      return;
+    }
+    // Every other structured event (turn/tool/message boundaries, retries, session) is
+    // real progress; the high-water mark resets so the next message streams from zero.
+    this.progressCount += 1;
+    this.updateContentHighWater = 0;
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;
     const text = messageText(msg);
@@ -180,19 +207,26 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     opts.signal?.addEventListener("abort", onAbort, { once: true });
     if (opts.signal?.aborted) onAbort();
 
-    // Quiet watchdog: a healthy run streams events continuously even when slow (decode
-    // chunks, tool updates); prolonged total silence means a hung tool (an interactive
-    // command waiting for input, a zombie HTTP socket) that would otherwise burn the whole
-    // tick timeout. Checked on an interval against the wall clock, so it also fires
-    // promptly after a machine sleep rather than pausing with a suspended timer.
-    let lastOutputAt = Date.now();
+    // Quiet watchdog: a healthy run makes PROGRESS continuously even when slow — streamed
+    // content grows, turns and tool calls complete. Prolonged lack of progress means a hung
+    // tool (an interactive command waiting for input) or a zombie stream (a dead generation
+    // whose connection drips content-free keepalive updates for hours) that would otherwise
+    // burn the whole tick timeout. Raw output bytes deliberately do NOT reset the clock:
+    // keepalives are bytes without progress. Checked on an interval against the wall clock,
+    // so it also fires promptly after a machine sleep rather than pausing with a suspended
+    // timer.
+    let lastProgressAt = Date.now();
+    let lastProgressCount = 0;
     let quietKilled = false;
     const quietMs = opts.config.quietTimeoutSeconds * 1000;
     const quietCheck =
       quietMs > 0
         ? setInterval(
             () => {
-              if (Date.now() - lastOutputAt > quietMs) {
+              if (parser.progressCount > lastProgressCount) {
+                lastProgressCount = parser.progressCount;
+                lastProgressAt = Date.now();
+              } else if (Date.now() - lastProgressAt > quietMs) {
                 quietKilled = true;
                 terminateChild(child);
               }
@@ -202,11 +236,11 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         : undefined;
 
     child.stdout.on("data", (chunk: Buffer) => {
-      lastOutputAt = Date.now();
       parser.feed(chunk.toString("utf8"), (line) => rawLog.write(line + "\n"));
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      lastOutputAt = Date.now();
+      // stderr is rare and meaningful (crash traces, warnings): treat it as progress.
+      lastProgressAt = Date.now();
       stderr += chunk.toString("utf8");
       if (stderr.length > 64 * 1024) stderr = stderr.slice(-64 * 1024);
     });
@@ -253,7 +287,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         errorMessage: aborted
           ? "aborted by harness shutdown"
           : quietKilled
-            ? `killed as hung: no pi output for over ${opts.config.quietTimeoutSeconds}s`
+            ? `killed as hung: no pi progress for over ${opts.config.quietTimeoutSeconds}s`
             : timedOut
               ? `timed out after ${opts.config.tickTimeoutSeconds}s`
               : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
