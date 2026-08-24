@@ -104,3 +104,34 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
     assert.doesNotThrow(() => new Function(body), "inline script must parse");
   }
 });
+
+test("gui rejects oversized prompt bodies instead of buffering them unboundedly", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui body limit test");
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  try {
+    // Just over the 64KB cap: must be rejected, not buffered into memory.
+    const huge = JSON.stringify({ text: "x".repeat(70 * 1024) });
+    const res = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: huge,
+    });
+    assert.equal(res.status, 500);
+    assert.match(await res.text(), /body too large/);
+
+    // The server stays healthy afterwards and still accepts normal prompts.
+    const ok = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "still alive" }),
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
