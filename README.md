@@ -44,9 +44,9 @@ TUI/status table is width-aware with a totals row; transient sleep/wake "predict
 out" failures are retried once without dropping healthy sessions. Per-loop pi transcripts are
 observable with `tumwater logs --role <id>` (run separators, abbreviated thinking, assistant
 text, tool calls; `-f` follows live). Queued director prompts are re-queued if their tick fails
-without landing work. No open bugs. In progress: two PLANS.md plans await the
-feature loop — surfacing per-role pi transcripts in the TUI/GUI, and absolute last-result
-timestamps in the GUI/TUI tables.
+without landing work. No open bugs. In progress: three PLANS.md plans await the feature loop —
+live-reloading `tumwater.json` while running, surfacing per-role pi transcripts in the TUI/GUI,
+and absolute last-result timestamps in the GUI/TUI tables.
 <!-- tumwater:status:end -->
 
 ## How it works
