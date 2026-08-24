@@ -112,6 +112,13 @@ backoff in `tumwater.json`.
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full
   window. A session that overruns the server's real limit fails with "Context size has been
   exceeded"; the harness detects this and starts that loop a fresh session.
+- **KV memory with dedicated slots**: unified-off KV buffers are allocated per slot — for a 27B
+  model, 4 × 262144-token slots cost ~100 GB of KV on top of the weights (~115 GB total), which
+  runs a 128 GB machine at the edge: heavy swapping, and the engine can wedge permanently in
+  `PROCESSINGPROMPT` (predictions hang, API reports "Engine protocol predict request failed:
+  fetch failed", `lms ps` shows a phantom prefill). Bounce it with `lms unload <model>` +
+  `lms load <model> --context-length N --parallel K`, and size N×K to leave real headroom
+  (e.g. 131072 × 4 ≈ 66 GB total for this model).
 
 ## Development
 
