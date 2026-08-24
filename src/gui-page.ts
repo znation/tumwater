@@ -17,6 +17,10 @@ export const GUI_PAGE = `<!doctype html>
   .working { color:#7ec8ff; } .changed { color:#7fd88f; } .error, .merge_conflict { color:#ff9a8a; }
   #feed { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
           height:16em; overflow-y:auto; font-size:13px; color:#9fb0bf; }
+  #transcript { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
+          max-height:16em; overflow-y:auto; font-size:13px; color:#9fb0bf; white-space:pre-wrap;
+          margin-bottom:1rem; }
+  a { color:#7ec8ff; text-decoration:none; cursor:pointer; } a.active { color:#d6dde4; font-weight:600; }
   form { display:flex; gap:8px; margin:1rem 0; }
   input { flex:1; background:#0b0e12; color:#d6dde4; border:1px solid #2a3642; border-radius:6px;
           padding:8px 10px; font:inherit; }
@@ -33,9 +37,24 @@ export const GUI_PAGE = `<!doctype html>
   <thead><tr><th>loop</th><th>state</th><th>ticks</th><th>commits</th><th>tokens</th><th>cost</th><th>last result</th></tr></thead>
   <tbody id="loops"></tbody>
 </table>
+<div id="transcript" hidden></div>
 <div id="feed"></div>
 <script>
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  let transcriptRole = null; // loop whose transcript panel is open (null = closed)
+  async function refreshTranscript() {
+    const panel = document.getElementById("transcript");
+    if (!transcriptRole) { panel.hidden = true; panel.innerHTML = ""; return; }
+    try {
+      const r = await fetch("/api/transcript?role=" + encodeURIComponent(transcriptRole) + "&n=50");
+      const d = await r.json();
+      const lines = Array.isArray(d.lines) ? d.lines : [];
+      panel.hidden = false;
+      panel.innerHTML = "<span class='muted'>transcript: " + esc(transcriptRole) +
+        " — click the loop name again to close</span>\n" +
+        (lines.length ? lines.map(esc).join("\n") : "(no transcript yet for this loop)");
+    } catch { /* keep the previous panel content on a failed poll */ }
+  }
   async function refresh() {
     try {
       const r = await fetch("/api/status");
@@ -46,8 +65,10 @@ export const GUI_PAGE = `<!doctype html>
       document.getElementById("loops").innerHTML = d.loops.map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";
-        return "<tr><td>" + esc(l.role) + "</td><td class='wide " + cls + "'>" + esc(l.phase) +
-          "</td><td>" + l.ticks + "</td><td>" + l.commits + "</td><td>" + l.tokens +
+        return "<tr><td><a href='#' class='looplink" + (transcriptRole === l.role ? " active" : "") +
+          "' data-role='" + esc(l.role) + "'>" + esc(l.role) + "</a></td>"
+          + "<td class='wide " + cls + "'>" + esc(l.phase)
+          + "</td><td>" + l.ticks + "</td><td>" + l.commits + "</td><td>" + l.tokens +
           "</td><td>$" + l.costUsd.toFixed(2) + "</td><td class='wide'>" + esc(last) + "</td></tr>";
       }).join("");
       const feed = document.getElementById("feed");
@@ -57,7 +78,15 @@ export const GUI_PAGE = `<!doctype html>
     } catch {
       document.getElementById("header").textContent = "connection lost";
     }
+    await refreshTranscript(); // panel re-fetches on the same 1s poll while open
   }
+  document.getElementById("loops").addEventListener("click", (ev) => {
+    const a = ev.target.closest("a.looplink");
+    if (!a) return;
+    ev.preventDefault();
+    transcriptRole = transcriptRole === a.dataset.role ? null : a.dataset.role; // toggle / switch
+    refresh();
+  });
   document.getElementById("promptform").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const input = document.getElementById("prompt");

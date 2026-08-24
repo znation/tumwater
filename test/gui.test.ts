@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
 import { inboxSize } from "../src/inbox.js";
+import { piLogPath } from "../src/paths.js";
 import { makeRepo } from "./util.js";
 
 test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
@@ -38,6 +41,53 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
     });
     assert.equal(bad.status, 400);
     assert.equal((await fetch(base + "/nope")).status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui /api/transcript serves rendered lines and validates role/n", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "transcript gui test");
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  try {
+    // No log yet: friendly empty state.
+    const empty = (await (await fetch(base + "/api/transcript?role=feature")).json()) as { lines: string[] };
+    assert.deepEqual(empty, { lines: [] });
+
+    // With a log: same rendered lines as the CLI transcript.
+    const file = piLogPath(repo, "feature");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      [
+        JSON.stringify({ type: "agent_start" }),
+        JSON.stringify({
+          type: "message_end",
+          message: { role: "user", content: [{ type: "text", text: "tick prompt" }], timestamp: 1787222691956 },
+        }),
+        JSON.stringify({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "did the thing" }, { type: "toolCall", id: "c1", name: "read", arguments: { path: "/a/PLANS.md" } }],
+          },
+        }),
+      ].join("\n") + "\n",
+    );
+    const ok = (await (await fetch(base + "/api/transcript?role=feature&n=10")).json()) as { lines: string[] };
+    assert.ok(ok.lines.some((l) => l.startsWith("── run @ ")));
+    assert.ok(ok.lines.includes("  did the thing"));
+    assert.ok(ok.lines.includes("→ read PLANS.md"));
+
+    // Validation: unknown role, missing role, and bad n all → 400.
+    for (const url of ["/api/transcript?role=nosuch", "/api/transcript", "/api/transcript?role=feature&n=abc", "/api/transcript?role=feature&n=0"]) {
+      const res = await fetch(base + url);
+      assert.equal(res.status, 400, url);
+    }
   } finally {
     server.close();
   }

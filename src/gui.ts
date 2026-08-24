@@ -2,7 +2,33 @@ import http from "node:http";
 import { formatEvent, readEvents } from "./events.js";
 import { submitPrompt } from "./inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
+import { allRoleIds } from "./roles.js";
 import { loopPhase, snapshot } from "./status.js";
+import { readTranscript } from "./transcript.js";
+
+/** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
+ * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400. */
+function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+  const q = new URL(req.url ?? "", "http://localhost").searchParams;
+  const role = q.get("role");
+  if (!role || !allRoleIds().includes(role)) {
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: `unknown or missing role (valid ids: ${allRoleIds().join(", ")})` }));
+    return;
+  }
+  let n = 50;
+  const nRaw = q.get("n");
+  if (nRaw !== null) {
+    n = Number(nRaw);
+    if (!Number.isInteger(n) || n < 1) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: `n must be a positive integer (got ${JSON.stringify(nRaw)})` }));
+      return;
+    }
+  }
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify({ lines: readTranscript(root, role, n) }));
+}
 
 /** JSON payload for GET /api/status. */
 export function statusPayload(root: string): object {
@@ -48,6 +74,8 @@ export function startGui(root: string, port: number): Promise<http.Server> {
       } else if (req.method === "GET" && req.url === "/api/status") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(statusPayload(root)));
+      } else if (req.method === "GET" && req.url?.startsWith("/api/transcript")) {
+        handleTranscript(req, res, root);
       } else if (req.method === "POST" && req.url === "/api/prompt") {
         const { text } = JSON.parse(await readBody(req)) as { text?: string };
         if (typeof text !== "string" || !text.trim()) {
