@@ -43,8 +43,8 @@ validated on load/save with actionable errors; logs rotate and old pi sessions a
 TUI/status table is width-aware with a totals row; transient sleep/wake "predict stream timed
 out" failures are retried once without dropping healthy sessions. Per-loop pi transcripts are
 observable with `tumwater logs --role <id>` (run separators, abbreviated thinking, assistant
-text, tool calls; `-f` follows live). One open bug (BUGS.md): the director loses queued user
-prompts when its tick fails without landing work. In progress: two PLANS.md plans await the
+text, tool calls; `-f` follows live). Queued director prompts are re-queued if their tick fails
+without landing work. No open bugs. In progress: two PLANS.md plans await the
 feature loop — surfacing per-role pi transcripts in the TUI/GUI, and absolute last-result
 timestamps in the GUI/TUI tables.
 <!-- tumwater:status:end -->
