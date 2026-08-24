@@ -5,24 +5,26 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Director loses queued user prompts when a tick fails without landing work (reported 2026-08-23)
-
-**Symptom:** A prompt submitted via TUI/GUI/`tumwater prompt` is dequeued from the inbox at the
-start of the director's tick (`tickPrompt()` in `src/loop.ts`). If that tick then ends with an
-error and no file changes (pi failure, timeout, spawn error), the raw user prompt is never
-re-queued — it is silently lost. Only an aborted tick (harness shutdown) re-queues it today.
-
-**How to reproduce:** Queue a prompt for the director; make its pi run fail hard without any file
-changes (e.g. `pi` exits non-zero with no assistant text); after the error tick the inbox is
-empty and the request never runs again.
-
-**Suspected cause / notes for the fixer:** The re-queue in `runTick` only covers `pi.aborted`. A
-fix should re-queue on unfulfilled outcomes (error without changes) but NOT on `no_change` — a
-question-type prompt is legitimately answered with no file changes, and re-queuing those would
-loop forever. Merge failures need no re-queue: the work stays on the branch and
-`recoverLeftover` lands it on a later tick. Files: `src/loop.ts`, `test/loop.test.ts`.
+_None yet._
 
 ## Fixed
+
+### Director loses queued user prompts when a tick fails without landing work (reported 2026-08-23, fixed 2026-08-23)
+
+**Symptom:** A prompt submitted via TUI/GUI/`tumwater prompt` is dequeued from the inbox at the
+start of the director's tick (`tickPrompt()` in `src/loop.ts`). If that tick then ended with an
+error and no file changes (pi failure, timeout, spawn error), the raw user prompt was never
+re-queued — it was silently lost. Only an aborted tick (harness shutdown) re-queued it.
+
+**Fix:** `runTick` now captures the dequeued prompt before clearing `pendingUserPrompt` and
+re-queues it on every unfulfilled outcome: abort (existing), harness timeout, and pi failure
+without changes. A `no_change` outcome is deliberately NOT re-queued — a question-type prompt is
+legitimately answered with no file changes, and re-queuing those would loop forever. Merge
+failures are also not re-queued: the work stays on the branch and `recoverLeftover` lands it on a
+later tick (re-queueing there would run the request twice). Regression tests in
+test/loop.test.ts: failing-tick and timed-out-tick re-queue cases, plus guards that fulfilled
+(changed) and handled-without-changes (no_change) prompts are not re-queued. Files:
+`src/loop.ts`, `test/loop.test.ts`.
 
 ### Ticks fail with "Engine protocol predict stream timed out" after machine sleep/wake (reported 2026-08-23, fixed 2026-08-23)
 
