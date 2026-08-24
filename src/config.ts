@@ -11,6 +11,7 @@ export function defaultConfig(): TumwaterConfig {
     maxConcurrent: 6,
     minTickIntervalSeconds: 20,
     tickTimeoutSeconds: 1800,
+    quietTimeoutSeconds: 1800,
     logMaxBytes: 16 * 1024 * 1024,
     sessionRetentionDays: 7,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },
@@ -70,6 +71,7 @@ export function validateConfig(raw: unknown): void {
   checkNumber(r, "", "maxConcurrent", (n) => Number.isInteger(n) && n >= 1, "an integer of at least 1");
   checkNumber(r, "", "minTickIntervalSeconds", (n) => n >= 0, "a number of 0 or more");
   checkNumber(r, "", "tickTimeoutSeconds", (n) => n > 0, "a number greater than 0");
+  checkNumber(r, "", "quietTimeoutSeconds", (n) => n >= 0, "a number of 0 or more (0 disables)");
   checkNumber(r, "", "logMaxBytes", (n) => n > 0, "a number greater than 0");
   checkNumber(r, "", "sessionRetentionDays", (n) => n >= 0, "a number of 0 or more");
 

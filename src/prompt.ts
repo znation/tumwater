@@ -12,6 +12,10 @@ Rules for this run:
   operations. Reading git history is fine.
 - Never touch the .tumwater directory or tumwater.json.
 - Never edit the initial prompt block in README.md (between the tumwater:prompt markers).
+- Never run a command that can wait or run indefinitely — interactive programs (TUIs, REPLs,
+  editors, anything reading stdin), servers, or watch modes. A hung command hangs your whole
+  loop. To test such a program, impose a hard time limit yourself (background it and kill it
+  after a few seconds) and never allocate it a real TTY expecting input.
 - If you find nothing worth doing for your role right now, make no changes and reply with the
   single line ${NOTHING_TO_DO} instead.
 - If you did make changes, end your reply with a line in exactly this form:

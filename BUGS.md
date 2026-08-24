@@ -9,6 +9,29 @@ _None yet._
 
 ## Fixed
 
+### Loop hung ~10 hours on an interactive command; no guard fired (reported 2026-08-24, fixed 2026-08-24)
+
+**Symptom:** The feature loop showed `working 9h48m · … · no pi output for 6h58m` while LM Studio
+sat idle. Its pi run had executed a bash tool command that launched tumwater's own TUI under
+`script` (a pseudo-TTY) to test it — `runTui` exits only on Ctrl+C, so the tool call blocked
+forever. A second loop sat stuck for 6h in an HTTP request that could wait forever because pi's
+idle timeout had been fully disabled (`httpIdleTimeoutMs: 0`, our earlier workaround for slow
+prefills). Neither hit the tick timeout because it had been raised to 15h ("try not to timeout").
+
+**Fix (three layers):**
+1. **Quiet watchdog** (`quietTimeoutSeconds`, default 1800, 0 disables): `runPi` kills the child
+   when it emits no stdout/stderr for the window, checked on a wall-clock interval so it fires
+   promptly even across machine sleep. Healthy-but-slow runs stream events continuously and are
+   unaffected (regression-tested); hung tools and zombie sockets die in ~30 min instead of eating
+   the whole tick timeout. Reports as a timeout: partial work is discarded, error tick, backoff.
+2. **Prompt rule** in COMMON_RULES: never run commands that can wait or run indefinitely
+   (interactive programs, servers, watch modes); impose a hard time limit when testing such
+   programs and never allocate them a TTY expecting input.
+3. **pi settings**: `httpIdleTimeoutMs` set to 1800000 (30 min) instead of 0 — long enough for
+   the worst legitimate prefill, finite so zombie sockets cannot hang a turn forever.
+
+Files: `src/pi.ts`, `src/types.ts`, `src/config.ts`, `src/prompt.ts`, `test/quiet-watchdog.test.ts`.
+
 ### Clean conflict resolutions rejected as conflicted when files contain seven-equals lines (found by bugfix loop 2026-08-23, fixed 2026-08-23)
 
 **Symptom:** When a merge conflict in a file containing a line that starts with exactly seven `=`

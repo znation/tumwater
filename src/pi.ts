@@ -180,10 +180,33 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     opts.signal?.addEventListener("abort", onAbort, { once: true });
     if (opts.signal?.aborted) onAbort();
 
+    // Quiet watchdog: a healthy run streams events continuously even when slow (decode
+    // chunks, tool updates); prolonged total silence means a hung tool (an interactive
+    // command waiting for input, a zombie HTTP socket) that would otherwise burn the whole
+    // tick timeout. Checked on an interval against the wall clock, so it also fires
+    // promptly after a machine sleep rather than pausing with a suspended timer.
+    let lastOutputAt = Date.now();
+    let quietKilled = false;
+    const quietMs = opts.config.quietTimeoutSeconds * 1000;
+    const quietCheck =
+      quietMs > 0
+        ? setInterval(
+            () => {
+              if (Date.now() - lastOutputAt > quietMs) {
+                quietKilled = true;
+                terminateChild(child);
+              }
+            },
+            Math.min(Math.max(quietMs / 2, 250), 30_000),
+          )
+        : undefined;
+
     child.stdout.on("data", (chunk: Buffer) => {
+      lastOutputAt = Date.now();
       parser.feed(chunk.toString("utf8"), (line) => rawLog.write(line + "\n"));
     });
     child.stderr.on("data", (chunk: Buffer) => {
+      lastOutputAt = Date.now();
       stderr += chunk.toString("utf8");
       if (stderr.length > 64 * 1024) stderr = stderr.slice(-64 * 1024);
     });
@@ -192,6 +215,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      if (quietCheck) clearInterval(quietCheck);
       opts.signal?.removeEventListener("abort", onAbort);
       rawLog.end();
       resolve(result);
@@ -214,7 +238,11 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
 
     child.on("close", (code) => {
       const failed =
-        aborted || timedOut || parser.stopReason === "error" || (code !== 0 && !parser.finalText.trim());
+        aborted ||
+        timedOut ||
+        quietKilled ||
+        parser.stopReason === "error" ||
+        (code !== 0 && !parser.finalText.trim());
       finish({
         ok: !failed,
         finalText: parser.finalText,
@@ -224,10 +252,12 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         stopReason: parser.stopReason,
         errorMessage: aborted
           ? "aborted by harness shutdown"
-          : timedOut
-            ? `timed out after ${opts.config.tickTimeoutSeconds}s`
-            : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
-        timedOut,
+          : quietKilled
+            ? `killed as hung: no pi output for over ${opts.config.quietTimeoutSeconds}s`
+            : timedOut
+              ? `timed out after ${opts.config.tickTimeoutSeconds}s`
+              : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
+        timedOut: timedOut || quietKilled,
         aborted,
         contextExceeded: parser.contextExceeded,
         transientServerTimeout: parser.transientServerTimeout,

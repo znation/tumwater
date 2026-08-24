@@ -39,6 +39,10 @@ export interface TumwaterConfig {
   minTickIntervalSeconds: number;
   /** Hard cap on a single pi run, in seconds. */
   tickTimeoutSeconds: number;
+  /** Kill a pi run when it emits NO output for this many seconds (0 disables). A healthy
+   * run streams events continuously even when slow; prolonged silence means a hung tool
+   * (interactive command, zombie socket) that would otherwise burn the whole tick timeout. */
+  quietTimeoutSeconds: number;
   /** Rotate events.jsonl and per-role pi logs when they exceed this size. */
   logMaxBytes: number;
   /** Delete pi session files older than this many days at orchestrator start. */

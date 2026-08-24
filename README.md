@@ -103,8 +103,10 @@ backoff in `tumwater.json`.
   headers and gaps between body chunks. A local server prefilling a large context under
   concurrent load can take longer than that to stream its first byte, so the request is severed
   ("terminated"), pi's retries die the same way, and the tick fails after ~4 × 5 min. Fix: set
-  `"httpIdleTimeoutMs": 0` (disabled) in `~/.pi/agent/settings.json` — the harness's own
-  `tickTimeoutSeconds` remains the hang guard.
+  a large-but-finite `"httpIdleTimeoutMs"` (e.g. `1800000` = 30 min) in
+  `~/.pi/agent/settings.json`. Do not use `0` (fully disabled): a zombie socket then waits
+  forever. The harness's `quietTimeoutSeconds` watchdog (default 30 min of total pi silence)
+  and `tickTimeoutSeconds` remain the layered hang guards.
 - **Context accounting**: declare an honest `contextWindow` for the model in pi's `models.json` —
   it is what triggers pi's auto-compaction. With LM Studio's unified KV cache, concurrent requests
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full

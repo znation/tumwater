@@ -1,0 +1,80 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { LoopRunner } from "../src/loop.js";
+import { initProject } from "../src/init.js";
+import { defaultConfig } from "../src/config.js";
+import { assistantLine, fakePi, makeRepo, sh } from "./util.js";
+
+async function initializedRepo(): Promise<string> {
+  const repo = makeRepo();
+  await initProject(repo, "quiet watchdog test");
+  return repo;
+}
+
+test("a pi run that goes silent is killed as hung and never commits partial work", async () => {
+  const repo = await initializedRepo();
+  // Emits one line (so it is not silent from birth), writes a partial edit, then hangs
+  // like an interactive tool waiting for stdin. `exec` so the signal reaches sleep.
+  const restore = fakePi(
+    [`printf '%s\n' '${assistantLine("starting work")}'`, `echo partial > partial.txt`, `exec sleep 60`].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.quietTimeoutSeconds = 1;
+    config.tickTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const before = sh(repo, "git", "rev-parse", "main");
+    const started = Date.now();
+    const outcome = await runner.tick();
+    assert.ok(Date.now() - started < 30_000, "killed by the watchdog, not the tick timeout");
+    assert.equal(outcome.result, "error");
+    assert.match(runner.state.lastError ?? "", /killed as hung: no pi output/);
+    assert.equal(sh(repo, "git", "rev-parse", "main"), before, "nothing landed on main");
+    assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
+  } finally {
+    restore();
+  }
+});
+
+test("a slow but talkative pi run is not killed by the quiet watchdog", async () => {
+  const repo = await initializedRepo();
+  // Streams a line every ~300ms for ~2.4s — always slower than the 1s quiet window would
+  // allow if it were measuring total runtime, but never silent longer than the window.
+  const chatter = Array.from({ length: 8 }, () => `sleep 0.3\nprintf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`);
+  const restore = fakePi([...chatter, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"));
+  try {
+    const config = defaultConfig();
+    config.quietTimeoutSeconds = 1;
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change", "run completed despite taking longer than the quiet window");
+  } finally {
+    restore();
+  }
+});
+
+test("quietTimeoutSeconds 0 disables the watchdog", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [`sleep 2`, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.quietTimeoutSeconds = 0;
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change");
+  } finally {
+    restore();
+  }
+});
+
+test("config validation accepts 0 and rejects negatives for quietTimeoutSeconds", async () => {
+  const { validateConfig } = await import("../src/config.js");
+  validateConfig({ quietTimeoutSeconds: 0 });
+  validateConfig({ quietTimeoutSeconds: 1800 });
+  assert.throws(() => validateConfig({ quietTimeoutSeconds: -5 }), /quietTimeoutSeconds/);
+  assert.throws(() => validateConfig({ quietTimeoutSeconds: "long" }), /quietTimeoutSeconds/);
+});
