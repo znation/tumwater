@@ -2,8 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { pruneOldFiles, readCompleteLines, rotateIfLarge } from "../src/files.js";
+import { followFile, pruneOldFiles, readCompleteLines, rotateIfLarge } from "../src/files.js";
 import { tmpdir } from "./util.js";
+
+/** Poll `cond` until true or the deadline passes (watchFile cadence is timing-based). */
+async function waitFor(cond: () => boolean, deadlineMs: number): Promise<void> {
+  const deadline = Date.now() + deadlineMs;
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error("timed out waiting for followFile delivery");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
 
 test("rotateIfLarge rotates once over the cap and replaces the previous rotation", () => {
   const dir = tmpdir();
@@ -32,6 +41,35 @@ test("pruneOldFiles removes only files older than the retention window", () => {
   assert.ok(!fs.existsSync(oldFile));
   assert.ok(fs.existsSync(newFile));
   assert.equal(pruneOldFiles(path.join(dir, "nope"), 7), 0);
+});
+
+test("followFile delivers each complete line once, holds torn tails, resets on shrink", async () => {
+  const file = path.join(tmpdir(), "live.jsonl");
+  fs.writeFileSync(file, "a\n");
+  const got: string[] = [];
+  // stop() must run even if an assertion fails below, or the watcher keeps node --test alive.
+  const stop = followFile(file, 0, (lines) => got.push(...lines), 25);
+  try {
+    await waitFor(() => got.includes("a"), 3000);
+
+    // A torn trailing line (no newline yet) is held back until its writer completes it.
+    fs.appendFileSync(file, "b");
+    assert.ok(!got.includes("b"));
+    fs.appendFileSync(file, "\n");
+    await waitFor(() => got.includes("b"), 3000);
+
+    // Rotation/truncation: the file shrinks below the consumed offset and restarts.
+    fs.writeFileSync(file, "");
+    fs.appendFileSync(file, "c\n");
+    await waitFor(() => got.includes("c"), 3000);
+  } finally {
+    stop();
+  }
+
+  fs.appendFileSync(file, "d\n");
+  await new Promise((r) => setTimeout(r, 150)); // Several poll intervals after stopping.
+  assert.ok(!got.includes("d"), "no delivery after stop()");
+  assert.deepEqual(got.filter(Boolean), ["a", "b", "c"]);
 });
 
 test("readCompleteLines returns only complete lines and stops at the last newline", () => {

@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Shared file helpers: size-based rotation for append-only logs, age-based pruning of
- * pi session files, and complete-line tail reading for incrementally consumed JSONL logs. */
+ * pi session files, complete-line tail reading for incrementally consumed JSONL logs, and
+ * byte-offset following of live logs. */
 
 /** Keep an append-only log bounded: over `maxBytes` it is renamed to `<file>.1`
  * (replacing any previous rotation) and a fresh file starts. Returns true if rotated. */
@@ -60,4 +61,47 @@ export function readCompleteLines(file: string, offset: number, size: number): {
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/** Follow an append-only file from byte `offset`, delivering every complete line at or past
+ * it exactly once — both what is already on disk and everything appended later. Polls every
+ * `intervalMs` (default 500ms — the harness's follow cadence); a torn trailing line without
+ * its newline is held back until completed, and rotation/truncation (file shrinks) resets to
+ * the new size. A missing file simply delivers nothing until it appears. Returns a stop
+ * function that ends polling.
+ *
+ * Polling is unconditional (setInterval + stat) rather than fs.watchFile's change detection:
+ * watchFile only fires when the stat differs from its asynchronously established baseline, so
+ * writes landing between the initial read and that first baseline stat would go undelivered. */
+export function followFile(
+  file: string,
+  offset: number,
+  onLines: (lines: string[]) => void,
+  intervalMs = 500,
+): () => void {
+  let stopped = false;
+  const poll = (): void => {
+    if (stopped) return;
+    let size: number;
+    try {
+      size = fs.statSync(file).size;
+    } catch {
+      return; // Not created yet (or vanished); the next poll re-checks.
+    }
+    if (size < offset) offset = 0; // Rotated or truncated: re-read the new content from the
+    // start. The old bytes live in the renamed inode, so nothing is delivered twice — and
+    // lines written between rotation and this poll are not skipped.
+    if (size === offset) return;
+    const { lines, end } = readCompleteLines(file, offset, size);
+    onLines(lines);
+    offset = end;
+  };
+  poll(); // Deliver what is already past `offset`.
+  const timer = setInterval(poll, intervalMs);
+  return () => {
+    if (!stopped) {
+      stopped = true;
+      clearInterval(timer);
+    }
+  };
 }
