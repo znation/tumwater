@@ -38,7 +38,8 @@ export interface TickOutcome {
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
   state: LoopState;
-  /** The raw user prompt a director tick is executing, so an aborted tick can re-queue it. */
+  /** The raw user prompt a director tick is executing, so an unfulfilled tick (abort,
+   * timeout, or failure without changes) can re-queue it instead of losing the request. */
   private pendingUserPrompt: string | null = null;
 
   constructor(
@@ -234,6 +235,9 @@ export class LoopRunner {
 
     const prompt = this.tickPrompt();
     if (prompt === null) return { result: "skipped" };
+    // The raw user prompt a director tick is executing (null for role loops), so an
+    // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
+    const userPrompt = this.pendingUserPrompt;
 
     const wt = await ensureWorktree(this.root, this.role, this.mainBranch);
     await this.recoverLeftover(wt);
@@ -259,18 +263,25 @@ export class LoopRunner {
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.
     if (pi.aborted) {
-      if (this.pendingUserPrompt) enqueuePrompt(this.root, this.pendingUserPrompt);
+      if (userPrompt) enqueuePrompt(this.root, userPrompt);
       return { result: "aborted" };
     }
     this.pendingUserPrompt = null;
     if (pi.timedOut) {
       s.lastError = pi.errorMessage ?? "timed out";
+      // The request never ran to completion and no work landed: put it back so the next
+      // tick retries it. (A killed run's half-done edits are discarded by the reset.)
+      if (userPrompt) enqueuePrompt(this.root, userPrompt);
       return { result: "error" };
     }
 
     const changed = await isDirty(wt);
     if (!pi.ok && !changed) {
       s.lastError = pi.errorMessage ?? "pi failed";
+      // No work landed, so the request was not fulfilled: re-queue it. A no_change outcome
+      // IS fulfillment (a question-type prompt answered without file changes) — never
+      // re-queue that, or such prompts would loop forever.
+      if (userPrompt) enqueuePrompt(this.root, userPrompt);
       return { result: "error", transient: pi.transientServerTimeout || undefined };
     }
     if (!changed) {
