@@ -141,13 +141,16 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   const file = eventsLogPath(root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   if (!fs.existsSync(file)) fs.writeFileSync(file, "");
-  await followFile(file, fs.statSync(file).size, (line) => {
-    try {
-      process.stdout.write(formatEvent(JSON.parse(line)) + "\n");
-    } catch {
-      // Non-JSON noise; skip.
+  followFile(file, fs.statSync(file).size, (lines) => {
+    for (const line of lines.filter(Boolean)) {
+      try {
+        process.stdout.write(formatEvent(JSON.parse(line)) + "\n");
+      } catch {
+        // Non-JSON noise; skip.
+      }
     }
   });
+  await new Promise(() => {}); // Follow until Ctrl+C.
 }
 
 /** `tumwater logs --role <id>`: print (and optionally follow) one loop's pi transcript —
@@ -187,8 +190,12 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
   }
   if (!follow) return;
 
-  // Follow: shared with `logs -f`; each turn prints exactly once when its message_end lands.
-  await followFile(file, offset, (line) => printEntry(renderer.feed(line)));
+  // Follow from where the initial window stopped, so each turn prints exactly once when its
+  // message_end lands (torn trailing lines are held back by followFile).
+  followFile(file, offset, (lines) => {
+    for (const line of lines) printEntry(renderer.feed(line));
+  });
+  await new Promise(() => {}); // Follow until Ctrl+C.
 }
 
 async function main(): Promise<void> {

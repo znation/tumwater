@@ -44,11 +44,42 @@ test("pruneOldFiles removes only files older than the retention window", () => {
   assert.equal(pruneOldFiles(path.join(dir, "nope"), 7), 0);
 });
 
+test("followFile delivers each complete line once, holds torn tails, resets on shrink", async () => {
+  const file = path.join(tmpdir(), "live.jsonl");
+  fs.writeFileSync(file, "a\n");
+  const got: string[] = [];
+  // stop() must run even if an assertion fails below, or the poll timer keeps node --test alive.
+  const stop = followFile(file, 0, (lines) => got.push(...lines), 25);
+  try {
+    assert.ok(await waitFor(() => got.includes("a")), `expected "a", got ${JSON.stringify(got)}`);
+
+    // A torn trailing line (no newline yet) is held back until its writer completes it.
+    fs.appendFileSync(file, "b");
+    assert.ok(!got.includes("b"));
+    fs.appendFileSync(file, "\n");
+    assert.ok(await waitFor(() => got.includes("b")), `expected "b", got ${JSON.stringify(got)}`);
+
+    // Rotation/truncation: the file shrinks below the consumed offset and restarts.
+    fs.writeFileSync(file, "");
+    fs.appendFileSync(file, "c\n");
+    assert.ok(await waitFor(() => got.includes("c")), `expected "c", got ${JSON.stringify(got)}`);
+  } finally {
+    stop();
+  }
+
+  fs.appendFileSync(file, "d\n");
+  await new Promise((r) => setTimeout(r, 150)); // Several poll intervals after stopping.
+  assert.ok(!got.includes("d"), "no delivery after stop()");
+  assert.deepEqual(got.filter(Boolean), ["a", "b", "c"]);
+});
+
 test("followFile delivers appended lines once, in order, and holds a torn tail until complete", async () => {
   const file = path.join(tmpdir(), "follow.jsonl");
   fs.writeFileSync(file, "");
   const seen: string[] = [];
-  void followFile(file, 0, (line) => seen.push(line));
+  const stop = followFile(file, 0, (lines) => {
+    for (const line of lines.filter(Boolean)) seen.push(line);
+  });
   try {
     fs.appendFileSync(file, "line one\n");
     assert.ok(await waitFor(() => seen.length === 1), `expected line one, got ${JSON.stringify(seen)}`);
@@ -63,7 +94,7 @@ test("followFile delivers appended lines once, in order, and holds a torn tail u
     assert.ok(await waitFor(() => seen.length === 2), `expected completed torn line, got ${JSON.stringify(seen)}`);
     assert.deepEqual(seen, ["line one", '{"torn":"message"}']);
   } finally {
-    fs.unwatchFile(file); // followFile's watcher would otherwise keep the test process alive
+    stop(); // the poll timer would otherwise keep the test process alive
   }
 });
 
@@ -71,9 +102,11 @@ test("followFile survives rotation: lines appended after a rename+rewrite are no
   const file = path.join(tmpdir(), "rotate.jsonl");
   fs.writeFileSync(file, "old line\n"); // follow starts past the existing content (like the CLI does)
   const seen: string[] = [];
-  void followFile(file, fs.statSync(file).size, (line) => seen.push(line));
+  const stop = followFile(file, fs.statSync(file).size, (lines) => {
+    for (const line of lines.filter(Boolean)) seen.push(line);
+  });
   try {
-    await new Promise((r) => setTimeout(r, 700)); // let a poll establish the baseline
+    await new Promise((r) => setTimeout(r, 700)); // let polls run while nothing changes
     assert.deepEqual(seen, [], "pre-existing content is not re-delivered");
 
     // rotateIfLarge renames the log and a fresh (smaller) file starts.
@@ -84,14 +117,16 @@ test("followFile survives rotation: lines appended after a rename+rewrite are no
     assert.ok(await waitFor(() => seen.length === 1), `expected fresh line after rotation, got ${JSON.stringify(seen)}`);
     assert.deepEqual(seen, ["fresh"]);
   } finally {
-    fs.unwatchFile(file);
+    stop();
   }
 });
 
 test("followFile waits for a missing file to appear", async () => {
   const file = path.join(tmpdir(), "late.jsonl"); // does not exist yet
   const seen: string[] = [];
-  void followFile(file, 0, (line) => seen.push(line));
+  const stop = followFile(file, 0, (lines) => {
+    for (const line of lines.filter(Boolean)) seen.push(line);
+  });
   try {
     await new Promise((r) => setTimeout(r, 700));
     assert.deepEqual(seen, [], "a missing file is skipped without failing");
@@ -99,7 +134,7 @@ test("followFile waits for a missing file to appear", async () => {
     assert.ok(await waitFor(() => seen.length === 1), `expected line after creation, got ${JSON.stringify(seen)}`);
     assert.deepEqual(seen, ["appeared"]);
   } finally {
-    fs.unwatchFile(file);
+    stop();
   }
 });
 
