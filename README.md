@@ -3,6 +3,8 @@
 An opinionated autonomous development harness built on [pi](https://github.com/badlogic/pi-mono).
 You write the initial prompt; a fleet of role-driven loops builds the project with immense effort.
 
+![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, the event feed, and the director prompt box](docs/gui.png)
+
 ## Initial prompt
 
 <!-- tumwater:prompt:start -->
@@ -42,11 +44,15 @@ pi-driven resolution attempt; roles can override provider/model/thinking; `tumwa
 validated on load/save with actionable errors; logs rotate and old pi sessions are pruned; the
 TUI/status table is width-aware with a totals row; transient sleep/wake "predict stream timed
 out" failures are retried once without dropping healthy sessions. Per-loop pi transcripts are
-observable with `tumwater logs --role <id>` (run separators, abbreviated thinking, assistant
-text, tool calls; `-f` follows live). Queued director prompts are re-queued if their tick fails
-without landing work. No open bugs. In progress: three PLANS.md plans await the feature loop —
-live-reloading `tumwater.json` while running, surfacing per-role pi transcripts in the TUI/GUI,
-and absolute last-result timestamps in the GUI/TUI tables.
+observable three ways: `tumwater logs --role <id>` (run separators, abbreviated thinking,
+assistant text, tool calls; `-f` follows live), the TUI's activity pane (Ctrl+T cycles recent
+events → each loop's transcript in place), and a click-to-toggle panel in the GUI
+(`/api/transcript?role=&n=`). The quiet watchdog measures progress, not bytes — structural
+events or real content growth keep a run alive, so zombie streams dripping empty keepalives are
+killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
+landing work. No open bugs. In progress: two PLANS.md plans await the feature loop —
+live-reloading `tumwater.json` while running, and absolute last-result timestamps in the GUI/TUI
+tables.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -105,8 +111,9 @@ backoff in `tumwater.json`.
   ("terminated"), pi's retries die the same way, and the tick fails after ~4 × 5 min. Fix: set
   a large-but-finite `"httpIdleTimeoutMs"` (e.g. `1800000` = 30 min) in
   `~/.pi/agent/settings.json`. Do not use `0` (fully disabled): a zombie socket then waits
-  forever. The harness's `quietTimeoutSeconds` watchdog (default 30 min of total pi silence)
-  and `tickTimeoutSeconds` remain the layered hang guards.
+  forever. The harness's `quietTimeoutSeconds` watchdog (default 30 min; kills a run when no
+  *progress* — structural events or actual content growth — happens, so content-free keepalives
+  cannot reset it) and `tickTimeoutSeconds` remain the layered hang guards.
 - **Context accounting**: declare an honest `contextWindow` for the model in pi's `models.json` —
   it is what triggers pi's auto-compaction. With LM Studio's unified KV cache, concurrent requests
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full
