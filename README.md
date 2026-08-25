@@ -130,13 +130,21 @@ backoff in `tumwater.json`.
   prefills, and starved ticks die as "no pi progress" watchdog kills even though the server is
   healthy. Symptom to look for: small-context requests timing out while the server log shows
   continuous back-to-back prompt processing.
-- **KV memory with dedicated slots**: unified-off KV buffers are allocated per slot — for a 27B
-  model, 4 × 262144-token slots cost ~100 GB of KV on top of the weights (~115 GB total), which
-  runs a 128 GB machine at the edge: heavy swapping, and the engine can wedge permanently in
-  `PROCESSINGPROMPT` (predictions hang, API reports "Engine protocol predict request failed:
-  fetch failed", `lms ps` shows a phantom prefill). Bounce it with `lms unload <model>` +
-  `lms load <model> --context-length N --parallel K`, and size N×K to leave real headroom
-  (e.g. 131072 × 4 ≈ 66 GB total for this model).
+- **Use unified KV cache; unified-off serves requests serially**: with unified KV disabled,
+  the engine was observed serving one request at a time regardless of the parallel-slot setting —
+  the server log shows strictly alternating "Finished streaming response" / "Running chat
+  completion" lines, and a queued request can starve for 30+ minutes behind other loops' turns
+  (dying as a "no pi progress" watchdog kill seconds before its first token). Unified-on gives
+  genuinely interleaved streams. The stable configuration for this setup: unified KV **on**,
+  full context pool (e.g. 262144), parallel = slot count, pi `contextWindow` = pool ÷ slots so
+  auto-compaction keeps concurrent sessions inside the pool.
+- **KV memory with dedicated slots**: unified-off KV buffers are also allocated per slot — for a
+  27B model, 4 × 262144-token slots cost ~100 GB of KV on top of the weights (~115 GB total),
+  which runs a 128 GB machine at the edge: heavy swapping, and the engine can wedge permanently
+  in `PROCESSINGPROMPT` (predictions hang, API reports "Engine protocol predict request failed:
+  fetch failed", `lms ps` shows a phantom prefill). Unified-on at the same pool is ~25 GB.
+  Recover a wedged engine with `lms unload <model>` + `lms load <model> --context-length N
+  --parallel K`.
 
 ## Development
 
