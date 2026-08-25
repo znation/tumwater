@@ -1,19 +1,19 @@
 import type { TumwaterConfig, LoopState, PiRunResult, TickResult } from "./types.js";
 import { DIRECTOR_ROLE, roleById } from "./roles.js";
 import {
-  abortMerge,
+  abortSync,
   aheadOfMain,
   commitAll,
-  commitMergeResolution,
   conflictedFiles,
+  continueRebase,
   ensureWorktree,
   ffMergeToMain,
   gitTry,
   hasConflictMarkers,
   headOf,
   isDirty,
-  mergeMainIntoBranch,
-  mergeMainLeaveConflicts,
+  rebaseOntoMain,
+  rebaseOntoMainLeaveConflicts,
   resetWorktreeToMain,
 } from "./git.js";
 import { withLock } from "./lock.js";
@@ -75,19 +75,20 @@ export class LoopRunner {
     });
   }
 
-  /** Merge the worktree branch into main under the shared merge lock. On conflict,
-   * makes one pi-driven resolution attempt (outside the lock) before giving up. */
+  /** Land the worktree branch on main under the shared merge lock: rebase it onto main
+   * (keeping history linear) and fast-forward. On conflict, makes one pi-driven resolution
+   * attempt (outside the lock) before giving up. */
   private async merge(wt: string, summary: string): Promise<TickResult> {
     const first = await this.tryMerge(wt, summary);
     if (first !== "merge_conflict") return first;
-    logEvent(this.root, { loop: this.role, type: "warning", message: "merge conflict — asking pi to resolve" });
+    logEvent(this.root, { loop: this.role, type: "warning", message: "rebase conflict — asking pi to resolve" });
     if (!(await this.resolveConflict(wt))) return "merge_conflict";
     return this.tryMerge(wt, summary);
   }
 
   private async tryMerge(wt: string, summary: string): Promise<TickResult> {
     return withLock(mergeLockDir(this.root), async () => {
-      if (!(await mergeMainIntoBranch(wt, this.mainBranch))) return "merge_conflict";
+      if (!(await rebaseOntoMain(wt, this.mainBranch))) return "merge_conflict";
       if (!(await ffMergeToMain(this.root, this.role, this.mainBranch))) return "merge_blocked";
       const commit = await headOf(this.root, this.mainBranch);
       logEvent(this.root, { loop: this.role, type: "merged", commit, summary });
@@ -132,10 +133,10 @@ export class LoopRunner {
     return pi;
   }
 
-  /** Re-run the conflicting merge leaving markers in place, let pi resolve them, and
-   * conclude the merge. Returns true when the branch now contains a clean merge of main. */
+  /** Re-run the conflicting rebase leaving markers in place, let pi resolve them, and
+   * continue the rebase. Returns true when the branch now sits cleanly on top of main. */
   private async resolveConflict(wt: string): Promise<boolean> {
-    const state = await mergeMainLeaveConflicts(wt, this.mainBranch);
+    const state = await rebaseOntoMainLeaveConflicts(wt, this.mainBranch);
     if (state === "clean") return true;
     if (state === "failed") return false;
     const files = await conflictedFiles(wt);
@@ -145,10 +146,17 @@ export class LoopRunner {
       `tumwater-${this.role}-${this.state.ticks}-conflict`,
     );
     if (!pi.ok || hasConflictMarkers(wt, files)) {
-      await abortMerge(wt);
+      await abortSync(wt);
       return false;
     }
-    await commitMergeResolution(wt);
+    try {
+      await continueRebase(wt);
+    } catch {
+      // The rebase stopped again — a second conflict, only possible when pi itself
+      // authored extra commits during the tick. One resolution attempt per tick.
+      await abortSync(wt);
+      return false;
+    }
     return true;
   }
 

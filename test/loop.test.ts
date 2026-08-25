@@ -253,7 +253,7 @@ test("a timed-out tick reports an error and never commits partial work", async (
   }
 });
 
-test("a merge conflict is resolved by a second pi run and lands as a merge commit", async () => {
+test("a rebase conflict is resolved by a second pi run and lands with linear history", async () => {
   const repo = await initializedRepo();
   const marker = path.join(tmpdir(), "phase");
   // Phase 1 (the tick): edit seed.txt on the branch AND advance main with a conflicting
@@ -276,7 +276,8 @@ test("a merge conflict is resolved by a second pi run and lands as a merge commi
     const outcome = await runner.tick();
     assert.equal(outcome.result, "changed");
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
-    assert.ok(sh(repo, "git", "log", "--merges", "--oneline").length > 0, "landed as a merge commit");
+    // The resolution landed as a plain rebased commit: no merge commits on main.
+    assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
   } finally {
     restore();
   }
@@ -301,7 +302,11 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
     const outcome = await runner.tick();
     assert.equal(outcome.result, "merge_conflict");
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n", "main keeps its version");
-    assert.ok(!sh(repo, "git", "-C", ".tumwater/worktrees/improve", "status", "--porcelain").includes("UU"));
+    const wt = path.join(repo, ".tumwater/worktrees/improve");
+    assert.ok(!sh(wt, "git", "status", "--porcelain").includes("UU"));
+    // No rebase is left in progress: the branch ref is checked out again (mid-rebase HEAD
+    // would be detached).
+    assert.equal(sh(wt, "git", "symbolic-ref", "--short", "HEAD"), "tumwater/improve");
   } finally {
     restore();
   }
@@ -392,7 +397,7 @@ test("unmergeable leftover commits are discarded with a warning on the next tick
   }
 });
 
-test("concurrent-main-advance still merges (merge commit path)", async () => {
+test("concurrent-main-advance still lands (rebase path, linear history)", async () => {
   const repo = await initializedRepo();
   // The fake pi advances main itself mid-tick, simulating another loop landing work.
   const restore = fakePi(
@@ -407,6 +412,8 @@ test("concurrent-main-advance still merges (merge commit path)", async () => {
     const outcome = await runner.tick();
     assert.equal(outcome.result, "changed");
     assert.ok(fs.existsSync(path.join(repo, "slow.txt")));
+    // The tick's commit was rebased onto the concurrent main advance: no merge commits.
+    assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
   } finally {
     restore();
   }
