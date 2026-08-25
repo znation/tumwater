@@ -5,49 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### gen / peak ctx columns sit at 0 while loops work for many turns; counters only move at tick boundaries (reported 2026-08-25)
-
-**Symptom:** User report: after a loop has been working "for a while, taking many turns", the `gen`
-and `peak ctx` columns of the TUI/GUI tables sit at 0 — while the state column next to them shows
-live detail (`working Xm · turn N · ctx Yk`) that updates continuously. The table looks
-self-contradictory: actively generating, yet zero tokens generated.
-
-**Verified analysis (director, 2026-08-25):** two factors, one transient and one durable:
-1. *Transient:* `generatedTokens`/`peakContextTokens` were added to LoopState by commit df8ca86
-   ("token metrics show generated + peak context") while the harness was running; the process kept
-   executing old code until it restarted at 02:48:37 (events.jsonl `orchestrator_start`). Every tick
-   before that accumulated nothing. Since the restart no tick has completed yet (perf/feature have
-   been mid-tick since 02:48 on slow local models), so state files hold only the zero defaults saved
-   at tick start. The parse path itself is proven healthy: feeding real raw logs through the current
-   `PiStreamParser` yields non-zero values (director log → outputTokens=8245, peakCtx=67352; feature
-   16446/62747; perf 25756/56224).
-2. *Durable defect:* the counters are persisted only at tick boundaries (`LoopRunner.save()` at tick
-   start/end) and both tables render them from `.tumwater/state/<role>.json`. A loop mid-tick — which
-   on this fleet is 30–60+ minutes, i.e. most of the time — shows its pre-tick values for the whole
-   run while `turn N · ctx Y` (from `readLiveProgress` over the raw log) updates every second. Even
-   after factor 1 heals itself, the columns stay frozen/stale during every tick.
-
-**Fix direction:** make the two columns live-aware exactly like the state cell already is — no
-state-file or loop.ts changes:
-- `src/progress.ts`: extend `LiveProgress` with `outputTokens` (sum of `usage.output` over assistant
-  `message_end`s in the current run) and `peakContextTokens` (max of `usage.totalTokens`, not sum);
-  reset both on `session` events; accumulate in `feedLine`'s existing `message_end` case (add
-  `output?: number` to that event's type annotation).
-- `src/status-render.ts`: for running loops render gen as persisted + live output-so-far-this-tick,
-  peak ctx as max(persisted, live) — `renderStatus(root, …)` already has `root`; the totals row may
-  stay persisted-only (or use the same combination; implementer's call).
-- `src/gui.ts` `statusPayload`: same combination when `s.running`, keeping the field names
-  `generated`/`peakCtx` so `gui-page.ts` needs no change.
-
-**Out of scope:** the `cost` column is 0 fleet-wide but that is correct — LM Studio reports zero
-cost in usage; do not chase it. The transient factor (counters starting at 0 after a code update
-adds them) is acceptable: fresh window, no backfill.
-
-**Acceptance criteria / tests:** progress.ts unit test for the new accumulation (sums output across
-multiple message_ends, peak = max not sum, resets on `session`); renderStatus/workingDetail show
-growing gen during an in-flight tick from a synthetic log with usage; GUI payload combines persisted
-+ live for running loops only; `npm test` passes.
-
 ### Merge conflicts logged as warnings in the main log although they are normal operation (reported 2026-08-25)
 
 **Symptom:** Whenever a loop's merge stops on a conflict, the harness emits a `warning` event —
@@ -83,6 +40,34 @@ resolve-and-land path emits no `warning` event, while the unresolvable-conflict 
 src/types.ts), test/loop.test.ts.
 
 ## Fixed
+
+### gen / peak ctx columns sit at 0 while loops work for many turns; counters only move at tick boundaries (reported 2026-08-25, fixed 2026-08-25)
+
+**Symptom:** After a loop has been working "for a while, taking many turns", the `gen` and
+`peak ctx` columns of the TUI/GUI tables sit at 0 (or frozen at their pre-tick values), while the
+state cell next to them shows live detail (`working Xm · turn N · ctx Yk`) that updates
+continuously. The table looks self-contradictory: actively generating, yet zero tokens generated.
+
+**Cause:** `generatedTokens`/`peakContextTokens` are persisted only at tick boundaries
+(`LoopRunner.save()` at tick start/end) and both tables rendered them from the state file — so a
+loop mid-tick (30–60+ minutes on this fleet, i.e. most of the time) showed its pre-tick values for
+the whole run while `turn N · ctx Y` (from `readLiveProgress` over the raw log) updated every
+second.
+
+**Fix:** The two columns are now live-aware exactly like the state cell: `LiveProgress` gains
+`outputTokens` (usage.output summed over assistant message_ends of the current run) and
+`peakContextTokens` (max, not sum), both reset on `session` events. A new shared helper
+`displayTokenMetrics` (status-render.ts) combines persisted + live for running loops only — gen =
+persisted + live output so far this tick, peak ctx = max(persisted, live). Idle loops show
+persisted values as-is: their log tail describes the last COMPLETED tick, whose tokens are already
+persisted (combining would double-count); a stale `running` flag after a crash is still correct to
+combine because an unfinished tick's tokens were never persisted. Used by both `renderStatus`
+(rows and totals) and the GUI `/api/status` payload (`generated`/`peakCtx` field names unchanged,
+so gui-page.ts needed no change). Regression tests: progress accumulation/reset unit tests;
+renderStatus shows growing gen during an in-flight tick from a synthetic log and does not
+double-count idle loops' tails; GUI payload combines for running loops only. Files:
+`src/progress.ts`, `src/status-render.ts`, `src/gui.ts`, `test/progress.test.ts`,
+`test/status-render.test.ts`, `test/gui.test.ts`.
 
 ### Zombie streams defeat the quiet watchdog: loops stuck for hours on "turn 1" (reported 2026-08-24, fixed 2026-08-24)
 

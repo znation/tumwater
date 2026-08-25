@@ -65,6 +65,21 @@ export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: str
   return "queued";
 }
 
+/** Token metrics for display: while a tick is in flight, combine the persisted totals
+ * (completed ticks only) with what the current run has already produced — read from the raw
+ * log tail — so gen/peak ctx advance during long ticks instead of sitting frozen at their
+ * pre-tick values. Idle loops show persisted values as-is: for them the log tail describes
+ * the last COMPLETED tick, whose tokens are already in the persisted totals (combining would
+ * double-count). A stale `running` flag after a crash is still correct to combine: an
+ * unfinished tick's live tokens were never persisted. */
+export function displayTokenMetrics(root: string, s: LoopState): { generated: number; peakCtx: number } {
+  const live = s.running ? readLiveProgress(root, s.role) : null;
+  return {
+    generated: s.generatedTokens + (live?.outputTokens ?? 0),
+    peakCtx: Math.max(s.peakContextTokens, live?.peakContextTokens ?? 0),
+  };
+}
+
 /** Truncate to `width` with a trailing ellipsis when over. The result never exceeds
  * `width` characters (even at width ≤ 1), so clipped lines cannot wrap in a terminal of
  * that many columns. Shared by the status table and the TUI's line rendering. */
@@ -91,13 +106,14 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   lines.push(`tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}`);
   lines.push("");
   const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "last tick", "last result"];
-  const rows = snap.loops.map((s) => [
+  const withMetrics = snap.loops.map((s) => ({ s, m: displayTokenMetrics(root, s) }));
+  const rows = withMetrics.map(({ s, m }) => [
     s.role,
     loopPhase(s, snap.running, root),
     String(s.ticks),
     String(s.commits),
-    tokens(s.generatedTokens),
-    tokens(s.peakContextTokens),
+    tokens(m.generated),
+    tokens(m.peakCtx),
     `$${s.totalCostUsd.toFixed(2)}`,
     ago(s.lastTickEndedAt),
     s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
@@ -107,8 +123,8 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     "",
     "",
     "",
-    tokens(snap.loops.reduce((sum, s) => sum + s.generatedTokens, 0)),
-    tokens(Math.max(0, ...snap.loops.map((s) => s.peakContextTokens))),
+    tokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
+    tokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
     `$${snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0).toFixed(2)}`,
     "",
     "",

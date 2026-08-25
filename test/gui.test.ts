@@ -6,7 +6,10 @@ import { statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
 import { inboxSize } from "../src/inbox.js";
 import { piLogPath } from "../src/paths.js";
-import { makeRepo } from "./util.js";
+import { freshLoopState, saveLoopState } from "../src/state.js";
+import { assistantLine, makeRepo } from "./util.js";
+
+const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
 test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
   const repo = makeRepo();
@@ -40,6 +43,18 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
       body: JSON.stringify({ text: "  " }),
     });
     assert.equal(bad.status, 400);
+
+    // Malformed or non-object bodies are client errors too: 400 with an actionable message,
+    // not a 500 carrying Node's raw SyntaxError/TypeError.
+    const malformed = await fetch(base + "/api/prompt", { method: "POST", body: "not json" });
+    assert.equal(malformed.status, 400);
+    assert.match(((await malformed.json()) as { error: string }).error, /JSON/);
+    for (const body of ["null", "[1]", '"just a string"']) {
+      const res = await fetch(base + "/api/prompt", { method: "POST", body });
+      assert.equal(res.status, 400, body);
+    }
+    assert.equal(inboxSize(repo), 1, "rejected bodies queue nothing");
+
     assert.equal((await fetch(base + "/nope")).status, 404);
   } finally {
     server.close();
@@ -105,7 +120,36 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
   }
 });
 
-test("gui rejects oversized prompt bodies instead of buffering them unboundedly", async () => {
+test("status payload combines persisted + live token metrics for running loops only", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui metrics test");
+  // Persisted totals from completed ticks...
+  const s = freshLoopState("feature");
+  s.generatedTokens = 1_000;
+  s.peakContextTokens = 6_000;
+  s.running = true; // a tick is in flight
+  saveLoopState(repo, s);
+  // ...and the in-flight tick's log tail (800 output so far, peak context 12k).
+  const file = piLogPath(repo, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    [
+      SESSION,
+      assistantLine("turn one", { tokens: 8_000, output: 300 }),
+      assistantLine("turn two", { tokens: 12_000, output: 500 }),
+    ].join("\n") + "\n",
+  );
+  const payload = statusPayload(repo) as {
+    loops: Array<{ role: string; generated: number; peakCtx: number }>;
+  };
+  const feature = payload.loops.find((l) => l.role === "feature");
+  assert.ok(feature, "feature loop present in payload");
+  assert.equal(feature.generated, 1_800, "running loop gen = persisted + live output (1000+300+500)");
+  assert.equal(feature.peakCtx, 12_000, "running loop peak ctx = max(persisted, live)");
+});
+
+test("gui rejects oversized prompt bodies with 413 instead of buffering them unboundedly", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui body limit test");
   const server = await startGui(repo, 0);
@@ -113,14 +157,14 @@ test("gui rejects oversized prompt bodies instead of buffering them unboundedly"
   assert.ok(addr && typeof addr === "object");
   const base = `http://127.0.0.1:${addr.port}`;
   try {
-    // Just over the 64KB cap: must be rejected, not buffered into memory.
+    // Just over the 64KB cap: a client error (413 Payload Too Large), not a server failure.
     const huge = JSON.stringify({ text: "x".repeat(70 * 1024) });
     const res = await fetch(base + "/api/prompt", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: huge,
     });
-    assert.equal(res.status, 500);
+    assert.equal(res.status, 413);
     assert.match(await res.text(), /body too large/);
 
     // The server stays healthy afterwards and still accepts normal prompts.
