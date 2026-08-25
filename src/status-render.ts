@@ -8,8 +8,8 @@ import { readLiveProgress } from "./progress.js";
  * `tumwater status` and the TUI. Depends on status.ts one way — rendering reads the
  * snapshot; it never collects fleet state itself (live tick detail is display-only). */
 
-/** Compact whole-second duration: `45s`, `12m`, or `3h`. Shared by ago/inFuture so
- * their s/m/h bucketing (thresholds and rounding) cannot drift. */
+/** Compact whole-second duration: `45s`, `12m`, or `3h`. Shared by ago and the sleeping-
+ * remaining label so their s/m/h bucketing (thresholds and rounding) cannot drift. */
 function humanSeconds(s: number): string {
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.round(s / 60)}m`;
@@ -20,12 +20,6 @@ function ago(ts: number | undefined): string {
   if (!ts) return "-";
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
   return `${humanSeconds(s)} ago`;
-}
-
-function inFuture(ts: number): string {
-  const s = Math.round((ts - Date.now()) / 1000);
-  if (s <= 0) return "now";
-  return `in ${humanSeconds(s)}`;
 }
 
 function duration(ms: number): string {
@@ -60,7 +54,13 @@ export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: str
   if (!orchestratorRunning) return "stopped";
   if (s.running) return root ? workingDetail(root, s) : "working";
   if (s.role === "director") return "waiting for prompts";
-  if (s.nextRunAt > Date.now()) return `sleeping (${inFuture(s.nextRunAt)})`;
+  if (s.nextRunAt > Date.now()) {
+    // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
+    // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder
+    // never renders as "sleeping (for now)".
+    const remain = Math.max(1, Math.round((s.nextRunAt - Date.now()) / 1000));
+    return `sleeping (for ${humanSeconds(remain)})`;
+  }
   return "queued";
 }
 
@@ -73,9 +73,10 @@ export function clipToWidth(text: string, width: number): string {
 }
 
 /** Columns allowed to shrink when the table is wider than the terminal, widest offender
- * first: `last result` (holds the tick summary), then `state` (live working detail). */
+ * first: `last result` (holds the tick summary), then `state` (live working detail).
+ * Indices are positional in the `cols` array below — renumber when columns change. */
 const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
-  { index: 7, minWidth: 12 },
+  { index: 8, minWidth: 12 },
   { index: 1, minWidth: 12 },
 ];
 const COLUMN_GAP = 2;
@@ -88,13 +89,14 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   const header = snap.running ? `running (pid ${snap.pid})` : "not running — start with `tumwater run`";
   lines.push(`tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}`);
   lines.push("");
-  const cols = ["loop", "state", "ticks", "commits", "tokens", "cost", "last tick", "last result"];
+  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "last tick", "last result"];
   const rows = snap.loops.map((s) => [
     s.role,
     loopPhase(s, snap.running, root),
     String(s.ticks),
     String(s.commits),
-    String(s.totalTokens),
+    tokens(s.generatedTokens),
+    tokens(s.peakContextTokens),
     `$${s.totalCostUsd.toFixed(2)}`,
     ago(s.lastTickEndedAt),
     s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
@@ -104,7 +106,8 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     "",
     "",
     "",
-    tokens(snap.loops.reduce((sum, s) => sum + s.totalTokens, 0)),
+    tokens(snap.loops.reduce((sum, s) => sum + s.generatedTokens, 0)),
+    tokens(Math.max(0, ...snap.loops.map((s) => s.peakContextTokens))),
     `$${snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0).toFixed(2)}`,
     "",
     "",

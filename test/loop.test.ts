@@ -18,7 +18,7 @@ async function initializedRepo(): Promise<string> {
 test("a tick that changes files commits and merges to main", async () => {
   const repo = await initializedRepo();
   const restore = fakePi(
-    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, cost: 0.05 })}'\necho hello > hello.txt`,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'\necho hello > hello.txt`,
   );
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
@@ -29,7 +29,8 @@ test("a tick that changes files commits and merges to main", async () => {
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
     assert.equal(runner.state.commits, 1);
     assert.equal(runner.state.backoffSeconds, 0);
-    assert.equal(runner.state.totalTokens, 42);
+    assert.equal(runner.state.generatedTokens, 42);
+    assert.equal(runner.state.peakContextTokens, 42);
   } finally {
     restore();
   }

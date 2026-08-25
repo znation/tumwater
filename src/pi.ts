@@ -8,7 +8,7 @@ import { isNothingToDo } from "./prompt.js";
 interface PiMessage {
   role: string;
   content?: Array<{ type: string; text?: string }>;
-  usage?: { totalTokens?: number; cost?: { total?: number } };
+  usage?: { totalTokens?: number; output?: number; cost?: { total?: number } };
   stopReason?: string;
   errorMessage?: string;
 }
@@ -27,7 +27,11 @@ export class PiStreamParser {
   /** True once any assistant message contains the nothing-to-do sentinel, so a
    * declaration in an intermediate turn survives later messages overwriting finalText. */
   declaredNothingToDo = false;
-  totalTokens = 0;
+  /** Tokens the model actually generated (usage.output summed across turns). */
+  outputTokens = 0;
+  /** Largest single-request context seen (usage.totalTokens is the request's whole
+   * context, so summing it across turns hugely overstates real consumption). */
+  peakContextTokens = 0;
   costUsd = 0;
   stopReason: string | undefined;
   errorMessage: string | undefined;
@@ -102,7 +106,8 @@ export class PiStreamParser {
     const text = messageText(msg);
     if (text.trim()) this.finalText = text;
     if (isNothingToDo(text)) this.declaredNothingToDo = true;
-    this.totalTokens += msg.usage?.totalTokens ?? 0;
+    this.outputTokens += msg.usage?.output ?? 0;
+    this.peakContextTokens = Math.max(this.peakContextTokens, msg.usage?.totalTokens ?? 0);
     this.costUsd += msg.usage?.cost?.total ?? 0;
     this.stopReason = msg.stopReason;
     if (msg.errorMessage) this.errorMessage = msg.errorMessage;
@@ -260,7 +265,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         ok: false,
         finalText: "",
         nothingToDo: false,
-        totalTokens: 0,
+        outputTokens: 0,
+        peakContextTokens: 0,
         costUsd: 0,
         errorMessage: `${SPAWN_ERROR_PREFIX}: ${err.message}`,
         timedOut: false,
@@ -281,7 +287,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         ok: !failed,
         finalText: parser.finalText,
         nothingToDo: parser.declaredNothingToDo,
-        totalTokens: parser.totalTokens,
+        outputTokens: parser.outputTokens,
+        peakContextTokens: parser.peakContextTokens,
         costUsd: parser.costUsd,
         stopReason: parser.stopReason,
         errorMessage: aborted

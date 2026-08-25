@@ -12,7 +12,8 @@ export function freshLoopState(role: string): LoopState {
     nextRunAt: 0,
     backoffSeconds: 0,
     lastMainHead: "",
-    totalTokens: 0,
+    generatedTokens: 0,
+    peakContextTokens: 0,
     totalCostUsd: 0,
   };
 }
