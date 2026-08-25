@@ -83,11 +83,12 @@ export class LoopRunner {
 
   /** Land the worktree branch on main under the shared merge lock: rebase it onto main
    * (keeping history linear) and fast-forward. On conflict, makes one pi-driven resolution
-   * attempt (outside the lock) before giving up. */
+   * attempt (outside the lock) before giving up. A routine conflict is normal operation,
+   * not a warning: success lands as an ordinary `merged` event and failure surfaces via the
+   * tick's merge_conflict result — no separate log line for the hand-off itself. */
   private async merge(wt: string, summary: string): Promise<TickResult> {
     const first = await this.tryMerge(wt, summary);
     if (first !== "merge_conflict") return first;
-    logEvent(this.root, { loop: this.role, type: "warning", message: "rebase conflict — asking pi to resolve" });
     if (!(await this.resolveConflict(wt))) return "merge_conflict";
     return this.tryMerge(wt, summary);
   }

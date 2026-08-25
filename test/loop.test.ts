@@ -278,6 +278,14 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
     // The resolution landed as a plain rebased commit: no merge commits on main.
     assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
+    // Routine conflict → pi-resolve → land is normal operation, not something to warn
+    // about: the merged event and tick_end already cover observability.
+    const warnings = readEvents(repo).filter((e) => e.type === "warning");
+    assert.equal(
+      warnings.length,
+      0,
+      `expected no warning events, got: ${JSON.stringify(warnings.map((w) => w.message))}`,
+    );
   } finally {
     restore();
   }
