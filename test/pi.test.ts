@@ -32,10 +32,11 @@ test("findOnPath locates executables like spawn would resolve them", () => {
 
 test("parser keeps the last non-empty assistant text and sums usage", () => {
   const parser = new PiStreamParser();
-  parser.feed(assistantLine("thinking about it", { tokens: 100, cost: 0.01 }) + "\n");
-  parser.feed(assistantLine("final answer\nSUMMARY: do it", { tokens: 50, cost: 0.02 }) + "\n");
+  parser.feed(assistantLine("thinking about it", { tokens: 100, output: 40, cost: 0.01 }) + "\n");
+  parser.feed(assistantLine("final answer\nSUMMARY: do it", { tokens: 50, output: 10, cost: 0.02 }) + "\n");
   assert.equal(parser.finalText, "final answer\nSUMMARY: do it");
-  assert.equal(parser.totalTokens, 150);
+  assert.equal(parser.outputTokens, 50, "output sums across turns");
+  assert.equal(parser.peakContextTokens, 100, "peak is the largest request context, not a sum");
   assert.ok(Math.abs(parser.costUsd - 0.03) < 1e-9);
   assert.equal(parser.stopReason, "stop");
 });
@@ -61,7 +62,7 @@ test("parser handles chunked lines and ignores noise", () => {
   parser.feed(line.slice(0, 20));
   parser.feed(line.slice(20) + "\nnot json\n" + JSON.stringify({ type: "turn_start" }) + "\n");
   assert.equal(parser.finalText, "hello");
-  assert.equal(parser.totalTokens, 5);
+  assert.equal(parser.peakContextTokens, 5);
 });
 
 test("parser records error messages and clears them after a later success", () => {

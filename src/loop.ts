@@ -121,11 +121,13 @@ export class LoopRunner {
       });
       // Resume whatever session the first attempt created or extended; it is healthy.
       const retry = await runPi({ ...opts, continueSession: true });
-      s.totalTokens += pi.totalTokens + retry.totalTokens;
+      s.generatedTokens += pi.outputTokens + retry.outputTokens;
+      s.peakContextTokens = Math.max(s.peakContextTokens, pi.peakContextTokens, retry.peakContextTokens);
       s.totalCostUsd += pi.costUsd + retry.costUsd;
       return retry;
     }
-    s.totalTokens += pi.totalTokens;
+    s.generatedTokens += pi.outputTokens;
+    s.peakContextTokens = Math.max(s.peakContextTokens, pi.peakContextTokens);
     s.totalCostUsd += pi.costUsd;
     return pi;
   }
