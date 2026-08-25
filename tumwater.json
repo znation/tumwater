@@ -1,6 +1,6 @@
 {
   "piArgs": [],
-  "maxConcurrent": 1,
+  "maxConcurrent": 2,
   "minTickIntervalSeconds": 20,
   "tickTimeoutSeconds": 54000,
   "idleBackoff": {
