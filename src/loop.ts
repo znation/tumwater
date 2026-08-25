@@ -38,6 +38,11 @@ export interface TickOutcome {
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
   state: LoopState;
+  /** The current tumwater.json config. Not readonly on purpose: the orchestrator pushes a
+   * freshly loaded config in here every poll cycle (live-reload), and every downstream read
+   * goes through this, so one assignment steers provider/model/thinking/instructions,
+   * tick intervals, backoff, and role enablement for subsequent ticks. */
+  config: TumwaterConfig;
   /** The raw user prompt a director tick is executing, so an unfulfilled tick (abort,
    * timeout, or failure without changes) can re-queue it instead of losing the request. */
   private pendingUserPrompt: string | null = null;
@@ -45,10 +50,11 @@ export class LoopRunner {
   constructor(
     readonly root: string,
     readonly role: string,
-    readonly config: TumwaterConfig,
+    config: TumwaterConfig,
     readonly mainBranch: string,
     readonly signal?: AbortSignal,
   ) {
+    this.config = config;
     this.state = loadLoopState(root, role);
     this.state.running = false;
   }

@@ -137,6 +137,17 @@ export function loadConfig(root: string): TumwaterConfig {
   return merged;
 }
 
+/** Load tumwater.json without throwing: either the validated config or the error message.
+ * Used by the orchestrator's live-reload poll, where a broken file must not stop the fleet —
+ * callers keep their last-known-good config and surface `error` as a warning. */
+export function loadConfigSafe(root: string): { config?: TumwaterConfig; error?: string } {
+  try {
+    return { config: loadConfig(root) };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /** Persist a config after validating it, so an invalid tumwater.json can never be written. */
 export function saveConfig(root: string, config: TumwaterConfig): void {
   validateConfig(config);

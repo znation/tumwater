@@ -11,7 +11,8 @@ import {
 } from "../src/orchestrator.js";
 import { ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
-import { defaultConfig, loadConfig } from "../src/config.js";
+import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
+import type { TumwaterConfig } from "../src/types.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
 import { loadLoopState, nextBackoffSeconds } from "../src/state.js";
@@ -193,5 +194,141 @@ test("runOrchestrator refuses to start with no roles enabled", async () => {
     );
   } finally {
     controller.abort();
+  }
+});
+
+// --- Live-reload tumwater.json while running ---
+
+/** Poll until fn() is true, failing after ms (default 20s). */
+async function waitFor(fn: () => boolean, what: string, ms = 20_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!fn()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+/** A fake pi that records each run's --provider/--model flags to argsFile and declares
+ * nothing-to-do (so no commit happens). */
+function recordingFakePi(argsFile: string): () => void {
+  return fakePi(
+    [
+      `m=""; p=""`,
+      `while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; --provider) p="$2";; esac; shift; done`,
+      `echo "run model=$m provider=$p" >> "${argsFile}"`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+}
+
+/** A config where only the given roles tick quickly (no min gap, 1s backoff) so several
+ * ticks land within a few poll cycles. */
+function fastConfig(roles: string[], model?: string): TumwaterConfig {
+  const c = defaultConfig();
+  if (model) c.model = model;
+  c.minTickIntervalSeconds = 0;
+  c.idleBackoff = { initialSeconds: 1, factor: 1, maxSeconds: 1 };
+  for (const id of Object.keys(c.roles)) c.roles[id]!.enabled = roles.includes(id);
+  return c;
+}
+
+test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-known-good", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "live reload test");
+  saveConfig(repo, fastConfig(["clean"], "good-model"));
+  const argsFile = path.join(tmpdir(), "argv.log");
+  const restore = recordingFakePi(argsFile);
+  const controller = new AbortController();
+  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  try {
+    // Assert on what pi actually saw (its recorded argv), not on tick counts: a tick can be
+    // scheduled before our file write lands, so only the argv evidence pins a run to a config.
+    // The file is created by pi's first run; until then there are no runs.
+    const runs = (): string[] => {
+      try {
+        return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
+      } catch {
+        return [];
+      }
+    };
+    await waitFor(() => runs().length >= 1 && runs()[0]?.includes("model=good-model"), "first pi run");
+
+    // A mid-run edit applies within a poll cycle — no restart.
+    saveConfig(repo, fastConfig(["clean"], "reloaded-model"));
+    await waitFor(() => runs().at(-1)?.includes("model=reloaded-model") === true, "pi run with the edited model");
+
+    // A broken file keeps the last-known-good config and warns exactly once.
+    fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
+    const runsBeforeBreak = runs().length;
+    await waitFor(
+      () => runs().length > runsBeforeBreak && runs().at(-1)?.includes("model=reloaded-model") === true,
+      "a further pi run while the file is broken",
+    );
+    const warnings = () =>
+      readEvents(repo).filter(
+        (e) => e.type === "warning" && ((e.message as string | undefined) ?? "").includes("tumwater.json invalid"),
+      );
+    assert.equal(warnings().length, 1, "one warning for the broken file");
+
+    // Fixing the file recovers: the new value applies and no further warnings appear.
+    saveConfig(repo, fastConfig(["clean"], "fixed-model"));
+    await waitFor(() => runs().at(-1)?.includes("model=fixed-model") === true, "pi run with the fixed model");
+    assert.equal(warnings().length, 1, "no new warnings once the file is fixed");
+  } finally {
+    restore();
+    controller.abort();
+    try {
+      await done;
+    } catch {
+      // The test's own failure (if any) takes precedence over shutdown noise.
+    }
+  }
+});
+
+test("roles can be enabled and disabled mid-run without a restart", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "role toggling test");
+  saveConfig(repo, fastConfig(["clean", "dry"]));
+  const argsFile = path.join(tmpdir(), "argv.log");
+  const restore = recordingFakePi(argsFile);
+  const controller = new AbortController();
+  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  try {
+    const finished = (role: string) => {
+      const s = loadLoopState(repo, role);
+      return s.ticks >= 1 && !s.running;
+    };
+    await waitFor(() => finished("clean") && finished("dry"), "startup ticks to finish");
+
+    // Disabling a role stops its next tick; the rest of the fleet keeps ticking.
+    saveConfig(repo, fastConfig(["clean"]));
+    await new Promise((r) => setTimeout(r, 1000)); // let any in-flight tick finish first
+    const dryTicks = loadLoopState(repo, "dry").ticks;
+    const cleanTicks = loadLoopState(repo, "clean").ticks;
+    // Longer than the max inter-tick gap (1s backoff + 2s poll), so a live loop would tick.
+    await new Promise((r) => setTimeout(r, 6000));
+    assert.equal(loadLoopState(repo, "dry").ticks, dryTicks, "disabled role stops ticking");
+    assert.ok(loadLoopState(repo, "clean").ticks > cleanTicks, "other roles keep ticking");
+    const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
+    assert.ok(messages().some((m) => m.includes("role dry disabled — stopping ticks")), "disable transition logged");
+
+    // Enabling a role that was not running at startup starts it (new runner).
+    saveConfig(repo, fastConfig(["clean", "feature"]));
+    await waitFor(() => finished("feature"), "newly enabled role to tick");
+    assert.ok(messages().some((m) => m.includes("role feature enabled — starting ticks")), "enable transition logged");
+    assert.equal(loadLoopState(repo, "dry").ticks, dryTicks, "still-disabled role stays stopped");
+
+    // Re-enabling a previously running loop resumes it within one poll cycle.
+    saveConfig(repo, fastConfig(["clean", "dry", "feature"]));
+    await waitFor(() => loadLoopState(repo, "dry").ticks > dryTicks, "re-enabled role to tick again");
+    assert.ok(messages().some((m) => m.includes("role dry enabled — starting ticks")), "re-enable transition logged");
+  } finally {
+    restore();
+    controller.abort();
+    try {
+      await done;
+    } catch {
+      // The test's own failure (if any) takes precedence over shutdown noise.
+    }
   }
 });

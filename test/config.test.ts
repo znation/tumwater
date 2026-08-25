@@ -2,7 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { configForRole, defaultConfig, loadConfig, saveConfig, validateConfig } from "../src/config.js";
+import {
+  configForRole,
+  defaultConfig,
+  loadConfig,
+  loadConfigSafe,
+  saveConfig,
+  validateConfig,
+} from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import { tmpdir } from "./util.js";
 
@@ -128,6 +135,26 @@ test("loadConfig rejects malformed JSON and invalid values with actionable messa
 
   fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ maxConcurrent: 0 }));
   assert.throws(() => loadConfig(dir), /maxConcurrent must be an integer of at least 1 \(got 0\)/);
+});
+
+test("loadConfigSafe returns the config when valid and the error message otherwise", () => {
+  const dir = tmpdir();
+  // No file: defaults, no error.
+  assert.deepEqual(loadConfigSafe(dir), { config: defaultConfig() });
+
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  const ok = loadConfigSafe(dir);
+  assert.equal(ok.error, undefined);
+  assert.equal(ok.config?.model, "sonnet");
+
+  // Broken JSON and invalid values surface as messages, never throws.
+  fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
+  const broken = loadConfigSafe(dir);
+  assert.equal(broken.config, undefined);
+  assert.match(broken.error ?? "", /not valid JSON/);
+
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ maxConcurrent: 0 }));
+  assert.match(loadConfigSafe(dir).error ?? "", /maxConcurrent must be an integer of at least 1/);
 });
 
 test("saveConfig refuses to persist invalid configs", () => {

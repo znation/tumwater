@@ -101,7 +101,10 @@ tumwater prompt "prefer no third-party deps"
 
 Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
 `improve`, `director`. Enable/disable them, pick pi's provider/model/thinking level, and tune
-backoff in `tumwater.json`.
+backoff in `tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
+within ~2s — enabling/disabling roles, per-role provider/model/thinking/instructions, tick
+intervals, and backoff all apply live; only `maxConcurrent` and `sessionRetentionDays` require a
+restart.
 
 ## Notes on local model servers
 
