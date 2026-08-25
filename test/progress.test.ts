@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { describeToolCall, parseProgress, readLiveProgress } from "../src/progress.js";
+import { parseProgress, readLiveProgress } from "../src/progress.js";
 import { piLogPath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
 
@@ -48,14 +48,6 @@ test("parseProgress resets at a new session (previous tick's events ignored)", (
 test("parseProgress survives noise and blank lines", () => {
   const p = parseProgress([SESSION, "", "not json", assistantLine("hi", { tokens: 10 })], 0);
   assert.equal(p.turns, 1);
-});
-
-test("describeToolCall summarizes common arg shapes tersely", () => {
-  assert.equal(describeToolCall("read", { path: "/a/b/loop.ts" }), "read loop.ts");
-  assert.equal(describeToolCall("bash", { command: "npm run build" }), "bash npm run build");
-  assert.equal(describeToolCall("edit", {}), "edit");
-  assert.equal(describeToolCall("bash", { command: "x".repeat(100) }), `bash ${"x".repeat(31)}…`);
-  assert.equal(describeToolCall("bash", { command: "a\n  b\tc" }), "bash a b c");
 });
 
 test("readLiveProgress reads the loop's raw log and reports quiet time", () => {

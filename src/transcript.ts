@@ -1,6 +1,6 @@
 import { readCompleteLines, statOrNull } from "./files.js";
 import { piLogPath } from "./paths.js";
-import { describeToolCall } from "./progress.js";
+import { describeToolCall } from "./tool-call.js";
 
 /** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its
  * run's separator) or a lone retry warning / run separator. */

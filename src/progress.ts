@@ -1,4 +1,4 @@
-import path from "node:path";
+import { describeToolCall } from "./tool-call.js";
 import { readCompleteLines, statOrNull } from "./files.js";
 import { piLogPath } from "./paths.js";
 
@@ -41,21 +41,6 @@ const MAX_TAILS = 64;
 
 function freshProgress(quietMs: number): LiveProgress {
   return { turns: 0, toolCalls: 0, contextTokens: 0, quietMs };
-}
-
-/** One-line description of a tool call from its name and args. */
-export function describeToolCall(toolName: string, args: unknown): string {
-  let detail = "";
-  if (args && typeof args === "object") {
-    const a = args as Record<string, unknown>;
-    const candidate = a.path ?? a.file_path ?? a.command ?? a.cmd ?? a.pattern ?? a.url;
-    if (typeof candidate === "string") {
-      detail = candidate === a.path || candidate === a.file_path ? path.basename(candidate) : candidate;
-    }
-  }
-  detail = detail.replace(/\s+/g, " ").trim();
-  if (detail.length > 32) detail = detail.slice(0, 31) + "…";
-  return detail ? `${toolName} ${detail}` : toolName;
 }
 
 /** Apply one raw log line to a progress object (mutates it). Non-JSON noise is skipped. */
