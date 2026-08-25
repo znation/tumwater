@@ -110,16 +110,34 @@ export async function commitAll(wt: string, message: string): Promise<string> {
   return headOf(wt, "HEAD");
 }
 
+/** Paths currently in conflict (unmerged) in the worktree. */
+export async function conflictedFiles(wt: string): Promise<string[]> {
+  const out = await gitTry(wt, "diff", "--name-only", "--diff-filter=U");
+  return out ? out.split("\n").filter(Boolean) : [];
+}
+
+/** Attempt to merge main into the worktree branch and classify the outcome WITHOUT
+ * cleaning up: "merged" (including already up to date), "conflict" (the merge stopped on
+ * unmerged paths, which remain in the worktree for a resolver), or "other" (any other
+ * failure). Shared by the two merge wrappers below, which differ only in cleanup policy. */
+async function attemptMerge(
+  wt: string,
+  mainBranch: string,
+): Promise<"merged" | "conflict" | "other"> {
+  try {
+    await git(wt, ...COMMIT_IDENT, "merge", "--no-edit", mainBranch);
+    return "merged";
+  } catch {
+    return (await conflictedFiles(wt)).length > 0 ? "conflict" : "other";
+  }
+}
+
 /** Merge main into the worktree branch (main may have advanced during the tick).
  * Returns false and aborts the merge on conflict. */
 export async function mergeMainIntoBranch(wt: string, mainBranch: string): Promise<boolean> {
-  try {
-    await git(wt, ...COMMIT_IDENT, "merge", "--no-edit", mainBranch);
-    return true;
-  } catch {
-    await gitTry(wt, "merge", "--abort");
-    return false;
-  }
+  const state = await attemptMerge(wt, mainBranch);
+  if (state !== "merged") await gitTry(wt, "merge", "--abort");
+  return state === "merged";
 }
 
 /** Merge main into the worktree branch, leaving conflict markers in place for a
@@ -130,21 +148,9 @@ export async function mergeMainLeaveConflicts(
   wt: string,
   mainBranch: string,
 ): Promise<"clean" | "conflict" | "failed"> {
-  try {
-    await git(wt, ...COMMIT_IDENT, "merge", "--no-edit", mainBranch);
-    return "clean";
-  } catch {
-    const unmerged = await gitTry(wt, "diff", "--name-only", "--diff-filter=U");
-    if (unmerged?.trim()) return "conflict";
-    await gitTry(wt, "merge", "--abort");
-    return "failed";
-  }
-}
-
-/** Paths currently in conflict (unmerged) in the worktree. */
-export async function conflictedFiles(wt: string): Promise<string[]> {
-  const out = await gitTry(wt, "diff", "--name-only", "--diff-filter=U");
-  return out ? out.split("\n").filter(Boolean) : [];
+  const state = await attemptMerge(wt, mainBranch);
+  if (state === "other") await gitTry(wt, "merge", "--abort");
+  return state === "merged" ? "clean" : state === "conflict" ? "conflict" : "failed";
 }
 
 export async function abortMerge(wt: string): Promise<void> {
