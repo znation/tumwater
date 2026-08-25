@@ -1,4 +1,5 @@
 import path from "node:path";
+import { DIRECTOR_ROLE } from "./roles.js";
 import type { LoopState } from "./types.js";
 import type { StatusSnapshot } from "./status.js";
 import { readLiveProgress } from "./progress.js";
@@ -53,7 +54,7 @@ export function workingDetail(root: string, s: LoopState): string {
 export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: string): string {
   if (!orchestratorRunning) return "stopped";
   if (s.running) return root ? workingDetail(root, s) : "working";
-  if (s.role === "director") return "waiting for prompts";
+  if (s.role === DIRECTOR_ROLE) return "waiting for prompts";
   if (s.nextRunAt > Date.now()) {
     // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
     // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder
