@@ -1,9 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** Shared file helpers: size-based rotation for append-only logs, age-based pruning of
- * pi session files, complete-line tail reading for incrementally consumed JSONL logs, and
- * byte-offset following of live logs. */
+/** Shared file helpers: stat-or-missing for log readers, size-based rotation for
+ * append-only logs, age-based pruning of pi session files, complete-line tail reading for
+ * incrementally consumed JSONL logs, and byte-offset following of live logs. */
+
+/** Stat a file, returning null when it does not exist (or cannot be read). The harness's
+ * log readers all treat a missing log as "no data yet" rather than an error — this is the
+ * single place for that policy, shared by every observer that polls those logs. */
+export function statOrNull(file: string): fs.Stats | null {
+  try {
+    return fs.statSync(file);
+  } catch {
+    return null; // Missing (or vanished) — no data yet.
+  }
+}
 
 /** Keep an append-only log bounded: over `maxBytes` it is renamed to `<file>.1`
  * (replacing any previous rotation) and a fresh file starts. Returns true if rotated. */

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
-import { rotateIfLarge } from "./files.js";
+import { rotateIfLarge, statOrNull } from "./files.js";
 
 type EventListener = (event: HarnessEvent) => void;
 const listeners = new Set<EventListener>();
@@ -49,13 +49,9 @@ const TAIL_CHUNK_BYTES = 64 * 1024;
  * EVENTS_MAX_BYTES between rotations). */
 export function readEvents(root: string, limit = 200): HarnessEvent[] {
   const file = eventsLogPath(root);
-  let size: number;
-  try {
-    size = fs.statSync(file).size;
-  } catch {
-    return []; // No log yet.
-  }
-  if (size === 0) return [];
+  const st = statOrNull(file);
+  if (!st || st.size === 0) return []; // No log yet.
+  let size = st.size;
 
   let text: string;
   if (size <= TAIL_SCAN_THRESHOLD) {

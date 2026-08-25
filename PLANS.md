@@ -176,14 +176,17 @@ LLMs follow positive constraints far better than prohibitions) — seeded at ini
 every tick and director prompt, editable only by the director and steward. First item of the
 "Senior Tumwater" report sequence; the review gate and refusal plans both lint against it.
 
-### Adversarial review gate before merge (planned 2026-08-24)
+### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-24)
 
 Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
 fresh-session pi run (no author context; own model override via a `review` pseudo-role) reviews
 each committed tick against PRINCIPLES.md and replies `VERDICT: approve|reject` with reasons.
 Rejects reset the branch, record reasons, and inject them into the author's next tick; md-only
-diffs are exempt so notes stay cheap. The report's highest-leverage item — we have merged broken
-work twice for lack of it.
+diffs are exempt so notes stay cheap. The invariant is structural — a failed or verdict-less
+review fails closed (commit stays on the branch for re-review next tick, 3-strike discard cap),
+and `recoverLeftover` routes salvaged commits through the same gate so no crash path can land
+unreviewed work. The report's highest-leverage item — we have merged broken work twice for lack of
+it.
 
 ### The right to refuse, and friction as a signal (planned 2026-08-24)
 
