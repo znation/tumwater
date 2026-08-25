@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { PiStreamParser, findOnPath, piArgs } from "../src/pi.js";
+import { PiStreamParser, findOnPath, piArgs, runPi } from "../src/pi.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
-import { assistantLine, errorLine, tmpdir } from "./util.js";
+import { assistantLine, errorLine, fakePi, tmpdir } from "./util.js";
 
 test("findOnPath locates executables like spawn would resolve them", () => {
   const dir = tmpdir();
@@ -143,4 +143,41 @@ test("role overrides flow through to the pi argv and round-trip via config files
   const cheap = piArgs({ config: configForRole(config, "clean"), sessionDir: "/tmp/s", sessionName: "n" });
   assert.ok(cheap.includes("cheap"));
   assert.ok(!cheap.includes("anthropic"));
+});
+
+/** Run the fake pi through runPi with throwaway dirs and return the distilled result. */
+async function runFakePi(script: string) {
+  const dir = tmpdir();
+  const restore = fakePi(script);
+  try {
+    return await runPi({
+      cwd: dir,
+      prompt: "p",
+      config: defaultConfig(),
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+    });
+  } finally {
+    restore();
+  }
+}
+
+test("a non-zero pi exit with assistant text still counts as a successful run", async () => {
+  // Documented lenient behavior (BUGS.md, spurious-warning fix, cause 4): pi can exit
+  // non-zero after producing output; the work is real, so the tick must not be an error.
+  const result = await runFakePi(
+    [`printf '%s\n' '${assistantLine("done", { tokens: 10 })}'`, "exit 1"].join("\n"),
+  );
+  assert.equal(result.ok, true, "non-zero exit with assistant text is leniently ok");
+  assert.equal(result.finalText, "done");
+  assert.equal(result.timedOut, false);
+});
+
+test("a non-zero pi exit without assistant text is a failed run", async () => {
+  // The other half of the same branch: no output means nothing landed, so it must stay an
+  // error (the tick-level regression for this lives in test/loop.test.ts).
+  const result = await runFakePi(`echo 'pi exploded' >&2\nexit 1`);
+  assert.equal(result.ok, false);
+  assert.match(result.errorMessage ?? "", /pi exploded|exited 1/);
 });
