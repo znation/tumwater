@@ -1,4 +1,4 @@
-import type { Role } from "./roles.js";
+import { DECOMPOSITION_GUIDANCE, type Role } from "./roles.js";
 
 /** Sentinel a loop's pi run outputs when it found nothing worth doing. */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
@@ -51,13 +51,6 @@ export function buildTickPrompt(input: TickPromptInput): string {
   parts.push(COMMON_RULES.trim());
   return parts.join("\n\n");
 }
-
-/** Shared guidance for any loop about to record a plan or bug: split independent parts
- * into their own entries. Defined once so the director and role prompts cannot drift. */
-export const DECOMPOSITION_GUIDANCE = `Before recording a plan or bug, consider whether it
-decomposes into independent subparts (separate features, or separate bugs). If it does, record
-each part as its own PLANS.md/BUGS.md entry that cross-references its siblings, so loops can pick
-them up independently; if the parts are not truly independent, keep a single entry.`;
 
 /** The prompt for a director tick, which routes a user request into the project. */
 export function buildDirectorPrompt(userPrompt: string, initialPrompt: string): string {

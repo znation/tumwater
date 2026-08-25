@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DECOMPOSITION_GUIDANCE, buildDirectorPrompt, buildTickPrompt } from "../src/prompt.js";
-import { roleById } from "../src/roles.js";
+import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt.js";
+import { DECOMPOSITION_GUIDANCE, roleById } from "../src/roles.js";
 
 test("director routing includes the shared decomposition guidance", () => {
   const prompt = buildDirectorPrompt("add import and export features", "a project");

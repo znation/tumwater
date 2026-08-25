@@ -1,4 +1,5 @@
-import { DECOMPOSITION_GUIDANCE } from "./prompt.js";
+/** Role catalog plus the shared instruction fragments role prompts embed. Pure data:
+ * this module imports nothing, so prompt assembly can depend on it without a cycle. */
 
 export interface Role {
   id: string;
@@ -8,6 +9,15 @@ export interface Role {
 }
 
 export const DIRECTOR_ROLE = "director";
+
+/** Shared guidance for any loop about to record a plan or bug: split independent parts
+ * into their own entries. Defined once so the director and role prompts cannot drift.
+ * Lives here (not in prompt.ts) because two role `find` texts embed it — keeping this
+ * module import-free, with the dependency running one way: prompt assembly → roles. */
+export const DECOMPOSITION_GUIDANCE = `Before recording a plan or bug, consider whether it
+decomposes into independent subparts (separate features, or separate bugs). If it does, record
+each part as its own PLANS.md/BUGS.md entry that cross-references its siblings, so loops can pick
+them up independently; if the parts are not truly independent, keep a single entry.`;
 
 /** The opinionated role catalog. Every loop runs one role; a role's `find` text is
  * the role-specific "find something to do" half of the tick prompt.
