@@ -11,7 +11,7 @@ import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { orchestratorAlive, runOrchestrator } from "./orchestrator.js";
 import { findOnPath } from "./pi.js";
-import { followFile, readCompleteLines } from "./files.js";
+import { followFile, readCompleteLines, statOrNull } from "./files.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { runTui } from "./tui.js";
@@ -160,12 +160,7 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
  * log is pi's streaming event stream, so only complete renderable events are shown. */
 async function cmdLogsTranscript(root: string, role: string, limit: number, follow: boolean): Promise<void> {
   const file = piLogPath(root, role);
-  let size = 0;
-  try {
-    size = fs.statSync(file).size;
-  } catch {
-    // No log yet.
-  }
+  const size = statOrNull(file)?.size ?? 0; // No log yet → 0.
 
   const renderer = createTranscriptRenderer();
   const printEntry = (lines: string[]) => {

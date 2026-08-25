@@ -1,5 +1,4 @@
-import fs from "node:fs";
-import { readCompleteLines } from "./files.js";
+import { readCompleteLines, statOrNull } from "./files.js";
 import { piLogPath } from "./paths.js";
 import { describeToolCall } from "./progress.js";
 
@@ -209,10 +208,8 @@ function pushEntry(tail: TranscriptTail, entry: string[]): void {
  * role per poll. A torn trailing line is left unconsumed until its newline lands. */
 export function readTranscript(root: string, role: string, limit = 50): string[] {
   const file = piLogPath(root, role);
-  let st: fs.Stats;
-  try {
-    st = fs.statSync(file);
-  } catch {
+  const st = statOrNull(file);
+  if (!st) {
     tails.delete(file); // Missing (or vanished) — drop any stale state.
     return [];
   }

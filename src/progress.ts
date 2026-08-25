@@ -1,6 +1,5 @@
-import fs from "node:fs";
 import path from "node:path";
-import { readCompleteLines } from "./files.js";
+import { readCompleteLines, statOrNull } from "./files.js";
 import { piLogPath } from "./paths.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
@@ -107,10 +106,8 @@ export function parseProgress(lines: string[], quietMs: number): LiveProgress {
  * TAIL_BYTES of JSON per role per poll. */
 export function readLiveProgress(root: string, role: string): LiveProgress | null {
   const file = piLogPath(root, role);
-  let st: fs.Stats;
-  try {
-    st = fs.statSync(file);
-  } catch {
+  const st = statOrNull(file);
+  if (!st) {
     tails.delete(file); // Missing (or vanished) — drop any stale state.
     return null;
   }
