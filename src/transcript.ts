@@ -1,4 +1,4 @@
-import { readCompleteLines, statOrNull } from "./files.js";
+import { statOrNull, TailState, withTail } from "./files.js";
 import { piLogPath } from "./paths.js";
 import { describeToolCall } from "./tool-call.js";
 
@@ -170,32 +170,27 @@ export function formatTranscript(lines: string[]): TranscriptEntry[] {
   return entries;
 }
 
-/** Per-file incremental state for readTranscript: where we last stopped reading and the
- * rendered entries accumulated from everything read so far. Bounded by the number of distinct
- * log paths observed in this process (one root × its roles for a TUI/GUI). */
-interface TranscriptTail {
-  dev: number;
-  ino: number;
-  /** Byte offset already consumed, always at a line boundary. */
-  offset: number;
+/** Per-file accumulated value for readTranscript: the incremental renderer and the rendered
+ * entries it has produced so far (ring buffer capped at MAX_ENTRIES). Bounded by the number
+ * of distinct log paths observed in this process (one root × its roles for a TUI/GUI). */
+interface TranscriptValue {
   renderer: TranscriptRenderer;
   /** Rendered entries so far (ring buffer capped at MAX_ENTRIES). */
   entries: string[][];
 }
 
-const tails = new Map<string, TranscriptTail>();
-/** Safety cap so the cache can never grow unbounded (e.g. many short-lived roots in tests).
- * Evicting only costs one reseed per role on the next poll — same trade as progress.ts. */
-const MAX_TAILS = 64;
+const tails = new Map<string, TailState<TranscriptValue>>();
 /** How many rendered entries to keep per file. Hot callers ask for at most ~50 (the GUI
  * panel polls with n=50, the TUI its line budget), so the cap bounds memory while keeping any
  * such request exact; a caller asking for more gets the newest MAX_ENTRIES. */
 const MAX_ENTRIES = 200;
 
-function pushEntry(tail: TranscriptTail, entry: string[]): void {
+/** Fold one raw log line into a transcript's accumulated value. */
+function feedEntries(value: TranscriptValue, line: string): void {
+  const entry = value.renderer.feed(line);
   if (entry.length === 0) return;
-  tail.entries.push(entry);
-  if (tail.entries.length > MAX_ENTRIES) tail.entries.splice(0, tail.entries.length - MAX_ENTRIES);
+  value.entries.push(entry);
+  if (value.entries.length > MAX_ENTRIES) value.entries.splice(0, value.entries.length - MAX_ENTRIES);
 }
 
 /** Rendered transcript lines for the last `limit` entries of a loop's pi log, oldest first.
@@ -216,33 +211,21 @@ export function readTranscript(root: string, role: string, limit = 50): string[]
   if (st.size === 0) return [];
 
   const want = Math.min(limit, MAX_ENTRIES);
-  let tail = tails.get(file);
-  if (!tail || tail.dev !== st.dev || tail.ino !== st.ino || st.size < tail.offset) {
-    // First observation, rotation (rename + new file), or a shrunken file: parse the whole
-    // current file once. That is exactly what every poll used to do; now it happens once per
-    // observation instead of on each one, and steady-state polls below touch only appends.
-    const { lines, end } = readCompleteLines(file, 0, st.size);
-    tail = {
-      dev: st.dev,
-      ino: st.ino,
-      offset: end,
-      renderer: createTranscriptRenderer(),
-      entries: [],
-    };
-    for (const line of lines) pushEntry(tail, tail.renderer.feed(line));
-    if (tails.size >= MAX_TAILS) tails.clear();
-    tails.set(file, tail);
-  } else if (st.size > tail.offset) {
-    // Append-only growth since the last poll: parse only the new bytes.
-    const { lines, end } = readCompleteLines(file, tail.offset, st.size);
-    for (const line of lines) pushEntry(tail, tail.renderer.feed(line));
-    if (end > tail.offset) tail.offset = end; // A torn trailing line is re-read next poll.
-  }
+  // Seed by parsing the whole current file once — exactly what every poll used to do; now it
+  // happens once per observation instead of on each one, and steady-state polls touch only
+  // appends.
+  const value = withTail(
+    tails,
+    file,
+    st,
+    () => ({ fromOffset: 0, value: { renderer: createTranscriptRenderer(), entries: [] } }),
+    feedEntries,
+  );
 
   // A run that started but has no renderable event yet still shows its separator — reported
   // without consuming it, so when the first turn lands the separator merges into that entry
   // exactly as a full re-read would produce (and keeps gaining its timestamp until then).
-  const pending = tail.renderer.pendingSeparator();
+  const pending = value.renderer.pendingSeparator();
   const take = Math.max(0, want - (pending.length > 0 ? 1 : 0));
-  return [...tail.entries.slice(-take).flat(), ...pending];
+  return [...value.entries.slice(-take).flat(), ...pending];
 }
