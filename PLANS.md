@@ -5,6 +5,65 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Linear history on main: rebase instead of merge commits (planned 2026-08-24)
+
+**Goal:** Work lands on main via **rebase**, not merge, so main's commit history stays linear
+going forward. Reported by the user as a bug; it is a strategy change — existing tangled
+history is explicitly *not* to be rewritten ("not important to fix historically").
+
+**Why rebase, not squash:** each tick produces exactly one harness-authored commit (`commitAll`
+after resetting the worktree to main), so there is nothing meaningful to squash. The merge
+commits in today's history (e.g. `Merge branch 'main' into tumwater/director`) all come from the
+"sync with main" step — `mergeMainIntoBranch` in `src/git.ts`, run inside `tryMerge` when main
+advanced during the tick, plus pi-driven conflict resolutions concluded as merge commits.
+Rebasing the branch onto main removes that step's merge commit while preserving per-commit
+granularity (which the planned self-explaining commit bodies rely on; squash would collapse
+pi-authored extra commits and destroy their messages).
+
+**Approach:** swap the two sync primitives for rebase equivalents; everything downstream is
+unchanged because a rebased branch contains main, so `ffMergeToMain` (ff-only merge or local ref
+push) still fast-forwards exactly as today.
+
+- `src/git.ts`:
+  - New `rebaseOntoMain(wt, mainBranch): Promise<boolean>` replacing `mergeMainIntoBranch` —
+    runs `git ...COMMIT_IDENT rebase <main>` (the `-c user.*` ident is needed for the rewritten
+    committer); success includes "already up to date"; on failure run `rebase --abort` and
+    return false.
+  - New `rebaseOntoMainLeaveConflicts(wt, mainBranch): Promise<"clean" | "conflict" |
+    "failed">` replacing `mergeMainLeaveConflicts` — a conflicted rebase leaves markers in the
+    worktree mid-rebase; unmerged paths are detected exactly as today via
+    `diff --name-only --diff-filter=U`; anything else aborts and returns "failed".
+  - New `continueRebase(wt): Promise<string>` replacing `commitMergeResolution` — after pi has
+    resolved the files: `git add -A`, then `git rebase --continue` with a non-interactive editor
+    (`GIT_EDITOR=true`) so it can never block on a commit-message prompt.
+  - Generalize aborting (today's `abortMerge`): also/instead run `rebase --abort`.
+  - `resetWorktreeToMain`: run `rebase --abort` alongside the existing `merge --abort` before
+    the hard reset — an interrupted rebase (tick timeout mid conflict-resolution) otherwise
+    wedges every later tick with "you are already rebasing".
+- `src/loop.ts`: `tryMerge` and `resolveConflict` call the new functions; keep the one-
+attempt-per-tick contract for pi-driven resolution — if `rebase --continue` stops on a *second*
+  conflict (only possible when pi itself authored extra commits during the tick), abort and
+  report `merge_conflict` as today. Keep event vocabulary user-accurate (e.g.
+  "rebase conflict — asking pi to resolve"); `recoverLeftover`, backoff, and re-queue logic are
+  untouched.
+- README.md: update "How it works" step 3 ("commits, merges main into the branch, and
+  fast-forwards main") to describe the rebase.
+
+**Files touched:** `src/git.ts`, `src/loop.ts`, `test/git.test.ts` (the sync-function tests at
+lines ~47–92 exercise `mergeMainIntoBranch`), `test/loop.test.ts` (end-to-end tick and conflict-
+resolution tests, including the 7-char setext-heading case), one README line.
+
+**Acceptance criteria:**
+- After a tick that lands work while main advanced during the tick, main's history is linear:
+  no new merge commits appear (`git log --merges` on main does not grow beyond its pre-existing
+  entries). End-to-end test asserts this.
+- The pi-driven conflict path still works under rebase: a conflicted file (including the
+  setext-heading regression case) is resolved and lands; an unresolvable conflict aborts cleanly,
+  leaves no half-state, and the work survives for `recoverLeftover` on a later tick.
+- A simulated interrupted rebase does not wedge the next tick (`resetWorktreeToMain` clears it).
+- `ffMergeToMain` behaves as before in both modes (primary checkout on main / elsewhere);
+  `npm test` passes.
+
 ### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)
 
 **Goal:** The dashboard surfaces project status, not just loop status: both the TUI and the web
