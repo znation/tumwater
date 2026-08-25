@@ -5,7 +5,39 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Merge conflicts logged as warnings in the main log although they are normal operation (reported 2026-08-25)
+
+**Symptom:** Whenever a loop's merge stops on a conflict, the harness emits a `warning` event —
+"merge conflict — asking pi to resolve" — which surfaces in the main log (`tumwater logs`,
+events.jsonl), the TUI activity pane, and the GUI event feed. With several loops merging
+concurrently, conflicts happen routinely, and the existing pi-driven resolution path handles them
+automatically (the work then lands as an ordinary `merged` event). The net effect: the main log is
+full of warnings for expected, self-healing operation that no one needs to act on.
+
+**User intent:** merge conflicts are normal operation, not something to warn about — they can be
+silently fixed. A routine conflict → pi-resolve → land cycle must produce **no warning-level line
+in the main log**. (Reported by the user 2026-08-25.)
+
+**How to reproduce:** run test/loop.test.ts "a merge conflict is resolved by a second pi run and
+lands as a merge commit" — after that tick, `readEvents(repo)` contains
+`{ type: "warning", message: "merge conflict — asking pi to resolve" }`. In a live fleet, any two
+loops editing the same file in overlapping ticks produce one such warning per conflict.
+
+**Suspected cause:** src/loop.ts line ~83 (`LoopRunner.merge`) logs `type: "warning"` when it hands
+off to pi-driven resolution; `formatEvent` (src/events.ts) renders every warning as a `warning:`
+line on all log surfaces. The event carries no actionable information — the outcome is already
+visible via the subsequent `merged` event on success, or the `merge_conflict` tick result /
+lastResult cell on failure.
+
+**Scope:** only the routine conflict-resolution notification is in scope. All other warnings stay:
+"discarding N unmergeable leftover commit(s)" (work actually lost), model-server retry, session
+reset, etc. The fix may drop the event entirely or demote it to a non-warning type that does not
+render as a warning line — if a new event type is added, update `HarnessEvent.type` in
+types.ts and give it a plain (non-"warning:") rendering in formatEvent; dropping it is simplest
+since `merged`/tick_end already cover observability. Add or adjust a test asserting that the
+resolve-and-land path emits no `warning` event, while the unresolvable-conflict path's behavior
+(merge_conflict result) is unchanged. Files: src/loop.ts (and possibly src/events.ts,
+src/types.ts), test/loop.test.ts.
 
 ## Fixed
 

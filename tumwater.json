@@ -42,5 +42,6 @@
     "director": {
       "enabled": true
     }
-  }
+  },
+  "quietTimeoutSeconds": 3600
 }
