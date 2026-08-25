@@ -1,9 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { clipToWidth, renderStatus } from "../src/status-render.js";
 import type { StatusSnapshot } from "../src/status.js";
 import { freshLoopState } from "../src/state.js";
-import { tmpdir } from "./util.js";
+import { piLogPath } from "../src/paths.js";
+import { assistantLine, tmpdir } from "./util.js";
+
+const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
+
+/** Write a raw pi log for `role` under `root`. */
+function writePiLog(root: string, role: string, lines: string[]): void {
+  const file = piLogPath(root, role);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+}
 
 function snapshotWith(loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string }>): StatusSnapshot {
   return {
@@ -66,6 +78,31 @@ test("narrow terminals never receive a wrapping line even below column minimums"
       assert.ok(line.length <= width, `width ${width} violated: ${line.length}`);
     }
   }
+});
+
+test("gen/peak ctx combine persisted totals with live in-tick progress for running loops only", () => {
+  const root = tmpdir();
+  // In-flight tick: this run's session plus two completed turns (800 output, peak 12k).
+  writePiLog(root, "clean", [
+    SESSION,
+    assistantLine("turn one", { tokens: 8_000, output: 300 }),
+    assistantLine("turn two", { tokens: 12_000, output: 500 }),
+  ]);
+  // Idle loop whose log tail is its last COMPLETED tick (already in the persisted totals).
+  writePiLog(root, "dry", [SESSION, assistantLine("done tick", { tokens: 5_000, output: 500 })]);
+  const snap = snapshotWith([
+    { role: "clean", generatedTokens: 1_000, peakContextTokens: 6_000, running: true },
+    { role: "dry", generatedTokens: 2_000, peakContextTokens: 4_000 },
+  ]);
+  const out = renderStatus(root, snap);
+  const cleanRow = out.split("\n").find((l) => l.startsWith("clean")) ?? "";
+  assert.match(cleanRow, /\b1800\b/, "running loop gen = persisted + live output (1000+300+500)");
+  assert.match(cleanRow, /12\.0k/, "running loop peak ctx = max(persisted, live) = 12000");
+  const dryRow = out.split("\n").find((l) => l.startsWith("dry")) ?? "";
+  assert.match(dryRow, /\b2000\b/, "idle loop gen stays persisted — its log tail is not double-counted");
+  assert.match(dryRow, /\b4000\b/);
+  const totals = out.split("\n").at(-1) ?? "";
+  assert.match(totals, /\b3800\b/, "totals row sums the displayed (combined) values");
 });
 
 test("clipToWidth never exceeds the requested width, even at degenerate widths", () => {

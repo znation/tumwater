@@ -6,7 +6,10 @@ import { statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
 import { inboxSize } from "../src/inbox.js";
 import { piLogPath } from "../src/paths.js";
-import { makeRepo } from "./util.js";
+import { freshLoopState, saveLoopState } from "../src/state.js";
+import { assistantLine, makeRepo } from "./util.js";
+
+const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
 test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
   const repo = makeRepo();
@@ -103,6 +106,35 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
   for (const body of scripts) {
     assert.doesNotThrow(() => new Function(body), "inline script must parse");
   }
+});
+
+test("status payload combines persisted + live token metrics for running loops only", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui metrics test");
+  // Persisted totals from completed ticks...
+  const s = freshLoopState("feature");
+  s.generatedTokens = 1_000;
+  s.peakContextTokens = 6_000;
+  s.running = true; // a tick is in flight
+  saveLoopState(repo, s);
+  // ...and the in-flight tick's log tail (800 output so far, peak context 12k).
+  const file = piLogPath(repo, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    [
+      SESSION,
+      assistantLine("turn one", { tokens: 8_000, output: 300 }),
+      assistantLine("turn two", { tokens: 12_000, output: 500 }),
+    ].join("\n") + "\n",
+  );
+  const payload = statusPayload(repo) as {
+    loops: Array<{ role: string; generated: number; peakCtx: number }>;
+  };
+  const feature = payload.loops.find((l) => l.role === "feature");
+  assert.ok(feature, "feature loop present in payload");
+  assert.equal(feature.generated, 1_800, "running loop gen = persisted + live output (1000+300+500)");
+  assert.equal(feature.peakCtx, 12_000, "running loop peak ctx = max(persisted, live)");
 });
 
 test("gui rejects oversized prompt bodies instead of buffering them unboundedly", async () => {

@@ -12,6 +12,10 @@ export interface LiveProgress {
   toolCalls: number;
   /** Context tokens of the latest assistant message. */
   contextTokens: number;
+  /** Output tokens generated in this run (usage.output summed over assistant messages). */
+  outputTokens: number;
+  /** Largest single-request context submitted in this run (max, not sum). */
+  peakContextTokens: number;
   /** Short human label of the most recent tool call, e.g. `bash npm test`. */
   lastTool?: string;
   /** ms since pi last emitted anything (from file mtime). */
@@ -40,7 +44,7 @@ const tails = new Map<string, TailState>();
 const MAX_TAILS = 64;
 
 function freshProgress(quietMs: number): LiveProgress {
-  return { turns: 0, toolCalls: 0, contextTokens: 0, quietMs };
+  return { turns: 0, toolCalls: 0, contextTokens: 0, outputTokens: 0, peakContextTokens: 0, quietMs };
 }
 
 /** One-line description of a tool call from its name and args. */
@@ -65,7 +69,7 @@ function feedLine(progress: LiveProgress, line: string): void {
     type?: string;
     toolName?: string;
     args?: unknown;
-    message?: { role?: string; usage?: { totalTokens?: number } };
+    message?: { role?: string; usage?: { totalTokens?: number; output?: number } };
   };
   try {
     event = JSON.parse(line);
@@ -77,6 +81,8 @@ function feedLine(progress: LiveProgress, line: string): void {
       progress.turns = 0;
       progress.toolCalls = 0;
       progress.contextTokens = 0;
+      progress.outputTokens = 0;
+      progress.peakContextTokens = 0;
       progress.lastTool = undefined;
       break;
     case "tool_execution_start":
@@ -86,7 +92,12 @@ function feedLine(progress: LiveProgress, line: string): void {
     case "message_end":
       if (event.message?.role === "assistant") {
         progress.turns += 1;
-        progress.contextTokens = event.message.usage?.totalTokens ?? progress.contextTokens;
+        const usage = event.message.usage;
+        if (usage) {
+          progress.contextTokens = usage.totalTokens ?? progress.contextTokens;
+          progress.outputTokens += usage.output ?? 0;
+          progress.peakContextTokens = Math.max(progress.peakContextTokens, usage.totalTokens ?? 0);
+        }
       }
       break;
   }

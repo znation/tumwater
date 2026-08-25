@@ -45,6 +45,34 @@ test("parseProgress resets at a new session (previous tick's events ignored)", (
   assert.equal(p.lastTool, undefined);
 });
 
+test("parseProgress accumulates output tokens and peak context for the current run", () => {
+  const lines = [
+    SESSION,
+    assistantLine("first turn", { tokens: 10_000, output: 250 }),
+    toolStart("bash", { command: "npm test" }),
+    assistantLine("second turn", { tokens: 4_000, output: 750 }),
+  ];
+  const p = parseProgress(lines, 0);
+  assert.equal(p.outputTokens, 1000, "output sums across turns");
+  assert.equal(
+    p.peakContextTokens,
+    10_000,
+    "peak is the largest request context of the run — not a sum and not the last value",
+  );
+});
+
+test("parseProgress resets output/peak at a new session", () => {
+  const lines = [
+    SESSION,
+    assistantLine("old tick", { tokens: 99_000, output: 5_000 }),
+    SESSION,
+    assistantLine("new tick", { tokens: 1_000, output: 42 }),
+  ];
+  const p = parseProgress(lines, 0);
+  assert.equal(p.outputTokens, 42);
+  assert.equal(p.peakContextTokens, 1_000);
+});
+
 test("parseProgress survives noise and blank lines", () => {
   const p = parseProgress([SESSION, "", "not json", assistantLine("hi", { tokens: 10 })], 0);
   assert.equal(p.turns, 1);

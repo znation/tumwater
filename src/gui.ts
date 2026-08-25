@@ -5,7 +5,7 @@ import { submitPrompt } from "./inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "./roles.js";
 import { snapshot } from "./status.js";
-import { loopPhase } from "./status-render.js";
+import { displayTokenMetrics, loopPhase } from "./status-render.js";
 import { readTranscript } from "./transcript.js";
 
 /** Send a JSON response with the given status code and body. Every /api endpoint answers
@@ -43,18 +43,21 @@ export function statusPayload(root: string): object {
     running: snap.running,
     pid: snap.pid,
     inbox: snap.inbox,
-    loops: snap.loops.map((s) => ({
-      role: s.role,
-      phase: loopPhase(s, snap.running, root),
-      ticks: s.ticks,
-      commits: s.commits,
-      generated: s.generatedTokens,
-      peakCtx: s.peakContextTokens,
+    loops: snap.loops.map((s) => {
+      const m = displayTokenMetrics(root, s);
+      return {
+        role: s.role,
+        phase: loopPhase(s, snap.running, root),
+        ticks: s.ticks,
+        commits: s.commits,
+        generated: m.generated,
+        peakCtx: m.peakCtx,
       costUsd: s.totalCostUsd,
-      lastResult: s.lastResult ?? null,
-      lastSummary: s.lastSummary ?? null,
-      lastTickEndedAt: s.lastTickEndedAt ?? null,
-    })),
+        lastResult: s.lastResult ?? null,
+        lastSummary: s.lastSummary ?? null,
+        lastTickEndedAt: s.lastTickEndedAt ?? null,
+      };
+    }),
     events: readEvents(root, 40).map((e) => formatEvent(e)),
   };
 }
