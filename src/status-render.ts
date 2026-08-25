@@ -47,7 +47,9 @@ export function workingDetail(root: string, s: LoopState): string {
   const parts = [`working ${elapsed}`.trim(), `turn ${live.turns + 1}`];
   if (live.contextTokens > 0) parts.push(`ctx ${tokens(live.contextTokens)}`);
   if (live.lastTool) parts.push(live.lastTool);
-  if (live.quietMs > 120_000) parts.push(`no pi output for ${duration(live.quietMs)}`);
+  // Silence under five minutes is normal (slow local-model prefills, long tool calls);
+  // only flag a stall once at least five minutes have passed without any pi output.
+  if (live.quietMs >= 300_000) parts.push(`no pi output for ${duration(live.quietMs)}`);
   return parts.join(" · ");
 }
 

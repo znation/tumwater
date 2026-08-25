@@ -54,13 +54,18 @@ test("workingDetail omits the ctx part when no tokens are known yet", () => {
   assert.doesNotMatch(workingDetail(root, freshLoopState("clean")), /ctx/);
 });
 
-test("workingDetail flags a stalled run when pi has been quiet for over two minutes", () => {
+test("workingDetail flags a stalled run only after at least five minutes of silence", () => {
   const root = tmpdir();
   const file = writePiLog(root, "clean", [SESSION, assistantLine("hanging", { tokens: 100 })]);
   assert.doesNotMatch(workingDetail(root, freshLoopState("clean")), /no pi output/);
-  const fiveMinAgo = new Date(Date.now() - 5 * 60_000);
-  fs.utimesSync(file, fiveMinAgo, fiveMinAgo);
-  assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 5m0[01]s/);
+  // Four minutes of silence is still below the five-minute threshold.
+  const fourMinAgo = new Date(Date.now() - 4 * 60_000);
+  fs.utimesSync(file, fourMinAgo, fourMinAgo);
+  assert.doesNotMatch(workingDetail(root, freshLoopState("clean")), /no pi output/);
+  // Six minutes of silence crosses it.
+  const sixMinAgo = new Date(Date.now() - 6 * 60_000);
+  fs.utimesSync(file, sixMinAgo, sixMinAgo);
+  assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 6m/);
 });
 
 test("loopPhase surfaces the live detail only while a tick is in flight", () => {
