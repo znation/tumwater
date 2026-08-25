@@ -122,6 +122,14 @@ backoff in `tumwater.json`.
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full
   window. A session that overruns the server's real limit fails with "Context size has been
   exceeded"; the harness detects this and starts that loop a fresh session.
+- **Match clients to slots, or prefix caches thrash**: each server slot keeps the KV prefix of
+  the last request it served. Keep the number of concurrent tumwater clients — `maxConcurrent`
+  plus one for the director's bypass — at or below the server's slot count. One client over, and
+  slots keep evicting each other's session prefixes: with persistent multi-10k-token sessions,
+  nearly every turn re-prefills from scratch (minutes each), requests queue behind those
+  prefills, and starved ticks die as "no pi progress" watchdog kills even though the server is
+  healthy. Symptom to look for: small-context requests timing out while the server log shows
+  continuous back-to-back prompt processing.
 - **KV memory with dedicated slots**: unified-off KV buffers are allocated per slot — for a 27B
   model, 4 × 262144-token slots cost ~100 GB of KV on top of the weights (~115 GB total), which
   runs a 128 GB machine at the edge: heavy swapping, and the engine can wedge permanently in
