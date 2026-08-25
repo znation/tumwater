@@ -38,13 +38,16 @@ export function fakePi(script: string): () => void {
 }
 
 /** A pi JSON line for an assistant message_end. */
-export function assistantLine(text: string, opts: { tokens?: number; cost?: number; stopReason?: string } = {}): string {
+export function assistantLine(
+  text: string,
+  opts: { tokens?: number; output?: number; cost?: number; stopReason?: string } = {},
+): string {
   return JSON.stringify({
     type: "message_end",
     message: {
       role: "assistant",
       content: [{ type: "text", text }],
-      usage: { totalTokens: opts.tokens ?? 0, cost: { total: opts.cost ?? 0 } },
+      usage: { totalTokens: opts.tokens ?? 0, output: opts.output ?? 0, cost: { total: opts.cost ?? 0 } },
       stopReason: opts.stopReason ?? "stop",
     },
   });

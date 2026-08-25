@@ -29,7 +29,7 @@ test("saveLoopState creates the state dir and round-trips without leaving a temp
   const dir = tmpdir();
   const s = freshLoopState("feature");
   s.ticks = 7;
-  s.totalTokens = 123456;
+  s.generatedTokens = 123456;
   s.lastResult = "changed";
   saveLoopState(dir, s); // .tumwater/ does not exist yet
   assert.ok(fs.existsSync(statePath(dir, "feature")));
@@ -42,13 +42,14 @@ test("loadLoopState fills fields missing from an older or partial file", () => {
   const dir = tmpdir();
   const file = statePath(dir, "clean");
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  // A state file written before totalTokens/lastMainHead existed.
+  // A state file written before generatedTokens/lastMainHead existed.
   fs.writeFileSync(file, JSON.stringify({ role: "clean", ticks: 3, commits: 1 }));
   const s = loadLoopState(dir, "clean");
   assert.equal(s.ticks, 3);
   assert.equal(s.commits, 1);
   // loop.ts adds to these every tick; undefined would turn them into NaN.
-  assert.equal(s.totalTokens, 0);
+  assert.equal(s.generatedTokens, 0);
+  assert.equal(s.peakContextTokens, 0);
   assert.equal(s.backoffSeconds, 0);
   assert.equal(s.lastMainHead, "");
   assert.ok(Number.isFinite(s.nextRunAt));

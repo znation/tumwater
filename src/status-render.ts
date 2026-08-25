@@ -73,9 +73,10 @@ export function clipToWidth(text: string, width: number): string {
 }
 
 /** Columns allowed to shrink when the table is wider than the terminal, widest offender
- * first: `last result` (holds the tick summary), then `state` (live working detail). */
+ * first: `last result` (holds the tick summary), then `state` (live working detail).
+ * Indices are positional in the `cols` array below — renumber when columns change. */
 const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
-  { index: 7, minWidth: 12 },
+  { index: 8, minWidth: 12 },
   { index: 1, minWidth: 12 },
 ];
 const COLUMN_GAP = 2;
@@ -88,13 +89,14 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   const header = snap.running ? `running (pid ${snap.pid})` : "not running — start with `tumwater run`";
   lines.push(`tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}`);
   lines.push("");
-  const cols = ["loop", "state", "ticks", "commits", "tokens", "cost", "last tick", "last result"];
+  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "last tick", "last result"];
   const rows = snap.loops.map((s) => [
     s.role,
     loopPhase(s, snap.running, root),
     String(s.ticks),
     String(s.commits),
-    String(s.totalTokens),
+    tokens(s.generatedTokens),
+    tokens(s.peakContextTokens),
     `$${s.totalCostUsd.toFixed(2)}`,
     ago(s.lastTickEndedAt),
     s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
@@ -104,7 +106,8 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     "",
     "",
     "",
-    tokens(snap.loops.reduce((sum, s) => sum + s.totalTokens, 0)),
+    tokens(snap.loops.reduce((sum, s) => sum + s.generatedTokens, 0)),
+    tokens(Math.max(0, ...snap.loops.map((s) => s.peakContextTokens))),
     `$${snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0).toFixed(2)}`,
     "",
     "",

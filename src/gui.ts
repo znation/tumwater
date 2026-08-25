@@ -1,5 +1,6 @@
 import http from "node:http";
-import { formatEvent, readEvents } from "./events.js";
+import { readEvents } from "./events.js";
+import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "./roles.js";
@@ -43,7 +44,8 @@ export function statusPayload(root: string): object {
       phase: loopPhase(s, snap.running, root),
       ticks: s.ticks,
       commits: s.commits,
-      tokens: s.totalTokens,
+      generated: s.generatedTokens,
+      peakCtx: s.peakContextTokens,
       costUsd: s.totalCostUsd,
       lastResult: s.lastResult ?? null,
       lastSummary: s.lastSummary ?? null,

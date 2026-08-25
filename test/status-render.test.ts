@@ -15,14 +15,15 @@ function snapshotWith(loops: Array<Partial<ReturnType<typeof freshLoopState>> & 
 
 test("status table ends with a totals row summing tokens and cost", () => {
   const snap = snapshotWith([
-    { role: "clean", totalTokens: 900_000, totalCostUsd: 1.25 },
-    { role: "dry", totalTokens: 350_000, totalCostUsd: 0.5 },
+    { role: "clean", generatedTokens: 900_000, peakContextTokens: 120_000, totalCostUsd: 1.25 },
+    { role: "dry", generatedTokens: 350_000, peakContextTokens: 80_000, totalCostUsd: 0.5 },
   ]);
   const lines = renderStatus(tmpdir(), snap).split("\n");
   const totals = lines[lines.length - 1] ?? "";
   const separator = lines[lines.length - 2] ?? "";
   assert.match(totals, /^total\b/);
-  assert.match(totals, /1250\.0k/, "tokens sum is compact-formatted");
+  assert.match(totals, /1250\.0k/, "generated sum is compact-formatted");
+  assert.match(totals, /120\.0k/, "peak ctx totals cell is the max across loops");
   assert.match(totals, /\$1\.75/);
   assert.match(separator, /^-+( +-+)+\s*$/, "totals row sits below a separator");
 });

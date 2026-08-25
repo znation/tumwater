@@ -82,7 +82,10 @@ export interface LoopState {
   hasSession?: boolean;
   /** Consecutive error ticks; repeated errors drop the session as a self-healing measure. */
   consecutiveErrors?: number;
-  totalTokens: number;
+  /** Tokens the model actually generated for this loop, summed across all runs. */
+  generatedTokens: number;
+  /** Largest single-request context this loop has ever submitted. */
+  peakContextTokens: number;
   totalCostUsd: number;
   lastError?: string;
 }
@@ -112,7 +115,10 @@ export interface PiRunResult {
    * Covers the whole reply, not just the last message, so a sentinel emitted in an
    * intermediate turn is not lost to a later closing remark. */
   nothingToDo: boolean;
-  totalTokens: number;
+  /** Tokens the model generated in this run (usage.output summed across turns). */
+  outputTokens: number;
+  /** Largest single-request context of the run. */
+  peakContextTokens: number;
   costUsd: number;
   stopReason?: string;
   errorMessage?: string;
