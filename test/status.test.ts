@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderStatus, snapshot, loopPhase } from "../src/status.js";
+import { snapshot } from "../src/status.js";
+import { loopPhase, renderStatus } from "../src/status-render.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { initProject } from "../src/init.js";
 import { makeRepo } from "./util.js";

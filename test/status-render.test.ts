@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clipToWidth, renderStatus } from "../src/status.js";
+import { clipToWidth, renderStatus } from "../src/status-render.js";
 import type { StatusSnapshot } from "../src/status.js";
 import { freshLoopState } from "../src/state.js";
 import { tmpdir } from "./util.js";

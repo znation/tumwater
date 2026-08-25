@@ -3,7 +3,8 @@ import { formatEvent, readEvents } from "./events.js";
 import { submitPrompt } from "./inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "./roles.js";
-import { loopPhase, snapshot } from "./status.js";
+import { snapshot } from "./status.js";
+import { loopPhase } from "./status-render.js";
 import { readTranscript } from "./transcript.js";
 
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi

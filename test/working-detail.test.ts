@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { loopPhase, workingDetail } from "../src/status.js";
+import { loopPhase, workingDetail } from "../src/status-render.js";
 import { freshLoopState } from "../src/state.js";
 import { piLogPath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";

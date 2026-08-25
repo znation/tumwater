@@ -1,7 +1,8 @@
 import readline from "node:readline";
 import { readEvents, formatEvent } from "./events.js";
 import { submitPrompt } from "./inbox.js";
-import { clipToWidth, renderStatus, snapshot } from "./status.js";
+import { snapshot } from "./status.js";
+import { clipToWidth, renderStatus } from "./status-render.js";
 import { readTranscript } from "./transcript.js";
 
 const CLEAR = "\x1b[2J\x1b[H";
