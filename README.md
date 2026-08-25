@@ -50,8 +50,9 @@ events → each loop's transcript in place), and a click-to-toggle panel in the 
 (`/api/transcript?role=&n=`). The quiet watchdog measures progress, not bytes — structural
 events or real content growth keep a run alive, so zombie streams dripping empty keepalives are
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
-landing work. Work lands on main via rebase, keeping commit history linear. One open bug:
-routine merge conflicts log a warning line even though pi resolves them automatically. In
+landing work. Work lands on main via rebase, keeping commit history linear. Two open bugs: routine merge
+conflicts log a warning line even though pi resolves them automatically, and the gen/peak-ctx
+table columns sit at 0 while loops work (counters only move at tick boundaries). In
 progress: twelve PLANS.md plans await the feature loop — seven from the Senior Tumwater report
 (PRINCIPLES.md injected into every prompt, an adversarial review gate before merge, a refusal
 sentinel with friction signals, self-explaining commit bodies, a QUESTIONS.md outbox, and
