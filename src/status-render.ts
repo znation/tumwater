@@ -8,8 +8,8 @@ import { readLiveProgress } from "./progress.js";
  * `tumwater status` and the TUI. Depends on status.ts one way — rendering reads the
  * snapshot; it never collects fleet state itself (live tick detail is display-only). */
 
-/** Compact whole-second duration: `45s`, `12m`, or `3h`. Shared by ago/inFuture so
- * their s/m/h bucketing (thresholds and rounding) cannot drift. */
+/** Compact whole-second duration: `45s`, `12m`, or `3h`. Shared by ago and the sleeping-
+ * remaining label so their s/m/h bucketing (thresholds and rounding) cannot drift. */
 function humanSeconds(s: number): string {
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.round(s / 60)}m`;
@@ -20,12 +20,6 @@ function ago(ts: number | undefined): string {
   if (!ts) return "-";
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
   return `${humanSeconds(s)} ago`;
-}
-
-function inFuture(ts: number): string {
-  const s = Math.round((ts - Date.now()) / 1000);
-  if (s <= 0) return "now";
-  return `in ${humanSeconds(s)}`;
 }
 
 function duration(ms: number): string {
@@ -60,7 +54,13 @@ export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: str
   if (!orchestratorRunning) return "stopped";
   if (s.running) return root ? workingDetail(root, s) : "working";
   if (s.role === "director") return "waiting for prompts";
-  if (s.nextRunAt > Date.now()) return `sleeping (${inFuture(s.nextRunAt)})`;
+  if (s.nextRunAt > Date.now()) {
+    // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
+    // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder
+    // never renders as "sleeping (for now)".
+    const remain = Math.max(1, Math.round((s.nextRunAt - Date.now()) / 1000));
+    return `sleeping (for ${humanSeconds(remain)})`;
+  }
   return "queued";
 }
 

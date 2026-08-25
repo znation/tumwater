@@ -35,7 +35,9 @@ test("loopPhase describes each loop state", () => {
   assert.equal(loopPhase(s, true), "working");
   s.running = false;
   s.nextRunAt = Date.now() + 90_000;
-  assert.match(loopPhase(s, true), /^sleeping/);
+  // Sleeping is a present state: the label shows the remaining duration ("for …"),
+  // not a future start ("in …"). 90s buckets to "2m" in humanSeconds.
+  assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
   const d = freshLoopState("director");
   assert.equal(loopPhase(d, true), "waiting for prompts");
 });
