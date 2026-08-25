@@ -90,8 +90,8 @@ work yourself:
 
 /** The prompt for resolving merge conflicts left in a loop's worktree. */
 export function buildConflictPrompt(roleId: string, files: string[]): string {
-  return `You are the "${roleId}" loop of tumwater, an autonomous development harness. A git merge
-of main into your work branch stopped on conflicts; the conflict markers are sitting in the
+  return `You are the "${roleId}" loop of tumwater, an autonomous development harness. A rebase of
+your work branch onto main stopped on conflicts; the conflict markers are sitting in the
 worktree now. Resolve them.
 
 Conflicted files:
@@ -102,8 +102,8 @@ Resolve every conflict marker (<<<<<<<, =======, >>>>>>>) by combining the inten
 the two changes are genuinely alternatives. Keep the project building and its tests passing.
 
 Rules for this run:
-- Edit files only. Never run any git command that changes state (no add, commit, merge, reset,
-  checkout) — the harness concludes the merge for you. Reading git state is fine.
+- Edit files only. Never run any git command that changes state (no add, commit, merge, rebase,
+  reset, checkout) — the harness concludes the rebase for you. Reading git state is fine.
 - Never touch the .tumwater directory or tumwater.json.
 - When every marker is resolved and the project is consistent, just stop.`;
 }

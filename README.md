@@ -68,8 +68,8 @@ per enabled role. Every loop tick:
 2. Builds a role-specific "find something to do" prompt and runs `pi --print --mode json` in the
    worktree, resuming the loop's own pi session from earlier ticks (`--continue`) so context
    carries over; pi auto-compacts when it nears the model's window.
-3. If pi changed files: commits, merges main into the branch, and fast-forwards main — all under a
-   merge lock shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
+3. If pi changed files: commits, rebases the branch onto main (so main's history stays linear),
+   and fast-forwards main — all under a merge lock shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 

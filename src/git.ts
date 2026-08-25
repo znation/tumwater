@@ -26,10 +26,20 @@ export class GitError extends Error {
 
 /** Run git in `cwd`, throwing GitError on nonzero exit. Returns trimmed stdout. */
 export async function git(cwd: string, ...args: string[]): Promise<string> {
+  return runGit(cwd, args);
+}
+
+/** Like git(), with extra environment variables (e.g. GIT_EDITOR for rebase --continue). */
+async function runGit(
+  cwd: string,
+  args: string[],
+  extraEnv?: NodeJS.ProcessEnv,
+): Promise<string> {
   try {
     const { stdout } = await execFileAsync("git", args, {
       cwd,
       maxBuffer: 32 * 1024 * 1024,
+      ...(extraEnv ? { env: { ...process.env, ...extraEnv } } : {}),
     });
     return stdout.trimEnd();
   } catch (err) {
@@ -41,7 +51,7 @@ export async function git(cwd: string, ...args: string[]): Promise<string> {
 /** Run git, returning null instead of throwing on failure. */
 export async function gitTry(cwd: string, ...args: string[]): Promise<string | null> {
   try {
-    return await git(cwd, ...args);
+    return await runGit(cwd, args);
   } catch {
     return null;
   }
@@ -90,9 +100,12 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   return wt;
 }
 
-/** Hard-reset a worktree's branch to main and drop untracked files (ignored files survive). */
+/** Hard-reset a worktree's branch to main and drop untracked files (ignored files survive).
+ * An interrupted merge or rebase is aborted first — otherwise the next tick would wedge on
+ * "you are already rebasing" / "merge in progress". */
 export async function resetWorktreeToMain(wt: string, mainBranch: string): Promise<void> {
   await gitTry(wt, "merge", "--abort");
+  await gitTry(wt, "rebase", "--abort");
   await git(wt, "reset", "--hard", mainBranch);
   await git(wt, "clean", "-fd");
 }
@@ -116,45 +129,50 @@ export async function conflictedFiles(wt: string): Promise<string[]> {
   return out ? out.split("\n").filter(Boolean) : [];
 }
 
-/** Attempt to merge main into the worktree branch and classify the outcome WITHOUT
- * cleaning up: "merged" (including already up to date), "conflict" (the merge stopped on
+/** Attempt to rebase the worktree branch onto main and classify the outcome WITHOUT
+ * cleaning up: "rebased" (including already up to date), "conflict" (the rebase stopped on
  * unmerged paths, which remain in the worktree for a resolver), or "other" (any other
- * failure). Shared by the two merge wrappers below, which differ only in cleanup policy. */
-async function attemptMerge(
+ * failure). Shared by the two rebase wrappers below, which differ only in cleanup policy.
+ * Rebase — not merge — keeps main's history linear: each tick lands as its own commit on top
+ * of whatever main holds. */
+async function attemptRebase(
   wt: string,
   mainBranch: string,
-): Promise<"merged" | "conflict" | "other"> {
+): Promise<"rebased" | "conflict" | "other"> {
   try {
-    await git(wt, ...COMMIT_IDENT, "merge", "--no-edit", mainBranch);
-    return "merged";
+    // The -c ident is needed for the rewritten committer identity.
+    await runGit(wt, [...COMMIT_IDENT, "rebase", mainBranch]);
+    return "rebased";
   } catch {
     return (await conflictedFiles(wt)).length > 0 ? "conflict" : "other";
   }
 }
 
-/** Merge main into the worktree branch (main may have advanced during the tick).
- * Returns false and aborts the merge on conflict. */
-export async function mergeMainIntoBranch(wt: string, mainBranch: string): Promise<boolean> {
-  const state = await attemptMerge(wt, mainBranch);
-  if (state !== "merged") await gitTry(wt, "merge", "--abort");
-  return state === "merged";
+/** Rebase the worktree branch onto main (main may have advanced during the tick).
+ * Returns false and aborts the rebase on conflict. */
+export async function rebaseOntoMain(wt: string, mainBranch: string): Promise<boolean> {
+  const state = await attemptRebase(wt, mainBranch);
+  if (state !== "rebased") await gitTry(wt, "rebase", "--abort");
+  return state === "rebased";
 }
 
-/** Merge main into the worktree branch, leaving conflict markers in place for a
- * resolver to work on. "clean" = merged (or already up to date); "conflict" = the
- * merge stopped on conflicts and the worktree holds them; "failed" = anything else
+/** Rebase the worktree branch onto main, leaving conflict markers in place for a
+ * resolver to work on. "clean" = rebased (or already up to date); "conflict" = the rebase
+ * stopped on conflicts and the worktree holds them mid-rebase; "failed" = anything else
  * (aborted and cleaned up). */
-export async function mergeMainLeaveConflicts(
+export async function rebaseOntoMainLeaveConflicts(
   wt: string,
   mainBranch: string,
 ): Promise<"clean" | "conflict" | "failed"> {
-  const state = await attemptMerge(wt, mainBranch);
-  if (state === "other") await gitTry(wt, "merge", "--abort");
-  return state === "merged" ? "clean" : state === "conflict" ? "conflict" : "failed";
+  const state = await attemptRebase(wt, mainBranch);
+  if (state === "other") await gitTry(wt, "rebase", "--abort");
+  return state === "rebased" ? "clean" : state === "conflict" ? "conflict" : "failed";
 }
 
-export async function abortMerge(wt: string): Promise<void> {
+/** Abort any in-progress merge or rebase (no-op when neither is running). */
+export async function abortSync(wt: string): Promise<void> {
   await gitTry(wt, "merge", "--abort");
+  await gitTry(wt, "rebase", "--abort");
 }
 
 /** True if any of the given files still contains a git conflict marker.
@@ -176,10 +194,15 @@ export function hasConflictMarkers(wt: string, files: string[]): boolean {
   });
 }
 
-/** Conclude an in-progress merge with everything in the worktree as the resolution. */
-export async function commitMergeResolution(wt: string): Promise<string> {
+/** Conclude an in-progress rebase with everything in the worktree as the resolution.
+ * GIT_EDITOR=true so `rebase --continue` can never block on a commit-message prompt. A
+ * resolution that leaves no unique content (the branch's change was fully superseded by
+ * main) is skipped automatically by git, finishing the rebase cleanly. Throws when the
+ * rebase stops again — e.g. on a second conflict from an extra commit pi authored during
+ * the tick; the caller aborts and reports merge_conflict. */
+export async function continueRebase(wt: string): Promise<string> {
   await git(wt, "add", "-A");
-  await git(wt, ...COMMIT_IDENT, "commit", "--no-edit");
+  await runGit(wt, [...COMMIT_IDENT, "rebase", "--continue"], { GIT_EDITOR: "true" });
   return headOf(wt, "HEAD");
 }
 
