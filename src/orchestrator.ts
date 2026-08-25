@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
-import { enabledRoleIds } from "./config.js";
+import { enabledRoleIds, loadConfigSafe } from "./config.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry, readBranchHead } from "./git.js";
@@ -59,6 +59,9 @@ export function isEligible(
   inboxCount: number,
 ): { run: boolean; reason?: string } {
   const s = runner.state;
+  // A role disabled in tumwater.json stops ticking immediately (live-reload); re-enabling
+  // resumes within one poll cycle because the runner and its persisted state survive.
+  if (!runner.config.roles[runner.role]?.enabled) return { run: false };
   if (s.running) return { run: false };
 
   // The director carries the user's own requests: no min-gap, no backoff — a queued
@@ -99,7 +102,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const enabled = enabledRoleIds(config);
   if (enabled.length === 0) throw new Error("no roles enabled in tumwater.json");
 
-  const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
+  let runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
 
   const infoFile = orchestratorStatePath(root);
@@ -114,9 +117,38 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   }
 
   const inFlight = new Set<Promise<void>>();
+  // Live-reload bookkeeping: the last config error already warned about (a broken file must
+  // warn once per distinct text, not every poll), and the previous cycle's enabled set (for
+  // one-shot enable/disable transition warnings).
+  let lastConfigError: string | null = null;
+  let prevEnabled = new Set<string>(enabled);
 
   try {
     while (!signal.aborted) {
+      // Live-reload tumwater.json — the single reload point shared by all loops. A broken
+      // file keeps the last-known-good config and warns once per distinct error text.
+      const reloaded = loadConfigSafe(root);
+      if (reloaded.config) {
+        for (const r of runners) r.config = reloaded.config;
+        const nowEnabled = enabledRoleIds(reloaded.config);
+        // Enabling a role mid-run starts it: create its runner (its persisted state survives).
+        for (const role of nowEnabled) {
+          if (!runners.some((r) => r.role === role))
+            runners.push(new LoopRunner(root, role, reloaded.config, mainBranch, signal));
+        }
+        for (const role of prevEnabled)
+          if (!nowEnabled.includes(role))
+            logEvent(root, { loop: "harness", type: "warning", message: `role ${role} disabled — stopping ticks` });
+        for (const role of nowEnabled)
+          if (!prevEnabled.has(role))
+            logEvent(root, { loop: "harness", type: "warning", message: `role ${role} enabled — starting ticks` });
+        prevEnabled = new Set(nowEnabled);
+        lastConfigError = null;
+      } else if (reloaded.error && reloaded.error !== lastConfigError) {
+        logEvent(root, { loop: "harness", type: "warning", message: `tumwater.json invalid — keeping current config: ${reloaded.error}` });
+        lastConfigError = reloaded.error;
+      }
+
       // Reading the ref file is microsecond-scale; spawning `git rev-parse` costs ~10ms and
       // this runs every poll. The spawn fallback covers what file reads cannot (a worktree-
       // pointer .git, anything unusual).
