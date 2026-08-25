@@ -5,6 +5,64 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### CLI subcommand to reset loop counters — ticks, commits, tokens, cost (planned 2026-08-25)
+
+**Goal:** A new `tumwater reset-counters [--role <id>]` command that zeroes the per-loop
+counters shown in the TUI/GUI tables — ticks, commits, tokens, cost — so a user can start a
+fresh observation window (e.g. "cost since today") without restarting the fleet. Requested by
+the user 2026-08-25.
+
+**Why it is not just rewriting files:** the dashboards read state from disk (`snapshot()` in
+src/status.ts calls `loadLoopState` per render), but each running `LoopRunner` keeps its own
+copy in memory (loaded once in the constructor, src/loop.ts) and re-saves it at tick start and
+tick end. A CLI that only zeroes `.tumwater/state/<role>.json` would be clobbered by the next
+save — so the command must reach both the files *and* the in-memory state of running runners.
+
+**Approach:**
+- `src/paths.ts`: new `resetRequestPath(root)` → `.tumwater/reset-counters.json` (the marker a
+  running fleet consumes).
+- `src/state.ts`: new pure helper `zeroCounters(s: LoopState): LoopState` — sets exactly
+  `ticks`, `commits`, `totalTokens`, `totalCostUsd` to 0 and preserves everything else
+  (`nextRunAt`, `backoffSeconds`, `lastMainHead`, `hasSession`, `consecutiveErrors`, the
+  last-result fields) so scheduling, wake-on-main-moves, and pi session continuity are
+  untouched.
+- CLI (`src/cli.ts`): new `reset-counters` case beside `status`/`prompt`. Optional
+  `--role <id>` (validated with `roleById`, same pattern as `logs --role`); default is every
+  role in the config. For each target: load state, `zeroCounters`, save atomically — immediate
+effect on TUI/GUI and fully functional when the harness is not running. Then write marker
+  `{ at: Date.now(), roles: [...] }` to `resetRequestPath`. Print one confirmation line noting
+  that a running fleet picks it up within ~2s.
+- Orchestrator (`src/orchestrator.ts`): in the existing poll cycle (every POLL_MS), if the
+  marker exists, call a new small public method `runner.resetCounters()` on each affected
+  runner — zero the four counters in memory and `save()` — log one event so the reset is
+  visible in `tumwater logs`/the feed, then delete the marker. If the live-reload tumwater.json
+  plan has landed first, consume the marker in that same poll block (one reload point shared by
+  all loops). The operation is idempotent, so a marker left behind by a killed run is consumed
+  harmlessly at most once after restart.
+- Events: add `counters_reset` to the `HarnessEvent.type` union (src/types.ts) with plain
+  rendering in `formatEvent` (src/events.ts) — no warning prefix; it is routine operation.
+- Known minor edge, acceptable: a reset landing while one tick is in flight may drop that
+tick's +1 from the new window (the increment happened at tick start). Do not over-engineer
+around it.
+
+**Files touched:** `src/paths.ts`, `src/state.ts`, `src/cli.ts`, `src/orchestrator.ts`,
+`src/loop.ts` (one small public method), `src/types.ts` + `src/events.ts`; tests: extend
+`test/state.test.ts` (`zeroCounters` zeroes exactly the four counters and preserves
+scheduling/session fields), a CLI-level test (files zeroed, marker written, `--role`
+targeting, unknown role fails cleanly), extend `test/orchestrator.test.ts` (marker consumed →
+in-memory counters zeroed and re-saved, event logged, marker deleted); one README usage line.
+
+**Acceptance criteria:**
+- Harness not running: `tumwater reset-counters` zeroes ticks/commits/tokens/cost in every
+role's state file; TUI/GUI/status show 0; scheduling fields and session continuity are
+unchanged (loops resume their existing sleep/backoff exactly as before).
+- Harness running: the counters drop to zero on both dashboards immediately and stay zeroed
+across subsequent tick boundaries (no resurrection from a stale in-memory save); the reset is
+visible as one plain event in `tumwater logs`.
+- `--role <id>` affects only that loop; an unknown role fails with a clear message and changes
+nothing.
+- `npm test` passes.
+
 ### Show current work item per active loop in the GUI/TUI tables (planned 2026-08-25)
 
 **Goal:** Both dashboards show, for each *working* loop, a short description of what it is
