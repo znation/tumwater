@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
+import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -180,6 +181,26 @@ test("gui --port validates its range instead of listening on an unexpected port"
   const noValue = await cli(repo, "gui", "--port");
   assert.equal(noValue.code, 1);
   assert.match(noValue.stderr, /--port needs a value/);
+});
+
+test("gui reports a friendly error when the port is already in use", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli gui busy port");
+
+  // Occupy an ephemeral port so the CLI hits EADDRINUSE deterministically; without the
+  // catch it printed Node's raw "listen EADDRINUSE: address already in use …" with no hint.
+  const blocker = http.createServer();
+  await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+  const addr = blocker.address();
+  assert.ok(addr && typeof addr === "object");
+  try {
+    const r = await cli(repo, "gui", "--port", String(addr.port));
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /already in use/);
+    assert.match(r.stderr, /tumwater gui --port <n>/);
+  } finally {
+    blocker.close();
+  }
 });
 
 // --- logs --role (per-role pi transcript) ---

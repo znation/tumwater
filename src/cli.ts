@@ -218,7 +218,17 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       const portFlag = args.indexOf("--port");
       const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
-      await startGui(root, port);
+      try {
+        await startGui(root, port);
+      } catch (err) {
+        // A taken port is the common listen failure; Node's raw EADDRINUSE does not
+        // suggest the fix. Other errors (EACCES on privileged ports, …) pass through.
+        if ((err as NodeJS.ErrnoException).code === "EADDRINUSE")
+          fail(
+            `port ${port} is already in use — stop that process or pick another port with \`tumwater gui --port <n>\``,
+          );
+        throw err;
+      }
       process.stdout.write(`tumwater gui at http://127.0.0.1:${port} — Ctrl+C to stop\n`);
       await new Promise(() => {}); // Serve until Ctrl+C.
       break;
