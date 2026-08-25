@@ -1,5 +1,6 @@
 import readline from "node:readline";
-import { readEvents, formatEvent } from "./events.js";
+import { readEvents } from "./events.js";
+import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
 import { snapshot } from "./status.js";
 import { clipToWidth, renderStatus } from "./status-render.js";

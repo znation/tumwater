@@ -1,5 +1,6 @@
 import http from "node:http";
-import { formatEvent, readEvents } from "./events.js";
+import { readEvents } from "./events.js";
+import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "./roles.js";
