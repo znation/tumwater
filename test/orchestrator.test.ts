@@ -215,7 +215,7 @@ function recordingFakePi(argsFile: string): () => void {
     [
       `m=""; p=""`,
       `while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; --provider) p="$2";; esac; shift; done`,
-      `echo "run model=$m provider=$p" >> "${argsFile}"`,
+      `echo "run: model=$m provider=$p" >> "${argsFile}"`,
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );
@@ -237,6 +237,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
   await initProject(repo, "live reload test");
   saveConfig(repo, fastConfig(["clean"], "good-model"));
   const argsFile = path.join(tmpdir(), "argv.log");
+  fs.rmSync(argsFile, { force: true }); // A previous run's lines must not leak into this one.
   const restore = recordingFakePi(argsFile);
   const controller = new AbortController();
   const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });

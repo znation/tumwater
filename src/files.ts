@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Shared file helpers: stat-or-missing for log readers, size-based rotation for
- * append-only logs, age-based pruning of pi session files, complete-line tail reading for
- * incrementally consumed JSONL logs, and byte-offset following of live logs. */
+ * append-only logs, age-based pruning of pi session files, complete-line tail reading and
+ * incremental tail-state consumption for polled JSONL logs, and byte-offset following of
+ * live logs. */
 
 /** Stat a file, returning null when it does not exist (or cannot be read). The harness's
  * log readers all treat a missing log as "no data yet" rather than an error — this is the
@@ -72,6 +73,52 @@ export function readCompleteLines(file: string, offset: number, size: number): {
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/** Per-file state for a consumer that polls an append-only log tick by tick and only wants
+ * the bytes appended since its last visit: where it stopped reading (dev/ino guard against
+ * rotation, offset always at a line boundary) plus its accumulated value. */
+export interface TailState<T> {
+  dev: number;
+  ino: number;
+  /** Byte offset already consumed, always at a line boundary. */
+  offset: number;
+  value: T;
+}
+
+/** Safety cap so a tail cache can never grow unbounded (e.g. many short-lived roots in
+ * tests). Evicting only costs one reseed per file on the next poll. */
+const MAX_TAILS = 64;
+
+/** Incrementally consume an append-only log for `file` into its entry of `tails`, returning
+ * the accumulated value (which callers may mutate further):
+ * - first observation, rotation (rename + new inode), or a shrunken file → seed by reading
+ *   from `fresh()`'s offset and folding every line into its fresh value;
+ * - append-only growth since the last visit → fold only the newly complete lines in.
+ * A torn trailing line is left unconsumed until its newline lands (the offset advances to
+ * the last complete line). Shared by every observer that polls a log once per tick —
+ * progress.ts's live tail and transcript.ts's rendered entries. */
+export function withTail<T>(
+  tails: Map<string, TailState<T>>,
+  file: string,
+  st: fs.Stats,
+  fresh: (size: number) => { fromOffset: number; value: T },
+  feed: (value: T, line: string) => void,
+): T {
+  let tail = tails.get(file);
+  if (!tail || tail.dev !== st.dev || tail.ino !== st.ino || st.size < tail.offset) {
+    const { fromOffset, value } = fresh(st.size);
+    const { lines, end } = readCompleteLines(file, fromOffset, st.size);
+    for (const line of lines) feed(value, line);
+    if (tails.size >= MAX_TAILS) tails.clear();
+    tail = { dev: st.dev, ino: st.ino, offset: end, value };
+    tails.set(file, tail);
+  } else if (st.size > tail.offset) {
+    const { lines, end } = readCompleteLines(file, tail.offset, st.size);
+    for (const line of lines) feed(tail.value, line);
+    if (end > tail.offset) tail.offset = end; // A torn trailing line is re-read next poll.
+  }
+  return tail.value;
 }
 
 /** Follow an append-only file from byte `offset`, delivering every complete line at or past

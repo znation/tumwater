@@ -1,5 +1,5 @@
 import { describeToolCall } from "./tool-call.js";
-import { readCompleteLines, statOrNull } from "./files.js";
+import { statOrNull, TailState, withTail } from "./files.js";
 import { piLogPath } from "./paths.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
@@ -30,18 +30,7 @@ const TAIL_BYTES = 4 * 1024 * 1024;
 /** Per-file incremental state for readLiveProgress: where we last stopped reading and
  * the progress accumulated from everything read so far. Bounded by the number of distinct
  * log paths observed in this process (one root × its roles for a TUI/GUI). */
-interface TailState {
-  dev: number;
-  ino: number;
-  /** Byte offset already consumed, always at a line boundary. */
-  offset: number;
-  progress: LiveProgress;
-}
-
-const tails = new Map<string, TailState>();
-/** Safety cap so the cache can never grow unbounded (e.g. many short-lived roots in tests).
- * Evicting only costs one reseed scan per role on the next poll. */
-const MAX_TAILS = 64;
+const tails = new Map<string, TailState<LiveProgress>>();
 
 function freshProgress(quietMs: number): LiveProgress {
   return { turns: 0, toolCalls: 0, contextTokens: 0, outputTokens: 0, peakContextTokens: 0, quietMs };
@@ -108,25 +97,14 @@ export function readLiveProgress(root: string, role: string): LiveProgress | nul
     return null;
   }
   const quietMs = Math.max(0, Date.now() - st.mtimeMs);
-
-  let tail = tails.get(file);
-  if (!tail || tail.dev !== st.dev || tail.ino !== st.ino || st.size < tail.offset) {
-    // First observation, rotation (rename + new file), or a shrunken file: seed from the
-    // tail window. A leading partial line is unparseable and skipped by feedLine.
-    const offset = Math.max(0, st.size - TAIL_BYTES);
-    const progress = freshProgress(quietMs);
-    const { lines, end } = readCompleteLines(file, offset, st.size);
-    for (const line of lines) feedLine(progress, line);
-    tail = { dev: st.dev, ino: st.ino, offset: end, progress };
-    if (tails.size >= MAX_TAILS) tails.clear();
-    tails.set(file, tail);
-  } else if (st.size > tail.offset) {
-    // Append-only growth since the last poll: parse only the new bytes.
-    const { lines, end } = readCompleteLines(file, tail.offset, st.size);
-    for (const line of lines) feedLine(tail.progress, line);
-    tail.offset = end;
-  }
-
-  tail.progress.quietMs = quietMs;
-  return { ...tail.progress };
+  // Seed from the tail window; a leading partial line is unparseable and skipped by feedLine.
+  const progress = withTail(
+    tails,
+    file,
+    st,
+    (size) => ({ fromOffset: Math.max(0, size - TAIL_BYTES), value: freshProgress(quietMs) }),
+    feedLine,
+  );
+  progress.quietMs = quietMs;
+  return { ...progress };
 }
