@@ -86,7 +86,24 @@ export function startGui(root: string, port: number): Promise<http.Server> {
       } else if (req.method === "GET" && req.url?.startsWith("/api/transcript")) {
         handleTranscript(req, res, root);
       } else if (req.method === "POST" && req.url === "/api/prompt") {
-        const { text } = JSON.parse(await readBody(req)) as { text?: string };
+        // Client-side request failures get 4xx with an actionable message — not a 500
+        // carrying Node's raw SyntaxError/TypeError, which misreports the fault and hides
+        // the fix (send {"text": "..."}).
+        let body: string;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          sendJson(res, 413, { error: err instanceof Error ? err.message : String(err) }); // body too large
+          return;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          sendJson(res, 400, { error: 'body must be a JSON object like {"text": "..."}' });
+          return;
+        }
+        const text = typeof parsed === "object" && parsed !== null ? (parsed as { text?: unknown }).text : undefined;
         if (typeof text !== "string" || !text.trim()) {
           sendJson(res, 400, { error: "text required" });
           return;

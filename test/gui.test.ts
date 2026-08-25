@@ -43,6 +43,18 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
       body: JSON.stringify({ text: "  " }),
     });
     assert.equal(bad.status, 400);
+
+    // Malformed or non-object bodies are client errors too: 400 with an actionable message,
+    // not a 500 carrying Node's raw SyntaxError/TypeError.
+    const malformed = await fetch(base + "/api/prompt", { method: "POST", body: "not json" });
+    assert.equal(malformed.status, 400);
+    assert.match(((await malformed.json()) as { error: string }).error, /JSON/);
+    for (const body of ["null", "[1]", '"just a string"']) {
+      const res = await fetch(base + "/api/prompt", { method: "POST", body });
+      assert.equal(res.status, 400, body);
+    }
+    assert.equal(inboxSize(repo), 1, "rejected bodies queue nothing");
+
     assert.equal((await fetch(base + "/nope")).status, 404);
   } finally {
     server.close();
@@ -137,7 +149,7 @@ test("status payload combines persisted + live token metrics for running loops o
   assert.equal(feature.peakCtx, 12_000, "running loop peak ctx = max(persisted, live)");
 });
 
-test("gui rejects oversized prompt bodies instead of buffering them unboundedly", async () => {
+test("gui rejects oversized prompt bodies with 413 instead of buffering them unboundedly", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui body limit test");
   const server = await startGui(repo, 0);
@@ -145,14 +157,14 @@ test("gui rejects oversized prompt bodies instead of buffering them unboundedly"
   assert.ok(addr && typeof addr === "object");
   const base = `http://127.0.0.1:${addr.port}`;
   try {
-    // Just over the 64KB cap: must be rejected, not buffered into memory.
+    // Just over the 64KB cap: a client error (413 Payload Too Large), not a server failure.
     const huge = JSON.stringify({ text: "x".repeat(70 * 1024) });
     const res = await fetch(base + "/api/prompt", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: huge,
     });
-    assert.equal(res.status, 500);
+    assert.equal(res.status, 413);
     assert.match(await res.text(), /body too large/);
 
     // The server stays healthy afterwards and still accepts normal prompts.
