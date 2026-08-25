@@ -156,3 +156,88 @@ test("readTranscript returns the last N entries oldest-first and [] without a lo
     "  turn 3",
   ]);
 });
+
+test("readTranscript polls incrementally: appends only, live separator, no duplicates", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    [agentStart(), userLine("prompt 1"), assistantLine([{ type: "text", text: "turn 1" }])].join("\n") + "\n",
+  );
+
+  // First poll seeds the whole file.
+  assert.deepEqual(readTranscript(root, "feature", 50), [
+    `── run @ ${expectedTimestamp(TS)} ──`,
+    "  turn 1",
+  ]);
+
+  // A just-started run shows its (stamped) separator before any of its turns land.
+  fs.appendFileSync(file, [agentStart(), userLine("prompt 2", TS + 60_000)].join("\n") + "\n");
+  assert.deepEqual(readTranscript(root, "feature", 50), [
+    `── run @ ${expectedTimestamp(TS)} ──`,
+    "  turn 1",
+    `── run @ ${expectedTimestamp(TS + 60_000)} ──`,
+  ]);
+
+  // The separator merges into the first turn's entry when it lands — no duplicate line.
+  fs.appendFileSync(file, assistantLine([{ type: "text", text: "turn 2" }]) + "\n");
+  assert.deepEqual(readTranscript(root, "feature", 50), [
+    `── run @ ${expectedTimestamp(TS)} ──`,
+    "  turn 1",
+    `── run @ ${expectedTimestamp(TS + 60_000)} ──`,
+    "  turn 2",
+  ]);
+
+  // A torn trailing line (no newline yet) is held back until it completes.
+  fs.appendFileSync(file, agentStart());
+  assert.deepEqual(readTranscript(root, "feature", 50), [
+    `── run @ ${expectedTimestamp(TS)} ──`,
+    "  turn 1",
+    `── run @ ${expectedTimestamp(TS + 60_000)} ──`,
+    "  turn 2",
+  ]);
+  fs.appendFileSync(file, "\n");
+  assert.ok(readTranscript(root, "feature", 50).includes("── run ──")); // unstamped: no user message yet
+});
+
+test("readTranscript reseeds when rotation replaces the file", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    [agentStart(), userLine("p"), assistantLine([{ type: "text", text: "old turn" }])].join("\n") + "\n",
+  );
+  assert.ok(readTranscript(root, "feature").includes("  old turn"));
+
+  // Rotation renames the big log aside and pi starts a fresh file at the same path.
+  fs.renameSync(file, file + ".1");
+  fs.writeFileSync(
+    file,
+    [agentStart(), userLine("p2", TS + 60_000), assistantLine([{ type: "text", text: "new turn" }])].join("\n") + "\n",
+  );
+  const out = readTranscript(root, "feature");
+  assert.ok(out.includes("  new turn"));
+  assert.ok(!out.some((l) => l.includes("old turn")));
+});
+
+test("readTranscript keeps only the newest entries past the retention cap", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const lines: string[] = [];
+  for (let i = 1; i <= 250; i++) {
+    lines.push(agentStart());
+    lines.push(userLine(`prompt ${i}`, TS + i * 60_000));
+    lines.push(assistantLine([{ type: "text", text: `turn ${i}` }]));
+  }
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  // 250 runs exceed the 200-entry retention cap; a request for 50 is still exact.
+  const out = readTranscript(root, "feature", 50);
+  assert.equal(out.filter((l) => l.startsWith("── run")).length, 50);
+  assert.ok(out.includes(`── run @ ${expectedTimestamp(TS + 250 * 60_000)} ──`)); // newest
+  assert.ok(out.includes("  turn 201")); // oldest visible: runs 201..250
+  assert.ok(!out.includes("  turn 200")); // evicted past the cap
+});

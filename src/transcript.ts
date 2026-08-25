@@ -85,6 +85,11 @@ export interface TranscriptRenderer {
   feed(line: string): string[];
   /** Emit a pending run separator for a run that produced no renderable event yet. */
   flush(): string[];
+  /** The pending run separator without consuming it — [] when no run is open. Lets an
+   * incremental reader show a just-started run's separator before its first turn, the way a
+   * full re-read's trailing flush does, while keeping the timestamp current until the
+   * separator merges into the first rendered entry. */
+  pendingSeparator(): string[];
 }
 
 /** Incremental renderer over pi's streaming JSONL log. Only complete, renderable events ever
@@ -96,10 +101,11 @@ export function createTranscriptRenderer(): TranscriptRenderer {
   let runOpen = false; // agent_start seen for this run, separator not yet emitted
   let runTime: string | null = null;
 
+  const separatorLine = (): string => (runTime ? `── run @ ${runTime} ──` : "── run ──");
   const emitSeparator = (): string[] => {
     if (!runOpen) return [];
     runOpen = false;
-    return [runTime ? `── run @ ${runTime} ──` : "── run ──"];
+    return [separatorLine()];
   };
 
   return {
@@ -145,6 +151,9 @@ export function createTranscriptRenderer(): TranscriptRenderer {
     flush(): string[] {
       return emitSeparator();
     },
+    pendingSeparator(): string[] {
+      return runOpen ? [separatorLine()] : [];
+    },
   };
 }
 
@@ -162,20 +171,81 @@ export function formatTranscript(lines: string[]): TranscriptEntry[] {
   return entries;
 }
 
+/** Per-file incremental state for readTranscript: where we last stopped reading and the
+ * rendered entries accumulated from everything read so far. Bounded by the number of distinct
+ * log paths observed in this process (one root × its roles for a TUI/GUI). */
+interface TranscriptTail {
+  dev: number;
+  ino: number;
+  /** Byte offset already consumed, always at a line boundary. */
+  offset: number;
+  renderer: TranscriptRenderer;
+  /** Rendered entries so far (ring buffer capped at MAX_ENTRIES). */
+  entries: string[][];
+}
+
+const tails = new Map<string, TranscriptTail>();
+/** Safety cap so the cache can never grow unbounded (e.g. many short-lived roots in tests).
+ * Evicting only costs one reseed per role on the next poll — same trade as progress.ts. */
+const MAX_TAILS = 64;
+/** How many rendered entries to keep per file. Hot callers ask for at most ~50 (the GUI
+ * panel polls with n=50, the TUI its line budget), so the cap bounds memory while keeping any
+ * such request exact; a caller asking for more gets the newest MAX_ENTRIES. */
+const MAX_ENTRIES = 200;
+
+function pushEntry(tail: TranscriptTail, entry: string[]): void {
+  if (entry.length === 0) return;
+  tail.entries.push(entry);
+  if (tail.entries.length > MAX_ENTRIES) tail.entries.splice(0, tail.entries.length - MAX_ENTRIES);
+}
+
 /** Rendered transcript lines for the last `limit` entries of a loop's pi log, oldest first.
- * Returns [] when the role has no log yet. Reads the whole current file in one call — it
- * rotates at `logMaxBytes` (default 16MB), trivial to parse for a one-shot CLI command; a
- * torn trailing line is left unconsumed and skipped. */
+ * Returns [] when the role has no log yet.
+ *
+ * The raw log is append-only while pi runs and rotates at `logMaxBytes` (default 16MB), so
+ * after parsing the current file once per observation (first poll or rotation) only bytes
+ * appended since the previous call are read and parsed — observers that call this every
+ * second (the TUI's transcript view, the GUI panel) stop rescanning up to 16MB of JSON per
+ * role per poll. A torn trailing line is left unconsumed until its newline lands. */
 export function readTranscript(root: string, role: string, limit = 50): string[] {
   const file = piLogPath(root, role);
-  let size: number;
+  let st: fs.Stats;
   try {
-    size = fs.statSync(file).size;
+    st = fs.statSync(file);
   } catch {
-    return []; // no log yet
+    tails.delete(file); // Missing (or vanished) — drop any stale state.
+    return [];
   }
-  if (size === 0) return [];
-  const { lines } = readCompleteLines(file, 0, size);
-  const entries = formatTranscript(lines);
-  return entries.slice(-limit).flat();
+  if (st.size === 0) return [];
+
+  const want = Math.min(limit, MAX_ENTRIES);
+  let tail = tails.get(file);
+  if (!tail || tail.dev !== st.dev || tail.ino !== st.ino || st.size < tail.offset) {
+    // First observation, rotation (rename + new file), or a shrunken file: parse the whole
+    // current file once. That is exactly what every poll used to do; now it happens once per
+    // observation instead of on each one, and steady-state polls below touch only appends.
+    const { lines, end } = readCompleteLines(file, 0, st.size);
+    tail = {
+      dev: st.dev,
+      ino: st.ino,
+      offset: end,
+      renderer: createTranscriptRenderer(),
+      entries: [],
+    };
+    for (const line of lines) pushEntry(tail, tail.renderer.feed(line));
+    if (tails.size >= MAX_TAILS) tails.clear();
+    tails.set(file, tail);
+  } else if (st.size > tail.offset) {
+    // Append-only growth since the last poll: parse only the new bytes.
+    const { lines, end } = readCompleteLines(file, tail.offset, st.size);
+    for (const line of lines) pushEntry(tail, tail.renderer.feed(line));
+    if (end > tail.offset) tail.offset = end; // A torn trailing line is re-read next poll.
+  }
+
+  // A run that started but has no renderable event yet still shows its separator — reported
+  // without consuming it, so when the first turn lands the separator merges into that entry
+  // exactly as a full re-read would produce (and keeps gaining its timestamp until then).
+  const pending = tail.renderer.pendingSeparator();
+  const take = Math.max(0, want - (pending.length > 0 ? 1 : 0));
+  return [...tail.entries.slice(-take).flat(), ...pending];
 }
