@@ -50,9 +50,11 @@ events → each loop's transcript in place), and a click-to-toggle panel in the 
 (`/api/transcript?role=&n=`). The quiet watchdog measures progress, not bytes — structural
 events or real content growth keep a run alive, so zombie streams dripping empty keepalives are
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
-landing work. No open bugs. In progress: two PLANS.md plans await the feature loop —
-live-reloading `tumwater.json` while running, and absolute last-result timestamps in the GUI/TUI
-tables.
+landing work. No open bugs. In progress: nine PLANS.md plans await the feature loop — seven
+from the Senior Tumwater report (PRINCIPLES.md injected into every prompt, an adversarial
+review gate before merge, a refusal sentinel with friction signals, self-explaining commit
+bodies, a QUESTIONS.md outbox, and slow-clock steward and QA roles), plus live-reloading
+`tumwater.json` while running and absolute last-result timestamps in the GUI/TUI tables.
 <!-- tumwater:status:end -->
 
 ## How it works
