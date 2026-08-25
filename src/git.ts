@@ -57,6 +57,50 @@ export async function gitTry(cwd: string, ...args: string[]): Promise<string | n
   }
 }
 
+/** A valid object id (SHA-1 or SHA-256). */
+function isSha(s: string): boolean {
+  return /^[0-9a-f]{40,64}$/.test(s);
+}
+
+/** The commit a branch points to, read straight from the ref files without spawning git —
+ * the loose ref `<gitdir>/refs/heads/<branch>` first (it wins over packed refs in git too),
+ * then an exact line match in `<gitdir>/packed-refs`. Git writes both atomically (temp file
+ * + rename), so a read sees either the old or the new value, never a torn one. Returns null
+ * when the ref cannot be resolved from files — no repo here, `.git` is a worktree pointer
+ * file, the branch does not exist, or content fails validation — so callers can fall back to
+ * `git rev-parse`. Synchronous and microsecond-scale: this exists for poll loops that would
+ * otherwise pay a ~10ms subprocess spawn per tick just to watch main. */
+export function readBranchHead(root: string, branch: string): string | null {
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(path.join(root, ".git"));
+  } catch {
+    return null; // Not a repo (or .git missing).
+  }
+  if (!st.isDirectory()) return null; // Worktree pointer file — the spawn fallback knows better.
+
+  try {
+    const sha = fs.readFileSync(path.join(root, ".git", "refs", "heads", branch), "utf8").trim();
+    if (isSha(sha)) return sha;
+  } catch {
+    // No loose ref (or unreadable) — packed refs next.
+  }
+
+  let packed: string;
+  try {
+    packed = fs.readFileSync(path.join(root, ".git", "packed-refs"), "utf8");
+  } catch {
+    return null; // Neither store has it: the branch does not exist (or no repo state).
+  }
+  const suffix = ` refs/heads/${branch}`;
+  for (const line of packed.split("\n")) {
+    if (!line.endsWith(suffix)) continue; // Skips comments, peel lines, and other refs.
+    const sha = line.slice(0, -suffix.length);
+    if (isSha(sha)) return sha;
+  }
+  return null;
+}
+
 export async function isGitRepo(dir: string): Promise<boolean> {
   return (await gitTry(dir, "rev-parse", "--git-dir")) !== null;
 }

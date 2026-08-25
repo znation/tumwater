@@ -14,6 +14,7 @@ import {
   headOf,
   isDirty,
   isGitRepo,
+  readBranchHead,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
   resetWorktreeToMain,
@@ -224,4 +225,40 @@ test("hasConflictMarkers does not flag setext/RST underlines of seven equals (re
 test("hasConflictMarkers treats a deleted file as resolved", () => {
   const dir = tmpdir();
   assert.ok(!hasConflictMarkers(dir, ["gone.txt"]));
+});
+
+test("readBranchHead matches git rev-parse across loose and packed refs", () => {
+  const repo = makeRepo();
+  // Fresh init keeps the branch as a loose ref.
+  let head = sh(repo, "git", "rev-parse", "main");
+  assert.equal(readBranchHead(repo, "main"), head);
+
+  // pack-refs moves main into packed-refs and deletes the loose file.
+  sh(repo, "git", "pack-refs", "--all");
+  assert.ok(!fs.existsSync(path.join(repo, ".git", "refs", "heads", "main")));
+  assert.equal(readBranchHead(repo, "main"), head);
+
+  // A new commit re-loosens the ref while packed-refs keeps the stale entry — loose wins.
+  fs.writeFileSync(path.join(repo, "b.txt"), "b\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "second");
+  head = sh(repo, "git", "rev-parse", "main");
+  assert.equal(readBranchHead(repo, "nope"), null); // unknown branch: null, not the stale sha
+  assert.equal(readBranchHead(repo, "main"), head);
+});
+
+test("readBranchHead returns null for missing refs, bad content, and non-repos", () => {
+  const repo = makeRepo();
+  assert.equal(readBranchHead(repo, "nope"), null); // branch does not exist
+  assert.equal(readBranchHead(tmpdir(), "main"), null); // no .git at all
+
+  // Malformed loose content with no packed fallback: reject rather than return garbage.
+  const loose = path.join(repo, ".git", "refs", "heads", "main");
+  fs.writeFileSync(loose, "not-a-sha\n");
+  assert.equal(readBranchHead(repo, "main"), null);
+
+  // A worktree-pointer .git file is not a gitdir: the spawn fallback handles those.
+  const wt = tmpdir();
+  fs.writeFileSync(path.join(wt, ".git"), `gitdir: ${path.join(repo, ".git", "worktrees", "x")}\n`);
+  assert.equal(readBranchHead(wt, "main"), null);
 });

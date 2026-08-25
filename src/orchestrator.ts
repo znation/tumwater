@@ -4,7 +4,7 @@ import type { TumwaterConfig } from "./types.js";
 import { enabledRoleIds } from "./config.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
-import { gitTry } from "./git.js";
+import { gitTry, readBranchHead } from "./git.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles } from "./files.js";
 import { inboxSize } from "./inbox.js";
@@ -117,7 +117,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
 
   try {
     while (!signal.aborted) {
-      const mainHead = (await gitTry(root, "rev-parse", mainBranch)) ?? "";
+      // Reading the ref file is microsecond-scale; spawning `git rev-parse` costs ~10ms and
+      // this runs every poll. The spawn fallback covers what file reads cannot (a worktree-
+      // pointer .git, anything unusual).
+      const mainHead = readBranchHead(root, mainBranch) ?? (await gitTry(root, "rev-parse", mainBranch)) ?? "";
       const inboxCount = inboxSize(root);
       const now = Date.now();
 
