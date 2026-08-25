@@ -248,7 +248,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
     const runs = (): string[] => {
       try {
         // recordingFakePi writes one `run model=… provider=…` line per pi invocation.
-        return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run "));
+        return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
       } catch {
         return [];
       }
