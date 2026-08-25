@@ -124,3 +124,47 @@ test("message updates whose content grows count as progress and keep the run ali
   parser.feed(JSON.stringify({ type: "turn_end" }) + "\n");
   assert.equal(parser.progressCount, afterGrowth + 1, "structural events are progress");
 });
+
+test("the per-message high-water mark resets so a short message after a long one still counts", async () => {
+  const { PiStreamParser } = await import("../src/pi.js");
+  const parser = new PiStreamParser();
+  const update = (text: string) =>
+    JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text }] } }) + "\n";
+
+  // Message one streams to a large size, setting the high-water mark.
+  parser.feed(update("a".repeat(50)));
+  parser.feed(update("a".repeat(200)));
+  const afterFirst = parser.progressCount;
+  assert.equal(afterFirst, 2, "growing updates of message one are progress");
+
+  // A structural event ends the message and must reset the mark to zero...
+  parser.feed(JSON.stringify({ type: "turn_end" }) + "\n");
+  const afterBoundary = parser.progressCount;
+  assert.equal(afterBoundary, afterFirst + 1);
+
+  // ...so a second, much shorter message still registers progress as it streams.
+  // Without the reset its size never exceeds the first message's high-water mark and a
+  // healthy run alternating long/short messages would look like a zombie to the watchdog.
+  parser.feed(update("b".repeat(50)));
+  assert.equal(
+    parser.progressCount,
+    afterBoundary + 1,
+    "a shorter next message must still count as progress",
+  );
+});
+
+test("thinking-only growth counts as progress (reasoning models stream thinking before text)", async () => {
+  const { PiStreamParser } = await import("../src/pi.js");
+  const parser = new PiStreamParser();
+  const thinkUpdate = (thinking: string) =>
+    JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "thinking", thinking }] } }) + "\n";
+
+  // A run that spends minutes streaming a reasoning block with no text yet must not be
+  // killed as hung: growth in the thinking blocks is real progress.
+  parser.feed(thinkUpdate("hmm"));
+  assert.equal(parser.progressCount, 1);
+  parser.feed(thinkUpdate("hmm, let me think harder"));
+  assert.equal(parser.progressCount, 2, "growing thinking is progress");
+  parser.feed(thinkUpdate("hmm, let me think harder")); // identical size: a keepalive
+  assert.equal(parser.progressCount, 2);
+});
