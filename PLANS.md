@@ -188,13 +188,17 @@ and `recoverLeftover` routes salvaged commits through the same gate so no crash 
 unreviewed work. The report's highest-leverage item — we have merged broken work twice for lack of
 it.
 
-### The right to refuse, and friction as a signal (planned 2026-08-24)
+### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25)
 
 Full plan: [plans/refusal-and-thrash.md](plans/refusal-and-thrash.md). A new
 `TUMWATER_REFUSED: <reason>` sentinel and `refused` tick outcome let a loop decline work that
-would harm the architecture, recording the objection in PLANS.md/BUGS.md (that md edit merges;
-any code half-work is discarded). High-friction ticks (turn/time thresholds) are flagged in the
-commit body and events — matsemann's "difficulty is a signal" restored as data.
+would harm the architecture, recording the objection in PLANS.md/BUGS.md. Discard semantics are
+decided: the markdown note always commits and merges (the durable record); any non-markdown
+half-work is discarded — tracked edits via reset, untracked files via clean; a no-note refusal
+resets cleanly with the reason kept in event + lastSummary. High-friction ticks (turn/time
+thresholds from `PiRunResult.turns` + wall-clock) are flagged by warning event and, once
+commit-bodies lands, its reserved trailer line — matsemann's "difficulty is a signal" restored as
+data.
 
 ### Self-explaining commit bodies (planned 2026-08-24)
 
