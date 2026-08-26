@@ -118,7 +118,7 @@ LLMs follow positive constraints far better than prohibitions) — seeded at ini
 every tick and director prompt, editable only by the director and steward. First item of the
 "Senior Tumwater" report sequence; the review gate and refusal plans both lint against it.
 
-### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-24)
+### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25)
 
 Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
 fresh-session pi run (no author context; own model override via a `review` pseudo-role) reviews
