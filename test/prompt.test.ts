@@ -9,7 +9,7 @@ import {
   extractSummary,
   isNothingToDo,
 } from "../src/prompt.js";
-import { readInitialPrompt, readmeTemplate } from "../src/readme.js";
+import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
 import { DECOMPOSITION_GUIDANCE, ROLES, roleById } from "../src/roles.js";
 import { tmpdir } from "./util.js";
 
@@ -23,6 +23,31 @@ test("readInitialPrompt is empty without README or markers", () => {
   const dir = tmpdir();
   assert.equal(readInitialPrompt(dir), "");
   fs.writeFileSync(path.join(dir, "README.md"), "# hi\n");
+  assert.equal(readInitialPrompt(dir), "");
+});
+
+// The README is edited live (readme loop, users) and read on every tick: a torn or
+// hand-edited file that keeps only one marker must degrade to no prompt, not leak the
+// rest of the file into every tick's prompt.
+
+test("readInitialPrompt returns empty when only one marker survives", () => {
+  const dir = tmpdir();
+  // Only the start marker: without the end-marker guard, slice would return everything
+  // after it (indexOf(PROMPT_END) is -1).
+  fs.writeFileSync(
+    path.join(dir, "README.md"),
+    `# hi\n${PROMPT_START}\nthe rest of the readme must not be treated as the prompt\n`,
+  );
+  assert.equal(readInitialPrompt(dir), "");
+  // Only the end marker: padding past index 34 keeps this observable — a dropped
+  // start-marker guard would slice out the body text instead of returning empty.
+  fs.writeFileSync(path.join(dir, "README.md"), `# hi\n${"LEAKED ".repeat(5)}${PROMPT_END}\n`);
+  assert.equal(readInitialPrompt(dir), "");
+});
+
+test("readInitialPrompt returns empty when the markers are reversed", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "README.md"), `# hi\n${PROMPT_END}\nsome text\n${PROMPT_START}\n`);
   assert.equal(readInitialPrompt(dir), "");
 });
 
