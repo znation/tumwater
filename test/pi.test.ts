@@ -265,8 +265,7 @@ test("a loop's pi session persists across ticks", async () => {
   }
 });
 
-test("parser flags context-exceeded errors surfaced in retry events", async () => {
-  const { PiStreamParser } = await import("../src/pi.js");
+test("parser flags context-exceeded errors surfaced in retry events", () => {
   const parser = new PiStreamParser();
   parser.feed(
     JSON.stringify({
