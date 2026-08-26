@@ -59,9 +59,7 @@ showing the current or last run, and routine merge conflicts log a warning line 
 resolves them automatically. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
 current work item; both dashboards show project status — planned features and open bugs from
-PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: eight more PLANS.md plans await
-the feature loop (the bug/plan-list plan is implemented; its entry awaits moving to Done) — seven
-from the Senior Tumwater report (PRINCIPLES.md injected into every prompt, an adversarial review
+PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: eight PLANS.md plans await the feature loop — seven from the Senior Tumwater report (PRINCIPLES.md injected into every prompt, an adversarial review
 gate before merge, a refusal sentinel with friction signals, self-explaining commit bodies, a
 QUESTIONS.md outbox, and slow-clock steward and QA roles), plus absolute last-result timestamps in
 the GUI/TUI tables.
