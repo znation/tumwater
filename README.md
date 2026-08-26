@@ -129,6 +129,15 @@ restart.
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full
   window. A session that overruns the server's real limit fails with "Context size has been
   exceeded"; the harness detects this and starts that loop a fresh session.
+- **Truncated-at-the-ceiling turns look like normal stops**: as a session nears the declared
+  `contextWindow`, pi clamps each request's `max_output_tokens` to the space remaining (down
+  to a floor of 16). LM Studio's `/v1/responses` reports a generation stopped by that clamp
+  as status `completed` rather than `incomplete`/`max_output_tokens`, so pi sees stopReason
+  "stop" instead of "length" and its compact-and-retry overflow handling never fires — the
+  turn ends mid-thought with no text and no tool call, the agent loop finishes, and the tick
+  lands as `no_change` with a "finished without changes and without declaring nothing-to-do"
+  warning (now annotated with "likely cut off at the context ceiling"). Harmless: pi
+  auto-compacts the session at end of run and the next tick resumes normally.
 - **Match clients to slots, or prefix caches thrash**: each server slot keeps the KV prefix of
   the last request it served. Keep the number of concurrent tumwater clients — `maxConcurrent`
   plus one for the director's bypass — at or below the server's slot count. One client over, and

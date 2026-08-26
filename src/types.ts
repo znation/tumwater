@@ -131,4 +131,12 @@ export interface PiRunResult {
    * Studio's "Engine protocol predict stream timed out", e.g. after OS sleep). A transient
    * failure of the world, not of the session: one fresh retry usually succeeds. */
   transientServerTimeout: boolean;
+  /** The run's last assistant message carried no text and no tool call (thinking-only or
+   * empty). A compliant finish always ends with a text block, so this signals a generation
+   * cut off mid-stream — typically pi clamping max output tokens to the sliver left under
+   * the declared context window, with the provider misreporting the truncation as a normal
+   * stop. Used to diagnose otherwise-mysterious no-sentinel no_change ticks. */
+  finalMessageContentless: boolean;
+  /** pi auto-compacted the session during (or at the end of) the run. */
+  compacted: boolean;
 }
