@@ -53,12 +53,13 @@ killed instead of resetting it. Queued director prompts are re-queued if their t
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
 `maxConcurrent`/`sessionRetentionDays` need a restart). One open bug: routine merge conflicts log
-a warning line even though pi resolves them automatically. In progress: eleven PLANS.md plans await the feature loop — seven from the Senior Tumwater
-report (PRINCIPLES.md injected into every prompt, an adversarial
-review gate before merge, a refusal sentinel with friction signals, self-explaining commit
-bodies, a QUESTIONS.md outbox, and slow-clock steward and QA roles), plus absolute last-result
-timestamps in the GUI/TUI tables, open-bug/planned-feature lists in the TUI/GUI, per-loop current
-work items in the tables, and a CLI subcommand to reset loop counters.
+a warning line even though pi resolves them automatically. `tumwater reset-counters` zeroes
+ticks/commits/tokens/cost without a restart (a running fleet picks it up within ~2s). In
+progress: ten PLANS.md plans await the feature loop — seven from the Senior Tumwater report
+(PRINCIPLES.md injected into every prompt, an adversarial review gate before merge, a refusal
+sentinel with friction signals, self-explaining commit bodies, a QUESTIONS.md outbox, and
+slow-clock steward and QA roles), plus absolute last-result timestamps in the GUI/TUI tables,
+open-bug/planned-feature lists in the TUI/GUI, and per-loop current work items in the tables.
 <!-- tumwater:status:end -->
 
 ## How it works
