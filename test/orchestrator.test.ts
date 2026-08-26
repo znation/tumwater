@@ -15,7 +15,7 @@ import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import type { TumwaterConfig } from "../src/types.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import { loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "../src/state.js";
+import { freshLoopState, loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "../src/state.js";
 import { orchestratorStatePath, resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, tmpdir } from "./util.js";
 
@@ -333,6 +333,93 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     const resets = readEvents(repo).filter((e) => e.type === "counters_reset");
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.loop, "clean");
+  } finally {
+    restore();
+    controller.abort();
+    try {
+      await done;
+    } catch {
+      // The test's own failure (if any) takes precedence over shutdown noise.
+    }
+  }
+});
+
+/** Seed non-zero counters for the given roles before runners load their state. */
+function seedCounters(repo: string, ...roles: string[]): void {
+  for (const role of roles) {
+    const s = freshLoopState(role);
+    s.ticks = 7;
+    s.generatedTokens = 424_242;
+    saveLoopState(repo, s);
+  }
+}
+
+test("a multi-role reset request zeroes every listed runner and logs one harness-level event", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "multi role reset test");
+  saveConfig(repo, fastConfig(["clean", "dry"]));
+  seedCounters(repo, "clean", "dry");
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const controller = new AbortController();
+  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  try {
+    // What `tumwater reset-counters` without --role writes: a marker naming every role.
+    const markerFile = resetRequestPath(repo);
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean", "dry"] }));
+
+    await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
+    for (const role of ["clean", "dry"]) {
+      // A post-reset tick may have started in the same poll; without in-memory zeroing this
+      // would read >= 8.
+      assert.ok(
+        loadLoopState(repo, role).ticks <= 1,
+        `${role} counters start from zero after consumption (got ${loadLoopState(repo, role).ticks})`,
+      );
+    }
+    // Several roles → ONE harness-level event listing them, not one per role.
+    const resets = readEvents(repo).filter((e) => e.type === "counters_reset");
+    assert.equal(resets.length, 1);
+    assert.equal(resets[0]?.loop, "harness");
+    assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
+  } finally {
+    restore();
+    controller.abort();
+    try {
+      await done;
+    } catch {
+      // The test's own failure (if any) takes precedence over shutdown noise.
+    }
+  }
+});
+
+test("a corrupt reset marker resets every runner and is still consumed", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "corrupt reset marker test");
+  saveConfig(repo, fastConfig(["clean", "dry"]));
+  seedCounters(repo, "clean", "dry");
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const controller = new AbortController();
+  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  try {
+    // Garbage where the marker should be: JSON.parse throws → requested stays null → every
+    // runner resets (a documented superset — skipping it would let the next tick's save
+    // resurrect the pre-reset values).
+    const markerFile = resetRequestPath(repo);
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, "{not json");
+
+    await waitFor(() => !fs.existsSync(markerFile), "the corrupt marker to be consumed");
+    for (const role of ["clean", "dry"]) {
+      assert.ok(
+        loadLoopState(repo, role).ticks <= 1,
+        `${role} counters start from zero after a corrupt marker (got ${loadLoopState(repo, role).ticks})`,
+      );
+    }
+    const resets = readEvents(repo).filter((e) => e.type === "counters_reset");
+    assert.equal(resets.length, 1);
+    assert.equal(resets[0]?.loop, "harness", "a superset reset is filed harness-level with the roles list");
+    assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
   } finally {
     restore();
     controller.abort();
