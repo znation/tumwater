@@ -5,60 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)
-
-**Goal:** The dashboard surfaces project status, not just loop status: both the TUI and the web
-GUI show a list of known (open) bugs from BUGS.md and a list of planned features from PLANS.md,
-so a user can see what the fleet is working toward without opening the files.
-
-**Approach:** One shared pure parser, two thin renderers. The lists are derived from tracked
-markdown that loops edit constantly, so read the files fresh on every render/poll — the same
-pattern as events and transcripts (no caching).
-
-- New module `src/backlog.ts`:
-  - `parseEntries(md: string, sectionTitle: string): string[]` — returns the `### ` heading texts
-    inside one `## <sectionTitle>` section only (stop at the next `## ` line), skipping the
-    `_None yet._` placeholder. Body text under an entry is ignored; keep the full heading text
-    including any `(planned …)`/`(reported …)` suffix.
-  - `plannedPlans(root): string[]` / `openBugs(root): string[]` — read PLANS.md (`## Planned`)
-    and BUGS.md (`## Open`) from disk; missing or unreadable file → `[]` (never throw into a
-    render path).
-  - `backlogLines(plans: string[], bugs: string[]): string[]` — the TUI body lines: a
-    `plans (N):` subheader, one line per plan, then an `open bugs (M):` subheader and one line
-    per bug; empty sections render `(none)` under their subheader. Pure, so it is unit-testable.
-- TUI (`src/tui.ts`): add a **project status** view to the existing Ctrl+T activity-pane cycle
-  (events → each loop's transcript → project status), occupying exactly the same slot and height
-  budget as recent activity — the no-wrap invariant from the transcript feature is preserved by
-  construction. Header: `project status — Ctrl+T to cycle`; body = `backlogLines(...)` clipped
-  with `clipToWidth`, keeping the *head* of the list when it overflows (file order is newest-
-  first, unlike events which keep the tail). Update the cycle math (`view % (roleIds.length + 2)`) and
-  the stale-index clamp accordingly. Empty file state: `(no planned features or open bugs)`.
-- GUI payload (`src/gui.ts`): `statusPayload(root)` gains `plans: string[]` and `bugs: string[]`
-  from the same helpers (fresh read per poll, like `events`).
-- GUI page (`src/gui-page.ts` — all UI edits go there; `gui.ts` only serves): a "project status"
-  section below the loop table / transcript panel with two lists — *planned features (N)* and
-  *open bugs (M)* — styled like the existing `#feed`/`#transcript` panels, rendered in
-  `refresh()` from `d.plans`/`d.bugs`, `(none)` when empty. Keep every inline `<script>` body
-  parseable (test/gui.test.ts asserts this).
-- Do not add count badges to the status header line here — the Questions outbox plan will add a
-  `questions: N` badge in that same spot; keep the two from colliding.
-
-**Files touched:** new `src/backlog.ts`; `src/tui.ts`, `src/gui.ts`, `src/gui-page.ts`; new
-`test/backlog.test.ts`; extend `test/gui.test.ts` (payload fields + served page contains the new
-section).
-
-**Acceptance criteria:**
-- TUI: Ctrl+T cycles to a project status view listing planned features and open bugs, one per
-  line, clipped to terminal width; it fits the existing height budget (no wrapped lines, table
-  stays pinned at the top); empty sections show `(none)`.
-- GUI: `/api/status` includes `plans` and `bugs`; the dashboard renders both lists with counts
-  below the loop table and they update on the 1s poll as PLANS.md/BUGS.md change (e.g. a plan
-  moved to Done disappears).
-- Parser: only entries from the requested section are returned (Done/Fixed excluded); handles
-  missing files, `_None yet._`, multiple entries per section, and arbitrary body text under an
-  entry without leaking it into titles.
-- `npm test` passes.
-
 ### PRINCIPLES.md — positive design principles injected into every prompt (planned 2026-08-24)
 
 Full plan: [plans/principles.md](plans/principles.md). Every project gets a tracked
@@ -183,6 +129,28 @@ the new column header.
 - `npm test` passes.
 
 ## Done
+
+### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24, done 2026-08-26)
+
+Both dashboards now surface project status — what the fleet is working toward — not just loop
+status. `src/backlog.ts` owns reading and parsing: `parseEntries(md, sectionTitle)` returns the
+`### ` heading texts inside one `## <section>` only (stops at the next `## `, so Done/Fixed never
+leak in; body text ignored; `_None yet._` placeholders skipped; full heading kept including any
+`(planned …)`/`(reported …)` suffix), and `plannedPlans(root)` / `openBugs(root)` read PLANS.md's
+`## Planned` and BUGS.md's `## Open` fresh on every call — missing or unreadable file yields `[]`,
+never throwing into a render path. TUI: the Ctrl+T activity pane gains a project status view after
+the per-loop transcripts (cycle math now `view % (roleIds.length + 2)`, stale-index clamp updated);
+same slot and height budget as recent activity, body keeps the *head* of the list when it overflows
+(file order is newest-first, unlike events which keep the tail), header `project status — Ctrl+T to
+cycle`. GUI: `/api/status` carries `plans`/`bugs` (fresh per poll) and the page renders a project
+status panel below the loop table styled like #feed/#transcript — *planned features (N)* and *open
+bugs (M)*, `(none)` when empty; no count badge on the status header line (the Questions outbox plan
+owns that spot). One deviation from the plan: `backlogLines` (the TUI body-line formatter) was moved
+from src/backlog.ts into its sole consumer, tui.ts, by a later organize pass — backlog.ts now owns
+only reading and parsing. Tests: parser section isolation / missing files / placeholders / body-text
+leakage; fresh-read visibility of edits; GUI payload fields and the served page panel. Files:
+src/backlog.ts, src/tui.ts, src/gui.ts, src/gui-page.ts, test/backlog.test.ts, test/tui.test.ts,
+test/gui.test.ts.
 
 ### Show current work item per active loop in the GUI/TUI tables (planned 2026-08-25, done 2026-08-25)
 
