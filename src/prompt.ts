@@ -3,6 +3,12 @@ import { DECOMPOSITION_GUIDANCE, type Role } from "./roles.js";
 /** Sentinel a loop's pi run outputs when it found nothing worth doing. */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
 
+/** The rule every loop prompt states for ending a run that made changes — the exact SUMMARY
+ * line format extractSummary parses into the commit message. Stated once so the tick/director
+ * rules and the resume bridge cannot drift (sibling of the NOTHING_TO_DO sentinel above). */
+const SUMMARY_RULE = `- If you did make changes, end your reply with a line in exactly this form:
+  SUMMARY: <imperative one-line description of the change, at most 72 characters>`;
+
 const COMMON_RULES = `
 Rules for this run:
 - First read README.md, PLANS.md, and BUGS.md (those that exist) to understand the project.
@@ -18,8 +24,7 @@ Rules for this run:
   after a few seconds) and never allocate it a real TTY expecting input.
 - If you find nothing worth doing for your role right now, make no changes and reply with the
   single line ${NOTHING_TO_DO} instead.
-- If you did make changes, end your reply with a line in exactly this form:
-  SUMMARY: <imperative one-line description of the change, at most 72 characters>`;
+${SUMMARY_RULE}`;
 
 export interface TickPromptInput {
   role: Role;
@@ -95,8 +100,7 @@ still apply, in particular:
 - Do exactly ONE focused task, then stop.
 - Never create, amend, or revert git commits — the harness handles all git operations.
 - If you end up making no changes, reply with the single line ${NOTHING_TO_DO}.
-- If you did make changes, end your reply with a line in exactly this form:
-  SUMMARY: <imperative one-line description of the change, at most 72 characters>`;
+${SUMMARY_RULE}`;
 }
 
 /** The prompt for resolving merge conflicts left in a loop's worktree. */
