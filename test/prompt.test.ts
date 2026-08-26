@@ -114,9 +114,7 @@ test("plan and bugfix role prompts include the shared decomposition guidance", (
   }
 });
 
-test("the perf role hunts measured wins and refuses speculative micro-optimization", async () => {
-  const { roleById } = await import("../src/roles.js");
-  const { buildTickPrompt } = await import("../src/prompt.js");
+test("the perf role hunts measured wins and refuses speculative micro-optimization", () => {
   const role = roleById("perf");
   assert.ok(role, "perf role exists");
   assert.equal(role.title, "performance optimizer");
