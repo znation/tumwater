@@ -1,4 +1,5 @@
 import http from "node:http";
+import { openBugs, plannedPlans } from "./backlog.js";
 import { readEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
@@ -56,13 +57,17 @@ export function statusPayload(root: string): object {
         commits: s.commits,
         generated: m.generated,
         peakCtx: m.peakCtx,
-      costUsd: s.totalCostUsd,
+        costUsd: s.totalCostUsd,
         lastResult: s.lastResult ?? null,
         lastSummary: s.lastSummary ?? null,
         lastTickEndedAt: s.lastTickEndedAt ?? null,
       };
     }),
     events: readEvents(root, 40).map((e) => formatEvent(e)),
+    // Project status (planned features + open bugs), fresh per poll like events — loops edit
+    // these files constantly, so there is no cache to go stale.
+    plans: plannedPlans(root),
+    bugs: openBugs(root),
   };
 }
 

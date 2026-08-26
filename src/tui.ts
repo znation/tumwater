@@ -1,4 +1,5 @@
 import readline from "node:readline";
+import { backlogLines, openBugs, plannedPlans } from "./backlog.js";
 import { readEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
@@ -71,7 +72,8 @@ export async function runTui(root: string): Promise<void> {
   let cursor = 0;
   let flash = "";
   let flashUntil = 0;
-  // The activity pane cycles: 0 = recent events, then one transcript per loop (Ctrl+T).
+  // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
+  // status (planned features + open bugs) — Ctrl+T.
   let view = 0;
   let roleIds: string[] = [];
 
@@ -84,7 +86,7 @@ export async function runTui(root: string): Promise<void> {
     const width = process.stdout.columns ?? 120;
     const snap = snapshot(root);
     roleIds = snap.loops.map((s) => s.role);
-    view = Math.min(view, roleIds.length); // clamp a stale index if roles changed
+    view = Math.min(view, roleIds.length + 1); // clamp a stale index if roles changed
     const status = renderStatus(root, snap, width);
     const statusLines = status.split("\n").length;
     const eventBudget = Math.max(3, rows - statusLines - 6);
@@ -92,12 +94,22 @@ export async function runTui(root: string): Promise<void> {
     // eventBudget clipped lines, so the height-budget math is unchanged either way.
     let header: string;
     let body: string[];
-    const role = view > 0 ? roleIds[view - 1] : undefined; // defined: view is clamped above
+    let emptyNote = "(no events yet)";
+    const role = view > 0 && view <= roleIds.length ? roleIds[view - 1] : undefined; // defined: view is clamped above
     if (role) {
       header = `${BOLD}${clipToWidth(`transcript: ${role} — Ctrl+T to cycle`, width)}${RESET}`;
       body = readTranscript(root, role, eventBudget)
         .map((l) => clipToWidth(l, width))
         .slice(-eventBudget);
+      emptyNote = "(no transcript yet)";
+    } else if (view === roleIds.length + 1) {
+      // Project status: planned features and open bugs from PLANS.md/BUGS.md, read fresh each
+      // render like events. Keeps the HEAD of the list when it overflows — file order is
+      // newest-first, unlike events which keep the tail.
+      header = `${BOLD}${clipToWidth("project status — Ctrl+T to cycle", width)}${RESET}`;
+      body = backlogLines(plannedPlans(root), openBugs(root))
+        .map((l) => clipToWidth(l, width))
+        .slice(0, eventBudget);
     } else {
       header = `${BOLD}recent activity${RESET}`;
       body = readEvents(root, eventBudget)
@@ -109,7 +121,7 @@ export async function runTui(root: string): Promise<void> {
       status,
       "",
       header,
-      body.length ? body.map((l) => `${DIM}${l}${RESET}`).join("\n") : view > 0 ? `${DIM}(no transcript yet)${RESET}` : `${DIM}(no events yet)${RESET}`,
+      body.length ? body.map((l) => `${DIM}${l}${RESET}`).join("\n") : `${DIM}${emptyNote}${RESET}`,
       "",
     ];
     if (flash && Date.now() < flashUntil) parts.push(`${BOLD}${clipToWidth(flash, width)}${RESET}`);
@@ -135,7 +147,7 @@ export async function runTui(root: string): Promise<void> {
         return;
       }
       if (key.ctrl && key.name === "t") {
-        view = (view + 1) % (roleIds.length + 1); // events → each loop's transcript → events
+        view = (view + 1) % (roleIds.length + 2); // events → each loop's transcript → project status → events
         render();
         return;
       }

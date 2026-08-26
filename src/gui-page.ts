@@ -20,6 +20,9 @@ export const GUI_PAGE = `<!doctype html>
   #transcript { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
           max-height:16em; overflow-y:auto; font-size:13px; color:#9fb0bf; white-space:pre-wrap;
           margin-bottom:1rem; }
+  #backlog { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
+          max-height:16em; overflow-y:auto; font-size:13px; color:#9fb0bf; white-space:pre-wrap;
+          margin-bottom:1rem; }
   a { color:#7ec8ff; text-decoration:none; cursor:pointer; } a.active { color:#d6dde4; font-weight:600; }
   form { display:flex; gap:8px; margin:1rem 0; }
   input { flex:1; background:#0b0e12; color:#d6dde4; border:1px solid #2a3642; border-radius:6px;
@@ -38,6 +41,7 @@ export const GUI_PAGE = `<!doctype html>
   <tbody id="loops"></tbody>
 </table>
 <div id="transcript" hidden></div>
+<div id="backlog"></div>
 <div id="feed"></div>
 <script>
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
@@ -73,6 +77,11 @@ export const GUI_PAGE = `<!doctype html>
           "</td><td>" + fmtTokens(l.peakCtx) +
           "</td><td>$" + l.costUsd.toFixed(2) + "</td><td class='wide'>" + esc(last) + "</td></tr>";
       }).join("");
+      // Project status: planned features and open bugs, fresh from /api/status each poll.
+      const backlogList = (title, items) => "<span class='muted'>" + esc(title + " (" + items.length + ")") + "</span>\\n" +
+        (items.length ? items.map(esc).join("\\n") : "(none)");
+      document.getElementById("backlog").innerHTML =
+        backlogList("planned features", d.plans || []) + "\\n\\n" + backlogList("open bugs", d.bugs || []);
       const feed = document.getElementById("feed");
       const stick = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 4;
       feed.innerHTML = d.events.map(esc).join("<br>");

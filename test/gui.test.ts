@@ -184,6 +184,38 @@ test("the dashboard page has a current column after state", async () => {
   assert.match(GUI_PAGE, /<th>state<\/th><th>current<\/th>/);
 });
 
+// Project status: planned features and open bugs from PLANS.md/BUGS.md.
+
+test("status payload carries planned plans and open bugs, fresh per poll", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui backlog test"); // seeds placeholder files with no entries
+  let payload = statusPayload(repo) as { plans: string[]; bugs: string[] };
+  assert.deepEqual(payload.plans, [], "seeded _None yet._ placeholders are not entries");
+  assert.deepEqual(payload.bugs, []);
+
+  // A later edit to the tracked markdown is visible on the next payload (no caching).
+  // Entries must land inside their sections — appending would file them under Done/Fixed.
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    "# Plans\n\n## Planned\n\n### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)\n\n**Goal:** The dashboard surfaces project status.\n\n## Done\n\n_None yet._\n",
+  );
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    "# Bugs\n\n## Open\n\n### A routine merge conflict logs a warning (reported 2026-08-25)\n\n**Symptom:** The main log is full of warnings.\n\n## Fixed\n\n_None yet._\n",
+  );
+  payload = statusPayload(repo) as { plans: string[]; bugs: string[] };
+  assert.deepEqual(payload.plans, ["Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)"]);
+  assert.deepEqual(payload.bugs, ["A routine merge conflict logs a warning (reported 2026-08-25)"]);
+});
+
+test("the dashboard page has a project status panel", async () => {
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+  assert.match(GUI_PAGE, /<div id="backlog"><\/div>/);
+  // The panel renders from the payload's plans/bugs fields.
+  assert.match(GUI_PAGE, /d\.plans \|\| \[\]/);
+  assert.match(GUI_PAGE, /d\.bugs \|\| \[\]/);
+});
+
 test("gui rejects oversized prompt bodies with 413 instead of buffering them unboundedly", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui body limit test");
