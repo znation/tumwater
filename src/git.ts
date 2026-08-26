@@ -144,12 +144,17 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   return wt;
 }
 
+/** Abort any in-progress merge or rebase (no-op when neither is running). */
+export async function abortSync(wt: string): Promise<void> {
+  await gitTry(wt, "merge", "--abort");
+  await gitTry(wt, "rebase", "--abort");
+}
+
 /** Hard-reset a worktree's branch to main and drop untracked files (ignored files survive).
  * An interrupted merge or rebase is aborted first — otherwise the next tick would wedge on
  * "you are already rebasing" / "merge in progress". */
 export async function resetWorktreeToMain(wt: string, mainBranch: string): Promise<void> {
-  await gitTry(wt, "merge", "--abort");
-  await gitTry(wt, "rebase", "--abort");
+  await abortSync(wt);
   await git(wt, "reset", "--hard", mainBranch);
   await git(wt, "clean", "-fd");
 }
@@ -211,12 +216,6 @@ export async function rebaseOntoMainLeaveConflicts(
   const state = await attemptRebase(wt, mainBranch);
   if (state === "other") await gitTry(wt, "rebase", "--abort");
   return state === "rebased" ? "clean" : state === "conflict" ? "conflict" : "failed";
-}
-
-/** Abort any in-progress merge or rebase (no-op when neither is running). */
-export async function abortSync(wt: string): Promise<void> {
-  await gitTry(wt, "merge", "--abort");
-  await gitTry(wt, "rebase", "--abort");
 }
 
 /** True if any of the given files still contains a git conflict marker.
