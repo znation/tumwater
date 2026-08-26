@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { enabledRoleIds, loadConfig } from "./config.js";
 import { allRoleIds } from "./roles.js";
-import { createTranscriptRenderer } from "./transcript.js";
+import { createTranscriptRenderer, formatTranscript } from "./transcript.js";
 import { currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
 import { submitPrompt } from "./inbox.js";
@@ -162,7 +162,6 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
   const file = piLogPath(root, role);
   const size = statOrNull(file)?.size ?? 0; // No log yet → 0.
 
-  const renderer = createTranscriptRenderer();
   const printEntry = (lines: string[]) => {
     if (lines.length > 0) process.stdout.write(lines.join("\n") + "\n");
   };
@@ -172,15 +171,7 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
   let offset = 0;
   if (size > 0) {
     const { lines, end } = readCompleteLines(file, 0, size);
-    const entries: string[][] = [];
-    for (const line of lines) {
-      const out = renderer.feed(line);
-      if (out.length > 0) entries.push(out);
-    }
-    // A run that started but produced no renderable event yet still gets its separator.
-    const tail = renderer.flush();
-    if (tail.length > 0) entries.push(tail);
-    for (const entry of entries.slice(-limit)) printEntry(entry);
+    for (const entry of formatTranscript(lines).slice(-limit)) printEntry(entry);
     offset = end;
   } else {
     process.stdout.write(`no transcript yet for ${role}\n`);
@@ -188,7 +179,9 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
   if (!follow) return;
 
   // Follow from where the initial window stopped, so each turn prints exactly once when its
-  // message_end lands (torn trailing lines are held back by followFile).
+  // message_end lands (torn trailing lines are held back by followFile). A fresh renderer:
+  // formatTranscript already flushed any pending separator for what was on disk.
+  const renderer = createTranscriptRenderer();
   followFile(file, offset, (lines) => {
     for (const line of lines) printEntry(renderer.feed(line));
   });
