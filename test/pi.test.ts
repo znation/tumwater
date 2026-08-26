@@ -7,7 +7,6 @@ import { PiStreamParser, findOnPath, piArgs, runPi } from "../src/pi.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
-import { loadLoopState } from "../src/state.js";
 import { assistantLine, errorLine, fakePi, makeRepo, thinkingOnlyLine, tmpdir } from "./util.js";
 
 test("findOnPath locates executables like spawn would resolve them", () => {
