@@ -224,7 +224,8 @@ test("a non-zero pi exit without assistant text is a failed run", async () => {
   assert.match(result.errorMessage ?? "", /pi exploded|exited 1/);
 });
 
-// Session persistence: pi sessions survive across ticks and are dropped when poisoned.
+// Session lifecycle: every tick starts a fresh pi session (context never accumulates
+// across ticks); --continue exists only for the within-tick transient retry.
 
 test("piArgs starts fresh sessions with a name and resumes with --continue", () => {
   const base = { config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n1" };
@@ -232,13 +233,13 @@ test("piArgs starts fresh sessions with a name and resumes with --continue", () 
   assert.ok(fresh.includes("-n"), "fresh runs are named");
   assert.ok(!fresh.includes("--continue"));
   const resumed = piArgs({ ...base, continueSession: true });
-  assert.ok(resumed.includes("--continue"), "later ticks resume the role session");
+  assert.ok(resumed.includes("--continue"), "the within-tick retry resumes the session");
   assert.ok(!resumed.includes("-n"), "resumed runs keep their existing name");
 });
 
-test("a loop's pi session persists across ticks", async () => {
+test("every tick starts a fresh pi session", async () => {
   const repo = makeRepo();
-  await initProject(repo, "session persistence test");
+  await initProject(repo, "fresh session test");
   const argsFile = path.join(tmpdir(), "argv.log");
   // The prompt argument spans many lines, so record only the flags, one run per line.
   const restore = fakePi(
@@ -255,12 +256,10 @@ test("a loop's pi session persists across ticks", async () => {
     await runner.tick();
     const runs = fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
     assert.equal(runs.length, 2);
-    assert.ok(!runs[0]?.includes("--continue"), "first tick starts a fresh session");
-    assert.ok(runs[0]?.includes("-n"), "first tick names its session");
-    assert.ok(runs[1]?.includes("--continue"), "second tick resumes the session");
-    assert.ok(!runs[1]?.includes("-n"));
-    // Persisted, so a restarted orchestrator also resumes.
-    assert.equal(loadLoopState(repo, "clean").hasSession, true);
+    for (const [i, run] of runs.entries()) {
+      assert.ok(!run.includes("--continue"), `tick ${i + 1} must not resume a prior session`);
+      assert.ok(run.includes("-n"), `tick ${i + 1} names its fresh session`);
+    }
   } finally {
     restore();
   }
@@ -282,50 +281,25 @@ test("parser flags context-exceeded errors surfaced in retry events", () => {
   assert.equal(clean.contextExceeded, false);
 });
 
-test("a context-exceeded error drops the poisoned session immediately", async () => {
+test("a context-exceeded error fails the tick with the real cause", async () => {
   const repo = makeRepo();
   await initProject(repo, "context overflow test");
-  const argsFile = path.join(tmpdir(), "argv.log");
   const restore = fakePi(
     [
-      `flags=""`,
-      `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
-      `echo "run:$flags" >> "${argsFile}"`,
       `printf '%s\n' '${JSON.stringify({ type: "auto_retry_end", success: false, attempt: 3, finalError: "Context size has been exceeded." })}'`,
       `exit 1`,
     ].join("\n"),
   );
   try {
     const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
-    runner.state.hasSession = true; // Pretend earlier ticks built up a session.
     assert.equal((await runner.tick()).result, "error");
-    assert.equal(runner.state.hasSession, false, "poisoned session dropped");
-    await runner.tick();
-    const runs = fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
-    assert.ok(runs[1] && !runs[1].includes("--continue"), "next tick starts fresh");
+    assert.ok(runner.state.lastError, "the error is surfaced on the loop state");
   } finally {
     restore();
   }
 });
 
-test("two consecutive error ticks drop the session as self-healing", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "consecutive error test");
-  const restore = fakePi(`echo boom >&2\nexit 1`);
-  try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
-    await runner.tick();
-    assert.equal(runner.state.hasSession, true, "one error keeps the session");
-    assert.equal(runner.state.consecutiveErrors, 1);
-    await runner.tick();
-    assert.equal(runner.state.hasSession, false, "second consecutive error drops it");
-    assert.equal(runner.state.consecutiveErrors, 0);
-  } finally {
-    restore();
-  }
-});
-
-test("a spawn failure does not mark a session as resumable", async () => {
+test("a missing pi binary fails the tick with an error", async () => {
   const repo = makeRepo();
   await initProject(repo, "spawn failure test");
   // A PATH with git but no pi, so only the pi spawn fails.
@@ -337,7 +311,7 @@ test("a spawn failure does not mark a session as resumable", async () => {
     const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
-    assert.ok(!runner.state.hasSession);
+    assert.match(String(runner.state.lastError), /failed to spawn pi/);
   } finally {
     process.env.PATH = oldPath;
   }

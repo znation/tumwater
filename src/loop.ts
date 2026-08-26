@@ -18,7 +18,7 @@ import {
 } from "./git.js";
 import { withLock } from "./lock.js";
 import { logEvent } from "./events.js";
-import { SPAWN_ERROR_PREFIX, runPi } from "./pi.js";
+import { runPi } from "./pi.js";
 import { buildConflictPrompt, buildDirectorPrompt, buildTickPrompt, extractSummary } from "./prompt.js";
 import { readInitialPrompt } from "./readme.js";
 import { configForRole } from "./config.js";
@@ -30,9 +30,6 @@ export interface TickOutcome {
   result: TickResult;
   summary?: string;
   commit?: string;
-  /** True when an error tick was caused by a transient model-server timeout (e.g. machine
-   * sleep): the session is healthy, so it must not count toward session poisoning. */
-  transient?: boolean;
 }
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
@@ -112,7 +109,10 @@ export class LoopRunner {
   }
 
   /** Run pi for this loop in worktree `wt` with the shared per-loop wiring (role config,
-   * session dir and resume flag, raw log) and fold the run's tokens/cost into the state.
+   * session dir, raw log) and fold the run's tokens/cost into the state. Every run starts
+   * a FRESH pi session: context never accumulates across ticks, so ticks start cheap
+   * (small prefill), never inherit a near-full window, and durable knowledge lives where
+   * the prompt makes pi read it — README/PLANS/BUGS and the code itself.
    * A transient model-server timeout (e.g. the machine slept mid-run) gets exactly one
    * bounded retry: fresh requests succeed quickly after a wake. */
   private async runRolePi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
@@ -123,7 +123,6 @@ export class LoopRunner {
       config: configForRole(this.config, this.role),
       sessionDir: sessionDir(this.root, this.role),
       sessionName,
-      continueSession: s.hasSession,
       rawLogFile: piLogPath(this.root, this.role),
       signal: this.signal,
     };
@@ -135,7 +134,8 @@ export class LoopRunner {
         message:
           "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
       });
-      // Resume whatever session the first attempt created or extended; it is healthy.
+      // Within-tick continuity only: resume the session the first attempt created, so its
+      // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
       s.generatedTokens += pi.outputTokens + retry.outputTokens;
       s.peakContextTokens = Math.max(s.peakContextTokens, pi.peakContextTokens, retry.peakContextTokens);
@@ -224,23 +224,6 @@ export class LoopRunner {
       s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, this.config);
       s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
     }
-    // Self-heal from a poisoned session: whatever the error, repeated failures in a row
-    // mean the accumulated context is more likely hurting than helping. A transient
-    // model-server timeout says nothing about session health — don't count it.
-    if (outcome.result === "error" && !outcome.transient) {
-      s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
-      if (s.consecutiveErrors >= 2 && s.hasSession) {
-        s.hasSession = false;
-        s.consecutiveErrors = 0;
-        logEvent(this.root, {
-          loop: this.role,
-          type: "warning",
-          message: "two consecutive error ticks — starting a fresh pi session next tick",
-        });
-      }
-    } else if (outcome.result === "changed" || outcome.result === "no_change") {
-      s.consecutiveErrors = 0;
-    }
     s.lastMainHead = (await gitTry(this.root, "rev-parse", this.mainBranch)) ?? s.lastMainHead;
     this.save();
     logEvent(this.root, {
@@ -270,21 +253,6 @@ export class LoopRunner {
 
     const pi = await this.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`);
 
-    // The run created (or extended) a session file; later ticks resume it. A spawn failure
-    // never creates one, so don't mark the session resumable in that case.
-    if (!pi.errorMessage?.startsWith(SPAWN_ERROR_PREFIX)) s.hasSession = true;
-
-    // A session the provider rejects as too large can never be resumed successfully
-    // (e.g. the model's real context is smaller than pi believes): drop it now.
-    if (pi.contextExceeded && s.hasSession) {
-      s.hasSession = false;
-      logEvent(this.root, {
-        loop: this.role,
-        type: "warning",
-        message: "provider rejected the context as too large — starting a fresh pi session next tick",
-      });
-    }
-
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.
     if (pi.aborted) {
@@ -307,7 +275,7 @@ export class LoopRunner {
       // IS fulfillment (a question-type prompt answered without file changes) — never
       // re-queue that, or such prompts would loop forever.
       if (userPrompt) enqueuePrompt(this.root, userPrompt);
-      return { result: "error", transient: pi.transientServerTimeout || undefined };
+      return { result: "error" };
     }
     if (!changed) {
       if (!pi.nothingToDo) {

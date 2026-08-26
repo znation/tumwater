@@ -36,8 +36,8 @@ export class PiStreamParser {
   stopReason: string | undefined;
   errorMessage: string | undefined;
   /** True when any event reports the provider rejecting the context as too large
-   * (e.g. LM Studio's "Context size has been exceeded"). The session is then poisoned:
-   * resuming it can never succeed, so the loop must start fresh. */
+   * (e.g. LM Studio's "Context size has been exceeded"). Diagnostic: every tick starts a
+   * fresh session, so nothing needs dropping — but the error names the real cause. */
   contextExceeded = false;
   /** True when any event reports the model server killing an idle predict stream
    * (LM Studio's "Engine protocol predict stream timed out", e.g. after OS sleep).
@@ -134,9 +134,10 @@ export interface PiRunOptions {
   config: TumwaterConfig;
   sessionDir: string;
   sessionName: string;
-  /** Resume the loop's most recent session in sessionDir instead of starting fresh,
-   * so context persists across ticks. pi auto-compacts when the context nears the
-   * model's window, so a resumed session never overflows. */
+  /** Resume the most recent session in sessionDir instead of starting fresh. Used ONLY
+   * for the within-tick transient retry (so the retry keeps the first attempt's partial
+   * progress); every tick otherwise starts a fresh session, so context never accumulates
+   * across ticks. */
   continueSession?: boolean;
   /** Raw pi JSON event lines are appended here for observability. */
   rawLogFile: string;

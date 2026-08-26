@@ -75,8 +75,6 @@ test("zeroCounters zeroes exactly the four accumulated counters and preserves ev
   s.nextRunAt = 1_700_000_000_000;
   s.backoffSeconds = 30;
   s.lastMainHead = "abc123";
-  s.hasSession = true;
-  s.consecutiveErrors = 2;
   s.lastResult = "changed";
   s.lastSummary = "did a thing";
   s.lastTickStartedAt = 1;
@@ -87,12 +85,10 @@ test("zeroCounters zeroes exactly the four accumulated counters and preserves ev
   assert.equal(z.commits, 0);
   assert.equal(z.generatedTokens, 0);
   assert.equal(z.totalCostUsd, 0);
-  // Scheduling, wake tracking, session continuity, and last-result fields are untouched.
+  // Scheduling, wake tracking, and last-result fields are untouched.
   assert.equal(z.nextRunAt, s.nextRunAt);
   assert.equal(z.backoffSeconds, 30);
   assert.equal(z.lastMainHead, "abc123");
-  assert.equal(z.hasSession, true);
-  assert.equal(z.consecutiveErrors, 2);
   assert.equal(z.lastResult, "changed");
   assert.equal(z.lastSummary, "did a thing");
   // The high-water mark is not an accumulated total.

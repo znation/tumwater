@@ -38,8 +38,9 @@ locally and keep all project state within the git repo.
 <!-- tumwater:status:start -->
 v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `prompt` commands are
 implemented with ten roles plus the director loop (absolute scheduling priority; routes
-feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Loops persist
-their pi sessions across ticks and self-heal from context overflows; merge conflicts get one
+feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Every tick runs
+in a fresh pi session — context never accumulates across ticks, and durable knowledge lives in
+the repo (README/PLANS/BUGS), which each tick reads first; merge conflicts get one
 pi-driven resolution attempt; roles can override provider/model/thinking; `tumwater.json` is
 validated on load/save with actionable errors; logs rotate and old pi sessions are pruned; the
 TUI/status table is width-aware with a totals row; transient sleep/wake "predict stream timed
@@ -70,8 +71,10 @@ per enabled role. Every loop tick:
 
 1. Resets its persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`) to main.
 2. Builds a role-specific "find something to do" prompt and runs `pi --print --mode json` in the
-   worktree, resuming the loop's own pi session from earlier ticks (`--continue`) so context
-   carries over; pi auto-compacts when it nears the model's window.
+   worktree, starting a FRESH pi session every tick: context never accumulates across ticks, so
+   ticks start with a small, cheap prefill and stay far from the model's context window. Durable
+   knowledge lives in the repo itself (README/PLANS/BUGS, read at the start of every tick), not
+   in model context.
 3. If pi changed files: commits, rebases the branch onto main (so main's history stays linear),
    and fast-forwards main — all under a merge lock shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
    capped) and sleeps.
@@ -133,7 +136,7 @@ restart.
   it is what triggers pi's auto-compaction. With LM Studio's unified KV cache, concurrent requests
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full
   window. A session that overruns the server's real limit fails with "Context size has been
-  exceeded"; the harness detects this and starts that loop a fresh session.
+  exceeded"; since every tick runs a fresh session, the next tick is unaffected.
 - **Truncated-at-the-ceiling turns look like normal stops**: as a session nears the declared
   `contextWindow`, pi clamps each request's `max_output_tokens` to the space remaining (down
   to a floor of 16). LM Studio's `/v1/responses` reports a generation stopped by that clamp
@@ -141,13 +144,12 @@ restart.
   "stop" instead of "length" and its compact-and-retry overflow handling never fires — the
   turn ends mid-thought with no text and no tool call, the agent loop finishes, and the tick
   lands as `no_change` with a "finished without changes and without declaring nothing-to-do"
-  warning (now annotated with "likely cut off at the context ceiling"). Harmless: pi
-  auto-compacts the session at end of run and the next tick resumes normally. Prevention: pi
-  only checks its compaction threshold (`contextWindow − reserveTokens`) at the END of a run,
-  so raise `compaction.reserveTokens` in pi's settings.json until the threshold leaves room
-  for a full run's context growth (observed ~20k/run) below the clamp cliff at
-  ~`contextWindow − 4096` — e.g. 28672 for an 87000 window. Read per pi spawn; applies from
-  the next tick without a fleet restart.
+  warning (now annotated with "likely cut off at the context ceiling"). Prevention: tumwater
+  starts every tick in a fresh session, so ticks begin with only the prompt (~8k tokens) and
+  need ~75k of within-tick growth to reach the cliff — several hours of dense work. Note that
+  pi never compacts MID-run (only at end of run), so a single extremely long tick can still
+  hit the cliff; the tick then ends with the warning above, any files pi already edited are
+  still committed, and the next tick starts fresh.
 - **Match clients to slots, or prefix caches thrash**: each server slot keeps the KV prefix of
   the last request it served. Keep the number of concurrent tumwater clients — `maxConcurrent`
   plus one for the director's bypass — at or below the server's slot count. One client over, and

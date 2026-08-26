@@ -77,11 +77,6 @@ export interface LoopState {
   lastTickEndedAt?: number;
   /** True while a tick is in flight (best-effort; cleared on orchestrator start). */
   running?: boolean;
-  /** True once this loop has a pi session to resume; ticks then run with --continue so
-   * the loop keeps its accumulated context (pi auto-compacts when it grows too large). */
-  hasSession?: boolean;
-  /** Consecutive error ticks; repeated errors drop the session as a self-healing measure. */
-  consecutiveErrors?: number;
   /** Tokens the model actually generated for this loop, summed across all runs. */
   generatedTokens: number;
   /** Largest single-request context this loop has ever submitted. */
@@ -126,7 +121,8 @@ export interface PiRunResult {
   timedOut: boolean;
   /** The run was killed because the harness is shutting down. */
   aborted: boolean;
-  /** The provider rejected the context as too large; the resumed session is poisoned. */
+  /** The provider rejected the context as too large. With fresh-per-tick sessions this is
+   * purely diagnostic: the next tick starts a new session regardless. */
   contextExceeded: boolean;
   /** True when any event reported the model server killing an idle predict stream (LM
    * Studio's "Engine protocol predict stream timed out", e.g. after OS sleep). A transient

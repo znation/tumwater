@@ -225,7 +225,7 @@ test("logs --role validates the role id and reports a missing transcript", async
 });
 // --- reset-counters ---
 
-/** Seed a role's state file with non-zero counters plus scheduling/session fields. */
+/** Seed a role's state file with non-zero counters plus scheduling fields. */
 function seedCounters(repo: string, role: string): void {
   const s = freshLoopState(role);
   s.ticks = 7;
@@ -236,7 +236,6 @@ function seedCounters(repo: string, role: string): void {
   s.nextRunAt = Date.now() + 60_000;
   s.backoffSeconds = 15;
   s.lastMainHead = "deadbeef";
-  s.hasSession = true;
   saveLoopState(repo, s);
 }
 
@@ -257,11 +256,10 @@ test("reset-counters zeroes counters in every role's state file and writes the f
     assert.equal(s.commits, 0, `${role} commits`);
     assert.equal(s.generatedTokens, 0, `${role} tokens`);
     assert.equal(s.totalCostUsd, 0, `${role} cost`);
-    // Scheduling and session continuity are untouched.
+    // Scheduling and wake tracking are untouched.
     assert.ok(s.nextRunAt > Date.now(), `${role} keeps its sleep window`);
     assert.equal(s.backoffSeconds, 15, `${role} backoff preserved`);
     assert.equal(s.lastMainHead, "deadbeef", `${role} wake tracking preserved`);
-    assert.equal(s.hasSession, true, `${role} session continuity preserved`);
     assert.equal(s.peakContextTokens, 65536, `${role} high-water mark survives`);
   }
 
