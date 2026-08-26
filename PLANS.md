@@ -215,13 +215,16 @@ peak ctx). Gives the reviewer, steward, and human a paper trail of claimed under
 descriptive commit messages may already exist in this file — merge the entries before
 implementing.
 
-### Questions outbox — loops that know when to ask (planned 2026-08-24)
+### Questions outbox — loops that know when to ask (planned 2026-08-24, refined 2026-08-25)
 
 Full plan: [plans/questions-outbox.md](plans/questions-outbox.md). A tracked QUESTIONS.md
 (Open/Answered) any loop appends to when a decision is genuinely the user's — context, options,
-and the loop's recommendation — surfaced as a `questions: N` badge in status/TUI/GUI; answers
-flow back by editing the file or via the director. Loops never block on their own questions.
-The report's answer to "software lacks victory conditions": be excellent at requesting them.
+and the loop's recommendation — surfaced as a `questions: N` badge in status/TUI/GUI (count via
+StatusSnapshot like inbox; Open section via `/api/questions` panel-on-click); answers flow back
+by editing the file or via the director. Loops never block on their own questions. Sibling split with "Show open bugs and planned
+features in the TUI/GUI" (above): this plan owns the header badge; that plan owns the
+list sections. The report's
+answer to "software lacks victory conditions": be excellent at requesting them.
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24)
 

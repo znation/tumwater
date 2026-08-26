@@ -1,6 +1,7 @@
 # Questions outbox — loops that know when to ask
 
-Planned 2026-08-24 · from the "Senior Tumwater" report (HN 49421554) · report item R4
+Planned 2026-08-24 · refined 2026-08-25 (event plumbing, GUI mechanism, sibling coordination)
+· from the "Senior Tumwater" report (HN 49421554) · report item R4
 
 ## Goal
 
@@ -30,12 +31,15 @@ to ask.
   a question to QUESTIONS.md (context, options, your recommendation) and either continue with the
   parts that don't depend on it or end the tick. Never block on an unanswered question; check for
   answers at the start of each tick. Do not re-ask an open question."
-- **Surfacing**: `openQuestionCount(root)` (parse `## Open` entries; new helper in a small
-  `src/questions.ts`). Status header gains `· questions: N` (as inbox does today) in
-  `renderStatus`; the GUI header does the same via a new field in `statusPayload`, and the GUI
-  renders the Open section in a panel-on-click like transcripts (fetch via a
-  `/api/questions` route or reuse of the file read). TUI: a highlighted line above recent
-  activity when N > 0.
+- **Surfacing**: `openQuestionCount(root)` plus an entry parser (id, first line) in a small new
+  `src/questions.ts`. The count flows through `StatusSnapshot` exactly like `inbox` does today:
+  `snapshot()` (src/status.ts) adds `questions: openQuestionCount(root)`, and `renderStatus`
+  (src/status-render.ts — the presentation layer, not status.ts) appends `· questions: N` to the
+  header line only when N > 0 (inbox is omitted at zero; do the same). The GUI header badge reads
+  a new `questions` field in `statusPayload`. **Decided:** the Open section itself is served by a
+  new `/api/questions` route (fresh read per request, like `/api/transcript`) and rendered in a
+  panel-on-click beside the transcript panel — not folded into the 1s status payload. TUI: a
+  highlighted line above recent activity when N > 0.
 - **Answer flow**: two paths, both already natural. (1) The user edits QUESTIONS.md directly —
   moving the entry to Answered with a decision; the next tick of any loop reads it. (2) The user
   tells the director ("answer Q3: choose SQLite"), and the director's routing block gains a
@@ -43,14 +47,24 @@ to ask.
   any follow-on work. Durable decisions graduate to PRINCIPLES.md
   ([principles.md](principles.md)).
 - **Events**: a `question_posted` event (loop, id, first line) when a merged diff adds an Open
-  entry — detectable in the harness post-merge by diffing the Open count, keeping pi out of the
-  event system.
+  entry. Detection lives in `tryMerge` (src/loop.ts): capture `openQuestionCount(root)` before
+  the rebase and compare after `ffMergeToMain` succeeds; for each new entry log one
+  `question_posted` alongside the existing `merged` event — pi stays out of the event system.
+  Add `question_posted` to the `HarnessEvent.type` union (src/types.ts) with plain rendering in
+  `formatEvent` (src/event-format.ts — it no longer lives in src/events.ts); no warning prefix,
+  this is routine operation.
 
 ## Files touched
 
-`src/init.ts`, `src/prompt.ts`, `src/questions.ts` (new), `src/status.ts`, `src/gui.ts`,
-`src/gui-page.ts`, `src/tui.ts`, `src/events.ts`, `test/questions.test.ts` (count parsing,
-header rendering, prompt contract text, director routing text), README.
+`src/init.ts` (seed QUESTIONS.md beside PLANS/BUGS), `src/prompt.ts` (read-first list +
+ask-don't-guess bullet; director answer-routing bullet), `src/questions.ts` (new: count + entry
+parsing), `src/status.ts` (`StatusSnapshot.questions`, as inbox does today),
+`src/status-render.ts` (header badge in renderStatus), `src/gui.ts` (payload field +
+`/api/questions` route), `src/gui-page.ts` (header badge + panel-on-click), `src/tui.ts`
+(highlighted line), `src/loop.ts` (post-merge count diff → event), `src/types.ts` (event type) +
+`src/event-format.ts` (plain rendering); tests: new `test/questions.test.ts` (count parsing,
+header rendering, prompt contract text, director routing text, post-merge event emission),
+README.
 
 ## Acceptance criteria
 
@@ -65,6 +79,14 @@ header rendering, prompt contract text, director routing text), README.
 
 Independent of the gate; benefits from [principles.md](principles.md) as the graduation target
 for durable answers. TUI/GUI surface work is the bulk of the effort.
+
+**Sibling coordination** ("Show open bugs and planned features in the TUI/GUI", PLANS.md): that
+plan adds a project-status *section* below the loop table in gui-page.ts and explicitly reserves
+the status-header badge spot for this plan. Ownership split: questions owns the `· questions: N`
+header badge on both surfaces; backlog owns the list sections. In the TUI they coexist without
+collision (badge line above recent activity vs the Ctrl+T-cycled project-status view). The two
+are independently implementable in either order — no shared markup, and if backlog lands first its
+section simply sits below the table while this plan's panel goes beside it.
 
 ## Out of scope
 
