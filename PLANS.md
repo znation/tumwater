@@ -71,11 +71,12 @@ every tick and director prompt, editable only by the director and steward. First
 
 Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
 fresh-session pi run (no author context; own model override via a `review` pseudo-role) reviews
-each committed tick against PRINCIPLES.md and replies `VERDICT: approve|reject` with reasons.
-Rejects reset the branch, record reasons, and inject them into the author's next tick; md-only
-diffs are exempt so notes stay cheap. The invariant is structural — a failed or verdict-less
-review fails closed (commit stays on the branch for re-review next tick, 3-strike discard cap),
-and `recoverLeftover` routes salvaged commits through the same gate so no crash path can land
+the full ahead-of-main diff against PRINCIPLES.md and replies `VERDICT: approve|reject` with
+reasons. Rejects reset the branch, record reasons, and inject them into the author's next tick —
+the only cross-tick memory, since sessions are fresh per tick; md-only diffs are exempt so notes
+stay cheap. The invariant is structural — a failed or verdict-less review fails closed (commit
+stays on the branch for re-review next tick, 3-strike discard cap), and both `recoverLeftover`'s
+salvage and resumed ticks' leftover commits route through the same gate so no crash path can land
 unreviewed work. The report's highest-leverage item — we have merged broken work twice for lack of
 it.
 

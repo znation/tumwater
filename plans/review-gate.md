@@ -1,17 +1,18 @@
 # Adversarial review gate before merge
 
 Planned 2026-08-24 · refined 2026-08-25 (failure handling, crash path, exemption semantics,
-state plumbing; stale file refs after the status-layer split) · from the "Senior Tumwater" report
-(HN 49421554) · report item R1
+state plumbing; stale file refs after the status-layer split; combined-diff review for resumed
+ticks) · from the "Senior Tumwater" report (HN 49421554) · report item R1
 
 ## Goal
 
 No diff reaches main unreviewed. After a loop commits its tick, an independent pi run — a fresh
 session with no author context — reviews the diff against PRINCIPLES.md and either approves it for
 merge or rejects it with reasons. Rigor is calibrated to blast radius: doc-only diffs skip the
-gate; code diffs get the full adversarial pass. The invariant is *structural*: both paths that can
-move a commit into main (a fresh tick's merge, and `recoverLeftover`'s salvage) pass through the
-same gate, so no crash or abort path can smuggle unreviewed work in.
+gate; code diffs get the full adversarial pass. The invariant is *structural*: every path that can
+move a commit into main — a fresh tick's merge, a resumed tick's merge (which lands leftover
+commits from an interrupted run), and `recoverLeftover`'s salvage — reviews the full ahead-of-main
+diff first, so no crash or abort path can smuggle unreviewed work in.
 
 ## Motivation
 
@@ -53,9 +54,12 @@ tumwater.json gains `"review": { "enabled": false }` plus any model override.
 New `buildReviewPrompt(diff, summary, commitBody, principles)`. Instructions: adversarial stance —
 hunt for correctness bugs, principle violations, complexity growth, incomplete work; read
 surrounding code freely; do not edit anything; end with exactly `VERDICT: approve` or
-`VERDICT: reject` followed by numbered reasons. Diff comes from `git show <commit>` capped (~200 KB;
-over the cap, send `--stat` plus the largest files and note the truncation — an oversized diff is
-itself reviewable information). **Verdict parsing:** scan the run's assistant text (any message,
+`VERDICT: reject` followed by numbered reasons. Diff comes from the **combined ahead-of-main
+diff** `git diff <main>...<head>` — everything this merge will land, not just the newest commit —
+capped (~200 KB; over the cap, send `--stat` plus the largest files and note the truncation — an
+oversized diff is itself reviewable information). For a clean fresh tick that equals the new
+commit's own diff (`git show <commit>`); for a resumed or recovered tick it also includes leftover
+commits from an interrupted run (see crash path below). **Verdict parsing:** scan the run's assistant text (any message,
 like the nothing-to-do sentinel) for the last `/^VERDICT:\s*(approve|reject)/m`; anything else is a
 failed review, not an approval.
 
@@ -81,7 +85,9 @@ in LoopState — see crash path below.
 Do not merge. Reset the branch to main (work discarded), log a `review_rejected` event carrying the
 reasons, store them in `LoopState.lastReview`, and inject them into the role's next tick prompt
 ("your previous change was rejected in review: … — address the objections or take a different
-approach"; the author's persistent session retains the full context of what it built). New
+approach"). Every tick now starts a fresh pi session (cross-tick `--continue` was removed), so this
+injection is the *only* cross-tick memory of what was built and why it failed — keep it complete.
+New
 `TickResult` value `"rejected"` rendered in status/GUI. Scheduling: treat like `changed` (reset
 backoff, `nextRunAt = now + minTickIntervalSeconds`) so the author addresses the objections on its
 next eligible tick rather than sleeping through them; repeated rejects stay visible via events.
@@ -96,12 +102,17 @@ LoopState (`unreviewFailures`, reset when the reviewed HEAD changes or a review 
 discard the leftover (reset branch to main) with a `warning` event — a misconfigured reviewer model
 cannot wedge a loop into re-reviewing the same commit forever.
 
-### Crash path: `recoverLeftover` routes through the gate
+### Crash path: recovery and resume both route through the gate
 
-Today `runTick` starts with `recoverLeftover`, which merges any commits ahead of main **without**
-review — so a crash or abort between `commitAll` and the review (or during it) would land unreviewed
-work on the next tick, silently breaking the invariant. Fix: `recoverLeftover` no longer merges
-blindly. When leftovers exist:
+Two paths can carry an interrupted tick's committed work into main without review. (1) A *fresh*
+tick starts with `recoverLeftover`, which today merges any commits ahead of main blindly. (2)
+Since the interrupted-tick resume landed, a tick killed after `commitAll` is resumed on next
+launch — and a resumed tick **skips** `recoverLeftover` entirely: it continues in the same worktree
+with the leftover commits still ahead of main, and its own merge (rebase + fast-forward lands
+*everything* ahead of main) would carry them in unreviewed alongside whatever new commit gets
+reviewed. Fix both at once: because the gate reviews the combined `git diff <main>...<head>` (see
+Prompt), any path that merges a branch head has already reviewed everything it will land; and
+`recoverLeftover` no longer merges blindly. When leftovers exist:
 
 1. If the leftover HEAD equals `lastApprovedHead`, merge directly — already reviewed; this is what
    a `merge_blocked` retry hits and must not burn another review run.
@@ -109,7 +120,8 @@ blindly. When leftovers exist:
    capped as above): approve → record `lastApprovedHead`, then merge (existing summary); reject →
    reset + record reasons exactly like a tick reject; fail → leave for retry under the 3-strike cap.
 
-This makes the invariant structural: both paths into main pass through review. Note the prompt is
+This makes the invariant structural: every path that can move a commit into main (fresh merge,
+resumed-tick merge, recovery merge) has reviewed the full ahead-of-main diff first. Note the prompt is
 built before recovery in `runTick`, so reasons recorded during this tick's recovery surface on the
 *following* tick — acceptable, say nothing cleverer. Leftovers are rare (crash/abort/reject only),
 so the extra reviewer run costs nothing in steady state.
@@ -150,7 +162,8 @@ lives in src/events.ts), `tumwater.json` (dogfood: `"review": { "enabled": false
 `test/review-gate.test.ts` (fake-pi shim scripting both verdicts; exemption matcher unit tests —
 basename vs path patterns, all-files-must-match; approve merges / reject resets + next-prompt
 injection; review failure leaves commit and re-reviews next tick; 3-strike discard; recoverLeftover
-reviews leftovers but skips `lastApprovedHead`; stray-edit reset; fresh session naming), README.
+reviews leftovers but skips `lastApprovedHead`; a resumed tick with leftover commits lands them only
+via the combined-diff review; stray-edit reset; fresh session naming), README.
 
 ## Acceptance criteria
 
@@ -162,8 +175,9 @@ reviews leftovers but skips `lastApprovedHead`; stray-edit reset; fresh session 
   `review_error`, and the next tick's recovery re-reviews it; after 3 consecutive failures for one
   HEAD the leftover is discarded with a warning.
 - Simulated crash between commit and review (commit left ahead of main) does not land unreviewed:
-  the next tick reviews before merging. An already-approved HEAD (`lastApprovedHead`) merges without
-  re-review.
+  the next tick reviews before merging — whether it arrives as a fresh tick via `recoverLeftover`
+  or as a resumed tick that skips recovery. An already-approved HEAD (`lastApprovedHead`) merges
+  without re-review.
 - Reviewer stray edits never reach main; reviewer runs use a fresh uniquely-named session each time;
   the merge lock is not held during review (another loop can merge concurrently — testable with two
   fake-pi loops).
