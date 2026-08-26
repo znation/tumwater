@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { LoopRunner } from "../src/loop.js";
+import { PiStreamParser } from "../src/pi.js";
 import { initProject } from "../src/init.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig, validateConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import { assistantLine, errorLine, fakePi, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
@@ -662,8 +663,7 @@ test("quietTimeoutSeconds 0 disables the watchdog", async () => {
   }
 });
 
-test("config validation accepts 0 and rejects negatives for quietTimeoutSeconds", async () => {
-  const { validateConfig } = await import("../src/config.js");
+test("config validation accepts 0 and rejects negatives for quietTimeoutSeconds", () => {
   validateConfig({ quietTimeoutSeconds: 0 });
   validateConfig({ quietTimeoutSeconds: 1800 });
   assert.throws(() => validateConfig({ quietTimeoutSeconds: -5 }), /quietTimeoutSeconds/);
@@ -697,8 +697,7 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
   }
 });
 
-test("message updates whose content grows count as progress and keep the run alive", async () => {
-  const { PiStreamParser } = await import("../src/pi.js");
+test("message updates whose content grows count as progress and keep the run alive", () => {
   const parser = new PiStreamParser();
   const update = (text: string) =>
     JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text }] } }) + "\n";
@@ -713,8 +712,7 @@ test("message updates whose content grows count as progress and keep the run ali
   assert.equal(parser.progressCount, afterGrowth + 1, "structural events are progress");
 });
 
-test("the per-message high-water mark resets so a short message after a long one still counts", async () => {
-  const { PiStreamParser } = await import("../src/pi.js");
+test("the per-message high-water mark resets so a short message after a long one still counts", () => {
   const parser = new PiStreamParser();
   const update = (text: string) =>
     JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text }] } }) + "\n";
@@ -741,8 +739,7 @@ test("the per-message high-water mark resets so a short message after a long one
   );
 });
 
-test("thinking-only growth counts as progress (reasoning models stream thinking before text)", async () => {
-  const { PiStreamParser } = await import("../src/pi.js");
+test("thinking-only growth counts as progress (reasoning models stream thinking before text)", () => {
   const parser = new PiStreamParser();
   const thinkUpdate = (thinking: string) =>
     JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "thinking", thinking }] } }) + "\n";
