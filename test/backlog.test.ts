@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { backlogLines, openBugs, parseEntries, plannedPlans } from "../src/backlog.js";
+import { openBugs, parseEntries, plannedPlans } from "../src/backlog.js";
 import { tmpdir } from "./util.js";
 
 const PLANS_MD = `# Plans
@@ -92,32 +92,4 @@ test("openBugs reads BUGS.md's Open section only; missing file yields []", () =>
     "Merge conflicts logged as warnings although they are normal operation (reported 2026-08-25)",
   ]);
   assert.deepEqual(openBugs(tmpdir()), []);
-});
-
-test("backlogLines renders subheaders with counts, entries in order", () => {
-  assert.deepEqual(backlogLines(["plan A"], ["bug B"]), [
-    "plans (1):",
-    "plan A",
-    "open bugs (1):",
-    "bug B",
-  ]);
-});
-
-test("backlogLines renders (none) under an empty section's subheader", () => {
-  assert.deepEqual(backlogLines([], ["bug B"]), [
-    "plans (0):",
-    "(none)",
-    "open bugs (1):",
-    "bug B",
-  ]);
-  assert.deepEqual(backlogLines(["plan A"], []), [
-    "plans (1):",
-    "plan A",
-    "open bugs (0):",
-    "(none)",
-  ]);
-});
-
-test("backlogLines with nothing at all is a single self-explanatory line", () => {
-  assert.deepEqual(backlogLines([], []), ["(no planned features or open bugs)"]);
 });

@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** The project backlog shown on both dashboards: planned features (PLANS.md) and open bugs
- * (BUGS.md). These are tracked markdown that loops edit constantly, so every reader takes a
- * fresh read — the same no-caching pattern as events and transcripts. */
+/** The project backlog data shown on both dashboards: planned features (PLANS.md) and open
+ * bugs (BUGS.md). These are tracked markdown that loops edit constantly, so every reader takes
+ * a fresh read — the same no-caching pattern as events and transcripts. Each dashboard formats
+ * this data for its own surface (the TUI's lines live in tui.ts; the GUI renders HTML in
+ * gui-page.ts) — this module owns only reading and parsing. */
 
 /** The `### ` heading texts inside one `## <sectionTitle>` section of a markdown document:
  * stops at the next `## ` line (so Done/Fixed entries never leak in), ignores body text under
@@ -41,17 +43,4 @@ function readMd(file: string): string | null {
   } catch {
     return null;
   }
-}
-
-/** The TUI project-status body lines: a `plans (N):` subheader with one line per plan, then an
- * `open bugs (M):` subheader and one line per bug. An empty section renders `(none)` under its
- * subheader; when both are empty the whole view is a single self-explanatory line. Pure, so it
- * is unit-testable without touching disk. */
-export function backlogLines(plans: string[], bugs: string[]): string[] {
-  if (plans.length === 0 && bugs.length === 0) return ["(no planned features or open bugs)"];
-  const lines = [`plans (${plans.length}):`];
-  lines.push(...(plans.length ? plans : ["(none)"]));
-  lines.push(`open bugs (${bugs.length}):`);
-  lines.push(...(bugs.length ? bugs : ["(none)"]));
-  return lines;
 }

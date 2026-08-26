@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyKey, renderInputView } from "../src/tui.js";
+import { applyKey, backlogLines, renderInputView } from "../src/tui.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
 
@@ -66,4 +66,32 @@ test("the rendered prompt line never exceeds the terminal width", () => {
       assert.ok(line.length <= width, `width ${width}, cursor ${cursor}: ${line.length} cols`);
     }
   }
+});
+
+test("backlogLines renders subheaders with counts, entries in order", () => {
+  assert.deepEqual(backlogLines(["plan A"], ["bug B"]), [
+    "plans (1):",
+    "plan A",
+    "open bugs (1):",
+    "bug B",
+  ]);
+});
+
+test("backlogLines renders (none) under an empty section's subheader", () => {
+  assert.deepEqual(backlogLines([], ["bug B"]), [
+    "plans (0):",
+    "(none)",
+    "open bugs (1):",
+    "bug B",
+  ]);
+  assert.deepEqual(backlogLines(["plan A"], []), [
+    "plans (1):",
+    "plan A",
+    "open bugs (0):",
+    "(none)",
+  ]);
+});
+
+test("backlogLines with nothing at all is a single self-explanatory line", () => {
+  assert.deepEqual(backlogLines([], []), ["(no planned features or open bugs)"]);
 });

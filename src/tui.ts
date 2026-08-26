@@ -1,5 +1,5 @@
 import readline from "node:readline";
-import { backlogLines, openBugs, plannedPlans } from "./backlog.js";
+import { openBugs, plannedPlans } from "./backlog.js";
 import { readEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
@@ -59,6 +59,19 @@ export function renderInputView(text: string, cursor: number, width: number): st
   if (text.length <= room) return text;
   const start = Math.max(0, Math.min(cursor - (room - 1), text.length - room));
   return (start > 0 ? "…" : "") + text.slice(start, start + room);
+}
+
+/** The project-status body lines for the TUI: a `plans (N):` subheader with one line per plan,
+ * then an `open bugs (M):` subheader and one line per bug. An empty section renders `(none)`
+ * under its subheader; when both are empty the whole view is a single self-explanatory line.
+ * Pure, so it is unit-testable without touching disk. */
+export function backlogLines(plans: string[], bugs: string[]): string[] {
+  if (plans.length === 0 && bugs.length === 0) return ["(no planned features or open bugs)"];
+  const lines = [`plans (${plans.length}):`];
+  lines.push(...(plans.length ? plans : ["(none)"]));
+  lines.push(`open bugs (${bugs.length}):`);
+  lines.push(...(bugs.length ? bugs : ["(none)"]));
+  return lines;
 }
 
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
