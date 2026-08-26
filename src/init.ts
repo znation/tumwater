@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig, saveConfig } from "./config.js";
 import { COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
-import { readmeTemplate } from "./readme.js";
+import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "./readme.js";
 import { STATE_DIR, configPath } from "./paths.js";
 
 const PLANS_TEMPLATE = `# Plans
@@ -56,6 +56,15 @@ export async function initProject(root: string, initialPrompt: string): Promise<
   }
   if (!initialPrompt.trim()) {
     throw new Error("an initial prompt is required: tumwater init <prompt | --file prompt.md>");
+  }
+  // The loops read the project's reason to exist back out of README.md on every tick
+  // (readInitialPrompt). If a README already exists without the managed section, it would be
+  // left untouched and the prompt silently dropped — every loop would then run blind. Fail
+  // before creating anything so the user fixes the README and re-runs.
+  if (fs.existsSync(path.join(root, "README.md")) && readInitialPrompt(root) === "") {
+    throw new Error(
+      `README.md already exists without an initial prompt between the tumwater:prompt markers, so your prompt would be lost — add it to README.md between ${PROMPT_START} and ${PROMPT_END} (or delete README.md so init creates one), then re-run \`tumwater init\``,
+    );
   }
 
   const created: string[] = [];

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { readInitialPrompt } from "../src/readme.js";
+import { PROMPT_END, PROMPT_START, readInitialPrompt } from "../src/readme.js";
 import { loadConfig } from "../src/config.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
@@ -31,15 +31,38 @@ test("initProject works on a repo with no commits", async () => {
 
 test("initProject never clobbers existing files and is idempotent", async () => {
   const repo = makeRepo();
-  fs.writeFileSync(path.join(repo, "README.md"), "# mine\n");
+  fs.writeFileSync(path.join(repo, "PLANS.md"), "# mine\n");
   sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "own readme");
+  sh(repo, "git", "commit", "-m", "own plans");
   const first = await initProject(repo, "prompt");
-  assert.ok(!first.created.includes("README.md"));
-  assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), "# mine\n");
+  assert.ok(!first.created.includes("PLANS.md"));
+  assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), "# mine\n");
   const second = await initProject(repo, "prompt");
   assert.deepEqual(second.created, []);
   assert.ok(!second.committed);
+});
+
+test("initProject refuses to drop the initial prompt when README has no tumwater markers", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "README.md"), "# mine\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own readme");
+  await assert.rejects(() => initProject(repo, "prompt"), /tumwater:prompt/);
+  // Nothing was created or committed — the user fixes README.md and re-runs.
+  for (const f of ["PLANS.md", "BUGS.md", "tumwater.json"]) {
+    assert.ok(!fs.existsSync(path.join(repo, f)), `${f} should not exist`);
+  }
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+});
+
+test("initProject accepts an existing README that already carries the prompt", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "README.md"), `# mine\n${PROMPT_START}\nmy prompt\n${PROMPT_END}\n`);
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own readme with markers");
+  const result = await initProject(repo, "prompt");
+  assert.ok(!result.created.includes("README.md"));
+  assert.equal(readInitialPrompt(repo), "my prompt");
 });
 
 test("initProject rejects non-repos and empty prompts", async () => {
