@@ -232,6 +232,26 @@ function fastConfig(roles: string[], model?: string): TumwaterConfig {
   return c;
 }
 
+/** Start a live orchestrator on `repo` with the config currently on disk, for tests that
+ * drive it while running. Returns its exit promise plus `stop`, which aborts the run and
+ * awaits its exit — swallowing shutdown noise so the test's own failure (if any) stays
+ * visible; call `stop` from finally after other cleanup (e.g. restoring a fake pi). */
+function startLiveOrchestrator(repo: string): { done: Promise<void>; stop: () => Promise<void> } {
+  const controller = new AbortController();
+  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  return {
+    done,
+    async stop() {
+      controller.abort();
+      try {
+        await done;
+      } catch {
+        // The test's own failure (if any) takes precedence over shutdown noise.
+      }
+    },
+  };
+}
+
 test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-known-good", async () => {
   const repo = makeRepo();
   await initProject(repo, "live reload test");
@@ -239,8 +259,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
   const argsFile = path.join(tmpdir(), "argv.log");
   fs.rmSync(argsFile, { force: true }); // A previous run's lines must not leak into this one.
   const restore = recordingFakePi(argsFile);
-  const controller = new AbortController();
-  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  const orch = startLiveOrchestrator(repo);
   try {
     // Assert on what pi actually saw (its recorded argv), not on tick counts: a tick can be
     // scheduled before our file write lands, so only the argv evidence pins a run to a config.
@@ -281,12 +300,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
     assert.equal(warnings().length, 1, "no new warnings once the file is fixed");
   } finally {
     restore();
-    controller.abort();
-    try {
-      await done;
-    } catch {
-      // The test's own failure (if any) takes precedence over shutdown noise.
-    }
+    await orch.stop();
   }
 });
 
@@ -297,8 +311,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
   await initProject(repo, "reset counters e2e test");
   saveConfig(repo, fastConfig(["clean"]));
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const controller = new AbortController();
-  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  const orch = startLiveOrchestrator(repo);
   try {
     // Let a couple of ticks accumulate counters in the runner's memory.
     await waitFor(
@@ -335,12 +348,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     assert.equal(resets[0]?.loop, "clean");
   } finally {
     restore();
-    controller.abort();
-    try {
-      await done;
-    } catch {
-      // The test's own failure (if any) takes precedence over shutdown noise.
-    }
+    await orch.stop();
   }
 });
 
@@ -360,8 +368,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
   saveConfig(repo, fastConfig(["clean", "dry"]));
   seedCounters(repo, "clean", "dry");
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const controller = new AbortController();
-  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  const orch = startLiveOrchestrator(repo);
   try {
     // What `tumwater reset-counters` without --role writes: a marker naming every role.
     const markerFile = resetRequestPath(repo);
@@ -384,12 +391,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
     assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
   } finally {
     restore();
-    controller.abort();
-    try {
-      await done;
-    } catch {
-      // The test's own failure (if any) takes precedence over shutdown noise.
-    }
+    await orch.stop();
   }
 });
 
@@ -399,8 +401,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
   saveConfig(repo, fastConfig(["clean", "dry"]));
   seedCounters(repo, "clean", "dry");
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const controller = new AbortController();
-  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  const orch = startLiveOrchestrator(repo);
   try {
     // Garbage where the marker should be: JSON.parse throws → requested stays null → every
     // runner resets (a documented superset — skipping it would let the next tick's save
@@ -422,12 +423,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
     assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
   } finally {
     restore();
-    controller.abort();
-    try {
-      await done;
-    } catch {
-      // The test's own failure (if any) takes precedence over shutdown noise.
-    }
+    await orch.stop();
   }
 });
 
@@ -437,8 +433,7 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
   saveConfig(repo, fastConfig(["clean", "dry"]));
   const argsFile = path.join(tmpdir(), "argv.log");
   const restore = recordingFakePi(argsFile);
-  const controller = new AbortController();
-  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  const orch = startLiveOrchestrator(repo);
   try {
     const finished = (role: string) => {
       const s = loadLoopState(repo, role);
@@ -470,11 +465,6 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     assert.ok(messages().some((m) => m.includes("role dry enabled — starting ticks")), "re-enable transition logged");
   } finally {
     restore();
-    controller.abort();
-    try {
-      await done;
-    } catch {
-      // The test's own failure (if any) takes precedence over shutdown noise.
-    }
+    await orch.stop();
   }
 });
