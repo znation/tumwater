@@ -1,6 +1,7 @@
 # Steward role — whole-system judgment on a slow clock
 
-Planned 2026-08-24 · from the "Senior Tumwater" report (HN 49421554) · report item R5
+Planned 2026-08-24 · refined 2026-08-25 (cadence knob already exists globally; catalog
+placement) · from the "Senior Tumwater" report (HN 49421554) · report item R5
 
 ## Goal
 
@@ -20,8 +21,10 @@ them, and nothing compares the codebase to the project's reason for existing.
 
 ## Design
 
-- **Role** (`src/roles.ts`): id `steward`, title "project steward", placed after `director` in
-  catalog order (lowest tie-break priority — it should never outrank shipping work). Find prompt,
+- **Role** (`src/roles.ts`): id `steward`, title "project steward", appended to the end of the
+  `ROLES` array — after `improve`. The director is not a catalog entry (it is appended separately
+  by `allRoleIds()`), so last-in-`ROLES` is exactly the lowest tie-break priority: it should never
+  outrank shipping work. Find prompt,
   in spirit: "Re-read the initial prompt, PRINCIPLES.md, PLANS.md, BUGS.md, and QUESTIONS.md, and
   skim the codebase's shape (sizes, module list, test count). Then make ONE curation move, the
   most valuable one: delete or merge stale/duplicative/superseded PLANS.md entries (with a one-line
@@ -31,11 +34,18 @@ them, and nothing compares the codebase to the project's reason for existing.
 - **Write access**: explicitly allowed to edit PRINCIPLES.md (the exception alongside the
   director; see [principles.md](principles.md)) and to delete PLANS.md entries — the only role so
   empowered.
-- **Slow cadence**: add optional per-role `minTickIntervalSeconds` to `RoleConfig`
-  (`src/types.ts`, `src/config.ts` validation, honored in `isEligible` and the runner's own
-  scheduling in `src/orchestrator.ts`/`src/loop.ts`). Default for steward in `defaultConfig()`:
-  21600 (6 h). This override is generally useful — the same knob later serves the QA role.
-  Backoff still applies on no-change ticks, capped as usual.
+- **Slow cadence**: a *global* `minTickIntervalSeconds` already exists (`TumwaterConfig`,
+  default 20 s) and is read at two sites — the min-gap check in `isEligible`
+  (src/orchestrator.ts) and the `nextRunAt` assignments in src/loop.ts. Add an optional
+  **per-role** override to `RoleConfig` (`src/types.ts`, validated like the other role keys in
+  src/config.ts) that falls back to the global, mirroring the provider/model/thinking pattern:
+  extend `configForRole` (or a sibling accessor) with the fallback and resolve at both read sites
+  — `LoopRunner.config` holds the *raw* config, so neither site sees role overrides unless it
+  resolves. Steward's default in `defaultConfig()`: per-role `minTickIntervalSeconds: 21600`
+  (6 h) on its entry. Because runners get their config replaced on every live-reload poll, cadence
+  edits apply within ~2 s like the other tick-interval settings. This override is generally useful
+  — the same knob later serves the QA role. Backoff still applies on no-change ticks, capped as
+  usual.
 - **Thinking budget**: dogfood config points steward at the strong model with high thinking via
   the existing per-role overrides; defaults leave it inheriting.
 - **Complexity budget**: the steward maintains a short "Budgets" section in PRINCIPLES.md (total
@@ -46,9 +56,11 @@ them, and nothing compares the codebase to the project's reason for existing.
 
 ## Files touched
 
-`src/roles.ts`, `src/types.ts`, `src/config.ts`, `src/orchestrator.ts`, `src/loop.ts` (interval
-override plumbing), `tumwater.json` (enable + cadence), `test/steward.test.ts` (role prompt
-contract; interval override honored in eligibility; catalog order), README roles list.
+`src/roles.ts`, `src/types.ts`, `src/config.ts` (RoleConfig field, validation, `configForRole`
+fallback, defaultConfig steward entry), `src/orchestrator.ts` + `src/loop.ts` (resolve the
+per-role value at both minTickIntervalSeconds read sites), `tumwater.json` (dogfood: enable +
+cadence), `test/steward.test.ts` (role prompt contract; interval override honored in eligibility
+and nextRunAt, with global fallback when unset; catalog order), README roles list.
 
 ## Acceptance criteria
 
@@ -56,7 +68,8 @@ contract; interval override honored in eligibility; catalog order), README roles
   scheduler (unit-testable via `isEligible` with a shortened override).
 - Its prompt contains the curation move list, the markdown-only restriction, and the PLANS.md
   deletion/PRINCIPLES.md edit powers; prompt tests assert all three.
-- Per-role `minTickIntervalSeconds` is validated config and works for any role.
+- Per-role `minTickIntervalSeconds` is validated config that works for any role, falls back to
+  the global value when unset, and applies live on tumwater.json edits (no restart).
 - Dogfood: within its first day enabled, the steward has made at least one curation commit
   (md-only) — verified by observation, not by test. `npm test` passes.
 

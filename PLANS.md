@@ -111,10 +111,11 @@ features in the TUI/GUI" (above): this plan owns the header badge; that plan own
 list sections. The report's
 answer to "software lacks victory conditions": be excellent at requesting them.
 
-### Steward role — whole-system judgment on a slow clock (planned 2026-08-24)
+### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25)
 
 Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
-~6 h cadence (adds per-role `minTickIntervalSeconds`) that re-reads the initial prompt,
+~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob) that
+re-reads the initial prompt,
 PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move: prune/merge
 plans (the only role allowed to delete entries), flag drift, keep the complexity budget honest.
 The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes mandatory.
