@@ -671,11 +671,8 @@ test("config validation accepts 0 and rejects negatives for quietTimeoutSeconds"
 });
 
 test("a zombie stream dripping content-free keepalive updates is killed as hung", async () => {
-  const repo = await (async () => {
-    const r = makeRepo();
-    await initProject(r, "zombie stream test");
-    return r;
-  })();
+  const repo = makeRepo();
+  await initProject(repo, "zombie stream test");
   // Emits an identical empty message_update every 200ms forever — bytes without progress,
   // exactly what a dead generation's kept-alive connection looks like.
   const keepalive = JSON.stringify({
