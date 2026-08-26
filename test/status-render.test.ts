@@ -187,3 +187,53 @@ test("loopPhase live detail degrades to plain working when the tick has no start
   s.running = true;
   assert.equal(loopPhase(s, true, root), "working · turn 2 · ctx 3000");
 });
+
+// Current work item in the table's state cell (renderStatus row level).
+
+test("renderStatus prepends the current work item to a working loop's state cell", () => {
+  const root = tmpdir();
+  writePiLog(root, "feature", [
+    SESSION,
+    assistantLine('implement plan "Linear history on main"'),
+    toolStart("bash", { command: "npm test" }),
+  ]);
+  // Orchestrator running (snap.running) so the in-flight tick renders as working.
+  const snap = { ...snapshotWith([{ role: "feature", running: true, lastTickStartedAt: Date.now() - 5_000 }]), running: true };
+  const out = renderStatus(root, snap);
+  assert.match(out, /implement plan "Linear history on main" · working \ds · turn 2/);
+});
+
+test("renderStatus does not leak a finished tick's work item into an idle loop's state cell", () => {
+  const root = tmpdir();
+  writePiLog(root, "feature", [SESSION, assistantLine("old finished work")]);
+  // Orchestrator running but the loop itself is idle (queued/sleeping).
+  const snap = { ...snapshotWith([{ role: "feature" }]), running: true };
+  const out = renderStatus(root, snap);
+  assert.doesNotMatch(out, /old finished work/);
+});
+
+test("renderStatus leaves the state cell unchanged while working but before any text", () => {
+  const root = tmpdir();
+  writePiLog(root, "feature", [SESSION, toolStart("bash", { command: "npm test" })]); // no assistant text yet
+  const snap = { ...snapshotWith([{ role: "feature", running: true, lastTickStartedAt: Date.now() - 5_000 }]), running: true };
+  assert.match(renderStatus(root, snap), /working \ds · turn 1/);
+});
+
+test("work items survive narrow-terminal clipping at the head of the state cell", () => {
+  const root = tmpdir();
+  writePiLog(
+    root,
+    "feature",
+    [SESSION, assistantLine(`implement plan "${"x".repeat(50)}"`), toolStart("bash", { command: "npm test" })],
+  );
+  const snap = { ...snapshotWith([{ role: "feature", running: true, lastTickStartedAt: Date.now() - 5_000 }]), running: true };
+  for (const width of [80, 60]) {
+    for (const line of renderStatus(root, snap, width).split("\n")) {
+      assert.ok(line.length <= width, `width ${width} violated: ${line.length}`);
+    }
+  }
+  // The item is prepended, so its head survives even when the cell shrinks to its minimum
+  // and gets clipped hard (an appended item would be invisible at this width).
+  const narrow = renderStatus(root, snap, 60).split("\n").find((l) => l.startsWith("feature")) ?? "";
+  assert.match(narrow, /^feature\s+implement p…/);
+});

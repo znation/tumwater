@@ -5,57 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Show current work item per active loop in the GUI/TUI tables (planned 2026-08-25)
-
-**Goal:** Both dashboards show, for each *working* loop, a short description of what it is
-currently doing — e.g. `implement plan "Linear history on main"` or `fix bug: zombie streams` —
-so the user sees at a glance what the fleet is up to without opening transcripts. Idle loops
-show nothing new (`-` in the GUI). Requested by the user; the TUI is secondary — if it does not
-fit cleanly, ship GUI-only (the user's explicit fallback).
-
-**Source of truth:** the first assistant *text* message of the current run in the loop's raw pi
-log. Role loops state their chosen work item early ("I'll implement plan X" / "The open bug is
-Y"), and runs are already delimited by `session` events — the same boundary `readLiveProgress`
-uses (current run = after the last `session`). No new persistence, no loop.ts change: extend the
-existing incremental tail parse.
-
-**Approach:**
-- `src/progress.ts`: add `currentWork?: string` to `LiveProgress`. In `feedLine`: on a `session`
-  event reset it to undefined (new run); on an assistant `message_end`, if still unset, take the
-  first non-empty text content block from `message.content`, collapse whitespace, and truncate to
-  ~60 chars with an ellipsis. Runs whose early messages are thinking/tool-calls only stay unset
-  until some message carries text (renders `-`). The field flows through `readLiveProgress`'s
-  existing tail cache automatically — no new file reads.
-- TUI/one-shot status (`src/status-render.ts`, `workingDetail`): when set, prepend the work item
-  to a working loop's state cell — e.g. `implement plan X · working 3m · turn 2 · ctx 45k`.
-  Prepending (not appending) so it survives ellipsis clipping on narrow terminals. No new column:
-  the table is already width-tight at 80 cols, and adding a ninth would break the no-wrap
-  contract / positional `FLEXIBLE_COLUMNS`; the state cell (index 1, flexible, min 12) absorbs
-  the extra width exactly like `lastTool` does today.
-- GUI payload (`src/gui.ts`, `statusPayload`): add `currentWork: string | null` per loop — from
-  `readLiveProgress(root, s.role)` when `s.running`, else null (never show a stale item from a
-  finished tick).
-- GUI page (`src/gui-page.ts`): new `<th>current</th>` column inserted right after `state`
-  (deliberately NOT between `cost` and `last result` — the pending timestamp plan inserts its
-  column there; keep the two apart), rendered in `refresh()`'s row builder from `l.currentWork`,
-  `-` when null. Keep every inline `<script>` body parseable (test/gui.test.ts asserts this).
-
-**Files touched:** `src/progress.ts`, `src/status-render.ts`, `src/gui.ts`, `src/gui-page.ts`;
-tests: extend `test/progress.test.ts` (capture, reset on new session, whitespace collapse +
-truncation, no-text run), `test/working-detail.test.ts` (prepend in the state cell; clipping at
-narrow width), `test/gui.test.ts` (payload field + served page contains the column header).
-
-**Acceptance criteria:**
-- While a loop is working and its pi log has an assistant text message for the current run, both
-  surfaces show that work item: GUI in its own `current` column; TUI/one-shot status prepended in
-  the state cell. It appears within one poll of the first text message landing.
-- Idle/sleeping/queued loops show no work item (`-` in the GUI, unchanged state cell in the TUI);
-a finished tick's item never lingers into idle time.
-- Runs with only thinking/tool-call messages so far render `-`, not empty or stale text.
-- Work items are truncated to ~60 chars; the TUI width contract is preserved (no line exceeds
-  `maxWidth` at 80 cols).
-- `npm test` passes.
-
 ### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)
 
 **Goal:** The dashboard surfaces project status, not just loop status: both the TUI and the web
@@ -232,6 +181,24 @@ the new column header.
 - `npm test` passes.
 
 ## Done
+
+### Show current work item per active loop in the GUI/TUI tables (planned 2026-08-25, done 2026-08-25)
+
+Both dashboards now show what each working loop is doing at a glance. `LiveProgress` gains
+`currentWork`, captured in feedLine from the first non-empty assistant text block of the current
+run — whitespace-collapsed and truncated to ~60 chars with an ellipsis; reset on every `session`
+event, so thinking/tool-call-only runs stay unset until some message carries text (renders `-`).
+TUI/one-shot status: the table's state cell prepends it while a tick is in flight (`implement
+plan X · working 3m · turn 2`) — prepending so the item survives ellipsis clipping on narrow
+terminals; idle loops are untouched, so a finished tick's item never lingers. GUI: `/api/status`
+carries `currentWork` per loop (from readLiveProgress when running, else null) and the loop table
+gains a `current` column right after state (`-` when null). One deliberate deviation from the
+plan: the prepend happens at the renderStatus row level rather than inside workingDetail — the
+GUI's state cell already renders workingDetail via phase, so prepending there would have shown
+the item twice in adjacent columns. Tests: progress capture/reset/collapse/truncation/no-text
+cases; renderStatus prepend + no-leak + narrow-width clipping (item head survives); payload field
+for running-only loops and the page column header. Files: src/progress.ts, src/status-render.ts,
+src/gui.ts, src/gui-page.ts, test/progress.test.ts, test/status-render.test.ts, test/gui.test.ts.
 
 ### CLI subcommand to reset loop counters — ticks, commits, tokens, cost (planned 2026-08-25,
 refined 2026-08-25, done 2026-08-25)

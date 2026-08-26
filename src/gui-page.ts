@@ -34,7 +34,7 @@ export const GUI_PAGE = `<!doctype html>
   <button>send</button><span id="flash"></span>
 </form>
 <table>
-  <thead><tr><th>loop</th><th>state</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>last result</th></tr></thead>
+  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>last result</th></tr></thead>
   <tbody id="loops"></tbody>
 </table>
 <div id="transcript" hidden></div>
@@ -69,7 +69,7 @@ export const GUI_PAGE = `<!doctype html>
         return "<tr><td><a href='#' class='looplink" + (transcriptRole === l.role ? " active" : "") +
           "' data-role='" + esc(l.role) + "'>" + esc(l.role) + "</a></td>"
           + "<td class='wide " + cls + "'>" + esc(l.phase)
-          + "</td><td>" + l.ticks + "</td><td>" + l.commits + "</td><td>" + fmtTokens(l.generated) +
+          + "</td><td class='wide'>" + esc(l.currentWork ?? "-") + "</td><td>" + l.ticks + "</td><td>" + l.commits + "</td><td>" + fmtTokens(l.generated) +
           "</td><td>" + fmtTokens(l.peakCtx) +
           "</td><td>$" + l.costUsd.toFixed(2) + "</td><td class='wide'>" + esc(last) + "</td></tr>";
       }).join("");

@@ -78,6 +78,57 @@ test("parseProgress survives noise and blank lines", () => {
   assert.equal(p.turns, 1);
 });
 
+// Current work item: the first assistant text of the run ("I'll implement plan X").
+
+test("parseProgress captures the first assistant text as the current work item", () => {
+  const lines = [
+    SESSION,
+    JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "thinking", thinking: "hmm" }] } }),
+    toolStart("read", { path: "PLANS.md" }),
+    assistantLine('I\'ll implement plan "Linear history on main"'),
+    assistantLine("a later message must not replace it"),
+  ];
+  const p = parseProgress(lines, 0);
+  assert.equal(p.currentWork, 'I\'ll implement plan "Linear history on main"');
+});
+
+test("parseProgress resets the work item at a new session", () => {
+  const lines = [
+    SESSION,
+    assistantLine("old tick's work item"),
+    SESSION,
+    toolStart("bash", { command: "npm test" }), // no text yet in the new run
+  ];
+  assert.equal(parseProgress(lines, 0).currentWork, undefined);
+});
+
+test("parseProgress collapses whitespace and truncates long work items with an ellipsis", () => {
+  const spaced = parseProgress([SESSION, assistantLine("  fix   the\n\tzombie streams  ")], 0);
+  assert.equal(spaced.currentWork, "fix the zombie streams");
+
+  const p = parseProgress([SESSION, assistantLine("a".repeat(80))], 0);
+  assert.ok(p.currentWork && p.currentWork.length <= 60, `too long: ${p.currentWork?.length}`);
+  assert.match(p.currentWork ?? "", /…$/);
+});
+
+test("parseProgress leaves the work item unset for thinking/tool-call-only runs", () => {
+  const lines = [
+    SESSION,
+    JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "thinking", thinking: "planning" }], usage: {} } }),
+    toolStart("bash", { command: "npm test" }),
+  ];
+  assert.equal(parseProgress(lines, 0).currentWork, undefined);
+});
+
+test("parseProgress skips empty text blocks when capturing the work item", () => {
+  const lines = [
+    SESSION,
+    JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "   " }, { type: "thinking", thinking: "x" }] } }),
+    assistantLine("the real item"),
+  ];
+  assert.equal(parseProgress(lines, 0).currentWork, "the real item");
+});
+
 test("readLiveProgress reads the loop's raw log and reports quiet time", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");

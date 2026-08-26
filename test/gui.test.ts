@@ -149,6 +149,41 @@ test("status payload combines persisted + live token metrics for running loops o
   assert.equal(feature.peakCtx, 12_000, "running loop peak ctx = max(persisted, live)");
 });
 
+test("status payload carries the current work item for running loops only", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui work item test");
+  // A running loop whose in-flight tick has spoken its work item...
+  const s = freshLoopState("feature");
+  s.running = true;
+  saveLoopState(repo, s);
+  const file = piLogPath(repo, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    [SESSION, assistantLine('implement plan "Linear history on main"')].join("\n") + "\n",
+  );
+  // ...and an idle loop whose log tail is a finished tick (must not leak its item).
+  saveLoopState(repo, freshLoopState("clean"));
+  const file2 = piLogPath(repo, "clean");
+  fs.mkdirSync(path.dirname(file2), { recursive: true });
+  fs.writeFileSync(file2, [SESSION, assistantLine("old finished work")].join("\n") + "\n");
+
+  const payload = statusPayload(repo) as {
+    loops: Array<{ role: string; currentWork: string | null }>;
+  };
+  assert.equal(
+    payload.loops.find((l) => l.role === "feature")?.currentWork,
+    'implement plan "Linear history on main"',
+    "running loop shows its in-flight work item",
+  );
+  assert.equal(payload.loops.find((l) => l.role === "clean")?.currentWork, null, "idle loop never shows a stale item");
+});
+
+test("the dashboard page has a current column after state", async () => {
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+  assert.match(GUI_PAGE, /<th>state<\/th><th>current<\/th>/);
+});
+
 test("gui rejects oversized prompt bodies with 413 instead of buffering them unboundedly", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui body limit test");

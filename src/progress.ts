@@ -18,6 +18,8 @@ export interface LiveProgress {
   peakContextTokens: number;
   /** Short human label of the most recent tool call, e.g. `bash npm test`. */
   lastTool?: string;
+  /** What the loop is working on: first assistant text of the current run (~60 chars). */
+  currentWork?: string;
   /** ms since pi last emitted anything (from file mtime). */
   quietMs: number;
 }
@@ -32,6 +34,24 @@ const TAIL_BYTES = 4 * 1024 * 1024;
  * log paths observed in this process (one root × its roles for a TUI/GUI). */
 const tails = new Map<string, TailState<LiveProgress>>();
 
+/** Max length of a captured work item, ellipsis included (~60 chars). */
+const WORK_ITEM_MAX = 60;
+
+/** First non-empty text block of an assistant message: whitespace-collapsed and truncated to
+ * WORK_ITEM_MAX. Thinking/tool-call-only (or empty-text) messages yield undefined, so the
+ * work item stays unset until some message actually carries text. */
+function workItemFromContent(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  for (const raw of content) {
+    const block = raw as { type?: unknown; text?: unknown } | null;
+    if (block?.type !== "text" || typeof block.text !== "string") continue;
+    const collapsed = block.text.replace(/\s+/g, " ").trim();
+    if (!collapsed) continue;
+    return collapsed.length <= WORK_ITEM_MAX ? collapsed : `${collapsed.slice(0, WORK_ITEM_MAX - 1).trimEnd()}…`;
+  }
+  return undefined;
+}
+
 function freshProgress(quietMs: number): LiveProgress {
   return { turns: 0, toolCalls: 0, contextTokens: 0, outputTokens: 0, peakContextTokens: 0, quietMs };
 }
@@ -43,7 +63,7 @@ function feedLine(progress: LiveProgress, line: string): void {
     type?: string;
     toolName?: string;
     args?: unknown;
-    message?: { role?: string; usage?: { totalTokens?: number; output?: number } };
+    message?: { role?: string; content?: unknown; usage?: { totalTokens?: number; output?: number } };
   };
   try {
     event = JSON.parse(line);
@@ -58,6 +78,7 @@ function feedLine(progress: LiveProgress, line: string): void {
       progress.outputTokens = 0;
       progress.peakContextTokens = 0;
       progress.lastTool = undefined;
+      progress.currentWork = undefined;
       break;
     case "tool_execution_start":
       progress.toolCalls += 1;
@@ -72,6 +93,9 @@ function feedLine(progress: LiveProgress, line: string): void {
           progress.outputTokens += usage.output ?? 0;
           progress.peakContextTokens = Math.max(progress.peakContextTokens, usage.totalTokens ?? 0);
         }
+        // The first text the loop speaks in this run is its work item ("I'll implement plan X");
+        // later messages never replace it.
+        if (!progress.currentWork) progress.currentWork = workItemFromContent(event.message.content);
       }
       break;
   }

@@ -4,6 +4,7 @@ import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "./roles.js";
+import { readLiveProgress } from "./progress.js";
 import { snapshot } from "./status.js";
 import { displayTokenMetrics, loopPhase } from "./status-render.js";
 import { readTranscript } from "./transcript.js";
@@ -48,6 +49,9 @@ export function statusPayload(root: string): object {
       return {
         role: s.role,
         phase: loopPhase(s, snap.running, root),
+        // What a working loop is doing right now (first assistant text of the in-flight run).
+        // Null when idle — never show a stale item from a finished tick.
+        currentWork: s.running ? readLiveProgress(root, s.role)?.currentWork ?? null : null,
         ticks: s.ticks,
         commits: s.commits,
         generated: m.generated,

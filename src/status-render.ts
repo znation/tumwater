@@ -80,6 +80,19 @@ export function displayTokenMetrics(root: string, s: LoopState): { generated: nu
   };
 }
 
+/** The table's state cell: loopPhase's label, with the current work item prepended while a
+ * tick is in flight ("implement plan X · working 3m · turn 2"). Prepending — not appending —
+ * so the item survives ellipsis clipping on narrow terminals; the live detail after it is what
+ * gets clipped first. Idle loops are untouched: their log tail describes a finished tick and
+ * must not leak its work item into the state cell. (The GUI shows the same item in its own
+ * `current` column instead, so its state cell stays clean.) */
+function stateCell(root: string, s: LoopState, orchestratorRunning: boolean): string {
+  const phase = loopPhase(s, orchestratorRunning, root);
+  if (!s.running) return phase;
+  const work = readLiveProgress(root, s.role)?.currentWork;
+  return work ? `${work} · ${phase}` : phase;
+}
+
 /** Truncate to `width` with a trailing ellipsis when over. The result never exceeds
  * `width` characters (even at width ≤ 1), so clipped lines cannot wrap in a terminal of
  * that many columns. Shared by the status table and the TUI's line rendering. */
@@ -109,7 +122,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   const withMetrics = snap.loops.map((s) => ({ s, m: displayTokenMetrics(root, s) }));
   const rows = withMetrics.map(({ s, m }) => [
     s.role,
-    loopPhase(s, snap.running, root),
+    stateCell(root, s, snap.running),
     String(s.ticks),
     String(s.commits),
     tokens(m.generated),
