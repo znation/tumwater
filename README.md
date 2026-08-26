@@ -142,7 +142,12 @@ restart.
   turn ends mid-thought with no text and no tool call, the agent loop finishes, and the tick
   lands as `no_change` with a "finished without changes and without declaring nothing-to-do"
   warning (now annotated with "likely cut off at the context ceiling"). Harmless: pi
-  auto-compacts the session at end of run and the next tick resumes normally.
+  auto-compacts the session at end of run and the next tick resumes normally. Prevention: pi
+  only checks its compaction threshold (`contextWindow − reserveTokens`) at the END of a run,
+  so raise `compaction.reserveTokens` in pi's settings.json until the threshold leaves room
+  for a full run's context growth (observed ~20k/run) below the clamp cliff at
+  ~`contextWindow − 4096` — e.g. 28672 for an 87000 window. Read per pi spawn; applies from
+  the next tick without a fleet restart.
 - **Match clients to slots, or prefix caches thrash**: each server slot keeps the KV prefix of
   the last request it served. Keep the number of concurrent tumwater clients — `maxConcurrent`
   plus one for the director's bypass — at or below the server's slot count. One client over, and
