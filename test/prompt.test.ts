@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   NOTHING_TO_DO,
   buildDirectorPrompt,
+  buildResumePrompt,
   buildTickPrompt,
   extractSummary,
   isNothingToDo,
@@ -104,6 +105,36 @@ test("buildDirectorPrompt routes work to the specialist loops instead of impleme
   assert.match(prompt, /record it in BUGS\.md/);
   assert.match(prompt, /Do not build\n {2}it now/);
   assert.match(prompt, /Do not fix it now/);
+});
+
+// The resume prompt is sent into the SAME pi session as an interrupted run, which already
+// carries the original prompt and work — so it only bridges the gap. Its contract matters:
+// without the restated sentinel/SUMMARY rules the harness could not parse a resumed tick's end.
+
+test("buildResumePrompt tells the resumed session to finish the same task", () => {
+  const p = buildResumePrompt("feature");
+  // Names the role and explains why this run is different: a restart mid-run, with the
+  // worktree left exactly as it was.
+  assert.match(p, /"feature"/);
+  assert.match(p, /restarted/i);
+  // A tool call may have been cut off by the restart — verify its effect before relying on it.
+  assert.match(p, /verify its effect/i);
+  // Continue the interrupted task rather than picking a new one.
+  assert.match(p, /Continue the SAME task/);
+  // The harness contract that lets a resumed tick end cleanly is restated: one focused
+  // task, no git commits by pi, and the sentinel + SUMMARY line the harness parses.
+  assert.match(p, /ONE focused task/);
+  assert.match(p, /Never create, amend, or revert git commits/);
+  assert.ok(p.includes(NOTHING_TO_DO));
+  assert.ok(
+    p.includes("SUMMARY: <imperative one-line description of the change, at most 72 characters>"),
+  );
+});
+
+test("buildResumePrompt differs across roles only in the role name", () => {
+  const a = buildResumePrompt("feature");
+  const b = buildResumePrompt("clean").replaceAll('"clean"', '"feature"');
+  assert.equal(b, a, "no per-role drift in the bridge instructions");
 });
 
 test("extractSummary finds the SUMMARY line anywhere in the reply", () => {
