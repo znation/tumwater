@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { followFile, pruneOldFiles, readCompleteLines, rotateIfLarge } from "../src/files.js";
+import { followFile, pruneOldFiles, readCompleteLines, rotateIfLarge, withTail, type TailState } from "../src/files.js";
 import { tmpdir } from "./util.js";
 
 /** Poll until `pred` holds or the timeout elapses; returns whether it held. */
@@ -136,6 +136,54 @@ test("followFile waits for a missing file to appear", async () => {
   } finally {
     stop();
   }
+});
+
+test("withTail reseeds when the file is truncated in place (same inode)", () => {
+  // The rotation tests cover rename (new dev/ino); this pins the other half of the reseed
+  // condition: an in-place truncation keeps the inode but shrinks below the consumed
+  // offset. Without that check the reader would stall at its stale offset and skip every
+  // line written until the file grew past it again.
+  const dir = tmpdir();
+  const file = path.join(dir, "log.jsonl");
+  fs.writeFileSync(file, "a\nb\nc\n");
+  const tails = new Map<string, TailState<string[]>>();
+  const fresh = (_size: number) => ({ fromOffset: 0, value: [] as string[] });
+  const feed = (v: string[], line: string) => {
+    if (line) v.push(line);
+  };
+
+  let val = withTail(tails, file, fs.statSync(file), fresh, feed);
+  assert.deepEqual(val, ["a", "b", "c"], "first observation seeds from scratch");
+
+  fs.appendFileSync(file, "d\n");
+  val = withTail(tails, file, fs.statSync(file), fresh, feed);
+  assert.deepEqual(val, ["a", "b", "c", "d"], "append-only growth folds only the new lines");
+
+  // Truncate in place (writeFileSync truncates but keeps dev/ino) and rewrite smaller.
+  fs.writeFileSync(file, "e\n");
+  val = withTail(tails, file, fs.statSync(file), fresh, feed);
+  assert.deepEqual(val, ["e"], "in-place shrink reseeds instead of stalling at the old offset");
+
+  // And keeps consuming appends afterwards.
+  fs.appendFileSync(file, "f\n");
+  val = withTail(tails, file, fs.statSync(file), fresh, feed);
+  assert.deepEqual(val, ["e", "f"]);
+});
+
+test("withTail bounds its tail cache: seeding many files never grows it unbounded", () => {
+  // Long-lived observers (TUI/GUI) poll one log per root; short-lived roots (tests, scratch
+  // repos) must not accumulate a tail entry each. The cap evicts on seed — assert the
+  // contract (bounded), not the exact constant.
+  const dir = tmpdir();
+  const tails = new Map<string, TailState<number>>();
+  const fresh = (_size: number) => ({ fromOffset: 0, value: 0 });
+  const feed = (v: number) => v + 1;
+  for (let i = 0; i < 200; i++) {
+    const f = path.join(dir, `f${i}.jsonl`);
+    fs.writeFileSync(f, "x\n");
+    withTail(tails, f, fs.statSync(f), fresh, feed);
+  }
+  assert.ok(tails.size < 100, `tail cache must stay bounded (got ${tails.size} entries)`);
 });
 
 test("readCompleteLines returns only complete lines and stops at the last newline", () => {
