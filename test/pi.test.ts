@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { PiStreamParser, findOnPath, piArgs, runPi } from "../src/pi.js";
@@ -329,7 +330,6 @@ test("a spawn failure does not mark a session as resumable", async () => {
   await initProject(repo, "spawn failure test");
   // A PATH with git but no pi, so only the pi spawn fails.
   const binDir = tmpdir();
-  const { execSync } = await import("node:child_process");
   fs.symlinkSync(execSync("which git", { encoding: "utf8" }).trim(), path.join(binDir, "git"));
   const oldPath = process.env.PATH;
   process.env.PATH = binDir;
