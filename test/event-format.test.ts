@@ -53,3 +53,12 @@ test("formatEvent degrades gracefully for unknown event types", () => {
   const line = formatEvent({ ts: 0, loop: "clean", type: "brand_new_type" } as never);
   assert.match(line, /clean\s+brand_new_type/, `unknown types must still render their name: ${line}`);
 });
+
+test("formatEvent renders counters_reset plainly, naming all roles when several are affected", () => {
+  const single = formatEvent({ ts: 0, loop: "clean", type: "counters_reset" } as never);
+  assert.match(single, /clean\s+counters reset \(ticks, commits, tokens, cost\)/);
+  const multi = formatEvent(
+    { ts: 0, loop: "harness", type: "counters_reset", roles: ["feature", "bugfix"] } as never,
+  );
+  assert.match(multi, /harness\s+counters reset for feature, bugfix \(ticks, commits, tokens, cost\)/);
+});

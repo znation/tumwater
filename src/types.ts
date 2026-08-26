@@ -102,6 +102,7 @@ export interface HarnessEvent {
     | "orchestrator_start"
     | "orchestrator_stop"
     | "prompt_enqueued"
+    | "counters_reset"
     | "warning";
   [key: string]: unknown;
 }

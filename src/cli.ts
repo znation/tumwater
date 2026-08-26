@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { enabledRoleIds, loadConfig } from "./config.js";
 import { allRoleIds } from "./roles.js";
+import { loadLoopState, saveLoopState, zeroCounters } from "./state.js";
 import { createTranscriptRenderer, formatTranscript } from "./transcript.js";
 import { currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
@@ -16,7 +17,7 @@ import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { runTui } from "./tui.js";
 import { startGui } from "./gui.js";
-import { eventsLogPath, piLogPath } from "./paths.js";
+import { eventsLogPath, piLogPath, resetRequestPath } from "./paths.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
 
@@ -29,6 +30,7 @@ Usage:
   tumwater logs [-f] [-n N]        Show (and follow) harness events
   tumwater logs --role <id> [-f]   Show (and follow) that loop's pi transcript
   tumwater prompt <text...>        Queue a prompt for the director loop
+  tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
   tumwater help | version
 
 The harness runs inside a git repo. Each role loop owns a persistent worktree and branch
@@ -188,6 +190,31 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
   await new Promise(() => {}); // Follow until Ctrl+C.
 }
 
+/** `tumwater reset-counters [--role <id>]`: zero the per-loop counters shown in the
+ * dashboards so a fresh observation window can begin. Zeroes each target's state file
+ * directly (works while the harness is not running) and drops a marker that a running fleet
+ * consumes within one poll cycle — it must also zero the runners' in-memory copies, or their
+ * next save resurrects the pre-reset values. Scheduling fields and pi session continuity are
+ * untouched: loops keep sleeping/waking exactly as before. */
+async function cmdResetCounters(root: string, args: string[]): Promise<void> {
+  const config = loadConfig(root);
+  let targets: string[];
+  const roleFlag = args.indexOf("--role");
+  if (roleFlag >= 0) {
+    const role = args[roleFlag + 1];
+    if (!role) fail("--role needs a role id (e.g. `--role feature`)");
+    if (!allRoleIds().includes(role)) fail(`unknown role: ${role} (valid ids: ${allRoleIds().join(", ")})`);
+    targets = [role];
+  } else {
+    targets = Object.keys(config.roles); // Default: every role in the config.
+  }
+  for (const role of targets) saveLoopState(root, zeroCounters(loadLoopState(root, role)));
+  const markerFile = resetRequestPath(root);
+  fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+  fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: targets }, null, 2));
+  process.stdout.write(`counters reset for ${targets.join(", ")} — a running fleet picks this up within ~2s\n`);
+}
+
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   const root = process.cwd();
@@ -237,6 +264,11 @@ async function main(): Promise<void> {
       if (!text) fail("prompt text required");
       submitPrompt(root, text);
       process.stdout.write("queued for the director loop\n");
+      break;
+    }
+    case "reset-counters": {
+      await requireReadyRepo(root);
+      await cmdResetCounters(root, args);
       break;
     }
     case "version":

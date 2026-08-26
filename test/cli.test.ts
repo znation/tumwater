@@ -7,9 +7,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig, loadConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize } from "../src/inbox.js";
-import { piLogPath } from "../src/paths.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
+import { piLogPath, resetRequestPath } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
@@ -222,6 +223,88 @@ test("logs --role validates the role id and reports a missing transcript", async
   assert.equal(r.code, 0);
   assert.match(r.stdout, /no transcript yet for clean/);
 });
+// --- reset-counters ---
+
+/** Seed a role's state file with non-zero counters plus scheduling/session fields. */
+function seedCounters(repo: string, role: string): void {
+  const s = freshLoopState(role);
+  s.ticks = 7;
+  s.commits = 3;
+  s.generatedTokens = 424242;
+  s.totalCostUsd = 1.5;
+  s.peakContextTokens = 65536; // high-water mark — must survive a reset
+  s.nextRunAt = Date.now() + 60_000;
+  s.backoffSeconds = 15;
+  s.lastMainHead = "deadbeef";
+  s.hasSession = true;
+  saveLoopState(repo, s);
+}
+
+test("reset-counters zeroes counters in every role's state file and writes the fleet marker", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reset counters test");
+  seedCounters(repo, "feature");
+  seedCounters(repo, "clean");
+
+  const r = await cli(repo, "reset-counters");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /counters reset for/);
+  assert.match(r.stdout, /running fleet picks this up within ~2s/);
+
+  for (const role of ["feature", "clean"]) {
+    const s = loadLoopState(repo, role);
+    assert.equal(s.ticks, 0, `${role} ticks`);
+    assert.equal(s.commits, 0, `${role} commits`);
+    assert.equal(s.generatedTokens, 0, `${role} tokens`);
+    assert.equal(s.totalCostUsd, 0, `${role} cost`);
+    // Scheduling and session continuity are untouched.
+    assert.ok(s.nextRunAt > Date.now(), `${role} keeps its sleep window`);
+    assert.equal(s.backoffSeconds, 15, `${role} backoff preserved`);
+    assert.equal(s.lastMainHead, "deadbeef", `${role} wake tracking preserved`);
+    assert.equal(s.hasSession, true, `${role} session continuity preserved`);
+    assert.equal(s.peakContextTokens, 65536, `${role} high-water mark survives`);
+  }
+
+  // The marker a running fleet consumes lists every role in the config.
+  const marker = JSON.parse(fs.readFileSync(resetRequestPath(repo), "utf8")) as {
+    at: number;
+    roles: string[];
+  };
+  assert.ok(marker.at > 0);
+  assert.deepEqual([...marker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
+});
+
+test("reset-counters --role targets one loop; unknown or missing role fails without side effects", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reset counters role test");
+  seedCounters(repo, "feature");
+  seedCounters(repo, "clean");
+
+  let r = await cli(repo, "reset-counters", "--role", "feature");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /counters reset for feature/);
+  const f = loadLoopState(repo, "feature");
+  assert.equal(f.ticks, 0);
+  assert.equal(f.commits, 0);
+  assert.equal(loadLoopState(repo, "clean").ticks, 7, "other roles untouched");
+  const marker = JSON.parse(fs.readFileSync(resetRequestPath(repo), "utf8")) as { roles: string[] };
+  assert.deepEqual(marker.roles, ["feature"]);
+
+  // Unknown role: clear failure, no state changes, no marker.
+  fs.rmSync(resetRequestPath(repo));
+  r = await cli(repo, "reset-counters", "--role", "bogus");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
+  assert.equal(loadLoopState(repo, "feature").ticks, 0, "already-reset role unchanged");
+  assert.equal(loadLoopState(repo, "clean").ticks, 7, "other roles untouched on failure");
+  assert.ok(!fs.existsSync(resetRequestPath(repo)), "no marker written on failure");
+
+  // A bare --role fails cleanly too.
+  r = await cli(repo, "reset-counters", "--role");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--role needs a role id/);
+});
+
 test("logs --role prints the rendered pi transcript and -n limits entries", async () => {
   const repo = makeRepo();
   await initProject(repo, "transcript cli render test");

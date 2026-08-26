@@ -40,6 +40,15 @@ export function saveLoopState(root: string, state: LoopState): void {
   fs.renameSync(tmp, file);
 }
 
+/** Zero the accumulated counters (ticks, commits, tokens, cost) so a fresh observation
+ * window can begin. Pure: returns a new state and preserves everything else — scheduling
+ * fields (nextRunAt, backoffSeconds), wake tracking (lastMainHead), session continuity
+ * (hasSession, consecutiveErrors), and the last-result fields. peakContextTokens is
+ * deliberately NOT zeroed: it is a high-water mark (largest single request), not a sum. */
+export function zeroCounters(s: LoopState): LoopState {
+  return { ...s, ticks: 0, commits: 0, generatedTokens: 0, totalCostUsd: 0 };
+}
+
 /** Next backoff after a no-change tick: initial on the first, then multiplied, capped. */
 export function nextBackoffSeconds(current: number, config: TumwaterConfig): number {
   const { initialSeconds, factor, maxSeconds } = config.idleBackoff;

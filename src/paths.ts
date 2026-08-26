@@ -27,6 +27,12 @@ export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
 
+/** Marker file `tumwater reset-counters` drops for a running fleet to consume (it must also
+ * zero the runners' in-memory counters, or their next save resurrects the old values). */
+export function resetRequestPath(root: string): string {
+  return path.join(tumwaterDir(root), "reset-counters.json");
+}
+
 export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", "events.jsonl");
 }
