@@ -81,6 +81,24 @@ work yourself:
   return parts.join("\n\n");
 }
 
+/** The follow-up prompt for resuming a tick that a harness shutdown interrupted. It is sent
+ * into the SAME pi session as the interrupted run — which already carries the full original
+ * prompt, all rules, and the work so far — so it only needs to bridge the gap. */
+export function buildResumePrompt(roleId: string): string {
+  return `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
+is exactly as you left it, and this session carries everything you did so far. A tool call that
+was executing when the restart hit may not have finished — verify its effect before relying on it.
+
+Continue the SAME task you were working on and finish it. If the work so far turns out to be
+unusable, redo it — but stay on this task rather than picking a new one. All the original rules
+still apply, in particular:
+- Do exactly ONE focused task, then stop.
+- Never create, amend, or revert git commits — the harness handles all git operations.
+- If you end up making no changes, reply with the single line ${NOTHING_TO_DO}.
+- If you did make changes, end your reply with a line in exactly this form:
+  SUMMARY: <imperative one-line description of the change, at most 72 characters>`;
+}
+
 /** The prompt for resolving merge conflicts left in a loop's worktree. */
 export function buildConflictPrompt(roleId: string, files: string[]): string {
   return `You are the "${roleId}" loop of tumwater, an autonomous development harness. A rebase of

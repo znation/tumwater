@@ -18,8 +18,8 @@ import {
 } from "./git.js";
 import { withLock } from "./lock.js";
 import { logEvent } from "./events.js";
-import { runPi } from "./pi.js";
-import { buildConflictPrompt, buildDirectorPrompt, buildTickPrompt, extractSummary } from "./prompt.js";
+import { hasResumableSession, runPi } from "./pi.js";
+import { buildConflictPrompt, buildDirectorPrompt, buildResumePrompt, buildTickPrompt, extractSummary } from "./prompt.js";
 import { readInitialPrompt } from "./readme.js";
 import { configForRole } from "./config.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
@@ -53,6 +53,10 @@ export class LoopRunner {
   ) {
     this.config = config;
     this.state = loadLoopState(root, role);
+    // A persisted running flag means the previous process died mid-tick WITHOUT the
+    // graceful-abort bookkeeping (crash, kill -9, power loss). The interruption looks the
+    // same on disk — pi session and worktree edits in place — so resume it the same way.
+    if (this.state.running && role !== DIRECTOR_ROLE) this.state.resumePending = true;
     this.state.running = false;
   }
 
@@ -114,8 +118,15 @@ export class LoopRunner {
    * (small prefill), never inherit a near-full window, and durable knowledge lives where
    * the prompt makes pi read it — README/PLANS/BUGS and the code itself.
    * A transient model-server timeout (e.g. the machine slept mid-run) gets exactly one
-   * bounded retry: fresh requests succeed quickly after a wake. */
-  private async runRolePi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
+   * bounded retry: fresh requests succeed quickly after a wake.
+   * `resume` continues the role's most recent session instead — used only when picking up
+   * a tick that a harness shutdown interrupted. */
+  private async runRolePi(
+    wt: string,
+    prompt: string,
+    sessionName: string,
+    resume = false,
+  ): Promise<PiRunResult> {
     const s = this.state;
     const opts = {
       cwd: wt,
@@ -123,6 +134,7 @@ export class LoopRunner {
       config: configForRole(this.config, this.role),
       sessionDir: sessionDir(this.root, this.role),
       sessionName,
+      continueSession: resume,
       rawLogFile: piLogPath(this.root, this.role),
       signal: this.signal,
     };
@@ -218,7 +230,11 @@ export class LoopRunner {
       // Director idles until the inbox has work; no backoff bookkeeping.
       s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
     } else if (outcome.result === "aborted") {
-      // Shutdown, not a verdict about the project: resume promptly on restart.
+      // Shutdown, not a verdict about the project: resume promptly on restart. The pi
+      // session and the worktree's uncommitted edits were left in place, so the next tick
+      // picks up exactly where this one was interrupted (director ticks instead re-queue
+      // their user prompt, which runs fresh).
+      if (this.role !== DIRECTOR_ROLE) s.resumePending = true;
       s.nextRunAt = Date.now();
     } else {
       s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, this.config);
@@ -241,17 +257,31 @@ export class LoopRunner {
     const s = this.state;
     s.lastError = undefined;
 
-    const prompt = this.tickPrompt();
+    // A tick interrupted by a harness shutdown left its pi session and its worktree's
+    // uncommitted edits in place: resume that session instead of starting fresh. The flag
+    // is consumed here so a resume that fails falls back to a normal fresh tick; another
+    // shutdown mid-resume sets it again. Nothing to resume (sessions pruned, or pi never
+    // started) also falls back to fresh.
+    const resuming = s.resumePending === true && hasResumableSession(sessionDir(this.root, this.role));
+    s.resumePending = false;
+
+    const prompt = resuming ? buildResumePrompt(this.role) : this.tickPrompt();
     if (prompt === null) return { result: "skipped" };
     // The raw user prompt a director tick is executing (null for role loops), so an
     // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
     const userPrompt = this.pendingUserPrompt;
 
     const wt = await ensureWorktree(this.root, this.role, this.mainBranch);
-    await this.recoverLeftover(wt);
-    await resetWorktreeToMain(wt, this.mainBranch);
+    if (resuming) {
+      // Keep the interrupted run's uncommitted edits; clear only stray merge/rebase state.
+      await abortSync(wt);
+      logEvent(this.root, { loop: this.role, type: "resume" });
+    } else {
+      await this.recoverLeftover(wt);
+      await resetWorktreeToMain(wt, this.mainBranch);
+    }
 
-    const pi = await this.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`);
+    const pi = await this.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming);
 
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.

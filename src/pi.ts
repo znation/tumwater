@@ -160,6 +160,17 @@ export function piArgs(
   return args;
 }
 
+/** True when `sessionDir` holds at least one pi session file for --continue to resume.
+ * Guards the resume-after-shutdown path: with nothing to resume (sessions pruned, or the
+ * aborted run died before pi created one), the tick falls back to a fresh start. */
+export function hasResumableSession(sessionDir: string): boolean {
+  try {
+    return fs.readdirSync(sessionDir).some((f) => f.endsWith(".jsonl"));
+  } catch {
+    return false; // Missing directory — nothing to resume.
+  }
+}
+
 /** Locate an executable on PATH the same way spawn() would resolve it: a regular file
  * with the execute bit in some PATH directory. Returns its absolute path, or null when
  * missing (or not executable), so callers can fail fast with a clear message instead of

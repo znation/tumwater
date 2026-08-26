@@ -8,6 +8,8 @@ import { initProject } from "../src/init.js";
 import { defaultConfig, validateConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
+import { freshLoopState, saveLoopState } from "../src/state.js";
+import { sessionDir } from "../src/paths.js";
 import { assistantLine, errorLine, fakePi, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
@@ -173,7 +175,7 @@ test("worktree changes commit even when pi forgets the summary line", async () =
   }
 });
 
-test("an aborted tick discards partial work and does not back off", async () => {
+test("an aborted tick lands nothing, does not back off, and marks itself resumable", async () => {
   const repo = await initializedRepo();
   // Writes a half-done change, then hangs until killed. `exec` so SIGTERM reaches sleep.
   const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
@@ -188,9 +190,92 @@ test("an aborted tick discards partial work and does not back off", async () => 
     assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
     assert.equal(runner.state.backoffSeconds, 0);
     assert.ok(runner.state.nextRunAt <= Date.now(), "resumes promptly on restart");
+    assert.equal(runner.state.resumePending, true, "the next tick will resume this one");
   } finally {
     restore();
   }
+});
+
+test("a resumed tick continues the interrupted session and keeps the worktree edits", async () => {
+  const repo = await initializedRepo();
+  const argsFile = path.join(tmpdir(), "argv.log");
+  // First run: leaves a half-done edit, then hangs until the shutdown abort kills it.
+  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  try {
+    const controller = new AbortController();
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
+    setTimeout(() => controller.abort(), 300);
+    assert.equal((await runner.tick()).result, "aborted");
+    restore();
+
+    // The aborted run's pi session is on disk (the fake pi writes none, so seed one).
+    fs.mkdirSync(sessionDir(repo, "improve"), { recursive: true });
+    fs.writeFileSync(path.join(sessionDir(repo, "improve"), "interrupted.jsonl"), "{}\n");
+
+    // Next launch: a new runner (state comes from disk) resumes and finishes the task.
+    restore = fakePi(
+      [
+        `flags=""`,
+        `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
+        `echo "run:$flags" >> "${argsFile}"`,
+        `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'`,
+      ].join("\n"),
+    );
+    const resumed = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
+    const outcome = await resumed.tick();
+    assert.equal(outcome.result, "changed");
+    const run = fs.readFileSync(argsFile, "utf8").trim();
+    assert.ok(run.includes("--continue"), "the resume continues the interrupted session");
+    assert.ok(!run.includes(" -n"), "no fresh session is started");
+    assert.ok(fs.existsSync(path.join(repo, "partial.txt")), "the interrupted edits landed on main");
+    assert.equal(resumed.state.resumePending, false, "the flag is consumed");
+    assert.equal(readEvents(repo).filter((e) => e.type === "resume").length, 1);
+  } finally {
+    restore();
+  }
+});
+
+test("resume falls back to a fresh tick when there is no session to continue", async () => {
+  const repo = await initializedRepo();
+  const argsFile = path.join(tmpdir(), "argv.log");
+  const restore = fakePi(
+    [
+      `flags=""`,
+      `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
+      `echo "run:$flags" >> "${argsFile}"`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    runner.state.resumePending = true; // e.g. the sessions were pruned since the abort
+    assert.equal((await runner.tick()).result, "no_change");
+    const run = fs.readFileSync(argsFile, "utf8").trim();
+    assert.ok(!run.includes("--continue"), "nothing to resume: a fresh session is started");
+    assert.ok(run.includes(" -n"));
+    assert.equal(runner.state.resumePending, false, "the flag is still consumed");
+    assert.equal(readEvents(repo).filter((e) => e.type === "resume").length, 0);
+  } finally {
+    restore();
+  }
+});
+
+test("a crashed process (stale running flag) resumes like a graceful abort", async () => {
+  const repo = await initializedRepo();
+  const s = freshLoopState("improve");
+  s.running = true; // Persisted at tick start; a crash never cleared it.
+  saveLoopState(repo, s);
+  const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+  assert.equal(runner.state.resumePending, true, "a crash mid-tick is resumed too");
+  assert.equal(runner.state.running, false);
+
+  // The director never resumes: its recovery is re-queuing the user prompt.
+  const d = freshLoopState("director");
+  d.running = true;
+  saveLoopState(repo, d);
+  const director = new LoopRunner(repo, "director", defaultConfig(), "main");
+  assert.ok(!director.state.resumePending);
 });
 
 test("an aborted director tick re-queues the user prompt", async () => {
@@ -206,6 +291,7 @@ test("an aborted director tick re-queues the user prompt", async () => {
     assert.equal(outcome.result, "aborted");
     assert.equal(inboxSize(repo), 1, "prompt is back in the inbox");
     assert.equal(dequeuePrompt(repo), "important request");
+    assert.ok(!runner.state.resumePending, "the director recovers via the re-queued prompt, not a resume");
   } finally {
     restore();
   }

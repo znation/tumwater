@@ -40,8 +40,9 @@ v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `promp
 implemented with ten roles plus the director loop (absolute scheduling priority; routes
 feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Every tick runs
 in a fresh pi session — context never accumulates across ticks, and durable knowledge lives in
-the repo (README/PLANS/BUGS), which each tick reads first; merge conflicts get one
-pi-driven resolution attempt; roles can override provider/model/thinking; `tumwater.json` is
+the repo (README/PLANS/BUGS), which each tick reads first; a tick interrupted by Ctrl+C or a
+crash is resumed on the next launch (same pi session, worktree edits kept); merge conflicts get
+one pi-driven resolution attempt; roles can override provider/model/thinking; `tumwater.json` is
 validated on load/save with actionable errors; logs rotate and old pi sessions are pruned; the
 TUI/status table is width-aware with a totals row; transient sleep/wake "predict stream timed
 out" failures are retried once without dropping healthy sessions. Per-loop pi transcripts are
@@ -79,6 +80,12 @@ per enabled role. Every loop tick:
    and fast-forwards main — all under a merge lock shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
+
+Stopping the harness (Ctrl+C) mid-tick loses nothing: the interrupted loop's pi session and its
+worktree's uncommitted edits stay in place, and on the next `tumwater run` that loop resumes the
+same session (`--continue`) with a short bridge prompt and finishes the task it was on. A crash
+(power loss, kill -9) is recovered the same way. The director is the exception: its interrupted
+user prompt goes back into the inbox and runs fresh.
 
 The director loop is special: it executes prompts you type into the TUI (or `tumwater prompt`),
 queued in a file-based inbox. It always has priority — a queued prompt starts immediately,

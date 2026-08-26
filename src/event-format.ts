@@ -34,6 +34,8 @@ export function formatEvent(e: HarnessEvent): string {
       const scope = Array.isArray(e.roles) && e.roles.length > 0 ? ` for ${e.roles.join(", ")}` : "";
       return `${time} ${loop} counters reset${scope} (ticks, commits, tokens, cost)`;
     }
+    case "resume":
+      return `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
     case "warning":
       return `${time} ${loop} warning: ${e.message}`;
     default:
