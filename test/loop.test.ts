@@ -7,7 +7,7 @@ import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
-import { assistantLine, errorLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import { assistantLine, errorLine, fakePi, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
@@ -85,6 +85,29 @@ test("a non-compliant tick warns and notes a truncated final message", async () 
     const [warning] = readEvents(repo).filter((e) => e.type === "warning");
     assert.ok(warning, "expected exactly one warning");
     assert.match(String(warning.message), /stopReason=length/);
+  } finally {
+    restore();
+  }
+});
+
+test("a tick cut off at the context ceiling warns with the cut-off diagnosis", async () => {
+  const repo = await initializedRepo();
+  // Replays the observed incident: mid-run text, then a thinking-only final message
+  // (generation truncated by an output clamp but reported as a normal stop), then pi
+  // compacting the session at end of run. No changes, no sentinel.
+  const restore = fakePi(
+    `printf '%s\n' '${assistantLine("Now git.ts:")}'\n` +
+      `printf '%s\n' '${thinkingOnlyLine("git.ts looks clean. Next", { output: 16 })}'\n` +
+      `printf '%s\n' '${JSON.stringify({ type: "compaction_start", reason: "threshold" })}'`,
+  );
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    const [warning] = readEvents(repo).filter((e) => e.type === "warning");
+    assert.ok(warning, "expected exactly one warning");
+    assert.match(String(warning.message), /cut off at the context ceiling/);
+    assert.match(String(warning.message), /auto-compacted/);
+    assert.doesNotMatch(String(warning.message), /no assistant text/);
   } finally {
     restore();
   }

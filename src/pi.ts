@@ -43,6 +43,15 @@ export class PiStreamParser {
    * (LM Studio's "Engine protocol predict stream timed out", e.g. after OS sleep).
    * Transient: the session is healthy and a fresh attempt usually succeeds. */
   transientServerTimeout = false;
+  /** True when the run's LAST assistant message carried no text and no tool call
+   * (thinking-only or empty). A compliant finish always ends with a text block (the
+   * SUMMARY/sentinel line), so this signals a generation cut off mid-stream — typically
+   * pi clamping max output tokens to the sliver left under the declared context window,
+   * with the provider misreporting the truncation as a normal stop (LM Studio's
+   * /v1/responses reports status "completed" instead of "incomplete"). */
+  finalMessageContentless = false;
+  /** True when pi auto-compacted the session during (or at the end of) the run. */
+  compacted = false;
   /** Incremented for every parsed event that represents real forward progress. A
    * message_update counts only when its streamed content actually GREW — zombie streams
    * (a dead generation whose connection stays open) drip content-free keepalive updates
@@ -101,9 +110,13 @@ export class PiStreamParser {
     // real progress; the high-water mark resets so the next message streams from zero.
     this.progressCount += 1;
     this.updateContentHighWater = 0;
+    if (event.type === "compaction_start") this.compacted = true;
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;
     const text = messageText(msg);
+    this.finalMessageContentless = !(msg.content ?? []).some(
+      (c) => c.type === "toolCall" || (c.type === "text" && Boolean(c.text?.trim())),
+    );
     if (text.trim()) this.finalText = text;
     if (isNothingToDo(text)) this.declaredNothingToDo = true;
     this.outputTokens += msg.usage?.output ?? 0;
@@ -273,6 +286,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         aborted,
         contextExceeded: false,
         transientServerTimeout: false,
+        finalMessageContentless: false,
+        compacted: false,
       });
     });
 
@@ -302,6 +317,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         aborted,
         contextExceeded: parser.contextExceeded,
         transientServerTimeout: parser.transientServerTimeout,
+        finalMessageContentless: parser.finalMessageContentless,
+        compacted: parser.compacted,
       });
     });
   });

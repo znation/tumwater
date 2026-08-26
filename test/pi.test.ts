@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { PiStreamParser, findOnPath, piArgs, runPi } from "../src/pi.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
-import { assistantLine, errorLine, fakePi, tmpdir } from "./util.js";
+import { assistantLine, errorLine, fakePi, thinkingOnlyLine, tmpdir } from "./util.js";
 
 test("findOnPath locates executables like spawn would resolve them", () => {
   const dir = tmpdir();
@@ -54,6 +54,44 @@ test("parser does not flag nothing-to-do when no message carries the sentinel", 
   parser.feed(assistantLine("thinking about it") + "\n");
   parser.feed(assistantLine("all done\nSUMMARY: x") + "\n");
   assert.equal(parser.declaredNothingToDo, false);
+});
+
+test("parser flags a contentless final message (generation cut off mid-stream)", () => {
+  // A thinking-only LAST message is the cut-off signature (observed live: pi clamped
+  // max_output_tokens to 16 near the declared context window and LM Studio reported the
+  // truncation as a normal stop).
+  const parser = new PiStreamParser();
+  parser.feed(assistantLine("reading files") + "\n");
+  parser.feed(thinkingOnlyLine("git.ts looks clean. Next let's check gui.ts (16:3", { output: 16 }) + "\n");
+  assert.ok(parser.finalMessageContentless, "thinking-only final message is contentless");
+  assert.equal(parser.finalText, "reading files", "earlier text is retained for the summary");
+
+  // Only the LAST message counts: a substantive message after a cut-off clears the flag.
+  const recovered = new PiStreamParser();
+  recovered.feed(thinkingOnlyLine("hmm") + "\n");
+  recovered.feed(assistantLine("SUMMARY: fix it") + "\n");
+  assert.equal(recovered.finalMessageContentless, false);
+
+  // A tool call is substantive content even without a text block.
+  const toolOnly = new PiStreamParser();
+  toolOnly.feed(
+    JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "toolCall", name: "bash" }],
+        stopReason: "toolUse",
+      },
+    }) + "\n",
+  );
+  assert.equal(toolOnly.finalMessageContentless, false);
+});
+
+test("parser records that pi auto-compacted the session", () => {
+  const parser = new PiStreamParser();
+  assert.equal(parser.compacted, false);
+  parser.feed(JSON.stringify({ type: "compaction_start", reason: "threshold" }) + "\n");
+  assert.ok(parser.compacted);
 });
 
 test("parser handles chunked lines and ignores noise", () => {

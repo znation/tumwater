@@ -310,6 +310,13 @@ export class LoopRunner {
         const notes: string[] = [];
         if (pi.stopReason && pi.stopReason !== "stop") notes.push(`stopReason=${pi.stopReason}`);
         if (!pi.finalText.trim()) notes.push("no assistant text");
+        // A final message with neither text nor a tool call means the generation was cut
+        // off mid-stream, not that the model ignored the sentinel rule — typically pi
+        // clamped max output tokens to what little space remained under the declared
+        // context window and the provider reported the truncation as a normal stop.
+        if (pi.finalMessageContentless)
+          notes.push("final message had no text or tool call — likely cut off at the context ceiling");
+        if (pi.compacted) notes.push("pi auto-compacted the session");
         logEvent(this.root, {
           loop: this.role,
           type: "warning",

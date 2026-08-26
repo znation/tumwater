@@ -53,6 +53,24 @@ export function assistantLine(
   });
 }
 
+/** A pi JSON line for an assistant message_end whose content is thinking-only — the
+ * signature of a generation cut off mid-stream (e.g. output clamped to the sliver left
+ * under the declared context window); a compliant finish always ends with a text block. */
+export function thinkingOnlyLine(
+  thinking: string,
+  opts: { tokens?: number; output?: number } = {},
+): string {
+  return JSON.stringify({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "thinking", thinking }],
+      usage: { totalTokens: opts.tokens ?? 0, output: opts.output ?? 0, cost: { total: 0 } },
+      stopReason: "stop",
+    },
+  });
+}
+
 /** A pi JSON line for an assistant message_end that ended in a server error. */
 export function errorLine(errorMessage: string): string {
   return JSON.stringify({
