@@ -64,6 +64,18 @@ function parsePortFlag(raw: string | undefined): number {
   return n;
 }
 
+/** Parse an optional `--role <id>` flag: the validated role id, or null when absent.
+ * Shared by every command that scopes to one loop so their validation and error messages
+ * cannot drift. */
+function parseRoleFlag(args: string[]): string | null {
+  const i = args.indexOf("--role");
+  if (i < 0) return null;
+  const role = args[i + 1];
+  if (!role) fail("--role needs a role id (e.g. `--role feature`)");
+  if (!allRoleIds().includes(role)) fail(`unknown role: ${role} (valid ids: ${allRoleIds().join(", ")})`);
+  return role;
+}
+
 async function resolveMainBranch(root: string): Promise<string> {
   const branch = await currentBranch(root);
   if (!branch) fail("the repo's primary checkout is detached; check out your main branch first");
@@ -132,11 +144,8 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   const follow = args.includes("-f") || args.includes("--follow");
   const nFlag = args.indexOf("-n");
   const limit = nFlag >= 0 ? parseCountFlag("-n", args[nFlag + 1]) : 50;
-  const roleFlag = args.indexOf("--role");
-  if (roleFlag >= 0) {
-    const role = args[roleFlag + 1];
-    if (!role) fail("--role needs a role id (e.g. `--role feature`)");
-    if (!allRoleIds().includes(role)) fail(`unknown role: ${role} (valid ids: ${allRoleIds().join(", ")})`);
+  const role = parseRoleFlag(args);
+  if (role !== null) {
     await cmdLogsTranscript(root, role, limit, follow);
     return;
   }
@@ -198,17 +207,9 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
  * untouched: loops keep sleeping/waking exactly as before. */
 async function cmdResetCounters(root: string, args: string[]): Promise<void> {
   const config = loadConfig(root);
-  let targets: string[];
-  const roleFlag = args.indexOf("--role");
-  if (roleFlag >= 0) {
-    const role = args[roleFlag + 1];
-    if (!role) fail("--role needs a role id (e.g. `--role feature`)");
-    if (!allRoleIds().includes(role)) fail(`unknown role: ${role} (valid ids: ${allRoleIds().join(", ")})`);
-    targets = [role];
-  } else {
-    targets = Object.keys(config.roles); // Default: every role in the config.
-  }
-  for (const role of targets) saveLoopState(root, zeroCounters(loadLoopState(root, role)));
+  const role = parseRoleFlag(args);
+  const targets = role ? [role] : Object.keys(config.roles); // Default: every role in the config.
+  for (const r of targets) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
   const markerFile = resetRequestPath(root);
   fs.mkdirSync(path.dirname(markerFile), { recursive: true });
   fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: targets }, null, 2));
