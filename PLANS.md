@@ -5,7 +5,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### CLI subcommand to reset loop counters — ticks, commits, tokens, cost (planned 2026-08-25)
+### CLI subcommand to reset loop counters — ticks, commits, tokens, cost (planned 2026-08-25,
+refined 2026-08-25)
 
 **Goal:** A new `tumwater reset-counters [--role <id>]` command that zeroes the per-loop
 counters shown in the TUI/GUI tables — ticks, commits, tokens, cost — so a user can start a
@@ -22,32 +23,37 @@ save — so the command must reach both the files *and* the in-memory state of r
 - `src/paths.ts`: new `resetRequestPath(root)` → `.tumwater/reset-counters.json` (the marker a
   running fleet consumes).
 - `src/state.ts`: new pure helper `zeroCounters(s: LoopState): LoopState` — sets exactly
-  `ticks`, `commits`, `totalTokens`, `totalCostUsd` to 0 and preserves everything else
-  (`nextRunAt`, `backoffSeconds`, `lastMainHead`, `hasSession`, `consecutiveErrors`, the
-  last-result fields) so scheduling, wake-on-main-moves, and pi session continuity are
-  untouched.
+  `ticks`, `commits`, `generatedTokens`, `totalCostUsd` to 0 (the field is `generatedTokens`
+  in src/types.ts, not a "total tokens" name) and preserves everything else (`nextRunAt`,
+  `backoffSeconds`, `lastMainHead`, `hasSession`, `consecutiveErrors`, the last-result fields)
+  so scheduling, wake-on-main-moves, and pi session continuity are untouched. Do not zero
+  `peakContextTokens` — it is a high-water mark (largest single request), not a sum.
 - CLI (`src/cli.ts`): new `reset-counters` case beside `status`/`prompt`. Optional
-  `--role <id>` (validated with `roleById`, same pattern as `logs --role`); default is every
-  role in the config. For each target: load state, `zeroCounters`, save atomically — immediate
+  `--role <id>` validated against `allRoleIds()` from src/roles.ts (the exact pattern
+  `logs --role` already uses — there is no `roleById` helper); default is every role in the
+  config. For each target: load state, `zeroCounters`, save atomically — immediate
 effect on TUI/GUI and fully functional when the harness is not running. Then write marker
   `{ at: Date.now(), roles: [...] }` to `resetRequestPath`. Print one confirmation line noting
   that a running fleet picks it up within ~2s.
 - Orchestrator (`src/orchestrator.ts`): in the existing poll cycle (every POLL_MS), if the
   marker exists, call a new small public method `runner.resetCounters()` on each affected
   runner — zero the four counters in memory and `save()` — log one event so the reset is
-  visible in `tumwater logs`/the feed, then delete the marker. If the live-reload tumwater.json
-  plan has landed first, consume the marker in that same poll block (one reload point shared by
-  all loops). The operation is idempotent, so a marker left behind by a killed run is consumed
-  harmlessly at most once after restart.
+  visible in `tumwater logs`/the feed, then delete the marker. Consume it in the existing
+  live-reload poll block (live-reload has landed — that per-cycle config-reload point is the
+  single shared spot for all loops). The operation is idempotent, so a marker left behind by a
+  killed run is consumed harmlessly at most once after restart.
 - Events: add `counters_reset` to the `HarnessEvent.type` union (src/types.ts) with plain
-  rendering in `formatEvent` (src/events.ts) — no warning prefix; it is routine operation.
+  rendering in `formatEvent` (src/event-format.ts) — no warning prefix; it is routine
+  operation.
 - Known minor edge, acceptable: a reset landing while one tick is in flight may drop that
 tick's +1 from the new window (the increment happened at tick start). Do not over-engineer
 around it.
 
 **Files touched:** `src/paths.ts`, `src/state.ts`, `src/cli.ts`, `src/orchestrator.ts`,
-`src/loop.ts` (one small public method), `src/types.ts` + `src/events.ts`; tests: extend
-`test/state.test.ts` (`zeroCounters` zeroes exactly the four counters and preserves
+`src/loop.ts` (one small public method), `src/types.ts` (`counters_reset` event type) +
+`src/event-format.ts` (plain rendering — formatEvent no longer lives in src/events.ts).
+Tests: extend `test/state.test.ts` (`zeroCounters` zeroes exactly the four counters and
+preserves
 scheduling/session fields), a CLI-level test (files zeroed, marker written, `--role`
 targeting, unknown role fails cleanly), extend `test/orchestrator.test.ts` (marker consumed →
 in-memory counters zeroed and re-saved, event logged, marker deleted); one README usage line.
