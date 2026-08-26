@@ -1,6 +1,8 @@
 # Adversarial review gate before merge
 
-Planned 2026-08-24 · refined 2026-08-24 (failure handling, crash path, exemption semantics, state plumbing) · from the "Senior Tumwater" report (HN 49421554) · report item R1
+Planned 2026-08-24 · refined 2026-08-25 (failure handling, crash path, exemption semantics,
+state plumbing; stale file refs after the status-layer split) · from the "Senior Tumwater" report
+(HN 49421554) · report item R1
 
 ## Goal
 
@@ -117,14 +119,16 @@ so the extra reviewer run costs nothing in steady state.
 Not exempt by role: a director diff touching non-exempt paths is reviewed like any other (director
 ticks are usually md-only → exempt by construction). No special-casing.
 
-### State and dashboard plumbing (`src/types.ts`, `src/status.ts`, `src/gui-page.ts`)
+### State and dashboard plumbing (`src/types.ts`, `src/status-render.ts`)
 
 - `LoopState` gains optional fields: `phase?: "pi" | "review"` (set + saved around the reviewer
   run, cleared at tick end alongside `running`), `lastReview?: { verdict: string; reasons: string[];
   head?: string; at: number }`, `lastApprovedHead?: string`, `unreviewFailures?: number`.
-- `loopPhase`/`workingDetail` (status.ts): when `s.running && s.phase === "review"`, render
-  `reviewing <elapsed>` instead of the pi live detail. The GUI working cell picks up the same field
-  through `statusPayload`; no new endpoint needed.
+- `loopPhase`/`workingDetail` (src/status-render.ts — the presentation layer; status.ts only
+  collects snapshots and passes loop fields through unchanged): when `s.running && s.phase ===
+  "review"`, render `reviewing <elapsed>` instead of the pi live detail. No changes to gui.ts or
+  gui-page.ts: `statusPayload` already calls `loopPhase` for the GUI's state cell, and new result
+  values flow through as plain strings via `lastResult`/`lastSummary`.
 - New outcomes `"rejected"` / `"review_error"` rendered in the status table and GUI like other
   results (with reason/summary text).
 
@@ -132,14 +136,17 @@ ticks are usually md-only → exempt by construction). No special-casing.
 
 `review_start` / `review_verdict` events (verdict event carries approve/reject + first line of
 reasons); `review_failed` on unparseable/failed runs; reviewer tokens/cost fold into the loop's
-totals (`totalTokens`/`totalCostUsd`).
+totals (`generatedTokens`/`totalCostUsd`). The new event types join the `HarnessEvent.type`
+union (src/types.ts) and get plain rendering in `formatEvent` (src/event-format.ts — it no longer
+lives in src/events.ts).
 
 ## Files touched
 
 `src/loop.ts`, `src/prompt.ts`, `src/types.ts`, `src/config.ts` (review section + validation),
 `src/review.ts` (new: exemption matcher, verdict parsing, review-run orchestration shared by the
-tick and recoverLeftover paths), `src/status.ts`, `src/gui-page.ts`, `src/events.ts` (formatEvent),
-`tumwater.json` (dogfood: `"review": { "enabled": false }` + model override),
+tick and recoverLeftover paths), `src/status-render.ts` (`loopPhase`/`workingDetail` reviewing
+state — not src/status.ts), `src/event-format.ts` (review event rendering — formatEvent no longer
+lives in src/events.ts), `tumwater.json` (dogfood: `"review": { "enabled": false }` + model override),
 `test/review-gate.test.ts` (fake-pi shim scripting both verdicts; exemption matcher unit tests —
 basename vs path patterns, all-files-must-match; approve merges / reject resets + next-prompt
 injection; review failure leaves commit and re-reviews next tick; 3-strike discard; recoverLeftover
