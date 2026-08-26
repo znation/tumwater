@@ -9,7 +9,7 @@ import { logEvent } from "./events.js";
 import { pruneOldFiles } from "./files.js";
 import { inboxSize } from "./inbox.js";
 import { Semaphore } from "./semaphore.js";
-import { orchestratorStatePath, sessionsRootDir } from "./paths.js";
+import { orchestratorStatePath, resetRequestPath, sessionsRootDir } from "./paths.js";
 
 const POLL_MS = 2000;
 
@@ -147,6 +147,40 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
       } else if (reloaded.error && reloaded.error !== lastConfigError) {
         logEvent(root, { loop: "harness", type: "warning", message: `tumwater.json invalid — keeping current config: ${reloaded.error}` });
         lastConfigError = reloaded.error;
+      }
+
+      // Consume a reset request from `tumwater reset-counters`: the CLI already zeroed the
+      // state files; here we also zero the affected runners' in-memory copies and re-save,
+      // or their next tick's save would resurrect the pre-reset values. A corrupt marker
+      // resets every runner (a superset — the operation is idempotent).
+      const markerFile = resetRequestPath(root);
+      if (fs.existsSync(markerFile)) {
+        let requested: string[] | null = null;
+        try {
+          const marker = JSON.parse(fs.readFileSync(markerFile, "utf8")) as { roles?: unknown };
+          if (Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string"))
+            requested = marker.roles as string[];
+        } catch {
+          // Corrupt marker: fall through and reset every runner below.
+        }
+        const affected = requested ? runners.filter((r) => requested.includes(r.role)) : [...runners];
+        for (const r of affected) r.resetCounters();
+        if (affected.length > 0) {
+          const [only] = affected;
+          // One role → filed under that loop; several → one harness-level event listing them.
+          if (affected.length === 1 && only) logEvent(root, { loop: only.role, type: "counters_reset" });
+          else
+            logEvent(root, {
+              loop: "harness",
+              type: "counters_reset",
+              roles: affected.map((r) => r.role),
+            });
+        }
+        try {
+          fs.rmSync(markerFile);
+        } catch {
+          // Best-effort cleanup.
+        }
       }
 
       // Reading the ref file is microsecond-scale; spawning `git rev-parse` costs ~10ms and

@@ -20,3 +20,12 @@ test("formatEvent renders each type as one line", () => {
   assert.match(formatEvent(cases[2] as never), /boom/);
   assert.match(formatEvent(cases[3] as never), /abcdef12/);
 });
+
+test("formatEvent renders counters_reset plainly, naming all roles when several are affected", () => {
+  const single = formatEvent({ ts: 0, loop: "clean", type: "counters_reset" } as never);
+  assert.match(single, /clean\s+counters reset \(ticks, commits, tokens, cost\)/);
+  const multi = formatEvent(
+    { ts: 0, loop: "harness", type: "counters_reset", roles: ["feature", "bugfix"] } as never,
+  );
+  assert.match(multi, /harness\s+counters reset for feature, bugfix \(ticks, commits, tokens, cost\)/);
+});

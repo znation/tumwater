@@ -5,70 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### CLI subcommand to reset loop counters — ticks, commits, tokens, cost (planned 2026-08-25,
-refined 2026-08-25)
-
-**Goal:** A new `tumwater reset-counters [--role <id>]` command that zeroes the per-loop
-counters shown in the TUI/GUI tables — ticks, commits, tokens, cost — so a user can start a
-fresh observation window (e.g. "cost since today") without restarting the fleet. Requested by
-the user 2026-08-25.
-
-**Why it is not just rewriting files:** the dashboards read state from disk (`snapshot()` in
-src/status.ts calls `loadLoopState` per render), but each running `LoopRunner` keeps its own
-copy in memory (loaded once in the constructor, src/loop.ts) and re-saves it at tick start and
-tick end. A CLI that only zeroes `.tumwater/state/<role>.json` would be clobbered by the next
-save — so the command must reach both the files *and* the in-memory state of running runners.
-
-**Approach:**
-- `src/paths.ts`: new `resetRequestPath(root)` → `.tumwater/reset-counters.json` (the marker a
-  running fleet consumes).
-- `src/state.ts`: new pure helper `zeroCounters(s: LoopState): LoopState` — sets exactly
-  `ticks`, `commits`, `generatedTokens`, `totalCostUsd` to 0 (the field is `generatedTokens`
-  in src/types.ts, not a "total tokens" name) and preserves everything else (`nextRunAt`,
-  `backoffSeconds`, `lastMainHead`, `hasSession`, `consecutiveErrors`, the last-result fields)
-  so scheduling, wake-on-main-moves, and pi session continuity are untouched. Do not zero
-  `peakContextTokens` — it is a high-water mark (largest single request), not a sum.
-- CLI (`src/cli.ts`): new `reset-counters` case beside `status`/`prompt`. Optional
-  `--role <id>` validated against `allRoleIds()` from src/roles.ts (the exact pattern
-  `logs --role` already uses — there is no `roleById` helper); default is every role in the
-  config. For each target: load state, `zeroCounters`, save atomically — immediate
-effect on TUI/GUI and fully functional when the harness is not running. Then write marker
-  `{ at: Date.now(), roles: [...] }` to `resetRequestPath`. Print one confirmation line noting
-  that a running fleet picks it up within ~2s.
-- Orchestrator (`src/orchestrator.ts`): in the existing poll cycle (every POLL_MS), if the
-  marker exists, call a new small public method `runner.resetCounters()` on each affected
-  runner — zero the four counters in memory and `save()` — log one event so the reset is
-  visible in `tumwater logs`/the feed, then delete the marker. Consume it in the existing
-  live-reload poll block (live-reload has landed — that per-cycle config-reload point is the
-  single shared spot for all loops). The operation is idempotent, so a marker left behind by a
-  killed run is consumed harmlessly at most once after restart.
-- Events: add `counters_reset` to the `HarnessEvent.type` union (src/types.ts) with plain
-  rendering in `formatEvent` (src/event-format.ts) — no warning prefix; it is routine
-  operation.
-- Known minor edge, acceptable: a reset landing while one tick is in flight may drop that
-tick's +1 from the new window (the increment happened at tick start). Do not over-engineer
-around it.
-
-**Files touched:** `src/paths.ts`, `src/state.ts`, `src/cli.ts`, `src/orchestrator.ts`,
-`src/loop.ts` (one small public method), `src/types.ts` (`counters_reset` event type) +
-`src/event-format.ts` (plain rendering — formatEvent no longer lives in src/events.ts).
-Tests: extend `test/state.test.ts` (`zeroCounters` zeroes exactly the four counters and
-preserves
-scheduling/session fields), a CLI-level test (files zeroed, marker written, `--role`
-targeting, unknown role fails cleanly), extend `test/orchestrator.test.ts` (marker consumed →
-in-memory counters zeroed and re-saved, event logged, marker deleted); one README usage line.
-
-**Acceptance criteria:**
-- Harness not running: `tumwater reset-counters` zeroes ticks/commits/tokens/cost in every
-role's state file; TUI/GUI/status show 0; scheduling fields and session continuity are
-unchanged (loops resume their existing sleep/backoff exactly as before).
-- Harness running: the counters drop to zero on both dashboards immediately and stay zeroed
-across subsequent tick boundaries (no resurrection from a stale in-memory save); the reset is
-visible as one plain event in `tumwater logs`.
-- `--role <id>` affects only that loop; an unknown role fails with a clear message and changes
-nothing.
-- `npm test` passes.
-
 ### Show current work item per active loop in the GUI/TUI tables (planned 2026-08-25)
 
 **Goal:** Both dashboards show, for each *working* loop, a short description of what it is
@@ -294,6 +230,27 @@ the new column header.
 - `npm test` passes.
 
 ## Done
+
+### CLI subcommand to reset loop counters — ticks, commits, tokens, cost (planned 2026-08-25,
+refined 2026-08-25, done 2026-08-25)
+
+`tumwater reset-counters [--role <id>]` zeroes the per-loop ticks/commits/tokens/cost for a fresh
+observation window without touching scheduling or pi session continuity. The CLI zeros each
+target's state file directly (works while the harness is not running; `--role` validated against
+`allRoleIds()` like `logs --role`, unknown role fails with no side effects) and drops a marker at
+`.tumwater/reset-counters.json`; the orchestrator consumes it in its existing poll cycle — calling
+a new public `LoopRunner.resetCounters()`, backed by the pure `zeroCounters` helper in src/state.ts
+that zeroes exactly ticks/commits/generatedTokens/totalCostUsd, preserves nextRunAt/
+backoffSeconds/lastMainHead/hasSession/consecutiveErrors and the last-result fields, and
+deliberately keeps the peakContextTokens high-water mark — then logs one plain `counters_reset`
+event (filed under the role for a single target, harness-level with a roles list otherwise) and
+deletes the marker. A corrupt marker resets every runner (idempotent superset). End-to-end test
+drives the real orchestrator: counters zero on disk after consumption, stay zeroed across tick
+boundaries (no resurrection from a stale in-memory save), and the reset appears as one event;
+CLI-level tests cover file zeroing, marker contents, `--role` targeting, and clean failures.
+Files: src/paths.ts, src/state.ts, src/cli.ts, src/orchestrator.ts, src/loop.ts, src/types.ts,
+src/event-format.ts, test/state.test.ts, test/cli.test.ts, test/orchestrator.test.ts,
+test/event-format.test.ts, README.md.
 
 ### Live-reload tumwater.json while the harness is running (planned 2026-08-23, done 2026-08-25)
 

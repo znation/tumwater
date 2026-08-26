@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { freshLoopState, loadLoopState, nextBackoffSeconds, saveLoopState } from "../src/state.js";
+import { freshLoopState, loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "../src/state.js";
 import type { LoopState } from "../src/types.js";
 import { statePath } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
@@ -63,6 +63,43 @@ test("loadLoopState recovers from torn or non-object JSON", () => {
     fs.writeFileSync(file, junk);
     assertFreshFields(loadLoopState(dir, "dry"), "dry"); // must not throw or lose defaults
   }
+});
+
+test("zeroCounters zeroes exactly the four accumulated counters and preserves everything else", () => {
+  const s = freshLoopState("feature");
+  s.ticks = 12;
+  s.commits = 5;
+  s.generatedTokens = 987654;
+  s.totalCostUsd = 3.14;
+  s.peakContextTokens = 131072; // high-water mark — must survive
+  s.nextRunAt = 1_700_000_000_000;
+  s.backoffSeconds = 30;
+  s.lastMainHead = "abc123";
+  s.hasSession = true;
+  s.consecutiveErrors = 2;
+  s.lastResult = "changed";
+  s.lastSummary = "did a thing";
+  s.lastTickStartedAt = 1;
+  s.lastTickEndedAt = 2;
+
+  const z = zeroCounters(s);
+  assert.equal(z.ticks, 0);
+  assert.equal(z.commits, 0);
+  assert.equal(z.generatedTokens, 0);
+  assert.equal(z.totalCostUsd, 0);
+  // Scheduling, wake tracking, session continuity, and last-result fields are untouched.
+  assert.equal(z.nextRunAt, s.nextRunAt);
+  assert.equal(z.backoffSeconds, 30);
+  assert.equal(z.lastMainHead, "abc123");
+  assert.equal(z.hasSession, true);
+  assert.equal(z.consecutiveErrors, 2);
+  assert.equal(z.lastResult, "changed");
+  assert.equal(z.lastSummary, "did a thing");
+  // The high-water mark is not an accumulated total.
+  assert.equal(z.peakContextTokens, 131072);
+  // Pure: the input is unchanged and the result is a new object.
+  assert.equal(s.ticks, 12);
+  assert.notEqual(z, s);
 });
 
 test("nextBackoffSeconds caps an initial above max and treats non-positive current as first", () => {

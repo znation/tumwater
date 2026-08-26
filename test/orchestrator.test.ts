@@ -15,8 +15,8 @@ import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import type { TumwaterConfig } from "../src/types.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import { loadLoopState, nextBackoffSeconds } from "../src/state.js";
-import { orchestratorStatePath } from "../src/paths.js";
+import { loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "../src/state.js";
+import { orchestratorStatePath, resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, tmpdir } from "./util.js";
 
 function runner(role: string): LoopRunner {
@@ -279,6 +279,60 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
     saveConfig(repo, fastConfig(["clean"], "fixed-model"));
     await waitFor(() => runs().at(-1)?.includes("model=fixed-model") === true, "pi run with the fixed model");
     assert.equal(warnings().length, 1, "no new warnings once the file is fixed");
+  } finally {
+    restore();
+    controller.abort();
+    try {
+      await done;
+    } catch {
+      // The test's own failure (if any) takes precedence over shutdown noise.
+    }
+  }
+});
+
+// --- Reset counters while running (tumwater reset-counters marker) ---
+
+test("a reset request zeroes in-memory counters, survives tick boundaries, and logs an event", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reset counters e2e test");
+  saveConfig(repo, fastConfig(["clean"]));
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const controller = new AbortController();
+  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  try {
+    // Let a couple of ticks accumulate counters in the runner's memory.
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 2 && !loadLoopState(repo, "clean").running,
+      "two finished ticks",
+    );
+
+    // Reproduce what `tumwater reset-counters` does from the CLI side: zero the state file
+    // and drop the marker. (The CLI path itself is covered in test/cli.test.ts.)
+    saveLoopState(repo, zeroCounters(loadLoopState(repo, "clean")));
+    const markerFile = resetRequestPath(repo);
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean"] }));
+
+    // The fleet consumes the marker within a poll cycle and re-saves zeroed counters. A
+    // post-reset tick may have started in the same poll (its +1 belongs to the new window),
+    // so at most 1 is expected — without in-memory zeroing this would read >= 3.
+    await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
+    assert.ok(
+      loadLoopState(repo, "clean").ticks <= 1,
+      `counters start from zero after consumption (got ${loadLoopState(repo, "clean").ticks})`,
+    );
+
+    // The reset survives tick boundaries: the next completed tick counts from zero — a stale
+    // in-memory copy would have saved ticks >= 3 here instead.
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks === 1 && !loadLoopState(repo, "clean").running,
+      "a post-reset tick to finish",
+    );
+
+    // The reset is visible as one plain event (no warning prefix), filed under the role.
+    const resets = readEvents(repo).filter((e) => e.type === "counters_reset");
+    assert.equal(resets.length, 1);
+    assert.equal(resets[0]?.loop, "clean");
   } finally {
     restore();
     controller.abort();

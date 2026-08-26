@@ -97,7 +97,12 @@ tumwater status       # one-shot table
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
 tumwater prompt "prefer no third-party deps"
+tumwater reset-counters            # zero ticks/commits/tokens/cost (a running fleet picks it up within ~2s)
+tumwater reset-counters --role feature   # …or just one loop
 ```
+
+`reset-counters` starts a fresh observation window (e.g. "cost since today") without touching
+scheduling, backoff, or pi session continuity — loops keep sleeping and waking exactly as before.
 
 Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
 `improve`, `director`. Enable/disable them, pick pi's provider/model/thinking level, and tune

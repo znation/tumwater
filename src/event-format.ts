@@ -28,6 +28,12 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} orchestrator stopped`;
     case "prompt_enqueued":
       return `${time} ${loop} user prompt queued: ${String(e.preview)}`;
+    case "counters_reset": {
+      // One role → the event is filed under that loop; several → one harness-level event
+      // listing them.
+      const scope = Array.isArray(e.roles) && e.roles.length > 0 ? ` for ${e.roles.join(", ")}` : "";
+      return `${time} ${loop} counters reset${scope} (ticks, commits, tokens, cost)`;
+    }
     case "warning":
       return `${time} ${loop} warning: ${e.message}`;
     default:

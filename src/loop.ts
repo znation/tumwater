@@ -23,7 +23,7 @@ import { buildConflictPrompt, buildDirectorPrompt, buildTickPrompt, extractSumma
 import { readInitialPrompt } from "./readme.js";
 import { configForRole } from "./config.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
-import { loadLoopState, nextBackoffSeconds, saveLoopState } from "./state.js";
+import { loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "./state.js";
 import { mergeLockDir, piLogPath, sessionDir } from "./paths.js";
 
 export interface TickOutcome {
@@ -61,6 +61,14 @@ export class LoopRunner {
 
   private save(): void {
     saveLoopState(this.root, this.state);
+  }
+
+  /** Zero the accumulated counters in memory and persist them. The orchestrator calls this
+   * when it consumes a `tumwater reset-counters` request: without zeroing the in-memory copy,
+   * the next tick's save would resurrect the pre-reset values on disk. */
+  resetCounters(): void {
+    this.state = zeroCounters(this.state);
+    this.save();
   }
 
   /** Decide the prompt for this tick, or null to skip (director with empty inbox). */
