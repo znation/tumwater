@@ -20,3 +20,36 @@ test("formatEvent renders each type as one line", () => {
   assert.match(formatEvent(cases[2] as never), /boom/);
   assert.match(formatEvent(cases[3] as never), /abcdef12/);
 });
+
+test("formatEvent renders wake reasons and warning messages operators rely on", () => {
+  // These are the diagnostic lines read in logs/TUI/GUI when figuring out why a loop woke or
+  // what went wrong: the reason and message payloads must survive formatting.
+  const wake = formatEvent({ ts: 0, loop: "clean", type: "wake", reason: "main moved" } as never);
+  assert.match(wake, /woke \(main moved\)/, `wake line must carry its reason: ${wake}`);
+
+  const warn = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "warning",
+    message: "tumwater.json invalid — keeping current config",
+  } as never);
+  assert.match(warn, /warning: tumwater\.json invalid/, `warning line must carry its message: ${warn}`);
+
+  const stop = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_stop" } as never);
+  assert.match(stop, /orchestrator stopped/);
+});
+
+test("formatEvent renders a no-change tick with no summary or error suffix", () => {
+  // The third arm of the tick_end ternary is the empty string: a regression that gave every
+  // result a suffix would print "— undefined" on every idle tick in every display surface.
+  const line = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 5, result: "no_change" } as never);
+  assert.match(line, /tick #5 no_change$/, `no-change tick must end at the result: ${line}`);
+});
+
+test("formatEvent degrades gracefully for unknown event types", () => {
+  // The default branch is a safety net: HarnessEvent's union has no exhaustiveness check, so a
+  // type added in types.ts without a case here would otherwise render empty or crash on every
+  // display surface. Pin the graceful fallback.
+  const line = formatEvent({ ts: 0, loop: "clean", type: "brand_new_type" } as never);
+  assert.match(line, /clean\s+brand_new_type/, `unknown types must still render their name: ${line}`);
+});
