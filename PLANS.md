@@ -142,14 +142,13 @@ thresholds from `PiRunResult.turns` + wall-clock) are flagged by warning event a
 commit-bodies lands, its reserved trailer line — matsemann's "difficulty is a signal" restored as
 data.
 
-### Self-explaining commit bodies (planned 2026-08-24)
+### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25)
 
 Full plan: [plans/commit-bodies.md](plans/commit-bodies.md). Reply contract grows WHY/RISK/
 VERIFIED lines after SUMMARY; commits get that body plus a harness-stamped trailer (tick, turns,
 peak ctx). Gives the reviewer, steward, and human a paper trail of claimed understanding
-(TonyAlicea10's do-i-understand, inverted for agents). NOTE: a director-routed request for more
-descriptive commit messages may already exist in this file — merge the entries before
-implementing.
+(TonyAlicea10's do-i-understand, inverted for agents). The trailer's turn count is the same
+`PiRunResult.turns` field the refusal plan needs — whichever lands first adds it.
 
 ### Questions outbox — loops that know when to ask (planned 2026-08-24, refined 2026-08-25)
 

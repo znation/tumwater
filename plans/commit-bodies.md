@@ -1,6 +1,7 @@
 # Self-explaining commit bodies
 
-Planned 2026-08-24 · from the "Senior Tumwater" report (HN 49421554) · report item R6a
+Planned 2026-08-24 · refined 2026-08-25 (removed stale sibling note; turns-field coordination)
+· from the "Senior Tumwater" report (HN 49421554) · report item R6a
 
 ## Goal
 
@@ -13,9 +14,7 @@ trailer with tick metadata. The subject line stays the existing 72-char summary.
 HN commenter **TonyAlicea10** built "do-i-understand": force an explanation of the code, grounded
 in specific lines, before submission — the explanation is the comprehension check. For an agent
 fleet the commit body is that explanation: it gives the review gate, the steward, and the human a
-paper trail of claimed understanding to check against. A director prompt requesting more
-descriptive commit messages is already queued, so check PLANS.md for a routed sibling entry before
-implementing and merge the two rather than shipping twice.
+paper trail of claimed understanding to check against.
 
 ## Design
 
@@ -29,8 +28,11 @@ implementing and merge the two rather than shipping twice.
   not model claims: `Tick: <role> #<n> · turns <t> · ctx <peak>k`, plus the high-friction flag
   from [refusal-and-thrash.md](refusal-and-thrash.md) when set. Fallback when the run omitted the
   body: trailer only.
-- **Turn/ctx counts**: the parser already counts progress; expose assistant-turn count and peak
-  context tokens on `PiRunResult` (small additions to `PiStreamParser`).
+- **Turn/ctx counts**: `peakContextTokens` is already on `PiRunResult`; only the turn counter is
+  new — a small `PiStreamParser` addition (count assistant `message_end` events, in the same hook
+  that already reads usage) exposed as `PiRunResult.turns`. [refusal-and-thrash.md](refusal-and-thrash.md)
+  needs the same field for thrash detection: whichever plan lands first adds it and the other
+  reuses.
 - **Consumers**: the review gate's prompt includes the body (claimed WHY/VERIFIED vs. actual diff
   is exactly the adversarial angle); `tumwater logs --role` transcripts and git history read
   properly today with no changes.
@@ -46,9 +48,8 @@ counters, not model text), README example.
 - A fake-pi run emitting SUMMARY/WHY/RISK/VERIFIED produces a commit whose body carries all three
   lines plus the trailer; `git log` on a dogfood tick shows the structure.
 - A run emitting only SUMMARY still commits, with trailer only.
-- The trailer's turn/ctx numbers come from parsed stream counters.
-- Coordination: any director-routed duplicate entry in PLANS.md is merged into this plan before
-  implementation. `npm test` passes.
+- The trailer's turn/ctx numbers come from parsed stream counters (turns shared with the refusal
+  plan's field). `npm test` passes.
 
 ## Dependencies & sequencing
 
