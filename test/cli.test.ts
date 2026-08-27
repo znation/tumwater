@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,10 +8,10 @@ import { fileURLToPath } from "node:url";
 import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
-import { dequeuePrompt, inboxSize } from "../src/inbox.js";
+import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
-import { piLogPath, resetRequestPath } from "../src/paths.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { orchestratorStatePath, piLogPath, resetRequestPath } from "../src/paths.js";
+import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
 // tested as a child process: the built dist/src/cli.js with cwd set to a temp repo.
@@ -361,4 +361,195 @@ test("logs --role prints the rendered pi transcript and -n limits entries", asyn
   assert.equal(r.code, 0);
   assert.ok(!r.stdout.includes("Reading PLANS.md."), r.stdout);
   assert.ok(r.stdout.includes("  second run done"), r.stdout);
+});
+
+// --- long-running commands (run, logs -f): spawned with a live handle so the test can
+// observe startup output, exercise the follow behavior, and always reap the child. ---
+
+interface SpawnedCli {
+  out: () => string;
+  /** Resolves once `pred` matches the captured stdout; fails the test with the output on timeout. */
+  waitFor(pred: (out: string) => boolean, what: string, ms?: number): Promise<void>;
+  kill(): void;
+}
+
+function spawnCli(cwd: string, args: string[]): { child: ChildProcess } & SpawnedCli {
+  const child = spawn(process.execPath, [CLI, ...args], { cwd, env: process.env });
+  let buffer = "";
+  child.stdout?.on("data", (d) => (buffer += d));
+  return {
+    child,
+    out: () => buffer,
+    waitFor(pred, what, ms = 10_000) {
+      return new Promise((resolve, reject) => {
+        const started = Date.now();
+        const timer = setInterval(() => {
+          if (pred(buffer)) {
+            clearInterval(timer);
+            resolve();
+          } else if (Date.now() - started > ms) {
+            clearInterval(timer);
+            reject(new Error(`timed out waiting for ${what}; output so far:\n${buffer}`));
+          }
+        }, 100);
+      });
+    },
+    kill: () => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Already exited.
+      }
+    },
+  };
+}
+
+/** Wait for the child's exit code; null on timeout so a hung command fails the test instead of hanging it. */
+function exitCode(child: ChildProcess, ms = 15_000): Promise<number | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    child.once("close", (code) => {
+      clearTimeout(t);
+      resolve(code);
+    });
+  });
+}
+
+// --- run: startup guards, banner, and graceful shutdown ---
+
+test("run refuses a detached primary checkout", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run detached");
+  sh(repo, "git", "checkout", "--detach");
+
+  // pi must be on PATH to get past the earlier check; without the branch guard the
+  // orchestrator would start with a null main branch.
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "run");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /primary checkout is detached/);
+  } finally {
+    restore();
+  }
+});
+
+test("run refuses to start while another orchestrator is alive", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run guard");
+
+  // Record a live pid (this test process) as the running orchestrator; two fleets in one
+  // repo would double-tick every loop and race on the merge lock.
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(
+    orchestratorStatePath(repo),
+    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: [] }),
+  );
+
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "run");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /an orchestrator is already running/);
+  } finally {
+    fs.rmSync(orchestratorStatePath(repo), { force: true });
+    restore();
+  }
+});
+
+test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run lifecycle");
+
+  // One enabled role keeps the startup burst small; a no-op pi ends every tick as
+  // no_change so nothing is committed while we observe the harness itself.
+  const cfg = defaultConfig();
+  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+
+  const restore = fakePi("exit 0");
+  const s = spawnCli(repo, ["run"]);
+  try {
+    await s.waitFor((out) => out.includes("tumwater running on branch main"), "the run banner");
+    assert.match(s.out(), /loops: clean/);
+
+    // SIGTERM triggers the graceful stop path (not a kill): it announces, aborts the
+    // orchestrator, and lets in-flight ticks finish before exiting 0.
+    s.child.kill("SIGTERM");
+    const code = await exitCode(s.child);
+    assert.equal(code, 0, `expected clean exit after SIGTERM; output so far:\n${s.out()}`);
+    assert.match(s.out(), /stopping — waiting for in-flight ticks/);
+
+    // Graceful shutdown removed the info file: a stale marker would make every later
+    // `tumwater run` refuse to start.
+    assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
+  } finally {
+    s.kill();
+    restore();
+  }
+});
+
+// --- logs -f: the follow half of both log commands is only reachable with a live child ---
+
+test("logs -f prints the current window and follows newly appended events", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs follow");
+
+  // Seed one real event through the same path the TUI/GUI/CLI use.
+  submitPrompt(repo, "first prompt");
+
+  const s = spawnCli(repo, ["logs", "-f"]);
+  try {
+    await s.waitFor((out) => out.includes("user prompt queued: first prompt"), "the seeded event");
+
+    // A new event appended while following must appear without a restart (500ms poll).
+    submitPrompt(repo, "second prompt");
+    await s.waitFor((out) => out.includes("user prompt queued: second prompt"), "the live event");
+  } finally {
+    s.kill();
+  }
+});
+
+test("logs --role -f prints each turn exactly once across the initial window and follow", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli transcript follow");
+
+  // One completed run on disk; a second is appended while following.
+  const file = piLogPath(repo, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    [JSON.stringify({ type: "session", version: 3, id: "x" }), assistantLine("first turn text")].join("\n") + "\n",
+  );
+
+  const s = spawnCli(repo, ["logs", "--role", "clean", "-f"]);
+  try {
+    await s.waitFor((out) => out.includes("first turn text"), "the initial window");
+
+    fs.appendFileSync(file, assistantLine("second turn text") + "\n");
+    await s.waitFor((out) => out.includes("second turn text"), "the live turn");
+
+    // The follow renderer starts fresh at the window's end: a regression that re-fed the
+    // initial lines would print the first turn twice.
+    const out = s.out();
+    assert.equal(out.split("first turn text").length - 1, 1, `first turn printed once:\n${out}`);
+    assert.equal(out.split("second turn text").length - 1, 1, `second turn printed once:\n${out}`);
+  } finally {
+    s.kill();
+  }
+});
+
+// --- gui: non-EADDRINUSE listen errors pass through the top-level handler ---
+
+test("gui passes a permission error through with the raw message", async () => {
+  // Privileged ports need root; as an unprivileged user this deterministically yields
+  // EACCES, which the CLI must not swallow into the port-in-use hint. Skipped under root,
+  // where port 80 would bind and serve forever.
+  if (typeof process.getuid === "function" && process.getuid() === 0) return;
+  const repo = makeRepo();
+  await initProject(repo, "cli gui eacces");
+
+  const r = await cli(repo, "gui", "--port", "80");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /EACCES/);
 });
