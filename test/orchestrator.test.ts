@@ -14,10 +14,11 @@ import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import type { TumwaterConfig } from "../src/types.js";
 import { initProject } from "../src/init.js";
+import { enqueuePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "../src/state.js";
 import { orchestratorStatePath, resetRequestPath } from "../src/paths.js";
-import { assistantLine, fakePi, makeRepo, tmpdir } from "./util.js";
+import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 function runner(role: string): LoopRunner {
   return new LoopRunner(makeRepo(), role, defaultConfig(), "main");
@@ -212,6 +213,69 @@ test("runOrchestrator refuses to start with no roles enabled", async () => {
     );
   } finally {
     controller.abort();
+  }
+});
+
+// --- Early wakes are observable: a loop that runs ahead of its schedule logs why ---
+
+test("a main move and a queued prompt each log exactly one wake event with their reason", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "wake event test");
+  // clean gets a long backoff after its startup tick so nothing but an early wake can
+  // schedule it again; the director idles until the inbox has work.
+  const config = fastConfig(["clean", "director"]);
+  config.idleBackoff = { initialSeconds: 60, factor: 1, maxSeconds: 60 };
+  saveConfig(repo, config);
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo);
+  try {
+    // Wait for clean's startup tick to finish (its state save records the current main
+    // head): from then on it sleeps ~60s, so only a main move can schedule it again.
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "the startup tick to finish",
+    );
+
+    // The world changed: advance main with a real commit. The next poll must wake clean
+    // early and log why — the TUI/GUI/logs surface this as `woke (main moved)`.
+    fs.writeFileSync(path.join(repo, "world.txt"), "changed\n");
+    sh(repo, "git", "add", "-A");
+    sh(repo, "git", "commit", "-m", "advance main");
+
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "wake" && e.reason === "main moved"),
+      "a wake event for the main move",
+    );
+    // The wake actually ran a tick, not just logged one.
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 2 && !loadLoopState(repo, "clean").running,
+      "the woken tick to finish",
+    );
+
+    // A queued prompt wakes the idle director the same way (reason: inbox).
+    enqueuePrompt(repo, "wake me up");
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "wake" && e.reason === "inbox"),
+      "a wake event for the queued prompt",
+    );
+    await waitFor(
+      () => loadLoopState(repo, "director").ticks >= 1 && !loadLoopState(repo, "director").running,
+      "the director's woken tick to finish",
+    );
+
+    // Exactly one wake per cause: the running-flag reservation must prevent a re-wake on
+    // every poll while the prompt is pending or the tick is in flight.
+    const wakes = readEvents(repo).filter((e) => e.type === "wake");
+    assert.deepEqual(
+      wakes.map((w) => [w.loop, w.reason]),
+      [
+        ["clean", "main moved"],
+        ["director", "inbox"],
+      ],
+    );
+  } finally {
+    restore();
+    await orch.stop();
   }
 });
 
