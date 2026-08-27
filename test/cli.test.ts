@@ -204,6 +204,53 @@ test("gui reports a friendly error when the port is already in use", async () =>
   }
 });
 
+test("commands reject unknown arguments instead of silently ignoring them", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli strict args");
+  seedCounters(repo, "feature");
+  seedCounters(repo, "clean");
+
+  // A misspelled --role used to be ignored: reset-counters would zero EVERY loop instead of
+  // the one named. Now it fails and leaves every counter (and no fleet marker) untouched.
+  let r = await cli(repo, "reset-counters", "--rol", "feature");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --rol/);
+  assert.match(r.stderr, /--role <id>/);
+  assert.equal(loadLoopState(repo, "feature").ticks, 7, "no reset happened");
+  assert.equal(loadLoopState(repo, "clean").ticks, 7, "no reset happened");
+  assert.ok(!fs.existsSync(resetRequestPath(repo)), "no marker written");
+
+  // A misspelled --port used to be ignored: gui would serve on the default port.
+  r = await cli(repo, "gui", "--portt", "8080");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --portt/);
+
+  // A doubled short flag used to be ignored: logs would run one-shot instead of following.
+  r = await cli(repo, "logs", "-ff");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: -ff/);
+
+  // Commands with no flags reject any argument at all.
+  for (const [cmd, extra] of [
+    ["run", "--verbose"],
+    ["status", "--json"],
+  ] as const) {
+    r = await cli(repo, cmd, extra);
+    assert.equal(r.code, 1, `${cmd} ${extra}`);
+    assert.match(r.stderr, /takes no arguments/);
+  }
+
+  // Stray non-flag tokens are rejected too.
+  r = await cli(repo, "reset-counters", "--role", "feature", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: extra/);
+  assert.equal(loadLoopState(repo, "feature").ticks, 7, "no reset happened");
+
+  // Valid combinations still work.
+  r = await cli(repo, "logs", "-n", "3", "--role", "clean");
+  assert.equal(r.code, 0);
+});
+
 // --- logs --role (per-role pi transcript) ---
 
 test("logs --role validates the role id and reports a missing transcript", async () => {

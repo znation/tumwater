@@ -76,6 +76,47 @@ function parseRoleFlag(args: string[]): string | null {
   return role;
 }
 
+/** One flag in a command's fixed argument vocabulary: every spelling it accepts and whether
+ * it takes one following token as its value (named for the error message). */
+interface FlagSpec {
+  /** Every accepted spelling, e.g. ["-f", "--follow"]. */
+  names: string[];
+  /** True when the flag consumes one following token as its value. */
+  value?: boolean;
+  /** How the value is named in error messages (e.g. "<id>"); defaults to "<value>". */
+  valueName?: string;
+}
+
+/** Fail when any argument was not consumed by this command's known flags — a misspelled flag
+ * (e.g. `--rol` instead of `--role`) would otherwise be silently ignored and the command runs
+ * with default behavior, which is worse than an error: `reset-counters --rol x` zeroed every
+ * loop instead of one, and `gui --portt 8080` served on the default port. Valueless flags claim
+ * one token; valued flags claim two (a trailing flag with no value claims only itself — the
+ * command's own parser reports the missing value first). Duplicates keep their existing
+ * behavior: the first occurrence wins. */
+function rejectUnknownArgs(command: string, args: string[], specs: FlagSpec[]): void {
+  if (args.length === 0) return;
+  const claim = new Map<string, number>();
+  for (const spec of specs) for (const name of spec.names) claim.set(name, spec.value ? 2 : 1);
+  const consumed = new Array<boolean>(args.length).fill(false);
+  for (let i = 0; i < args.length; i++) {
+    if (consumed[i]) continue;
+    const arg = args[i] ?? ""; // Unreachable fallback: the loop bound guarantees a token here.
+    const n = claim.get(arg);
+    if (n === undefined) {
+      const valid = specs
+        .map((s) => s.names.join("/") + (s.value ? ` ${s.valueName ?? "<value>"}` : ""))
+        .join(", ");
+      fail(
+        specs.length === 0
+          ? `tumwater ${command} takes no arguments`
+          : `unknown argument: ${arg} (valid flags for tumwater ${command}: ${valid})`,
+      );
+    }
+    for (let j = 0; j < n && i + j < args.length; j++) consumed[i + j] = true;
+  }
+}
+
 async function resolveMainBranch(root: string): Promise<string> {
   const branch = await currentBranch(root);
   if (!branch) fail("the repo's primary checkout is detached; check out your main branch first");
@@ -224,13 +265,16 @@ async function main(): Promise<void> {
       await cmdInit(root, args);
       break;
     case "run":
+      rejectUnknownArgs("run", args, []);
       await cmdRun(root);
       break;
     case "tui":
+      rejectUnknownArgs("tui", args, []);
       await requireReadyRepo(root);
       await runTui(root);
       break;
     case "gui": {
+      rejectUnknownArgs("gui", args, [{ names: ["--port"], value: true, valueName: "<n>" }]);
       await requireReadyRepo(root);
       const portFlag = args.indexOf("--port");
       const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
@@ -250,12 +294,18 @@ async function main(): Promise<void> {
       break;
     }
     case "status":
+      rejectUnknownArgs("status", args, []);
       await requireReadyRepo(root);
       process.stdout.write(
         renderStatus(root, snapshot(root), process.stdout.isTTY ? process.stdout.columns : undefined) + "\n",
       );
       break;
     case "logs":
+      rejectUnknownArgs("logs", args, [
+        { names: ["-f", "--follow"] },
+        { names: ["-n"], value: true, valueName: "<count>" },
+        { names: ["--role"], value: true, valueName: "<id>" },
+      ]);
       await requireReadyRepo(root);
       await cmdLogs(root, args);
       break;
@@ -268,6 +318,7 @@ async function main(): Promise<void> {
       break;
     }
     case "reset-counters": {
+      rejectUnknownArgs("reset-counters", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
       await requireReadyRepo(root);
       await cmdResetCounters(root, args);
       break;
