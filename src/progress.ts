@@ -54,8 +54,21 @@ function workItemFromContent(content: unknown): string | undefined {
   return undefined;
 }
 
+/** The state of a pi run at time zero — every run-scoped field at its initial value. This is
+ * the single definition of "fresh": first observation and rotation seed from it (withTail),
+ * and a `session` event restores exactly it (feedLine) — so adding a field to LiveProgress
+ * updates both places automatically instead of drifting apart. */
 function freshProgress(quietMs: number): LiveProgress {
-  return { turns: 0, toolCalls: 0, contextTokens: 0, outputTokens: 0, peakContextTokens: 0, quietMs };
+  return {
+    turns: 0,
+    toolCalls: 0,
+    contextTokens: 0,
+    outputTokens: 0,
+    peakContextTokens: 0,
+    lastTool: undefined,
+    currentWork: undefined,
+    quietMs,
+  };
 }
 
 /** Apply one raw log line to a progress object (mutates it). Non-JSON noise is skipped. */
@@ -73,14 +86,8 @@ function feedLine(progress: LiveProgress, line: string): void {
     return;
   }
   switch (event.type) {
-    case "session": // A new run starts: everything before it was a previous tick.
-      progress.turns = 0;
-      progress.toolCalls = 0;
-      progress.contextTokens = 0;
-      progress.outputTokens = 0;
-      progress.peakContextTokens = 0;
-      progress.lastTool = undefined;
-      progress.currentWork = undefined;
+    case "session": // A new run starts: everything before it was a previous tick — restore the at-time-zero state.
+      Object.assign(progress, freshProgress(progress.quietMs));
       break;
     case "tool_execution_start":
       progress.toolCalls += 1;
