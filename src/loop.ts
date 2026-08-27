@@ -123,6 +123,16 @@ export class LoopRunner {
     });
   }
 
+  /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost). Every pi
+   * run of a tick — main attempt, transient-timeout retry, conflict resolution — lands here
+   * exactly once, so adding a usage field to PiRunResult touches this single place. */
+  private foldUsage(run: PiRunResult): void {
+    const s = this.state;
+    s.generatedTokens += run.outputTokens;
+    s.peakContextTokens = Math.max(s.peakContextTokens, run.peakContextTokens);
+    s.totalCostUsd += run.costUsd;
+  }
+
   /** Run pi for this loop in worktree `wt` with the shared per-loop wiring (role config,
    * session dir, raw log) and fold the run's tokens/cost into the state. Every run starts
    * a FRESH pi session: context never accumulates across ticks, so ticks start cheap
@@ -138,7 +148,6 @@ export class LoopRunner {
     sessionName: string,
     resume = false,
   ): Promise<PiRunResult> {
-    const s = this.state;
     const opts = {
       cwd: wt,
       prompt,
@@ -160,14 +169,11 @@ export class LoopRunner {
       // Within-tick continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
-      s.generatedTokens += pi.outputTokens + retry.outputTokens;
-      s.peakContextTokens = Math.max(s.peakContextTokens, pi.peakContextTokens, retry.peakContextTokens);
-      s.totalCostUsd += pi.costUsd + retry.costUsd;
+      this.foldUsage(pi);
+      this.foldUsage(retry);
       return retry;
     }
-    s.generatedTokens += pi.outputTokens;
-    s.peakContextTokens = Math.max(s.peakContextTokens, pi.peakContextTokens);
-    s.totalCostUsd += pi.costUsd;
+    this.foldUsage(pi);
     return pi;
   }
 
