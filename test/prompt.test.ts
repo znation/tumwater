@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   NOTHING_TO_DO,
   PRINCIPLES_MAX_CHARS,
+  buildConflictPrompt,
   buildDirectorPrompt,
   buildResumePrompt,
   buildTickPrompt,
@@ -199,6 +200,55 @@ test("buildResumePrompt differs across roles only in the role name", () => {
   const a = buildResumePrompt("feature");
   const b = buildResumePrompt("clean").replaceAll('"clean"', '"feature"');
   assert.equal(b, a, "no per-role drift in the bridge instructions");
+});
+
+// The conflict prompt drives pi's one-shot merge-conflict resolution run. Its contract is
+// load-bearing in ways the loop-level fake-pi tests cannot see (the fake ignores prompt
+// content): pi must know exactly which files hold markers, what "ours"/"theirs" mean, and —
+// critically — that it may not touch git state itself, or its own commit/rebase would collide
+// with the harness's continueRebase.
+
+test("buildConflictPrompt names the role and lists every conflicted file", () => {
+  const p = buildConflictPrompt("bugfix", ["src/git.ts", "docs/notes.md"]);
+  assert.match(p, /"bugfix" loop/);
+  // The situation is explained: a rebase onto main stopped on conflicts in the worktree.
+  assert.match(p, /A rebase of\nyour work branch onto main stopped on conflicts/);
+  // Every conflicted file is listed as its own bullet so pi knows exactly where to look —
+  // the harness later re-checks markers in precisely these files.
+  assert.ok(
+    p.includes("Conflicted files:\n- src/git.ts\n- docs/notes.md"),
+    "each conflicted file on its own line",
+  );
+});
+
+test("buildConflictPrompt defines ours/theirs and asks for a combined resolution", () => {
+  const p = buildConflictPrompt("feature", ["a.txt"]);
+  // Picking the wrong side silently drops work: the prompt must define which side is which.
+  assert.match(p, /"ours" is this branch's change/);
+  assert.match(p, /"theirs" is the latest main/);
+  assert.match(p, /combining the intent of BOTH sides/i);
+});
+
+test("buildConflictPrompt forbids state-changing git commands (harness concludes the rebase)", () => {
+  const p = buildConflictPrompt("clean", ["a.txt"]);
+  // If pi committed or continued the rebase itself, the harness's continueRebase would
+  // collide with it — the prompt keeps pi to file edits only.
+  assert.match(p, /Edit files only/);
+  assert.match(p, /no add, commit, merge, rebase/);
+  assert.match(p, /the harness concludes the rebase for you/i);
+  // Reading git state stays allowed — resolving well may need it.
+  assert.match(p, /Reading git state is fine/i);
+});
+
+test("buildConflictPrompt keeps the project building and ends by stopping", () => {
+  const p = buildConflictPrompt("improve", ["a.txt"]);
+  // The harness only re-checks conflict markers after this run; keeping the build green
+  // is pi's own diligence, so the prompt must ask for it.
+  assert.match(p, /Keep the project building and its tests passing/);
+  // The run's only job is resolving the markers: it ends by stopping — no new task,
+  // no sentinel or SUMMARY line (this flow parses neither from pi's reply).
+  assert.match(p, /just stop/i);
+  assert.ok(!p.includes(NOTHING_TO_DO), "no tick sentinel in a conflict run");
 });
 
 test("extractSummary finds the SUMMARY line anywhere in the reply", () => {
