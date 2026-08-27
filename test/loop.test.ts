@@ -9,13 +9,23 @@ import { defaultConfig, validateConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
-import { sessionDir } from "../src/paths.js";
+import { sessionDir, worktreePath } from "../src/paths.js";
 import { assistantLine, errorLine, fakePi, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
   await initProject(repo, "A test project.");
   return repo;
+}
+
+/** Poll until `file` exists (bounded), so a test can act only after the fake pi run has
+ * done its work — a fixed sleep races process startup when the suite runs in parallel. */
+async function waitForFile(file: string, timeoutMs = 10_000): Promise<void> {
+  const start = Date.now();
+  while (!fs.existsSync(file)) {
+    if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${file}`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 test("a tick that changes files commits and merges to main", async () => {
@@ -293,8 +303,17 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
   try {
     const controller = new AbortController();
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    setTimeout(() => controller.abort(), 300);
-    assert.equal((await runner.tick()).result, "aborted");
+    // Abort only once the half-done edit has landed: a fixed timer can fire before the
+    // fake pi even starts under parallel load, leaving no edits for the resume to keep.
+    const tick = runner.tick();
+    try {
+      await waitForFile(path.join(worktreePath(repo, "improve"), "partial.txt"));
+    } catch (err) {
+      controller.abort(); // don't leave the hung fake pi running after a wait timeout
+      throw err;
+    }
+    controller.abort();
+    assert.equal((await tick).result, "aborted");
     restore();
 
     // The aborted run's pi session is on disk (the fake pi writes none, so seed one).

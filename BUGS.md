@@ -5,34 +5,37 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Flaky test: "a resumed tick continues the interrupted session" fails with no_change under parallel load (found by bugfix loop 2026-08-27)
+_None yet._
 
-**Symptom:** `npm test` intermittently fails exactly one test —
+## Fixed
+
+### Flaky test: "a resumed tick continues the interrupted session" fails with no_change under parallel load (found by bugfix loop 2026-08-27, fixed 2026-08-27)
+
+**Symptom:** `npm test` intermittently failed exactly one test —
 test/loop.test.ts "a resumed tick continues the interrupted session and keeps the worktree
 edits" — with `assert.equal(outcome.result, "changed")` getting actual `'no_change'`. The same
-test passes when its file is run alone (`node --test dist/test/loop.test.js`) and on a full-suite
+test passed when its file was run alone (`node --test dist/test/loop.test.js`) and on a full-suite
 rerun; observed once in two consecutive full runs at HEAD 64a057a while the machine was also
 running an LM Studio fleet.
 
-**Repro:** `npm test` repeatedly under load (all test files run in parallel, each spawning git
-repos and processes); no deterministic single-run repro — it is a race.
-
-**Suspected cause:** The test's first phase aborts on a fixed 300 ms timer (`setTimeout(() =>
-controller.abort(), 300)`) while the fake pi runs `echo partial > partial.txt\nexec sleep 30` in
-the worktree. If process startup plus script execution takes longer than 300 ms under parallel
-load, the child is killed before `partial.txt` is written; the aborted tick then leaves no
+**Cause (confirmed):** The test's first phase aborted on a fixed 300 ms timer (`setTimeout(() =>
+controller.abort(), 300)`) while the fake pi ran `echo partial > partial.txt\nexec sleep 30` in
+the worktree. If process startup plus script execution took longer than 300 ms under parallel
+load, the child was killed before `partial.txt` was written; the aborted tick then left no
 uncommitted edits in the worktree, and the resumed tick — whose fake pi only prints a SUMMARY
-line — finds a clean tree and correctly reports `no_change`. The sibling test "an aborted tick
-lands nothing" uses the same pattern but asserts only that nothing landed on main, so it passes
-either way; only the resume test is sensitive.
+line — found a clean tree and correctly reported `no_change`. The sibling test "an aborted tick
+lands nothing" uses the same pattern but asserts only that nothing landed on main, so it passed
+either way; only the resume test was sensitive. No harness code was at fault: a resumed tick over
+an empty worktree reporting no_change is correct behavior.
 
-**Fix location:** make the abort deterministic in test/loop.test.ts — e.g. poll for
-`partial.txt` to exist in the worktree (bounded wait) before triggering `controller.abort()`, or
-have the fake pi signal readiness (marker file) and block on it after writing. No harness code is
-suspected of being at fault: a resumed tick over an empty worktree reporting no_change is
-correct behavior.
-
-## Fixed
+**Fix:** The abort is now deterministic in test/loop.test.ts: the tick starts as a pending promise,
+a new `waitForFile` helper polls (25 ms interval, 10 s bound) for `partial.txt` to appear in the
+worktree — the fake pi's own half-done edit doubles as its readiness marker — and only then is
+`controller.abort()` called; on wait timeout the controller aborts too so the hung fake pi child
+does not linger. The sibling test was left untouched: it asserts nothing that depends on the
+edit having landed. Verified with four concurrent `node --test dist/test/loop.test.js` runs under
+four busy-loop CPU hogs — 39/39 each, resume test green in all four; full suite 286/286.
+Files: `test/loop.test.ts`.
 
 ### Build broken on main: test/files.test.ts imports tail helpers from files.js after organize move (reported by plan loop 2026-08-27, closed 2026-08-27)
 
