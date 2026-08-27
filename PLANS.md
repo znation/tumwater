@@ -6,7 +6,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 ### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25, refined
-2026-08-27)
+2026-08-27, audited 2026-08-27)
 
 Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
 fresh-session pi run (no author context; own model override via optional provider/model/thinking on
@@ -19,6 +19,26 @@ stays on the branch for re-review next tick, 3-strike discard cap), and both `re
 salvage and resumed ticks' leftover commits route through the same gate so no crash path can land
 unreviewed work. The report's highest-leverage item — we have merged broken work twice for lack of
 it.
+
+**Status (plan-loop audit 2026-08-27):** feature tick 44 (`bad613e`) landed the core module, but
+the plan is NOT done and that commit broke the build on main (open bug in BUGS.md — fix it first).
+Landed: `src/review.ts` (exemption matcher, verdict parsing, gate orchestration with the 3-strike
+discard cap), the top-level `review` config section + validation + `reviewConfig` accessor,
+LoopState/TickResult/event types, recovery-path wiring (`recoverLeftover` routes leftovers through
+the same gate — `-recovery` session suffix, skips an already-approved HEAD), and rejected-reason
+injection into the next tick prompt. Remaining, in order: (1) wire the gate into the MAIN tick
+path — `runTick` currently goes straight from `commitAll` to `merge`, so fresh ticks (the normal
+case) merge unreviewed; call it after commit/before merge and map GateResult → outcome
+(`approved`/`exempt` → merge, `rejected` → `"rejected"`, `failed` → `"review_error"` with the
+commit left for recovery re-review, `aborted` → `"aborted"` + user-prompt re-queue), folding
+reviewer usage; (2) schedule `"rejected"` like `"changed"` (reset backoff, next tick at
+minTickInterval) so authors address objections instead of sleeping through them —
+`"review_error"` already falls into error backoff as planned; (3) clear `state.phase` at tick end
+alongside `running` (set to `"review"` in review.ts but never cleared); (4) add the missing
+`test/review-gate.test.ts` per the plan's file list — zero tests exist for a 219-line module that
+guards every merge; (5) presentation: plain `formatEvent` rendering for the four review event types
+(today they fall through to bare-type default) and `reviewing <elapsed>` in loopPhase/workingDetail
+while `running && phase === "review"`. Acceptance criteria unchanged — all still open.
 
 ### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27)

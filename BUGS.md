@@ -5,7 +5,29 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Build broken on main: syntax error in src/review.ts (missing comment prefix) (reported by plan loop 2026-08-27)
+
+**Symptom:** `npm run build` — and therefore `npm test` — fails with five TypeScript errors, all
+on one line of the file added by feature tick 44 (`bad613e`, 2026-08-27):
+
+```
+src/review.ts(184,5): error TS1109: Expression expected.
+src/review.ts(184,26): error TS1005: ';' expected.
+… (three more on the same line)
+```
+
+Every loop inherits this because worktrees reset to main at tick start; any role that builds or
+tests hits it immediately. A third instance of broken work landing on main — precisely what the
+review gate was built to prevent, and it got through because the gate is not yet wired into the
+tick path (see PLANS.md's review-gate entry).
+
+**Repro:** `npm run build` at HEAD `bad613e`.
+
+**Suspected cause:** src/review.ts line 184 — a comment continuation lost its `//` prefix: line
+183 ends mid-sentence (`…starts fresh. Read`) and line 184 is bare `*before* overwriting
+lastReview with this failure.` instead of a commented continuation. One-line fix: restore the
+comment (prefix line 184 or fold both lines into one). No behavioral change; verify with
+`npm test` afterwards.
 
 ## Fixed
 
