@@ -5,7 +5,25 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Build broken on main: test/files.test.ts imports tail helpers from files.js after organize move (reported by plan loop 2026-08-27)
+
+**Symptom:** `npm run build` — and therefore `npm test` — fails with TS2305 errors:
+`Module '"../src/files.js"' has no exported member 'followFile' / 'readCompleteLines' /
+'withTail' / 'TailState'`, plus cascading implicit-any errors in the same file. Every loop
+inherits this because worktrees reset to main at tick start, so the whole fleet is blocked until
+it is fixed.
+
+**Repro:** `npm install && npm run build` on any fresh checkout of main (HEAD 3946050).
+
+**Cause:** Commit 3946050 ("organize tick 48") moved `followFile`, `readCompleteLines`,
+`withTail`, and `TailState` from src/files.ts into the new src/tail.ts and updated every src/
+importer (cli, progress, transcript) — but missed test/files.test.ts line 5, which still imports
+them from `../src/files.js`. All four symbols exist in src/tail.ts with unchanged signatures.
+
+**Fix location:** split that one import: keep `pruneOldFiles` and `rotateIfLarge` from
+"../src/files.js", take the other four (plus `type TailState`) from "../src/tail.js". No other
+file references these symbols via files.js (verified by grep). One-line change; no behavior
+diff.
 
 ## Fixed
 

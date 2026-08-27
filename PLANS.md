@@ -32,13 +32,18 @@ thresholds from `PiRunResult.turns` + wall-clock) are flagged by warning event a
 commit-bodies lands, its reserved trailer line — matsemann's "difficulty is a signal" restored as
 data.
 
-### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25)
+### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined 2026-08-27)
 
 Full plan: [plans/commit-bodies.md](plans/commit-bodies.md). Reply contract grows WHY/RISK/
-VERIFIED lines after SUMMARY; commits get that body plus a harness-stamped trailer (tick, turns,
-peak ctx). Gives the reviewer, steward, and human a paper trail of claimed understanding
-(TonyAlicea10's do-i-understand, inverted for agents). The trailer's turn count is the same
-`PiRunResult.turns` field the refusal plan needs — whichever lands first adds it.
+VERIFIED lines after SUMMARY (each capped at 200 chars; VERIFIED says `none` when nothing was
+run); commits get that body plus a harness-stamped trailer — exact format decided:
+`Tick: <role> #<tick> · turns <t> · ctx <c>` from a pure helper in prompt.ts. Trailer numbers
+decided: turns accumulate through the existing `foldUsage` per-tick windows (main + transient
+retry; conflict-resolution runs fold after commit and are excluded), ctx reads the existing
+per-tick peak — no LoopState schema change. Gives the reviewer, steward, and human a paper trail
+of claimed understanding (TonyAlicea10's do-i-understand, inverted for agents). The trailer's
+turn count is the same `PiRunResult.turns` field the refusal plan needs — whichever lands first
+adds it; assembly stays one shared helper so refusal commits route through it too.
 
 ### Questions outbox — loops that know when to ask (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-26)
