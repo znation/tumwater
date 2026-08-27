@@ -164,8 +164,26 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     assert.deepEqual([...info.roles].sort(), ["clean", "dry"]);
     assert.ok(orchestratorAlive(repo), "a live orchestrator reports alive");
 
-    setTimeout(() => controller.abort(), 1200);
+    // Wait for both startup ticks to actually finish (not a fixed sleep): the post-shutdown
+    // state and event assertions then observe completed runs, never an abort mid-tick.
+    await waitFor(
+      () =>
+        ["clean", "dry"].every((role) => {
+          const s = loadLoopState(repo, role);
+          return s.ticks >= 1 && !s.running;
+        }),
+      "both startup ticks to finish",
+    );
+    // Shutdown must not wait out the current poll sleep (POLL_MS = 2s): abort wakes the loop
+    // immediately, so this resolves in milliseconds. A second is a generous ceiling that old,
+    // non-interruptible behavior would blow roughly half the time.
+    const tAbort = Date.now();
+    controller.abort();
     await done;
+    assert.ok(
+      Date.now() - tAbort < 1000,
+      `shutdown took ${Date.now() - tAbort}ms — it waited out the poll sleep instead of waking on abort`,
+    );
 
     // Shutdown removed the state file and logged both lifecycle events.
     assert.equal(readOrchestratorInfo(repo), null, "state file removed on shutdown");
@@ -498,18 +516,28 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
       const s = loadLoopState(repo, role);
       return s.ticks >= 1 && !s.running;
     };
+    const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
     await waitFor(() => finished("clean") && finished("dry"), "startup ticks to finish");
+    // Baseline while both roles are still enabled and idle: clean's next tick after the
+    // disable is what proves the rest of the fleet keeps ticking.
+    const cleanTicks = loadLoopState(repo, "clean").ticks;
 
     // Disabling a role stops its next tick; the rest of the fleet keeps ticking.
     saveConfig(repo, fastConfig(["clean"]));
-    await new Promise((r) => setTimeout(r, 1000)); // let any in-flight tick finish first
+    // Wait until the disable is processed AND no in-flight dry tick remains. From that point
+    // on dry can never start another tick (isEligible hard-gates disabled roles), so its
+    // captured count is final for the whole disabled window — no fixed sleep needed.
+    await waitFor(
+      () =>
+        messages().some((m) => m.includes("role dry disabled — stopping ticks")) &&
+        !loadLoopState(repo, "dry").running,
+      "the disable to be processed with no in-flight tick",
+    );
     const dryTicks = loadLoopState(repo, "dry").ticks;
-    const cleanTicks = loadLoopState(repo, "clean").ticks;
-    // Longer than the max inter-tick gap (1s backoff + 2s poll), so a live loop would tick.
-    await new Promise((r) => setTimeout(r, 6000));
+    // The enabled role's next tick proves the fleet is still alive and ticking — the disabled
+    // role had that same window and must not have used it.
+    await waitFor(() => loadLoopState(repo, "clean").ticks > cleanTicks, "an enabled role to tick again");
     assert.equal(loadLoopState(repo, "dry").ticks, dryTicks, "disabled role stops ticking");
-    assert.ok(loadLoopState(repo, "clean").ticks > cleanTicks, "other roles keep ticking");
-    const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
     assert.ok(messages().some((m) => m.includes("role dry disabled — stopping ticks")), "disable transition logged");
 
     // Enabling a role that was not running at startup starts it (new runner).

@@ -13,6 +13,28 @@ import { orchestratorStatePath, resetRequestPath, sessionsRootDir } from "./path
 
 const POLL_MS = 2000;
 
+/** Sleep up to ms, but wake immediately when `signal` aborts — so shutdown (SIGTERM →
+ * abort) is prompt instead of waiting out the current poll cycle. The listener is removed
+ * on either exit path so long-running orchestrators don't accumulate one per poll. */
+function sleepInterruptible(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    if (signal.aborted) {
+      clearTimeout(timer);
+      resolve();
+      return;
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export interface OrchestratorInfo {
   pid: number;
   startedAt: number;
@@ -214,7 +236,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
         void task.finally(() => inFlight.delete(task));
       }
 
-      await new Promise((r) => setTimeout(r, POLL_MS));
+      await sleepInterruptible(POLL_MS, signal);
     }
   } finally {
     await Promise.allSettled([...inFlight]);
