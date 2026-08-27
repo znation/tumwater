@@ -77,11 +77,15 @@ export interface LoopState {
   lastTickEndedAt?: number;
   /** True while a tick is in flight (best-effort; cleared on orchestrator start). */
   running?: boolean;
-  /** True when the last tick was aborted by a harness shutdown mid-run: the pi session and
-   * the worktree's uncommitted edits were left in place, so the next tick resumes the same
-   * session (--continue) instead of starting fresh. Consumed (cleared) by that tick; set
-   * again only if it too is aborted, so a failing resume falls back to a fresh start. */
+  /** True when the last tick was interrupted mid-task — aborted by a harness shutdown, or
+   * truncated at the model's context ceiling — with its pi session (and any uncommitted
+   * worktree edits, for shutdowns) left in place: the next tick resumes that session
+   * (--continue) instead of starting fresh. Consumed (cleared) by that tick; set again only
+   * by another interruption, so a failing resume falls back to a fresh start. */
   resumePending?: boolean;
+  /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
+   * past the limit the loop abandons the runaway task and falls back to a fresh tick. */
+  cutOffStreak?: number;
   /** Tokens the model actually generated for this loop, summed across all runs. */
   generatedTokens: number;
   /** Largest single-request context this loop has ever submitted. */

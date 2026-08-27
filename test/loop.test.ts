@@ -129,7 +129,7 @@ test("a non-compliant tick warns and notes a truncated final message", async () 
   }
 });
 
-test("a tick cut off at the context ceiling warns with the cut-off diagnosis", async () => {
+test("a tick cut off at the context ceiling warns, skips backoff, and resumes", async () => {
   const repo = await initializedRepo();
   // Replays the observed incident: mid-run text, then a thinking-only final message
   // (generation truncated by an output clamp but reported as a normal stop), then pi
@@ -147,6 +147,59 @@ test("a tick cut off at the context ceiling warns with the cut-off diagnosis", a
     assert.match(String(warning.message), /cut off at the context ceiling/);
     assert.match(String(warning.message), /auto-compacted/);
     assert.doesNotMatch(String(warning.message), /no assistant text/);
+    // The work survives in the compacted session: resume it promptly, no idle backoff.
+    assert.equal(runner.state.resumePending, true, "the next tick resumes the compacted session");
+    assert.equal(runner.state.backoffSeconds, 0, "a cut-off is not idleness");
+    assert.equal(runner.state.cutOffStreak, 1);
+  } finally {
+    restore();
+  }
+});
+
+test("cut-off resumes stop after the streak limit and fall back to backoff", async () => {
+  const repo = await initializedRepo();
+  // Every run gets cut off; a session file exists so resumes are actually attempted.
+  const argsFile = path.join(tmpdir(), "argv.log");
+  const restore = fakePi(
+    [
+      `flags=""`,
+      `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
+      `echo "run:$flags" >> "${argsFile}"`,
+      `printf '%s\n' '${thinkingOnlyLine("cut off again", { output: 16 })}'`,
+    ].join("\n"),
+  );
+  try {
+    fs.mkdirSync(sessionDir(repo, "perf"), { recursive: true });
+    fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
+    const runner = new LoopRunner(repo, "perf", defaultConfig(), "main");
+    for (let i = 1; i <= 3; i++) {
+      assert.equal((await runner.tick()).result, "no_change");
+      assert.equal(runner.state.resumePending, true, `cut-off ${i} still resumes`);
+      assert.equal(runner.state.cutOffStreak, i);
+      assert.equal(runner.state.backoffSeconds, 0);
+    }
+    // Fourth consecutive cut-off: the task is not converging — give up and back off.
+    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal(runner.state.resumePending, false, "past the limit the loop stops resuming");
+    assert.ok(runner.state.backoffSeconds > 0, "and backs off normally");
+    const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
+    assert.ok(!runs[0]?.includes("--continue"), "first tick was fresh");
+    for (const later of runs.slice(1)) assert.ok(later.includes("--continue"), "resumes continued the session");
+  } finally {
+    restore();
+  }
+});
+
+test("a cut-off director tick re-queues the user prompt instead of resuming", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(`printf '%s\n' '${thinkingOnlyLine("was routing the request", { output: 16 })}'`);
+  try {
+    enqueuePrompt(repo, "add a widget");
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal(inboxSize(repo), 1, "the truncated prompt was not fulfilled: back in the inbox");
+    assert.equal(dequeuePrompt(repo), "add a widget");
+    assert.ok(!runner.state.resumePending, "the director reruns the prompt fresh");
   } finally {
     restore();
   }

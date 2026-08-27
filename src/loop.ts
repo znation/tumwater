@@ -37,7 +37,18 @@ export interface TickOutcome {
   result: TickResult;
   summary?: string;
   commit?: string;
+  /** The run was truncated at the model's context ceiling before it could finish (a
+   * no_change tick whose final message carried no text or tool call). The work so far
+   * survives in the pi session, which pi compacted at end of run — so the loop resumes
+   * it promptly instead of backing off as if the role were idle. */
+  cutOff?: boolean;
 }
+
+/** Consecutive context-ceiling cut-offs after which a loop stops resuming the task and
+ * falls back to a fresh tick: a task that outruns the ceiling on every attempt (even from
+ * a freshly compacted context) is too big to converge, and each cycle costs an hour-plus
+ * of model time on local hardware. */
+const CUT_OFF_RESUME_LIMIT = 3;
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
@@ -260,10 +271,21 @@ export class LoopRunner {
       // their user prompt, which runs fresh).
       if (this.role !== DIRECTOR_ROLE) s.resumePending = true;
       s.nextRunAt = Date.now();
+    } else if (outcome.cutOff && this.role !== DIRECTOR_ROLE && (s.cutOffStreak ?? 0) < CUT_OFF_RESUME_LIMIT) {
+      // Truncated at the context ceiling, not idle: the hour(s) of work survive in the
+      // session pi just compacted, so resume it promptly instead of idle-backing-off.
+      // Each resume restarts from the compacted (small) context, so repeated cut-offs on
+      // one task still converge — but a task that outruns the ceiling every single time
+      // would cycle forever, so after CUT_OFF_RESUME_LIMIT consecutive cut-offs the loop
+      // gives up on it and falls back to a fresh tick with normal backoff.
+      s.cutOffStreak = (s.cutOffStreak ?? 0) + 1;
+      s.resumePending = true;
+      s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
     } else {
       s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, this.config);
       s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
     }
+    if (!outcome.cutOff) s.cutOffStreak = 0;
     s.lastMainHead = (await gitTry(this.root, "rev-parse", this.mainBranch)) ?? s.lastMainHead;
     this.save();
     logEvent(this.root, {
@@ -332,6 +354,7 @@ export class LoopRunner {
       return { result: "error" };
     }
     if (!changed) {
+      const cutOff = !pi.nothingToDo && pi.finalMessageContentless;
       if (!pi.nothingToDo) {
         // No sentinel anywhere in the reply. Make the warning diagnosable: surface an
         // abnormal stopReason (e.g. "length" = truncated final message, so a cut-off
@@ -355,7 +378,11 @@ export class LoopRunner {
             (notes.length ? ` (${notes.join(", ")})` : ""),
         });
       }
-      return { result: "no_change" };
+      // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
+      // to the inbox to rerun fresh; a role loop resumes the just-compacted session
+      // next tick (see the cutOff handling in tick()).
+      if (cutOff && userPrompt) enqueuePrompt(this.root, userPrompt);
+      return { result: "no_change", cutOff: cutOff || undefined };
     }
 
     const summary = extractSummary(pi.finalText) ?? `${this.role} tick ${s.ticks}`;
