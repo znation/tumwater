@@ -285,22 +285,30 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       resolve(result);
     };
 
+    // Every PiRunResult is built here from what the parser has seen plus how the run ended,
+    // so adding a field to PiRunResult touches this single place. The spawn-error path passes
+    // only an errorMessage override: at that point no output ever arrived, so the parser holds
+    // exactly its initial values — which is precisely what a failed spawn reports.
+    const resultFromParser = (overrides: Partial<PiRunResult>): PiRunResult => ({
+      ok: false,
+      finalText: parser.finalText,
+      nothingToDo: parser.declaredNothingToDo,
+      outputTokens: parser.outputTokens,
+      peakContextTokens: parser.peakContextTokens,
+      costUsd: parser.costUsd,
+      stopReason: parser.stopReason,
+      errorMessage: undefined,
+      timedOut: false,
+      aborted,
+      contextExceeded: parser.contextExceeded,
+      transientServerTimeout: parser.transientServerTimeout,
+      finalMessageContentless: parser.finalMessageContentless,
+      compacted: parser.compacted,
+      ...overrides,
+    });
+
     child.on("error", (err) => {
-      finish({
-        ok: false,
-        finalText: "",
-        nothingToDo: false,
-        outputTokens: 0,
-        peakContextTokens: 0,
-        costUsd: 0,
-        errorMessage: `${SPAWN_ERROR_PREFIX}: ${err.message}`,
-        timedOut: false,
-        aborted,
-        contextExceeded: false,
-        transientServerTimeout: false,
-        finalMessageContentless: false,
-        compacted: false,
-      });
+      finish(resultFromParser({ errorMessage: `${SPAWN_ERROR_PREFIX}: ${err.message}` }));
     });
 
     child.on("close", (code) => {
@@ -310,28 +318,19 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         quietKilled ||
         parser.stopReason === "error" ||
         (code !== 0 && !parser.finalText.trim());
-      finish({
-        ok: !failed,
-        finalText: parser.finalText,
-        nothingToDo: parser.declaredNothingToDo,
-        outputTokens: parser.outputTokens,
-        peakContextTokens: parser.peakContextTokens,
-        costUsd: parser.costUsd,
-        stopReason: parser.stopReason,
-        errorMessage: aborted
-          ? "aborted by harness shutdown"
-          : quietKilled
-            ? `killed as hung: no pi progress for over ${opts.config.quietTimeoutSeconds}s`
-            : timedOut
-              ? `timed out after ${opts.config.tickTimeoutSeconds}s`
-              : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
-        timedOut: timedOut || quietKilled,
-        aborted,
-        contextExceeded: parser.contextExceeded,
-        transientServerTimeout: parser.transientServerTimeout,
-        finalMessageContentless: parser.finalMessageContentless,
-        compacted: parser.compacted,
-      });
+      finish(
+        resultFromParser({
+          ok: !failed,
+          errorMessage: aborted
+            ? "aborted by harness shutdown"
+            : quietKilled
+              ? `killed as hung: no pi progress for over ${opts.config.quietTimeoutSeconds}s`
+              : timedOut
+                ? `timed out after ${opts.config.tickTimeoutSeconds}s`
+                : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
+          timedOut: timedOut || quietKilled,
+        }),
+      );
     });
   });
 }
