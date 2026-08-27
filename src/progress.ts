@@ -1,5 +1,6 @@
 import { describeToolCall } from "./tool-call.js";
-import { statOrNull, TailState, withTail } from "./files.js";
+import { statOrNull } from "./files.js";
+import { TailState, withTail } from "./tail.js";
 import { piLogPath } from "./paths.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.

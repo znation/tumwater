@@ -1,4 +1,5 @@
-import { statOrNull, TailState, withTail } from "./files.js";
+import { statOrNull } from "./files.js";
+import { TailState, withTail } from "./tail.js";
 import { piLogPath } from "./paths.js";
 import { describeToolCall } from "./tool-call.js";
 
