@@ -11,6 +11,30 @@ import { assistantLine, makeRepo } from "./util.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
+test("gui binds localhost by default and all interfaces on request", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui bind test");
+
+  const local = await startGui(repo, 0);
+  const localAddr = local.address();
+  assert.ok(localAddr && typeof localAddr === "object");
+  assert.equal(localAddr.address, "127.0.0.1", "default stays loopback-only");
+  await new Promise((r) => local.close(r));
+
+  const open = await startGui(repo, 0, true);
+  const openAddr = open.address();
+  assert.ok(openAddr && typeof openAddr === "object");
+  // The unspecified address ("::" dual-stack, or "0.0.0.0" on IPv4-only hosts) means
+  // every interface — the whole point of --all-interfaces.
+  assert.ok(["::", "0.0.0.0"].includes(openAddr.address), `bound ${openAddr.address}`);
+  try {
+    const page = await (await fetch(`http://127.0.0.1:${openAddr.port}/`)).text();
+    assert.match(page, /<title>tumwater<\/title>/, "still serves over loopback too");
+  } finally {
+    await new Promise((r) => open.close(r));
+  }
+});
+
 test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui test project");

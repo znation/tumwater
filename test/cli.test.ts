@@ -182,6 +182,12 @@ test("gui --port validates its range instead of listening on an unexpected port"
   const noValue = await cli(repo, "gui", "--port");
   assert.equal(noValue.code, 1);
   assert.match(noValue.stderr, /--port needs a value/);
+
+  // --all-interfaces is part of gui's vocabulary: with it present, a bad port still fails
+  // on the port (not as an unknown argument).
+  const withAll = await cli(repo, "gui", "--all-interfaces", "--port", "abc");
+  assert.equal(withAll.code, 1);
+  assert.match(withAll.stderr, /--port must be an integer/);
 });
 
 test("gui reports a friendly error when the port is already in use", async () => {

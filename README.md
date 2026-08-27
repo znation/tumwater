@@ -114,7 +114,8 @@ cd your-project        # any git repo
 tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 tumwater run          # terminal 1: the loops (Ctrl+C to stop)
 tumwater tui          # terminal 2: dashboard + main prompt
-tumwater gui          # or the same dashboard at http://127.0.0.1:7180
+tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N to change)
+tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
 tumwater status       # one-shot table
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
@@ -125,6 +126,11 @@ tumwater reset-counters --role feature   # …or just one loop
 
 `reset-counters` starts a fresh observation window (e.g. "cost since today") without touching
 scheduling, backoff, or pi session continuity — loops keep sleeping and waking exactly as before.
+
+`gui --all-interfaces` binds every network interface (IPv4 and IPv6) instead of localhost, and
+prints the LAN URLs it is reachable at. The dashboard has **no authentication**, and its prompt
+box feeds the director — anyone who can reach the port can steer the fleet and read every
+transcript. Use it only on networks where that is acceptable.
 
 Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
 `improve`, `director`. Enable/disable them, pick pi's provider/model/thinking level, and tune

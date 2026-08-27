@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { enabledRoleIds, loadConfig } from "./config.js";
 import { allRoleIds } from "./roles.js";
@@ -25,7 +26,11 @@ Usage:
   tumwater init <prompt...>        Initialize this repo (or --file <prompt.md>)
   tumwater run                     Run all enabled loops (headless; Ctrl+C stops)
   tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
-  tumwater gui [--port N]          Same dashboard in the browser (default port 7180)
+  tumwater gui [--port N] [--all-interfaces]
+                                   Same dashboard in the browser (default port 7180,
+                                   localhost only; --all-interfaces serves the whole
+                                   network — no auth, anyone reaching it can prompt
+                                   the director)
   tumwater status                  One-shot status table
   tumwater logs [-f] [-n N]        Show (and follow) harness events
   tumwater logs --role <id> [-f]   Show (and follow) that loop's pi transcript
@@ -51,6 +56,20 @@ function parseCountFlag(flag: string, raw: string | undefined): number {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1) fail(`${flag} needs a positive integer (got ${JSON.stringify(raw)})`);
   return n;
+}
+
+/** External IPv4 addresses of this machine's network interfaces, for printing the URLs a
+ * `gui --all-interfaces` server is reachable at. IPv6 and internal (loopback) addresses are
+ * skipped: the loopback URL is printed separately, and bracketed IPv6 URLs are rarely what
+ * someone types on another device. */
+function lanAddresses(): string[] {
+  const out: string[] = [];
+  for (const addrs of Object.values(os.networkInterfaces())) {
+    for (const a of addrs ?? []) {
+      if (a.family === "IPv4" && !a.internal) out.push(a.address);
+    }
+  }
+  return out;
 }
 
 /** Parse the `--port` flag value: an integer in 1..65535, or fail with a clear message.
@@ -274,12 +293,16 @@ async function main(): Promise<void> {
       await runTui(root);
       break;
     case "gui": {
-      rejectUnknownArgs("gui", args, [{ names: ["--port"], value: true, valueName: "<n>" }]);
+      rejectUnknownArgs("gui", args, [
+        { names: ["--port"], value: true, valueName: "<n>" },
+        { names: ["--all-interfaces"] },
+      ]);
       await requireReadyRepo(root);
       const portFlag = args.indexOf("--port");
       const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
+      const allInterfaces = args.includes("--all-interfaces");
       try {
-        await startGui(root, port);
+        await startGui(root, port, allInterfaces);
       } catch (err) {
         // A taken port is the common listen failure; Node's raw EADDRINUSE does not
         // suggest the fix. Other errors (EACCES on privileged ports, …) pass through.
@@ -290,6 +313,12 @@ async function main(): Promise<void> {
         throw err;
       }
       process.stdout.write(`tumwater gui at http://127.0.0.1:${port} — Ctrl+C to stop\n`);
+      if (allInterfaces) {
+        // Name the concrete URLs teammates can open, and say what exposure means: the
+        // dashboard has no auth, and its prompt box steers the fleet.
+        for (const addr of lanAddresses()) process.stdout.write(`             also at http://${addr}:${port}\n`);
+        process.stdout.write(`listening on ALL interfaces — no auth; anyone reaching it can prompt the director\n`);
+      }
       await new Promise(() => {}); // Serve until Ctrl+C.
       break;
     }

@@ -83,8 +83,12 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
-/** Start the dashboard server on 127.0.0.1. Resolves once it is listening. */
-export function startGui(root: string, port: number): Promise<http.Server> {
+/** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
+ * binds the unspecified address (every interface, IPv4 and IPv6), making the dashboard —
+ * including the director prompt box, which anyone reaching it can use to steer the fleet —
+ * available to the whole network. There is no authentication; exposing it is the caller's
+ * deliberate choice. Resolves once it is listening. */
+export function startGui(root: string, port: number, allInterfaces = false): Promise<http.Server> {
   const server = http.createServer(async (req, res) => {
     try {
       if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
@@ -129,6 +133,7 @@ export function startGui(root: string, port: number): Promise<http.Server> {
   });
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => resolve(server));
+    if (allInterfaces) server.listen(port, () => resolve(server));
+    else server.listen(port, "127.0.0.1", () => resolve(server));
   });
 }
