@@ -31,11 +31,48 @@ function typeName(v: unknown): string {
   return typeof v;
 }
 
+/** Every key tumwater.json may hold, by level. Anything else is a typo that would be
+ * silently ignored at runtime — the intended setting falls back to its default with no
+ * warning — so it fails fast here instead (e.g. `tickTimeoutSecondss` does nothing).
+ * Keep in sync with TumwaterConfig/BackoffConfig/RoleConfig in types.ts. */
+const TOP_LEVEL_KEYS = [
+  "provider",
+  "model",
+  "thinking",
+  "piArgs",
+  "maxConcurrent",
+  "minTickIntervalSeconds",
+  "tickTimeoutSeconds",
+  "quietTimeoutSeconds",
+  "logMaxBytes",
+  "sessionRetentionDays",
+  "idleBackoff",
+  "roles",
+];
+const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
+const ROLE_ENTRY_KEYS = ["enabled", "instructions", "provider", "model", "thinking"];
+
+/** Collect the keys present in `obj` but not in `known` into problems, naming where they
+ * were found and listing what is valid so one edit fixes them. */
+function checkKnownKeys(
+  obj: Record<string, unknown>,
+  known: readonly string[],
+  where: string,
+  problems: string[],
+): void {
+  for (const key of Object.keys(obj)) {
+    if (!known.includes(key))
+      problems.push(`unknown key "${key}" in ${where} (valid keys: ${known.join(", ")})`);
+  }
+}
+
 /** Validate user-supplied tumwater.json values before defaults are filled in, so a typo
  * fails fast with an actionable message instead of misbehaving at runtime — e.g. a
- * non-numeric tickTimeoutSeconds becomes NaN and kills every pi run instantly, and a
- * non-numeric logMaxBytes rotates the event log on every write. Collects every problem
- * so one edit can fix them all; throws a single Error listing them. */
+ * non-numeric tickTimeoutSeconds becomes NaN and kills every pi run instantly, a
+ * non-numeric logMaxBytes rotates the event log on every write, an unknown role id (a
+ * misspelled entry under `roles`) spawns a phantom loop that errors every tick, and an
+ * unknown key is silently ignored so the intended setting never takes effect. Collects
+ * every problem so one edit can fix them all; throws a single Error listing them. */
 export function validateConfig(raw: unknown): void {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`tumwater.json must be a JSON object (got ${typeName(raw)})`);
@@ -62,6 +99,7 @@ export function validateConfig(raw: unknown): void {
   };
 
   const r = raw as Record<string, unknown>;
+  checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
   for (const key of ["provider", "model", "thinking"]) checkString(r, "", key);
   if ("piArgs" in r) {
     const v = r.piArgs;
@@ -80,9 +118,11 @@ export function validateConfig(raw: unknown): void {
     if (typeof b !== "object" || b === null || Array.isArray(b)) {
       problems.push(`idleBackoff must be an object (got ${show(b)})`);
     } else {
-      checkNumber(b as Record<string, unknown>, "idleBackoff.", "initialSeconds", (n) => n >= 0, "a number of 0 or more");
-      checkNumber(b as Record<string, unknown>, "idleBackoff.", "factor", (n) => n >= 1, "a number of at least 1");
-      checkNumber(b as Record<string, unknown>, "idleBackoff.", "maxSeconds", (n) => n >= 0, "a number of 0 or more");
+      const o = b as Record<string, unknown>;
+      checkKnownKeys(o, BACKOFF_KEYS, "idleBackoff", problems);
+      checkNumber(o, "idleBackoff.", "initialSeconds", (n) => n >= 0, "a number of 0 or more");
+      checkNumber(o, "idleBackoff.", "factor", (n) => n >= 1, "a number of at least 1");
+      checkNumber(o, "idleBackoff.", "maxSeconds", (n) => n >= 0, "a number of 0 or more");
     }
   }
 
@@ -92,11 +132,19 @@ export function validateConfig(raw: unknown): void {
       problems.push(`roles must be an object mapping role ids to settings (got ${show(roles)})`);
     } else {
       for (const [id, rc] of Object.entries(roles as Record<string, unknown>)) {
+        // An id outside the catalog cannot work: tickPrompt has no prompt for it and the
+        // loop would error every tick forever. Reject it here with the valid ids — the same
+        // message shape `tumwater logs --role` uses for a bad flag value.
+        if (!allRoleIds().includes(id)) {
+          problems.push(`roles.${id} is not a known role (valid ids: ${allRoleIds().join(", ")})`);
+          continue;
+        }
         if (typeof rc !== "object" || rc === null || Array.isArray(rc)) {
           problems.push(`roles.${id} must be an object (got ${show(rc)})`);
           continue;
         }
         const o = rc as Record<string, unknown>;
+        checkKnownKeys(o, ROLE_ENTRY_KEYS, `roles.${id}`, problems);
         for (const key of ["instructions", "provider", "model", "thinking"])
           checkString(o, `roles.${id}.`, key);
         if ("enabled" in o && typeof o.enabled !== "boolean")

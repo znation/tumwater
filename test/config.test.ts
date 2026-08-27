@@ -34,7 +34,7 @@ test("loadConfig merges partial files over defaults", () => {
     JSON.stringify({
       model: "sonnet",
       idleBackoff: { maxSeconds: 60 },
-      roles: { clean: { enabled: false }, custom: { enabled: true } },
+      roles: { clean: { enabled: false }, perf: { enabled: true } },
     }),
   );
   const config = loadConfig(dir);
@@ -43,7 +43,7 @@ test("loadConfig merges partial files over defaults", () => {
   assert.equal(config.idleBackoff.factor, defaultConfig().idleBackoff.factor);
   assert.equal(config.roles.clean?.enabled, false);
   assert.equal(config.roles.improve?.enabled, true);
-  assert.equal(config.roles.custom?.enabled, true);
+  assert.equal(config.roles.perf?.enabled, true);
 });
 
 test("saveConfig round-trips", () => {
@@ -126,6 +126,31 @@ test("validateConfig rejects non-object top levels and bad containers", () => {
   assert.match(validationError({ roles: "oops" }), /roles must be an object mapping role ids to settings/);
   assert.match(validationError({ idleBackoff: 5 }), /idleBackoff must be an object/);
   assert.match(validationError({ roles: { clean: "nope" } }), /roles\.clean must be an object/);
+});
+
+test("validateConfig rejects unknown keys with the valid ones listed", () => {
+  // A misspelled key would otherwise be silently ignored and the default used.
+  const top = validationError({ tickTimeoutSecondss: 90 });
+  assert.match(top, /unknown key "tickTimeoutSecondss" in tumwater\.json \(valid keys: .*tickTimeoutSeconds.*\)/);
+
+  const backoff = validationError({ idleBackoff: { factorr: 2 } });
+  assert.match(backoff, /unknown key "factorr" in idleBackoff \(valid keys: initialSeconds, factor, maxSeconds\)/);
+
+  const roleEntry = validationError({ roles: { feature: { enabed: true } } });
+  assert.match(roleEntry, /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, thinking\)/);
+});
+
+test("validateConfig rejects unknown role ids (a typo would spawn a phantom erroring loop)", () => {
+  const msg = validationError({ roles: { featuer: { enabled: true } } });
+  assert.match(msg, /roles\.featuer is not a known role \(valid ids: .*feature.*\)/);
+  // The valid-id list covers the whole catalog, including the director.
+  for (const id of allRoleIds()) assert.ok(msg.includes(id), `error should list ${id}`);
+
+  // loadConfig and the live-reload path surface the same actionable message.
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ roles: { featuer: {} } }));
+  assert.throws(() => loadConfig(dir), /roles\.featuer is not a known role/);
+  assert.match(loadConfigSafe(dir).error ?? "", /roles\.featuer is not a known role/);
 });
 
 test("loadConfig rejects malformed JSON and invalid values with actionable messages", () => {
