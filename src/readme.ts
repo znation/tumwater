@@ -6,8 +6,10 @@ import path from "node:path";
 
 export const PROMPT_START = "<!-- tumwater:prompt:start -->";
 export const PROMPT_END = "<!-- tumwater:prompt:end -->";
-export const STATUS_START = "<!-- tumwater:status:start -->";
-export const STATUS_END = "<!-- tumwater:status:end -->";
+// The status markers are module-private (only readmeTemplate uses them); the prompt
+// markers above stay exported because init.ts names them in its error message.
+const STATUS_START = "<!-- tumwater:status:start -->";
+const STATUS_END = "<!-- tumwater:status:end -->";
 
 /** The README.md a fresh repo starts with: the initial prompt and an empty status,
  * each in its managed section. */
