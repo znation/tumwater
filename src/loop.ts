@@ -268,6 +268,12 @@ export class LoopRunner {
     }
   }
 
+  /** Run one full tick of this role loop: build (or resume) the prompt, run pi in the
+   * worktree, commit and merge any changes it made, then schedule the next run from the
+   * outcome — changed/skipped/cut-off ticks wait at least the minimum interval, an aborted
+   * one resumes promptly on restart, everything else backs off. Never throws: a failed tick
+   * is an "error" result, saved and logged like any other so the loop stays resumable and
+   * observable. */
   async tick(): Promise<TickOutcome> {
     const s = this.state;
     s.ticks += 1;
