@@ -9,6 +9,27 @@ _None yet._
 
 ## Fixed
 
+### TUI crashes and GUI goes blind while tumwater.json is transiently broken (found by bugfix loop 2026-08-27, fixed 2026-08-27)
+
+**Symptom:** `snapshot()` in status.ts — the data source for every observer surface (`tumwater
+status`, TUI, GUI) — called strict `loadConfig()`, which throws when tumwater.json is malformed or
+holds invalid values. The orchestrator tolerates this by design (its live-reload poll uses
+`loadConfigSafe` and keeps its last-known-good config), but the observers did not: a user editing
+tumwater.json live — a documented feature — would crash the TUI process with an uncaught exception
+in its 1-second render interval mid-edit, and the GUI's `/api/status` answered 500 so the page
+showed "connection lost" although the fleet was running fine. Found by latent-bug sweep;
+reproduced by corrupting tumwater.json in an initialized repo and calling `snapshot()`.
+
+**Fix:** `snapshot()` now loads config via `loadConfigSafe` with a per-root last-known-good cache:
+a successful load updates the cache, a failure falls back to the cached config (or defaults when
+this process never saw a valid file) — so observers keep rendering live loop state against a sane
+role set instead of dying or going blind. The error stays discoverable in `tumwater logs`: the
+orchestrator's reload poll already emits a warning event for an invalid file. One-shot CLI startup
+paths (`run`, `reset-counters`) deliberately still fail fast on a broken config. Regression test:
+test/status.test.ts — corrupting (invalid JSON) and misconfiguring (validation error)
+tumwater.json no longer throws, the last known-good role set is kept, and a repaired file takes
+effect again. Files: `src/status.ts`, `test/status.test.ts`.
+
 ### gen / peak ctx columns should show the current or last run, not cumulative totals (reported 2026-08-25, fixed 2026-08-26)
 
 **Symptom:** The `gen` and `peak ctx` columns accumulated across a loop's whole lifetime: they only

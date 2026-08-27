@@ -1,5 +1,5 @@
-import type { LoopState } from "./types.js";
-import { enabledRoleIds, loadConfig } from "./config.js";
+import type { LoopState, TumwaterConfig } from "./types.js";
+import { defaultConfig, enabledRoleIds, loadConfigSafe } from "./config.js";
 import { loadLoopState } from "./state.js";
 import { inboxSize } from "./inbox.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./orchestrator.js";
@@ -14,9 +14,26 @@ export interface StatusSnapshot {
   loops: LoopState[];
 }
 
+// The last config each root loaded successfully. snapshot is polled every second by the
+// TUI and GUI, where a throw would kill (or blind) the observer — but tumwater.json can be
+// transiently broken while a user edits it live-reload style. On failure we keep showing
+// the fleet with the last known-good role set; the orchestrator does the same in its own
+// reload poll and surfaces the error as a warning event visible in `tumwater logs`.
+const lastGoodConfig = new Map<string, TumwaterConfig>();
+
+/** The config to display loop state against: fresh when valid, otherwise the last
+ * known-good one (or defaults if this process never saw a valid file). Never throws. */
+function configForStatus(root: string): TumwaterConfig {
+  const { config } = loadConfigSafe(root);
+  if (config) {
+    lastGoodConfig.set(root, config);
+    return config;
+  }
+  return lastGoodConfig.get(root) ?? defaultConfig();
+}
+
 export function snapshot(root: string): StatusSnapshot {
-  const config = loadConfig(root);
-  const roles = enabledRoleIds(config);
+  const roles = enabledRoleIds(configForStatus(root));
   const info = readOrchestratorInfo(root);
   return {
     running: orchestratorAlive(root),

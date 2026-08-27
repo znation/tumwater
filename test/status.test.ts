@@ -1,5 +1,9 @@
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { loadConfig, saveConfig } from "../src/config.js";
+import { allRoleIds } from "../src/roles.js";
 import { snapshot } from "../src/status.js";
 import { loopPhase, renderStatus } from "../src/status-render.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
@@ -25,6 +29,38 @@ test("snapshot and renderStatus cover all enabled loops", async () => {
   for (const role of ["organize", "coverage", "clean", "dry", "feature", "bugfix", "plan", "readme", "improve", "director"]) {
     assert.match(text, new RegExp(role));
   }
+});
+
+test("snapshot survives a broken tumwater.json and recovers when it is fixed", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  // Baseline: every catalog role enabled by default.
+  assert.equal(snapshot(repo).loops.length, allRoleIds().length);
+
+  // A valid config that disables one role becomes the last known-good one.
+  const cfg = loadConfig(repo);
+  cfg.roles.dry!.enabled = false;
+  saveConfig(repo, cfg);
+  let snap = snapshot(repo);
+  assert.ok(!snap.loops.some((l) => l.role === "dry"));
+
+  // The file breaks mid-edit (invalid JSON): observers must not throw.
+  fs.writeFileSync(path.join(repo, "tumwater.json"), "{ still editing");
+  snap = snapshot(repo);
+  // The last known-good role set is kept: dry stays hidden and nothing crashes.
+  assert.ok(!snap.loops.some((l) => l.role === "dry"));
+
+  // A validation error (valid JSON, invalid value) is equally survivable.
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify({ maxConcurrent: "six" }));
+  assert.ok(snapshot(repo).loops.length > 0);
+
+  // Repair with a different valid config: the fresh load takes effect again.
+  cfg.roles.dry!.enabled = true;
+  cfg.roles.clean!.enabled = false;
+  saveConfig(repo, cfg);
+  snap = snapshot(repo);
+  assert.ok(snap.loops.some((l) => l.role === "dry"));
+  assert.ok(!snap.loops.some((l) => l.role === "clean"));
 });
 
 test("loopPhase describes each loop state", () => {
