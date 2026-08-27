@@ -204,6 +204,13 @@ export class LoopRunner {
   async tick(): Promise<TickOutcome> {
     const s = this.state;
     s.ticks += 1;
+    // gen / peak ctx are per-tick windows, not lifetime totals (user decision 2026-08-25):
+    // reset before the start-of-tick save so a working loop's columns grow live from 0 and
+    // an idle loop's show its last completed tick. runRolePi accumulates every pi run of
+    // this tick (main + transient-timeout retry + conflict resolution) into them, and the
+    // end-of-tick save persists the finished run's totals.
+    s.generatedTokens = 0;
+    s.peakContextTokens = 0;
     s.running = true;
     s.lastTickStartedAt = Date.now();
     const tick = s.ticks;

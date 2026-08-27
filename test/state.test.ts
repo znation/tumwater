@@ -65,13 +65,13 @@ test("loadLoopState recovers from torn or non-object JSON", () => {
   }
 });
 
-test("zeroCounters zeroes exactly the four accumulated counters and preserves everything else", () => {
+test("zeroCounters zeroes the accumulated counters and preserves everything else", () => {
   const s = freshLoopState("feature");
   s.ticks = 12;
   s.commits = 5;
   s.generatedTokens = 987654;
   s.totalCostUsd = 3.14;
-  s.peakContextTokens = 131072; // high-water mark — must survive
+  s.peakContextTokens = 131072; // last tick's peak — must be cleared too
   s.nextRunAt = 1_700_000_000_000;
   s.backoffSeconds = 30;
   s.lastMainHead = "abc123";
@@ -85,14 +85,16 @@ test("zeroCounters zeroes exactly the four accumulated counters and preserves ev
   assert.equal(z.commits, 0);
   assert.equal(z.generatedTokens, 0);
   assert.equal(z.totalCostUsd, 0);
+  // Per-tick semantics: peak ctx holds the last completed tick's peak, so a fresh
+  // observation window clears it — sleeping loops would otherwise keep showing their old
+  // value until they next tick.
+  assert.equal(z.peakContextTokens, 0);
   // Scheduling, wake tracking, and last-result fields are untouched.
   assert.equal(z.nextRunAt, s.nextRunAt);
   assert.equal(z.backoffSeconds, 30);
   assert.equal(z.lastMainHead, "abc123");
   assert.equal(z.lastResult, "changed");
   assert.equal(z.lastSummary, "did a thing");
-  // The high-water mark is not an accumulated total.
-  assert.equal(z.peakContextTokens, 131072);
   // Pure: the input is unchanged and the result is a new object.
   assert.equal(s.ticks, 12);
   assert.notEqual(z, s);

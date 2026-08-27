@@ -8,7 +8,7 @@ import { initProject } from "../src/init.js";
 import { defaultConfig, validateConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { sessionDir } from "../src/paths.js";
 import { assistantLine, errorLine, fakePi, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
 
@@ -34,6 +34,42 @@ test("a tick that changes files commits and merges to main", async () => {
     assert.equal(runner.state.backoffSeconds, 0);
     assert.equal(runner.state.generatedTokens, 42);
     assert.equal(runner.state.peakContextTokens, 42);
+  } finally {
+    restore();
+  }
+});
+
+test("gen / peak ctx are per-tick windows: a second tick does not accumulate on the first", async () => {
+  const repo = await initializedRepo();
+  // The fake pi counts its invocations in a file OUTSIDE the worktree (so it never dirties
+  // the tree) and reports different usage per call, giving two ticks known distinct totals.
+  const counter = path.join(tmpdir(), "pi-calls");
+  fs.writeFileSync(counter, "0");
+  const line1 = assistantLine("first tick\nSUMMARY: first", { tokens: 42, output: 42, cost: 0.05 });
+  const line2 = assistantLine("second tick\nSUMMARY: second", { tokens: 7, output: 7, cost: 0.01 });
+  const restore = fakePi(
+    `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
+      `[ "$n" -eq 1 ] && { printf '%s\n' '${line1}'; echo one > t.txt; } || { printf '%s\n' '${line2}'; echo two >> t.txt; }`,
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "changed");
+    // After the first completed tick the state file holds that tick's usage only.
+    assert.equal(runner.state.generatedTokens, 42);
+    assert.equal(runner.state.peakContextTokens, 42);
+    assert.equal(loadLoopState(repo, "improve").generatedTokens, 42);
+
+    assert.equal((await runner.tick()).result, "changed");
+    // The second tick's totals REPLACE the first — not summed onto it (the old cumulative
+    // bug showed 49 here). Peak ctx is a per-tick window too: 7, not max(42, 7).
+    assert.equal(runner.state.generatedTokens, 7);
+    assert.equal(runner.state.peakContextTokens, 7);
+    const onDisk = loadLoopState(repo, "improve");
+    assert.equal(onDisk.generatedTokens, 7);
+    assert.equal(onDisk.peakContextTokens, 7);
+    // Lifetime counters are untouched by the per-tick reset.
+    assert.equal(runner.state.ticks, 2);
+    assert.equal(runner.state.commits, 2);
   } finally {
     restore();
   }

@@ -39,10 +39,11 @@ export function saveLoopState(root: string, state: LoopState): void {
 /** Zero the accumulated counters (ticks, commits, tokens, cost) so a fresh observation
  * window can begin. Pure: returns a new state and preserves everything else — scheduling
  * fields (nextRunAt, backoffSeconds), wake tracking (lastMainHead), and the last-result
- * fields. peakContextTokens is
- * deliberately NOT zeroed: it is a high-water mark (largest single request), not a sum. */
+ * fields. peakContextTokens is zeroed too: under per-tick semantics it holds the loop's
+ * last completed tick's peak, so a fresh window must clear it or sleeping loops keep
+ * showing their old value until they next tick. */
 export function zeroCounters(s: LoopState): LoopState {
-  return { ...s, ticks: 0, commits: 0, generatedTokens: 0, totalCostUsd: 0 };
+  return { ...s, ticks: 0, commits: 0, generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0 };
 }
 
 /** Next backoff after a no-change tick: initial on the first, then multiplied, capped. */

@@ -232,7 +232,7 @@ function seedCounters(repo: string, role: string): void {
   s.commits = 3;
   s.generatedTokens = 424242;
   s.totalCostUsd = 1.5;
-  s.peakContextTokens = 65536; // high-water mark — must survive a reset
+  s.peakContextTokens = 65536; // last tick's peak — cleared by the reset
   s.nextRunAt = Date.now() + 60_000;
   s.backoffSeconds = 15;
   s.lastMainHead = "deadbeef";
@@ -260,7 +260,9 @@ test("reset-counters zeroes counters in every role's state file and writes the f
     assert.ok(s.nextRunAt > Date.now(), `${role} keeps its sleep window`);
     assert.equal(s.backoffSeconds, 15, `${role} backoff preserved`);
     assert.equal(s.lastMainHead, "deadbeef", `${role} wake tracking preserved`);
-    assert.equal(s.peakContextTokens, 65536, `${role} high-water mark survives`);
+    // Per-tick semantics: a fresh observation window clears the last tick's peak too,
+    // or sleeping loops would keep showing their old value until they next tick.
+    assert.equal(s.peakContextTokens, 0, `${role} per-tick peak ctx cleared`);
   }
 
   // The marker a running fleet consumes lists every role in the config.

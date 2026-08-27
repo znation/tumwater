@@ -5,88 +5,46 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### gen / peak ctx columns should show the current or last run, not cumulative totals (reported 2026-08-25)
-
-**Symptom:** The `gen` and `peak ctx` columns accumulate across a loop's whole lifetime: they only
-grow, so after days of ticks they show multi-day totals that say nothing about what the fleet is
-doing now. The user wants them to be a per-run window instead.
-
-**User intent (decision, 2026-08-25):** "we should reset the gen and peak ctx columns when starting
-a new tick of a loop, so the columns always show the current (or previous, if no active) run." I.e.
-per-tick semantics: a working loop's column shows what this tick has generated so far; an idle
-loop's column shows what its last completed tick used. This supersedes the cumulative semantics of
-the just-fixed "gen / peak ctx columns sit at 0 …" bug below (its live-aware display machinery is
-kept — see Approach).
-
-**Approach:**
-- `src/loop.ts`: in `LoopRunner.tick()` (~line 192), reset `s.generatedTokens = 0` and
-  `s.peakContextTokens = 0` at the top, alongside `s.ticks += 1`, **before** `this.save()`. The
-  tick-start save then persists zeros, `runRolePi` accumulates this tick's usage into them (main
-  run + transient-timeout retry + conflict-resolution runs all count toward the tick), and the
-  end-of-tick save persists the finished run's totals. No other loop.ts change.
-- Display needs **no logic change**: `displayTokenMetrics` (src/status-render.ts) already combines
-  persisted + live for running loops — with a per-tick reset, persisted is 0 during a tick, so a
-  working loop shows exactly the current run's live output, and an idle loop shows its last
-  completed tick as-is. A stale `running` flag after a crash stays correct (persisted 0 + log tail).
-  Only update that function's doc comment, which still describes cumulative semantics and warns
-  about double-counting that can no longer happen. The totals row already aggregates via the same
-  helper — it now sums each loop's current/last run; leave as-is.
-- `src/state.ts` `zeroCounters`: also zero `peakContextTokens`. The shipped reset-counters feature
-deliberately kept it as a cumulative high-water mark (see Done plan "CLI subcommand to reset loop
-  counters") — that decision only made sense under cumulative semantics; under per-tick windows a
-  fresh observation window must clear it too, or sleeping loops keep showing their old last-tick
-  value until they next tick. Update its doc comment and the CLI/README wording stays accurate as-is
-  ("zeroes ticks/commits/tokens/cost").
-- Known minor edge, do not over-engineer: a tick can contain several pi runs (transient-timeout
-  retry, conflict resolution). The live display resets on each new `session` event, so mid-tick the
-  column shows only the latest run's tokens while earlier runs' tokens sit in memory until the
-  end-of-tick save; it self-corrects at tick end. Accepted.
-
-**Files touched:** `src/loop.ts`, `src/state.ts`; doc comment in `src/status-render.ts`; tests:
-test/loop.test.ts (two consecutive ticks with known fake-pi usage → persisted values reflect only
-the second tick, not the sum), test/state.test.ts (`zeroCounters` zeroes peakContextTokens),
-test/orchestrator.test.ts if its reset-counters e2e asserts on token fields.
-
-**Acceptance criteria:** after any completed tick, a loop's state file holds that tick's usage only;
-a working loop's columns grow live from 0 during the tick; an idle loop shows its last completed
-tick's values; `tumwater reset-counters` clears gen and peak ctx for sleeping loops immediately;
-`npm test` passes.
-
-### Merge conflicts logged as warnings in the main log although they are normal operation (reported 2026-08-25)
-
-**Symptom:** Whenever a loop's merge stops on a conflict, the harness emits a `warning` event —
-"merge conflict — asking pi to resolve" — which surfaces in the main log (`tumwater logs`,
-events.jsonl), the TUI activity pane, and the GUI event feed. With several loops merging
-concurrently, conflicts happen routinely, and the existing pi-driven resolution path handles them
-automatically (the work then lands as an ordinary `merged` event). The net effect: the main log is
-full of warnings for expected, self-healing operation that no one needs to act on.
-
-**User intent:** merge conflicts are normal operation, not something to warn about — they can be
-silently fixed. A routine conflict → pi-resolve → land cycle must produce **no warning-level line
-in the main log**. (Reported by the user 2026-08-25.)
-
-**How to reproduce:** run test/loop.test.ts "a merge conflict is resolved by a second pi run and
-lands as a merge commit" — after that tick, `readEvents(repo)` contains
-`{ type: "warning", message: "merge conflict — asking pi to resolve" }`. In a live fleet, any two
-loops editing the same file in overlapping ticks produce one such warning per conflict.
-
-**Suspected cause:** src/loop.ts line ~83 (`LoopRunner.merge`) logs `type: "warning"` when it hands
-off to pi-driven resolution; `formatEvent` (src/events.ts) renders every warning as a `warning:`
-line on all log surfaces. The event carries no actionable information — the outcome is already
-visible via the subsequent `merged` event on success, or the `merge_conflict` tick result /
-lastResult cell on failure.
-
-**Scope:** only the routine conflict-resolution notification is in scope. All other warnings stay:
-"discarding N unmergeable leftover commit(s)" (work actually lost), model-server retry, session
-reset, etc. The fix may drop the event entirely or demote it to a non-warning type that does not
-render as a warning line — if a new event type is added, update `HarnessEvent.type` in
-types.ts and give it a plain (non-"warning:") rendering in formatEvent; dropping it is simplest
-since `merged`/tick_end already cover observability. Add or adjust a test asserting that the
-resolve-and-land path emits no `warning` event, while the unresolvable-conflict path's behavior
-(merge_conflict result) is unchanged. Files: src/loop.ts (and possibly src/events.ts,
-src/types.ts), test/loop.test.ts.
+_None yet._
 
 ## Fixed
+
+### gen / peak ctx columns should show the current or last run, not cumulative totals (reported 2026-08-25, fixed 2026-08-26)
+
+**Symptom:** The `gen` and `peak ctx` columns accumulated across a loop's whole lifetime: they only
+grew, so after days of ticks they showed multi-day totals that said nothing about what the fleet is
+doing now. User decision (2026-08-25): per-tick semantics — reset both when starting a new tick,
+so a working loop's columns show what this tick has generated so far and an idle loop's show its
+last completed tick.
+
+**Fix:** `LoopRunner.tick()` now resets `generatedTokens`/`peakContextTokens` to 0 at the top,
+alongside `ticks += 1`, **before** the start-of-tick save — so the on-disk values are 0 while a
+tick is in flight, `runRolePi` accumulates every pi run of the tick (main + transient-timeout
+retry + conflict resolution) into them, and the end-of-tick save persists exactly that tick's
+totals. Display needed no logic change: `displayTokenMetrics` already combines persisted + live
+for running loops — with a per-tick reset, a working loop shows precisely the current run's live
+output and an idle loop its last completed tick as-is (doc comment updated; double-counting can
+no longer happen). `zeroCounters` now also zeroes `peakContextTokens`: under per-tick windows it
+holds the last completed tick's peak, so a fresh observation window must clear it or sleeping loops
+keep showing their old value until they next tick. Known accepted edge: mid-tick the live display
+resets on each new `session` event, so with several pi runs in one tick the column shows only the
+latest run while earlier runs' tokens sit in memory until the end-of-tick save; it self-corrects at
+tick end. Regression tests: two consecutive ticks with known fake-pi usage → persisted values
+reflect only the second tick, not the sum (test/loop.test.ts); `zeroCounters` zeroes peak ctx
+(test/state.test.ts); reset-counters clears per-tick peak ctx on disk (test/cli.test.ts). Files:
+`src/loop.ts`, `src/state.ts`, `src/status-render.ts` (doc comment), `test/loop.test.ts`,
+`test/state.test.ts`, `test/cli.test.ts`.
+
+### Merge conflicts logged as warnings in the main log although they are normal operation (reported 2026-08-25, fixed 2026-08-25)
+
+**Fix:** The routine conflict → pi-resolve hand-off no longer logs a `warning` event at all —
+dropped entirely, as the scope allowed: success lands as an ordinary `merged` event and failure
+surfaces via the tick's merge_conflict result / lastResult cell. All other warnings (discarding
+unmergeable leftovers, model-server retry, …) are untouched. Landed in commit 7e0d789 with a
+regression test asserting the resolve-and-land path emits no warning events; this entry was left
+open by mistake and moved to Fixed on 2026-08-26 after verifying the fix against main. Files:
+`src/loop.ts`, `test/loop.test.ts`.
+
 
 ### gen / peak ctx columns sit at 0 while loops work for many turns; counters only move at tick boundaries (reported 2026-08-25, fixed 2026-08-25)
 
@@ -284,5 +242,3 @@ Regression tests: parser-level sentinel-survival test in `test/pi.test.ts`; end-
 `test/loop.test.ts` asserting no spurious warning when the sentinel appears mid-run, plus the new
 diagnostic suffixes. Files: `src/pi.ts`, `src/loop.ts`, `src/types.ts`, `test/pi.test.ts`,
 `test/loop.test.ts`.
-
-_None else yet._

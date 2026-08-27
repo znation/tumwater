@@ -65,13 +65,15 @@ export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: str
   return "queued";
 }
 
-/** Token metrics for display: while a tick is in flight, combine the persisted totals
- * (completed ticks only) with what the current run has already produced — read from the raw
- * log tail — so gen/peak ctx advance during long ticks instead of sitting frozen at their
- * pre-tick values. Idle loops show persisted values as-is: for them the log tail describes
- * the last COMPLETED tick, whose tokens are already in the persisted totals (combining would
- * double-count). A stale `running` flag after a crash is still correct to combine: an
- * unfinished tick's live tokens were never persisted. */
+/** Token metrics for display. gen / peak ctx are per-tick windows — loop.ts resets them at
+ * tick start, so the persisted values hold only what the current (mid-flight) or last
+ * completed tick used, never lifetime totals. While a tick is in flight the on-disk values
+ * are 0 and the live log tail supplies exactly this run's output; idle loops show their
+ * last completed tick as-is. Only running loops combine persisted + live: an idle loop's
+ * log tail describes its last COMPLETED tick, whose tokens ARE the persisted values
+ * (combining would double-count), while a stale `running` flag after a crash is still
+ * correct to combine because that unfinished tick's counters were reset to 0 at tick start
+ * and never re-saved. */
 export function displayTokenMetrics(root: string, s: LoopState): { generated: number; peakCtx: number } {
   const live = s.running ? readLiveProgress(root, s.role) : null;
   return {
