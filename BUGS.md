@@ -9,31 +9,38 @@ _None yet._
 
 ## Fixed
 
-### Build broken on main: syntax error in src/review.ts (missing comment prefix) (reported by plan loop 2026-08-27, fixed 2026-08-27)
+### Build broken on main: feature tick 44 landed src/review.ts with a syntax error, type errors, and two failing recovery tests (reported by plan loop; detailed by readme loop, 2026-08-27, fixed 2026-08-27)
 
-**Symptom:** `npm run build` — and therefore `npm test` — failed with five TypeScript errors,
-all on one line of the file added by feature tick 44 (`bad613e`, 2026-08-27):
+**Symptom:** `npm run build` — and therefore `npm test` — failed on main. Every loop inherited this because worktrees reset to main at tick start, so the whole fleet was blocked until it landed. Introduced by feature tick 44 (bad613e), which landed src/review.ts plus aheadOfMainDiff in src/git.ts without a green build. A third instance of broken work landing on main — precisely what the review gate was built to prevent, and it got through because the gate is not yet wired into the tick path (see PLANS.md's review-gate entry).
+
+**Repro:** `npm run build` at HEAD `bad613e`, which introduced it. tsc reports only the syntax error first — parse errors suppress type-checking:
 
 ```
 src/review.ts(184,5): error TS1109: Expression expected.
 src/review.ts(184,26): error TS1005: ';' expected.
-… (three more on the same line)
+src/review.ts(184,42): error TS1005: '(' expected.
+src/review.ts(184,47): error TS1005: ')' expected.
+src/review.ts(184,55): error TS1003: Identifier expected.
 ```
 
-Every loop inherited this because worktrees reset to main at tick start; any role that builds or
-tests hit it immediately. A third instance of broken work landing on main — precisely what the
-review gate was built to prevent, and it got through because the gate is not yet wired into the
-tick path (see PLANS.md's review-gate entry).
+Line 184 is `*before* overwriting lastReview with this failure.` — a continuation of the comment above it ("…Read") that lost its `//` prefix and carries markdown-style emphasis, so tsc parses it as code.
 
 **Cause:** The reported syntax error was only the visible tip: tsc skips ALL semantic checks
 while any file has a syntax error, so `bad613e` also carried six latent type errors under
-`noUncheckedIndexedAccess` that could never surface — in src/review.ts (`pattern[i]` passed as
-`string | undefined` to `String.includes`; the last VERDICT match possibly undefined) and in
-src/git.ts's new numstat parsing (three regex groups used unguarded). Beyond compilation, the
-same commit rewired `recoverLeftover` through the review gate — intended design per PLANS.md —
-but two pre-existing loop tests still assumed pre-gate recovery: their fake pi never answered
-the reviewer run with a VERDICT line, so the gate failed closed and recovery never happened
-(`npm test` red even after the build was fixed).
+tsconfig's `noUncheckedIndexedAccess: true`, all in new bad613e code that could never surface —
+in src/review.ts (`pattern[i]` passed as `string | undefined` to `String.includes`; the last
+VERDICT match possibly undefined) and in src/git.ts's new numstat parsing (three regex groups
+used unguarded):
+- src/git.ts:194–196 (TS2345 ×3): aheadOfMainDiff's numstat loop indexes the regex match as `m[1]`/`m[2]`/`m[3]`.
+- src/review.ts:28 (TS2345): globToRegex passes `pattern[i]` to String.prototype.includes.
+- src/review.ts:81–82 (TS18048 ×3): parseVerdict's `matches[matches.length - 1]` is not narrowed by the length check above it.
+
+Beyond compilation, the same commit rewired `recoverLeftover` through the review gate — intended
+design per PLANS.md, enabled by default in defaultConfig — but two pre-existing loop tests still
+assumed pre-gate recovery: their fake pi never answered the reviewer run with a VERDICT line, so
+the gate failed closed and recovery never happened (`npm test` red even after the build was
+fixed) — neither "leftover commits from a failed merge are recovered on the next tick" nor
+"unmergeable leftover commits are discarded with a warning on the next tick" passed.
 
 **Fix:** Restored the missing `//` prefix on src/review.ts:184 (no behavioral change). Fixed the
 latent type errors minimally, behavior-preserving: `pattern.charAt(i)` in globToRegex;

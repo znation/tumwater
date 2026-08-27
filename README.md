@@ -55,17 +55,25 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). One open bug: a flaky test — `test/loop.test.ts`'s resumed-tick case intermittently reports
-`no_change` when the full suite runs in parallel under load, because its 300 ms abort timer can
-fire before the fake pi writes its marker file; no harness code is suspected. The two bugs before
-it (gen/peak-ctx columns accumulating across a loop's lifetime instead of showing the current or
-last run; routine merge conflicts logged as warnings although pi resolves them automatically) are
-fixed and recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
+`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs: main's build break from feature tick 44 (bad613e) — src/review.ts with a syntax
+error on line 184, six `noUncheckedIndexedAccess` violations in the same new code, and two
+leftover-recovery tests that failed because recovery routes through the review gate their fake pi
+cannot satisfy — was fixed by restoring the comment prefix, guarding the indexed accesses, and
+teaching those tests' fake pi to answer with a VERDICT; full detail under BUGS.md's Fixed section.
+The bug before it — a flaky `test/loop.test.ts` resumed-tick case that
+intermittently reported `no_change` when the full suite ran in parallel under load (its 300 ms
+abort timer could fire before the fake pi wrote its marker file) — was fixed by making the test's
+abort wait for that marker; earlier fixes are recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
 current work item; both dashboards show project status — planned features and open bugs from
 PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: six PLANS.md plans await the feature loop — all from the Senior Tumwater report (an
 adversarial review gate before merge, a refusal sentinel with friction signals, self-explaining
-commit bodies, a QUESTIONS.md outbox, and slow-clock steward and QA roles). The last-tick
+commit bodies, a QUESTIONS.md outbox, and slow-clock steward and QA roles); the review gate is
+under way — its machinery (`src/review.ts`: a fresh-session reviewer over the full ahead-of-main
+diff against PRINCIPLES.md, `VERDICT:` parsing, md-only exemption, fail-closed 3-strike discard),
+a top-level `review` config (enabled by default; `*.md`/`docs/**` exempt; optional
+provider/model/thinking for the reviewer), rejection notes injected into the author's next prompt,
+and the leftover-recovery path are on main — gating the fresh-tick merge path is still to come. The last-tick
 timestamp plan has landed: both dashboards show each loop's last tick end as an absolute local
 time alongside its relative age. The report's PRINCIPLES.md plan has landed: every tick prompt now carries the
 project's tracked PRINCIPLES.md (documented under How it works).
