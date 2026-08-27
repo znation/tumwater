@@ -1,4 +1,5 @@
 import path from "node:path";
+import { collapseWhitespace, truncate } from "./text.js";
 
 /** Human one-liner for a pi tool call, shared by live progress data collection
  * (LiveProgress.lastTool) and transcript rendering. Presentation only: depends on nothing but
@@ -15,7 +16,6 @@ export function describeToolCall(toolName: string, args: unknown): string {
       detail = candidate === a.path || candidate === a.file_path ? path.basename(candidate) : candidate;
     }
   }
-  detail = detail.replace(/\s+/g, " ").trim();
-  if (detail.length > 32) detail = detail.slice(0, 31) + "…";
+  detail = truncate(collapseWhitespace(detail), 32);
   return detail ? `${toolName} ${detail}` : toolName;
 }

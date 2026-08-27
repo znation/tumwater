@@ -1,6 +1,7 @@
 import { statOrNull } from "./files.js";
 import { TailState, withTail } from "./tail.js";
 import { piLogPath } from "./paths.js";
+import { collapseWhitespace, truncate } from "./text.js";
 import { describeToolCall } from "./tool-call.js";
 
 /** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its
@@ -23,15 +24,6 @@ function formatTimestamp(ms: number): string {
   )}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
-function collapseWhitespace(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
-}
-
-/** Abbreviate to at most `max` chars (ellipsis when cut). */
-function abbreviate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + "…" : s;
-}
-
 type ContentBlock = {
   type?: unknown;
   thinking?: unknown;
@@ -52,7 +44,7 @@ function renderAssistantMessage(content: unknown): string[] {
     switch (block.type) {
       case "thinking": {
         const thinking = collapseWhitespace(String(block.thinking ?? ""));
-        if (thinking) out.push(`· ${abbreviate(thinking, THINKING_MAX_CHARS)}`);
+        if (thinking) out.push(`· ${truncate(thinking, THINKING_MAX_CHARS)}`);
         break;
       }
       case "text": {
@@ -66,7 +58,7 @@ function renderAssistantMessage(content: unknown): string[] {
             }
             break;
           }
-          out.push(`  ${abbreviate(line, TEXT_LINE_MAX_COLS)}`);
+          out.push(`  ${truncate(line, TEXT_LINE_MAX_COLS)}`);
           textShown += 1;
         }
         break;
@@ -141,7 +133,7 @@ export function createTranscriptRenderer(): TranscriptRenderer {
         case "auto_retry_start": {
           const attempt = typeof event.attempt === "number" ? event.attempt : "?";
           const maxAttempts = typeof event.maxAttempts === "number" ? event.maxAttempts : "?";
-          const error = abbreviate(collapseWhitespace(String(event.errorMessage ?? "unknown error")), 120);
+          const error = truncate(collapseWhitespace(String(event.errorMessage ?? "unknown error")), 120);
           return [...emitSeparator(), `⚠ retry ${attempt}/${maxAttempts}: ${error}`];
         }
         default:

@@ -1,3 +1,4 @@
+import { collapseWhitespace, truncate } from "./text.js";
 import { describeToolCall } from "./tool-call.js";
 import { statOrNull } from "./files.js";
 import { TailState, withTail } from "./tail.js";
@@ -46,9 +47,9 @@ function workItemFromContent(content: unknown): string | undefined {
   for (const raw of content) {
     const block = raw as { type?: unknown; text?: unknown } | null;
     if (block?.type !== "text" || typeof block.text !== "string") continue;
-    const collapsed = block.text.replace(/\s+/g, " ").trim();
+    const collapsed = collapseWhitespace(block.text);
     if (!collapsed) continue;
-    return collapsed.length <= WORK_ITEM_MAX ? collapsed : `${collapsed.slice(0, WORK_ITEM_MAX - 1).trimEnd()}…`;
+    return truncate(collapsed, WORK_ITEM_MAX);
   }
   return undefined;
 }
