@@ -37,7 +37,7 @@ export const GUI_PAGE = `<!doctype html>
   <button>send</button><span id="flash"></span>
 </form>
 <table>
-  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>last result</th></tr></thead>
+  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>last tick</th><th>last result</th></tr></thead>
   <tbody id="loops"></tbody>
 </table>
 <div id="transcript" hidden></div>
@@ -46,6 +46,16 @@ export const GUI_PAGE = `<!doctype html>
 <script>
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   const fmtTokens = (n) => (n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
+  // Absolute local time of the last tick end, same format rules as the TUI's last-tick
+  // cell: zero-padded HH:MM:SS, prefixed MM-DD once older than a day; "-" when never ticked.
+  const fmtLastTick = (ts) => {
+    if (!ts) return "-";
+    const d = new Date(ts);
+    const p = (n) => String(n).padStart(2, "0");
+    let s = p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    if (Date.now() - ts > 86400000) s = p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + s;
+    return s;
+  };
   let transcriptRole = null; // loop whose transcript panel is open (null = closed)
   async function refreshTranscript() {
     const panel = document.getElementById("transcript");
@@ -75,7 +85,8 @@ export const GUI_PAGE = `<!doctype html>
           + "<td class='wide " + cls + "'>" + esc(l.phase)
           + "</td><td class='wide'>" + esc(l.currentWork ?? "-") + "</td><td>" + l.ticks + "</td><td>" + l.commits + "</td><td>" + fmtTokens(l.generated) +
           "</td><td>" + fmtTokens(l.peakCtx) +
-          "</td><td>$" + l.costUsd.toFixed(2) + "</td><td class='wide'>" + esc(last) + "</td></tr>";
+          "</td><td>$" + l.costUsd.toFixed(2) + "</td><td>" + fmtLastTick(l.lastTickEndedAt) +
+          "</td><td class='wide'>" + esc(last) + "</td></tr>";
       }).join("");
       // Project status: planned features and open bugs, fresh from /api/status each poll.
       const backlogList = (title, items) => "<span class='muted'>" + esc(title + " (" + items.length + ")") + "</span>\\n" +

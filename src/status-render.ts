@@ -23,6 +23,20 @@ function ago(ts: number | undefined): string {
   return `${humanSeconds(s)} ago`;
 }
 
+/** The table's `last tick` cell: the absolute local time of the last tick end alongside its
+ * relative age ("14:32:05 · 3m ago"). Zero-padded HH:MM:SS in local time, prefixed `MM-DD `
+ * once older than a day so multi-day runs stay unambiguous; "-" for loops that never ticked.
+ * The GUI renders the same absolute stamp (without the relative age) from its own JS copy —
+ * formatting at each surface, per the fmtTokens precedent. */
+export function lastTickCell(ts: number | undefined): string {
+  if (!ts) return "-";
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  let s = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  if (Date.now() - ts > 86_400_000) s = `${p(d.getMonth() + 1)}-${p(d.getDate())} ${s}`;
+  return `${s} · ${ago(ts)}`;
+}
+
 function duration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
@@ -104,11 +118,14 @@ export function clipToWidth(text: string, width: number): string {
 }
 
 /** Columns allowed to shrink when the table is wider than the terminal, widest offender
- * first: `last result` (holds the tick summary), then `state` (live working detail).
- * Indices are positional in the `cols` array below — renumber when columns change. */
+ * first: `last result` (holds the tick summary), then `state` (live working detail), then
+ * `last tick` — it shrinks last so on a narrow terminal it loses " · 3m ago" before whole
+ * lines clip; its minimum is a bare HH:MM:SS. Indices are positional in the `cols` array
+ * below — renumber when columns change. */
 const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
   { index: 8, minWidth: 12 },
   { index: 1, minWidth: 12 },
+  { index: 7, minWidth: 10 },
 ];
 const COLUMN_GAP = 2;
 
@@ -130,7 +147,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     tokens(m.generated),
     tokens(m.peakCtx),
     `$${s.totalCostUsd.toFixed(2)}`,
-    ago(s.lastTickEndedAt),
+    lastTickCell(s.lastTickEndedAt),
     s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
   ]);
   const totalsRow = [

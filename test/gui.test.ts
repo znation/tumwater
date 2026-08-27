@@ -184,6 +184,13 @@ test("the dashboard page has a current column after state", async () => {
   assert.match(GUI_PAGE, /<th>state<\/th><th>current<\/th>/);
 });
 
+test("the dashboard page has a last tick column between cost and last result", async () => {
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+  assert.match(GUI_PAGE, /<th>cost<\/th><th>last tick<\/th><th>last result<\/th>/);
+  // The cell renders client-side from the payload's existing lastTickEndedAt field.
+  assert.match(GUI_PAGE, /fmtLastTick\(l\.lastTickEndedAt\)/);
+});
+
 // Project status: planned features and open bugs from PLANS.md/BUGS.md.
 
 test("status payload carries planned plans and open bugs, fresh per poll", async () => {

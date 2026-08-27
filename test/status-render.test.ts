@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { clipToWidth, loopPhase, renderStatus, workingDetail } from "../src/status-render.js";
+import { clipToWidth, lastTickCell, loopPhase, renderStatus, workingDetail } from "../src/status-render.js";
 import type { StatusSnapshot } from "../src/status.js";
 import { freshLoopState } from "../src/state.js";
 import { piLogPath } from "../src/paths.js";
@@ -115,6 +115,97 @@ test("clipToWidth never exceeds the requested width, even at degenerate widths",
     assert.ok(clipped.length <= width, `width ${width} violated: ${clipped.length}`);
   }
   assert.match(clipToWidth(text, 5), /…$/, "over-wide text ends in an ellipsis");
+});
+
+// Last tick cell: absolute local time of the last tick end alongside the relative age.
+
+function stampOf(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+test("lastTickCell shows the absolute local time plus relative age", () => {
+  const ts = Date.now() - 180_000; // three minutes ago, same day: no date prefix
+  assert.equal(lastTickCell(ts), `${stampOf(ts)} · 3m ago`);
+});
+
+test("lastTickCell prefixes the date once older than a day", () => {
+  const ts = Date.now() - 2 * 86_400_000;
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  assert.equal(lastTickCell(ts), `${p(d.getMonth() + 1)}-${p(d.getDate())} ${stampOf(ts)} · 48h ago`);
+});
+
+test("lastTickCell is a bare dash for loops that never ticked", () => {
+  assert.equal(lastTickCell(undefined), "-");
+});
+
+test("renderStatus shows the absolute last-tick time in the table row", () => {
+  const ts = Date.now() - 180_000;
+  const snap = snapshotWith([{ role: "clean", lastTickEndedAt: ts }]);
+  const row = renderStatus(tmpdir(), snap).split("\n").find((l) => l.startsWith("clean")) ?? "";
+  assert.ok(row.includes(`${stampOf(ts)} · 3m ago`), `row missing the stamp: ${JSON.stringify(row)}`);
+});
+
+test("last tick shrinks last: narrow width takes from last result, then state, then last tick", () => {
+  const root = tmpdir();
+  // A working loop with a work-item-style wide state cell and a long last-result summary,
+  // so all three flexible columns have room to shrink.
+  writePiLog(root, "feature", [
+    SESSION,
+    assistantLine(`implement plan "${"x".repeat(50)}"`),
+    toolStart("bash", { command: "npm test" }),
+  ]);
+  const snap = {
+    ...snapshotWith([
+      {
+        role: "feature",
+        running: true,
+        lastTickStartedAt: Date.now() - 5_000,
+        ticks: 3,
+        commits: 1,
+        lastResult: "changed",
+        lastSummary: "y".repeat(120),
+        lastTickEndedAt: Date.now() - 180_000, // cell is exactly 17 chars: HH:MM:SS · 3m ago
+      },
+    ]),
+    running: true,
+  };
+  // The separator line (index 3) holds one dash run per column at its exact width.
+  const widthsOf = (out: string): number[] => {
+    const sep = out.split("\n")[3] ?? "";
+    return sep.split("  ").map((seg) => seg.length);
+  };
+  const col = (w: number[], i: number): number => w[i] ?? -1;
+  const natural = widthsOf(renderStatus(root, snap)); // unclipped render
+  assert.equal(col(natural, 7), 17, "fixture sanity: last tick column is HH:MM:SS · 3m ago");
+  const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
+
+  // Stage 1: only `last result` shrinks.
+  let w = widthsOf(renderStatus(root, snap, total - 5));
+  assert.equal(col(w, 8), col(natural, 8) - 5, "last result absorbs the first overflow");
+  assert.equal(col(w, 1), col(natural, 1), "state untouched while last result has room");
+  assert.equal(col(w, 7), col(natural, 7), "last tick untouched until the others are exhausted");
+
+  // Stage 2: `last result` clamped at its minimum; `state` shrinks next.
+  w = widthsOf(renderStatus(root, snap, total - (col(natural, 8) - 12) - 5));
+  assert.equal(col(w, 8), 12, "last result clamped at its minimum");
+  assert.ok(col(w, 1) < col(natural, 1), "state shrinks after last result is exhausted");
+  assert.equal(col(w, 7), col(natural, 7), "last tick still untouched");
+
+  // Stage 3: both at their minimums; `last tick` shrinks last, down to a bare HH:MM:SS.
+  w = widthsOf(
+    renderStatus(root, snap, total - (col(natural, 8) - 12) - (col(natural, 1) - 12) - (col(natural, 7) - 10)),
+  );
+  assert.equal(col(w, 8), 12);
+  assert.equal(col(w, 1), 12);
+  assert.equal(col(w, 7), 10, "last tick shrinks last and only to its HH:MM:SS minimum");
+
+  // And at a hard 80 columns nothing wraps.
+  for (const line of renderStatus(root, snap, 80).split("\n")) {
+    assert.ok(line.length <= 80, `line exceeds 80 cols: ${JSON.stringify(line)} (${line.length})`);
+  }
 });
 
 // Working detail: the live per-loop state cell (workingDetail) and its use by loopPhase.
