@@ -197,9 +197,9 @@ function terminateChild(child: ChildProcess): void {
   setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
 }
 
-/** Prefix of PiRunResult.errorMessage when the pi process never started; no session file
- * exists then, so callers must not treat the run as having created one. */
-export const SPAWN_ERROR_PREFIX = "failed to spawn pi";
+/** Prefix of PiRunResult.errorMessage when the pi process never started (no session file
+ * is created for such a run). */
+const SPAWN_ERROR_PREFIX = "failed to spawn pi";
 
 /** LM Studio kills predict streams idle >600 s (e.g. the machine slept mid-run) and reports
  * it back through pi as a server error on an assistant message. Fresh requests succeed

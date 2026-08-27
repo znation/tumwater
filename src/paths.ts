@@ -3,7 +3,7 @@ import path from "node:path";
 /** All harness runtime state lives under <repo>/.tumwater (gitignored). */
 export const STATE_DIR = ".tumwater";
 
-export function tumwaterDir(root: string): string {
+function tumwaterDir(root: string): string {
   return path.join(root, STATE_DIR);
 }
 

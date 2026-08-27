@@ -14,7 +14,7 @@ export const COMMIT_IDENT = [
   "user.email=tumwater@localhost",
 ];
 
-export class GitError extends Error {
+class GitError extends Error {
   constructor(
     public args: string[],
     public stderr: string,
