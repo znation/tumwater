@@ -5,14 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### PRINCIPLES.md — positive design principles injected into every prompt (planned 2026-08-24)
-
-Full plan: [plans/principles.md](plans/principles.md). Every project gets a tracked
-PRINCIPLES.md — the codified taste of the project, phrased as positive principles (per HN/chermi:
-LLMs follow positive constraints far better than prohibitions) — seeded at init, injected into
-every tick and director prompt, editable only by the director and steward. First item of the
-"Senior Tumwater" report sequence; the review gate and refusal plans both lint against it.
-
 ### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25)
 
 Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
@@ -131,6 +123,32 @@ the new column header.
 - `npm test` passes.
 
 ## Done
+
+### PRINCIPLES.md — positive design principles injected into every prompt (planned 2026-08-24,
+done 2026-08-26)
+
+Every project now carries a tracked `PRINCIPLES.md` — the codified answer to "what would a senior
+engineer on this team always do," phrased as positive principles (per HN/chermi: LLMs follow
+positive constraints far better than prohibitions). `initProject` seeds it beside PLANS/BUGS
+(never clobbering an existing one; committed with the init commit) with a header stating the write
+policy and four starter principles. `readPrinciples(root)` (src/prompt.ts) reads it fresh on every
+tick — missing or unreadable file yields "" so prompt building never throws — capping the text at
+4,000 chars with a truncation note so a runaway file cannot blow up every prefill. Both
+`buildTickPrompt` (new optional `principles` field) and `buildDirectorPrompt` (third arg) inject it
+verbatim in a `<principles>` block introduced as "design principles this project holds — uphold them
+in everything you produce", placed right after the shared preamble; the block is omitted entirely
+when empty. COMMON_RULES gains the write policy: only the director and steward may edit
+PRINCIPLES.md, every other loop treats it as read-only and records objections in PLANS.md instead
+(QUESTIONS.md does not exist yet — that plan owns the outbox channel). The director's routing block
+now points standing design guidance at PRINCIPLES.md first, README/PLANS/BUGS otherwise; the readme
+role's find text explicitly excludes PRINCIPLES.md from its drift-fixing remit. This repo is
+self-hosted: it carries its own PRINCIPLES.md (zero runtime deps, offline fake-pi tests, harness owns
+all git ops, opinionated defaults over configuration, one focused change per tick). README's "How it
+works" documents the seeding and injection. Tests: init seeding/clobber/commit; readPrinciples
+missing-file and cap-clipping; verbatim `<principles>` injection in both builders plus omission when
+empty; COMMON_RULES write policy; director routing text; readme role remit. Files: src/init.ts,
+src/prompt.ts, src/roles.ts, src/loop.ts, PRINCIPLES.md (this repo), test/init.test.ts,
+test/prompt.test.ts, README.md.
 
 ### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24, done 2026-08-26)
 

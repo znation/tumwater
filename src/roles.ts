@@ -58,7 +58,8 @@ refining the weakest existing plan over adding another.`,
     title: "README maintainer",
     find: `Read README.md and compare it against the actual state of the project. Update the
 status section (between the tumwater:status markers) to reflect reality: what works, what is in
-progress, how to build/run/test. Fix any documentation that has drifted from the code. Never edit
+progress, how to build/run/test. Fix any documentation that has drifted from the code — but not
+PRINCIPLES.md, which only the director and steward edit. Never edit
 the initial prompt between the tumwater:prompt markers. If the README is already accurate,
 there is nothing to do.`,
   },

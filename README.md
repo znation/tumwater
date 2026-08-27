@@ -68,8 +68,8 @@ the GUI/TUI tables.
 ## How it works
 
 `tumwater init "<prompt>"` seeds a git repo with README.md (your prompt + a status section),
-PLANS.md, BUGS.md, and tumwater.json, and commits them. `tumwater run` then starts one loop
-per enabled role. Every loop tick:
+PLANS.md, BUGS.md, PRINCIPLES.md, and tumwater.json, and commits them. `tumwater run` then starts
+one loop per enabled role. Every loop tick:
 
 1. Resets its persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`) to main.
 2. Builds a role-specific "find something to do" prompt and runs `pi --print --mode json` in the
@@ -82,6 +82,10 @@ per enabled role. Every loop tick:
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
+Every tick prompt also carries the project's `PRINCIPLES.md` — its design principles, the codified
+answer to "what would a senior engineer on this team always do" — so all loops share one standard of
+taste. Only the director and steward roles edit that file; every other loop treats it as read-only.
+
 Stopping the harness (Ctrl+C) mid-tick loses nothing: the interrupted loop's pi session and its
 worktree's uncommitted edits stay in place, and on the next `tumwater run` that loop resumes the
 same session (`--continue`) with a short bridge prompt and finishes the task it was on. A crash
@@ -92,8 +96,8 @@ The director loop is special: it executes prompts you type into the TUI (or `tum
 queued in a file-based inbox. It always has priority — a queued prompt starts immediately,
 outside the `maxConcurrent` limit and ahead of every role loop, and queued prompts run back to
 back with no cooldown between them. Everything is local git; no remotes are ever touched. Runtime state
-lives in `.tumwater/` (gitignored); durable state (plans, bugs, status, config) lives in tracked
-markdown and `tumwater.json`.
+lives in `.tumwater/` (gitignored); durable state (plans, bugs, principles, status, config) lives
+in tracked markdown and `tumwater.json`.
 
 ## Usage
 

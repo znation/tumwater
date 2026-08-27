@@ -12,7 +12,7 @@ test("initProject creates and commits the harness files", async () => {
   const result = await initProject(repo, "Build a todo CLI.");
   assert.deepEqual(
     [...result.created].sort(),
-    [".gitignore", "BUGS.md", "PLANS.md", "README.md", "tumwater.json"],
+    [".gitignore", "BUGS.md", "PLANS.md", "PRINCIPLES.md", "README.md", "tumwater.json"],
   );
   assert.ok(result.committed);
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");
@@ -27,6 +27,28 @@ test("initProject works on a repo with no commits", async () => {
   const result = await initProject(dir, "Fresh start.");
   assert.ok(result.committed);
   assert.equal(sh(dir, "git", "log", "--oneline").split("\n").length, 1);
+});
+
+test("initProject seeds PRINCIPLES.md with positive starter principles", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "prompt");
+  const seeded = fs.readFileSync(path.join(repo, "PRINCIPLES.md"), "utf8");
+  assert.match(seeded, /^# Principles/);
+  // The write policy is stated in the file itself: only director/steward edit it.
+  assert.match(seeded, /only the director and steward/i);
+  // Starter principles are phrased positively ("prefer…", "keep…", "every… ships").
+  assert.match(seeded, /Prefer the standard library/);
+  assert.match(seeded, /Every behavior change ships with a test/);
+});
+
+test("initProject never clobbers an existing PRINCIPLES.md", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "PRINCIPLES.md"), "# my taste\n- do things well\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own principles");
+  const result = await initProject(repo, "prompt");
+  assert.ok(!result.created.includes("PRINCIPLES.md"));
+  assert.equal(fs.readFileSync(path.join(repo, "PRINCIPLES.md"), "utf8"), "# my taste\n- do things well\n");
 });
 
 test("initProject never clobbers existing files and is idempotent", async () => {

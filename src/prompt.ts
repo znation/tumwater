@@ -1,7 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
 import { DECOMPOSITION_GUIDANCE, type Role } from "./roles.js";
 
 /** Sentinel a loop's pi run outputs when it found nothing worth doing. */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
+
+/** Cap on the PRINCIPLES.md text injected into every prompt, so a runaway file cannot blow up
+ * each tick's prefill. */
+export const PRINCIPLES_MAX_CHARS = 4000;
 
 /** The rule every loop prompt states for ending a run that made changes — the exact SUMMARY
  * line format extractSummary parses into the commit message. Stated once so the tick/director
@@ -18,6 +24,9 @@ Rules for this run:
   operations. Reading git history is fine.
 - Never touch the .tumwater directory or tumwater.json.
 - Never edit the initial prompt block in README.md (between the tumwater:prompt markers).
+- PRINCIPLES.md holds this project's design principles; only the director and steward roles may
+  edit it. Treat it as read-only — if a principle seems wrong or outdated, record your objection
+  in PLANS.md rather than editing the file.
 - Never run a command that can wait or run indefinitely — interactive programs (TUIs, REPLs,
   editors, anything reading stdin), servers, or watch modes. A hung command hangs your whole
   loop. To test such a program, impose a hard time limit yourself (background it and kill it
@@ -26,9 +35,34 @@ Rules for this run:
   single line ${NOTHING_TO_DO} instead.
 ${SUMMARY_RULE}`;
 
+/** The project's design principles (PRINCIPLES.md), capped for injection into prompts. Empty
+ * string when the file is missing or unreadable — prompt building must never throw on it. */
+export function readPrinciples(root: string): string {
+  const file = path.join(root, "PRINCIPLES.md");
+  if (!fs.existsSync(file)) return "";
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8").trim();
+  } catch {
+    return "";
+  }
+  if (text.length > PRINCIPLES_MAX_CHARS) {
+    text = `${text.slice(0, PRINCIPLES_MAX_CHARS)}\n…[PRINCIPLES.md truncated at ${PRINCIPLES_MAX_CHARS} chars]`;
+  }
+  return text;
+}
+
+/** The <principles> block injected into every tick and director prompt: the project's codified
+ * taste, phrased positively so loops follow it rather than merely avoid violations. */
+function principlesBlock(principles: string): string {
+  return `Design principles this project holds — uphold them in everything you produce:\n<principles>\n${principles}\n</principles>`;
+}
+
 export interface TickPromptInput {
   role: Role;
   initialPrompt: string;
+  /** PRINCIPLES.md content (see readPrinciples); omitted from the prompt when empty. */
+  principles?: string;
   extraInstructions?: string;
 }
 
@@ -46,26 +80,32 @@ function sharedPreamble(initialPrompt: string): string[] {
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, extraInstructions } = input;
+  const { role, initialPrompt, principles, extraInstructions } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt),
-    `Your task this run:\n${role.find.trim()}`,
   ];
+  if (principles) parts.push(principlesBlock(principles));
+  parts.push(`Your task this run:\n${role.find.trim()}`);
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   parts.push(COMMON_RULES.trim());
   return parts.join("\n\n");
 }
 
 /** The prompt for a director tick, which routes a user request into the project. */
-export function buildDirectorPrompt(userPrompt: string, initialPrompt: string): string {
+export function buildDirectorPrompt(
+  userPrompt: string,
+  initialPrompt: string,
+  principles?: string,
+): string {
   const parts = [
     `You are the "director" loop of tumwater, an autonomous development harness. The user steers
 the project by sending it requests; one has just arrived. Other specialist loops continuously
 implement planned features from PLANS.md and fix bugs from BUGS.md.`,
     ...sharedPreamble(initialPrompt),
-    `The user's request:\n<user-request>\n${userPrompt.trim()}\n</user-request>`,
   ];
+  if (principles) parts.push(principlesBlock(principles));
+  parts.push(`The user's request:\n<user-request>\n${userPrompt.trim()}\n</user-request>`);
   parts.push(
     `Interpret the request as a project-level command and route it — do NOT implement substantial
 work yourself:
@@ -75,8 +115,8 @@ work yourself:
 - A bug report: record it in BUGS.md (symptom, how to reproduce, suspected cause — investigate
   briefly to sharpen the report) so the bugfix loop fixes it. Do not fix it now.
 - Guidance, a decision, or a constraint (e.g. "prefer X", "drop feature Y"): record it durably
-  where future loops will see it — README.md, PLANS.md, or BUGS.md as appropriate — and remove
-  anything it supersedes.
+  where future loops will see it — PRINCIPLES.md first for standing design guidance and taste;
+  README.md, PLANS.md, or BUGS.md otherwise — and remove anything it supersedes.
 - A question: answer it in your final reply, and record anything durable it surfaced.
 - Only a trivially small direct edit (fix a typo, tweak a doc line, adjust a config value the
   user explicitly stated) may be done immediately instead of routed.

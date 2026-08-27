@@ -19,7 +19,14 @@ import {
 import { withLock } from "./lock.js";
 import { logEvent } from "./events.js";
 import { hasResumableSession, runPi } from "./pi.js";
-import { buildConflictPrompt, buildDirectorPrompt, buildResumePrompt, buildTickPrompt, extractSummary } from "./prompt.js";
+import {
+  buildConflictPrompt,
+  buildDirectorPrompt,
+  buildResumePrompt,
+  buildTickPrompt,
+  extractSummary,
+  readPrinciples,
+} from "./prompt.js";
 import { readInitialPrompt } from "./readme.js";
 import { configForRole } from "./config.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
@@ -75,17 +82,21 @@ export class LoopRunner {
   /** Decide the prompt for this tick, or null to skip (director with empty inbox). */
   private tickPrompt(): string | null {
     const initialPrompt = readInitialPrompt(this.root);
+    // The project's design principles ride along in every prompt — tick and director alike — so
+    // all loops share one standard of taste. Empty when the repo has no PRINCIPLES.md.
+    const principles = readPrinciples(this.root);
     if (this.role === DIRECTOR_ROLE) {
       const userPrompt = dequeuePrompt(this.root);
       if (!userPrompt) return null;
       this.pendingUserPrompt = userPrompt;
-      return buildDirectorPrompt(userPrompt, initialPrompt);
+      return buildDirectorPrompt(userPrompt, initialPrompt, principles);
     }
     const role = roleById(this.role);
     if (!role) throw new Error(`unknown role: ${this.role}`);
     return buildTickPrompt({
       role,
       initialPrompt,
+      principles,
       extraInstructions: this.config.roles[this.role]?.instructions,
     });
   }

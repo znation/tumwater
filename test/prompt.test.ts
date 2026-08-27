@@ -4,11 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   NOTHING_TO_DO,
+  PRINCIPLES_MAX_CHARS,
   buildDirectorPrompt,
   buildResumePrompt,
   buildTickPrompt,
   extractSummary,
   isNothingToDo,
+  readPrinciples,
 } from "../src/prompt.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
 import { DECOMPOSITION_GUIDANCE, ROLES, roleById } from "../src/roles.js";
@@ -105,6 +107,68 @@ test("buildDirectorPrompt routes work to the specialist loops instead of impleme
   assert.match(prompt, /record it in BUGS\.md/);
   assert.match(prompt, /Do not build\n {2}it now/);
   assert.match(prompt, /Do not fix it now/);
+});
+
+// PRINCIPLES.md is the project's codified taste: seeded at init, injected into every tick and
+// director prompt so all loops share one standard. The injection must be verbatim (the file IS
+// the standard) and bounded (a runaway file cannot blow up every prefill).
+
+test("readPrinciples reads PRINCIPLES.md; empty when missing", () => {
+  const dir = tmpdir();
+  assert.equal(readPrinciples(dir), "");
+  fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "# Principles\n- prefer small changes\n");
+  assert.equal(readPrinciples(dir), "# Principles\n- prefer small changes");
+});
+
+test("readPrinciples clips a runaway file at the cap with a note", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), `# Principles\n${"x".repeat(5000)}`);
+  const text = readPrinciples(dir);
+  assert.ok(text.length <= PRINCIPLES_MAX_CHARS + 100, "cap plus the truncation note");
+  assert.match(text, new RegExp(`truncated at ${PRINCIPLES_MAX_CHARS} chars`));
+});
+
+test("tick and director prompts inject principles verbatim in a <principles> block", () => {
+  const role = roleById("coverage");
+  assert.ok(role);
+  const principles = "# Principles\n- prefer small changes";
+  for (const prompt of [
+    buildTickPrompt({ role, initialPrompt: "Make a CLI.", principles }),
+    buildDirectorPrompt("add dark mode", "Make a CLI.", principles),
+  ]) {
+    assert.ok(prompt.includes(`<principles>\n${principles}\n</principles>`));
+    assert.match(prompt, /uphold them in everything you produce/);
+  }
+});
+
+test("prompts omit the <principles> block when the project has none", () => {
+  const role = roleById("coverage");
+  assert.ok(role);
+  for (const prompt of [
+    buildTickPrompt({ role, initialPrompt: "Make a CLI." }),
+    buildDirectorPrompt("add dark mode", "Make a CLI."),
+  ]) {
+    assert.ok(!prompt.includes("<principles>"));
+  }
+});
+
+test("every loop prompt keeps PRINCIPLES.md read-only for non-director/steward roles", () => {
+  const role = roleById("feature");
+  assert.ok(role);
+  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  assert.match(prompt, /only the director and steward/);
+  assert.match(prompt, /Treat it as read-only/);
+});
+
+test("director routing records standing guidance in PRINCIPLES.md first", () => {
+  const prompt = buildDirectorPrompt("prefer no third-party deps", "a project");
+  assert.match(prompt, /PRINCIPLES\.md first for standing design guidance and taste/);
+});
+
+test("the readme role leaves PRINCIPLES.md to the director and steward", () => {
+  const role = roleById("readme");
+  assert.ok(role);
+  assert.match(role.find, /but not\nPRINCIPLES\.md, which only the director and steward edit/);
 });
 
 // The resume prompt is sent into the SAME pi session as an interrupted run, which already

@@ -33,6 +33,19 @@ _None yet._
 _None yet._
 `;
 
+const PRINCIPLES_TEMPLATE = `# Principles
+
+Design principles this project holds — the codified answer to "what would a senior engineer on
+this team always do." Every loop's prompt carries these; uphold them in everything you produce.
+Only the director and steward roles may edit this file. Phrase new principles positively: state
+what to do, not what to avoid.
+
+- Prefer the standard library over a new dependency.
+- Keep every module under ~500 lines; split when it grows past that.
+- Every behavior change ships with a test.
+- Small, complete, and correct beats big and half-done: one focused change per tick.
+`;
+
 /** Add the tumwater state dir to .gitignore if it isn't ignored yet. */
 function ensureGitignore(root: string): boolean {
   const file = path.join(root, ".gitignore");
@@ -48,7 +61,7 @@ export interface InitResult {
   committed: boolean;
 }
 
-/** Initialize a repo for tumwater: README (with prompt + status), PLANS, BUGS,
+/** Initialize a repo for tumwater: README (with prompt + status), PLANS, BUGS, PRINCIPLES,
  * tumwater.json, .gitignore — then commit whatever was created. */
 export async function initProject(root: string, initialPrompt: string): Promise<InitResult> {
   if (!(await isGitRepo(root))) {
@@ -78,6 +91,7 @@ export async function initProject(root: string, initialPrompt: string): Promise<
   write("README.md", readmeTemplate(path.basename(path.resolve(root)), initialPrompt));
   write("PLANS.md", PLANS_TEMPLATE);
   write("BUGS.md", BUGS_TEMPLATE);
+  write("PRINCIPLES.md", PRINCIPLES_TEMPLATE);
   if (!fs.existsSync(configPath(root))) {
     saveConfig(root, defaultConfig());
     created.push("tumwater.json");
