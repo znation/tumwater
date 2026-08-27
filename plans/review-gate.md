@@ -2,7 +2,9 @@
 
 Planned 2026-08-24 · refined 2026-08-25 (failure handling, crash path, exemption semantics,
 state plumbing; stale file refs after the status-layer split; combined-diff review for resumed
-ticks) · from the "Senior Tumwater" report (HN 49421554) · report item R1
+ticks) · refined 2026-08-27 (reviewer model override moves to the top-level `review` section —
+role validation rejects pseudo-role ids) · from the "Senior Tumwater" report (HN 49421554)
+· report item R1
 
 ## Goal
 
@@ -43,11 +45,14 @@ the reviewer makes before merging — the reviewer's only output channel is its 
 `tumwater-review-<role>-<tick>`, mirroring the author runs — under sessionDir
 `.tumwater/sessions/_review/<role>/`. (A fixed name would let pi resume an old review's context;
 old files are cleaned by the existing age-based prune at orchestrator start.) Model/thinking come
-from a pseudo-role entry `review` in tumwater.json's `roles` map via the existing `configForRole`,
-so the strong model can review what the cheap model wrote. No code change needed for this: config
-validation already accepts unknown role ids, `enabledRoleIds` skips it (no runner spawned), and
-`configForRole` applies its provider/model/thinking overrides regardless of `enabled`. The dogfood
-tumwater.json gains `"review": { "enabled": false }` plus any model override.
+from optional `provider`/`model`/`thinking` fields on the new top-level `review` section (see
+Rigor calibration), resolved over the top-level values by a small accessor mirroring
+`configForRole`'s fallback pattern — so the strong model can review what the cheap model wrote.
+Do NOT use a pseudo-role entry in `roles`: config validation rejects ids outside `allRoleIds()`
+(`roles.review is not a known role (valid ids: …)`), so such an entry would fail tumwater.json
+load (live-reload keeps last-known-good and warns; the override silently never applies) — and
+even if it were accepted, enabling it would spawn a runner whose `tickPrompt` throws on every
+tick (no catalog entry). One top-level section keeps all gate settings together.
 
 ### Prompt (`src/prompt.ts`)
 
@@ -65,8 +70,12 @@ failed review, not an approval.
 
 ### Rigor calibration (`src/types.ts` + `src/config.ts`)
 
-A `review` section: `{ enabled: true, exemptPaths: ["*.md", "docs/**"] }`. A diff whose files all
-match `exemptPaths` merges without review; a diff with even one non-exempt file gets the full pass.
+A top-level `review` section: `{ enabled: true, exemptPaths: ["*.md", "docs/**"] }`, plus
+optional `provider`/`model`/`thinking` strings (validated like the role-entry string fields)
+that a small accessor resolves over the top-level values — mirroring `configForRole`'s fallback,
+but standing alone so no role-validation, catalog, or runner-spawning code changes. The reviewer
+run passes that resolved config to `runPi`. A diff whose files all match `exemptPaths` merges
+without review; a diff with even one non-exempt file gets the full pass.
 (Refusal notes and QA bug reports are md-only, so they stay cheap by construction.)
 
 **Exemption semantics** (small pure helper, e.g. `isExemptPath(relPath, patterns)` in
@@ -154,13 +163,14 @@ lives in src/events.ts).
 
 ## Files touched
 
-`src/loop.ts`, `src/prompt.ts`, `src/types.ts`, `src/config.ts` (review section + validation),
+`src/loop.ts`, `src/prompt.ts`, `src/types.ts`, `src/config.ts` (review section + validation + model-override accessor),
 `src/review.ts` (new: exemption matcher, verdict parsing, review-run orchestration shared by the
 tick and recoverLeftover paths), `src/status-render.ts` (`loopPhase`/`workingDetail` reviewing
 state — not src/status.ts), `src/event-format.ts` (review event rendering — formatEvent no longer
-lives in src/events.ts), `tumwater.json` (dogfood: `"review": { "enabled": false }` + model override),
-`test/review-gate.test.ts` (fake-pi shim scripting both verdicts; exemption matcher unit tests —
-basename vs path patterns, all-files-must-match; approve merges / reject resets + next-prompt
+lives in src/events.ts), `tumwater.json` (dogfood: top-level `review` section with the strong-model override),
+`test/review-gate.test.ts` (fake-pi shim scripting both verdicts; review-section config
+validation + accessor fallback over top-level values; exemption matcher unit tests — basename vs
+path patterns, all-files-must-match; approve merges / reject resets + next-prompt
 injection; review failure leaves commit and re-reviews next tick; 3-strike discard; recoverLeftover
 reviews leftovers but skips `lastApprovedHead`; a resumed tick with leftover commits lands them only
 via the combined-diff review; stray-edit reset; fresh session naming), README.

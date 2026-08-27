@@ -5,10 +5,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25)
+### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25, refined
+2026-08-27)
 
 Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
-fresh-session pi run (no author context; own model override via a `review` pseudo-role) reviews
+fresh-session pi run (no author context; own model override via optional provider/model/thinking on
+the new top-level `review` config section — role validation rejects pseudo-role ids) reviews
 the full ahead-of-main diff against PRINCIPLES.md and replies `VERDICT: approve|reject` with
 reasons. Rejects reset the branch, record reasons, and inject them into the author's next tick —
 the only cross-tick memory, since sessions are fresh per tick; md-only diffs are exempt so notes
