@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
 import { rotateIfLarge } from "./files.js";
-import { isNothingToDo } from "./prompt.js";
+import { isNothingToDo, VERDICT_LINE } from "./prompt.js";
 
 interface PiMessage {
   role: string;
@@ -27,6 +27,10 @@ export class PiStreamParser {
   /** True once any assistant message contains the nothing-to-do sentinel, so a
    * declaration in an intermediate turn survives later messages overwriting finalText. */
   declaredNothingToDo = false;
+  /** Text of the LAST assistant message carrying a parseable VERDICT line (the review gate's
+   * reply contract) — scanned across every message like the sentinel, so a verdict emitted in
+   * an intermediate turn survives later closing remarks overwriting finalText. */
+  verdictText = "";
   /** Tokens the model actually generated (usage.output summed across turns). */
   outputTokens = 0;
   /** Largest single-request context seen (usage.totalTokens is the request's whole
@@ -119,6 +123,7 @@ export class PiStreamParser {
     );
     if (text.trim()) this.finalText = text;
     if (isNothingToDo(text)) this.declaredNothingToDo = true;
+    if (VERDICT_LINE.test(text)) this.verdictText = text;
     this.outputTokens += msg.usage?.output ?? 0;
     this.peakContextTokens = Math.max(this.peakContextTokens, msg.usage?.totalTokens ?? 0);
     this.costUsd += msg.usage?.cost?.total ?? 0;
@@ -276,6 +281,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       ok: false,
       finalText: parser.finalText,
       nothingToDo: parser.declaredNothingToDo,
+      verdictText: parser.verdictText || undefined,
       outputTokens: parser.outputTokens,
       peakContextTokens: parser.peakContextTokens,
       costUsd: parser.costUsd,

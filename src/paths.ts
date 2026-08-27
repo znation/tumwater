@@ -49,6 +49,15 @@ export function sessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), role);
 }
 
+/** Session dir for a role's review-gate runs. Kept OUTSIDE the role's own session dir on
+ * purpose: hasResumableSession (the resume-after-shutdown guard) must only ever see the
+ * AUTHOR's sessions — a leftover reviewer session would make an interrupted tick "resume"
+ * into a review context it never had. Old files are cleaned by the same age-based prune.
+ */
+export function reviewSessionDir(root: string, role: string): string {
+  return path.join(sessionsRootDir(root), "_review", role);
+}
+
 export function inboxDir(root: string): string {
   return path.join(tumwaterDir(root), "inbox");
 }

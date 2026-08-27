@@ -165,6 +165,49 @@ export async function aheadOfMain(wt: string, mainBranch: string): Promise<numbe
   return parseInt(out, 10);
 }
 
+/** Repo-relative paths changed between the branch's fork point from main and its HEAD —
+ * everything a merge of this branch would land (the three-dot range diffs against the
+ * merge-base, so commits main gained during the tick are not included). */
+export async function aheadOfMainFiles(wt: string, mainBranch: string): Promise<string[]> {
+  const out = await gitTry(wt, "diff", "--name-only", `${mainBranch}...HEAD`);
+  return out ? out.split("\n").filter(Boolean) : [];
+}
+
+/** The combined ahead-of-main diff — everything a merge of this branch would land. Capped:
+ * over `maxBytes`, the result is a truncation note plus `--stat` and the largest files' full
+ * diffs (an oversized diff is itself reviewable information, and the reviewer can read any
+ * file in the worktree directly). */
+export async function aheadOfMainDiff(
+  wt: string,
+  mainBranch: string,
+  maxBytes = 200_000,
+): Promise<string> {
+  const range = `${mainBranch}...HEAD`;
+  const full = (await gitTry(wt, "diff", range)) ?? "";
+  if (full.length <= maxBytes) return full;
+  // Over the cap: rank files by change size and include the largest while budget allows.
+  const numstat = (await gitTry(wt, "diff", "--numstat", range)) ?? "";
+  const sizes = new Map<string, number>();
+  for (const line of numstat.split("\n")) {
+    const m = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+    if (!m) continue;
+    const added = m[1] === "-" ? 0 : parseInt(m[1], 10);
+    const deleted = m[2] === "-" ? 0 : parseInt(m[2], 10);
+    sizes.set(m[3], added + deleted);
+  }
+  const files = [...sizes.entries()].sort((a, b) => b[1] - a[1]).map(([f]) => f);
+  let out =
+    `[diff truncated: the full ahead-of-main diff is ${full.length} bytes; ` +
+    `showing --stat plus the largest files]\n\n` + ((await gitTry(wt, "diff", "--stat", range)) ?? "") + "\n";
+  for (const f of files) {
+    const d = (await gitTry(wt, "diff", range, "--", f)) ?? "";
+    if (!d) continue;
+    if (out.length + d.length > maxBytes) break;
+    out += `\n${d}\n`;
+  }
+  return out;
+}
+
 /** Stage and commit everything in the worktree. Returns the new commit hash. */
 export async function commitAll(wt: string, message: string): Promise<string> {
   await git(wt, "add", "-A");

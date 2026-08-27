@@ -15,6 +15,7 @@ export function defaultConfig(): TumwaterConfig {
     logMaxBytes: 16 * 1024 * 1024,
     sessionRetentionDays: 7,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },
+    review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
     roles,
   };
 }
@@ -47,10 +48,12 @@ const TOP_LEVEL_KEYS = [
   "logMaxBytes",
   "sessionRetentionDays",
   "idleBackoff",
+  "review",
   "roles",
 ];
 const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
 const ROLE_ENTRY_KEYS = ["enabled", "instructions", "provider", "model", "thinking"];
+const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking"];
 
 /** Collect the keys present in `obj` but not in `known` into problems, naming where they
  * were found and listing what is valid so one edit fixes them. */
@@ -126,6 +129,24 @@ export function validateConfig(raw: unknown): void {
     }
   }
 
+  if ("review" in r) {
+    const rv = r.review;
+    if (typeof rv !== "object" || rv === null || Array.isArray(rv)) {
+      problems.push(`review must be an object (got ${show(rv)})`);
+    } else {
+      const o = rv as Record<string, unknown>;
+      checkKnownKeys(o, REVIEW_KEYS, "review", problems);
+      if ("enabled" in o && typeof o.enabled !== "boolean")
+        problems.push(`review.enabled must be true or false (got ${show(o.enabled)})`);
+      if ("exemptPaths" in o) {
+        const v = o.exemptPaths;
+        if (!Array.isArray(v) || !v.every((p) => typeof p === "string"))
+          problems.push(`review.exemptPaths must be an array of strings (got ${show(v)})`);
+      }
+      for (const key of ["provider", "model", "thinking"]) checkString(o, "review.", key);
+    }
+  }
+
   if ("roles" in r) {
     const roles = r.roles;
     if (typeof roles !== "object" || roles === null || Array.isArray(roles)) {
@@ -176,6 +197,7 @@ export function loadConfig(root: string): TumwaterConfig {
     ...base,
     ...cfg,
     idleBackoff: { ...base.idleBackoff, ...(cfg.idleBackoff ?? {}) },
+    review: { ...base.review, ...(cfg.review ?? {}) },
     piArgs: cfg.piArgs ?? base.piArgs,
     roles: { ...base.roles },
   };
@@ -214,6 +236,21 @@ export function enabledRoleIds(config: TumwaterConfig): string[] {
 export function configForRole(config: TumwaterConfig, role: string): TumwaterConfig {
   const rc = config.roles[role];
   if (!rc) return config;
+  return {
+    ...config,
+    provider: rc.provider ?? config.provider,
+    model: rc.model ?? config.model,
+    thinking: rc.thinking ?? config.thinking,
+  };
+}
+
+/** The config as seen by the review gate's pi runs: the top-level `review` section's
+ * optional provider/model/thinking overrides applied over the top-level values — so a
+ * strong model can review what the cheap model wrote. Mirrors configForRole's fallback,
+ * but stands alone on purpose: a pseudo-role entry under `roles` would fail validation
+ * (unknown role id) and, if accepted, spawn a runner with no catalog prompt. */
+export function reviewConfig(config: TumwaterConfig): TumwaterConfig {
+  const rc = config.review;
   return {
     ...config,
     provider: rc.provider ?? config.provider,

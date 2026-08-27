@@ -8,6 +8,7 @@ import {
   continueRebase,
   ensureWorktree,
   ffMergeToMain,
+  git,
   gitTry,
   hasConflictMarkers,
   headOf,
@@ -22,6 +23,7 @@ import { hasResumableSession, runPi } from "./pi.js";
 import {
   buildConflictPrompt,
   buildDirectorPrompt,
+  buildRejectedReviewNote,
   buildResumePrompt,
   buildTickPrompt,
   extractSummary,
@@ -29,6 +31,7 @@ import {
 } from "./prompt.js";
 import { readInitialPrompt } from "./readme.js";
 import { configForRole } from "./config.js";
+import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "./state.js";
 import { mergeLockDir, piLogPath, sessionDir } from "./paths.js";
@@ -96,20 +99,29 @@ export class LoopRunner {
     // The project's design principles ride along in every prompt — tick and director alike — so
     // all loops share one standard of taste. Empty when the repo has no PRINCIPLES.md.
     const principles = readPrinciples(this.root);
+    let prompt: string;
     if (this.role === DIRECTOR_ROLE) {
       const userPrompt = dequeuePrompt(this.root);
       if (!userPrompt) return null;
       this.pendingUserPrompt = userPrompt;
-      return buildDirectorPrompt(userPrompt, initialPrompt, principles);
+      prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles);
+    } else {
+      const role = roleById(this.role);
+      if (!role) throw new Error(`unknown role: ${this.role}`);
+      prompt = buildTickPrompt({
+        role,
+        initialPrompt,
+        principles,
+        extraInstructions: this.config.roles[this.role]?.instructions,
+      });
     }
-    const role = roleById(this.role);
-    if (!role) throw new Error(`unknown role: ${this.role}`);
-    return buildTickPrompt({
-      role,
-      initialPrompt,
-      principles,
-      extraInstructions: this.config.roles[this.role]?.instructions,
-    });
+    // A change rejected in review is the only cross-tick memory of what was built and why it
+    // failed — every tick starts a fresh session, so the full reasons ride along on the next
+    // prompt until the role's next reviewed change replaces them.
+    if (this.state.lastReview?.verdict === "reject") {
+      prompt += `\n\n${buildRejectedReviewNote(this.state.lastReview.reasons)}`;
+    }
+    return prompt;
   }
 
   /** Land the worktree branch on main under the shared merge lock: rebase it onto main
@@ -215,10 +227,37 @@ export class LoopRunner {
     return true;
   }
 
-  /** Salvage commits left on the branch by a previous run whose merge never landed. */
+  /** Run the adversarial review gate over everything ahead of main in `wt` (see
+   * src/review.ts for exemption, verdict parsing, and failure policy). */
+  private async reviewGate(wt: string, summary?: string, sessionSuffix?: string): Promise<GateResult> {
+    return reviewAheadOfMain(
+      {
+        root: this.root,
+        role: this.role,
+        wt,
+        mainBranch: this.mainBranch,
+        config: this.config,
+        tick: this.state.ticks,
+        sessionSuffix,
+        signal: this.signal,
+      },
+      this.state,
+      summary,
+    );
+  }
+
+  /** Salvage commits left on the branch by a previous run whose merge never landed. Leftovers
+   * route through the SAME review gate as fresh ticks — every path that can move a commit into
+   * main reviews the full ahead-of-main diff first, so no crash or abort path smuggles
+   * unreviewed work in (see src/review.ts). */
   private async recoverLeftover(wt: string): Promise<void> {
     const ahead = await aheadOfMain(wt, this.mainBranch).catch(() => 0);
     if (ahead <= 0) return;
+    const gate = await this.reviewGate(wt, undefined, "-recovery");
+    if (gate.run) this.foldUsage(gate.run);
+    // Shutdown mid-review: the tick ends anyway; the leftover stays for next time. A reject or
+    // failure was already handled per policy inside the gate (reset / left for retry).
+    if (gate.aborted || gate.decision === "rejected" || gate.decision === "failed") return;
     const result = await this.merge(wt, `recovered leftover work from ${this.role}`);
     if (result !== "changed") {
       logEvent(this.root, {

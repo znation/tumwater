@@ -13,6 +13,24 @@ export interface RoleConfig {
   thinking?: string;
 }
 
+/** Top-level review-gate config in tumwater.json (see src/review.ts). */
+export interface ReviewConfig {
+  /** Enable the adversarial pre-merge review gate (default true). */
+  enabled: boolean;
+  /** Repo-relative path patterns whose diffs are exempt from review when EVERY changed
+   * file matches some pattern (doc-only changes stay cheap). A pattern without "/" matches
+   * the basename at any depth; one with "/" matches the full path (* within a segment,
+   * ** across segments). */
+  exemptPaths: string[];
+  /** pi provider override for reviewer runs; falls back to the top-level value. */
+  provider?: string;
+  /** pi model override for reviewer runs — e.g. the strong model reviews what the cheap
+   * model wrote. Falls back to the top-level value. */
+  model?: string;
+  /** pi thinking-level override for reviewer runs; falls back to the top-level value. */
+  thinking?: string;
+}
+
 /** Idle backoff: how long a loop sleeps after a tick that changed nothing. */
 export interface BackoffConfig {
   /** Seconds to sleep after the first no-change tick. */
@@ -48,6 +66,8 @@ export interface TumwaterConfig {
   /** Delete pi session files older than this many days at orchestrator start (0 disables). */
   sessionRetentionDays: number;
   idleBackoff: BackoffConfig;
+  /** Adversarial pre-merge review gate (see src/review.ts). */
+  review: ReviewConfig;
   roles: Record<string, RoleConfig>;
 }
 
@@ -56,6 +76,8 @@ export type TickResult =
   | "no_change" // pi decided there was nothing to do
   | "merge_conflict" // change was made but could not be merged; discarded next tick
   | "merge_blocked" // fast-forward into main failed (e.g. dirty primary checkout)
+  | "rejected" // the review gate rejected the change; branch reset, reasons recorded
+  | "review_error" // the review gate failed (no parseable verdict); commit left for retry
   | "error" // pi errored or timed out
   | "aborted" // harness shutdown killed the run mid-tick; partial work discarded
   | "skipped"; // nothing to run (e.g. director with an empty inbox)
@@ -86,6 +108,23 @@ export interface LoopState {
   /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
    * past the limit the loop abandons the runaway task and falls back to a fresh tick. */
   cutOffStreak?: number;
+  /** Where in its cycle the loop was when it last persisted state: "review" means the
+   * interruption hit during the review gate, so any uncommitted worktree edits are the
+   * reviewer's stray output (discarded on resume), not author work. Set + saved around the
+   * reviewer run; cleared at tick end alongside `running`. */
+  phase?: "pi" | "review";
+  /** The most recent review-gate outcome for this loop: what was decided, why, and which
+   * branch HEAD it covered. A reject's reasons are injected into the role's next tick prompt
+   * — every tick starts a fresh session, so this is the only cross-tick memory of what was
+   * built and why it failed. */
+  lastReview?: { verdict: string; reasons: string[]; head?: string; at: number };
+  /** Branch HEAD that passed review most recently. Leftover commits at exactly this HEAD
+   * merge without re-review (a merge_blocked retry must not burn another review run). */
+  lastApprovedHead?: string;
+  /** Consecutive failed reviews of the SAME branch HEAD (reset when the reviewed HEAD
+   * changes or a review succeeds). Past the limit the leftover is discarded with a warning,
+   * so a misconfigured reviewer cannot wedge a loop re-reviewing one commit forever. */
+  unreviewFailures?: number;
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick
    * window (loop.ts resets it at tick start), not a lifetime total. */
   generatedTokens: number;
@@ -110,6 +149,10 @@ export interface HarnessEvent {
     | "prompt_enqueued"
     | "counters_reset"
     | "resume"
+    | "review_start"
+    | "review_verdict"
+    | "review_rejected"
+    | "review_failed"
     | "warning";
   [key: string]: unknown;
 }
@@ -123,6 +166,10 @@ export interface PiRunResult {
    * Covers the whole reply, not just the last message, so a sentinel emitted in an
    * intermediate turn is not lost to a later closing remark. */
   nothingToDo: boolean;
+  /** Text of the LAST assistant message carrying a parseable VERDICT line — the review
+   * gate's reply contract (see buildReviewPrompt). Scanned across every message like the
+   * sentinel, so a verdict in an intermediate turn survives later closing remarks. */
+  verdictText?: string;
   /** Tokens the model generated in this run (usage.output summed across turns). */
   outputTokens: number;
   /** Largest single-request context of the run. */

@@ -5,6 +5,11 @@ import { DECOMPOSITION_GUIDANCE, type Role } from "./roles.js";
 /** Sentinel a loop's pi run outputs when it found nothing worth doing. */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
 
+/** The review gate's verdict line (see buildReviewPrompt): the reviewer ends with exactly
+ * `VERDICT: approve` or `VERDICT: reject`. Scanned across every assistant message, like the
+ * nothing-to-do sentinel — a verdict in an intermediate turn must survive later remarks. */
+export const VERDICT_LINE = /^VERDICT:\s*(approve|reject)\b/m;
+
 /** Cap on the PRINCIPLES.md text injected into every prompt, so a runaway file cannot blow up
  * each tick's prefill. */
 export const PRINCIPLES_MAX_CHARS = 4000;
@@ -161,6 +166,58 @@ Rules for this run:
   reset, checkout) — the harness concludes the rebase for you. Reading git state is fine.
 - Never touch the .tumwater directory or tumwater.json.
 - When every marker is resolved and the project is consistent, just stop.`;
+}
+
+/** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees
+ * only the diff and project context — never the author's session — and replies with exactly
+ * one VERDICT line plus numbered reasons (see parseVerdict in src/review.ts). */
+export function buildReviewPrompt(
+  diff: string,
+  summary?: string,
+  commitBody?: string,
+  principles?: string,
+): string {
+  const parts = [
+    `You are an adversarial code reviewer for tumwater, an autonomous development harness. A
+loop's change is about to be merged to main; you decide whether it may land. You have no context
+from the authoring run — judge only what is in front of you, and assume nothing until you have
+checked it.`,
+  ];
+  if (summary) parts.push(`The author's summary of the change:\n${summary}`);
+  if (commitBody)
+    parts.push(
+      `The author's commit body (claimed motivation, risk, verification — check these claims against the diff):\n${commitBody}`,
+    );
+  if (principles) {
+    parts.push(
+      `Design principles this project holds — your review standard; a violation of one is a finding:\n<principles>\n${principles}\n</principles>`,
+    );
+  }
+  parts.push(`The full diff this merge will land (everything the branch is ahead of main):\n<diff>\n${diff}\n</diff>`);
+  parts.push(
+    `Review adversarially: hunt for correctness bugs, violations of the project's principles,
+unjustified complexity growth, and incomplete or half-done work. Read surrounding code in the
+repo freely to check claims against reality — a diff that does more than it claims is a finding.
+
+Rules for this run:
+- Do not edit any file. Never run a command that changes state (no git add/commit/merge/rebase/
+  reset, no writes anywhere) — your only output channel is the verdict below. Reading files and
+git history is fine.
+- Weigh the change against its stated purpose; do not approve work you did not actually check.
+- End your reply with exactly one line in this form:
+  VERDICT: approve   or   VERDICT: reject
+  followed by numbered reasons (for an approval, state what you checked and why it holds).`,
+  );
+  return parts.join("\n\n");
+}
+
+/** The note injected into a role's next tick prompt after its previous change was rejected in
+ * review. Every tick starts a fresh pi session, so this is the only cross-tick memory of what
+ * was built and why it failed — it carries the full reasons, not a summary of them. */
+export function buildRejectedReviewNote(reasons: string[]): string {
+  const list =
+    reasons.length > 0 ? reasons.map((r, i) => `${i + 1}. ${r}`).join("\n") : "(no reasons recorded)";
+  return `Your previous change was rejected in review:\n${list}\nAddress the objections or take a different approach.`;
 }
 
 /** Pull the SUMMARY: line out of a pi final reply; null when absent. */
