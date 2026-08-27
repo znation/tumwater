@@ -20,7 +20,8 @@ salvage and resumed ticks' leftover commits route through the same gate so no cr
 unreviewed work. The report's highest-leverage item — we have merged broken work twice for lack of
 it.
 
-### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25)
+### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
+refined 2026-08-27)
 
 Full plan: [plans/refusal-and-thrash.md](plans/refusal-and-thrash.md). A new
 `TUMWATER_REFUSED: <reason>` sentinel and `refused` tick outcome let a loop decline work that
@@ -30,7 +31,10 @@ half-work is discarded — tracked edits via reset, untracked files via clean; a
 resets cleanly with the reason kept in event + lastSummary. High-friction ticks (turn/time
 thresholds from `PiRunResult.turns` + wall-clock) are flagged by warning event and, once
 commit-bodies lands, its reserved trailer line — matsemann's "difficulty is a signal" restored as
-data.
+data. A refusal blocks its entry until unblocked: fixed `**Refused <date> by <role>: …**` note
+shape, a COMMON_RULES skip rule plus feature/bugfix find-text lines keep fresh-session ticks from
+re-refusing the same entry (normal backoff bounds any violation), and only a human or the
+director clears it — the steward may prune stale ones.
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined 2026-08-27)
 
