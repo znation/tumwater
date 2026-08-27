@@ -54,15 +54,17 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). Two open bugs: the gen/peak-ctx table columns accumulate across a loop's lifetime instead of
-showing the current or last run, and routine merge conflicts log a warning line even though pi
-resolves them automatically. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
+`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs — the two most recent (gen/
+peak-ctx columns accumulating across a loop's lifetime instead of showing the current or last run;
+routine merge conflicts logged as warnings although pi resolves them automatically) are fixed and
+recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
 current work item; both dashboards show project status — planned features and open bugs from
-PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: eight PLANS.md plans await the feature loop — seven from the Senior Tumwater report (PRINCIPLES.md injected into every prompt, an adversarial review
+PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: seven PLANS.md plans await the feature loop — six from the Senior Tumwater report (an adversarial review
 gate before merge, a refusal sentinel with friction signals, self-explaining commit bodies, a
 QUESTIONS.md outbox, and slow-clock steward and QA roles), plus absolute last-result timestamps in
-the GUI/TUI tables.
+the GUI/TUI tables. The report's PRINCIPLES.md plan has landed: every tick prompt now carries the
+project's tracked PRINCIPLES.md (documented under How it works).
 <!-- tumwater:status:end -->
 
 ## How it works
