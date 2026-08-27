@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { pruneOldFiles, rotateIfLarge } from "../src/files.js";
+import { findOnPath, pruneOldFiles, rotateIfLarge } from "../src/files.js";
 import { followFile, readCompleteLines, withTail, type TailState } from "../src/tail.js";
 import { tmpdir } from "./util.js";
 
@@ -43,6 +43,30 @@ test("pruneOldFiles removes only files older than the retention window", () => {
   assert.ok(!fs.existsSync(oldFile));
   assert.ok(fs.existsSync(newFile));
   assert.equal(pruneOldFiles(path.join(dir, "nope"), 7), 0);
+});
+
+test("findOnPath locates executables like spawn would resolve them", () => {
+  const dir = tmpdir();
+  const bin = path.join(dir, "pi");
+  fs.writeFileSync(bin, "#!/bin/sh\n");
+  fs.chmodSync(bin, 0o755);
+  assert.equal(findOnPath("pi", dir), bin);
+
+  // A directory named like the binary is not a match (spawn would fail on it too).
+  const dirs = tmpdir();
+  fs.mkdirSync(path.join(dirs, "pi"));
+  assert.equal(findOnPath("pi", dirs), null);
+
+  // Non-executable files are skipped; empty PATH segments are ignored.
+  const noexec = tmpdir();
+  const plain = path.join(noexec, "pi");
+  fs.writeFileSync(plain, "#!/bin/sh\n");
+  fs.chmodSync(plain, 0o644);
+  assert.equal(findOnPath("pi", `${noexec}::${dir}`), bin);
+
+  // Missing binary or empty PATH.
+  assert.equal(findOnPath("definitely-missing-xyz", dir), null);
+  assert.equal(findOnPath("pi", ""), null);
 });
 
 test("followFile delivers each complete line once, holds torn tails, resets on shrink", async () => {

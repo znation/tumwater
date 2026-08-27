@@ -3,35 +3,11 @@ import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { PiStreamParser, findOnPath, piArgs, runPi } from "../src/pi.js";
+import { PiStreamParser, piArgs, runPi } from "../src/pi.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
 import { assistantLine, errorLine, fakePi, makeRepo, thinkingOnlyLine, tmpdir } from "./util.js";
-
-test("findOnPath locates executables like spawn would resolve them", () => {
-  const dir = tmpdir();
-  const bin = path.join(dir, "pi");
-  fs.writeFileSync(bin, "#!/bin/sh\n");
-  fs.chmodSync(bin, 0o755);
-  assert.equal(findOnPath("pi", dir), bin);
-
-  // A directory named like the binary is not a match (spawn would fail on it too).
-  const dirs = tmpdir();
-  fs.mkdirSync(path.join(dirs, "pi"));
-  assert.equal(findOnPath("pi", dirs), null);
-
-  // Non-executable files are skipped; empty PATH segments are ignored.
-  const noexec = tmpdir();
-  const plain = path.join(noexec, "pi");
-  fs.writeFileSync(plain, "#!/bin/sh\n");
-  fs.chmodSync(plain, 0o644);
-  assert.equal(findOnPath("pi", `${noexec}::${dir}`), bin);
-
-  // Missing binary or empty PATH.
-  assert.equal(findOnPath("definitely-missing-xyz", dir), null);
-  assert.equal(findOnPath("pi", ""), null);
-});
 
 test("parser keeps the last non-empty assistant text and sums usage", () => {
   const parser = new PiStreamParser();

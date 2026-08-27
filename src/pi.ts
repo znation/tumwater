@@ -171,24 +171,6 @@ export function hasResumableSession(sessionDir: string): boolean {
   }
 }
 
-/** Locate an executable on PATH the same way spawn() would resolve it: a regular file
- * with the execute bit in some PATH directory. Returns its absolute path, or null when
- * missing (or not executable), so callers can fail fast with a clear message instead of
- * letting every tick die with "spawn <name> ENOENT". */
-export function findOnPath(name: string, pathEnv: string = process.env.PATH ?? ""): string | null {
-  for (const dir of pathEnv.split(path.delimiter)) {
-    if (!dir) continue;
-    const candidate = path.join(dir, name);
-    try {
-      fs.accessSync(candidate, fs.constants.X_OK); // Directories pass X_OK; require a file.
-      if (fs.statSync(candidate).isFile()) return candidate;
-    } catch {
-      // Not in this directory; keep looking.
-    }
-  }
-  return null;
-}
-
 /** Terminate a pi child: SIGTERM now, escalating to SIGKILL after 10 s if it is still
  * alive. The escalation timer is unref'd so a clean exit does not keep the harness process
  * alive. Shared by the tick-timeout and harness-shutdown paths. */

@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** Shared file helpers: stat-or-missing for log readers, tolerant JSON-file reads for state
- * files written by other processes, size-based rotation for append-only logs, and age-based
- * pruning of pi session files. Incremental consumption of those append-only logs (complete-
- * line tail reading, tail-state folding, byte-offset following) lives in tail.ts. */
+/** Shared file helpers: stat-or-missing for log readers, PATH lookup for the pi-installation
+ * preflight, tolerant JSON-file reads for state files written by other processes, size-based
+ * rotation for append-only logs, and age-based pruning of pi session files. Incremental
+ * consumption of those append-only logs (complete-line tail reading, tail-state folding,
+ * byte-offset following) lives in tail.ts. */
 
 /** Stat a file, returning null when it does not exist (or cannot be read). The harness's
  * log readers all treat a missing log as "no data yet" rather than an error — this is the
@@ -15,6 +16,24 @@ export function statOrNull(file: string): fs.Stats | null {
   } catch {
     return null; // Missing (or vanished) — no data yet.
   }
+}
+
+/** Locate an executable on PATH the same way spawn() would resolve it: a regular file
+ * with the execute bit in some PATH directory. Returns its absolute path, or null when
+ * missing (or not executable), so callers can fail fast with a clear message instead of
+ * letting every tick die with "spawn <name> ENOENT". */
+export function findOnPath(name: string, pathEnv: string = process.env.PATH ?? ""): string | null {
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, name);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK); // Directories pass X_OK; require a file.
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {
+      // Not in this directory; keep looking.
+    }
+  }
+  return null;
 }
 
 /** Read and parse a JSON file, returning null when it does not exist or cannot be read or
