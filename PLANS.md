@@ -21,7 +21,9 @@ unreviewed work. The report's highest-leverage item — we have merged broken wo
 it.
 
 **Status (plan-loop audit 2026-08-27):** feature tick 44 (`bad613e`) landed the core module, but
-the plan is NOT done and that commit broke the build on main (open bug in BUGS.md — fix it first).
+the plan is NOT done; that commit's build break on main was fixed by the bugfix loop 2026-08-27
+(see BUGS.md's Fixed section — it also added test/review-gate.test.ts with pure-function coverage,
+so remaining item (4) below means the gate-orchestration suite).
 Landed: `src/review.ts` (exemption matcher, verdict parsing, gate orchestration with the 3-strike
 discard cap), the top-level `review` config section + validation + `reviewConfig` accessor,
 LoopState/TickResult/event types, recovery-path wiring (`recoverLeftover` routes leftovers through

@@ -542,12 +542,15 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
   const repo = await initializedRepo();
   const m1 = path.join(tmpdir(), "phase1");
   const m2 = path.join(tmpdir(), "phase2");
-  // Phase 1 (tick 1): edit seed.txt on the branch AND advance main with a conflicting
-  // edit. Phase 2 (tick 1's resolution run): leave the markers — the merge fails and the
-  // tick's commit is left stranded on the branch. Phase 3 (tick 2's recovery run):
-  // resolve them this time. Phase 4 (tick 2's own tick): nothing to do.
+  // Phase 0 (any run whose prompt asks for a VERDICT — the review gate, which recovery
+  // now routes through): approve, so the leftover may land. Phase 1 (tick 1): edit
+  // seed.txt on the branch AND advance main with a conflicting edit. Phase 2 (tick 1's
+  // resolution run): leave the markers — the merge fails and the tick's commit is left
+  // stranded on the branch. Phase 3 (tick 2's recovery run): resolve them this time.
+  // Phase 4 (tick 2's own tick): nothing to do.
   const restore = fakePi(
     [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve\n1. checked the diff; it holds")}'; exit 0;; esac; done`,
       `if [ ! -f "${m1}" ]; then`,
       `  touch "${m1}"`,
       `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
@@ -587,10 +590,13 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
 test("unmergeable leftover commits are discarded with a warning on the next tick", async () => {
   const repo = await initializedRepo();
   const m1 = path.join(tmpdir(), "phase1");
-  // Phase 1 (tick 1): branch edit + conflicting main advance. Every conflict-resolution
-  // run (detected by markers in seed.txt) leaves the markers: unresolvable, both ticks.
+  // Phase 0 (any run whose prompt asks for a VERDICT — the review gate, which recovery
+  // now routes through): approve, so recovery reaches the merge and can fail there. Phase
+  // 1 (tick 1): branch edit + conflicting main advance. Every conflict-resolution run
+  // (detected by markers in seed.txt) leaves the markers: unresolvable, both ticks.
   const restore = fakePi(
     [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve\n1. checked the diff; it holds")}'; exit 0;; esac; done`,
       `if [ ! -f "${m1}" ]; then`,
       `  touch "${m1}"`,
       `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,

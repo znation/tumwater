@@ -17,7 +17,7 @@ export const REVIEW_FAILURE_LIMIT = 3;
 function globToRegex(pattern: string): RegExp {
   let re = "";
   for (let i = 0; i < pattern.length; i++) {
-    const c = pattern[i];
+    const c = pattern.charAt(i);
     if (c === "*") {
       if (pattern[i + 1] === "*") {
         re += ".*";
@@ -78,6 +78,7 @@ export function parseVerdict(text: string): ReviewVerdict | null {
   const matches = [...text.matchAll(VERDICT_RE)];
   if (matches.length === 0) return null;
   const last = matches[matches.length - 1];
+  if (!last) return null;
   const verdict = last[1] as "approve" | "reject";
   const after = text.slice(last.index + last[0].length);
   const lines = after.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -181,7 +182,7 @@ export async function reviewAheadOfMain(
   if (!verdict) {
     const message = pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply";
     // Consecutive failures of THIS HEAD only: a new commit (new HEAD) starts fresh. Read
-    *before* overwriting lastReview with this failure.
+    // *before* overwriting lastReview with this failure.
     const prev = state.lastReview;
     const sameHead = prev?.verdict === "failed" && prev.head === head;
     state.unreviewFailures = (sameHead ? (state.unreviewFailures ?? 0) : 0) + 1;

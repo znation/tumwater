@@ -5,10 +5,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Build broken on main: syntax error in src/review.ts (missing comment prefix) (reported by plan loop 2026-08-27)
+_None yet._
 
-**Symptom:** `npm run build` — and therefore `npm test` — fails with five TypeScript errors, all
-on one line of the file added by feature tick 44 (`bad613e`, 2026-08-27):
+## Fixed
+
+### Build broken on main: syntax error in src/review.ts (missing comment prefix) (reported by plan loop 2026-08-27, fixed 2026-08-27)
+
+**Symptom:** `npm run build` — and therefore `npm test` — failed with five TypeScript errors,
+all on one line of the file added by feature tick 44 (`bad613e`, 2026-08-27):
 
 ```
 src/review.ts(184,5): error TS1109: Expression expected.
@@ -16,20 +20,32 @@ src/review.ts(184,26): error TS1005: ';' expected.
 … (three more on the same line)
 ```
 
-Every loop inherits this because worktrees reset to main at tick start; any role that builds or
-tests hits it immediately. A third instance of broken work landing on main — precisely what the
+Every loop inherited this because worktrees reset to main at tick start; any role that builds or
+tests hit it immediately. A third instance of broken work landing on main — precisely what the
 review gate was built to prevent, and it got through because the gate is not yet wired into the
 tick path (see PLANS.md's review-gate entry).
 
-**Repro:** `npm run build` at HEAD `bad613e`.
+**Cause:** The reported syntax error was only the visible tip: tsc skips ALL semantic checks
+while any file has a syntax error, so `bad613e` also carried six latent type errors under
+`noUncheckedIndexedAccess` that could never surface — in src/review.ts (`pattern[i]` passed as
+`string | undefined` to `String.includes`; the last VERDICT match possibly undefined) and in
+src/git.ts's new numstat parsing (three regex groups used unguarded). Beyond compilation, the
+same commit rewired `recoverLeftover` through the review gate — intended design per PLANS.md —
+but two pre-existing loop tests still assumed pre-gate recovery: their fake pi never answered
+the reviewer run with a VERDICT line, so the gate failed closed and recovery never happened
+(`npm test` red even after the build was fixed).
 
-**Suspected cause:** src/review.ts line 184 — a comment continuation lost its `//` prefix: line
-183 ends mid-sentence (`…starts fresh. Read`) and line 184 is bare `*before* overwriting
-lastReview with this failure.` instead of a commented continuation. One-line fix: restore the
-comment (prefix line 184 or fold both lines into one). No behavioral change; verify with
-`npm test` afterwards.
-
-## Fixed
+**Fix:** Restored the missing `//` prefix on src/review.ts:184 (no behavioral change). Fixed the
+latent type errors minimally, behavior-preserving: `pattern.charAt(i)` in globToRegex;
+a fail-closed `if (!last) return null;` in parseVerdict; a group-presence guard in
+aheadOfMainDiff's numstat loop. Updated the two recovery tests so their fake pi answers any run
+whose prompt asks for a VERDICT (the reviewer run, identified by that string — it appears only
+in buildReviewPrompt) with an approving verdict, matching the gate design that now routes
+recovery through review. Added test/review-gate.test.ts: pure-function regression coverage for
+parseVerdict / isExemptPath / isExemptDiff (importing review.js also fails `npm test` if this
+file ever stops compiling again); the full gate-orchestration suite remains a remaining item
+under PLANS.md's review-gate entry. Verified: build clean, full suite 299/299. Files:
+src/review.ts, src/git.ts, test/loop.test.ts, test/review-gate.test.ts (new).
 
 ### Flaky test: "a resumed tick continues the interrupted session" fails with no_change under parallel load (found by bugfix loop 2026-08-27, fixed 2026-08-27)
 

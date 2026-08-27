@@ -190,7 +190,7 @@ export async function aheadOfMainDiff(
   const sizes = new Map<string, number>();
   for (const line of numstat.split("\n")) {
     const m = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
-    if (!m) continue;
+    if (!m?.[1] || !m?.[2] || !m?.[3]) continue;
     const added = m[1] === "-" ? 0 : parseInt(m[1], 10);
     const deleted = m[2] === "-" ? 0 : parseInt(m[2], 10);
     sizes.set(m[3], added + deleted);
