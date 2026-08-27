@@ -185,8 +185,9 @@ const SPAWN_ERROR_PREFIX = "failed to spawn pi";
 
 /** LM Studio kills predict streams idle >600 s (e.g. the machine slept mid-run) and reports
  * it back through pi as a server error on an assistant message. Fresh requests succeed
- * within seconds of a wake, so this is retryable — unlike every other error class. */
-export const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
+ * within seconds of a wake, so this is retryable — unlike every other error class.
+ * Module-private: only feedLine below matches against it. */
+const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
 
 /** Run pi non-interactively in a worktree and distill the result. Never throws. */
 export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
