@@ -45,7 +45,7 @@ export interface TumwaterConfig {
   quietTimeoutSeconds: number;
   /** Rotate events.jsonl and per-role pi logs when they exceed this size. */
   logMaxBytes: number;
-  /** Delete pi session files older than this many days at orchestrator start. */
+  /** Delete pi session files older than this many days at orchestrator start (0 disables). */
   sessionRetentionDays: number;
   idleBackoff: BackoffConfig;
   roles: Record<string, RoleConfig>;

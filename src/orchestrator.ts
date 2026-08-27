@@ -105,9 +105,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   fs.writeFileSync(infoFile, JSON.stringify(info, null, 2));
   logEvent(root, { loop: "harness", type: "orchestrator_start", pid: process.pid, roles: enabled });
 
-  const pruned = pruneOldFiles(sessionsRootDir(root), config.sessionRetentionDays);
-  if (pruned > 0) {
-    logEvent(root, { loop: "harness", type: "warning", message: `pruned ${pruned} old pi session file(s)` });
+  // 0 disables pruning — the same convention as quietTimeoutSeconds. (With a positive N,
+  // pruneOldFiles deletes everything older than N days; JSON has no "keep forever" value, so
+  // 0 is the off switch rather than "delete all sessions now".)
+  if (config.sessionRetentionDays > 0) {
+    const pruned = pruneOldFiles(sessionsRootDir(root), config.sessionRetentionDays);
+    if (pruned > 0) {
+      logEvent(root, { loop: "harness", type: "warning", message: `pruned ${pruned} old pi session file(s)` });
+    }
   }
 
   const inFlight = new Set<Promise<void>>();

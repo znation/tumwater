@@ -111,7 +111,7 @@ export function validateConfig(raw: unknown): void {
   checkNumber(r, "", "tickTimeoutSeconds", (n) => n > 0, "a number greater than 0");
   checkNumber(r, "", "quietTimeoutSeconds", (n) => n >= 0, "a number of 0 or more (0 disables)");
   checkNumber(r, "", "logMaxBytes", (n) => n > 0, "a number greater than 0");
-  checkNumber(r, "", "sessionRetentionDays", (n) => n >= 0, "a number of 0 or more");
+  checkNumber(r, "", "sessionRetentionDays", (n) => n >= 0, "a number of 0 or more (0 disables)");
 
   if ("idleBackoff" in r) {
     const b = r.idleBackoff;

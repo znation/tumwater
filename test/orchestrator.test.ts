@@ -197,6 +197,65 @@ test("runOrchestrator refuses to start with no roles enabled", async () => {
   }
 });
 
+// --- Session retention at startup ---
+
+/** Seed a pi session file under .tumwater/sessions/<role>/ backdated `days` days old. */
+function seedOldSession(repo: string, role: string, days: number): string {
+  const dir = path.join(repo, ".tumwater", "sessions", role);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `old-${Date.now()}.jsonl`);
+  fs.writeFileSync(file, '{"type":"message_start"}\n');
+  const t = (Date.now() - days * 24 * 3600 * 1000) / 1000;
+  fs.utimesSync(file, t, t);
+  return file;
+}
+
+function pruneWarnings(repo: string): number {
+  return readEvents(repo).filter(
+    (e) => e.type === "warning" && ((e.message as string | undefined) ?? "").includes("pruned"),
+  ).length;
+}
+
+test("sessionRetentionDays 0 disables pruning: old sessions survive orchestrator startup", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "retention zero test");
+  const config = fastConfig(["clean"]);
+  config.sessionRetentionDays = 0;
+  saveConfig(repo, config);
+  const session = seedOldSession(repo, "clean", 30); // older than any positive retention
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo);
+  try {
+    // Pruning (or its skip) runs synchronously at startup; wait for the orchestrator to be
+    // up plus a poll cycle so the assertion is not racing the startup code.
+    await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
+    await new Promise((r) => setTimeout(r, 1000));
+    assert.ok(fs.existsSync(session), "a 30-day-old session survives when retention is 0");
+    assert.equal(pruneWarnings(repo), 0, "no prune warning when pruning is disabled");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a positive sessionRetentionDays still prunes old sessions at startup", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "retention prune test");
+  const config = fastConfig(["clean"]);
+  config.sessionRetentionDays = 7;
+  saveConfig(repo, config);
+  const session = seedOldSession(repo, "clean", 30);
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo);
+  try {
+    await waitFor(() => !fs.existsSync(session), "the old session to be pruned");
+    assert.equal(pruneWarnings(repo), 1, "one prune warning for the deleted file");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
 // --- Live-reload tumwater.json while running ---
 
 /** Poll until fn() is true, failing after ms (default 20s). */
