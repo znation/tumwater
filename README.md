@@ -41,7 +41,8 @@ implemented with ten roles plus the director loop (absolute scheduling priority;
 feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Every tick runs
 in a fresh pi session — context never accumulates across ticks, and durable knowledge lives in
 the repo (README/PLANS/BUGS), which each tick reads first; a tick interrupted by Ctrl+C or a
-crash is resumed on the next launch (same pi session, worktree edits kept); merge conflicts get
+crash is resumed on the next launch (same pi session, worktree edits kept), and a tick cut off at
+the context ceiling resumes its just-compacted session instead of idling; merge conflicts get
 one pi-driven resolution attempt; roles can override provider/model/thinking; `tumwater.json` is
 validated on load/save with actionable errors; logs rotate and old pi sessions are pruned; the
 TUI/status table is width-aware with a totals row; transient sleep/wake "predict stream timed
@@ -163,7 +164,11 @@ restart.
   need ~75k of within-tick growth to reach the cliff — several hours of dense work. Note that
   pi never compacts MID-run (only at end of run), so a single extremely long tick can still
   hit the cliff; the tick then ends with the warning above, any files pi already edited are
-  still committed, and the next tick starts fresh.
+  still committed, and — when no changes landed — the loop does not idle-backoff: its next
+  tick resumes the session pi just compacted at end of run (short bridge prompt, same task),
+  effectively mid-task compaction at tick granularity. After 3 consecutive cut-offs on one
+  task it gives up and falls back to a fresh tick with normal backoff; a cut-off director
+  prompt is re-queued and reruns fresh.
 - **Match clients to slots, or prefix caches thrash**: each server slot keeps the KV prefix of
   the last request it served. Keep the number of concurrent tumwater clients — `maxConcurrent`
   plus one for the director's bypass — at or below the server's slot count. One client over, and
