@@ -6,7 +6,7 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry, readBranchHead } from "./git.js";
 import { logEvent } from "./events.js";
-import { pruneOldFiles } from "./files.js";
+import { pruneOldFiles, readJsonFile } from "./files.js";
 import { inboxSize } from "./inbox.js";
 import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath, resetRequestPath, sessionsRootDir } from "./paths.js";
@@ -23,13 +23,7 @@ export interface OrchestratorInfo {
  * Never throws — a torn write (e.g. a crash mid-write) must not take down observers
  * that poll this every second (TUI, GUI, status). */
 export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
-  const file = orchestratorStatePath(root);
-  if (!fs.existsSync(file)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as OrchestratorInfo;
-  } catch {
-    return null;
-  }
+  return readJsonFile<OrchestratorInfo>(orchestratorStatePath(root));
 }
 
 /** True when the recorded orchestrator's pid is still alive (signal-0 probe). */
@@ -156,13 +150,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
       const markerFile = resetRequestPath(root);
       if (fs.existsSync(markerFile)) {
         let requested: string[] | null = null;
-        try {
-          const marker = JSON.parse(fs.readFileSync(markerFile, "utf8")) as { roles?: unknown };
-          if (Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string"))
-            requested = marker.roles as string[];
-        } catch {
-          // Corrupt marker: fall through and reset every runner below.
-        }
+        const marker = readJsonFile<{ roles?: unknown }>(markerFile);
+        if (marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string"))
+          requested = marker.roles as string[];
+        // Corrupt or missing marker: fall through and reset every runner below.
         const affected = requested ? runners.filter((r) => requested.includes(r.role)) : [...runners];
         for (const r of affected) r.resetCounters();
         if (affected.length > 0) {

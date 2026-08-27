@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** Shared file helpers: stat-or-missing for log readers, size-based rotation for
- * append-only logs, age-based pruning of pi session files, complete-line tail reading and
- * incremental tail-state consumption for polled JSONL logs, and byte-offset following of
- * live logs. */
+/** Shared file helpers: stat-or-missing for log readers, tolerant JSON-file reads for state
+ * files written by other processes, size-based rotation for append-only logs, age-based
+ * pruning of pi session files, complete-line tail reading and incremental tail-state
+ * consumption for polled JSONL logs, and byte-offset following of live logs. */
 
 /** Stat a file, returning null when it does not exist (or cannot be read). The harness's
  * log readers all treat a missing log as "no data yet" rather than an error — this is the
@@ -14,6 +14,19 @@ export function statOrNull(file: string): fs.Stats | null {
     return fs.statSync(file);
   } catch {
     return null; // Missing (or vanished) — no data yet.
+  }
+}
+
+/** Read and parse a JSON file, returning null when it does not exist or cannot be read or
+ * parsed. The harness's state files (loop state, orchestrator info, the reset-counters
+ * marker) are written by other processes and may be missing or torn mid-write — readers
+ * treat that as "no data" rather than an error, so a crash in one process can never take
+ * down the observers polling these files. */
+export function readJsonFile<T>(file: string): T | null {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8")) as T;
+  } catch {
+    return null; // Missing or torn — no data.
   }
 }
 

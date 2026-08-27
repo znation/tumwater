@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig, LoopState } from "./types.js";
+import { readJsonFile } from "./files.js";
 import { statePath } from "./paths.js";
 
 /** A new LoopState for one role, before its first tick. */
@@ -21,13 +22,8 @@ export function freshLoopState(role: string): LoopState {
 /** Load the loop's persisted state; never throws — a missing or unreadable file yields a
  * fresh state, and fields absent from an older file fall back to defaults. */
 export function loadLoopState(root: string, role: string): LoopState {
-  const file = statePath(root, role);
-  if (!fs.existsSync(file)) return freshLoopState(role);
-  try {
-    return { ...freshLoopState(role), ...(JSON.parse(fs.readFileSync(file, "utf8")) as LoopState) };
-  } catch {
-    return freshLoopState(role);
-  }
+  const saved = readJsonFile<Partial<LoopState>>(statePath(root, role));
+  return { ...freshLoopState(role), ...(saved ?? {}) };
 }
 
 /** Persist the loop's state atomically (tmp file + rename), so a crash mid-write cannot
