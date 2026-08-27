@@ -86,9 +86,11 @@ export interface LoopState {
   /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
    * past the limit the loop abandons the runaway task and falls back to a fresh tick. */
   cutOffStreak?: number;
-  /** Tokens the model actually generated for this loop, summed across all runs. */
+  /** Tokens the model generated in this loop's current or last completed tick — a per-tick
+   * window (loop.ts resets it at tick start), not a lifetime total. */
   generatedTokens: number;
-  /** Largest single-request context this loop has ever submitted. */
+  /** Largest single-request context of this loop's current or last completed tick (per-tick
+   * window, reset at tick start). */
   peakContextTokens: number;
   totalCostUsd: number;
   lastError?: string;
