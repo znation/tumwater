@@ -60,13 +60,17 @@ PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move:
 plans (the only role allowed to delete entries), flag drift, keep the complexity budget honest.
 The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes mandatory.
 
-### QA role — exercising the product like a user (planned 2026-08-24)
+### QA role — exercising the product like a user (planned 2026-08-24, refined 2026-08-26)
 
 Full plan: [plans/qa-role.md](plans/qa-role.md). A `qa` role that follows the README verbatim in
 a scratch dir — build, run, curl — one flow per tick, filing reproducible bugs in BUGS.md (its
 only write). Hard safety rails: time-limit every process, ephemeral ports, no source edits. The
 structural fix for green-suite-but-broken-product (the GUI page incident shipped through 180
-passing tests).
+passing tests). Self-hosting mechanics decided (2026-08-26): build in its own worktree each tick
+and invoke `node dist/cli.js` with cwd = scratch repo; the `run` flow uses either a fake-pi shim
+or one real bounded run — the scratch tumwater.json constrained to a single enabled role and
+maxConcurrent 1 (a default nested fleet would thrash the shared server's prefix caches), wall-
+capped and killed.
 
 ### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21, refined 2026-08-25)
 
