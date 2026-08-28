@@ -71,15 +71,47 @@ export function statusPayload(root: string): object {
   };
 }
 
+/** Max request body for /api/prompt. Over it the promise rejects ("body too large") and
+ * buffering STOPS — later chunks are drained and discarded, so a client that keeps uploading
+ * after the cap cannot grow the buffer past ~one chunk over the limit. Without the stop, every
+ * late chunk was still appended to `body` long after the rejection: an unbounded allocation on
+ * a network-facing endpoint. */
+const MAX_BODY_BYTES = 64 * 1024;
+
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = "";
-    req.on("data", (chunk: Buffer) => {
+    let settled = false;
+    const cleanup = () => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+    };
+    function onData(chunk: Buffer): void {
+      if (settled) return; // over the cap: discard — only memory would grow
       body += chunk.toString("utf8");
-      if (body.length > 64 * 1024) reject(new Error("body too large"));
-    });
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
+      if (body.length > MAX_BODY_BYTES) {
+        settled = true;
+        cleanup();
+        req.resume(); // keep draining so the upload can finish and the socket closes cleanly
+        reject(new Error("body too large"));
+      }
+    }
+    function onEnd(): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(body);
+    }
+    function onError(err: Error): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    }
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
   });
 }
 

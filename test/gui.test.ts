@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
@@ -273,6 +274,57 @@ test("gui rejects oversized prompt bodies with 413 instead of buffering them unb
     });
     assert.equal(ok.status, 200);
     assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui body bound test");
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  try {
+    // A raw chunked upload of ~4MB in 16KB frames. The 413 lands after the first ~64KB, but
+    // this client keeps sending every frame to completion (a well-behaved HTTP client would
+    // stop). The server must reject at the cap and then DRAIN without buffering — before the
+    // fix each late chunk was still appended to the body string, growing it to the full upload
+    // size. Keep-alive (no Connection: close) keeps the server-side request alive so a buggy
+    // buffer would still be retained when we measure.
+    const socket = net.connect(addr.port, "127.0.0.1");
+    let response = "";
+    socket.on("data", (d: Buffer) => {
+      response += d.toString("ascii");
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(
+        "POST /api/prompt HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n",
+        () => resolve(),
+      );
+    });
+    const frame = Buffer.alloc(16 * 1024, 0x78); // 'x'
+    const framed = Buffer.concat([Buffer.from(`${frame.length.toString(16)}\r\n`, "ascii"), frame, Buffer.from("\r\n", "ascii")]);
+    (globalThis as { gc?: () => void }).gc?.();
+    const before = process.memoryUsage().heapUsed;
+    await new Promise<void>((resolve, reject) => {
+      let i = 0;
+      socket.once("error", reject);
+      const next = (): void => {
+        if (i >= 256) return resolve();
+        i++;
+        socket.write(framed, next);
+      };
+      next();
+    });
+    // Give the server a moment to finish draining what is still in flight.
+    await new Promise((r) => setTimeout(r, 300));
+    (globalThis as { gc?: () => void }).gc?.();
+    const growth = process.memoryUsage().heapUsed - before;
+    assert.ok(growth < 1_048_576, `server retained ~${(growth / 1024 / 1024).toFixed(1)}MB of a rejected body`);
+    assert.match(response, /^HTTP\/1\.1 413/, "the oversized upload still gets the 413");
+    socket.destroy();
   } finally {
     server.close();
   }
