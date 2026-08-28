@@ -49,7 +49,7 @@ TUI/status table is width-aware with a totals row; transient sleep/wake "predict
 out" failures are retried once without dropping healthy sessions. Per-loop pi transcripts are
 observable three ways: `tumwater logs --role <id>` (run separators, abbreviated thinking,
 assistant text, tool calls; `-f` follows live), the TUI's activity pane (Ctrl+T cycles recent
-events → each loop's transcript in place), and a click-to-toggle panel in the GUI
+events → each loop's transcript → project status, all in place), and a click-to-toggle panel in the GUI
 (`/api/transcript?role=&n=`). The quiet watchdog measures progress, not bytes — structural
 events or real content growth keep a run alive, so zombie streams dripping empty keepalives are
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
