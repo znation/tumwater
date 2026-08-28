@@ -55,29 +55,19 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs in BUGS.md. The most recent —
-feature tick 49 (6e3f487) breaking main's build, `roles.steward` possibly undefined at src/config.ts
-under noUncheckedIndexedAccess; the review gate could not catch it because its reviewer is forbidden
-from running state-changing commands and `npm run build` writes dist/ — was fixed on 2026-08-28 by
-assigning the full steward entry in defaultConfig, with a regression test for the slow-clock default
-(full detail under BUGS.md's Fixed section). The previous breakage — main's build break from feature tick 47 (74224e9), src/loop.ts calling
-`git(...)` without importing it after a clean tick removed the import as unused an hour earlier — was
-reported twice, both reports arriving stale because perf tick 36 had fixed it on main before either
-entry landed; both are closed under BUGS.md's Fixed section with a regression test for the
-left-for-retry path. The previous one — main's build break from
-feature tick 44 (bad613e): src/review.ts with a syntax error on line 184, six
-`noUncheckedIndexedAccess` violations in the same new code, and two leftover-recovery tests that
-failed because recovery routes through the review gate their fake pi cannot satisfy — was fixed by
-restoring the comment prefix, guarding the indexed accesses, and teaching those tests' fake pi to
-answer with a VERDICT; full detail under BUGS.md's Fixed section.
-The bug before it — a flaky `test/loop.test.ts` resumed-tick case that
-intermittently reported `no_change` when the full suite ran in parallel under load (its 300 ms
-abort timer could fire before the fake pi wrote its marker file) — was fixed by making the test's
-abort wait for that marker; earlier fixes are recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
+`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs in BUGS.md; recent main build breaks (feature ticks 47 and 49) are fixed, each
+recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
 current work item; both dashboards show project status — planned features and open bugs from
-PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: three of the Senior Tumwater report's plans still await the feature loop — a refusal
-sentinel with friction signals, a QUESTIONS.md outbox, and the QA role. The slow-clock steward has
+PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: two of the Senior Tumwater report's plans still await the feature loop —
+a QUESTIONS.md outbox and the QA role. The refusal sentinel with friction signals has landed in code
+(feature tick 51): a `TUMWATER_REFUSED: <reason>` reply declines work that would harm the project,
+committing only its markdown objection note under the refused entry's heading in PLANS.md/BUGS.md —
+which blocks the entry until a human or the director clears it, since every role skips entries
+carrying a Refused note — and discarding any non-markdown half-work; changed ticks burning more than
+`thrashTurns` turns (default 40) or `thrashMinutes` minutes (default 60) are flagged high-friction,
+with a warning event plus extra review scrutiny, since difficulty is a signal the work may not fit.
+It awaits the plan-loop audit to move its plan to Done. The slow-clock steward has
 landed in code (feature tick 49): a markdown-only curation role on a ~6 h per-role clock (the new
 `minTickIntervalSeconds` override of the global interval), enabled by default; its landing commit's
 build break is fixed (BUGS.md) and it awaits the plan-loop audit to move its plan to Done. Self-explaining commit bodies has landed in code (feature
