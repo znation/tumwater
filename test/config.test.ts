@@ -7,6 +7,7 @@ import {
   defaultConfig,
   loadConfig,
   loadConfigSafe,
+  reviewConfig,
   saveConfig,
   validateConfig,
 } from "../src/config.js";
@@ -67,6 +68,23 @@ test("configForRole applies role overrides over top-level pi settings", () => {
   assert.equal(clean.model, "top-model");
   assert.equal(clean.thinking, undefined);
   assert.deepEqual(configForRole(config, "nonexistent"), config);
+});
+
+test("reviewConfig applies the review section's overrides over top-level pi settings", () => {
+  const config = defaultConfig();
+  config.provider = "top-provider";
+  config.model = "top-model";
+  config.review = { enabled: true, exemptPaths: [], model: "strong-model", thinking: "high" };
+  const review = reviewConfig(config);
+  assert.equal(review.provider, "top-provider");
+  assert.equal(review.model, "strong-model");
+  assert.equal(review.thinking, "high");
+
+  // No overrides in the section → top-level values pass through unchanged.
+  const plain = reviewConfig(defaultConfig());
+  assert.equal(plain.provider, undefined);
+  assert.equal(plain.model, undefined);
+  assert.equal(plain.thinking, undefined);
 });
 
 function validationError(raw: unknown): string {

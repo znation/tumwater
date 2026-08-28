@@ -78,7 +78,7 @@ export function parseVerdict(text: string): ReviewVerdict | null {
   const matches = [...text.matchAll(VERDICT_RE)];
   if (matches.length === 0) return null;
   const last = matches[matches.length - 1];
-  if (!last) return null;
+  if (!last) return null; // Unreachable: the length check above guarantees a match.
   const verdict = last[1] as "approve" | "reject";
   const after = text.slice(last.index + last[0].length);
   const lines = after.split("\n").map((l) => l.trim()).filter(Boolean);

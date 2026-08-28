@@ -250,6 +250,7 @@ export async function aheadOfMainDiff(
   for (const line of numstat.split("\n")) {
     const m = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
     if (!m?.[1] || !m?.[2] || !m?.[3]) continue;
+    // All three capture groups are required by the regex, so they exist when it matched.
     const added = m[1] === "-" ? 0 : parseInt(m[1], 10);
     const deleted = m[2] === "-" ? 0 : parseInt(m[2], 10);
     sizes.set(m[3], added + deleted);

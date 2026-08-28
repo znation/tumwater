@@ -231,30 +231,33 @@ export function enabledRoleIds(config: TumwaterConfig): string[] {
     .map(([id]) => id);
 }
 
+/** Apply a sub-config's optional provider/model/thinking overrides over the top-level
+ * values — the one place that fallback lives, so adding an override field touches only
+ * this. */
+function withModelOverrides(
+  config: TumwaterConfig,
+  o: { provider?: string; model?: string; thinking?: string },
+): TumwaterConfig {
+  return {
+    ...config,
+    provider: o.provider ?? config.provider,
+    model: o.model ?? config.model,
+    thinking: o.thinking ?? config.thinking,
+  };
+}
+
 /** The config as seen by one role's pi runs: role-level provider/model/thinking
  * overrides applied over the top-level values. */
 export function configForRole(config: TumwaterConfig, role: string): TumwaterConfig {
   const rc = config.roles[role];
-  if (!rc) return config;
-  return {
-    ...config,
-    provider: rc.provider ?? config.provider,
-    model: rc.model ?? config.model,
-    thinking: rc.thinking ?? config.thinking,
-  };
+  return rc ? withModelOverrides(config, rc) : config;
 }
 
 /** The config as seen by the review gate's pi runs: the top-level `review` section's
  * optional provider/model/thinking overrides applied over the top-level values — so a
- * strong model can review what the cheap model wrote. Mirrors configForRole's fallback,
- * but stands alone on purpose: a pseudo-role entry under `roles` would fail validation
+ * strong model can review what the cheap model wrote. Reads its own `review` section on
+ * purpose (not via configForRole): a pseudo-role entry under `roles` would fail validation
  * (unknown role id) and, if accepted, spawn a runner with no catalog prompt. */
 export function reviewConfig(config: TumwaterConfig): TumwaterConfig {
-  const rc = config.review;
-  return {
-    ...config,
-    provider: rc.provider ?? config.provider,
-    model: rc.model ?? config.model,
-    thinking: rc.thinking ?? config.thinking,
-  };
+  return withModelOverrides(config, config.review);
 }
