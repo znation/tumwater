@@ -2,8 +2,29 @@
 
 Planned 2026-08-24 · refined 2026-08-25 (removed stale sibling note; turns-field coordination)
 · refined 2026-08-27 (trailer number sources, exact format + helper placement, body length caps,
-VERIFIED honesty rule, single assembly site shared with the refusal plan) · from the "Senior
-Tumwater" report (HN 49421554) · report item R6a
+VERIFIED honesty rule, single assembly site shared with the refusal plan) · audited 2026-08-28
+· from the "Senior Tumwater" report (HN 49421554) · report item R6a
+
+## Status (plan-loop audit 2026-08-28)
+
+**Landed in feature tick 48 (`b41185d`); verified at `b101c02` with a green build and a
+334/334 suite.** Every design item is in code: SUMMARY_RULE carries WHY/RISK/VERIFIED in all
+three prompt paths (tick + director via COMMON_RULES, resume bridge); `extractCommitBody`
+(line-anchored per field, subset-tolerant, 200-char caps with ellipsis); `commitTrailer` in the
+exact decided format with compact ctx; `buildCommitMessage` as the single assembly site whose
+doc comment reserves refusal routing; the parser turn counter feeding `PiRunResult.turns`; and
+non-persisted `tickTurns` (reset at tick start, folded in `foldUsage`) so the trailer holds main
++ transient-retry runs while conflict-resolution runs — folded inside `merge()`, after
+`commitAll` — are excluded. The review prompt consumes the body ("check these claims against the
+diff") via src/review.ts. One deviation: unit tests landed in test/prompt.test.ts rather than a
+new test/commit-bodies.test.ts (coverage tick `0f73491`) — same coverage, different file.
+Remaining — two test gaps against the acceptance criteria, nothing structural: (a) no tick-level
+e2e asserting real commit content (compliant reply → body + trailer; SUMMARY-only → subject +
+trailer only); (b) the turn counter feeding the trailer is untested at every level (parser
+`turns`; transient-retry summing; conflict-run exclusion). Dogfood note: no commit carries a
+trailer yet, including the six after `b41185d` — consistent with the running fleet process
+having started before that tick (JS loads at startup; only tumwater.json live-reloads); live
+ticks stamp trailers on the next restart. See PLANS.md's entry for the full audit record.
 
 ## Goal
 

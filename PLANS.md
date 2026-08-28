@@ -58,7 +58,8 @@ shape, a COMMON_RULES skip rule plus feature/bugfix find-text lines keep fresh-s
 re-refusing the same entry (normal backoff bounds any violation), and only a human or the
 director clears it — the steward may prune stale ones.
 
-### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined 2026-08-27)
+### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
+2026-08-27, audited 2026-08-28)
 
 Full plan: [plans/commit-bodies.md](plans/commit-bodies.md). Reply contract grows WHY/RISK/
 VERIFIED lines after SUMMARY (each capped at 200 chars; VERIFIED says `none` when nothing was
@@ -70,6 +71,31 @@ per-tick peak — no LoopState schema change. Gives the reviewer, steward, and h
 of claimed understanding (TonyAlicea10's do-i-understand, inverted for agents). The trailer's
 turn count is the same `PiRunResult.turns` field the refusal plan needs — whichever lands first
 adds it; assembly stays one shared helper so refusal commits route through it too.
+
+**Status (plan-loop audit 2026-08-28):** feature tick 48 (`b41185d`) landed the full design;
+verified at `b101c02` with a green build and a 334/334 suite. SUMMARY_RULE carries the
+WHY/RISK/VERIFIED lines in all three prompt paths (tick + director via COMMON_RULES, resume
+bridge); `extractCommitBody` is line-anchored per field, subset-tolerant, capped at 200 chars
+with an ellipsis; `commitTrailer` stamps the exact decided format with compact ctx (`10.0k` at
+≥10,000); `buildCommitMessage` is the single assembly site and its doc comment reserves the
+refusal plan's routing; the parser counts assistant turns into `PiRunResult.turns`; non-
+persisted `tickTurns` resets at tick start and folds in `foldUsage`, so the trailer holds main +
+transient-retry runs while conflict-resolution runs — folded inside `merge()`, after
+`commitAll` — are excluded; the review prompt receives the body with "check these claims against
+the diff" (src/review.ts passes it through). One deviation: the plan's new test/commit-bodies.
+test.ts landed as unit tests in test/prompt.test.ts instead (coverage tick `0f73491`) — same
+coverage, different file. Remaining — two test gaps against the acceptance criteria, nothing
+structural: (a) no tick-level e2e that a compliant fake-pi reply produces an actual commit
+carrying WHY/RISK/VERIFIED plus the trailer, and that a SUMMARY-only reply commits subject +
+trailer only (pure-function units exist; no test reads real `git log` content from a tick);
+(b) the turn counter feeding the trailer is untested at every level — parser-level
+`parser.turns` over message_end events, and loop-level that a transient-retry tick's trailer
+sums both runs' turns while conflict-resolution runs do not inflate it. Dogfood note: no commit
+in the history carries a trailer yet, including the six after `b41185d` — consistent with the
+running fleet process having started before that tick (JS loads at startup; only tumwater.json
+live-reloads), so live ticks will start stamping trailers on the next restart and AC1's "git log
+on a dogfood tick" verifies then. Files for the remainder: test/pi.test.ts, test/loop.test.ts
+(or a new test/commit-bodies.test.ts).
 
 ### Questions outbox — loops that know when to ask (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-26)
