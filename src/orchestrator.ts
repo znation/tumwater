@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
+import type { OrchestratorInfo } from "./state.js";
 import { enabledRoleIds, loadConfigSafe } from "./config.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
@@ -33,31 +34,6 @@ function sleepInterruptible(ms: number, signal: AbortSignal): Promise<void> {
     }
     signal.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-export interface OrchestratorInfo {
-  pid: number;
-  startedAt: number;
-  roles: string[];
-}
-
-/** Read the running orchestrator's info file; null when it is missing or unreadable.
- * Never throws — a torn write (e.g. a crash mid-write) must not take down observers
- * that poll this every second (TUI, GUI, status). */
-export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
-  return readJsonFile<OrchestratorInfo>(orchestratorStatePath(root));
-}
-
-/** True when the recorded orchestrator's pid is still alive (signal-0 probe). */
-export function orchestratorAlive(root: string): boolean {
-  const info = readOrchestratorInfo(root);
-  if (!info) return false;
-  try {
-    process.kill(info.pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export interface RunOptions {

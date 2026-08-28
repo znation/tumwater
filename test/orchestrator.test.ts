@@ -2,13 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  fairOrder,
-  isEligible,
-  orchestratorAlive,
-  readOrchestratorInfo,
-  runOrchestrator,
-} from "../src/orchestrator.js";
+import { fairOrder, isEligible, runOrchestrator } from "../src/orchestrator.js";
 import { ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
@@ -16,7 +10,15 @@ import type { TumwaterConfig } from "../src/types.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
-import { freshLoopState, loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "../src/state.js";
+import {
+  freshLoopState,
+  loadLoopState,
+  nextBackoffSeconds,
+  orchestratorAlive,
+  readOrchestratorInfo,
+  saveLoopState,
+  zeroCounters,
+} from "../src/state.js";
 import { orchestratorStatePath, resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
@@ -119,30 +121,7 @@ test("backoff grows by the factor and caps at max", () => {
   assert.deepEqual(seen, [10, 30, 50, 50]);
 });
 
-// --- Orchestrator lifecycle (info file, alive check, run/shutdown) ---
-
-test("readOrchestratorInfo and orchestratorAlive handle missing, valid, dead-pid, and corrupt state", () => {
-  const dir = tmpdir();
-  assert.equal(readOrchestratorInfo(dir), null);
-  assert.equal(orchestratorAlive(dir), false);
-
-  const file = orchestratorStatePath(dir);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  // Our own pid is alive; a huge one is not.
-  for (const [pid, alive] of [
-    [process.pid, true],
-    [999_999_999, false],
-  ] as const) {
-    fs.writeFileSync(file, JSON.stringify({ pid, startedAt: Date.now(), roles: ["clean"] }));
-    assert.equal(readOrchestratorInfo(dir)?.pid, pid);
-    assert.equal(orchestratorAlive(dir), alive);
-  }
-
-  // A torn write must not crash observers (TUI/GUI poll this every second).
-  fs.writeFileSync(file, "{ not json");
-  assert.equal(readOrchestratorInfo(dir), null);
-  assert.equal(orchestratorAlive(dir), false);
-});
+// --- Orchestrator lifecycle (run/shutdown) ---
 
 test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () => {
   const repo = makeRepo();

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig, LoopState } from "./types.js";
 import { readJsonFile } from "./files.js";
-import { statePath } from "./paths.js";
+import { orchestratorStatePath, statePath } from "./paths.js";
 
 /** A new LoopState for one role, before its first tick. */
 export function freshLoopState(role: string): LoopState {
@@ -51,4 +51,32 @@ export function nextBackoffSeconds(current: number, config: TumwaterConfig): num
   const { initialSeconds, factor, maxSeconds } = config.idleBackoff;
   if (current <= 0) return Math.min(initialSeconds, maxSeconds);
   return Math.min(current * factor, maxSeconds);
+}
+
+/** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving
+ * the fleet, since when, and with which roles. Written by runOrchestrator; read here so
+ * observers (status, TUI, GUI) never depend on the scheduler module itself. */
+export interface OrchestratorInfo {
+  pid: number;
+  startedAt: number;
+  roles: string[];
+}
+
+/** Read the running orchestrator's info file; null when it is missing or unreadable.
+ * Never throws — a torn write (e.g. a crash mid-write) must not take down observers
+ * that poll this every second (TUI, GUI, status). */
+export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
+  return readJsonFile<OrchestratorInfo>(orchestratorStatePath(root));
+}
+
+/** True when the recorded orchestrator's pid is still alive (signal-0 probe). */
+export function orchestratorAlive(root: string): boolean {
+  const info = readOrchestratorInfo(root);
+  if (!info) return false;
+  try {
+    process.kill(info.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }

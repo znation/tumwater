@@ -1,8 +1,7 @@
 import type { LoopState, TumwaterConfig } from "./types.js";
 import { defaultConfig, enabledRoleIds, loadConfigSafe } from "./config.js";
-import { loadLoopState } from "./state.js";
+import { loadLoopState, orchestratorAlive, readOrchestratorInfo } from "./state.js";
 import { inboxSize } from "./inbox.js";
-import { orchestratorAlive, readOrchestratorInfo } from "./orchestrator.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts. */

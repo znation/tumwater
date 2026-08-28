@@ -5,7 +5,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Build broken on main: src/loop.ts calls git() without importing it (reported by organize loop 2026-08-28)
+
+**Symptom:** `npm run build` fails with two type errors, so no tick can verify a green build (tsc still emits JS despite the errors, which is why the test suite runs at all):
+
+```
+src/loop.ts(402,15): error TS2304: Cannot find name 'git'.
+src/loop.ts(403,15): error TS2304: Cannot find name 'git'.
+```
+
+**Repro:** `npm run build` at HEAD 74224e9 (feature tick 47) or any descendant. Pre-existing on main before the organize restructure of this entry — verified identical with and without that change.
+
+**Cause (confirmed):** Commit 91c199a ("clean: Remove unused git import from src/loop.ts") removed the `git` import when it genuinely was unused; feature tick 47 (74224e9) then added two call sites in runTick's leftForRetry branch — `await git(wt, "reset", "--hard", "HEAD"); await git(wt, "clean", "-fd");` — without re-adding it. Fix: add `git` to src/loop.ts's existing multi-line import from "./git.js" (one line).
 
 ## Fixed
 

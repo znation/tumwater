@@ -2,9 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { freshLoopState, loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "../src/state.js";
+import {
+  freshLoopState,
+  loadLoopState,
+  nextBackoffSeconds,
+  orchestratorAlive,
+  readOrchestratorInfo,
+  saveLoopState,
+  zeroCounters,
+} from "../src/state.js";
 import type { LoopState } from "../src/types.js";
-import { statePath } from "../src/paths.js";
+import { orchestratorStatePath, statePath } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
 import { tmpdir } from "./util.js";
 
@@ -106,4 +114,29 @@ test("nextBackoffSeconds caps an initial above max and treats non-positive curre
   assert.equal(nextBackoffSeconds(0, config), 30); // min(initial, max)
   assert.equal(nextBackoffSeconds(-5, config), 30); // current <= 0 → initial (capped)
   assert.equal(nextBackoffSeconds(29, config), 30); // growth still capped at max
+});
+
+// --- Orchestrator info file: the readers live here so observers don't depend on the scheduler ---
+
+test("readOrchestratorInfo and orchestratorAlive handle missing, valid, dead-pid, and corrupt state", () => {
+  const dir = tmpdir();
+  assert.equal(readOrchestratorInfo(dir), null);
+  assert.equal(orchestratorAlive(dir), false);
+
+  const file = orchestratorStatePath(dir);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Our own pid is alive; a huge one is not.
+  for (const [pid, alive] of [
+    [process.pid, true],
+    [999_999_999, false],
+  ] as const) {
+    fs.writeFileSync(file, JSON.stringify({ pid, startedAt: Date.now(), roles: ["clean"] }));
+    assert.equal(readOrchestratorInfo(dir)?.pid, pid);
+    assert.equal(orchestratorAlive(dir), alive);
+  }
+
+  // A torn write must not crash observers (TUI/GUI poll this every second).
+  fs.writeFileSync(file, "{ not json");
+  assert.equal(readOrchestratorInfo(dir), null);
+  assert.equal(orchestratorAlive(dir), false);
 });
