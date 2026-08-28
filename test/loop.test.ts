@@ -698,6 +698,51 @@ test("a failed recovery review keeps its commit on the branch for re-review", as
   }
 });
 
+test("a rejected change rides along on the role's next tick prompt with its reasons", async () => {
+  const repo = await initializedRepo();
+  // The reviewer (any run whose prompt asks for a VERDICT) rejects with two numbered
+  // reasons. Author runs record their full argv — the prompt is pi's last argument — so
+  // the test can assert what each tick was actually told, not just that state changed.
+  const promptsFile = path.join(tmpdir(), "prompts.log");
+  const marker = path.join(tmpdir(), "changed-once");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
+      `  printf '%s\n' '${assistantLine("VERDICT: reject\n1. breaks the zero-dep rule\n2. no regression test")}'`,
+      `  exit 0;; esac; done`,
+      `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  printf '%s\n' '${assistantLine("did it\nSUMMARY: add rejected thing")}'`,
+      `  echo bad > rejected.txt`,
+      `else`,
+      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    // Tick 1: the change is committed, then rejected — nothing lands on main.
+    assert.equal((await runner.tick()).result, "rejected");
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+    assert.ok(!fs.existsSync(path.join(repo, "rejected.txt")), "the rejected change did not merge");
+
+    // Tick 2: the rejection is the only cross-tick memory — every tick starts a fresh pi
+    // session, so its full reasons must ride along on this tick's prompt.
+    assert.equal((await runner.tick()).result, "no_change");
+    const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
+    assert.equal(runs.length, 2, "exactly two author runs were recorded");
+    assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
+    const second = runs[1] ?? "";
+    assert.match(second, /Your previous change was rejected in review:/);
+    assert.match(second, /1\. breaks the zero-dep rule/);
+    assert.match(second, /2\. no regression test/);
+    assert.match(second, /Address the objections or take a different approach\./);
+  } finally {
+    restore();
+  }
+});
+
 test("concurrent-main-advance still lands (rebase path, linear history)", async () => {
   const repo = await initializedRepo();
   // The fake pi advances main itself mid-tick, simulating another loop landing work.
