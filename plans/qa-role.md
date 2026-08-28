@@ -1,7 +1,9 @@
 # QA role — exercising the product like a user
 
 Planned 2026-08-24 · refined 2026-08-26 (self-hosting mechanics: built-CLI invocation,
-constrained nested run) · from the "Senior Tumwater" report (HN 49421554) · report item R6b
+constrained nested run) · refined 2026-08-28 (flow selection across fresh sessions; cadence-
+knob sequencing — the knob lands with whichever of qa/steward comes first) · from the "Senior
+Tumwater" report (HN 49421554) · report item R6b
 
 ## Goal
 
@@ -47,22 +49,55 @@ a green suite precisely because no consumer of the page existed in CI.
   pi children, and verify via `status`/`logs` that the loop actually ran. The prompt states both
   caps explicitly: every `run` invocation gets a wall-clock cap plus an explicit kill of its whole
   process tree.
-- **Cadence**: reuse the per-role `minTickIntervalSeconds` override from
-  [steward-role.md](steward-role.md); default 7200 (2 h) — user flows change slower than code.
+- **Flow selection across fresh sessions** (decided): every tick is a fresh session with no
+  memory of what was tested last time, so the prompt carries an explicit ordered flow list —
+  `init → status → logs → prompt → reset-counters → gui → tui → run` (the README usage block's
+  flows, cheap first) — plus one rule: "Pick ONE flow per tick; vary across ticks, preferring a
+  flow not recently exercised as far as your BUGS.md filings and Verified notes show." Cheap
+  read-only flows leave NO record when they pass — the tick declares nothing-to-do. That is
+  deliberate: a passing check is not durable knowledge, and a note commit every cadence would
+  move main and wake every sleeping loop early (README: "Sleeping loops wake early when main
+  moves"). Fresh-session judgment over an explicit list is enough for cheap flows — the worst
+  case is re-verifying a seconds-long flow. The expensive real-pi `run` flow is the exception:
+  it must not repeat daily, so it is the only success that leaves a record. When qa exercises
+  the run flow in real mode it appends one line under a new `## Verified` section at the end of
+  BUGS.md (e.g. `- 2026-08-28 run (real): init + one tick landed; status/logs confirm`) —
+  BUGS.md remains its only write target, and the note is md-only so review-exempt. Mode rule in
+  the prompt: "Use fake-pi shim mode by default; use real bounded mode only when the newest
+  Verified note for the run flow is older than a day." The guard is self-enforcing across fresh
+  sessions through that one file, and at most one such note commit per day moves main. `##
+  Verified` cannot leak into the dashboards (openBugs parses BUGS.md's `## Open` section only)
+  and the bugfix role picks open bugs, not notes.
+- **Cadence**: the per-role `minTickIntervalSeconds` override specified in
+  [steward-role.md](steward-role.md); qa's own entry defaults to 7200 (2 h) — user flows change
+  slower than code. Sequencing decided: if that override has not landed yet, it lands WITH this
+  role — the same small change steward-role.md specifies (RoleConfig field + ROLE_ENTRY_KEYS
+  validation + `configForRole` fallback + defaultConfig entry + the two read sites), so neither
+  plan blocks on the other; whichever of qa/steward lands first owns the knob and the second
+  just adds its role. Same coordination pattern as `PiRunResult.turns` between commit-bodies.md
+  and refusal-and-thrash.md.
 - **Cheap merges**: BUGS.md-only diffs are review-exempt md under
   [review-gate.md](review-gate.md); the bugfix loop consumes the filings through its existing
   find prompt, completing the loop QA → bug → fix → (reviewed) merge.
 
 ## Files touched
 
-`src/roles.ts`, `tumwater.json` (enable + cadence), `test/qa-role.test.ts` (prompt contract:
-BUGS.md-only writes, time-limit and ephemeral-port rules, one-flow-per-tick, constrained nested
-run — single enabled role, maxConcurrent 1, wall cap + kill), README roles list.
+`src/roles.ts`, `tumwater.json` (enable + cadence), and — only if the per-role cadence override
+has not landed yet (see Cadence) — `src/types.ts`, `src/config.ts`, `src/orchestrator.ts`,
+`src/loop.ts`; `test/qa-role.test.ts` (prompt contract: BUGS.md-only writes, time-limit and
+ephemeral-port rules, the ordered flow list + vary rule + once-per-day real-run guard with its
+Verified-note shape, constrained nested run — single enabled role, maxConcurrent 1, wall cap +
+kill; plus the cadence-override tests if it lands here), README roles list.
 
 ## Acceptance criteria
 
 - The qa role exists with the write restriction, safety rails, and one-flow scope in its prompt;
   tests assert the contract text.
+- Flow selection works across fresh sessions: the prompt carries the ordered flow list (cheap
+  first), the vary-across-ticks rule, and the once-per-day guard on real-mode runs; a qa tick
+  that verifies the run flow in real mode appends its one-line `## Verified` note as an md-only
+  diff, and cheap flows that pass declare nothing-to-do with no record. Tests assert the
+  contract text; the daily cadence is verified by observation.
 - Dogfood: a deliberately planted doc/behavior mismatch (e.g. a README flag that doesn't exist)
   is discovered and filed in BUGS.md within a few qa ticks — verified by observation.
 - No qa tick ever leaves a listening process or an orphaned nested `tumwater run`/pi child
@@ -71,9 +106,10 @@ run — single enabled role, maxConcurrent 1, wall cap + kill), README roles lis
 
 ## Dependencies & sequencing
 
-Last in the report's sequence: wants the watchdog (done), the per-role cadence override
-([steward-role.md](steward-role.md)), and ideally the review gate in place. Riskiest item to run
-safely; the rails above are the mitigation.
+Last in the report's sequence: wants the watchdog (done) and ideally the review gate in place.
+The per-role cadence override ([steward-role.md](steward-role.md)) is no longer a blocker — if it
+has not landed, this change carries it (see Cadence). Riskiest item to run safely; the rails
+above are the mitigation.
 
 ## Out of scope
 

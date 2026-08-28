@@ -95,7 +95,8 @@ PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move:
 plans (the only role allowed to delete entries), flag drift, keep the complexity budget honest.
 The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes mandatory.
 
-### QA role — exercising the product like a user (planned 2026-08-24, refined 2026-08-26)
+### QA role — exercising the product like a user (planned 2026-08-24, refined 2026-08-26,
+refined 2026-08-28)
 
 Full plan: [plans/qa-role.md](plans/qa-role.md). A `qa` role that follows the README verbatim in
 a scratch dir — build, run, curl — one flow per tick, filing reproducible bugs in BUGS.md (its
@@ -105,7 +106,13 @@ passing tests). Self-hosting mechanics decided (2026-08-26): build in its own wo
 and invoke `node dist/cli.js` with cwd = scratch repo; the `run` flow uses either a fake-pi shim
 or one real bounded run — the scratch tumwater.json constrained to a single enabled role and
 maxConcurrent 1 (a default nested fleet would thrash the shared server's prefix caches), wall-
-capped and killed.
+capped and killed. Flow selection decided (2026-08-28): the prompt carries an explicit ordered
+flow list (cheap first) with a vary-across-ticks rule; cheap flows leave no record when they pass
+(nothing-to-do — a note commit per cadence would move main and wake every sleeping loop), while
+the expensive real-pi run flow is capped at once per day by a self-enforcing one-line `##
+Verified` note in BUGS.md. Cadence sequencing decided: if the steward plan's per-role
+minTickIntervalSeconds override has not landed, it lands with this role (same small change;
+neither plan blocks on the other).
 
 ## Done
 
