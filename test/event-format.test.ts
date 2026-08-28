@@ -62,3 +62,61 @@ test("formatEvent renders counters_reset plainly, naming all roles when several 
   );
   assert.match(multi, /harness\s+counters reset for feature, bugfix \(ticks, commits, tokens, cost\)/);
 });
+
+// The review-gate lines are what operators read in logs/TUI/GUI when a merge stalls on the
+// gate: head is truncated to 8 chars, only the first rejection reason shows, and the optional
+// payloads (approval reason, reasons list) must degrade instead of printing "undefined".
+test("formatEvent renders the review-gate events with truncated heads and safe fallbacks", () => {
+  const head = "0123456789abcdef"; // full hash as logged by review.ts
+
+  const start = formatEvent({ ts: 0, loop: "feature", type: "review_start", head } as never);
+  assert.match(start, /feature\s+reviewing 01234567 before merge/);
+  assert.ok(!start.includes("89abcdef"), `full hash must not leak into the line: ${start}`);
+
+  // Approvals carry reason = verdict.reasons[0], which is undefined when the reviewer gave
+  // none: the suffix must vanish, not print "— undefined".
+  const bareApproval = formatEvent({ ts: 0, loop: "feature", type: "review_verdict", head } as never);
+  assert.match(bareApproval, /review approved 01234567$/);
+
+  const approval = formatEvent(
+    { ts: 0, loop: "feature", type: "review_verdict", head, reason: "principles upheld" } as never,
+  );
+  assert.match(approval, /review approved 01234567 — principles upheld/);
+
+  // A bare `VERDICT: reject` reply parses to an empty reasons list; several reasons show only
+  // the first (the rest ride along in state.lastReview for the author's next tick).
+  const rejected = formatEvent(
+    { ts: 0, loop: "feature", type: "review_rejected", head, reasons: ["adds a runtime dep", "second reason"] } as never,
+  );
+  assert.match(rejected, /review rejected 01234567 — adds a runtime dep/);
+  assert.ok(!rejected.includes("second reason"), `only the first reason shows: ${rejected}`);
+
+  const bareReject = formatEvent(
+    { ts: 0, loop: "feature", type: "review_rejected", head, reasons: [] } as never,
+  );
+  assert.match(bareReject, /review rejected 01234567 — no reasons given/);
+
+  // A torn or hand-edited event line could carry a non-array reasons field; the fallback must
+  // still render instead of crashing every display surface.
+  const malformed = formatEvent(
+    { ts: 0, loop: "feature", type: "review_rejected", head, reasons: "oops" } as never,
+  );
+  assert.match(malformed, /no reasons given/);
+
+  const failed = formatEvent(
+    {
+      ts: 0,
+      loop: "feature",
+      type: "review_failed",
+      head,
+      message: "no parseable VERDICT line in the reviewer's reply",
+    } as never,
+  );
+  assert.match(failed, /review failed for 01234567: no parseable VERDICT line/);
+  assert.match(failed, /\(commit kept for re-review\)/);
+});
+
+test("formatEvent renders the resume event", () => {
+  const line = formatEvent({ ts: 0, loop: "feature", type: "resume" } as never);
+  assert.match(line, /feature\s+resuming the tick a shutdown interrupted \(same pi session and worktree\)/);
+});
