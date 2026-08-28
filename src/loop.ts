@@ -142,6 +142,15 @@ export class LoopRunner {
     return prompt;
   }
 
+  /** Put an unfulfilled director prompt back in the inbox so the next tick retries it — the
+   * one place that policy lives, shared by every outcome that leaves the request undone
+   * (abort, timeout, failure without changes, review abort, context-ceiling cut-off). No-op
+   * for role loops, which carry no pending user prompt. A fulfilled no_change never reaches
+   * here: re-queueing it would loop the prompt forever. */
+  private requeueUnfulfilledPrompt(userPrompt: string | null): void {
+    if (userPrompt) enqueuePrompt(this.root, userPrompt);
+  }
+
   /** Land the worktree branch on main under the shared merge lock: rebase it onto main
    * (keeping history linear) and fast-forward. On conflict, makes one pi-driven resolution
    * attempt (outside the lock) before giving up. A routine conflict is normal operation,
@@ -482,7 +491,7 @@ export class LoopRunner {
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.
     if (pi.aborted) {
-      if (userPrompt) enqueuePrompt(this.root, userPrompt);
+      this.requeueUnfulfilledPrompt(userPrompt);
       return { result: "aborted" };
     }
     this.pendingUserPrompt = null;
@@ -490,7 +499,7 @@ export class LoopRunner {
       s.lastError = pi.errorMessage ?? "timed out";
       // The request never ran to completion and no work landed: put it back so the next
       // tick retries it. (A killed run's half-done edits are discarded by the reset.)
-      if (userPrompt) enqueuePrompt(this.root, userPrompt);
+      this.requeueUnfulfilledPrompt(userPrompt);
       return { result: "error" };
     }
 
@@ -504,7 +513,7 @@ export class LoopRunner {
       // No work landed, so the request was not fulfilled: re-queue it. A no_change outcome
       // IS fulfillment (a question-type prompt answered without file changes) — never
       // re-queue that, or such prompts would loop forever.
-      if (userPrompt) enqueuePrompt(this.root, userPrompt);
+      this.requeueUnfulfilledPrompt(userPrompt);
       return { result: "error" };
     }
     if (!changed) {
@@ -535,7 +544,7 @@ export class LoopRunner {
       // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
       // to the inbox to rerun fresh; a role loop resumes the just-compacted session
       // next tick (see the cutOff handling in tick()).
-      if (cutOff && userPrompt) enqueuePrompt(this.root, userPrompt);
+      if (cutOff) this.requeueUnfulfilledPrompt(userPrompt);
       return { result: "no_change", cutOff: cutOff || undefined };
     }
 
@@ -585,7 +594,7 @@ export class LoopRunner {
       // Shutdown mid-review: fail closed — the commit stays on the branch and the next launch
       // re-reviews it via the combined ahead-of-main diff. Re-queue a director prompt like any
       // other unfulfilled abort.
-      if (userPrompt) enqueuePrompt(this.root, userPrompt);
+      this.requeueUnfulfilledPrompt(userPrompt);
       return { result: "aborted" };
     }
     if (gate.decision === "rejected") {
