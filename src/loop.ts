@@ -8,7 +8,6 @@ import {
   continueRebase,
   ensureWorktree,
   ffMergeToMain,
-  git,
   gitTry,
   hasConflictMarkers,
   headOf,
