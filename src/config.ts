@@ -7,7 +7,9 @@ export function defaultConfig(): TumwaterConfig {
   const roles: Record<string, RoleConfig> = {};
   for (const id of allRoleIds()) roles[id] = { enabled: true };
   // The steward works on a slow clock (~6 h): whole-system curation, not shipping work.
-  roles.steward.minTickIntervalSeconds = 21600;
+  // Assign the full entry rather than mutating `roles.steward`: under
+  // noUncheckedIndexedAccess that index access is `RoleConfig | undefined`.
+  roles.steward = { enabled: true, minTickIntervalSeconds: 21600 };
   return {
     piArgs: [],
     maxConcurrent: 6,

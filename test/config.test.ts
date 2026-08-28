@@ -23,6 +23,22 @@ test("defaultConfig enables every role including director", () => {
   assert.ok(config.idleBackoff.maxSeconds >= config.idleBackoff.initialSeconds);
 });
 
+test("defaultConfig gives the steward its slow clock and no other role one", () => {
+  // Regression: feature tick 49 set this via `roles.steward.minTickIntervalSeconds = …`,
+  // which does not compile under noUncheckedIndexedAccess — a broken build landed on main.
+  const config = defaultConfig();
+  assert.equal(configForRole(config, "steward").minTickIntervalSeconds, 21600);
+  for (const id of allRoleIds()) {
+    if (id === "steward") continue;
+    // Every other role falls back to the global interval.
+    assert.equal(
+      configForRole(config, id).minTickIntervalSeconds,
+      config.minTickIntervalSeconds,
+      `role ${id} should inherit the global minTickIntervalSeconds`,
+    );
+  }
+});
+
 test("loadConfig without a file returns defaults", () => {
   const dir = tmpdir();
   assert.deepEqual(loadConfig(dir), defaultConfig());
