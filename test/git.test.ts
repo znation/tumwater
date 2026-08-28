@@ -426,6 +426,76 @@ test("abortSync still aborts an interrupted rebase when state exists", async () 
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "branch version\n");
 });
 
+// A linked worktree's .git is a one-line pointer file. If it is corrupted (truncated write,
+// stale path after outside maintenance), the file check cannot tell whether a merge or rebase
+// is in progress — abortSync must then fall back to spawning both aborts instead of skipping
+// them, or an interrupted tick would wedge on "you are already rebasing" forever.
+test("abortSync falls back to spawns when the worktree .git pointer is uncertain", async () => {
+  const repo = makeRepo();
+  for (const [label, pointer] of [
+    ["malformed line", "not a gitdir pointer\n"],
+    ["empty target", "gitdir:\n"],
+    ["missing target dir", `gitdir: ${path.join(tmpdir(), "gone")}\n`],
+  ] as const) {
+    const wt = await ensureWorktree(repo, label.replace(/\s+/g, "-"), "main");
+    fs.writeFileSync(path.join(wt, ".git"), pointer);
+    const logFile = path.join(tmpdir(), "git-calls.log");
+    const restore = loggingGit(logFile);
+    try {
+      await abortSync(wt); // Must not throw: the spawned aborts fail on the broken repo.
+    } finally {
+      restore();
+    }
+    const calls = fs.readFileSync(logFile, "utf8");
+    assert.match(calls, /merge --abort/, `${label}: merge --abort was skipped`);
+    assert.match(calls, /rebase --abort/, `${label}: rebase --abort was skipped`);
+  }
+});
+
+test("abortSync detects in-progress state from a primary checkout's .git dir", async () => {
+  const repo = makeRepo();
+  // Leave a conflicting merge in progress on the primary checkout (a killed tick mid-merge).
+  sh(repo, "git", "checkout", "-b", "side");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "side\n");
+  sh(repo, "git", "commit", "-am", "side edit");
+  sh(repo, "git", "checkout", "main");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "main2\n");
+  sh(repo, "git", "commit", "-am", "main edit");
+  try {
+    sh(repo, "git", "merge", "side"); // Conflicts on seed.txt; the nonzero exit is expected.
+  } catch {
+    // The conflict is the point: MERGE_HEAD now exists under .git/.
+  }
+  assert.ok(fs.existsSync(path.join(repo, ".git", "MERGE_HEAD")));
+
+  const logFile = path.join(tmpdir(), "git-calls.log");
+  const restore = loggingGit(logFile);
+  try {
+    await abortSync(repo); // .git is a directory: the file check must see MERGE_HEAD.
+  } finally {
+    restore();
+  }
+  const calls = fs.readFileSync(logFile, "utf8");
+  assert.match(calls, /merge --abort/);
+  assert.match(calls, /rebase --abort/);
+  // And the merge was actually aborted: MERGE_HEAD is gone.
+  assert.ok(!fs.existsSync(path.join(repo, ".git", "MERGE_HEAD")), "merge was not aborted");
+});
+
+test("abortSync falls back to spawns when .git is missing entirely", async () => {
+  const dir = tmpdir(); // Not a repo at all: the file check cannot inspect anything.
+  const logFile = path.join(tmpdir(), "git-calls.log");
+  const restore = loggingGit(logFile);
+  try {
+    await abortSync(dir); // Must not throw: both spawned aborts fail harmlessly.
+  } finally {
+    restore();
+  }
+  const calls = fs.readFileSync(logFile, "utf8");
+  assert.match(calls, /merge --abort/);
+  assert.match(calls, /rebase --abort/);
+});
+
 test("readBranchHead returns null for missing refs, bad content, and non-repos", () => {
   const repo = makeRepo();
   assert.equal(readBranchHead(repo, "nope"), null); // branch does not exist
