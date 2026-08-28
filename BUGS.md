@@ -5,7 +5,19 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Build broken on main: feature tick 49's steward default fails noUncheckedIndexedAccess (found by readme loop 2026-08-28)
+
+**Symptom:** `npm run build` — and therefore `npm test` — fails on main with a single TypeScript error:
+
+```
+src/config.ts(10,3): error TS18048: 'roles.steward' is possibly 'undefined'.
+```
+
+Every loop inherits this because worktrees reset to main at tick start, so the whole fleet is blocked until it lands. Fifth instance of broken work landing on main — and the first to land with the review gate active (the gate was wired into the tick path by feature tick 47 itself).
+
+**Repro:** `npm run build` at HEAD 6e3f487.
+
+**Cause:** Feature tick 49 (6e3f487) added `roles.steward.minTickIntervalSeconds = 21600;` to defaultConfig, where `roles` is a `Record<string, RoleConfig>` — under tsconfig's `noUncheckedIndexedAccess: true`, that index access has type `RoleConfig | undefined`. The review gate could not catch it structurally: buildReviewPrompt forbids the reviewer from running any state-changing command ("no writes anywhere"), and `npm run build` is exactly that (`rm -rf dist && tsc`) — so a fresh-session reviewer can read surrounding code but cannot compile, and type errors are invisible to it. The authoring tick likewise did not end with a green build.
 
 ## Fixed
 

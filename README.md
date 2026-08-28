@@ -37,7 +37,7 @@ locally and keep all project state within the git repo.
 
 <!-- tumwater:status:start -->
 v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `prompt` commands are
-implemented with ten roles plus the director loop (absolute scheduling priority; routes
+implemented with eleven roles plus the director loop (absolute scheduling priority; routes
 feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Every tick runs
 in a fresh pi session — context never accumulates across ticks, and durable knowledge lives in
 the repo (README/PLANS/BUGS), which each tick reads first; a tick interrupted by Ctrl+C or a
@@ -55,10 +55,15 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs in BUGS.md: both reports of main's build break from feature tick 47 (74224e9) —
-src/loop.ts calling `git(...)` without importing it after a clean tick removed the import as unused an
-hour earlier — arrived stale, perf tick 36 having fixed it on main before either entry landed; both are
-closed under BUGS.md's Fixed section with a regression test for the left-for-retry path. The previous one — main's build break from
+`maxConcurrent`/`sessionRetentionDays` need a restart). One open bug in BUGS.md, found by this
+readme loop while verifying status: feature tick 49 (6e3f487) broke main's build — `roles.steward`
+possibly undefined at src/config.ts(10,3) under noUncheckedIndexedAccess; the review gate could not
+catch it because its reviewer is forbidden from running state-changing commands and `npm run
+build` writes dist/. The previous breakage — main's build break from feature tick 47 (74224e9), src/loop.ts calling
+`git(...)` without importing it after a clean tick removed the import as unused an hour earlier — was
+reported twice, both reports arriving stale because perf tick 36 had fixed it on main before either
+entry landed; both are closed under BUGS.md's Fixed section with a regression test for the
+left-for-retry path. The previous one — main's build break from
 feature tick 44 (bad613e): src/review.ts with a syntax error on line 184, six
 `noUncheckedIndexedAccess` violations in the same new code, and two leftover-recovery tests that
 failed because recovery routes through the review gate their fake pi cannot satisfy — was fixed by
@@ -70,12 +75,16 @@ abort timer could fire before the fake pi wrote its marker file) — was fixed b
 abort wait for that marker; earlier fixes are recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
 current work item; both dashboards show project status — planned features and open bugs from
-PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: four of the Senior Tumwater report's plans still await the feature loop —
-a refusal sentinel with friction signals, a QUESTIONS.md outbox, and slow-clock steward and QA roles.
-Self-explaining commit bodies has landed in code (feature tick 48): every commit now carries the
-author's WHY/RISK/VERIFIED body plus a harness-stamped trailer (`Tick: <role> #<tick> · turns N ·
-ctx M`), and the reviewer checks the claimed WHY/VERIFIED against the diff; it awaits the plan-loop
-audit to move its plan to Done. The review gate has landed end-to-end (feature tick 47): every
+PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: three of the Senior Tumwater report's plans still await the feature loop — a refusal
+sentinel with friction signals, a QUESTIONS.md outbox, and the QA role. The slow-clock steward has
+landed in code (feature tick 49): a markdown-only curation role on a ~6 h per-role clock (the new
+`minTickIntervalSeconds` override of the global interval), enabled by default — but that landing commit is what broke main's build (see BUGS.md); it awaits
+the plan-loop audit to move its plan to Done. Self-explaining commit bodies has landed in code (feature
+tick 48): every commit now carries the author's WHY/RISK/VERIFIED body plus a harness-stamped
+trailer (`Tick: <role> #<tick> · turns N · ctx M`), and the reviewer checks the claimed WHY/VERIFIED
+against the diff; the plan loop audited it on 2026-08-28 (verified at b101c02, suite green) — what
+remains is two test gaps against its acceptance criteria (a tick-level e2e that a compliant reply
+produces a commit carrying body + trailer, and turn-counter coverage), nothing structural. The review gate has landed end-to-end (feature tick 47): every
 non-exempt commit now passes a fresh-session reviewer over the full ahead-of-main diff against
 PRINCIPLES.md before rebase/merge — `VERDICT:` parsing, md-only exemption (`*.md`/`docs/**`),
 fail-closed 3-strike discard; a rejection resets the branch and injects its reasons into the
@@ -159,8 +168,9 @@ box feeds the director — anyone who can reach the port can steer the fleet and
 transcript. Use it only on networks where that is acceptable.
 
 Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
-`improve`, `director`. Enable/disable them, pick pi's provider/model/thinking level, and tune
-backoff in `tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
+`improve`, `steward`, `director`. Enable/disable them, pick pi's provider/model/thinking level, set
+a per-role tick interval (the steward runs on a ~6 h clock by default), and tune backoff in
+`tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
 within ~2s — enabling/disabling roles, per-role provider/model/thinking/instructions, tick
 intervals, and backoff all apply live; only `maxConcurrent` and `sessionRetentionDays` require a
 restart.
