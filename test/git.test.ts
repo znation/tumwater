@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   aheadOfMain,
+  aheadOfMainDiff,
   commitAll,
   currentBranch,
   continueRebase,
@@ -285,6 +286,86 @@ test("readBranchHead matches git rev-parse across loose and packed refs", () => 
   head = sh(repo, "git", "rev-parse", "main");
   assert.equal(readBranchHead(repo, "nope"), null); // unknown branch: null, not the stale sha
   assert.equal(readBranchHead(repo, "main"), head);
+});
+
+// --- aheadOfMainDiff: the review gate's diff feed, including its truncation path ---
+
+/** A deterministic text blob of `lines` lines, each exactly 40 bytes (tag + index + padding). */
+function blob(tag: string, lines: number): string {
+  return (
+    Array.from({ length: lines }, (_, i) => `${tag}-${i.toString().padStart(6, "0")}-` + "z".repeat(28)).join("\n") + "\n"
+  );
+}
+
+test("aheadOfMainDiff returns the full diff when under the cap", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "clean", "main");
+  fs.writeFileSync(path.join(wt, "small.txt"), blob("SML", 5));
+  await commitAll(wt, "small change");
+
+  // Default cap (200KB) is far above this diff: the output must be exactly what git prints.
+  const out = await aheadOfMainDiff(wt, "main");
+  assert.equal(out, sh(wt, "git", "diff", "main...HEAD"));
+  assert.ok(!out.includes("[diff truncated:"), "no truncation note under the cap");
+});
+
+test("aheadOfMainDiff is empty when the branch has no commits ahead of main", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "clean", "main");
+  assert.equal(await aheadOfMainDiff(wt, "main"), "");
+});
+
+test("aheadOfMainDiff over the cap keeps --stat plus the largest files within budget", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "improve", "main");
+  // File names are chosen so alphabetical order (aaa < mmm < zzz) is the REVERSE of size
+  // order: a regression that ranked by name instead of numstat size would include aaa.txt
+  // and drop zzz.txt.
+  fs.writeFileSync(path.join(wt, "zzz.txt"), blob("ZZZ", 500)); // ~20KB — largest
+  fs.writeFileSync(path.join(wt, "mmm.txt"), blob("MMM", 200)); // ~8KB
+  fs.writeFileSync(path.join(wt, "aaa.txt"), blob("AAA", 100)); // ~4KB — smallest
+  await commitAll(wt, "big change");
+
+  const cap = 31_000; // full diff is ~33KB: over the cap, but room for zzz + mmm only.
+  const out = await aheadOfMainDiff(wt, "main", cap);
+
+  assert.ok(out.startsWith("[diff truncated:"), `truncation note first:\n${out.slice(0, 200)}`);
+  assert.match(out, /showing --stat plus the largest files/);
+  // The --stat section names every changed file, even ones whose diff was cut.
+  for (const f of ["zzz.txt", "mmm.txt", "aaa.txt"])
+    assert.ok(out.includes(f), `--stat lists ${f}`);
+  // The two largest files' full diffs are in, ranked by size: zzz before mmm...
+  const zzz = out.indexOf("ZZZ-");
+  const mmm = out.indexOf("MMM-");
+  assert.ok(zzz >= 0, "largest file's diff included");
+  assert.ok(mmm > zzz, `second-largest after the largest (zzz=${zzz}, mmm=${mmm})`);
+  // ...and the budget stops before the smallest.
+  assert.ok(!out.includes("AAA-"), "smallest file cut by the budget");
+  assert.ok(out.length <= cap, `output stays within the cap (${out.length} <= ${cap})`);
+});
+
+test("aheadOfMainDiff handles binary files ('-' numstat) without crashing", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "improve", "main");
+  fs.writeFileSync(path.join(wt, "big.txt"), blob("BIG", 100)); // ~4KB — largest text change
+  fs.writeFileSync(path.join(wt, "small.txt"), blob("SML", 50)); // ~2KB
+  // A binary file's numstat line is "-\t-\tpath": the parser must treat it as size 0 (ranked
+  // last), not crash or poison the ranking of text files.
+  fs.writeFileSync(path.join(wt, "blob.bin"), Buffer.from(Array.from({ length: 128 }, (_, i) => i)));
+  await commitAll(wt, "mixed change");
+
+  const cap = 5_500; // full diff is ~6.5KB: over the cap, room for big.txt only.
+  const out = await aheadOfMainDiff(wt, "main", cap);
+
+  assert.ok(out.startsWith("[diff truncated:"), `truncation note first:\n${out.slice(0, 200)}`);
+  // The --stat section names the binary file and marks it as a binary change.
+  assert.ok(out.includes("blob.bin"), "--stat lists blob.bin");
+  assert.match(out, /Bin 0 ->/);
+  // The largest text file's diff is still in — the '-' entry did not displace it...
+  assert.ok(out.includes("BIG-"), "largest text file's diff included despite the binary entry");
+  // ...and the budget stops before the smaller files (the size-0 binary ranks after them).
+  assert.ok(!out.includes("SML-"), "budget stops before the smaller files");
+  assert.ok(out.length <= cap);
 });
 
 test("readBranchHead returns null for missing refs, bad content, and non-repos", () => {
