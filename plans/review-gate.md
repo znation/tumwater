@@ -6,46 +6,36 @@ ticks) · refined 2026-08-27 (reviewer model override moves to the top-level `re
 role validation rejects pseudo-role ids) · from the "Senior Tumwater" report (HN 49421554)
 · report item R1
 
-## Status (plan-loop audit 2026-08-27)
+## Status (plan-loop audit 2026-08-27, re-audited 2026-08-28)
 
-Feature tick 44 (`bad613e`) landed most of the machinery, but **the plan is not done** — and that
-commit broke the build on main (syntax error in src/review.ts; open bug in BUGS.md, fix it first).
+**All five remaining items from the 2026-08-27 audit are landed and verified** — feature tick 47
+(`74224e9`) wired the gate into the main tick path; checked at `97e3e94` with a green build and a
+324/324 suite:
 
-Landed: `src/review.ts` (exemption matcher incl. basename-vs-path semantics, verdict parsing with
-fail-closed null, gate orchestration with the 3-strike discard cap), top-level `review` config
-section (defaults `{ enabled: true, exemptPaths: ["*.md", "docs/**"] }`) + validation +
-`reviewConfig` accessor, LoopState fields (`phase`, `lastReview`, `lastApprovedHead`,
-`unreviewFailures`), TickResult values `"rejected"`/`"review_error"`, the four review event types,
-recovery-path wiring (`recoverLeftover` reviews leftovers via the same gate with a `-recovery`
-session suffix and skips an already-approved HEAD), and rejected-reason injection into the
-author's next tick prompt.
+1. Main tick path: `runTick` calls the gate after `commitAll`, before `merge`; full GateResult →
+   outcome mapping (`aborted` re-queues a director prompt; reviewer usage folded via `foldUsage`).
+2. `"rejected"` schedules like `"changed"` (backoff reset, next tick at minTickInterval, no commit
+   counted); `"review_error"` takes error backoff.
+3. `state.phase` clears at tick end — except on abort, deliberately: an aborted mid-review tick
+   must recover and re-review fresh instead of resuming the author session whose work is committed.
+4. test/review.test.ts (renamed from review-gate.test.ts) covers the pure functions plus gate
+   orchestration: approve + stray-edit discard, reject reset + reasons recorded, verdict-less
+   fail-closed keep, 3-strike discard, doc-only exemption without a pi run, `enabled: false`
+   no-op, `lastApprovedHead` skip, `-recovery` session suffix, abort with no bookkeeping;
+   loop.test.ts routes fresh/resumed/recovered ticks through the gate.
+5. All four review event types render in formatEvent; status shows `reviewing <elapsed>` while
+   under review and suppresses the reviewer's own live detail from the work-item cell.
 
-Remaining, in order:
-1. **Main tick path unwired — the core invariant is not enforced.** `runTick` goes straight from
-   `commitAll` to `merge`; only the rare recovery path reviews. Call the gate after commit/before
-   merge and map GateResult → outcome: `approved`/`exempt` → proceed to merge; `rejected` → return
-   `"rejected"` (branch already reset, reasons recorded); `failed` → return `"review_error"` with
-   detail in lastError (the commit stays on the branch for the next tick's recovery re-review —
-   that path is wired); `aborted` → return `"aborted"` and re-queue a director user prompt like the
-   existing pi-abort handling. Fold `gate.run` usage into loop totals as recoverLeftover does.
-2. **Scheduling for `"rejected"`**: treat like `"changed"` (reset backoff, `nextRunAt = now +
-   minTickIntervalSeconds`) so the author addresses objections on its next eligible tick instead of
-   idle-backing off; `"review_error"` already lands in error backoff as planned.
-3. **`state.phase` is never cleared**: review.ts sets it to `"review"` before the reviewer run but
-   nothing resets it — clear at tick end alongside `running`.
-4. **No tests exist** (the file list below names `test/review-gate.test.ts`; no test file
-   references review). Write them per the acceptance criteria: exemption matcher unit tests,
-   verdict parsing incl. fail-closed, config validation + accessor fallback, fake-pi scripted
-   approve/reject/fail end-to-end ticks (approve merges; reject resets + next-prompt injection;
-   failure leaves the commit and re-reviews via recovery; 3-strike discard), `lastApprovedHead`
-   skip, combined-diff review of a resumed tick's leftovers, stray-edit reset, fresh unique
-   session naming, merge lock not held during review.
-5. **Presentation**: plain `formatEvent` rendering for `review_start`/`review_verdict`/
-   `review_failed`/`review_rejected` (today they fall through to the bare-type default) and
-   `reviewing <elapsed>` in loopPhase/workingDetail while `running && phase === "review"`.
+Remaining — three test gaps against the acceptance criteria, nothing structural:
+(a) reject → next-prompt injection is untested: `buildRejectedReviewNote` (src/prompt.ts) has no
+coverage; add a unit test plus a tick-level e2e where a rejected change's reasons appear in the
+role's next prompt.
+(b) "the merge lock is not held during review" is structurally true (the gate runs before
+`withLock`) but untested — two fake-pi loops, one under review while the other merges.
+(c) The `reviewing <elapsed>` state cell has no test in status-render.test.ts.
 
-Acceptance criteria below are unchanged and all still open. The dogfood `tumwater.json` review
-section is optional — defaults already enable the gate; a strong-model override is a user decision.
+The dogfood `tumwater.json` review section remains optional — defaults already enable the gate; a
+strong-model override is a user decision.
 
 ## Goal
 
