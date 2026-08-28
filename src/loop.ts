@@ -22,15 +22,17 @@ import { logEvent } from "./events.js";
 import { hasResumableSession, runPi } from "./pi.js";
 import {
   buildCommitMessage,
+  commitTrailer,
+  extractCommitBody,
+  extractSummary,
+  formatCommitBody,
+} from "./commit-message.js";
+import {
   buildConflictPrompt,
   buildDirectorPrompt,
   buildRejectedReviewNote,
   buildResumePrompt,
   buildTickPrompt,
-  commitTrailer,
-  extractCommitBody,
-  extractSummary,
-  formatCommitBody,
   readPrinciples,
 } from "./prompt.js";
 import { readInitialPrompt } from "./readme.js";
