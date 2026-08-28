@@ -140,6 +140,7 @@ export async function reviewAheadOfMain(
   ctx: ReviewContext,
   state: LoopState,
   summary?: string,
+  commitBody?: string,
 ): Promise<GateResult> {
   const { root, role, wt, mainBranch, config } = ctx;
   if (!config.review.enabled) return { decision: "exempt" };
@@ -159,9 +160,12 @@ export async function reviewAheadOfMain(
   saveLoopState(root, state);
 
   const diff = await aheadOfMainDiff(wt, mainBranch);
+  // The author's claimed WHY/RISK/VERIFIED ride along when present — checking those claims
+  // against the actual diff is exactly the adversarial angle (recovery re-reviews pass none:
+  // the original run is gone).
   const pi = await runPi({
     cwd: wt,
-    prompt: buildReviewPrompt(diff, summary, undefined, readPrinciples(root)),
+    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root)),
     config: reviewConfig(config),
     // Fresh session every time (no --continue): the reviewer must not inherit the author's
     // context. Unique name per run — a fixed name would let pi resume an old review's

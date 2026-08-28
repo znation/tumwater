@@ -31,6 +31,9 @@ export class PiStreamParser {
    * reply contract) — scanned across every message like the sentinel, so a verdict emitted in
    * an intermediate turn survives later closing remarks overwriting finalText. */
   verdictText = "";
+  /** Assistant turns completed (message_end events) — feeds PiRunResult.turns, which the
+   * commit trailer and the high-friction flag read. */
+  turns = 0;
   /** Tokens the model actually generated (usage.output summed across turns). */
   outputTokens = 0;
   /** Largest single-request context seen (usage.totalTokens is the request's whole
@@ -122,6 +125,7 @@ export class PiStreamParser {
     if (text.trim()) this.finalText = text;
     if (isNothingToDo(text)) this.declaredNothingToDo = true;
     if (VERDICT_LINE.test(text)) this.verdictText = text;
+    this.turns += 1;
     this.outputTokens += msg.usage?.output ?? 0;
     this.peakContextTokens = Math.max(this.peakContextTokens, msg.usage?.totalTokens ?? 0);
     this.costUsd += msg.usage?.cost?.total ?? 0;
@@ -288,6 +292,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       verdictText: parser.verdictText || undefined,
       outputTokens: parser.outputTokens,
       peakContextTokens: parser.peakContextTokens,
+      turns: parser.turns,
       costUsd: parser.costUsd,
       stopReason: parser.stopReason,
       errorMessage: undefined,

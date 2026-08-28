@@ -174,6 +174,9 @@ export interface PiRunResult {
   outputTokens: number;
   /** Largest single-request context of the run. */
   peakContextTokens: number;
+  /** Assistant turns completed in this run (message_end events) — feeds the commit trailer
+   * and, later, the high-friction flag; a tick sums it across its pre-commit runs. */
+  turns: number;
   costUsd: number;
   stopReason?: string;
   errorMessage?: string;

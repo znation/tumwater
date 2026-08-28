@@ -21,12 +21,16 @@ import { withLock } from "./lock.js";
 import { logEvent } from "./events.js";
 import { hasResumableSession, runPi } from "./pi.js";
 import {
+  buildCommitMessage,
   buildConflictPrompt,
   buildDirectorPrompt,
   buildRejectedReviewNote,
   buildResumePrompt,
   buildTickPrompt,
+  commitTrailer,
+  extractCommitBody,
   extractSummary,
+  formatCommitBody,
   readPrinciples,
 } from "./prompt.js";
 import { readInitialPrompt } from "./readme.js";
@@ -64,6 +68,12 @@ export class LoopRunner {
   /** The raw user prompt a director tick is executing, so an unfulfilled tick (abort,
    * timeout, or failure without changes) can re-queue it instead of losing the request. */
   private pendingUserPrompt: string | null = null;
+  /** Assistant turns folded into THIS tick so far (non-persisted): reset at tick start,
+   * grown in foldUsage. Read at commit time for the trailer, where it holds exactly the
+   * pre-commit runs' total (main + transient retry) — conflict-resolution and review runs
+   * fold after the commit and never inflate it. Deliberately not on LoopState: its only
+   * consumer is the trailer stamped into the commit message itself, which is durable. */
+  private tickTurns = 0;
 
   constructor(
     readonly root: string,
@@ -146,14 +156,15 @@ export class LoopRunner {
     });
   }
 
-  /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost). Every pi
-   * run of a tick — main attempt, transient-timeout retry, conflict resolution — lands here
+  /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost / turns). Every
+   * pi run of a tick — main attempt, transient-timeout retry, conflict resolution — lands here
    * exactly once, so adding a usage field to PiRunResult touches this single place. */
   private foldUsage(run: PiRunResult): void {
     const s = this.state;
     s.generatedTokens += run.outputTokens;
     s.peakContextTokens = Math.max(s.peakContextTokens, run.peakContextTokens);
     s.totalCostUsd += run.costUsd;
+    this.tickTurns += run.turns;
   }
 
   /** Run pi for this loop in worktree `wt` with the shared per-loop wiring (role config,
@@ -228,8 +239,14 @@ export class LoopRunner {
   }
 
   /** Run the adversarial review gate over everything ahead of main in `wt` (see
-   * src/review.ts for exemption, verdict parsing, and failure policy). */
-  private async reviewGate(wt: string, summary?: string, sessionSuffix?: string): Promise<GateResult> {
+   * src/review.ts for exemption, verdict parsing, and failure policy). `commitBody` is the
+   * author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff. */
+  private async reviewGate(
+    wt: string,
+    summary?: string,
+    commitBody?: string,
+    sessionSuffix?: string,
+  ): Promise<GateResult> {
     return reviewAheadOfMain(
       {
         root: this.root,
@@ -243,6 +260,7 @@ export class LoopRunner {
       },
       this.state,
       summary,
+      commitBody,
     );
   }
 
@@ -255,7 +273,7 @@ export class LoopRunner {
   private async recoverLeftover(wt: string): Promise<boolean> {
     const ahead = await aheadOfMain(wt, this.mainBranch).catch(() => 0);
     if (ahead <= 0) return false;
-    const gate = await this.reviewGate(wt, undefined, "-recovery");
+    const gate = await this.reviewGate(wt, undefined, undefined, "-recovery");
     if (gate.run) this.foldUsage(gate.run);
     // Shutdown mid-review: fail closed — the commit stays for next time. A reject already reset
     // to main inside the gate; a failure below the strike cap leaves the commit on purpose.
@@ -292,6 +310,7 @@ export class LoopRunner {
     // end-of-tick save persists the finished run's totals.
     s.generatedTokens = 0;
     s.peakContextTokens = 0;
+    this.tickTurns = 0;
     s.running = true;
     s.lastTickStartedAt = Date.now();
     const tick = s.ticks;
@@ -466,12 +485,22 @@ export class LoopRunner {
     }
 
     const summary = extractSummary(pi.finalText) ?? `${this.role} tick ${s.ticks}`;
-    const message = `tumwater(${this.role}): ${summary}`;
+    // The commit body is the author's own explanation (WHY/RISK/VERIFIED, capped per field);
+    // null or partial when the reply was non-compliant — subject + trailer still stand.
+    const body = extractCommitBody(pi.finalText);
+    // The trailer is harness-stamped truth: turns and peak ctx over this tick's pre-commit
+    // runs only (conflict-resolution and review runs fold after the commit).
+    const message = buildCommitMessage(
+      `tumwater(${this.role}): ${summary}`,
+      body,
+      commitTrailer(this.role, s.ticks, this.tickTurns, s.peakContextTokens),
+    );
     const commit = await commitAll(wt, message);
 
     // Adversarial review gate (src/review.ts): no diff reaches main unreviewed. Runs outside
     // the merge lock, before it — other loops keep merging while this one is under review.
-    const gate = await this.reviewGate(wt, summary);
+    // The reviewer checks the author's claimed WHY/VERIFIED against the actual diff.
+    const gate = await this.reviewGate(wt, summary, body ? formatCommitBody(body) : undefined);
     if (gate.run) this.foldUsage(gate.run);
     if (gate.aborted) {
       // Shutdown mid-review: fail closed — the commit stays on the branch and the next launch

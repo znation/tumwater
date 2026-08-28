@@ -14,11 +14,15 @@ export const VERDICT_LINE = /^VERDICT:\s*(approve|reject)\b/m;
  * each tick's prefill. */
 export const PRINCIPLES_MAX_CHARS = 4000;
 
-/** The rule every loop prompt states for ending a run that made changes — the exact SUMMARY
- * line format extractSummary parses into the commit message. Stated once so the tick/director
- * rules and the resume bridge cannot drift (sibling of the NOTHING_TO_DO sentinel above). */
-const SUMMARY_RULE = `- If you did make changes, end your reply with a line in exactly this form:
-  SUMMARY: <imperative one-line description of the change, at most 72 characters>`;
+/** The rule every loop prompt states for ending a run that made changes — the exact
+ * SUMMARY/WHY/RISK/VERIFIED block format extractSummary and extractCommitBody parse into the
+ * commit message. Stated once so the tick/director rules and the resume bridge cannot drift
+ * (sibling of the NOTHING_TO_DO sentinel above). */
+const SUMMARY_RULE = `- If you did make changes, end your reply with a block in exactly this form (one line each):
+  SUMMARY: <imperative one-line description of the change, at most 72 characters>
+  WHY: <why the change was made — one or two sentences>
+  RISK: <what could break and where to look if it does>
+  VERIFIED: <what you actually ran and observed (e.g. "npm test, 182 pass") — write none when nothing was run>`;
 
 const COMMON_RULES = `
 Rules for this run:
@@ -225,6 +229,68 @@ export function extractSummary(finalText: string): string | null {
   const match = finalText.match(/^\s*SUMMARY:\s*(.+)\s*$/m);
   if (!match?.[1]) return null;
   return match[1].trim().slice(0, 100);
+}
+
+/** Cap on each commit-body field, so a verbose model cannot bloat every commit. */
+const COMMIT_BODY_FIELD_MAX = 200;
+
+/** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_RULE
+ * contract. Each field is optional: a non-compliant reply still commits (subject + trailer). */
+export interface CommitBody {
+  why?: string;
+  risk?: string;
+  verified?: string;
+}
+
+/** Pull the WHY:/RISK:/VERIFIED: lines out of a pi final reply. One anchored regex per field,
+ * tolerant of any subset being absent (a non-compliant reply still commits), each field capped
+ * at 200 chars (truncate + ellipsis). Null when none were found. */
+export function extractCommitBody(finalText: string): CommitBody | null {
+  const pick = (re: RegExp): string | undefined => {
+    const m = finalText.match(re);
+    if (!m?.[1]) return undefined;
+    const v = m[1].trim();
+    return v.length > COMMIT_BODY_FIELD_MAX ? `${v.slice(0, COMMIT_BODY_FIELD_MAX - 1)}…` : v;
+  };
+  const body: CommitBody = {
+    why: pick(/^\s*WHY:\s*(.+)\s*$/m),
+    risk: pick(/^\s*RISK:\s*(.+)\s*$/m),
+    verified: pick(/^\s*VERIFIED:\s*(.+)\s*$/m),
+  };
+  return body.why || body.risk || body.verified ? body : null;
+}
+
+/** The body's lines in commit order ("WHY: …\nRISK: …\nVERIFIED: …"); "" when the body is empty. */
+export function formatCommitBody(body: CommitBody): string {
+  return [
+    body.why && `WHY: ${body.why}`,
+    body.risk && `RISK: ${body.risk}`,
+    body.verified && `VERIFIED: ${body.verified}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Compact token count for the commit trailer, matching the status table's style (12k at
+ * ≥10,000, bare integer below). */
+function compactTokens(n: number): string {
+  return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+/** The harness-stamped trailer line of every tick commit — truth from the run's counters, not
+ * model claims. `turns` sums this tick's pre-commit pi runs (main + transient retry); `peakCtx`
+ * is their largest single-request context. */
+export function commitTrailer(role: string, tick: number, turns: number, peakCtx: number): string {
+  return `Tick: ${role} #${tick} · turns ${turns} · ctx ${compactTokens(peakCtx)}`;
+}
+
+/** Assemble a tick's full commit message — the single place that builds one. The subject is
+ * the existing "tumwater(<role>): <summary>" line; the author's body (omitted when absent)
+ * and the harness-stamped trailer follow as separate paragraphs. Refusal commits will route
+ * through here too (subject + trailer only). */
+export function buildCommitMessage(subject: string, body: CommitBody | null, trailer: string): string {
+  const formatted = body ? formatCommitBody(body) : "";
+  return formatted ? `${subject}\n\n${formatted}\n\n${trailer}` : `${subject}\n\n${trailer}`;
 }
 
 /** True when the reply declares there was nothing to do. */
