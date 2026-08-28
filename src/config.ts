@@ -32,6 +32,13 @@ function typeName(v: unknown): string {
   return typeof v;
 }
 
+/** True when `v` is a plain JSON object — not null, not an array. Every section of
+ * tumwater.json must have this shape; the predicate lives in one place so its semantics
+ * cannot drift between sections (and it narrows the type, removing the casts). */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 /** Every key tumwater.json may hold, by level. Anything else is a typo that would be
  * silently ignored at runtime — the intended setting falls back to its default with no
  * warning — so it fails fast here instead (e.g. `tickTimeoutSecondss` does nothing).
@@ -77,7 +84,7 @@ function checkKnownKeys(
  * unknown key is silently ignored so the intended setting never takes effect. Collects
  * every problem so one edit can fix them all; throws a single Error listing them. */
 export function validateConfig(raw: unknown): void {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+  if (!isPlainObject(raw)) {
     throw new Error(`tumwater.json must be a JSON object (got ${typeName(raw)})`);
   }
   const problems: string[] = [];
@@ -101,7 +108,7 @@ export function validateConfig(raw: unknown): void {
       problems.push(`${prefix}${key} must be ${what} (got ${show(v)})`);
   };
 
-  const r = raw as Record<string, unknown>;
+  const r = raw; // Narrowed to an object by isPlainObject above.
   checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
   for (const key of ["provider", "model", "thinking"]) checkString(r, "", key);
   if ("piArgs" in r) {
@@ -118,10 +125,10 @@ export function validateConfig(raw: unknown): void {
 
   if ("idleBackoff" in r) {
     const b = r.idleBackoff;
-    if (typeof b !== "object" || b === null || Array.isArray(b)) {
+    if (!isPlainObject(b)) {
       problems.push(`idleBackoff must be an object (got ${show(b)})`);
     } else {
-      const o = b as Record<string, unknown>;
+      const o = b;
       checkKnownKeys(o, BACKOFF_KEYS, "idleBackoff", problems);
       checkNumber(o, "idleBackoff.", "initialSeconds", (n) => n >= 0, "a number of 0 or more");
       checkNumber(o, "idleBackoff.", "factor", (n) => n >= 1, "a number of at least 1");
@@ -131,10 +138,10 @@ export function validateConfig(raw: unknown): void {
 
   if ("review" in r) {
     const rv = r.review;
-    if (typeof rv !== "object" || rv === null || Array.isArray(rv)) {
+    if (!isPlainObject(rv)) {
       problems.push(`review must be an object (got ${show(rv)})`);
     } else {
-      const o = rv as Record<string, unknown>;
+      const o = rv;
       checkKnownKeys(o, REVIEW_KEYS, "review", problems);
       if ("enabled" in o && typeof o.enabled !== "boolean")
         problems.push(`review.enabled must be true or false (got ${show(o.enabled)})`);
@@ -149,10 +156,10 @@ export function validateConfig(raw: unknown): void {
 
   if ("roles" in r) {
     const roles = r.roles;
-    if (typeof roles !== "object" || roles === null || Array.isArray(roles)) {
+    if (!isPlainObject(roles)) {
       problems.push(`roles must be an object mapping role ids to settings (got ${show(roles)})`);
     } else {
-      for (const [id, rc] of Object.entries(roles as Record<string, unknown>)) {
+      for (const [id, rc] of Object.entries(roles)) {
         // An id outside the catalog cannot work: tickPrompt has no prompt for it and the
         // loop would error every tick forever. Reject it here with the valid ids — the same
         // message shape `tumwater logs --role` uses for a bad flag value.
@@ -160,11 +167,11 @@ export function validateConfig(raw: unknown): void {
           problems.push(`roles.${id} is not a known role (valid ids: ${allRoleIds().join(", ")})`);
           continue;
         }
-        if (typeof rc !== "object" || rc === null || Array.isArray(rc)) {
+        if (!isPlainObject(rc)) {
           problems.push(`roles.${id} must be an object (got ${show(rc)})`);
           continue;
         }
-        const o = rc as Record<string, unknown>;
+        const o = rc;
         checkKnownKeys(o, ROLE_ENTRY_KEYS, `roles.${id}`, problems);
         for (const key of ["instructions", "provider", "model", "thinking"])
           checkString(o, `roles.${id}.`, key);
