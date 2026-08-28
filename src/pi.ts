@@ -84,8 +84,6 @@ export class PiStreamParser {
     } catch {
       return; // Non-JSON noise on stdout; ignore.
     }
-    // Context-overflow errors often surface only in retry events, not the final message.
-    const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded|exceeds? (the )?context|too (long|large) for .*context/i;
     for (const text of [event.errorMessage, event.finalError, event.message?.errorMessage]) {
       if (!text) continue;
       if (CONTEXT_ERROR.test(text)) this.contextExceeded = true;
@@ -187,6 +185,12 @@ function terminateChild(child: ChildProcess): void {
 /** Prefix of PiRunResult.errorMessage when the pi process never started (no session file
  * is created for such a run). */
 const SPAWN_ERROR_PREFIX = "failed to spawn pi";
+
+/** Context-overflow errors often surface only in retry events, not the final message,
+ * so feedLine matches this against every error text it sees. Stateless (no `g` flag), so
+ * one shared instance is safe for repeated .test() calls.
+ * Module-private: only feedLine below matches against it. */
+const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded|exceeds? (the )?context|too (long|large) for .*context/i;
 
 /** LM Studio kills predict streams idle >600 s (e.g. the machine slept mid-run) and reports
  * it back through pi as a server error on an assistant message. Fresh requests succeed
