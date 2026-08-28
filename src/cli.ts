@@ -150,16 +150,40 @@ async function requireReadyRepo(root: string): Promise<void> {
   if (!(await hasCommits(root))) fail("the repo has no commits yet; `tumwater init` creates the first one");
 }
 
-async function cmdInit(root: string, args: string[]): Promise<void> {
-  let prompt: string;
+/** `tumwater init` argument handling. Every other command runs rejectUnknownArgs, but init's
+ * positionals are free-form prompt text, so that helper (which rejects ANY unconsumed token)
+ * can't be used wholesale. The rules instead: a double-dash token must be `--file`, given at
+ * most once; with `--file` present nothing else may follow it; single-dash positionals are
+ * prompt content, not flags. Without these checks a misspelled --file would be baked into the
+ * initial prompt — injected into every tick of every loop until someone edits README.md.
+ */
+function parseInitArgs(args: string[]): string {
+  for (const arg of args) {
+    if (arg.startsWith("--") && arg !== "--file") {
+      fail(`unknown argument: ${arg} (valid flags for tumwater init: --file <path>)`);
+    }
+  }
   const fileFlag = args.indexOf("--file");
   if (fileFlag >= 0) {
+    if (args.filter((a) => a === "--file").length > 1) fail("--file may only be given once");
     const file = args[fileFlag + 1];
     if (!file) fail("--file needs a path");
-    prompt = fs.readFileSync(file, "utf8");
-  } else {
-    prompt = args.join(" ");
+    const extra = args.find((_, i) => i !== fileFlag && i !== fileFlag + 1);
+    if (extra !== undefined) {
+      fail(`unexpected argument ${JSON.stringify(extra)} — with --file the prompt comes from the file`);
+    }
+    try {
+      return fs.readFileSync(file, "utf8");
+    } catch (err) {
+      // A raw ENOENT/EISDIR names the path but not its role; say this was the --file prompt.
+      fail(`cannot read prompt file ${JSON.stringify(file)}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
+  return args.join(" ");
+}
+
+async function cmdInit(root: string, args: string[]): Promise<void> {
+  const prompt = parseInitArgs(args);
   const result = await initProject(root, prompt);
   if (result.created.length === 0) {
     process.stdout.write("already initialized; nothing to do\n");

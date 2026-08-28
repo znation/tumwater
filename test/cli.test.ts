@@ -110,6 +110,42 @@ test("init --file reads the prompt from a file and rejects a missing path", asyn
   assert.match(r.stderr, /--file needs a path/);
 });
 
+test("init rejects unknown flags and stray positionals instead of baking them into the prompt", async () => {
+  const repo = makeRepo();
+
+  // A misspelled --file used to succeed with "--fil prompt.md" as the project's initial
+  // prompt — injected into every tick forever. Now it fails like any other unknown flag,
+  // and nothing is created.
+  let r = await cli(repo, "init", "--fil", "prompt.md");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --fil/);
+  assert.match(r.stderr, /--file <path>/);
+  assert.ok(!fs.existsSync(path.join(repo, "tumwater.json")), "nothing created on failure");
+
+  // A doubled --file used to silently use the first file.
+  fs.writeFileSync(path.join(repo, "a.md"), "From a.");
+  fs.writeFileSync(path.join(repo, "b.md"), "From b.");
+  r = await cli(repo, "init", "--file", "a.md", "--file", "b.md");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--file may only be given once/);
+
+  // Stray prompt text alongside --file used to be silently ignored.
+  r = await cli(repo, "init", "--file", "a.md", "extra words");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unexpected argument "extra words"/);
+
+  // An unreadable --file path names the file's role instead of a bare ENOENT.
+  r = await cli(repo, "init", "--file", "missing.md");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /cannot read prompt file "missing\.md"/);
+
+  // Free-form positionals — including single-dash bullets — still work.
+  const bare2 = makeRepo();
+  r = await cli(bare2, "init", "- Build A", "- Build B");
+  assert.equal(r.code, 0);
+  assert.equal(readInitialPrompt(bare2), "- Build A - Build B");
+});
+
 test("prompt queues for the director and logs an event; empty text fails", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt test");
