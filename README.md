@@ -55,12 +55,10 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). One open bug entry remains in BUGS.md, and it is stale: a duplicate of main's build break
-from feature tick 47 (74224e9) — src/loop.ts calling `git(...)` without importing it after a clean
-tick removed the import as unused an hour earlier — re-reported by the organize loop after perf tick
-36 had already fixed it on main; the build is verified green at current HEAD, and the bugfix loop will
-close the entry. The first report of that break was closed under BUGS.md's Fixed section with a
-regression test for the left-for-retry path. The previous one — main's build break from
+`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs in BUGS.md: both reports of main's build break from feature tick 47 (74224e9) —
+src/loop.ts calling `git(...)` without importing it after a clean tick removed the import as unused an
+hour earlier — arrived stale, perf tick 36 having fixed it on main before either entry landed; both are
+closed under BUGS.md's Fixed section with a regression test for the left-for-retry path. The previous one — main's build break from
 feature tick 44 (bad613e): src/review.ts with a syntax error on line 184, six
 `noUncheckedIndexedAccess` violations in the same new code, and two leftover-recovery tests that
 failed because recovery routes through the review gate their fake pi cannot satisfy — was fixed by

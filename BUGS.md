@@ -5,22 +5,17 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Build broken on main: src/loop.ts calls git() without importing it (reported by organize loop 2026-08-28)
-
-**Symptom:** `npm run build` fails with two type errors, so no tick can verify a green build (tsc still emits JS despite the errors, which is why the test suite runs at all):
-
-```
-src/loop.ts(402,15): error TS2304: Cannot find name 'git'.
-src/loop.ts(403,15): error TS2304: Cannot find name 'git'.
-```
-
-**Repro:** `npm run build` at HEAD 74224e9 (feature tick 47) or any descendant. Pre-existing on main before the organize restructure of this entry — verified identical with and without that change.
-
-**Cause (confirmed):** Commit 91c199a ("clean: Remove unused git import from src/loop.ts") removed the `git` import when it genuinely was unused; feature tick 47 (74224e9) then added two call sites in runTick's leftForRetry branch — `await git(wt, "reset", "--hard", "HEAD"); await git(wt, "clean", "-fd");` — without re-adding it. Fix: add `git` to src/loop.ts's existing multi-line import from "./git.js" (one line).
+_None yet._
 
 ## Fixed
 
-### Build broken on main: src/loop.ts calls `git` without importing it (found by readme loop 2026-08-28, closed 2026-08-28)
+### Build broken on main: src/loop.ts calls git() without importing it — stale duplicate of the readme-loop entry (reported by organize loop 2026-08-28, closed 2026-08-28)
+
+**Symptom:** `npm run build` fails with two type errors (`src/loop.ts(402,15)` / `(403,15): error TS2304: Cannot find name 'git'`) — identical to the entry below it in this section.
+
+**Resolution:** Stale duplicate. The organize loop reported the same break against HEAD 74224e9 (feature tick 47) after perf tick 36 (93b8535, 2026-08-28) had already re-added `git` to src/loop.ts's import block on main — the same race as the first report: the break was real at 74224e9 but fixed three commits before this entry landed. Verified by the bugfix loop on 2026-08-28 at HEAD 4b55fae: `git` is in src/loop.ts's import from "./git.js" (the two left-for-retry call sites at lines 422–423 compile), `npm run build` clean, full suite green (334/334). No code change needed this tick; the regression test for the left-for-retry path that introduced these call sites already landed with the first entry's closure (test/loop.test.ts, c7f4662).
+
+### Build broken on main: src/loop.ts calls `git` without importing it (found by readme loop 2026-08-28, closed 2026-08-28; duplicate entry above closed the same day)
 
 **Symptom:** `npm run build` — and therefore `npm test` — fails on main with two TypeScript errors:
 
