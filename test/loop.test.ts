@@ -31,7 +31,13 @@ async function waitForFile(file: string, timeoutMs = 10_000): Promise<void> {
 test("a tick that changes files commits and merges to main", async () => {
   const repo = await initializedRepo();
   const restore = fakePi(
-    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'\necho hello > hello.txt`,
+    [
+      // The review gate (enabled by default) runs after the commit: approve with zero usage so
+      // the tick's token assertions below see only the author run.
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
   );
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
@@ -58,7 +64,8 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
   const line1 = assistantLine("first tick\nSUMMARY: first", { tokens: 42, output: 42, cost: 0.05 });
   const line2 = assistantLine("second tick\nSUMMARY: second", { tokens: 7, output: 7, cost: 0.01 });
   const restore = fakePi(
-    `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done\n` +
+      `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
       `[ "$n" -eq 1 ] && { printf '%s\n' '${line1}'; echo one > t.txt; } || { printf '%s\n' '${line2}'; echo two >> t.txt; }`,
   );
   try {
@@ -246,7 +253,11 @@ test("a failing pi run records an error and backs off", async () => {
 test("director skips with an empty inbox and runs a queued prompt", async () => {
   const repo = await initializedRepo();
   const restore = fakePi(
-    `printf '%s\n' '${assistantLine("ok\nSUMMARY: honor user request")}'\necho req > request.txt`,
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: honor user request")}'`,
+      `echo req > request.txt`,
+    ].join("\n"),
   );
   try {
     const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
@@ -263,7 +274,9 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
 
 test("worktree changes commit even when pi forgets the summary line", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("did it, no summary")}'\necho x > x.txt`);
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done\nprintf '%s\n' '${assistantLine("did it, no summary")}'\necho x > x.txt`,
+  );
   try {
     const runner = new LoopRunner(repo, "dry", defaultConfig(), "main");
     const outcome = await runner.tick();
@@ -323,6 +336,8 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
     // Next launch: a new runner (state comes from disk) resumes and finishes the task.
     restore = fakePi(
       [
+        // The resumed tick's commit goes through the review gate before merging.
+        `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
         `flags=""`,
         `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
         `echo "run:$flags" >> "${argsFile}"`,
@@ -478,6 +493,8 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
   // edit. Phase 2 (the resolution run): replace the conflict markers with a resolution.
   const restore = fakePi(
     [
+      // The tick's commit goes through the review gate before the (conflicting) merge.
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
       `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
@@ -514,6 +531,8 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
   const marker = path.join(tmpdir(), "phase");
   const restore = fakePi(
     [
+      // The tick's commit goes through the review gate before the (conflicting) merge.
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
       `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
@@ -634,6 +653,8 @@ test("concurrent-main-advance still lands (rebase path, linear history)", async 
   // The fake pi advances main itself mid-tick, simulating another loop landing work.
   const restore = fakePi(
     [
+      // The tick's commit goes through the review gate before the (rebased) merge.
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: slow work")}'`,
       `echo slow > slow.txt`,
       `git -C "${repo}" -c user.name=t -c user.email=t@t commit --allow-empty -m "someone else"`,

@@ -67,7 +67,15 @@ export function workingDetail(root: string, s: LoopState): string {
  * (elapsed · turn · ctx · tool); without it a working loop shows plain "working". */
 export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: string): string {
   if (!orchestratorRunning) return "stopped";
-  if (s.running) return root ? workingDetail(root, s) : "working";
+  if (s.running) {
+    // The tick's work is committed and under adversarial review: the live log tail now
+    // describes the reviewer run, not the author's — show the gate instead of pi detail.
+    if (s.phase === "review") {
+      const elapsed = s.lastTickStartedAt ? duration(Date.now() - s.lastTickStartedAt) : "";
+      return `reviewing ${elapsed}`.trim();
+    }
+    return root ? workingDetail(root, s) : "working";
+  }
   if (s.role === DIRECTOR_ROLE) return "waiting for prompts";
   if (s.nextRunAt > Date.now()) {
     // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
@@ -104,7 +112,9 @@ export function displayTokenMetrics(root: string, s: LoopState): { generated: nu
  * `current` column instead, so its state cell stays clean.) */
 function stateCell(root: string, s: LoopState, orchestratorRunning: boolean): string {
   const phase = loopPhase(s, orchestratorRunning, root);
-  if (!s.running) return phase;
+  // While under review the log tail's "current work" is the reviewer's own output, not the
+  // author's task — show the bare gate label.
+  if (!s.running || s.phase === "review") return phase;
   const work = readLiveProgress(root, s.role)?.currentWork;
   return work ? `${work} · ${phase}` : phase;
 }

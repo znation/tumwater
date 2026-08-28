@@ -248,15 +248,22 @@ export class LoopRunner {
   /** Salvage commits left on the branch by a previous run whose merge never landed. Leftovers
    * route through the SAME review gate as fresh ticks — every path that can move a commit into
    * main reviews the full ahead-of-main diff first, so no crash or abort path smuggles
-   * unreviewed work in (see src/review.ts). */
-  private async recoverLeftover(wt: string): Promise<void> {
+   * unreviewed work in (see src/review.ts). Returns true when the leftover was deliberately
+   * left on the branch for re-review (a failed review under the strike cap) so the caller keeps
+   * it instead of resetting to main. */
+  private async recoverLeftover(wt: string): Promise<boolean> {
     const ahead = await aheadOfMain(wt, this.mainBranch).catch(() => 0);
-    if (ahead <= 0) return;
+    if (ahead <= 0) return false;
     const gate = await this.reviewGate(wt, undefined, "-recovery");
     if (gate.run) this.foldUsage(gate.run);
-    // Shutdown mid-review: the tick ends anyway; the leftover stays for next time. A reject or
-    // failure was already handled per policy inside the gate (reset / left for retry).
-    if (gate.aborted || gate.decision === "rejected" || gate.decision === "failed") return;
+    // Shutdown mid-review: fail closed — the commit stays for next time. A reject already reset
+    // to main inside the gate; a failure below the strike cap leaves the commit on purpose.
+    if (gate.aborted) return true;
+    if (gate.decision === "rejected") return false;
+    if (gate.decision === "failed") {
+      // At/over the strike cap the gate already discarded the leftover — nothing left to keep.
+      return (await aheadOfMain(wt, this.mainBranch).catch(() => 0)) > 0;
+    }
     const result = await this.merge(wt, `recovered leftover work from ${this.role}`);
     if (result !== "changed") {
       logEvent(this.root, {
@@ -265,6 +272,7 @@ export class LoopRunner {
         message: `discarding ${ahead} unmergeable leftover commit(s) (${result})`,
       });
     }
+    return false; // merged or warned-and-left-to-the-reset: caller resets to main as usual
   }
 
   /** Run one full tick of this role loop: build (or resume) the prompt, run pi in the
@@ -298,11 +306,23 @@ export class LoopRunner {
     }
 
     s.running = false;
+    // The review gate persists phase="review" around its run so a dashboard mid-review shows
+    // "reviewing". A completed tick clears it so the label never lingers — except an aborted
+    // one: there the interruption hit mid-review, and the next launch must recover (and
+    // re-review) the committed work fresh instead of resuming an author session whose task is
+    // already committed.
+    if (outcome.result !== "aborted") s.phase = undefined;
     s.lastTickEndedAt = Date.now();
     s.lastResult = outcome.result;
     if (outcome.summary) s.lastSummary = outcome.summary;
     if (outcome.result === "changed") {
       s.commits += 1;
+      s.backoffSeconds = 0;
+      s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
+    } else if (outcome.result === "rejected") {
+      // The reviewer objected and the gate already reset the branch: the author should address
+      // the recorded reasons on its next eligible tick, not sleep through them — schedule like
+      // a change without counting a commit (nothing landed).
       s.backoffSeconds = 0;
       s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
     } else if (outcome.result === "skipped") {
@@ -352,8 +372,14 @@ export class LoopRunner {
     // is consumed here so a resume that fails falls back to a normal fresh tick; another
     // shutdown mid-resume sets it again. Nothing to resume (sessions pruned, or pi never
     // started) also falls back to fresh.
-    const resuming = s.resumePending === true && hasResumableSession(sessionDir(this.root, this.role));
+    const resumableSession = s.resumePending === true && hasResumableSession(sessionDir(this.root, this.role));
     s.resumePending = false;
+    // An interruption during the review gate leaves the author's work fully committed — there
+    // is nothing left to finish in its session. Recover (and re-review) the leftover commits
+    // via a fresh tick instead: continuing the author session would burn a run on finished
+    // work, and any uncommitted edits are the reviewer's stray output, discarded by the fresh
+    // path's reset below.
+    const resuming = resumableSession && s.phase !== "review";
 
     const prompt = resuming ? buildResumePrompt(this.role) : this.tickPrompt();
     if (prompt === null) return { result: "skipped" };
@@ -367,8 +393,17 @@ export class LoopRunner {
       await abortSync(wt);
       logEvent(this.root, { loop: this.role, type: "resume" });
     } else {
-      await this.recoverLeftover(wt);
-      await resetWorktreeToMain(wt, this.mainBranch);
+      const leftForRetry = await this.recoverLeftover(wt);
+      if (leftForRetry) {
+        // A failed (or aborted) recovery review deliberately left its commit on the branch for
+        // re-review — bounded by the gate's strike cap. Keep it; discard only uncommitted stray
+        // edits so the next tick reviews the combined ahead-of-main diff.
+        await abortSync(wt);
+        await git(wt, "reset", "--hard", "HEAD");
+        await git(wt, "clean", "-fd");
+      } else {
+        await resetWorktreeToMain(wt, this.mainBranch);
+      }
     }
 
     const pi = await this.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming);
@@ -432,6 +467,30 @@ export class LoopRunner {
     const summary = extractSummary(pi.finalText) ?? `${this.role} tick ${s.ticks}`;
     const message = `tumwater(${this.role}): ${summary}`;
     const commit = await commitAll(wt, message);
+
+    // Adversarial review gate (src/review.ts): no diff reaches main unreviewed. Runs outside
+    // the merge lock, before it — other loops keep merging while this one is under review.
+    const gate = await this.reviewGate(wt, summary);
+    if (gate.run) this.foldUsage(gate.run);
+    if (gate.aborted) {
+      // Shutdown mid-review: fail closed — the commit stays on the branch and the next launch
+      // re-reviews it via the combined ahead-of-main diff. Re-queue a director prompt like any
+      // other unfulfilled abort.
+      if (userPrompt) enqueuePrompt(this.root, userPrompt);
+      return { result: "aborted" };
+    }
+    if (gate.decision === "rejected") {
+      // The gate already reset the branch to main; its reasons ride along on this role's next
+      // tick prompt via state.lastReview (see tickPrompt).
+      return { result: "rejected", summary: gate.detail ?? "rejected in review" };
+    }
+    if (gate.decision === "failed") {
+      // Fail closed: the commit stays on the branch for the next tick's recovery re-review
+      // (bounded by the gate's strike cap). Backoff applies as for errors.
+      s.lastError = `review failed: ${gate.detail}`;
+      return { result: "review_error", summary: gate.detail };
+    }
+
     const result = await this.merge(wt, summary);
     if (result !== "changed") s.lastError = `merge failed: ${result}`;
     return { result, summary, commit };

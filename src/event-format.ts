@@ -34,6 +34,16 @@ export function formatEvent(e: HarnessEvent): string {
       const scope = Array.isArray(e.roles) && e.roles.length > 0 ? ` for ${e.roles.join(", ")}` : "";
       return `${time} ${loop} counters reset${scope} (ticks, commits, tokens, cost)`;
     }
+    case "review_start":
+      return `${time} ${loop} reviewing ${String(e.head).slice(0, 8)} before merge`;
+    case "review_verdict":
+      return `${time} ${loop} review approved ${String(e.head).slice(0, 8)}${e.reason ? ` — ${e.reason}` : ""}`;
+    case "review_rejected": {
+      const reasons = Array.isArray(e.reasons) ? (e.reasons as string[]) : [];
+      return `${time} ${loop} review rejected ${String(e.head).slice(0, 8)} — ${reasons[0] ?? "no reasons given"}`;
+    }
+    case "review_failed":
+      return `${time} ${loop} review failed for ${String(e.head).slice(0, 8)}: ${e.message} (commit kept for re-review)`;
     case "resume":
       return `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
     case "warning":
