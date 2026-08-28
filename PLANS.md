@@ -123,15 +123,42 @@ never block on their own questions. The report's answer to "software lacks victo
 be excellent at requesting them.
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-27)
+refined 2026-08-27, audited 2026-08-28)
 
 Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
 ~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
-configForRole at all four read sites; enabled by default with no config edit) that
-re-reads the initial prompt,
-PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move: prune/merge
-plans (the only role allowed to delete entries), flag drift, keep the complexity budget honest.
-The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes mandatory.
+configForRole at all read sites; enabled by default with no config edit) that re-reads the initial
+prompt, PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move: prune/
+merge plans (the only role allowed to delete entries), flag drift, keep the complexity budget
+honest. The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes
+mandatory.
+
+**Status (plan-loop audit 2026-08-28):** feature tick 49 (`6e3f487`) landed the full design;
+verified at `ceb6019` with a green build and a 338/338 suite. Catalog: steward is last in ROLES
+(after `improve`; the director is appended separately by `allRoleIds()`), so it has exactly the
+lowest tie-break priority planned. Defaulting: `defaultConfig()` carries
+`{ enabled: true, minTickIntervalSeconds: 21600 }` and `loadConfig` merges per-role defaults for
+ids absent from the file — this repo's tumwater.json lists every other role but not steward, so it
+enables with no config edit. Validation: `minTickIntervalSeconds` is in ROLE_ENTRY_KEYS with a
+`checkNumber … >= 0`. Resolution: `configForRole` falls back per-role → global; `isEligible`
+reads through it, so the slow clock gates both scheduled ticks and "main moved" early wakes;
+tick() resolves once at the top and uses it in every interval branch — the three planned branches
+(changed/skipped/cut-off-resume) plus review-gate's later-added `rejected` branch (scheduled like
+changed), while aborted/backoff are untouched as planned. Prompt: curation move list, markdown-
+only restriction, PLANS.md deletion / PRINCIPLES.md edit powers, and the conditional QUESTIONS.md
+mention are all present in roles.ts; md-only diffs stay review-exempt via the gate's `*.md` /
+`docs/**` paths. Remaining — test gaps against the acceptance criteria plus the dogfood
+observation, nothing structural: (a) no role prompt contract tests exist — the plan's
+test/steward.test.ts never landed; add assertions for the curation move list, markdown-only
+restriction, deletion/principles powers, and conditional QUESTIONS.md mention; (b) the per-role
+interval is untested at scheduler level — only `configForRole` resolution has a regression test
+(test/config.test.ts); add an orchestrator-level test that a shortened override gates
+`isEligible`'s min-gap (including early wakes) and loop tests that tick()'s nextRunAt branches
+honor the override with global fallback when unset; (c) dogfood pending: no `tumwater(steward)`
+commit in history as of this audit, and PRINCIPLES.md's Budgets section is still absent — note
+the running fleet process must have started after 6e3f487 for its compiled defaultConfig to
+include steward (JS loads at startup; same consideration as the commit-bodies trailer note).
+Files for the remainder: test/steward.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts.
 
 ### QA role — exercising the product like a user (planned 2026-08-24, refined 2026-08-26,
 refined 2026-08-28)
