@@ -3,8 +3,9 @@
 Planned 2026-08-24 · refined 2026-08-25 (failure handling, crash path, exemption semantics,
 state plumbing; stale file refs after the status-layer split; combined-diff review for resumed
 ticks) · refined 2026-08-27 (reviewer model override moves to the top-level `review` section —
-role validation rejects pseudo-role ids) · from the "Senior Tumwater" report (HN 49421554)
-· report item R1
+role validation rejects pseudo-role ids) · refined 2026-08-28 (deterministic build pre-check —
+feature tick 49's landing broke main's build with the gate active, exposing that the reviewer
+cannot compile) · from the "Senior Tumwater" report (HN 49421554) · report item R1
 
 ## Status (plan-loop audit 2026-08-27, re-audited 2026-08-28)
 
@@ -33,6 +34,10 @@ role's next prompt.
 (b) "the merge lock is not held during review" is structurally true (the gate runs before
 `withLock`) but untested — two fake-pi loops, one under review while the other merges.
 (c) The `reviewing <elapsed>` state cell has no test in status-render.test.ts.
+(d) The deterministic build pre-check (section below; refined 2026-08-28 after feature tick 49's
+landing broke main's build with the gate active — the open BUGS.md entry names this hole
+explicitly) is not yet implemented. It cannot be verified until that bug lands and `npm test` is
+green on main again; items (a)–(c) are unaffected by it.
 
 The dogfood `tumwater.json` review section remains optional — defaults already enable the gate; a
 strong-model override is a user decision.
@@ -115,6 +120,44 @@ depth (`*.md` exempts `docs/notes.md` too); a pattern containing `/` matches the
 path, where `*` matches within one path segment and `**` across segments (`docs/**` = everything
 under `docs/`). Exemption is per-diff: *every* changed file in the commit must match some pattern.
 
+### Deterministic build pre-check (`src/review.ts`) — refined 2026-08-28
+
+The gate as built can only judge what it can see, and its reviewer is forbidden from running any
+state-changing command ("no writes anywhere") — but `npm run build` *is* exactly that
+(`rm -rf dist && tsc`). Type errors are therefore invisible to the model review: broken work has
+landed on main five times, and the first landing with the gate active (feature tick 49, open in
+BUGS.md) got through precisely this hole. Fix it structurally — the same spirit as "all git
+operations belong to the harness": a check whose correctness must not depend on model compliance
+is run by the harness, not asked of the reviewer.
+
+- **Placement:** inside `reviewAheadOfMain`, after the exemption short-circuit (an md-only diff
+  cannot break the build and merges with no check at all) and before `review_start` / the
+  reviewer's pi run. Both gate callers (the tick path and `recoverLeftover`) get it for free.
+- **Command detection** (pure helper, no config knob — one sensible way): read `<wt>/package.json`
+  AND require a `node_modules` directory at the project root (npm resolves worktree-local scripts
+  by walking up to it; without an install there is nothing to run — skip rather than false-reject).
+  When both hold: prefer `scripts.typecheck`, else `scripts.build`; neither → no check (the model
+  review still applies; non-JS projects are untouched in v1). Missing/unreadable/malformed file →
+  no check — detection never throws into the gate.
+- **Execution:** `npm run <script>` via `execFile` with cwd = worktree (the same spawn pattern as
+  git.ts), combined stdout+stderr captured, hard cap 300 s (module constant; a parameter of the
+  helper so tests can shorten it). Running a local script needs no network.
+- **Outcomes:** exit 0 → proceed to the reviewer run unchanged. Nonzero exit or spawn error → a
+  review REJECTION with machine-generated reasons — `build check failed (<script>): …` plus the
+  clipped output tail — routed through the existing reject path verbatim (`resetWorktreeToMain`,
+  `state.lastReview`, `review_rejected` event, next-prompt injection via
+  `buildRejectedReviewNote`); no pi run is consumed (`GateResult.run` absent, as on exempt). The
+  author's next tick sees the compiler lines and fixes them. Timeout → environmental, not the
+  author's fault: one `warning` event ("build check timed out after Ns; proceeding to model
+  review") and the reviewer run proceeds — deliberately NOT fail-closed, so a hung build script
+  (watch mode) cannot wedge every code tick into the 3-strike discard of good work. Accepted cost:
+  while such a script hangs, every code tick pays the cap before its model review.
+- **Output clipping:** keep the TAIL of the combined output — last ≤10 non-empty lines, each via
+  the existing `clipReason` (300 chars) — so a chatty build cannot bloat persisted state or the
+  injected note. Stray working-tree edits from the check are already cleaned by both downstream
+  paths: reject → `resetWorktreeToMain`; approve → the existing post-approval `git reset --hard
+  HEAD`.
+
 ### On approve
 
 Proceed to the existing merge path unchanged; record `lastApprovedHead` (the reviewed branch HEAD)
@@ -195,11 +238,11 @@ lives in src/events.ts).
 ## Files touched
 
 `src/loop.ts`, `src/prompt.ts`, `src/types.ts`, `src/config.ts` (review section + validation + model-override accessor),
-`src/review.ts` (new: exemption matcher, verdict parsing, review-run orchestration shared by the
-tick and recoverLeftover paths), `src/status-render.ts` (`loopPhase`/`workingDetail` reviewing
+`src/review.ts` (new: exemption matcher, verdict parsing, build pre-check + detection,
+review-run orchestration shared by the tick and recoverLeftover paths), `src/status-render.ts` (`loopPhase`/`workingDetail` reviewing
 state — not src/status.ts), `src/event-format.ts` (review event rendering — formatEvent no longer
 lives in src/events.ts), `tumwater.json` (dogfood: top-level `review` section with the strong-model override),
-`test/review-gate.test.ts` (fake-pi shim scripting both verdicts; review-section config
+`test/review.test.ts` (renamed from review-gate.test.ts; fake-pi shim scripting both verdicts; review-section config
 validation + accessor fallback over top-level values; exemption matcher unit tests — basename vs
 path patterns, all-files-must-match; approve merges / reject resets + next-prompt
 injection; review failure leaves commit and re-reviews next tick; 3-strike discard; recoverLeftover
@@ -212,6 +255,12 @@ via the combined-diff review; stray-edit reset; fresh session naming), README.
   untouched, resets the branch, records reasons, and the role's next prompt contains them.
 - Md-only diffs (per exemptPaths) merge without a reviewer run; one non-exempt file in an otherwise
   md diff triggers review. Exemption matcher unit tests cover `*.md` at depth and `docs/**`.
+- When the worktree's project declares a JS check, the gate runs it deterministically before any
+  model review: a failing `npm run <script>` rejects through the existing reject path with the
+  compiler tail as reasons (branch reset, `review_rejected` logged, zero reviewer pi runs); a
+  passing one proceeds to the reviewer; a timed-out one logs a warning and still proceeds.
+  Detection is pure and total — no package.json, neither script present, malformed JSON, or no
+  root node_modules all yield "no check" without throwing (unit-tested).
 - A failed/verdict-less review never merges: the commit stays on the branch, the tick ends
   `review_error`, and the next tick's recovery re-reviews it; after 3 consecutive failures for one
   HEAD the leftover is discarded with a warning.

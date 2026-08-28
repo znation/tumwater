@@ -6,7 +6,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 ### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25, refined
-2026-08-27, audited 2026-08-27, re-audited 2026-08-28)
+2026-08-27, audited 2026-08-27, re-audited 2026-08-28, refined 2026-08-28 (build pre-check))
 
 Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
 fresh-session pi run (no author context; own model override via optional provider/model/thinking on
@@ -41,6 +41,18 @@ structurally true (the gate runs before `withLock`) but untested — two fake-pi
 review while the other merges; (c) the `reviewing <elapsed>` state cell has no test in
 test/status-render.test.ts. Files for the remainder: test/prompt.test.ts or test/review.test.ts,
 test/loop.test.ts, test/status-render.test.ts.
+
+**Refined 2026-08-28 — deterministic build pre-check (new remaining item).** The open BUGS.md
+entry names the hole this plan leaves: feature tick 49 broke main's build *with the gate active*
+because the reviewer is forbidden from running state-changing commands and `npm run build` is
+exactly that (`rm -rf dist && tsc`) — type errors are invisible to a model that cannot compile,
+and broken work has now landed on main five times. The refinement (full design in
+plans/review-gate.md): the harness itself runs the project's declared npm `typecheck`/`build`
+script as a deterministic first step of the gate — after the md-only exemption, before any
+reviewer run; a failure rejects through the existing reject path with the compiler tail as reasons
+(no pi run consumed), a timeout warns and proceeds to model review. No config knob: detection is
+`package.json` scripts plus a root `node_modules` presence check only. Joins items (a)–(c) above;
+unverifiable until main's build is green again.
 
 ### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27)
