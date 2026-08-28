@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  abortSync,
   aheadOfMain,
   aheadOfMainDiff,
   commitAll,
@@ -366,6 +368,62 @@ test("aheadOfMainDiff handles binary files ('-' numstat) without crashing", asyn
   // ...and the budget stops before the smaller files (the size-0 binary ranks after them).
   assert.ok(!out.includes("SML-"), "budget stops before the smaller files");
   assert.ok(out.length <= cap);
+});
+
+/** Install a logging `git` shim at the front of PATH that appends each invocation's args
+ * to `logFile` before exec'ing the real git (so behavior stays correct). Returns a restore
+ * function. Lets a test assert exactly which subprocesses a code path spawned — the same
+ * PATH technique fakePi uses for pi. */
+function loggingGit(logFile: string): () => void {
+  const dir = tmpdir("fake-git-");
+  const bin = path.join(dir, "git");
+  const real = execFileSync("which", ["git"], { encoding: "utf8" }).trim().split("\n")[0];
+  fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> ${logFile}\nexec "${real}" "$@"\n`);
+  fs.chmodSync(bin, 0o755);
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${dir}:${oldPath}`;
+  return () => {
+    process.env.PATH = oldPath;
+  };
+}
+
+test("abortSync spawns no git when nothing is in progress", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "dry", "main");
+  const logFile = path.join(tmpdir(), "git-calls.log");
+  const restore = loggingGit(logFile);
+  try {
+    await abortSync(wt); // Clean worktree: the file check must short-circuit both spawns.
+  } finally {
+    restore();
+  }
+  assert.ok(!fs.existsSync(logFile), "abortSync spawned git on a clean worktree");
+});
+
+test("abortSync still aborts an interrupted rebase when state exists", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "dry", "main");
+  // Leave a conflicting rebase in progress (a killed tick mid-resolution), no shim yet.
+  fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
+  await commitAll(wt, "branch seed edit");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "main seed edit");
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+
+  const logFile = path.join(tmpdir(), "git-calls.log");
+  const restore = loggingGit(logFile);
+  try {
+    await abortSync(wt);
+  } finally {
+    restore();
+  }
+  // The old spawn-based behavior is preserved when state exists: both aborts run.
+  const calls = fs.readFileSync(logFile, "utf8");
+  assert.match(calls, /merge --abort/);
+  assert.match(calls, /rebase --abort/);
+  // And the rebase was actually aborted: the worktree is back to its pre-rebase content.
+  assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "branch version\n");
 });
 
 test("readBranchHead returns null for missing refs, bad content, and non-repos", () => {

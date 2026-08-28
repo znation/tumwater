@@ -155,8 +155,56 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   return wt;
 }
 
-/** Abort any in-progress merge or rebase (no-op when neither is running). */
+/** True when no merge and no rebase is in progress in `wt`, checked from the state files
+ * git itself leaves behind — MERGE_HEAD for a merge, rebase-merge/ or rebase-apply/ for a
+ * rebase — instead of spawning two aborts that can only fail. Returns false ("run the
+ * aborts anyway") whenever either is running OR the gitdir cannot be resolved from files:
+ * false is always safe, it just means "do exactly what the old spawn-based check did".
+ * Synchronous and microsecond-scale: this exists because abortSync runs on every fresh tick
+ * and the common case used to cost two ~10ms subprocess spawns that were guaranteed no-ops. */
+function syncStateClear(wt: string): boolean {
+  const dotGit = path.join(wt, ".git");
+  let gitdir: string;
+  try {
+    if (fs.statSync(dotGit).isDirectory()) {
+      gitdir = dotGit; // Primary checkout.
+    } else {
+      // Linked worktree: `.git` is a one-line pointer file (`gitdir: <path>`).
+      const line = fs.readFileSync(dotGit, "utf8").trim();
+      if (!line.startsWith("gitdir:")) return false;
+      const target = line.slice("gitdir:".length).trim();
+      if (!target) return false; // Malformed pointer: uncertain.
+      gitdir = path.resolve(wt, target);
+    }
+  } catch {
+    return false; // Not a repo we can inspect — fall back to the spawns.
+  }
+  try {
+    if (!fs.statSync(gitdir).isDirectory()) return false; // Pointer target gone: uncertain.
+  } catch {
+    return false;
+  }
+  try {
+    fs.statSync(path.join(gitdir, "MERGE_HEAD"));
+    return false;
+  } catch {
+    // No merge in progress — rebase state next.
+  }
+  for (const dir of ["rebase-merge", "rebase-apply"]) {
+    try {
+      if (fs.statSync(path.join(gitdir, dir)).isDirectory()) return false;
+    } catch {
+      // This backend's rebase state is absent.
+    }
+  }
+  return true;
+}
+
+/** Abort any in-progress merge or rebase (no-op when neither is running). The common case —
+ * nothing in progress — returns after a microsecond-scale file check instead of spawning
+ * two aborts that can only fail. */
 export async function abortSync(wt: string): Promise<void> {
+  if (syncStateClear(wt)) return;
   await gitTry(wt, "merge", "--abort");
   await gitTry(wt, "rebase", "--abort");
 }
