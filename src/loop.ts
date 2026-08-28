@@ -3,7 +3,9 @@ import { DIRECTOR_ROLE, roleById } from "./roles.js";
 import {
   abortSync,
   aheadOfMain,
+  changedFiles,
   commitAll,
+  commitPathsAndDiscardRest,
   conflictedFiles,
   continueRebase,
   ensureWorktree,
@@ -46,6 +48,10 @@ export interface TickOutcome {
   result: TickResult;
   summary?: string;
   commit?: string;
+  /** The tick's authoring run burned more than the configured thrashTurns/thrashMinutes
+   * thresholds (plans/refusal-and-thrash.md): difficulty is a signal, so the change went to
+   * review flagged and a warning event was logged. */
+  highFriction?: boolean;
   /** The run was truncated at the model's context ceiling before it could finish (a
    * no_change tick whose final message carried no text or tool call). The work so far
    * survives in the pi session, which pi compacted at end of run — so the loop resumes
@@ -242,12 +248,15 @@ export class LoopRunner {
 
   /** Run the adversarial review gate over everything ahead of main in `wt` (see
    * src/review.ts for exemption, verdict parsing, and failure policy). `commitBody` is the
-   * author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff. */
+   * author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff.
+   * `highFriction` flags a change whose authoring run burned more than the configured
+   * turn/time thresholds; the flag rides along in the review prompt for extra scrutiny. */
   private async reviewGate(
     wt: string,
     summary?: string,
     commitBody?: string,
     sessionSuffix?: string,
+    highFriction?: boolean,
   ): Promise<GateResult> {
     return reviewAheadOfMain(
       {
@@ -263,7 +272,42 @@ export class LoopRunner {
       this.state,
       summary,
       commitBody,
+      highFriction,
     );
+  }
+
+  /** Handle a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended
+   * with TUMWATER_REFUSED. Only the markdown objection note may land — it is the durable record
+   * that blocks the entry for later ticks; any non-markdown half-work is discarded, tracked
+   * edits via reset --hard and untracked files via clean -fd (the committed note is safe at
+   * HEAD by then). A refusal with no note left resets the worktree cleanly and lets the reason
+   * live in the event + lastSummary only. The note commit merges directly: md-only diffs are
+   * review-exempt by construction under the gate's exemption patterns, so routing it through
+   * the gate would burn nothing but add a failure mode for a record that is not code. */
+  private async handleRefusal(wt: string, pi: PiRunResult): Promise<TickOutcome> {
+    const s = this.state;
+    const reason = (pi.refusedReason ?? "").trim() || "no reason given";
+    const notes = (await changedFiles(wt)).filter((f) => f.toLowerCase().endsWith(".md"));
+    let commit: string | undefined;
+    if (notes.length > 0) {
+      // Subject + trailer only — a refusal carries no WHY/RISK/VERIFIED body; the reason is
+      // the subject, and the trailer's turn count is the same field the friction flag reads.
+      const message = buildCommitMessage(
+        `tumwater(${this.role}): refuse — ${reason}`,
+        null,
+        commitTrailer(this.role, s.ticks, this.tickTurns, s.peakContextTokens),
+      );
+      commit = (await commitPathsAndDiscardRest(wt, message, notes)) ?? undefined;
+    }
+    if (!commit) {
+      // No note landed (none left, or nothing stageable): reset and keep the reason in the
+      // event + lastSummary only.
+      await resetWorktreeToMain(wt, this.mainBranch);
+      return { result: "refused", summary: reason };
+    }
+    const result = await this.merge(wt, `refused: ${reason}`);
+    if (result !== "changed") s.lastError = `refusal note merge failed: ${result}`;
+    return { result: "refused", summary: reason, commit };
   }
 
   /** Salvage commits left on the branch by a previous run whose merge never landed. Leftovers
@@ -432,6 +476,7 @@ export class LoopRunner {
       }
     }
 
+    const piStartedAt = Date.now();
     const pi = await this.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming);
 
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
@@ -448,6 +493,10 @@ export class LoopRunner {
       if (userPrompt) enqueuePrompt(this.root, userPrompt);
       return { result: "error" };
     }
+
+    // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel
+    // and any note it left are the run's verdict — classify what it left behind.
+    if (pi.refused) return await this.handleRefusal(wt, pi);
 
     const changed = await isDirty(wt);
     if (!pi.ok && !changed) {
@@ -494,6 +543,24 @@ export class LoopRunner {
     // The commit body is the author's own explanation (WHY/RISK/VERIFIED, capped per field);
     // null or partial when the reply was non-compliant — subject + trailer still stand.
     const body = extractCommitBody(pi.finalText);
+
+    // Friction as a signal (plans/refusal-and-thrash.md): a changed tick that burned more than
+    // thrashTurns turns or thrashMinutes of wall clock is flagged high-friction — difficulty
+    // suggests the work may not fit, so it goes to review marked and leaves a warning event.
+    // Measured over this tick's main authoring run (a transient retry included via runRolePi),
+    // like the trailer; conflict-resolution runs happen later inside merge().
+    const minutes = (Date.now() - piStartedAt) / 60_000;
+    const highFriction =
+      this.tickTurns > this.config.thrashTurns || minutes > this.config.thrashMinutes;
+    if (highFriction) {
+      logEvent(this.root, {
+        loop: this.role,
+        type: "warning",
+        message:
+          `high-friction tick: ${this.tickTurns} turns in ${Math.round(minutes)} min ` +
+          `(thresholds: ${this.config.thrashTurns} turns / ${this.config.thrashMinutes} min)`,
+      });
+    }
     // The trailer is harness-stamped truth: turns and peak ctx over this tick's pre-commit
     // runs only (conflict-resolution and review runs fold after the commit).
     const message = buildCommitMessage(
@@ -506,7 +573,13 @@ export class LoopRunner {
     // Adversarial review gate (src/review.ts): no diff reaches main unreviewed. Runs outside
     // the merge lock, before it — other loops keep merging while this one is under review.
     // The reviewer checks the author's claimed WHY/VERIFIED against the actual diff.
-    const gate = await this.reviewGate(wt, summary, body ? formatCommitBody(body) : undefined);
+    const gate = await this.reviewGate(
+      wt,
+      summary,
+      body ? formatCommitBody(body) : undefined,
+      undefined,
+      highFriction || undefined,
+    );
     if (gate.run) this.foldUsage(gate.run);
     if (gate.aborted) {
       // Shutdown mid-review: fail closed — the commit stays on the branch and the next launch
@@ -529,6 +602,11 @@ export class LoopRunner {
 
     const result = await this.merge(wt, summary);
     if (result !== "changed") s.lastError = `merge failed: ${result}`;
-    return { result, summary, commit };
+    // The friction flag rides along in lastSummary and the tick_end event too — until commit
+    // bodies carry a dedicated trailer line, those are where it stays visible.
+    const finalSummary = highFriction
+      ? `${summary} (high friction: ${this.tickTurns} turns / ${Math.round(minutes)}m)`
+      : summary;
+    return { result, summary: finalSummary, commit, highFriction };
   }
 }

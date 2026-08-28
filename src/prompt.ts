@@ -10,6 +10,11 @@ import { DECOMPOSITION_GUIDANCE, type Role } from "./roles.js";
 /** Sentinel a loop's pi run outputs when it found nothing worth doing. */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
 
+/** Sentinel a loop's pi run outputs when it declines its task (see plans/refusal-and-thrash.md):
+ * `TUMWATER_REFUSED: <one-line reason>`. The reason is the durable objection — it becomes the
+ * commit subject of the refusal note and the tick's lastSummary. */
+export const REFUSED_SENTINEL = "TUMWATER_REFUSED";
+
 /** The review gate's verdict line (see buildReviewPrompt): the reviewer ends with exactly
  * `VERDICT: approve` or `VERDICT: reject`. Scanned across every assistant message, like the
  * nothing-to-do sentinel — a verdict in an intermediate turn must survive later remarks. */
@@ -47,6 +52,15 @@ Rules for this run:
   after a few seconds) and never allocate it a real TTY expecting input.
 - If you find nothing worth doing for your role right now, make no changes and reply with the
   single line ${NOTHING_TO_DO} instead.
+- If partway in you conclude the task would harm the project — it violates PRINCIPLES.md, grows
+  complexity without justification, or keeps fighting back — do not force it and revert nothing
+  yourself: record your objection as a note appended directly under the refused entry's heading
+  in PLANS.md (for a planned feature) or BUGS.md, in exactly this shape:
+  **Refused <YYYY-MM-DD> by <role>: <one-line reason>** — that recording edit is the only change
+  a refusing run should leave. When choosing work, skip entries carrying a Refused note — do not
+  pick them and do not re-refuse them; the objection stands until a human or the director edits
+  the entry (a fully blocked backlog is a legitimate nothing-to-do state). End your reply with a
+  line in exactly this form: ${REFUSED_SENTINEL}: <the same one-line reason>.
 ${SUMMARY_RULE}`;
 
 /** The project's design principles (PRINCIPLES.md), capped for injection into prompts. Empty
@@ -132,6 +146,9 @@ work yourself:
   where future loops will see it — PRINCIPLES.md first for standing design guidance and taste;
   README.md, PLANS.md, or BUGS.md otherwise — and remove anything it supersedes.
 - A question: answer it in your final reply, and record anything durable it surfaced.
+- A decision about a refused entry (e.g. "clear the refusal on plan X", "reconsider plan Y"):
+  clear its **Refused …** note from PLANS.md/BUGS.md — or revise the entry per the user's
+  direction — so loops can pick it up again.
 - Only a trivially small direct edit (fix a typo, tweak a doc line, adjust a config value the
   user explicitly stated) may be done immediately instead of routed.
 - ${DECOMPOSITION_GUIDANCE}`,
@@ -185,6 +202,7 @@ export function buildReviewPrompt(
   summary?: string,
   commitBody?: string,
   principles?: string,
+  highFriction?: boolean,
 ): string {
   const parts = [
     `You are an adversarial code reviewer for tumwater, an autonomous development harness. A
@@ -192,6 +210,13 @@ loop's change is about to be merged to main; you decide whether it may land. You
 from the authoring run — judge only what is in front of you, and assume nothing until you have
 checked it.`,
   ];
+  if (highFriction)
+    parts.push(
+      `This change was flagged HIGH-FRICTION by the harness: its authoring run burned far more
+assistant turns or wall-clock time than this project's thresholds. Difficulty is a signal that
+the work may not fit the system — apply extra scrutiny to whether the change should exist at all,
+not just whether it is correct.`,
+    );
   if (summary) parts.push(`The author's summary of the change:\n${summary}`);
   if (commitBody)
     parts.push(
@@ -232,4 +257,14 @@ export function buildRejectedReviewNote(reasons: string[]): string {
 /** True when the reply declares there was nothing to do. */
 export function isNothingToDo(finalText: string): boolean {
   return finalText.includes(NOTHING_TO_DO);
+}
+
+/** Extract the one-line reason from a TUMWATER_REFUSED sentinel line; null when no such line
+ * exists. Anchored at line start like the VERDICT line, so prose that merely mentions the
+ * sentinel mid-sentence cannot set the reason (the boolean detection below is deliberately
+ * looser, matching the nothing-to-do sentinel's whole-reply scan). */
+export function extractRefusal(finalText: string): string | null {
+  const match = finalText.match(new RegExp(`^\\s*${REFUSED_SENTINEL}:\\s*(.+)$`, "m"));
+  if (!match?.[1]) return null;
+  return match[1].trim();
 }

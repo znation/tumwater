@@ -31,7 +31,9 @@ export const ROLES: Role[] = [
     find: `Open PLANS.md and pick the SINGLE most valuable planned feature that is not yet
 implemented (prefer ones marked ready or with a written plan). Implement it completely: code,
 tests, and any docs. Then update PLANS.md to mark it done (move it to a Done section with the
-date). If PLANS.md is empty or everything is done, there is nothing to do.`,
+date). A plan that resists implementation is a finding: refuse it with the objection recorded
+rather than forcing it. Skip plans whose entry carries a Refused note. If PLANS.md is empty or
+everything is done, there is nothing to do.`,
   },
   {
     id: "bugfix",
@@ -40,6 +42,8 @@ date). If PLANS.md is empty or everything is done, there is nothing to do.`,
 fix it, add a regression test, and update BUGS.md to mark it fixed (move it to a Fixed section
 with the date). If you discover a new bug while investigating but cannot fix it in this run,
 record it in BUGS.md instead. ${DECOMPOSITION_GUIDANCE}
+A "bug" whose fix would harm the project is refused, not force-fixed. Skip BUGS.md entries
+carrying a Refused note.
 If BUGS.md has no open bugs, look briefly for one obvious latent
 bug in the code; if you find none, there is nothing to do.`,
   },

@@ -68,6 +68,12 @@ export interface TumwaterConfig {
   logMaxBytes: number;
   /** Delete pi session files older than this many days at orchestrator start (0 disables). */
   sessionRetentionDays: number;
+  /** Friction threshold in assistant turns: a changed tick using MORE than this many turns is
+   * flagged high-friction (warning event + extra review scrutiny) — difficulty is a signal that
+   * the work may not fit. See plans/refusal-and-thrash.md. */
+  thrashTurns: number;
+  /** Friction threshold in wall-clock minutes, same semantics as thrashTurns. */
+  thrashMinutes: number;
   idleBackoff: BackoffConfig;
   /** Adversarial pre-merge review gate (see src/review.ts). */
   review: ReviewConfig;
@@ -76,6 +82,7 @@ export interface TumwaterConfig {
 
 export type TickResult =
   | "changed" // pi made changes; committed and merged to main
+  | "refused" // pi declined the work (TUMWATER_REFUSED); only its markdown objection note landed
   | "no_change" // pi decided there was nothing to do
   | "merge_conflict" // change was made but could not be merged; discarded next tick
   | "merge_blocked" // fast-forward into main failed (e.g. dirty primary checkout)
@@ -169,6 +176,12 @@ export interface PiRunResult {
    * Covers the whole reply, not just the last message, so a sentinel emitted in an
    * intermediate turn is not lost to a later closing remark. */
   nothingToDo: boolean;
+  /** True when any assistant message carried the TUMWATER_REFUSED sentinel — the run declined
+   * its task (see plans/refusal-and-thrash.md). Same whole-reply scan as nothingToDo. */
+  refused: boolean;
+  /** The one-line reason captured from the first TUMWATER_REFUSED line; empty/undefined when
+   * the sentinel appeared without a reason. */
+  refusedReason?: string;
   /** Text of the LAST assistant message carrying a parseable VERDICT line — the review
    * gate's reply contract (see buildReviewPrompt). Scanned across every message like the
    * sentinel, so a verdict in an intermediate turn survives later closing remarks. */
@@ -178,7 +191,7 @@ export interface PiRunResult {
   /** Largest single-request context of the run. */
   peakContextTokens: number;
   /** Assistant turns completed in this run (message_end events) — feeds the commit trailer
-   * and, later, the high-friction flag; a tick sums it across its pre-commit runs. */
+   * and the high-friction flag; a tick sums it across its pre-commit runs. */
   turns: number;
   costUsd: number;
   stopReason?: string;

@@ -126,6 +126,94 @@ export async function isDirty(cwd: string): Promise<boolean> {
   return out.length > 0;
 }
 
+/** Decode a path from `git status --porcelain` output. Git C-quotes paths containing special
+ * characters (newlines, tabs, quotes, non-ASCII under core.quotePath) and escapes them — the
+ * decoded form is what callers pass back to git as a real path. Unquoted paths pass through. */
+function unquotePorcelainPath(p: string): string {
+  if (!p.startsWith('"')) return p;
+  const end = p.lastIndexOf('"');
+  if (end < 1) return p; // Malformed — keep as-is rather than drop the entry.
+  let out = "";
+  for (let i = 1; i < end; i++) {
+    const c = p.charAt(i);
+    if (c !== "\\") {
+      out += c;
+      continue;
+    }
+    i++;
+    const e = p.charAt(i);
+    switch (e) {
+      case "n":
+        out += "\n";
+        break;
+      case "t":
+        out += "\t";
+        break;
+      case "r":
+        out += "\r";
+        break;
+      case "\\":
+        out += "\\";
+        break;
+      case '"':
+        out += '"';
+        break;
+      default:
+        // Octal escape \NNN (control characters); anything else is kept literally.
+        if (e >= "0" && e <= "7") {
+          const chunk = p.slice(i, i + 3);
+          if (/^[0-7]{3}$/.test(chunk)) {
+            out += String.fromCharCode(parseInt(chunk, 8));
+            i += 2;
+          } else {
+            out += e;
+          }
+        } else {
+          out += e;
+        }
+    }
+  }
+  return out;
+}
+
+/** Repo-relative paths of every change in the worktree — modified, untracked, and deleted,
+ * parsed from `git status --porcelain` (paths only). The refusal path uses this to classify
+ * what a refusing run left behind: markdown notes may land, everything else is discarded. */
+export async function changedFiles(wt: string): Promise<string[]> {
+  const out = await gitTry(wt, "status", "--porcelain");
+  if (!out) return [];
+  const files: string[] = [];
+  for (const line of out.split("\n")) {
+    // Porcelain v1 lines are `XY <path>` — two status chars, a space, then the path.
+    if (line.length < 4) continue;
+    const p = unquotePorcelainPath(line.slice(3));
+    if (p) files.push(p);
+  }
+  return files;
+}
+
+/** Stage ONLY the given repo-relative paths, commit them with `message`, then discard every
+ * other change in the worktree — tracked edits via reset --hard HEAD (the committed content is
+ * safe at HEAD by the time the reset runs) and untracked files via clean -fd. Returns the new
+ * commit hash, or null when nothing was stageable under those paths (the caller then decides
+ * what to do with the rest). The refusal path uses this so a refusing run's objection note
+ * lands while its half-done code work does not. */
+export async function commitPathsAndDiscardRest(
+  wt: string,
+  message: string,
+  paths: string[],
+): Promise<string | null> {
+  if (paths.length === 0) return null;
+  const added = await gitTry(wt, "add", "--", ...paths);
+  if (added === null) return null; // Pathspec matched nothing — treat as nothing stageable.
+  const staged = await gitTry(wt, "diff", "--cached", "--name-only");
+  if (!staged) return null; // Nothing actually changed under those paths.
+  await git(wt, ...COMMIT_IDENT, "commit", "-m", message);
+  await git(wt, "reset", "--hard", "HEAD");
+  await git(wt, "clean", "-fd");
+  return headOf(wt, "HEAD");
+}
+
 /** Ensure a persistent worktree + branch exists for a role. Returns the worktree path.
  * Self-heals when the directory exists but is no longer a usable worktree (its .git pointer
  * file lost, or its admin-side registration under <root>/.git/worktrees/ pruned by outside

@@ -135,12 +135,16 @@ export interface GateResult {
  *   role's next tick prompt), log review_rejected;
  * - fail (no parseable verdict, pi error, timeout) → leave the commit on the branch for the
  *   next tick's re-review, counting consecutive failures per HEAD; past REVIEW_FAILURE_LIMIT
- *   discard the leftover with a warning. Never throws. */
+ *   discard the leftover with a warning. Never throws.
+ * `highFriction` marks a change whose authoring run burned more than the configured turn/time
+ * thresholds (plans/refusal-and-thrash.md): the flag rides along in the review prompt so the
+ * reviewer applies extra scrutiny to whether the work should exist at all. */
 export async function reviewAheadOfMain(
   ctx: ReviewContext,
   state: LoopState,
   summary?: string,
   commitBody?: string,
+  highFriction?: boolean,
 ): Promise<GateResult> {
   const { root, role, wt, mainBranch, config } = ctx;
   if (!config.review.enabled) return { decision: "exempt" };
@@ -165,7 +169,7 @@ export async function reviewAheadOfMain(
   // the original run is gone).
   const pi = await runPi({
     cwd: wt,
-    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root)),
+    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction),
     config: reviewConfig(config),
     // Fresh session every time (no --continue): the reviewer must not inherit the author's
     // context. Unique name per run — a fixed name would let pi resume an old review's

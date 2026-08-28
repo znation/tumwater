@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
 import { rotateIfLarge } from "./files.js";
-import { isNothingToDo, VERDICT_LINE } from "./prompt.js";
+import { extractRefusal, isNothingToDo, REFUSED_SENTINEL, VERDICT_LINE } from "./prompt.js";
 
 interface PiMessage {
   role: string;
@@ -27,6 +27,13 @@ export class PiStreamParser {
   /** True once any assistant message contains the nothing-to-do sentinel, so a
    * declaration in an intermediate turn survives later messages overwriting finalText. */
   declaredNothingToDo = false;
+  /** True once any assistant message carries the TUMWATER_REFUSED sentinel — same whole-reply
+   * scan as the nothing-to-do sentinel (a refusal declared in an intermediate turn must
+   * survive later closing remarks). */
+  refused = false;
+  /** The one-line reason from the FIRST parseable TUMWATER_REFUSED line; "" when the sentinel
+   * appeared bare or no message carried a reason. */
+  refusedReason = "";
   /** Text of the LAST assistant message carrying a parseable VERDICT line (the review gate's
    * reply contract) — scanned across every message like the sentinel, so a verdict emitted in
    * an intermediate turn survives later closing remarks overwriting finalText. */
@@ -124,6 +131,11 @@ export class PiStreamParser {
     );
     if (text.trim()) this.finalText = text;
     if (isNothingToDo(text)) this.declaredNothingToDo = true;
+    if (text.includes(REFUSED_SENTINEL)) {
+      this.refused = true;
+      // First reason wins: a compliant run emits the sentinel once, in its final message.
+      if (!this.refusedReason) this.refusedReason = extractRefusal(text) ?? "";
+    }
     if (VERDICT_LINE.test(text)) this.verdictText = text;
     this.turns += 1;
     this.outputTokens += msg.usage?.output ?? 0;
@@ -289,6 +301,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       ok: false,
       finalText: parser.finalText,
       nothingToDo: parser.declaredNothingToDo,
+      refused: parser.refused,
+      refusedReason: parser.refusedReason || undefined,
       verdictText: parser.verdictText || undefined,
       outputTokens: parser.outputTokens,
       peakContextTokens: parser.peakContextTokens,
