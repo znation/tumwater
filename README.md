@@ -55,25 +55,31 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs: main's build break from feature tick 44 (bad613e) — src/review.ts with a syntax
-error on line 184, six `noUncheckedIndexedAccess` violations in the same new code, and two
-leftover-recovery tests that failed because recovery routes through the review gate their fake pi
-cannot satisfy — was fixed by restoring the comment prefix, guarding the indexed accesses, and
-teaching those tests' fake pi to answer with a VERDICT; full detail under BUGS.md's Fixed section.
+`maxConcurrent`/`sessionRetentionDays` need a restart). One open bug (recorded in BUGS.md): main's build break from feature tick 47 (74224e9) —
+src/loop.ts calls `git(...)` without importing it after a clean tick removed the import as unused
+an hour earlier; every loop is blocked until fixed. The previous one — main's build break from
+feature tick 44 (bad613e): src/review.ts with a syntax error on line 184, six
+`noUncheckedIndexedAccess` violations in the same new code, and two leftover-recovery tests that
+failed because recovery routes through the review gate their fake pi cannot satisfy — was fixed by
+restoring the comment prefix, guarding the indexed accesses, and teaching those tests' fake pi to
+answer with a VERDICT; full detail under BUGS.md's Fixed section.
 The bug before it — a flaky `test/loop.test.ts` resumed-tick case that
 intermittently reported `no_change` when the full suite ran in parallel under load (its 300 ms
 abort timer could fire before the fake pi wrote its marker file) — was fixed by making the test's
 abort wait for that marker; earlier fixes are recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
 current work item; both dashboards show project status — planned features and open bugs from
-PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: six PLANS.md plans await the feature loop — all from the Senior Tumwater report (an
-adversarial review gate before merge, a refusal sentinel with friction signals, self-explaining
-commit bodies, a QUESTIONS.md outbox, and slow-clock steward and QA roles); the review gate is
-under way — its machinery (`src/review.ts`: a fresh-session reviewer over the full ahead-of-main
-diff against PRINCIPLES.md, `VERDICT:` parsing, md-only exemption, fail-closed 3-strike discard),
-a top-level `review` config (enabled by default; `*.md`/`docs/**` exempt; optional
-provider/model/thinking for the reviewer), rejection notes injected into the author's next prompt,
-and the leftover-recovery path are on main — gating the fresh-tick merge path is still to come. The last-tick
+PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: five PLANS.md plans await the feature loop — all from the Senior Tumwater report (a
+refusal sentinel with friction signals, self-explaining commit bodies, a QUESTIONS.md outbox, and
+slow-clock steward and QA roles). The review gate has landed end-to-end (feature tick 47): every
+non-exempt commit now passes a fresh-session reviewer over the full ahead-of-main diff against
+PRINCIPLES.md before rebase/merge — `VERDICT:` parsing, md-only exemption (`*.md`/`docs/**`),
+fail-closed 3-strike discard; a rejection resets the branch and injects its reasons into the
+author's next tick (scheduled like a change, no backoff); a failed review keeps the commit on the
+branch for recovery re-review, which routes through the same gate. Review events render in
+`tumwater logs`, dashboards show `reviewing <elapsed>` while a loop is under review, and
+test/review.test.ts covers the pure functions plus gate orchestration end-to-end; the plan's
+remaining items are all addressed, pending the plan-loop audit to move it to Done. The last-tick
 timestamp plan has landed: both dashboards show each loop's last tick end as an absolute local
 time alongside its relative age. The report's PRINCIPLES.md plan has landed: every tick prompt now carries the
 project's tracked PRINCIPLES.md (documented under How it works).
@@ -91,8 +97,12 @@ one loop per enabled role. Every loop tick:
    ticks start with a small, cheap prefill and stay far from the model's context window. Durable
    knowledge lives in the repo itself (README/PLANS/BUGS, read at the start of every tick), not
    in model context.
-3. If pi changed files: commits, rebases the branch onto main (so main's history stays linear),
-   and fast-forwards main — all under a merge lock shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
+3. If pi changed files: commits, then runs an adversarial review gate over the full ahead-of-main
+   diff — a fresh-session reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject`
+   (md-only diffs are exempt); rejects reset the branch with reasons injected into the author's
+   next tick, failures keep the commit for re-review under a 3-strike discard cap. Approved work
+   rebases the branch onto main (so main's history stays linear) and fast-forwards — all under a
+   merge lock shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
@@ -103,7 +113,9 @@ taste. Only the director and steward roles edit that file; every other loop trea
 Stopping the harness (Ctrl+C) mid-tick loses nothing: the interrupted loop's pi session and its
 worktree's uncommitted edits stay in place, and on the next `tumwater run` that loop resumes the
 same session (`--continue`) with a short bridge prompt and finishes the task it was on. A crash
-(power loss, kill -9) is recovered the same way. The director is the exception: its interrupted
+(power loss, kill -9) is recovered the same way — except an interruption during the review gate,
+where the work is already committed and the next launch recovers and re-reviews it via a fresh
+tick instead of resuming the author session. The director is the exception: its interrupted
 user prompt goes back into the inbox and runs fresh.
 
 The director loop is special: it executes prompts you type into the TUI (or `tumwater prompt`),

@@ -5,7 +5,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Build broken on main: src/loop.ts calls `git` without importing it (found by readme loop 2026-08-28)
+
+**Symptom:** `npm run build` — and therefore `npm test` — fails on main with two TypeScript errors:
+
+```
+src/loop.ts(402,15): error TS2304: Cannot find name 'git'.
+src/loop.ts(403,15): error TS2304: Cannot find name 'git'.
+```
+
+Every loop inherits this because worktrees reset to main at tick start, so the whole fleet is blocked until it lands. Fourth instance of broken work landing on main; this one got through unreviewed because feature tick 47 (74224e9) is itself the commit that wired the review gate into the tick path — no gate existed before its own merge.
+
+**Repro:** `npm run build` at HEAD 85a8a9a (any main since 74224e9).
+
+**Cause:** Clean tick 91c199a (2026-08-28) removed the `git` import from src/loop.ts as unused — true at that moment. Feature tick 47 (an hour later) then added two new uses of `git(...)` in `recoverLeftover`'s left-for-retry path (`reset --hard HEAD` + `clean -fd`, keeping a failed-review commit on the branch for re-review instead of resetting to main) without re-adding the import.
 
 ## Fixed
 
