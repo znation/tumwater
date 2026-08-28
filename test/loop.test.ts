@@ -648,6 +648,56 @@ test("unmergeable leftover commits are discarded with a warning on the next tick
   }
 });
 
+test("a failed recovery review keeps its commit on the branch for re-review", async () => {
+  const repo = await initializedRepo();
+  const m1 = path.join(tmpdir(), "phase1");
+  // Phase 0 (any run whose prompt asks for a VERDICT — the review gate): reply without a
+  // VERDICT line, failing closed under the strike cap both times, and leave an untracked
+  // stray file in the worktree. Phase 1 (tick 1): edit seed.txt on the branch — its commit
+  // is stranded when the tick's own review fails. Phase 2 (tick 2's own tick): nothing to do.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
+      `  touch stray.txt`,
+      `  printf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
+      `  exit 0;; esac; done`,
+      `if [ ! -f "${m1}" ]; then`,
+      `  touch "${m1}"`,
+      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
+      `  echo branch change > seed.txt`,
+      `else`,
+      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "review_error");
+    // The tick's commit is stranded on the branch; its recovery review will fail too.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
+
+    const second = await runner.tick();
+    assert.equal(second.result, "no_change", "tick 2 itself found nothing to do");
+
+    // The failed recovery review (under the strike cap) deliberately left its commit on
+    // the branch for re-review — a plain reset-to-main would have discarded it. This is
+    // tick()'s left-for-retry path: reset --hard HEAD + clean -fd keep the commit but drop
+    // uncommitted strays (regression: this path once called git() without importing it,
+    // erroring every such tick and breaking the build).
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
+    const wt = worktreePath(repo, "improve");
+    assert.ok(!fs.existsSync(path.join(wt, "stray.txt")), "the stray untracked file is cleaned");
+    assert.equal(sh(wt, "git", "status", "--porcelain"), "", "no uncommitted edits remain");
+    const failed = readEvents(repo).filter((e) => e.type === "review_failed");
+    assert.ok(
+      failed.some((e) => /no parseable VERDICT/.test(String(e.message))),
+      `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("concurrent-main-advance still lands (rebase path, linear history)", async () => {
   const repo = await initializedRepo();
   // The fake pi advances main itself mid-tick, simulating another loop landing work.

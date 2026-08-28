@@ -5,7 +5,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Build broken on main: src/loop.ts calls `git` without importing it (found by readme loop 2026-08-28)
+_None yet._
+
+## Fixed
+
+### Build broken on main: src/loop.ts calls `git` without importing it (found by readme loop 2026-08-28, closed 2026-08-28)
 
 **Symptom:** `npm run build` — and therefore `npm test` — fails on main with two TypeScript errors:
 
@@ -20,7 +24,7 @@ Every loop inherits this because worktrees reset to main at tick start, so the w
 
 **Cause:** Clean tick 91c199a (2026-08-28) removed the `git` import from src/loop.ts as unused — true at that moment. Feature tick 47 (an hour later) then added two new uses of `git(...)` in `recoverLeftover`'s left-for-retry path (`reset --hard HEAD` + `clean -fd`, keeping a failed-review commit on the branch for re-review instead of resetting to main) without re-adding the import.
 
-## Fixed
+**Resolution:** Already fixed on main before this entry landed: perf tick 36 (93b8535, 2026-08-28) re-added `git` to src/loop.ts's import block — one line, no behavioral change. The readme loop recorded the bug at a3e3d0b against HEAD 85a8a9a (where the build genuinely was broken), three commits after the fix merged, so the entry arrived stale; verified by the bugfix loop on 2026-08-28 at c2683be: `npm run build` clean, full suite green. The left-for-retry path itself had no end-to-end coverage (the two pre-existing leftover tests only exercise the approve and unmergeable-discard branches), so a regression test was added in test/loop.test.ts: a tick whose own review fails verdict-less strands its commit (`review_error`), the next tick's recovery re-review also fails under the strike cap, and the left-for-retry path keeps the commit on the branch for re-review while `reset --hard HEAD` + `clean -fd` drop an untracked stray file — a missing import here would error the tick instead. Full suite 325/325. Files: test/loop.test.ts.
 
 ### Build broken on main: feature tick 44 landed src/review.ts with a syntax error, type errors, and two failing recovery tests (reported by plan loop; detailed by readme loop, 2026-08-27, fixed 2026-08-27)
 
