@@ -55,10 +55,12 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs: main's build break from feature tick 47 (74224e9) — src/loop.ts calling `git(...)`
-without importing it after a clean tick removed the import as unused an hour earlier — was already
-fixed on main by perf tick 36 before the BUGS.md entry landed, and is closed under BUGS.md's Fixed
-section with a regression test for the left-for-retry path. The previous one — main's build break from
+`maxConcurrent`/`sessionRetentionDays` need a restart). One open bug entry remains in BUGS.md, and it is stale: a duplicate of main's build break
+from feature tick 47 (74224e9) — src/loop.ts calling `git(...)` without importing it after a clean
+tick removed the import as unused an hour earlier — re-reported by the organize loop after perf tick
+36 had already fixed it on main; the build is verified green at current HEAD, and the bugfix loop will
+close the entry. The first report of that break was closed under BUGS.md's Fixed section with a
+regression test for the left-for-retry path. The previous one — main's build break from
 feature tick 44 (bad613e): src/review.ts with a syntax error on line 184, six
 `noUncheckedIndexedAccess` violations in the same new code, and two leftover-recovery tests that
 failed because recovery routes through the review gate their fake pi cannot satisfy — was fixed by
@@ -70,17 +72,22 @@ abort timer could fire before the fake pi wrote its marker file) — was fixed b
 abort wait for that marker; earlier fixes are recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
 current work item; both dashboards show project status — planned features and open bugs from
-PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: five PLANS.md plans await the feature loop — all from the Senior Tumwater report (a
-refusal sentinel with friction signals, self-explaining commit bodies, a QUESTIONS.md outbox, and
-slow-clock steward and QA roles). The review gate has landed end-to-end (feature tick 47): every
+PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: four of the Senior Tumwater report's plans still await the feature loop —
+a refusal sentinel with friction signals, a QUESTIONS.md outbox, and slow-clock steward and QA roles.
+Self-explaining commit bodies has landed in code (feature tick 48): every commit now carries the
+author's WHY/RISK/VERIFIED body plus a harness-stamped trailer (`Tick: <role> #<tick> · turns N ·
+ctx M`), and the reviewer checks the claimed WHY/VERIFIED against the diff; it awaits the plan-loop
+audit to move its plan to Done. The review gate has landed end-to-end (feature tick 47): every
 non-exempt commit now passes a fresh-session reviewer over the full ahead-of-main diff against
 PRINCIPLES.md before rebase/merge — `VERDICT:` parsing, md-only exemption (`*.md`/`docs/**`),
 fail-closed 3-strike discard; a rejection resets the branch and injects its reasons into the
 author's next tick (scheduled like a change, no backoff); a failed review keeps the commit on the
 branch for recovery re-review, which routes through the same gate. Review events render in
 `tumwater logs`, dashboards show `reviewing <elapsed>` while a loop is under review, and
-test/review.test.ts covers the pure functions plus gate orchestration end-to-end; the plan's
-remaining items are all addressed, pending the plan-loop audit to move it to Done. The last-tick
+test/review.test.ts covers the pure functions plus gate orchestration end-to-end; the plan loop
+re-audited it on 2026-08-28 and verified every item landed — what remains is three test gaps against
+the acceptance criteria (reject→next-prompt injection, merge lock not held during review,
+`reviewing <elapsed>` state cell), nothing structural. The last-tick
 timestamp plan has landed: both dashboards show each loop's last tick end as an absolute local
 time alongside its relative age. The report's PRINCIPLES.md plan has landed: every tick prompt now carries the
 project's tracked PRINCIPLES.md (documented under How it works).
