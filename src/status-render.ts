@@ -3,6 +3,7 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import type { LoopState } from "./types.js";
 import type { StatusSnapshot } from "./status.js";
 import { readLiveProgress } from "./progress.js";
+import { compactTokens } from "./text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
  * cycle position, time/token formatters, and the width-aware table shared by
@@ -44,17 +45,13 @@ function duration(ms: number): string {
   return `${Math.floor(s / 3600)}h${Math.round((s % 3600) / 60)}m`;
 }
 
-function tokens(n: number): string {
-  return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
-
 /** The state cell for a working loop: elapsed · turns · live context · current tool. */
 export function workingDetail(root: string, s: LoopState): string {
   const live = readLiveProgress(root, s.role);
   const elapsed = s.lastTickStartedAt ? duration(Date.now() - s.lastTickStartedAt) : "";
   if (!live) return `working ${elapsed}`.trim();
   const parts = [`working ${elapsed}`.trim(), `turn ${live.turns + 1}`];
-  if (live.contextTokens > 0) parts.push(`ctx ${tokens(live.contextTokens)}`);
+  if (live.contextTokens > 0) parts.push(`ctx ${compactTokens(live.contextTokens)}`);
   if (live.lastTool) parts.push(live.lastTool);
   // Silence under five minutes is normal (slow local-model prefills, long tool calls);
   // only flag a stall once at least five minutes have passed without any pi output.
@@ -154,8 +151,8 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     stateCell(root, s, snap.running),
     String(s.ticks),
     String(s.commits),
-    tokens(m.generated),
-    tokens(m.peakCtx),
+    compactTokens(m.generated),
+    compactTokens(m.peakCtx),
     `$${s.totalCostUsd.toFixed(2)}`,
     lastTickCell(s.lastTickEndedAt),
     s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
@@ -165,8 +162,8 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     "",
     "",
     "",
-    tokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
-    tokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
+    compactTokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
+    compactTokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
     `$${snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0).toFixed(2)}`,
     "",
     "",

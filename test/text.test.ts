@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collapseWhitespace, truncate } from "../src/text.js";
+import { compactTokens, collapseWhitespace, truncate } from "../src/text.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
 // (live progress work items, transcript lines/thinking/errors, tool-call descriptions)
@@ -70,4 +70,18 @@ test("truncate never returns a string longer than max (the display-width invaria
       assert.ok(out.length <= max, `truncate(${JSON.stringify(s.slice(0, 12))}…, ${max}) → ${out.length} chars: ${JSON.stringify(out)}`);
     }
   }
+});
+
+// compactTokens is the single home of the token display format shared by the status table's
+// gen/peak-ctx columns and the commit trailer's ctx field — pinning it here keeps those two
+// surfaces from drifting even though they live in different modules.
+test("compactTokens renders bare integers below 10,000", () => {
+  assert.equal(compactTokens(0), "0");
+  assert.equal(compactTokens(500), "500");
+  assert.equal(compactTokens(9_999), "9999"); // just under the threshold: no k
+});
+
+test("compactTokens renders one-decimal k at and above 10,000", () => {
+  assert.equal(compactTokens(10_000), "10.0k"); // boundary: compacted with a .0
+  assert.equal(compactTokens(12_345), "12.3k");
 });

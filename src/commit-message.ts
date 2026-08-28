@@ -1,3 +1,5 @@
+import { compactTokens } from "./text.js";
+
 /** Assembling tick commit messages from pi's final reply: the SUMMARY line becomes the
  * subject, the WHY/RISK/VERIFIED block becomes the body, and the harness stamps a trailer
  * with tick metadata. Split out of prompt.ts — which keeps building the prompts that declare
@@ -51,12 +53,6 @@ export function formatCommitBody(body: CommitBody): string {
   ]
     .filter(Boolean)
     .join("\n");
-}
-
-/** Compact token count for the commit trailer, matching the status table's style (12k at
- * ≥10,000, bare integer below). */
-function compactTokens(n: number): string {
-  return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
 /** The harness-stamped trailer line of every tick commit — truth from the run's counters, not
