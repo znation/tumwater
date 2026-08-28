@@ -113,6 +113,17 @@ trade away clarity for speculative gains; if no clear win exists, there is nothi
 better error messages, stronger types, a missing input validation, developer
 ergonomics, tooling. Make that one improvement, keeping the project building and tests passing.`,
   },
+  {
+    id: "steward",
+    title: "project steward",
+    find: `Re-read the initial prompt, PRINCIPLES.md, PLANS.md, BUGS.md — and QUESTIONS.md if it
+exists — and skim the codebase's shape (sizes, module list, test count). Then make ONE
+curation move, the most valuable one: delete or merge stale/duplicative/superseded
+PLANS.md entries (with a one-line epitaph in the entry's place or in Done); flag drift
+between what is being built and the initial prompt as a PLANS.md note; tighten or update
+a principle or complexity budget in PRINCIPLES.md; or record a structural risk in BUGS.md.
+You edit only markdown — never source.`,
+  },
 ];
 
 /** Every role id, including the director (which is driven by user prompts, not a find prompt). */

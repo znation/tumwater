@@ -11,6 +11,9 @@ export interface RoleConfig {
   model?: string;
   /** pi thinking-level override for this role; falls back to the top-level value. */
   thinking?: string;
+  /** Minimum seconds between two ticks of THIS role, overriding the top-level value — a
+   * slow clock for roles that should act rarely (the steward curates on ~6 h). */
+  minTickIntervalSeconds?: number;
 }
 
 /** Top-level review-gate config in tumwater.json (see src/review.ts). */

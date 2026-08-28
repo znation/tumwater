@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
-import { enabledRoleIds, loadConfigSafe } from "./config.js";
+import { configForRole, enabledRoleIds, loadConfigSafe } from "./config.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry, readBranchHead } from "./git.js";
@@ -62,7 +62,9 @@ export function isEligible(
     return inboxCount > 0 ? { run: true, reason: "inbox" } : { run: false };
   }
 
-  const minGap = runner.config.minTickIntervalSeconds * 1000;
+  // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates both scheduled
+  // ticks and "main moved" early wakes — resolved here so a live-reloaded config applies.
+  const minGap = configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000;
   const sinceLast = now - (s.lastTickEndedAt ?? 0);
   if (sinceLast < minGap) return { run: false };
   if (now >= s.nextRunAt) {

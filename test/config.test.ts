@@ -155,7 +155,10 @@ test("validateConfig rejects unknown keys with the valid ones listed", () => {
   assert.match(backoff, /unknown key "factorr" in idleBackoff \(valid keys: initialSeconds, factor, maxSeconds\)/);
 
   const roleEntry = validationError({ roles: { feature: { enabed: true } } });
-  assert.match(roleEntry, /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, thinking\)/);
+  assert.match(
+    roleEntry,
+    /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, thinking, minTickIntervalSeconds\)/,
+  );
 });
 
 test("validateConfig rejects unknown role ids (a typo would spawn a phantom erroring loop)", () => {

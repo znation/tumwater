@@ -6,6 +6,8 @@ import { configPath } from "./paths.js";
 export function defaultConfig(): TumwaterConfig {
   const roles: Record<string, RoleConfig> = {};
   for (const id of allRoleIds()) roles[id] = { enabled: true };
+  // The steward works on a slow clock (~6 h): whole-system curation, not shipping work.
+  roles.steward.minTickIntervalSeconds = 21600;
   return {
     piArgs: [],
     maxConcurrent: 6,
@@ -59,7 +61,14 @@ const TOP_LEVEL_KEYS = [
   "roles",
 ];
 const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
-const ROLE_ENTRY_KEYS = ["enabled", "instructions", "provider", "model", "thinking"];
+const ROLE_ENTRY_KEYS = [
+  "enabled",
+  "instructions",
+  "provider",
+  "model",
+  "thinking",
+  "minTickIntervalSeconds",
+];
 const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking"];
 
 /** Collect the keys present in `obj` but not in `known` into problems, naming where they
@@ -177,6 +186,13 @@ export function validateConfig(raw: unknown): void {
           checkString(o, `roles.${id}.`, key);
         if ("enabled" in o && typeof o.enabled !== "boolean")
           problems.push(`roles.${id}.enabled must be true or false (got ${show(o.enabled)})`);
+        checkNumber(
+          o,
+          `roles.${id}.`,
+          "minTickIntervalSeconds",
+          (n) => n >= 0,
+          "a number of 0 or more",
+        );
       }
     }
   }
@@ -253,11 +269,16 @@ function withModelOverrides(
   };
 }
 
-/** The config as seen by one role's pi runs: role-level provider/model/thinking
- * overrides applied over the top-level values. */
+/** The config as seen by one role: role-level provider/model/thinking overrides applied
+ * over the top-level values, plus the per-role minTickIntervalSeconds (a slow clock for
+ * roles that should act rarely) falling back to the global value when unset. */
 export function configForRole(config: TumwaterConfig, role: string): TumwaterConfig {
   const rc = config.roles[role];
-  return rc ? withModelOverrides(config, rc) : config;
+  if (!rc) return config;
+  return {
+    ...withModelOverrides(config, rc),
+    minTickIntervalSeconds: rc.minTickIntervalSeconds ?? config.minTickIntervalSeconds,
+  };
 }
 
 /** The config as seen by the review gate's pi runs: the top-level `review` section's

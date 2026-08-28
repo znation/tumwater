@@ -302,6 +302,10 @@ export class LoopRunner {
    * observable. */
   async tick(): Promise<TickOutcome> {
     const s = this.state;
+    // This role's view of the config (per-role provider/model/thinking + minTickIntervalSeconds
+    // overrides): resolved once so every interval-based scheduling branch below honors a slow
+    // clock (e.g. the steward's ~6 h) and a live-reloaded config applies from this tick on.
+    const cfg = configForRole(this.config, this.role);
     s.ticks += 1;
     // gen / peak ctx are per-tick windows, not lifetime totals (user decision 2026-08-25):
     // reset before the start-of-tick save so a working loop's columns grow live from 0 and
@@ -338,16 +342,16 @@ export class LoopRunner {
     if (outcome.result === "changed") {
       s.commits += 1;
       s.backoffSeconds = 0;
-      s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
+      s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
     } else if (outcome.result === "rejected") {
       // The reviewer objected and the gate already reset the branch: the author should address
       // the recorded reasons on its next eligible tick, not sleep through them — schedule like
       // a change without counting a commit (nothing landed).
       s.backoffSeconds = 0;
-      s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
+      s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
     } else if (outcome.result === "skipped") {
       // Director idles until the inbox has work; no backoff bookkeeping.
-      s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
+      s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
     } else if (outcome.result === "aborted") {
       // Shutdown, not a verdict about the project: resume promptly on restart. The pi
       // session and the worktree's uncommitted edits were left in place, so the next tick
@@ -364,7 +368,7 @@ export class LoopRunner {
       // gives up on it and falls back to a fresh tick with normal backoff.
       s.cutOffStreak = (s.cutOffStreak ?? 0) + 1;
       s.resumePending = true;
-      s.nextRunAt = Date.now() + this.config.minTickIntervalSeconds * 1000;
+      s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
     } else {
       s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, this.config);
       s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
