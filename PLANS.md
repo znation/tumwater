@@ -84,10 +84,12 @@ StatusSnapshot like inbox). Answers flow back by editing the file or via the dir
 never block on their own questions. The report's answer to "software lacks victory conditions":
 be excellent at requesting them.
 
-### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25)
+### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
+refined 2026-08-27)
 
 Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
-~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob) that
+~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
+configForRole at all four read sites; enabled by default with no config edit) that
 re-reads the initial prompt,
 PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move: prune/merge
 plans (the only role allowed to delete entries), flag drift, keep the complexity budget honest.
