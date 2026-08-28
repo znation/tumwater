@@ -70,6 +70,10 @@ function clipReason(r: string): string {
   return r.length > MAX_REASON_CHARS ? r.slice(0, MAX_REASON_CHARS - 1) + "…" : r;
 }
 
+/** The verdict line as stated in buildReviewPrompt — anchored at line start so prose that
+ * merely mentions "VERDICT:" mid-sentence cannot set the outcome. */
+const VERDICT_RE = /^VERDICT:\s*(approve|reject)\b/mg;
+
 /** Parse the reviewer's reply: the LAST VERDICT line wins (the prompt asks for exactly one),
  * followed by its reasons — numbered/bulleted lines first, any other non-empty prose as a
  * fallback. Null when no parseable verdict exists: that is a FAILED review, never an approval
@@ -88,10 +92,6 @@ export function parseVerdict(text: string): ReviewVerdict | null {
   if (reasons.length === 0) reasons = lines; // Prose fallback: every non-empty line.
   return { verdict, reasons: reasons.slice(0, MAX_REASONS).map(clipReason) };
 }
-
-/** The verdict line as stated in buildReviewPrompt — anchored at line start so prose that
- * merely mentions "VERDICT:" mid-sentence cannot set the outcome. */
-const VERDICT_RE = /^VERDICT:\s*(approve|reject)\b/mg;
 
 /** Everything reviewAheadOfMain needs from its caller (a LoopRunner tick or recovery). */
 export interface ReviewContext {
