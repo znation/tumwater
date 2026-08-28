@@ -55,11 +55,12 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). One open bug in BUGS.md, found by this
-readme loop while verifying status: feature tick 49 (6e3f487) broke main's build — `roles.steward`
-possibly undefined at src/config.ts(10,3) under noUncheckedIndexedAccess; the review gate could not
-catch it because its reviewer is forbidden from running state-changing commands and `npm run
-build` writes dist/. The previous breakage — main's build break from feature tick 47 (74224e9), src/loop.ts calling
+`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs in BUGS.md. The most recent —
+feature tick 49 (6e3f487) breaking main's build, `roles.steward` possibly undefined at src/config.ts
+under noUncheckedIndexedAccess; the review gate could not catch it because its reviewer is forbidden
+from running state-changing commands and `npm run build` writes dist/ — was fixed on 2026-08-28 by
+assigning the full steward entry in defaultConfig, with a regression test for the slow-clock default
+(full detail under BUGS.md's Fixed section). The previous breakage — main's build break from feature tick 47 (74224e9), src/loop.ts calling
 `git(...)` without importing it after a clean tick removed the import as unused an hour earlier — was
 reported twice, both reports arriving stale because perf tick 36 had fixed it on main before either
 entry landed; both are closed under BUGS.md's Fixed section with a regression test for the
@@ -78,8 +79,8 @@ current work item; both dashboards show project status — planned features and 
 PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: three of the Senior Tumwater report's plans still await the feature loop — a refusal
 sentinel with friction signals, a QUESTIONS.md outbox, and the QA role. The slow-clock steward has
 landed in code (feature tick 49): a markdown-only curation role on a ~6 h per-role clock (the new
-`minTickIntervalSeconds` override of the global interval), enabled by default — but that landing commit is what broke main's build (see BUGS.md); it awaits
-the plan-loop audit to move its plan to Done. Self-explaining commit bodies has landed in code (feature
+`minTickIntervalSeconds` override of the global interval), enabled by default; its landing commit's
+build break is fixed (BUGS.md) and it awaits the plan-loop audit to move its plan to Done. Self-explaining commit bodies has landed in code (feature
 tick 48): every commit now carries the author's WHY/RISK/VERIFIED body plus a harness-stamped
 trailer (`Tick: <role> #<tick> · turns N · ctx M`), and the reviewer checks the claimed WHY/VERIFIED
 against the diff; the plan loop audited it on 2026-08-28 (verified at b101c02, suite green) — what
@@ -94,7 +95,10 @@ branch for recovery re-review, which routes through the same gate. Review events
 test/review.test.ts covers the pure functions plus gate orchestration end-to-end; the plan loop
 re-audited it on 2026-08-28 and verified every item landed — what remains is three test gaps against
 the acceptance criteria (reject→next-prompt injection, merge lock not held during review,
-`reviewing <elapsed>` state cell), nothing structural. The last-tick
+`reviewing <elapsed>` state cell) plus one small code item from the plan's 2026-08-28 refinement: a
+deterministic build pre-check in which the harness itself runs the project's npm typecheck/build
+script as the gate's first step (after the md-only exemption, before any reviewer run; failure
+rejects with the compiler tail as reasons), closing the hole that let tick 49's type error land. The last-tick
 timestamp plan has landed: both dashboards show each loop's last tick end as an absolute local
 time alongside its relative age. The report's PRINCIPLES.md plan has landed: every tick prompt now carries the
 project's tracked PRINCIPLES.md (documented under How it works).
