@@ -19,7 +19,7 @@ import {
   saveLoopState,
   zeroCounters,
 } from "../src/state.js";
-import { orchestratorStatePath, resetRequestPath } from "../src/paths.js";
+import { resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 function runner(role: string): LoopRunner {
