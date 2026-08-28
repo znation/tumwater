@@ -47,6 +47,46 @@ test("ensureWorktree recovers from a deleted worktree directory", async () => {
   assert.ok(fs.existsSync(path.join(again, "seed.txt")));
 });
 
+/** Delete the worktree's admin-side registration under <repo>/.git/worktrees/ (the one whose
+ * gitdir file points at `wt`), simulating outside git maintenance pruning it. */
+function pruneAdminRegistration(repo: string, wt: string): void {
+  const adminDir = path.join(repo, ".git", "worktrees");
+  for (const name of fs.readdirSync(adminDir)) {
+    const p = path.join(adminDir, name);
+    const gitdirFile = path.join(p, "gitdir");
+    if (fs.existsSync(gitdirFile) && fs.readFileSync(gitdirFile, "utf8").includes(wt)) {
+      fs.rmSync(p, { recursive: true, force: true });
+    }
+  }
+}
+
+test("ensureWorktree recovers when its admin registration is pruned out from under it", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "clean", "main");
+  // Leave unmerged work on the branch so recovery must preserve it.
+  fs.writeFileSync(path.join(wt, "branch-only.txt"), "b\n");
+  const commit = await commitAll(wt, "branch work");
+
+  pruneAdminRegistration(repo, wt);
+
+  // Previously this wedged every tick with a raw git fatal; now it re-adds the directory.
+  const again = await ensureWorktree(repo, "clean", "main");
+  assert.equal(again, wt);
+  assert.ok(fs.existsSync(path.join(again, "seed.txt")));
+  // The branch's unmerged commit survived the re-add.
+  assert.equal(await headOf(wt, "HEAD"), commit);
+});
+
+test("ensureWorktree recovers when the worktree's .git pointer file is lost", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "clean", "main");
+  fs.rmSync(path.join(wt, ".git")); // admin-side registration survives this one
+
+  const again = await ensureWorktree(repo, "clean", "main");
+  assert.equal(again, wt);
+  assert.ok(fs.existsSync(path.join(again, "seed.txt")));
+});
+
 test("commitAll stages everything and ffMergeToMain lands it while root is on main", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "improve", "main");

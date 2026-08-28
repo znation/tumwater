@@ -126,7 +126,10 @@ export async function isDirty(cwd: string): Promise<boolean> {
   return out.length > 0;
 }
 
-/** Ensure a persistent worktree + branch exists for a role. Returns the worktree path. */
+/** Ensure a persistent worktree + branch exists for a role. Returns the worktree path.
+ * Self-heals when the directory exists but is no longer a usable worktree (its .git pointer
+ * file lost, or its admin-side registration under <root>/.git/worktrees/ pruned by outside
+ * git maintenance): it removes and re-adds the directory instead of failing every tick. */
 export async function ensureWorktree(root: string, role: string, mainBranch: string): Promise<string> {
   const wt = worktreePath(root, role);
   const branch = branchName(role);
@@ -135,6 +138,14 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   }
   // A stale registration (dir deleted, worktree still known) blocks `worktree add`.
   await gitTry(root, "worktree", "prune");
+  if (fs.existsSync(wt)) {
+    // The directory exists but is not a usable worktree. Left alone, `worktree add` would
+    // fail on it every tick forever and wedge the role. It holds only harness scratch — a
+    // fresh tick resets it to main anyway — so remove and re-add; the branch's commits
+    // survive in refs/heads either way.
+    fs.rmSync(wt, { recursive: true, force: true });
+    await gitTry(root, "worktree", "prune"); // drop any registration left pointing at it
+  }
   const branchExists = (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
   if (branchExists) {
     await git(root, "worktree", "add", wt, branch);
