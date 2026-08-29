@@ -74,8 +74,9 @@ test("plannedPlans reads PLANS.md fresh; missing file yields []", () => {
   const root = tmpdir();
   fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
   assert.equal(plannedPlans(root).length, 2);
-  // A later edit is visible on the next read (no caching). The entry must land inside
-  // Planned — appending to the file end would file it under Done.
+  // A later edit is visible on the next read: the write changes size and mtime, so the
+  // stat-keyed cache misses. The entry must land inside Planned — appending to the file end
+  // would file it under Done.
   fs.writeFileSync(
     path.join(root, "PLANS.md"),
     PLANS_MD.replace("## Done", "### A brand new plan (planned 2026-08-25)\n\n## Done"),
@@ -143,12 +144,53 @@ test("openQuestions skips placeholders in a freshly seeded file", () => {
   assert.deepEqual(openQuestions(root), []);
 });
 
+test("an unchanged file is served from the stat-keyed cache without re-reading", () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
+  assert.equal(plannedPlans(root).length, 2); // populates the cache
+  let reads = 0;
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  try {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
+      reads += 1;
+      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
+    };
+    assert.deepEqual(plannedPlans(root), [
+      "Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)",
+      "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)",
+    ]);
+    assert.equal(reads, 0); // unchanged since the first read — no file I/O at all
+    // Each call still gets its own array: mutating one result must not poison the cache.
+    const a = plannedPlans(root);
+    a.push("mutated by caller");
+    assert.equal(plannedPlans(root).length, 2);
+  } finally {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
+  }
+});
+
+test("a same-size edit is picked up via mtime, not just size", () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
+  assert.equal(plannedPlans(root)[1], "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)");
+  // Replace one heading with different text of the EXACT same length: size alone cannot
+  // detect the change, so mtime must be part of the cache key. utimes forces a distinct
+  // mtime regardless of filesystem timestamp granularity (two fast writes could otherwise
+  // share one on coarse-grained filesystems).
+  const edited = PLANS_MD.replace("Timestamp of last result", "Renamed plan entry, same");
+  assert.equal(edited.length, PLANS_MD.length);
+  fs.writeFileSync(path.join(root, "PLANS.md"), edited);
+  const t = new Date(Date.now() + 5000);
+  fs.utimesSync(path.join(root, "PLANS.md"), t, t);
+  assert.equal(plannedPlans(root)[1], "Renamed plan entry, same (planned 2026-08-21, refined 2026-08-25)");
+});
+
 test("openQuestions reads fresh: answering a question drops it from the list", () => {
   const root = tmpdir();
   fs.writeFileSync(path.join(root, "QUESTIONS.md"), QUESTIONS_MD);
   assert.equal(openQuestions(root).length, 2);
-  // The answer flow moves an entry (heading + body) under ## Answered — the next read
-  // must reflect it (no caching), or the badge would overcount.
+  // The answer flow moves an entry (heading + body) under ## Answered — the write changes
+  // size and mtime, so the next read must reflect it, or the badge would overcount.
   const answeredEntry =
     "### Which provider should the qa role use for its real runs? (asked 2026-08-27 by qa, answered 2026-08-28)\n\nDecision: cheap model.\n";
   const openEntry =
