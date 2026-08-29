@@ -40,7 +40,7 @@ v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `promp
 implemented with eleven roles plus the director loop (absolute scheduling priority; routes
 feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Every tick runs
 in a fresh pi session — context never accumulates across ticks, and durable knowledge lives in
-the repo (README/PLANS/BUGS), which each tick reads first; a tick interrupted by Ctrl+C or a
+the repo (README/PLANS/BUGS/QUESTIONS), which each tick reads first; a tick interrupted by Ctrl+C or a
 crash is resumed on the next launch (same pi session, worktree edits kept), and a tick cut off at
 the context ceiling resumes its just-compacted session instead of idling; merge conflicts get
 one pi-driven resolution attempt; roles can override provider/model/thinking; `tumwater.json` is
@@ -55,22 +55,21 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). No open bugs in BUGS.md; recent main build breaks (feature ticks 47 and 49) are fixed, each
-recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
+`maxConcurrent`/`sessionRetentionDays` need a restart). One open bug in BUGS.md: feature tick 52 broke main's build — its questions-outbox changes made `StatusSnapshot.questions` required and gave `backlogLines` a third argument without updating test/status-render.test.ts and test/tui.test.ts (five type errors; the sixth broken landing, through the same reviewer-cannot-compile hole the review-gate plan's pending build pre-check closes). Earlier main build breaks (feature ticks 47 and 49) are fixed, each recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
-current work item; both dashboards show project status — planned features and open bugs from
-PLANS.md/BUGS.md (TUI's Ctrl+T cycle, a GUI panel). In progress: two of the Senior Tumwater report's plans still await the feature loop —
-a QUESTIONS.md outbox and the QA role. The refusal sentinel with friction signals has landed in code
+current work item; both dashboards show project status — planned features, open bugs, and open questions from
+PLANS.md/BUGS.md/QUESTIONS.md (TUI's Ctrl+T cycle, a GUI panel), with a `questions: N` header badge while any await. In progress: the QA role is the last of the Senior Tumwater report's plans awaiting the feature loop —
+the QUESTIONS.md outbox has landed in code (feature tick 52): `init` seeds a tracked QUESTIONS.md, every prompt reads it first and carries the ask-don't-guess rule, the director routes "answer Qn" prompts to ## Answered, and both dashboards surface open questions. Against its plan what remains is the `question_posted` event emission in tryMerge (the type and rendering exist; nothing emits it yet) and the planned test suite; it awaits the plan-loop audit. The refusal sentinel with friction signals has landed in code
 (feature tick 51): a `TUMWATER_REFUSED: <reason>` reply declines work that would harm the project,
 committing only its markdown objection note under the refused entry's heading in PLANS.md/BUGS.md —
 which blocks the entry until a human or the director clears it, since every role skips entries
 carrying a Refused note — and discarding any non-markdown half-work; changed ticks burning more than
 `thrashTurns` turns (default 40) or `thrashMinutes` minutes (default 60) are flagged high-friction,
 with a warning event plus extra review scrutiny, since difficulty is a signal the work may not fit.
-It awaits the plan-loop audit to move its plan to Done. The slow-clock steward has
+The plan loop audited it on 2026-08-28 (verified at `8ea49b8`, suite green): what remains is three items — the entire planned test suite never landed (`test/refusal.test.ts`), AC3's high-friction trailer line was never implemented (`commitTrailer` takes no friction argument, so a flagged tick carries no marker in git history), and AC5's config validation for `thrashTurns`/`thrashMinutes` is untested. The slow-clock steward has
 landed in code (feature tick 49): a markdown-only curation role on a ~6 h per-role clock (the new
 `minTickIntervalSeconds` override of the global interval), enabled by default; its landing commit's
-build break is fixed (BUGS.md) and it awaits the plan-loop audit to move its plan to Done. Self-explaining commit bodies has landed in code (feature
+build break is fixed (BUGS.md). The plan loop audited it on 2026-08-28 (verified at `ceb6019`, suite green): what remains is test gaps — no role-prompt contract tests, and the per-role interval untested at scheduler level — plus dogfood pending (no `tumwater(steward)` commit in history yet). Self-explaining commit bodies has landed in code (feature
 tick 48): every commit now carries the author's WHY/RISK/VERIFIED body plus a harness-stamped
 trailer (`Tick: <role> #<tick> · turns N · ctx M`), and the reviewer checks the claimed WHY/VERIFIED
 against the diff; the plan loop audited it on 2026-08-28 (verified at b101c02, suite green) — what
@@ -83,9 +82,9 @@ author's next tick (scheduled like a change, no backoff); a failed review keeps 
 branch for recovery re-review, which routes through the same gate. Review events render in
 `tumwater logs`, dashboards show `reviewing <elapsed>` while a loop is under review, and
 test/review.test.ts covers the pure functions plus gate orchestration end-to-end; the plan loop
-re-audited it on 2026-08-28 and verified every item landed — what remains is three test gaps against
-the acceptance criteria (reject→next-prompt injection, merge lock not held during review,
-`reviewing <elapsed>` state cell) plus one small code item from the plan's 2026-08-28 refinement: a
+re-audited it on 2026-08-28 and verified every item landed — the reject→next-prompt
+injection gap closed with a loop test (coverage tick `8ea49b8`); what remains is two test gaps against
+the acceptance criteria (merge lock not held during review, `reviewing <elapsed>` state cell) plus one small code item from the plan's 2026-08-28 refinement: a
 deterministic build pre-check in which the harness itself runs the project's npm typecheck/build
 script as the gate's first step (after the md-only exemption, before any reviewer run; failure
 rejects with the compiler tail as reasons), closing the hole that let tick 49's type error land. The last-tick
@@ -97,14 +96,14 @@ project's tracked PRINCIPLES.md (documented under How it works).
 ## How it works
 
 `tumwater init "<prompt>"` seeds a git repo with README.md (your prompt + a status section),
-PLANS.md, BUGS.md, PRINCIPLES.md, and tumwater.json, and commits them. `tumwater run` then starts
+PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, and tumwater.json, and commits them. `tumwater run` then starts
 one loop per enabled role. Every loop tick:
 
 1. Resets its persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`) to main.
 2. Builds a role-specific "find something to do" prompt and runs `pi --print --mode json` in the
    worktree, starting a FRESH pi session every tick: context never accumulates across ticks, so
    ticks start with a small, cheap prefill and stay far from the model's context window. Durable
-   knowledge lives in the repo itself (README/PLANS/BUGS, read at the start of every tick), not
+   knowledge lives in the repo itself (README/PLANS/BUGS/QUESTIONS, read at the start of every tick), not
    in model context.
 3. If pi changed files: commits, then runs an adversarial review gate over the full ahead-of-main
    diff — a fresh-session reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject`
@@ -131,7 +130,7 @@ The director loop is special: it executes prompts you type into the TUI (or `tum
 queued in a file-based inbox. It always has priority — a queued prompt starts immediately,
 outside the `maxConcurrent` limit and ahead of every role loop, and queued prompts run back to
 back with no cooldown between them. Everything is local git; no remotes are ever touched. Runtime state
-lives in `.tumwater/` (gitignored); durable state (plans, bugs, principles, status, config) lives
+lives in `.tumwater/` (gitignored); durable state (plans, bugs, questions, principles, status, config) lives
 in tracked markdown and `tumwater.json`.
 
 ## Usage

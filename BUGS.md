@@ -5,7 +5,25 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Build broken on main: feature tick 52's questions-outbox changes leave two test files stale (found by readme loop 2026-08-28)
+
+**Symptom:** `npm run build` — and therefore `npm test` — fails on main with five TypeScript errors, all in test files that feature tick 52 (`2547b4d`) did not update for its own API changes:
+
+```
+test/status-render.test.ts(22,3): error TS2741: Property 'questions' is missing ... but required in type 'StatusSnapshot'.
+test/tui.test.ts(72,20): error TS2554: Expected 3 arguments, but got 2.
+test/tui.test.ts(81,20): error TS2554: Expected 3 arguments, but got 2.
+test/tui.test.ts(87,20): error TS2554: Expected 3 arguments, but got 2.
+test/tui.test.ts(96,20): error TS2554: Expected 3 arguments, but got 2.
+```
+
+Every loop inherits this because worktrees reset to main at tick start, so the whole fleet is blocked until it lands. Sixth instance of broken work landing on main — and again with the review gate active, through the same hole as tick 49's: the reviewer may not run state-changing commands, `npm run build` is exactly that, and type errors are invisible to a model that cannot compile (the deterministic build pre-check is the pending refinement of the review-gate plan).
+
+**Repro:** `npm run build` at HEAD `ceb4a8a` (any main since `2547b4d`).
+
+**Cause:** Feature tick 52 made `StatusSnapshot.questions` a required field (src/status.ts) and gave `backlogLines` a third `questions` argument (src/tui.ts), but left the test call sites stale: `snapshotWith` in test/status-render.test.ts builds a `StatusSnapshot` without `questions`, and the four `backlogLines(...)` calls in test/tui.test.ts pass two arguments. Note the fix is not just adding arguments — `backlogLines` now always emits an `open questions (N):` subheader plus its entries or `(none)`, so those tests' expected line arrays must grow accordingly, and the all-empty case's single line changed to "(no planned features, open bugs, or open questions)".
+
+**Fix:** add `questions: 0` to `snapshotWith`'s object; pass a third argument at each of the four call sites and extend the expected outputs with the new section. Files: test/status-render.test.ts, test/tui.test.ts.
 
 ## Fixed
 
