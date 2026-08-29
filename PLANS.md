@@ -148,7 +148,7 @@ on a dogfood tick" verifies then. Files for the remainder: test/pi.test.ts, test
 (or a new test/commit-bodies.test.ts).
 
 ### Questions outbox — loops that know when to ask (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-26)
+refined 2026-08-26, audited 2026-08-28)
 
 Full plan: [plans/questions-outbox.md](plans/questions-outbox.md). A tracked QUESTIONS.md
 (Open/Answered) any loop appends to when a decision is genuinely the user's — context, options,
@@ -159,6 +159,41 @@ project-status view, reusing src/backlog.ts's `parseEntries` — superseding the
 StatusSnapshot like inbox). Answers flow back by editing the file or via the director. Loops
 never block on their own questions. The report's answer to "software lacks victory conditions":
 be excellent at requesting them.
+
+**Status (plan-loop audit 2026-08-28):** feature tick 52 (`2547b4d`) landed the full design;
+verified at `2d3376f` with a green build and a 355/355 suite (the tick's own build break — stale
+test call sites for its new required `questions` field and third `backlogLines` argument — is
+fixed, see BUGS.md). Init: QUESTIONS.md seeds beside PLANS/BUGS and test/init.test.ts asserts it
+in the committed-file list. Prompt contract (src/prompt.ts): the read-first list names
+QUESTIONS.md; COMMON_RULES carries the ask-don't-guess bullet in full — context, options, own
+recommendation, continue-or-end, never block, check for answers at tick start, no re-asking;
+the director's routing block has the answer-routing bullet (move the entry to ## Answered
+verbatim with the decision recorded, apply or route follow-on work). Reader: `openQuestions(root)`
+lives in src/backlog.ts rather than a separate src/questions.ts as the Files list said — within
+the plan's own discretion ("or in questions.ts, delegating to it"), so count and list come from
+one parse; missing or unreadable file yields []. Surfaces: `StatusSnapshot.questions` is required
+and flows like inbox; both dashboards show the header badge only when N > 0 (`· questions: N`,
+status-render.ts + gui-page.ts); the GUI payload carries a fresh-per-poll `questions` list and
+the #backlog panel renders an *open questions* section via the shared backlogList helper with
+`(none)` when empty; the TUI Ctrl+T project-status view passes openQuestions as backlogLines'
+third argument (subheader + entries or `(none)`) and shows a highlighted nudge line `questions:
+N awaiting answers (see QUESTIONS.md)` above the activity pane while any await. Events:
+`question_posted` is in the HarnessEvent union with plain rendering, no warning prefix.
+Remaining — two items against the acceptance criteria, nothing structural: (a) **the event
+emission was never implemented** — tryMerge (src/loop.ts) has no before/after open-question
+count diff; the type and rendering exist but nothing emits `question_posted`, so a merged
+question is invisible in `tumwater logs` until this lands. Small code change per the plan: capture
+`openQuestions(root)` before the rebase, compare after `ffMergeToMain` succeeds, log one event
+per new heading alongside `merged`. (b) **the planned test suite never landed** — no
+test/questions.test.ts; today's only coverage is incidental from the build-break fix (backlogLines
+subheader lines in test/tui.test.ts, `questions: 0` in snapshotWith). Missing against the plan's
+Files list: openQuestions reader units (section isolation / missing file → [] / placeholder skip)
+in test/backlog.test.ts; header-badge rendering at N > 0 on both surfaces; prompt-contract
+assertions (ask-don't-guess bullet, director answer-routing bullet); GUI payload field + panel
+section; TUI project-status view list and nudge line; and a loop e2e that a tick adding an Open
+entry emits `question_posted` alongside `merged` — which doubles as the regression for item (a).
+Files for the remainder: src/loop.ts, test/questions.test.ts (new), test/backlog.test.ts,
+test/status-render.test.ts, test/gui.test.ts, test/tui.test.ts, test/prompt.test.ts.
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28)
