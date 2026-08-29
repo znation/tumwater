@@ -3,6 +3,9 @@ import type { TumwaterConfig, RoleConfig } from "./types.js";
 import { allRoleIds } from "./roles.js";
 import { configPath } from "./paths.js";
 
+/** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick),
+ * with defaults for concurrency, timeouts, log size, retention, thrash detection, idle
+ * backoff, and review settings. */
 export function defaultConfig(): TumwaterConfig {
   const roles: Record<string, RoleConfig> = {};
   for (const id of allRoleIds()) roles[id] = { enabled: true };
