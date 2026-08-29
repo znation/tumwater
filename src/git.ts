@@ -135,52 +135,55 @@ export async function isDirty(cwd: string): Promise<boolean> {
 
 /** Decode a path from `git status --porcelain` output. Git C-quotes paths containing special
  * characters (newlines, tabs, quotes, non-ASCII under core.quotePath) and escapes them — the
- * decoded form is what callers pass back to git as a real path. Unquoted paths pass through. */
+ * decoded form is what callers pass back to git as a real path. Unquoted paths pass through.
+ * Non-ASCII arrives one octal escape per UTF-8 byte, so the escapes are first collected into
+ * a latin1 byte string and only then reassembled as UTF-8 (decoding each escape to a character
+ * on its own yields mojibake — `héllo.md` would come back as `hÃ©llo.md`). */
 function unquotePorcelainPath(p: string): string {
   if (!p.startsWith('"')) return p;
   const end = p.lastIndexOf('"');
   if (end < 1) return p; // Malformed — keep as-is rather than drop the entry.
-  let out = "";
+  let bytes = "";
   for (let i = 1; i < end; i++) {
     const c = p.charAt(i);
     if (c !== "\\") {
-      out += c;
+      bytes += c; // Raw characters in a quoted path are always safe ASCII.
       continue;
     }
     i++;
     const e = p.charAt(i);
     switch (e) {
       case "n":
-        out += "\n";
+        bytes += "\n";
         break;
       case "t":
-        out += "\t";
+        bytes += "\t";
         break;
       case "r":
-        out += "\r";
+        bytes += "\r";
         break;
       case "\\":
-        out += "\\";
+        bytes += "\\";
         break;
       case '"':
-        out += '"';
+        bytes += '"';
         break;
       default:
         // Octal escape \NNN (control characters); anything else is kept literally.
         if (e >= "0" && e <= "7") {
           const chunk = p.slice(i, i + 3);
           if (/^[0-7]{3}$/.test(chunk)) {
-            out += String.fromCharCode(parseInt(chunk, 8));
+            bytes += String.fromCharCode(parseInt(chunk, 8));
             i += 2;
           } else {
-            out += e;
+            bytes += e;
           }
         } else {
-          out += e;
+          bytes += e;
         }
     }
   }
-  return out;
+  return Buffer.from(bytes, "latin1").toString("utf8");
 }
 
 /** Repo-relative paths of every change in the worktree — modified, untracked, and deleted,

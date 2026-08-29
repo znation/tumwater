@@ -7,7 +7,9 @@ import {
   abortSync,
   aheadOfMain,
   aheadOfMainDiff,
+  changedFiles,
   commitAll,
+  commitPathsAndDiscardRest,
   currentBranch,
   continueRebase,
   ensureWorktree,
@@ -288,6 +290,92 @@ test("readBranchHead matches git rev-parse across loose and packed refs", () => 
   head = sh(repo, "git", "rev-parse", "main");
   assert.equal(readBranchHead(repo, "nope"), null); // unknown branch: null, not the stale sha
   assert.equal(readBranchHead(repo, "main"), head);
+});
+
+// --- changedFiles + commitPathsAndDiscardRest: the refusal path's git helpers (loop.ts) ---
+// A refusing run may leave files with special characters in their names; changedFiles must
+// hand back decoded paths that loop.ts can classify (.md filter) and feed straight back to
+// `git add`, so these tests round-trip through real `git status --porcelain` output.
+
+test("changedFiles is empty on a clean worktree", async () => {
+  const repo = makeRepo();
+  assert.deepEqual(await changedFiles(repo), []);
+});
+
+test("changedFiles lists modified, untracked, and deleted files by repo-relative path", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "gone.txt"), "bye\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "second");
+
+  fs.rmSync(path.join(repo, "gone.txt")); // tracked, deleted
+  fs.writeFileSync(path.join(repo, "seed.txt"), "edited\n"); // tracked, modified
+  fs.mkdirSync(path.join(repo, "sub"));
+  fs.writeFileSync(path.join(repo, "sub", "deep.md"), "nested\n"); // untracked, nested
+
+  const files = await changedFiles(repo);
+  // Porcelain v1 collapses an untracked directory into a single `?? sub/` entry — the
+  // decoded form is still usable as-is by callers that feed paths back to git (`git add sub/`).
+  assert.deepEqual(files.sort(), ["gone.txt", "seed.txt", "sub/"]);
+});
+
+test("changedFiles decodes C-quoted porcelain paths (quote, tab, newline, backslash, non-ASCII)", async () => {
+  const repo = makeRepo();
+  // Each name forces a different escape in git's C-quoting under core.quotePath.
+  const names = [
+    'qu"ote.md', // \"
+    "tab\there.txt", // \t
+    "new\nline.txt", // \n
+    "back\\slash.txt", // \\\\
+    "h\u00e9llo.md", // non-ASCII bytes → octal escapes
+  ];
+  for (const n of names) fs.writeFileSync(path.join(repo, n), "x\n");
+
+  const files = await changedFiles(repo);
+  assert.deepEqual(files.sort(), [...names].sort());
+});
+
+test("commitPathsAndDiscardRest returns null without side effects when nothing is stageable", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "note.md"), "n\n"); // untracked, not in the pathspec
+
+  assert.equal(await commitPathsAndDiscardRest(repo, "m", []), null);
+  assert.equal(await commitPathsAndDiscardRest(repo, "m", ["missing.md"]), null);
+  // The early return must not discard anything: the caller decides what to do with the rest.
+  assert.ok(fs.existsSync(path.join(repo, "note.md")), "untracked work survives a null result");
+  assert.equal(await headOf(repo, "HEAD"), await headOf(repo, "main"), "no commit was made");
+});
+
+test("commitPathsAndDiscardRest returns null when the paths hold no changes", async () => {
+  const repo = makeRepo();
+  // seed.txt is tracked and untouched: `git add` succeeds but stages nothing.
+  assert.equal(await commitPathsAndDiscardRest(repo, "m", ["seed.txt"]), null);
+});
+
+test("commitPathsAndDiscardRest commits only the given paths and discards every other change", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "notes.md"), "old\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "second");
+
+  // A refusing run's leftovers: the objection note (md), a half-done code edit, and junk.
+  fs.writeFileSync(path.join(repo, "notes.md"), "objection\n");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "tampered\n");
+  fs.writeFileSync(path.join(repo, "junk.txt"), "half-done\n");
+
+  const head = await commitPathsAndDiscardRest(repo, "tumwater(coverage): refuse — test", ["notes.md"]);
+  assert.ok(head && /^[0-9a-f]{40}$/.test(head));
+  assert.equal(await headOf(repo, "HEAD"), head);
+  assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /refuse — test/);
+
+  // The note landed with its new content...
+  assert.equal(fs.readFileSync(path.join(repo, "notes.md"), "utf8"), "objection\n");
+  // ...and everything else was discarded: tracked edit reverted, untracked junk cleaned.
+  assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "seed\n");
+  assert.ok(!fs.existsSync(path.join(repo, "junk.txt")));
+  assert.ok(!(await isDirty(repo)), "worktree is clean after the discard");
+  // The test runs in a checkout that IS on main, so the note commit becomes main's new tip.
+  assert.equal(await headOf(repo, "main"), head);
 });
 
 // --- aheadOfMainDiff: the review gate's diff feed, including its truncation path ---
