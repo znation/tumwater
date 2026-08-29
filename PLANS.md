@@ -6,7 +6,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 ### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-29)
+refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-29, re-audited 2026-08-29
+(item (a) landed; remainder re-specified))
 
 Full plan: [plans/refusal-and-thrash.md](plans/refusal-and-thrash.md). A new
 `TUMWATER_REFUSED: <reason>` sentinel and `refused` tick outcome let a loop decline work that
@@ -103,6 +104,58 @@ test/loop.test.ts that a low-threshold changed tick's commit carries the Frictio
 log. Files for the remainder: src/commit-message.ts, src/loop.ts, test/loop.test.ts,
 test/prompt.test.ts, test/commit-message.test.ts, test/config.test.ts. Nothing structural remains
 beyond item (d)'s small code change; items (a)–(c) and (e) are pure test work.
+
+**Re-audited 2026-08-29 (plan loop) — item (a) has LANDED; remainder re-specified.** The
+"zero refusal tests there today" claim is stale on current main (`8191c0b`): coverage tick
+`bc479b6` landed the loop-e2e half of item (a) in test/loop.test.ts, after this entry's last
+audit. Two tests: (1) "a refused tick lands only its markdown note, discards code changes, and
+skips review" — fake pi appends a Refused note to PLANS.md plus one tracked edit (`seed.txt`)
+and one untracked file (`broken.ts`), ends with the sentinel → outcome `refused`, summary =
+reason, note on main under subject `tumwater(improve): refuse — it would delete user data`, both
+code changes discarded (worktree clean at tick end) — covering the spec's md-only *and* mixed
+cases in one test; a counter file outside the worktree proves exactly one pi run total, i.e. the
+note commit bypassed the review gate as designed. (2) "a refused tick with no note resets the
+worktree and reports a fallback reason" — bare sentinel plus untracked half-work → nothing lands
+on main, worktree reset clean, `outcome.summary` = "no reason given". One residual against item
+(a)'s spec: neither test reads the event log, so the no-note refusal's "reason in *event* +
+lastSummary" is only half-asserted (lastSummary via outcome) — fold that assertion into item (b)
+below; its e2e already inspects events.
+
+What remains — four items, pickable independently: (b) **thrash flag** in test/loop.test.ts —
+one test per threshold plus a negative control. Turns: config `thrashTurns: 1`, fake pi emits
+two assistant messages and makes a file change → changed tick; assert the warning event message
+carries both thresholds ("high-friction tick: … (thresholds: …)"), `outcome.highFriction` set,
+and the reviewer run's prompt contains its HIGH-FRICTION marker — the fake pi identifies
+reviewer runs by their "adversarial code reviewer" text (the pattern test/loop.test.ts already
+uses for VERDICT runs) and records that run's args to a file. Minutes: config `thrashMinutes: 0`
+(validation allows ≥ 0), fake pi sleeps ~1 s before replying so elapsed minutes exceed 0 at one
+turn; same assertions. Negative control: default thresholds, ordinary changed tick → no
+high-friction warning event and `outcome.highFriction` unset. (c) **prompt contract** in
+test/prompt.test.ts — assert the four shipped strings through the built prompts (feature/bugfix/
+director), not just constants: COMMON_RULES skip rule ("skip entries carrying a Refused note —
+do not pick them and do not re-refuse them"), feature find-text ("Skip plans whose entry carries
+a Refused note."), bugfix analogue ("Skip BUGS.md entries\ncarrying a Refused note." — note the
+line wrap), director routing block ("A decision about a refused entry" … "clear its **Refused
+…** note from PLANS.md/BUGS.md"). (d) **AC3's high-friction trailer line** — small code change,
+format decided above: `commitTrailer` gains an optional fifth argument
+(`highFrictionMinutes?: number`) whose presence appends the sibling line `Friction: high
+(<turns> turns / <minutes>m)`; src/loop.ts's changed-tick call site passes `highFriction ?
+Math.round(minutes) : undefined` (both already computed before the commit); the refusal-path
+call site is untouched; update the stale comment(s) that say the flag stays visible in
+event/lastSummary/review-prompt until this lands — loop.ts:621-622 ("until commit bodies carry a
+dedicated trailer line, those are where it stays visible") is one. Unit tests in
+test/commit-message.test.ts (with-flag exact format; without-flag unchanged). (e) **AC5 config
+validation** in test/config.test.ts — defaults 40/60 present in `defaultConfig()`; negative and
+non-numeric `thrashTurns`/`thrashMinutes` rejected with actionable errors, like the other
+numeric fields' existing assertions.
+
+Synergy for whoever picks (b)+(d) together: item (b)'s turns-threshold e2e *is* item (d)'s
+planned e2e — one high-friction changed tick can assert the warning event, `outcome.highFriction`,
+the reviewer prompt marker, and the `Friction:` line in that commit's git log in a single test;
+only the minutes-threshold test and the units are extra. Files for the remainder: src/commit-
+message.ts, src/loop.ts, test/loop.test.ts, test/prompt.test.ts, test/config.test.ts,
+test/commit-message.test.ts. Nothing structural remains beyond item (d)'s small code change;
+items (b), (c), and (e) are pure test work.
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28)
