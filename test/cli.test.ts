@@ -204,6 +204,22 @@ test("run fails fast with a clear message when pi is missing from PATH", async (
   assert.match(r.stderr, /pi not found on PATH/);
 });
 
+test("status and init fail fast with a clear message when git is missing from PATH", async () => {
+  // Without git on PATH, every repo probe used to report "not a git repository (run `git
+  // init` first)" — pointing at the wrong fix for a machine that has no git installed.
+  const binDir = tmpdir(); // empty: no git (the CLI child runs via an absolute node path)
+
+  let r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["status"]);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /git not found on PATH/);
+  assert.ok(!r.stderr.includes("not a git repository"), "no misleading repo error");
+
+  // init has its own gate (it does not go through requireReadyRepo).
+  r = await cliWithEnv(makeRepo(), { PATH: binDir }, ["init", "Build a thing."]);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /git not found on PATH/);
+});
+
 test("gui --port validates its range instead of listening on an unexpected port", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli gui validation");

@@ -6,7 +6,7 @@ import { enabledRoleIds, loadConfig } from "./config.js";
 import { allRoleIds } from "./roles.js";
 import { loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from "./state.js";
 import { createTranscriptRenderer, formatTranscript } from "./transcript.js";
-import { currentBranch, hasCommits, isGitRepo } from "./git.js";
+import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
 import { submitPrompt } from "./inbox.js";
 import { readEvents, subscribeEvents } from "./events.js";
@@ -143,6 +143,9 @@ async function resolveMainBranch(root: string): Promise<string> {
 }
 
 async function requireReadyRepo(root: string): Promise<void> {
+  // Fail fast on a missing binary: without this, the probe below reads as "not a git
+  // repository" — pointing at the wrong fix for a machine with no git installed.
+  if (!findOnPath("git")) fail(GIT_MISSING_MESSAGE);
   if (!(await isGitRepo(root))) fail("not a git repository (run `git init` first)");
   if (!fs.existsSync(path.join(root, "tumwater.json"))) {
     fail("not initialized (run `tumwater init <prompt>` first)");

@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig, saveConfig } from "./config.js";
-import { COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
+import { findOnPath } from "./files.js";
+import { GIT_MISSING_MESSAGE, COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "./readme.js";
 import { STATE_DIR, configPath } from "./paths.js";
 
@@ -79,6 +80,9 @@ export interface InitResult {
 /** Initialize a repo for tumwater: README (with prompt + status), PLANS, BUGS, QUESTIONS,
  * PRINCIPLES, tumwater.json, .gitignore — then commit whatever was created. */
 export async function initProject(root: string, initialPrompt: string): Promise<InitResult> {
+  // Fail fast on a missing binary before the probe below can misread it as "not a git
+  // repository" — the same preflight every other command gets in cli.ts.
+  if (!findOnPath("git")) throw new Error(GIT_MISSING_MESSAGE);
   if (!(await isGitRepo(root))) {
     throw new Error(`${root} is not a git repository (run \`git init\` first)`);
   }

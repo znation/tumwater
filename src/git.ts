@@ -24,6 +24,13 @@ class GitError extends Error {
   }
 }
 
+/** The one error every entry point that shells out to git reports when the binary itself is
+ * missing from PATH. Without a preflight check, `isGitRepo`'s failed probe reads as "not a
+ * git repository (run `git init` first)" — pointing at the wrong fix for a machine with no
+ * git installed. Shared by cli.ts and init.ts so their messages cannot drift. */
+export const GIT_MISSING_MESSAGE =
+  "git not found on PATH — install git first, or add its bin directory to your PATH";
+
 /** Run git in `cwd`, throwing GitError on nonzero exit. Returns trimmed stdout. */
 export async function git(cwd: string, ...args: string[]): Promise<string> {
   return runGit(cwd, args);
