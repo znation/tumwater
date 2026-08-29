@@ -55,7 +55,7 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). BUGS.md has no open bugs. The latest entry — feature tick 52 broke main's build: its questions-outbox changes made `StatusSnapshot.questions` required and gave `backlogLines` a third argument without updating test/status-render.test.ts, test/tui.test.ts, or (invisibly to tsc) test/init.test.ts's committed-file list (five type errors; the sixth broken landing, through the same reviewer-cannot-compile hole the review-gate plan's pending build pre-check closes) — is fixed and recorded under BUGS.md's Fixed section, as are the earlier main build breaks (feature ticks 47 and 49). `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
+`maxConcurrent`/`sessionRetentionDays` need a restart). BUGS.md has no open bugs. The latest entry — feature tick 52 broke main's build: its questions-outbox changes made `StatusSnapshot.questions` required and gave `backlogLines` a third argument without updating test/status-render.test.ts, test/tui.test.ts, or (invisibly to tsc) test/init.test.ts's committed-file list (five type errors; the sixth broken landing, through the reviewer-cannot-compile hole now closed by the deterministic build pre-check) — is fixed and recorded under BUGS.md's Fixed section, as are the earlier main build breaks (feature ticks 47 and 49). `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
 current work item; both dashboards show project status — planned features, open bugs, and open questions from
 PLANS.md/BUGS.md/QUESTIONS.md (TUI's Ctrl+T cycle, a GUI panel), with a `questions: N` header badge while any await. The QA role has landed (feature tick 53): a never-edits-source role that acts as a first-time user — each
@@ -88,11 +88,7 @@ branch for recovery re-review, which routes through the same gate. Review events
 `tumwater logs`, dashboards show `reviewing <elapsed>` while a loop is under review, and
 test/review.test.ts covers the pure functions plus gate orchestration end-to-end; the plan loop
 re-audited it on 2026-08-28 and verified every item landed — the reject→next-prompt
-injection gap closed with a loop test (coverage tick `8ea49b8`); what remains is two test gaps against
-the acceptance criteria (merge lock not held during review, `reviewing <elapsed>` state cell) plus one small code item from the plan's 2026-08-28 refinement: a
-deterministic build pre-check in which the harness itself runs the project's npm typecheck/build
-script as the gate's first step (after the md-only exemption, before any reviewer run; failure
-rejects with the compiler tail as reasons), closing the hole that let tick 49's type error land. The last-tick
+injection gap closed with a loop test (coverage tick `8ea49b8`). The plan's last code item has since landed — the deterministic build pre-check (feature tick 54, `93d14f5`; tests via bugfix tick 58, `038519a`): the harness itself runs the project's npm typecheck/build script as the gate's first step, after the md-only exemption and before any reviewer run; detection walks up from the worktree to the nearest package.json + node_modules (worktrees carry no install of their own), preferring `typecheck` over `build`; a failed build rejects deterministically with the compiler tail as reasons (no pi run consumed), while a timeout or missing npm warns and proceeds to model review rather than failing closed — closing the hole that let tick 49's type error land. What remains for this plan is two test gaps against its acceptance criteria: merge lock not held during review, and the `reviewing <elapsed>` state cell. The last-tick
 timestamp plan has landed: both dashboards show each loop's last tick end as an absolute local
 time alongside its relative age. The report's PRINCIPLES.md plan has landed: every tick prompt now carries the
 project's tracked PRINCIPLES.md (documented under How it works).
