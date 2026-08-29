@@ -248,6 +248,67 @@ test("the dashboard page has a project status panel", async () => {
   assert.match(GUI_PAGE, /d\.bugs \|\| \[\]/);
 });
 
+// Open questions (QUESTIONS.md) drive the dashboard's `questions: N` header badge and its
+// open-questions panel section — both derived client-side from the payload's list.
+
+test("status payload carries open questions, fresh per poll", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui questions test"); // seeds a placeholder QUESTIONS.md with no entries
+  let payload = statusPayload(repo) as { questions: string[] };
+  assert.deepEqual(payload.questions, [], "seeded _None yet._ placeholders are not entries");
+
+  // A question posted under ## Open shows on the next poll; an entry in ## Answered must
+  // never leak into the open list — the header badge count is this list's length.
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    [
+      "# Questions",
+      "",
+      "## Open",
+      "",
+      "### Q1: which database?",
+      "",
+      "**Context:** the storage layer is undecided.",
+      "",
+      "## Answered",
+      "",
+      "### Q0: earlier question (answered 2026-08-27)",
+    ].join("\n") + "\n",
+  );
+  payload = statusPayload(repo) as { questions: string[] };
+  assert.deepEqual(payload.questions, ["Q1: which database?"], "only the Open section counts");
+
+  // Answering it (moving the entry to ## Answered) drops it on the next poll — a stale
+  // cache would keep the badge showing `questions: 1` long after the decision was made.
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    [
+      "# Questions",
+      "",
+      "## Open",
+      "",
+      "_None yet._",
+      "",
+      "## Answered",
+      "",
+      "### Q1: which database? (answered 2026-08-29)",
+      "",
+      "**Decision:** SQLite.",
+    ].join("\n") + "\n",
+  );
+  payload = statusPayload(repo) as { questions: string[] };
+  assert.deepEqual(payload.questions, [], "an answered question is no longer open");
+});
+
+test("the dashboard page renders the open-questions section and header badge from the payload", async () => {
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+  // The #backlog panel gets an open questions section alongside plans/bugs…
+  assert.match(GUI_PAGE, /backlogList\("open questions", d\.questions \|\| \[\]\)/);
+  // …and the header badge derives its count from that same list, shown only when N > 0.
+  assert.match(GUI_PAGE, /const qn = \(d\.questions \|\| \[\]\)\.length/);
+  assert.match(GUI_PAGE, /\(qn \? " · questions: " \+ qn : ""\)/);
+});
+
 test("gui rejects oversized prompt bodies with 413 instead of buffering them unboundedly", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui body limit test");
