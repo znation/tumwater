@@ -1,9 +1,9 @@
 /** Shared text-shaping helpers for the observability layer's display labels (live progress,
  * transcripts, tool-call descriptions) and its number formats: whitespace collapsing,
- * ellipsis truncation, and compact token counts. Presentation only: depends on nothing, so
- * any display surface can import it without reaching into another module's internals — and
- * the collapse/truncation/compaction semantics live in exactly one place instead of drifting
- * per consumer. */
+ * ellipsis truncation, compact token counts, and abbreviated commit hashes. Presentation only:
+ * depends on nothing, so any display surface can import it without reaching into another
+ * module's internals — and the collapse/truncation/compaction/abbreviation semantics live in
+ * exactly one place instead of drifting per consumer. */
 
 /** Collapse every run of whitespace to a single space and trim both ends — the shape every
  * one-line label takes before display (multi-line pi text, command strings, error messages). */
@@ -26,4 +26,13 @@ export function truncate(s: string, max: number): string {
  * TypeScript.) */
 export function compactTokens(n: number): string {
   return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+/** The abbreviated form of a commit hash for human-facing text — its first 8 characters.
+ * The single home of this format: the event feed's merged/review lines and the review gate's
+ * discard warning all render hashes through it, so the abbreviation length cannot drift per
+ * consumer. Takes unknown because harness events carry their fields loosely typed (the
+ * index signature), coercing exactly as the inline `String(…).slice(0, 8)` did before. */
+export function shortSha(sha: unknown): string {
+  return String(sha).slice(0, 8);
 }
