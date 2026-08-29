@@ -458,6 +458,33 @@ test("aheadOfMainDiff handles binary files ('-' numstat) without crashing", asyn
   assert.ok(out.length <= cap);
 });
 
+test("aheadOfMainDiff over the cap spawns only two git calls, not one per file", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "perf", "main");
+  // Several files so the old spawn-per-file behavior would have made many more than two
+  // git invocations (full diff + numstat + stat + one per file until the budget ran out).
+  for (const [name, lines] of [
+    ["one.txt", 400],
+    ["two.txt", 300],
+    ["three.txt", 200],
+  ] as const) fs.writeFileSync(path.join(wt, name), blob(name.toUpperCase().slice(0, 3), lines));
+  await commitAll(wt, "several big files");
+
+  const logFile = path.join(tmpdir(), "git-calls.log");
+  const restore = loggingGit(logFile);
+  try {
+    // Cap far below the full diff so the truncation path runs.
+    await aheadOfMainDiff(wt, "main", 10_000);
+  } finally {
+    restore();
+  }
+  const calls = fs.readFileSync(logFile, "utf8").trim().split("\n");
+  // Exactly the full diff and its --stat — no numstat, no per-file re-diffs.
+  assert.equal(calls.length, 2, `expected 2 git spawns, got ${calls.length}: ${calls.join(" | ")}`);
+  assert.ok(calls.some((c) => c === "diff main...HEAD"), "full diff was fetched");
+  assert.ok(calls.some((c) => c === "diff --stat main...HEAD"), "--stat was fetched");
+});
+
 /** Install a logging `git` shim at the front of PATH that appends each invocation's args
  * to `logFile` before exec'ing the real git (so behavior stays correct). Returns a restore
  * function. Lets a test assert exactly which subprocesses a code path spawned — the same
