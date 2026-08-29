@@ -9,6 +9,16 @@ _None yet._
 
 ## Fixed
 
+### `reset-counters` consumed mid-tick wedges the loop: running flag stuck true until restart (found by bugfix loop 2026-08-28, fixed 2026-08-28)
+
+**Symptom:** Running `tumwater reset-counters` against a live fleet — its documented use case ("a running fleet picks it up within ~2s") — permanently wedged every loop that was mid-tick when the orchestrator consumed the marker: the loop's state file kept `running: true` forever, so `isEligible` refused it and it never ticked again until the harness restarted. The dashboards showed a frozen `working …` cell for the stuck role while its siblings kept ticking.
+
+**Repro:** e2e (now test/orchestrator.test.ts "a reset consumed while a tick is in flight does not wedge the loop"): one enabled role with a fake pi that sleeps 4s per tick; wait until the state file shows `running: true`, then zero the state file and drop the reset marker (what the CLI does); after the marker is consumed, the in-flight tick's end-of-save never clears `running` on disk — pre-fix the test timed out waiting for it.
+
+**Cause:** `LoopRunner.resetCounters()` replaced the state object: `this.state = zeroCounters(this.state)` (zeroCounters returns a fresh `{...s}` copy). A tick in flight holds its own reference to the OLD object (`const s = this.state` at the top of `tick()`) and ends with `this.save()`, which persists `this.state` — i.e. the NEW zeroed copy, not the tick's bookkeeping. The copy still carried `running: true` (zeroCounters preserves it, and the in-flight tick had set it at start), so nothing ever cleared it within the process; on disk the loop also lost its end-of-tick scheduling (`nextRunAt`, `backoffSeconds`, `lastTickEndedAt`) and last-result fields — the copy held pre-tick values (a stale past `nextRunAt` would have made it immediately re-eligible, skipping min-interval/backoff). The existing e2e only consumed markers between ticks (it waits for `!running` first), so the race was untested; with 2s polls and minute-plus ticks, marker consumption lands mid-tick for most loops in a running fleet.
+
+**Fix:** `resetCounters()` now zeroes IN PLACE — `Object.assign(this.state, zeroCounters(this.state))` — keeping the object identity an in-flight tick holds, so its start/end saves stay authoritative over the same (already-zeroed) object: counters are zero on disk immediately after consumption and never resurrect from a stale copy, while the tick's running flag, scheduling, and last-result bookkeeping land at tick end as usual. `zeroCounters` itself stays pure (its state.test.ts coverage is untouched). Regression test above drives the real orchestrator through the race: marker consumed mid-tick → in-flight tick finishes cleanly (`running` clears), counters stay zeroed, a post-reset tick runs to completion, and one `counters_reset` event lands under the role. Verified at HEAD ec17c86: build clean, full suite 369/369. Files: src/loop.ts, test/orchestrator.test.ts.
+
 ### Build broken on main: feature tick 52's questions-outbox changes leave three test files stale (found by readme loop 2026-08-28, fixed 2026-08-28)
 
 **Symptom:** `npm run build` — and therefore `npm test` — fails on main with five TypeScript errors, all in test files that feature tick 52 (`2547b4d`) did not update for its own API changes:

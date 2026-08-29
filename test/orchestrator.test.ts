@@ -472,6 +472,57 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
   }
 });
 
+test("a reset consumed while a tick is in flight does not wedge the loop", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "mid-tick reset test");
+  saveConfig(repo, fastConfig(["clean"]));
+  // A slow fake pi: each tick holds for ~4s, so a marker dropped while the first tick is in
+  // flight is consumed mid-tick — the documented use case (resetting a running fleet), where
+  // most loops are mid-tick at any moment.
+  const restore = fakePi(`sleep 4\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo);
+  try {
+    await waitFor(() => loadLoopState(repo, "clean").running === true, "a tick to be in flight");
+
+    // Drop the marker while the tick is running (CLI-side file zeroing included).
+    saveLoopState(repo, zeroCounters(loadLoopState(repo, "clean")));
+    const markerFile = resetRequestPath(repo);
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean"] }));
+
+    await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
+
+    // The in-flight tick must still end cleanly: its running flag clears on disk. Before the
+    // fix, resetCounters() replaced the state object mid-tick, so the tick's end-of-save
+    // wrote back the zeroed copy — which still carried running=true — and the loop was wedged
+    // (never eligible again) until a restart.
+    await waitFor(
+      () => loadLoopState(repo, "clean").running === false,
+      "the in-flight tick to finish",
+    );
+
+    // Counters stayed zeroed: no resurrection from the pre-reset in-memory copy.
+    assert.ok(
+      loadLoopState(repo, "clean").ticks <= 1,
+      `counters start from zero after a mid-tick reset (got ${loadLoopState(repo, "clean").ticks})`,
+    );
+
+    // And the loop keeps ticking: a post-reset tick runs to completion.
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "a post-reset tick to finish",
+    );
+
+    // The reset is still visible as one plain event, filed under the role.
+    const resets = readEvents(repo).filter((e) => e.type === "counters_reset");
+    assert.equal(resets.length, 1);
+    assert.equal(resets[0]?.loop, "clean");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
 /** Seed non-zero counters for the given roles before runners load their state. */
 function seedCounters(repo: string, ...roles: string[]): void {
   for (const role of roles) {

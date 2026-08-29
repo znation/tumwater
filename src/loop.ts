@@ -105,9 +105,16 @@ export class LoopRunner {
 
   /** Zero the accumulated counters in memory and persist them. The orchestrator calls this
    * when it consumes a `tumwater reset-counters` request: without zeroing the in-memory copy,
-   * the next tick's save would resurrect the pre-reset values on disk. */
+   * the next tick's save would resurrect the pre-reset values on disk.
+   * The zeroing mutates the EXISTING state object instead of replacing it: a tick may be in
+   * flight when this runs (the documented use case is resetting a running fleet, where most
+   * loops are mid-tick), and that tick holds its own reference to the same object — if we
+   * swapped in a fresh copy here, the tick's end-of-save would write back the zeroed copy
+   * instead of its bookkeeping, losing nextRunAt/backoff/lastResult and leaving running=true
+   * on disk forever (the loop wedged until restart). In place, the in-flight tick's own
+   * start/end saves stay authoritative over the same object. */
   resetCounters(): void {
-    this.state = zeroCounters(this.state);
+    Object.assign(this.state, zeroCounters(this.state));
     this.save();
   }
 
