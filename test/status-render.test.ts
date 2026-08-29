@@ -22,6 +22,7 @@ function snapshotWith(loops: Array<Partial<ReturnType<typeof freshLoopState>> & 
   return {
     running: false,
     inbox: 0,
+    questions: 0,
     loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial })),
   };
 }

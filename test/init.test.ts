@@ -12,7 +12,7 @@ test("initProject creates and commits the harness files", async () => {
   const result = await initProject(repo, "Build a todo CLI.");
   assert.deepEqual(
     [...result.created].sort(),
-    [".gitignore", "BUGS.md", "PLANS.md", "PRINCIPLES.md", "README.md", "tumwater.json"],
+    [".gitignore", "BUGS.md", "PLANS.md", "PRINCIPLES.md", "QUESTIONS.md", "README.md", "tumwater.json"],
   );
   assert.ok(result.committed);
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");

@@ -69,29 +69,43 @@ test("the rendered prompt line never exceeds the terminal width", () => {
 });
 
 test("backlogLines renders subheaders with counts, entries in order", () => {
-  assert.deepEqual(backlogLines(["plan A"], ["bug B"]), [
+  assert.deepEqual(backlogLines(["plan A"], ["bug B"], []), [
     "plans (1):",
     "plan A",
     "open bugs (1):",
     "bug B",
+    "open questions (0):",
+    "(none)",
+  ]);
+  assert.deepEqual(backlogLines(["plan A"], ["bug B"], ["question Q"]), [
+    "plans (1):",
+    "plan A",
+    "open bugs (1):",
+    "bug B",
+    "open questions (1):",
+    "question Q",
   ]);
 });
 
 test("backlogLines renders (none) under an empty section's subheader", () => {
-  assert.deepEqual(backlogLines([], ["bug B"]), [
+  assert.deepEqual(backlogLines([], ["bug B"], []), [
     "plans (0):",
     "(none)",
     "open bugs (1):",
     "bug B",
+    "open questions (0):",
+    "(none)",
   ]);
-  assert.deepEqual(backlogLines(["plan A"], []), [
+  assert.deepEqual(backlogLines(["plan A"], [], []), [
     "plans (1):",
     "plan A",
     "open bugs (0):",
+    "(none)",
+    "open questions (0):",
     "(none)",
   ]);
 });
 
 test("backlogLines with nothing at all is a single self-explanatory line", () => {
-  assert.deepEqual(backlogLines([], []), ["(no planned features or open bugs)"]);
+  assert.deepEqual(backlogLines([], [], []), ["(no planned features, open bugs, or open questions)"]);
 });

@@ -5,7 +5,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Build broken on main: feature tick 52's questions-outbox changes leave three test files stale (found by readme loop 2026-08-28)
+_None yet._
+
+## Fixed
+
+### Build broken on main: feature tick 52's questions-outbox changes leave three test files stale (found by readme loop 2026-08-28, fixed 2026-08-28)
 
 **Symptom:** `npm run build` — and therefore `npm test` — fails on main with five TypeScript errors, all in test files that feature tick 52 (`2547b4d`) did not update for its own API changes:
 
@@ -25,9 +29,7 @@ Every loop inherits this because worktrees reset to main at tick start, so the w
 
 A third stale file is invisible to tsc: `initProject` now seeds QUESTIONS.md (src/init.ts), but test/init.test.ts's expected committed-file list omits it, so once the build errors are fixed and `npm test` actually runs, "initProject creates and commits the harness files" fails its deep-equal on the file list (found by coverage loop 2026-08-28 while verifying new tests against the broken main).
 
-**Fix:** add `questions: 0` to `snapshotWith`'s object; pass a third argument at each of the four call sites and extend the expected outputs with the new section; add `QUESTIONS.md` to test/init.test.ts's expected file list. Files: test/status-render.test.ts, test/tui.test.ts, test/init.test.ts.
-
-## Fixed
+**Fix:** exactly as prescribed — added `questions: 0` to `snapshotWith`'s object (test/status-render.test.ts); passed a third argument at each of the four `backlogLines(...)` call sites and extended every expected line array with the new `open questions (N):` subheader plus its entries or `(none)`, including the all-empty case's single line, now "(no planned features, open bugs, or open questions)"; added a non-empty-questions assertion so the new section's entry rendering is covered, not just its empty form; and added `QUESTIONS.md` to test/init.test.ts's expected committed-file list (the deep-equal itself fails if init ever stops seeding it). Verified at HEAD c02189c: build clean, full suite 355/355. Files: test/status-render.test.ts, test/tui.test.ts, test/init.test.ts.
 
 ### Build broken on main: feature tick 49's steward default fails noUncheckedIndexedAccess (found by readme loop 2026-08-28, fixed 2026-08-28)
 
