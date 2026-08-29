@@ -37,7 +37,7 @@ locally and keep all project state within the git repo.
 
 <!-- tumwater:status:start -->
 v0.1: working harness. `init`, `run`, `tui`, `gui`, `status`, `logs`, and `prompt` commands are
-implemented with eleven roles plus the director loop (absolute scheduling priority; routes
+implemented with twelve roles plus the director loop (absolute scheduling priority; routes
 feature/bug requests into PLANS.md/BUGS.md, decomposing independent subparts). Every tick runs
 in a fresh pi session — context never accumulates across ticks, and durable knowledge lives in
 the repo (README/PLANS/BUGS/QUESTIONS), which each tick reads first; a tick interrupted by Ctrl+C or a
@@ -55,18 +55,23 @@ events or real content growth keep a run alive, so zombie streams dripping empty
 killed instead of resetting it. Queued director prompts are re-queued if their tick fails without
 landing work. Work lands on main via rebase, keeping commit history linear; `tumwater.json` reloads live while
 running (roles, per-role provider/model/thinking/instructions, tick intervals, backoff — only
-`maxConcurrent`/`sessionRetentionDays` need a restart). One open bug in BUGS.md: feature tick 52 broke main's build — its questions-outbox changes made `StatusSnapshot.questions` required and gave `backlogLines` a third argument without updating test/status-render.test.ts and test/tui.test.ts (five type errors; the sixth broken landing, through the same reviewer-cannot-compile hole the review-gate plan's pending build pre-check closes). Earlier main build breaks (feature ticks 47 and 49) are fixed, each recorded under BUGS.md's Fixed section. `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
+`maxConcurrent`/`sessionRetentionDays` need a restart). BUGS.md has no open bugs. The latest entry — feature tick 52 broke main's build: its questions-outbox changes made `StatusSnapshot.questions` required and gave `backlogLines` a third argument without updating test/status-render.test.ts, test/tui.test.ts, or (invisibly to tsc) test/init.test.ts's committed-file list (five type errors; the sixth broken landing, through the same reviewer-cannot-compile hole the review-gate plan's pending build pre-check closes) — is fixed and recorded under BUGS.md's Fixed section, as are the earlier main build breaks (feature ticks 47 and 49). `tumwater reset-counters` zeroes ticks/commits/tokens/cost without a
 restart (a running fleet picks it up within ~2s); the GUI/TUI tables show each working loop's
 current work item; both dashboards show project status — planned features, open bugs, and open questions from
-PLANS.md/BUGS.md/QUESTIONS.md (TUI's Ctrl+T cycle, a GUI panel), with a `questions: N` header badge while any await. In progress: the QA role is the last of the Senior Tumwater report's plans awaiting the feature loop —
-the QUESTIONS.md outbox has landed in code (feature tick 52): `init` seeds a tracked QUESTIONS.md, every prompt reads it first and carries the ask-don't-guess rule, the director routes "answer Qn" prompts to ## Answered, and both dashboards surface open questions. Against its plan what remains is the `question_posted` event emission in tryMerge (the type and rendering exist; nothing emits it yet) and the planned test suite; it awaits the plan-loop audit. The refusal sentinel with friction signals has landed in code
+PLANS.md/BUGS.md/QUESTIONS.md (TUI's Ctrl+T cycle, a GUI panel), with a `questions: N` header badge while any await. The QA role has landed (feature tick 53): a never-edits-source role that acts as a first-time user — each
+tick follows one README usage flow, cheapest-first, in a scratch dir under the system temp, checks outputs
+against what the docs promise, and files reproducible bugs in BUGS.md (its only write; md-only diffs stay
+review-exempt), on a ~2 h clock by default. Against its plan what remains is dogfood observation only — a
+planted doc/behavior mismatch discovered within a few qa ticks, and no orphaned processes after its ticks.
+The QUESTIONS.md outbox has landed in code (feature tick 52): `init` seeds a tracked QUESTIONS.md, every prompt reads it first and carries the ask-don't-guess rule, the director routes "answer Qn" prompts to ## Answered, and both dashboards surface open questions. The plan loop audited it on 2026-08-28: what remains is the `question_posted` event emission in tryMerge (the type and rendering exist; nothing emits it yet) and the planned test suite. The refusal sentinel with friction signals has landed in code
 (feature tick 51): a `TUMWATER_REFUSED: <reason>` reply declines work that would harm the project,
 committing only its markdown objection note under the refused entry's heading in PLANS.md/BUGS.md —
 which blocks the entry until a human or the director clears it, since every role skips entries
 carrying a Refused note — and discarding any non-markdown half-work; changed ticks burning more than
 `thrashTurns` turns (default 40) or `thrashMinutes` minutes (default 60) are flagged high-friction,
 with a warning event plus extra review scrutiny, since difficulty is a signal the work may not fit.
-The plan loop audited it on 2026-08-28 (verified at `8ea49b8`, suite green): what remains is three items — the entire planned test suite never landed (`test/refusal.test.ts`), AC3's high-friction trailer line was never implemented (`commitTrailer` takes no friction argument, so a flagged tick carries no marker in git history), and AC5's config validation for `thrashTurns`/`thrashMinutes` is untested. The slow-clock steward has
+The plan loop audited it on 2026-08-28 (verified at `8ea49b8`, suite green): what remains is three items — the planned test suite has only its sentinel-parse half (test/refusal.test.ts
+landed via a coverage tick; loop e2e, thrash-flag, and prompt-contract tests are still missing), AC3's high-friction trailer line was never implemented (`commitTrailer` takes no friction argument, so a flagged tick carries no marker in git history), and AC5's config validation for `thrashTurns`/`thrashMinutes` is untested. The slow-clock steward has
 landed in code (feature tick 49): a markdown-only curation role on a ~6 h per-role clock (the new
 `minTickIntervalSeconds` override of the global interval), enabled by default; its landing commit's
 build break is fixed (BUGS.md). The plan loop audited it on 2026-08-28 (verified at `ceb6019`, suite green): what remains is test gaps — no role-prompt contract tests, and the per-role interval untested at scheduler level — plus dogfood pending (no `tumwater(steward)` commit in history yet). Self-explaining commit bodies has landed in code (feature
