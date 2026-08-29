@@ -20,6 +20,9 @@ export function formatEvent(e: HarnessEvent): string {
     }
     case "merged":
       return `${time} ${loop} merged ${String(e.commit).slice(0, 8)} to main — ${e.summary}`;
+    case "question_posted":
+      // Routine operation (a loop asked the user something), not a warning.
+      return `${time} ${loop} question posted: ${e.question}`;
     case "wake":
       return `${time} ${loop} woke (${e.reason})`;
     case "orchestrator_start":

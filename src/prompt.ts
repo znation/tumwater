@@ -36,7 +36,8 @@ const SUMMARY_RULE = `- If you did make changes, end your reply with a block in 
 
 const COMMON_RULES = `
 Rules for this run:
-- First read README.md, PLANS.md, and BUGS.md (those that exist) to understand the project.
+- First read README.md, PLANS.md, BUGS.md, and QUESTIONS.md (those that exist) to understand
+  the project.
 - Do exactly ONE focused task, then stop. Small, complete, and correct beats big and half-done.
 - Leave the project working: if it has a build or test command, run it and fix what you broke.
 - Never create, amend, or revert git commits, branches, or merges — the harness handles all git
@@ -46,6 +47,12 @@ Rules for this run:
 - PRINCIPLES.md holds this project's design principles; only the director and steward roles may
   edit it. Treat it as read-only — if a principle seems wrong or outdated, record your objection
   in PLANS.md rather than editing the file.
+- When a fork in the road is genuinely the user's call (product direction, an irreversible
+  choice, taste), do not guess: append a question to QUESTIONS.md under ## Open with context,
+  the options, and your own recommendation — a senior asks with a proposal, not a shrug — then
+  either continue with the parts that don't depend on it or end the tick. Never block on an
+  unanswered question; check for answers at the start of each tick. Do not re-ask an open
+  question.
 - Never run a command that can wait or run indefinitely — interactive programs (TUIs, REPLs,
   editors, anything reading stdin), servers, or watch modes. A hung command hangs your whole
   loop. To test such a program, impose a hard time limit yourself (background it and kill it
@@ -146,6 +153,9 @@ work yourself:
   where future loops will see it — PRINCIPLES.md first for standing design guidance and taste;
   README.md, PLANS.md, or BUGS.md otherwise — and remove anything it supersedes.
 - A question: answer it in your final reply, and record anything durable it surfaced.
+- An answer to an open question (e.g. "answer Q3: choose SQLite"): move that entry from
+  QUESTIONS.md's ## Open section to ## Answered verbatim with the decision recorded, and apply
+  or route any follow-on work it implies.
 - A decision about a refused entry (e.g. "clear the refusal on plan X", "reconsider plan Y"):
   clear its **Refused …** note from PLANS.md/BUGS.md — or revise the entry per the user's
   direction — so loops can pick it up again.

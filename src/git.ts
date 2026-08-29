@@ -115,6 +115,13 @@ export async function headOf(cwd: string, ref: string): Promise<string> {
   return git(cwd, "rev-parse", "--verify", ref);
 }
 
+/** The content of repo-relative `file` as committed at `ref`, or null when the file does not
+ * exist there. Ref-based on purpose — unlike a working-tree read it is correct no matter what
+ * branch the primary checkout sits on, which matters for worktrees sharing one object store. */
+export async function showFileAt(cwd: string, ref: string, file: string): Promise<string | null> {
+  return gitTry(cwd, "show", `${ref}:${file}`);
+}
+
 /** The branch the primary checkout has, or null when detached. */
 export async function currentBranch(root: string): Promise<string | null> {
   const out = await gitTry(root, "symbolic-ref", "--short", "HEAD");

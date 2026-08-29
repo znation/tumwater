@@ -33,6 +33,21 @@ _None yet._
 _None yet._
 `;
 
+const QUESTIONS_TEMPLATE = `# Questions
+
+Open questions loops have posted for a human decision — each with context, the options, and the
+loop's recommendation. Answer by moving an entry to ## Answered with your decision (or tell the
+director). Loops never block on their own questions; they check here at the start of each tick.
+
+## Open
+
+_None yet._
+
+## Answered
+
+_None yet._
+`;
+
 const PRINCIPLES_TEMPLATE = `# Principles
 
 Design principles this project holds — the codified answer to "what would a senior engineer on
@@ -61,8 +76,8 @@ export interface InitResult {
   committed: boolean;
 }
 
-/** Initialize a repo for tumwater: README (with prompt + status), PLANS, BUGS, PRINCIPLES,
- * tumwater.json, .gitignore — then commit whatever was created. */
+/** Initialize a repo for tumwater: README (with prompt + status), PLANS, BUGS, QUESTIONS,
+ * PRINCIPLES, tumwater.json, .gitignore — then commit whatever was created. */
 export async function initProject(root: string, initialPrompt: string): Promise<InitResult> {
   if (!(await isGitRepo(root))) {
     throw new Error(`${root} is not a git repository (run \`git init\` first)`);
@@ -91,6 +106,7 @@ export async function initProject(root: string, initialPrompt: string): Promise<
   write("README.md", readmeTemplate(path.basename(path.resolve(root)), initialPrompt));
   write("PLANS.md", PLANS_TEMPLATE);
   write("BUGS.md", BUGS_TEMPLATE);
+  write("QUESTIONS.md", QUESTIONS_TEMPLATE);
   write("PRINCIPLES.md", PRINCIPLES_TEMPLATE);
   if (!fs.existsSync(configPath(root))) {
     saveConfig(root, defaultConfig());

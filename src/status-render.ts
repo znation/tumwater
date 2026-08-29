@@ -142,7 +142,12 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   const name = path.basename(path.resolve(root));
   const lines: string[] = [];
   const header = snap.running ? `running (pid ${snap.pid})` : "not running — start with `tumwater run`";
-  lines.push(`tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}`);
+  // The questions badge (like the inbox one) appears only when something needs an answer.
+  lines.push(
+    `tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
+      snap.questions ? ` · questions: ${snap.questions}` : ""
+    }`,
+  );
   lines.push("");
   const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "last tick", "last result"];
   const withMetrics = snap.loops.map((s) => ({ s, m: displayTokenMetrics(root, s) }));

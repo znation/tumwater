@@ -1,5 +1,5 @@
 import readline from "node:readline";
-import { openBugs, plannedPlans } from "./backlog.js";
+import { openBugs, openQuestions, plannedPlans } from "./backlog.js";
 import { readEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
@@ -62,15 +62,19 @@ export function renderInputView(text: string, cursor: number, width: number): st
 }
 
 /** The project-status body lines for the TUI: a `plans (N):` subheader with one line per plan,
- * then an `open bugs (M):` subheader and one line per bug. An empty section renders `(none)`
- * under its subheader; when both are empty the whole view is a single self-explanatory line.
+ * an `open bugs (M):` subheader and one line per bug, then an `open questions (K):` subheader
+ * and one line per question. An empty section renders `(none)` under its subheader; when all
+ * three are empty the whole view is a single self-explanatory line.
  * Pure, so it is unit-testable without touching disk. */
-export function backlogLines(plans: string[], bugs: string[]): string[] {
-  if (plans.length === 0 && bugs.length === 0) return ["(no planned features or open bugs)"];
+export function backlogLines(plans: string[], bugs: string[], questions: string[]): string[] {
+  if (plans.length === 0 && bugs.length === 0 && questions.length === 0)
+    return ["(no planned features, open bugs, or open questions)"];
   const lines = [`plans (${plans.length}):`];
   lines.push(...(plans.length ? plans : ["(none)"]));
   lines.push(`open bugs (${bugs.length}):`);
   lines.push(...(bugs.length ? bugs : ["(none)"]));
+  lines.push(`open questions (${questions.length}):`);
+  lines.push(...(questions.length ? questions : ["(none)"]));
   return lines;
 }
 
@@ -86,7 +90,7 @@ export async function runTui(root: string): Promise<void> {
   let flash = "";
   let flashUntil = 0;
   // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
-  // status (planned features + open bugs) — Ctrl+T.
+  // status (planned features + open bugs + open questions) — Ctrl+T.
   let view = 0;
   let roleIds: string[] = [];
 
@@ -102,7 +106,10 @@ export async function runTui(root: string): Promise<void> {
     view = Math.min(view, roleIds.length + 1); // clamp a stale index if roles changed
     const status = renderStatus(root, snap, width);
     const statusLines = status.split("\n").length;
-    const eventBudget = Math.max(3, rows - statusLines - 6);
+    // A highlighted nudge above the activity pane while questions await a human answer —
+    // a cheap signal that something needs a decision. It consumes one line of the budget.
+    const hasQuestions = snap.questions > 0;
+    const eventBudget = Math.max(3, rows - statusLines - 6 - (hasQuestions ? 1 : 0));
     // The pane occupies the same slot as recent activity: one header line plus at most
     // eventBudget clipped lines, so the height-budget math is unchanged either way.
     let header: string;
@@ -116,11 +123,11 @@ export async function runTui(root: string): Promise<void> {
         .slice(-eventBudget);
       emptyNote = "(no transcript yet)";
     } else if (view === roleIds.length + 1) {
-      // Project status: planned features and open bugs from PLANS.md/BUGS.md, read fresh each
-      // render like events. Keeps the HEAD of the list when it overflows — file order is
-      // newest-first, unlike events which keep the tail.
+      // Project status: planned features, open bugs, and open questions from
+      // PLANS.md/BUGS.md/QUESTIONS.md, read fresh each render like events. Keeps the HEAD of
+      // the list when it overflows — file order is newest-first, unlike events which keep the tail.
       header = `${BOLD}${clipToWidth("project status — Ctrl+T to cycle", width)}${RESET}`;
-      body = backlogLines(plannedPlans(root), openBugs(root))
+      body = backlogLines(plannedPlans(root), openBugs(root), openQuestions(root))
         .map((l) => clipToWidth(l, width))
         .slice(0, eventBudget);
     } else {
@@ -130,13 +137,15 @@ export async function runTui(root: string): Promise<void> {
         .slice(-eventBudget);
     }
 
-    const parts = [
-      status,
-      "",
-      header,
-      body.length ? body.map((l) => `${DIM}${l}${RESET}`).join("\n") : `${DIM}${emptyNote}${RESET}`,
-      "",
-    ];
+    const parts = [status, ""];
+    if (hasQuestions) {
+      parts.push(
+        `${BOLD}${clipToWidth(`questions: ${snap.questions} awaiting answers (see QUESTIONS.md)`, width)}${RESET}`,
+      );
+    }
+    parts.push(header);
+    parts.push(body.length ? body.map((l) => `${DIM}${l}${RESET}`).join("\n") : `${DIM}${emptyNote}${RESET}`);
+    parts.push("");
     if (flash && Date.now() < flashUntil) parts.push(`${BOLD}${clipToWidth(flash, width)}${RESET}`);
     parts.push(
       `${DIM}${clipToWidth("type a prompt for the project, Enter to send · Ctrl+C to quit", width)}${RESET}`,

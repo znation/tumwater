@@ -153,6 +153,7 @@ export interface HarnessEvent {
     | "tick_start"
     | "tick_end"
     | "merged"
+    | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
     | "wake"
     | "orchestrator_start"
     | "orchestrator_stop"

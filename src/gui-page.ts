@@ -74,9 +74,11 @@ export const GUI_PAGE = `<!doctype html>
     try {
       const r = await fetch("/api/status");
       const d = await r.json();
+      const qn = (d.questions || []).length;
       document.getElementById("header").textContent =
         (d.running ? "running (pid " + d.pid + ")" : "orchestrator not running") +
-        (d.inbox ? " · inbox: " + d.inbox : "");
+        (d.inbox ? " · inbox: " + d.inbox : "") +
+        (qn ? " · questions: " + qn : "");
       document.getElementById("loops").innerHTML = d.loops.map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";
@@ -88,11 +90,13 @@ export const GUI_PAGE = `<!doctype html>
           "</td><td>$" + l.costUsd.toFixed(2) + "</td><td>" + fmtLastTick(l.lastTickEndedAt) +
           "</td><td class='wide'>" + esc(last) + "</td></tr>";
       }).join("");
-      // Project status: planned features and open bugs, fresh from /api/status each poll.
+      // Project status: planned features, open bugs, and open questions — fresh from
+      // /api/status each poll.
       const backlogList = (title, items) => "<span class='muted'>" + esc(title + " (" + items.length + ")") + "</span>\\n" +
         (items.length ? items.map(esc).join("\\n") : "(none)");
       document.getElementById("backlog").innerHTML =
-        backlogList("planned features", d.plans || []) + "\\n\\n" + backlogList("open bugs", d.bugs || []);
+        backlogList("planned features", d.plans || []) + "\\n\\n" + backlogList("open bugs", d.bugs || []) +
+        "\\n\\n" + backlogList("open questions", d.questions || []);
       const feed = document.getElementById("feed");
       const stick = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 4;
       feed.innerHTML = d.events.map(esc).join("<br>");

@@ -1,11 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** The project backlog data shown on both dashboards: planned features (PLANS.md) and open
- * bugs (BUGS.md). These are tracked markdown that loops edit constantly, so every reader takes
- * a fresh read — the same no-caching pattern as events and transcripts. Each dashboard formats
- * this data for its own surface (the TUI's lines live in tui.ts; the GUI renders HTML in
- * gui-page.ts) — this module owns only reading and parsing. */
+/** The project backlog data shown on both dashboards: planned features (PLANS.md), open bugs
+ * (BUGS.md), and open questions (QUESTIONS.md). These are tracked markdown that loops edit
+ * constantly, so every reader takes a fresh read — the same no-caching pattern as events and
+ * transcripts. Each dashboard formats this data for its own surface (the TUI's lines live in
+ * tui.ts; the GUI renders HTML in gui-page.ts) — this module owns only reading and parsing.
+ * The open-question count shown in the status headers is just `openQuestions(root).length`,
+ * so the badge and the list always come from one parse. */
 
 /** The `### ` heading texts inside one `## <sectionTitle>` section of a markdown document:
  * stops at the next `## ` line (so Done/Fixed entries never leak in), ignores body text under
@@ -34,6 +36,14 @@ export function plannedPlans(root: string): string[] {
 /** Open bugs: the `### ` headings under BUGS.md's `## Open` section. Missing or unreadable → []. */
 export function openBugs(root: string): string[] {
   const md = readMd(path.join(root, "BUGS.md"));
+  return md === null ? [] : parseEntries(md, "Open");
+}
+
+/** Open questions: the `### ` headings under QUESTIONS.md's `## Open` section — loops post
+ * them when a decision is genuinely the user's (see plans/questions-outbox.md). Missing or
+ * unreadable → []. */
+export function openQuestions(root: string): string[] {
+  const md = readMd(path.join(root, "QUESTIONS.md"));
   return md === null ? [] : parseEntries(md, "Open");
 }
 

@@ -1,4 +1,5 @@
 import type { LoopState, TumwaterConfig } from "./types.js";
+import { openQuestions } from "./backlog.js";
 import { defaultConfig, enabledRoleIds, loadConfigSafe } from "./config.js";
 import { loadLoopState, orchestratorAlive, readOrchestratorInfo } from "./state.js";
 import { inboxSize } from "./inbox.js";
@@ -10,6 +11,8 @@ export interface StatusSnapshot {
   running: boolean;
   pid?: number;
   inbox: number;
+  /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
+  questions: number;
   loops: LoopState[];
 }
 
@@ -38,6 +41,7 @@ export function snapshot(root: string): StatusSnapshot {
     running: orchestratorAlive(root),
     pid: info?.pid,
     inbox: inboxSize(root),
+    questions: openQuestions(root).length,
     loops: roles.map((r) => loadLoopState(root, r)),
   };
 }

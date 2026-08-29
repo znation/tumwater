@@ -1,5 +1,5 @@
 import http from "node:http";
-import { openBugs, plannedPlans } from "./backlog.js";
+import { openBugs, openQuestions, plannedPlans } from "./backlog.js";
 import { readEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
@@ -64,10 +64,12 @@ export function statusPayload(root: string): object {
       };
     }),
     events: readEvents(root, 40).map((e) => formatEvent(e)),
-    // Project status (planned features + open bugs), fresh per poll like events — loops edit
-    // these files constantly, so there is no cache to go stale.
+    // Project status (planned features + open bugs + open questions), fresh per poll like
+    // events — loops edit these files constantly, so there is no cache to go stale. The page
+    // derives the header badge count from this list's length.
     plans: plannedPlans(root),
     bugs: openBugs(root),
+    questions: openQuestions(root),
   };
 }
 
