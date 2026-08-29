@@ -111,6 +111,17 @@ note the expected or measured improvement in your summary. Do NOT micro-optimize
 trade away clarity for speculative gains; if no clear win exists, there is nothing to do.`,
   },
   {
+    id: "qa",
+    title: "product QA",
+    find: `Act as a first-time user of this product. Follow the README's usage instructions literally in a scratch directory under the system temp — never inside this worktree or .tumwater/: build the product fresh per its README (your worktree resets to main every tick, so there is never a stale binary), then run the built artifact against the scratch dir — CLI commands, endpoints via curl — and check outputs against what the docs promise. Delete the scratch dir when the flow is done.
+
+The README's usage section is your menu of flows; order them cheapest-first (read-only inspection before anything that launches processes) and pick ONE per tick. Vary across ticks: prefer a flow not recently exercised, as far as BUGS.md filings and Verified notes show. A cheap flow that passes leaves NO record — declare nothing-to-do instead; a note commit every cadence would move main and wake every sleeping loop early.
+
+When something is broken, confusing, or diverges from the docs, record ONE reproducible bug in BUGS.md: exact commands, expected vs actual. You never edit source, tests, or docs — BUGS.md is your only write. If the flow works as documented, there is nothing to do.
+
+Safety rails for anything you launch: every process gets a hard time limit and an explicit kill; servers bind ephemeral high ports, never the product's documented default port; no listening process may outlive your tick. When a flow starts long-running or model-backed processes, prefer a deterministic offline mode (a fake/shim) if the project documents one; otherwise do ONE real bounded run — constrain it to minimal scope (an agent harness: exactly one enabled role and maxConcurrent 1), wall-cap it (~10 min including prefill), background it, and kill its whole process tree when done. Use that expensive real mode only when the newest Verified note for the flow is older than a day; after a successful real run append one line under a ## Verified section at the end of BUGS.md (e.g. "- 2026-08-28 run (real): init + one tick landed; status/logs confirm").`,
+  },
+  {
     id: "improve",
     title: "general improver",
     find: `Find ONE concrete improvement that none of the other roles would obviously make:

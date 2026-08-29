@@ -233,26 +233,41 @@ the running fleet process must have started after 6e3f487 for its compiled defau
 include steward (JS loads at startup; same consideration as the commit-bodies trailer note).
 Files for the remainder: test/steward.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts.
 
-### QA role — exercising the product like a user (planned 2026-08-24, refined 2026-08-26,
-refined 2026-08-28)
-
-Full plan: [plans/qa-role.md](plans/qa-role.md). A `qa` role that follows the README verbatim in
-a scratch dir — build, run, curl — one flow per tick, filing reproducible bugs in BUGS.md (its
-only write). Hard safety rails: time-limit every process, ephemeral ports, no source edits. The
-structural fix for green-suite-but-broken-product (the GUI page incident shipped through 180
-passing tests). Self-hosting mechanics decided (2026-08-26): build in its own worktree each tick
-and invoke `node dist/cli.js` with cwd = scratch repo; the `run` flow uses either a fake-pi shim
-or one real bounded run — the scratch tumwater.json constrained to a single enabled role and
-maxConcurrent 1 (a default nested fleet would thrash the shared server's prefix caches), wall-
-capped and killed. Flow selection decided (2026-08-28): the prompt carries an explicit ordered
-flow list (cheap first) with a vary-across-ticks rule; cheap flows leave no record when they pass
-(nothing-to-do — a note commit per cadence would move main and wake every sleeping loop), while
-the expensive real-pi run flow is capped at once per day by a self-enforcing one-line `##
-Verified` note in BUGS.md. Cadence sequencing decided: if the steward plan's per-role
-minTickIntervalSeconds override has not landed, it lands with this role (same small change;
-neither plan blocks on the other).
-
 ## Done
+
+### QA role — exercising the product like a user (planned 2026-08-24, refined 2026-08-26,
+refined 2026-08-28, done 2026-08-28)
+
+A `qa` role that never edits source: it acts as a first-time user and follows the README's usage
+instructions literally in a scratch dir under the system temp (never the worktree or .tumwater/) —
+builds the product fresh per its README each tick, runs the built artifact against the scratch dir
+(CLI commands, endpoints via curl), checks outputs against what the docs promise, and deletes the
+scratch dir when done. Flow selection across fresh sessions: the README's usage section is the flow
+menu, ordered cheapest-first with ONE flow per tick; a vary-across-ticks rule prefers flows not
+recently exercised as far as BUGS.md filings and Verified notes show; cheap flows that pass leave NO
+record (nothing-to-do — a note commit every cadence would move main and wake sleeping loops). The
+expensive real-run mode is guarded: prefer a deterministic offline fake/shim when documented, else
+ONE real bounded run constrained to minimal scope (an agent harness: exactly one enabled role and
+maxConcurrent 1), wall-capped ~10 min including prefill, backgrounded and killed with its whole
+process tree — allowed only when the newest `## Verified` note for that flow is older than a day,
+and a successful real run appends its one-line note (e.g. `- <date> run (real): init + one tick
+landed; status/logs confirm`) at the end of BUGS.md, self-enforcing the daily cap across fresh
+sessions without leaking into the dashboards (openBugs parses `## Open` only). Safety rails in the
+prompt: every launched process gets a hard time limit and an explicit kill, servers bind ephemeral
+high ports never the product's documented default port, no listening process outlives the tick.
+BUGS.md is its only write — md-only diffs stay review-exempt, and filings flow to the bugfix loop
+through its existing find prompt (QA → bug → fix → reviewed merge). Cadence: `defaultConfig`
+carries `{ enabled: true, minTickIntervalSeconds: 7200 }`, so qa is enabled by default with no
+config edit — the steward pattern (this repo's tumwater.json omits it; loadConfig merges per-role
+defaults for absent ids). Catalog order: right after `perf`, so validation outranks general
+improvement and the steward in tie-breaks. Two deliberate deviations from the plan's letter, both
+recorded here rather than forced: the flow menu is derived from the README usage block (cheap
+first) instead of a hardcoded list — the catalog ships with every project, and for tumwater itself
+that yields init → status → logs → prompt → reset-counters → gui → tui → run; and enabling rides on
+defaultConfig instead of a tumwater.json edit (loop rules forbid touching it). Remaining against
+the acceptance criteria: dogfood observation only — a planted doc/behavior mismatch discovered
+within a few qa ticks, and no orphaned processes after its ticks. Files: src/roles.ts,
+src/config.ts, test/qa-role.test.ts (new), test/config.test.ts, README.md.
 
 ### Show timestamp of last result in the GUI/TUI live table (planned 2026-08-21, refined
 2026-08-25, done 2026-08-26)

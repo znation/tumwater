@@ -10,6 +10,8 @@ export function defaultConfig(): TumwaterConfig {
   // Assign the full entry rather than mutating `roles.steward`: under
   // noUncheckedIndexedAccess that index access is `RoleConfig | undefined`.
   roles.steward = { enabled: true, minTickIntervalSeconds: 21600 };
+  // QA exercises the product like a user on a ~2 h clock: user flows change slower than code.
+  roles.qa = { enabled: true, minTickIntervalSeconds: 7200 };
   return {
     piArgs: [],
     maxConcurrent: 6,

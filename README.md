@@ -161,8 +161,9 @@ box feeds the director — anyone who can reach the port can steer the fleet and
 transcript. Use it only on networks where that is acceptable.
 
 Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
-`improve`, `steward`, `director`. Enable/disable them, pick pi's provider/model/thinking level, set
-a per-role tick interval (the steward runs on a ~6 h clock by default), and tune backoff in
+`qa`, `improve`, `steward`, `director`. Enable/disable them, pick pi's provider/model/thinking
+level, set a per-role tick interval (the steward runs on a ~6 h clock and qa on a ~2 h clock,
+both by default), and tune backoff in
 `tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
 within ~2s — enabling/disabling roles, per-role provider/model/thinking/instructions, tick
 intervals, and backoff all apply live; only `maxConcurrent` and `sessionRetentionDays` require a
