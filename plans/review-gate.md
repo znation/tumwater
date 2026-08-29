@@ -9,7 +9,7 @@ cannot compile) · refined 2026-08-28 (build pre-check disambiguated and unblock
 node_modules walk-up, npm-ENOENT handling; main's build green again since `c02189c`) · from the
 "Senior Tumwater" report (HN 49421554) · report item R1
 
-## Status (plan-loop audit 2026-08-27, re-audited 2026-08-28)
+## Status (plan-loop audit 2026-08-27, re-audited 2026-08-28, re-audited 2026-08-29)
 
 **All five remaining items from the 2026-08-27 audit are landed and verified** — feature tick 47
 (`74224e9`) wired the gate into the main tick path; checked at `97e3e94` with a green build and a
@@ -47,14 +47,15 @@ the audit: from a worktree with no local install, detection resolves the main re
 levels up and `npm run build` compiles the worktree's own sources (tsc resolved by walking up to
 the root's node_modules) into the gitignored dist/, tree left clean. One recorded deviation:
 machine-generated reasons join the header to the first output line so the compiler error sits
-right after `build check failed (<script>):` in the injected next-tick note. What remains is its
-test suite — units for detection (dogfood walk-up shape, nearest-qualifying-wins, script
-preference, neither-script/malformed/absent → null), runBuildCheck outcomes (pass / fail-with-
-clipped-tail / timeout-skip; no-npm reachable by pointing process.env.PATH at an empty dir around
-the call), clipBuildTail — plus a gate e2e that a failing scratch-repo build rejects with zero
-reviewer pi runs and its tail injected into the next prompt, and a passing one still reaches the
-reviewer. Full spec under PLANS.md's 2026-08-29 audit. Items (b)–(c) are unaffected and
-independently pickable.
+right after `build check failed (<script>):` in the injected next-tick note. Bugfix tick 58
+(`038519a`) landed part of that suite — runBuildCheck units (toolchain resolution from the
+installed root when the worktree has no node_modules; failing build → failed + clipped tail;
+timeout → skipped), the detectBuildCheck walk-up unit, and a gate e2e proving a passing pre-check
+reaches the reviewer; improve tick `36b0adc` then removed 038519a's PATH-prepend workaround (npm's
+own run-script walks up ancestor node_modules/.bin dirs — no env manipulation needed), with the
+resolution test pinning that. What remains: the uncovered detection edge cases, the no-npm branch,
+clipBuildTail units, and the failing/hanging gate e2e — full spec under PLANS.md's corrected
+2026-08-29 re-audit. Items (b)–(c) are unaffected and independently pickable.
 
 The dogfood `tumwater.json` review section remains optional — defaults already enable the gate; a
 strong-model override is a user decision.
