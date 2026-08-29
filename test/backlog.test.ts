@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { openBugs, parseEntries, plannedPlans } from "../src/backlog.js";
+import { openBugs, openQuestions, parseEntries, plannedPlans } from "../src/backlog.js";
 import { tmpdir } from "./util.js";
 
 const PLANS_MD = `# Plans
@@ -92,4 +92,72 @@ test("openBugs reads BUGS.md's Open section only; missing file yields []", () =>
     "Merge conflicts logged as warnings although they are normal operation (reported 2026-08-25)",
   ]);
   assert.deepEqual(openBugs(tmpdir()), []);
+});
+
+const QUESTIONS_MD = `# Questions
+
+Open questions loops have posted for a human decision — each with context, the options, and the
+loop's recommendation. Answer by moving an entry to ## Answered with your decision (or tell the
+director). Loops never block on their own questions; they check here at the start of each tick.
+
+## Open
+
+### Which provider should the qa role use for its real runs? (asked 2026-08-27 by qa)
+
+**Context:** The README documents two providers with different costs.
+**Options:** A) cheap model, B) default model. **Recommendation:** A until proven insufficient.
+
+### Should reset-counters also clear the event log? (asked 2026-08-27 by improve)
+
+## Answered
+
+### Where should harness state live? (asked 2026-08-21, answered 2026-08-21)
+
+Decision: under .tumwater/, gitignored. This entry must never appear in the open list.
+`;
+
+test("openQuestions reads QUESTIONS.md's Open section only; missing file yields []", () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), QUESTIONS_MD);
+  assert.deepEqual(openQuestions(root), [
+    "Which provider should the qa role use for its real runs? (asked 2026-08-27 by qa)",
+    "Should reset-counters also clear the event log? (asked 2026-08-27 by improve)",
+  ]);
+  // An answered question must not leak into the open count — the header badge is
+  // openQuestions(root).length, so a stale entry would keep showing `questions: N`.
+  assert.ok(!openQuestions(root).some((t) => t.includes("Where should harness state")));
+  // Body lines under an entry (context/options/recommendation prose) never become titles.
+  for (const e of openQuestions(root)) {
+    assert.ok(!e.startsWith("**") && !e.includes("Context"));
+  }
+  assert.deepEqual(openQuestions(tmpdir()), []);
+});
+
+test("openQuestions skips placeholders in a freshly seeded file", () => {
+  // The exact template init.ts seeds: both sections hold only the _None yet._ placeholder.
+  const root = tmpdir();
+  fs.writeFileSync(
+    path.join(root, "QUESTIONS.md"),
+    `# Questions\n\n## Open\n\n_None yet._\n\n## Answered\n\n_None yet._\n`,
+  );
+  assert.deepEqual(openQuestions(root), []);
+});
+
+test("openQuestions reads fresh: answering a question drops it from the list", () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), QUESTIONS_MD);
+  assert.equal(openQuestions(root).length, 2);
+  // The answer flow moves an entry (heading + body) under ## Answered — the next read
+  // must reflect it (no caching), or the badge would overcount.
+  const answeredEntry =
+    "### Which provider should the qa role use for its real runs? (asked 2026-08-27 by qa, answered 2026-08-28)\n\nDecision: cheap model.\n";
+  const openEntry =
+    "### Which provider should the qa role use for its real runs? (asked 2026-08-27 by qa)\n\n**Context:** The README documents two providers with different costs.\n**Options:** A) cheap model, B) default model. **Recommendation:** A until proven insufficient.\n";
+  fs.writeFileSync(
+    path.join(root, "QUESTIONS.md"),
+    QUESTIONS_MD.replace(openEntry, "").replace("## Answered\n", `## Answered\n\n${answeredEntry}`),
+  );
+  assert.deepEqual(openQuestions(root), [
+    "Should reset-counters also clear the event log? (asked 2026-08-27 by improve)",
+  ]);
 });
