@@ -3,16 +3,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  NOTHING_TO_DO,
   PRINCIPLES_MAX_CHARS,
   buildConflictPrompt,
   buildDirectorPrompt,
   buildRejectedReviewNote,
   buildResumePrompt,
   buildTickPrompt,
-  isNothingToDo,
   readPrinciples,
 } from "../src/prompt.js";
+import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
 import { DECOMPOSITION_GUIDANCE, ROLES, roleById } from "../src/roles.js";
 import { tmpdir } from "./util.js";
@@ -249,11 +248,6 @@ test("buildConflictPrompt keeps the project building and ends by stopping", () =
   // no sentinel or SUMMARY line (this flow parses neither from pi's reply).
   assert.match(p, /just stop/i);
   assert.ok(!p.includes(NOTHING_TO_DO), "no tick sentinel in a conflict run");
-});
-
-test("isNothingToDo detects the sentinel", () => {
-  assert.ok(isNothingToDo(`some reasoning\n${NOTHING_TO_DO}`));
-  assert.ok(!isNothingToDo("all done\nSUMMARY: x"));
 });
 
 // The rejected-review note is the ONLY cross-tick memory of a failed change: every tick

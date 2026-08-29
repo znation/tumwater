@@ -3,9 +3,9 @@ import { compactTokens } from "./text.js";
 /** Assembling tick commit messages from pi's final reply: the SUMMARY line becomes the
  * subject, the WHY/RISK/VERIFIED block becomes the body, and the harness stamps a trailer
  * with tick metadata. Split out of prompt.ts — which keeps building the prompts that declare
- * this contract (and parsing the TUMWATER_NOTHING_TO_DO / VERDICT_LINE sentinels) — because
- * turning a reply into what `git commit` receives is the git side of the contract, consumed
- * only by loop.ts. */
+ * this contract (the machine-detectable half — sentinel and verdict-line detection — lives in
+ * reply-contract.ts) — because turning a reply into what `git commit` receives is the git side
+ * of the contract, consumed only by loop.ts. */
 
 /** Pull the SUMMARY: line out of a pi final reply; null when absent. */
 export function extractSummary(finalText: string): string | null {

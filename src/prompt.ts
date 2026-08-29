@@ -1,24 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DECOMPOSITION_GUIDANCE, type Role } from "./roles.js";
+import { NOTHING_TO_DO, REFUSED_SENTINEL } from "./reply-contract.js";
 
 /** Prompt construction for every kind of pi run the harness starts (tick, director, resume,
- * conflict resolution, review) plus the reply contract those prompts declare: the
- * TUMWATER_NOTHING_TO_DO sentinel and the SUMMARY/WHY/RISK/VERIFIED block format. Assembling
- * that reply into the tick's commit message lives in commit-message.ts. */
-
-/** Sentinel a loop's pi run outputs when it found nothing worth doing. */
-export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
-
-/** Sentinel a loop's pi run outputs when it declines its task (see plans/refusal-and-thrash.md):
- * `TUMWATER_REFUSED: <one-line reason>`. The reason is the durable objection — it becomes the
- * commit subject of the refusal note and the tick's lastSummary. */
-export const REFUSED_SENTINEL = "TUMWATER_REFUSED";
-
-/** The review gate's verdict line (see buildReviewPrompt): the reviewer ends with exactly
- * `VERDICT: approve` or `VERDICT: reject`. Scanned across every assistant message, like the
- * nothing-to-do sentinel — a verdict in an intermediate turn must survive later remarks. */
-export const VERDICT_LINE = /^VERDICT:\s*(approve|reject)\b/m;
+ * conflict resolution, review), declaring in prose the reply contract those runs must follow:
+ * the TUMWATER_NOTHING_TO_DO sentinel, the TUMWATER_REFUSED line, and the SUMMARY/WHY/RISK/VERIFIED
+ * block format. The machine-detectable half of that contract — constants and detection for parsing
+ * pi's replies — lives in reply-contract.ts; assembling a reply into the tick's commit message
+ * lives in commit-message.ts. */
 
 /** Cap on the PRINCIPLES.md text injected into every prompt, so a runaway file cannot blow up
  * each tick's prefill. */
@@ -27,7 +17,7 @@ export const PRINCIPLES_MAX_CHARS = 4000;
 /** The rule every loop prompt states for ending a run that made changes — the exact
  * SUMMARY/WHY/RISK/VERIFIED block format commit-message.ts parses into the commit message.
  * Stated once so the tick/director rules and the resume bridge cannot drift (sibling of the
- * NOTHING_TO_DO sentinel above). */
+ * NOTHING_TO_DO sentinel in reply-contract.ts). */
 const SUMMARY_RULE = `- If you did make changes, end your reply with a block in exactly this form (one line each):
   SUMMARY: <imperative one-line description of the change, at most 72 characters>
   WHY: <why the change was made — one or two sentences>
@@ -264,17 +254,3 @@ export function buildRejectedReviewNote(reasons: string[]): string {
   return `Your previous change was rejected in review:\n${list}\nAddress the objections or take a different approach.`;
 }
 
-/** True when the reply declares there was nothing to do. */
-export function isNothingToDo(finalText: string): boolean {
-  return finalText.includes(NOTHING_TO_DO);
-}
-
-/** Extract the one-line reason from a TUMWATER_REFUSED sentinel line; null when no such line
- * exists. Anchored at line start like the VERDICT line, so prose that merely mentions the
- * sentinel mid-sentence cannot set the reason (the boolean detection below is deliberately
- * looser, matching the nothing-to-do sentinel's whole-reply scan). */
-export function extractRefusal(finalText: string): string | null {
-  const match = finalText.match(new RegExp(`^\\s*${REFUSED_SENTINEL}:\\s*(.+)$`, "m"));
-  if (!match?.[1]) return null;
-  return match[1].trim();
-}

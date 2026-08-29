@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
 import { rotateIfLarge } from "./files.js";
-import { extractRefusal, isNothingToDo, REFUSED_SENTINEL, VERDICT_LINE } from "./prompt.js";
+import { extractRefusal, hasVerdictLine, isNothingToDo, REFUSED_SENTINEL } from "./reply-contract.js";
 
 interface PiMessage {
   role: string;
@@ -136,7 +136,7 @@ export class PiStreamParser {
       // First reason wins: a compliant run emits the sentinel once, in its final message.
       if (!this.refusedReason) this.refusedReason = extractRefusal(text) ?? "";
     }
-    if (VERDICT_LINE.test(text)) this.verdictText = text;
+    if (hasVerdictLine(text)) this.verdictText = text;
     this.turns += 1;
     this.outputTokens += msg.usage?.output ?? 0;
     this.peakContextTokens = Math.max(this.peakContextTokens, msg.usage?.totalTokens ?? 0);

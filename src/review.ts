@@ -5,6 +5,7 @@ import { aheadOfMainDiff, aheadOfMainFiles, git, headOf, resetWorktreeToMain } f
 import { piLogPath, reviewSessionDir } from "./paths.js";
 import { runPi } from "./pi.js";
 import { buildReviewPrompt, readPrinciples } from "./prompt.js";
+import { verdictLines } from "./reply-contract.js";
 import { saveLoopState } from "./state.js";
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
@@ -70,27 +71,22 @@ function clipReason(r: string): string {
   return r.length > MAX_REASON_CHARS ? r.slice(0, MAX_REASON_CHARS - 1) + "…" : r;
 }
 
-/** The verdict line as stated in buildReviewPrompt — anchored at line start so prose that
- * merely mentions "VERDICT:" mid-sentence cannot set the outcome. */
-const VERDICT_RE = /^VERDICT:\s*(approve|reject)\b/mg;
-
 /** Parse the reviewer's reply: the LAST VERDICT line wins (the prompt asks for exactly one),
  * followed by its reasons — numbered/bulleted lines first, any other non-empty prose as a
  * fallback. Null when no parseable verdict exists: that is a FAILED review, never an approval
  * (fail closed). */
 export function parseVerdict(text: string): ReviewVerdict | null {
-  const matches = [...text.matchAll(VERDICT_RE)];
+  const matches = verdictLines(text);
   if (matches.length === 0) return null;
   const last = matches[matches.length - 1];
   if (!last) return null; // Unreachable: the length check above guarantees a match.
-  const verdict = last[1] as "approve" | "reject";
-  const after = text.slice(last.index + last[0].length);
+  const after = text.slice(last.end);
   const lines = after.split("\n").map((l) => l.trim()).filter(Boolean);
   let reasons = lines
     .map((l) => l.match(/^(?:\d+[.)]|[-*])\s+(.+)$/)?.[1]?.trim())
     .filter((r): r is string => Boolean(r));
   if (reasons.length === 0) reasons = lines; // Prose fallback: every non-empty line.
-  return { verdict, reasons: reasons.slice(0, MAX_REASONS).map(clipReason) };
+  return { verdict: last.verdict, reasons: reasons.slice(0, MAX_REASONS).map(clipReason) };
 }
 
 /** Everything reviewAheadOfMain needs from its caller (a LoopRunner tick or recovery). */
