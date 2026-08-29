@@ -21,9 +21,11 @@ export interface KeyLike {
 }
 
 /** Apply one keypress to the prompt text (pure, so it is unit-testable without a TTY).
- * Printable characters insert at the cursor; backspace deletes before it, delete after it,
- * and left/right move it. Control/meta combinations are ignored. Returns the new state;
- * an out-of-range cursor is clamped instead of corrupting the edit. */
+ * Printable characters insert at the cursor — including multi-character strings readline
+ * delivers for IME-composed input, which advance the cursor by their full length; backspace
+ * deletes before it, delete after it, and left/right move it. Control/meta combinations are
+ * ignored. Returns the new state; an out-of-range cursor is clamped instead of corrupting
+ * the edit. */
 export function applyKey(
   text: string,
   cursor: number,
@@ -44,7 +46,9 @@ export function applyKey(
       return { text: text.slice(0, c) + text.slice(c + 1), cursor: c };
   }
   if (str && !key.ctrl && !key.meta && str >= " ") {
-    return { text: text.slice(0, c) + str + text.slice(c), cursor: c + 1 };
+    // str can hold a whole composed string (IME input arrives as one keypress); the cursor
+    // must land after ALL of it, not one unit in.
+    return { text: text.slice(0, c) + str + text.slice(c), cursor: c + str.length };
   }
   return { text, cursor: c };
 }

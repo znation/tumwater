@@ -12,6 +12,13 @@ test("applyKey inserts printable characters at the cursor", () => {
   assert.deepEqual(applyKey("hello world", 6, "X", key("X")), { text: "hello Xworld", cursor: 7 });
 });
 
+test("applyKey inserts multi-character strings (IME composition) advancing the cursor fully", () => {
+  // readline delivers composed IME text as one keypress whose str holds the whole string
+  // and has no special name; the cursor must land after ALL of it, not one unit in.
+  assert.deepEqual(applyKey("", 0, "你好", {}), { text: "你好", cursor: 2 });
+  assert.deepEqual(applyKey("ab cd", 2, "xy", {}), { text: "abxy cd", cursor: 4 });
+});
+
 test("applyKey moves the cursor with left/right and clamps at both ends", () => {
   assert.deepEqual(applyKey("abc", 1, undefined, key("left")), { text: "abc", cursor: 0 });
   assert.deepEqual(applyKey("abc", 0, undefined, key("left")), { text: "abc", cursor: 0 });
