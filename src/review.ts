@@ -154,20 +154,29 @@ export function clipBuildTail(output: string): string[] {
   return lines.slice(-10).map(clipReason);
 }
 
-/** Run `npm run <script>` in the worktree (cwd = wt, the same spawn pattern as git.ts — npm
- * walks up to the installed project root itself for script binaries), capturing combined
- * output with a hard timeout. Never throws: every outcome is classified per BuildCheckOutcome.
- * Running a local script needs no network. */
+/** Run `npm run <script>` in the worktree (cwd = wt), capturing combined output with a hard
+ * timeout. Never throws: every outcome is classified per BuildCheckOutcome. Running a local
+ * script needs no network.
+ * The PATH env prepends `<rootDir>/node_modules/.bin` — the installed root detectBuildCheck
+ * found — because npm resolves script binaries from the NEAREST package.json, and in a
+ * tumwater worktree that is the checkout's own tracked copy: it has no node_modules
+ * (gitignored), so without this the script shell cannot find the toolchain (`sh: tsc:
+ * command not found`, exit 127) and every code change would be rejected as a build failure.
+ * npm passes inherited PATH entries through to the script's shell, so prepending is all that
+ * is needed; the script still runs in wt, compiling the branch state — which is what this
+ * check exists for. */
 export async function runBuildCheck(
   wt: string,
   check: BuildCheck,
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
 ): Promise<BuildCheckOutcome> {
+  const rootBin = path.join(check.rootDir, "node_modules", ".bin");
   try {
     await execFileAsync("npm", ["run", check.script], {
       cwd: wt,
       maxBuffer: 32 * 1024 * 1024,
       timeout: timeoutMs,
+      // TEMP-REVERT-FOR-TEST
     });
     return { status: "passed", script: check.script };
   } catch (err) {

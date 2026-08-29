@@ -2,7 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { isExemptDiff, isExemptPath, parseVerdict, reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review.js";
+import {
+  detectBuildCheck,
+  isExemptDiff,
+  isExemptPath,
+  parseVerdict,
+  reviewAheadOfMain,
+  runBuildCheck,
+  REVIEW_FAILURE_LIMIT,
+} from "../src/review.js";
 import { aheadOfMain, ensureWorktree, headOf } from "../src/git.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/state.js";
@@ -288,6 +296,112 @@ test("gate fails closed on an aborted run without bookkeeping", async () => {
     assert.equal(await aheadOfMain(wt, "main"), 1); // commit stays; the resumed tick re-reviews it
     assert.equal(state.lastReview, undefined); // no bookkeeping on abort
     assert.equal(state.unreviewFailures, undefined);
+  } finally {
+    restore();
+  }
+});
+
+// ── Deterministic build pre-check ────────────────────────────────────────────────────────
+// The layout every JS project has under tumwater: the worktree is a full checkout carrying
+// its own tracked package.json but NO node_modules (gitignored) — only the main repo root
+// holds an install. detectBuildCheck walks up to that root; runBuildCheck must still resolve
+// the toolchain from it while compiling the WORKTREE's code.
+
+/** Scratch project: `root` has package.json + a fake toolchain in node_modules/.bin; `wt`
+ * sits INSIDE it at the real worktree location (`.tumwater/worktrees/<role>`) with its own
+ * tracked package.json and no install — so root is an ancestor, as detectBuildCheck requires. */
+function buildCheckFixture(): { root: string; wt: string } {
+  const base = tmpdir("buildcheck-");
+  const root = path.join(base, "project");
+  const binDir = path.join(root, "node_modules", ".bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  const tool = path.join(binDir, "buildcheck-tool");
+  fs.writeFileSync(tool, "#!/bin/sh\necho buildcheck-ok\n");
+  fs.chmodSync(tool, 0o755);
+
+  const wt = path.join(root, ".tumwater", "worktrees", ROLE);
+  fs.mkdirSync(wt, { recursive: true });
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  return { root, wt };
+}
+
+test("runBuildCheck resolves the toolchain from the installed root when the worktree has no node_modules", async () => {
+  const { root, wt } = buildCheckFixture();
+  // Pre-fix this was `sh: buildcheck-tool: command not found` (exit 127) — a deterministic
+  // rejection of every code change in any JS project (BUGS.md).
+  const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+  assert.equal(outcome.status, "passed");
+});
+
+test("runBuildCheck still classifies a genuinely failing build as failed with the output tail", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --fail" } }),
+  );
+  const tool = path.join(root, "node_modules", ".bin", "buildcheck-tool");
+  fs.writeFileSync(
+    tool,
+    "#!/bin/sh\n[ \"$1\" = \"--ok\" ] && echo ok || { echo type error TS9999: boom; exit 1; }\n",
+  );
+  const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+  assert.equal(outcome.status, "failed");
+  assert.ok((outcome.outputTail ?? []).some((l) => l.includes("TS9999")));
+});
+
+test("runBuildCheck skips (not fails closed) when the script times out", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "sleep 5" } }),
+  );
+  const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 400);
+  assert.equal(outcome.status, "skipped");
+  assert.equal(outcome.skipReason, "timeout");
+});
+
+test("detectBuildCheck walks up from a worktree without node_modules to the installed project root", () => {
+  const { root, wt } = buildCheckFixture();
+  assert.deepEqual(detectBuildCheck(wt), { rootDir: root, script: "build" });
+});
+
+test("gate pre-check compiles the worktree against the root install — a healthy build reaches the reviewer", async () => {
+  const root = makeRepo();
+  // The install signature at the repo root (what detectBuildCheck walks up to from the
+  // worktree), plus the worktree's own tracked package.json with no node_modules.
+  const binDir = path.join(root, "node_modules", ".bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  const tool = path.join(binDir, "buildcheck-tool");
+  fs.writeFileSync(tool, "#!/bin/sh\necho ok\n");
+  fs.chmodSync(tool, 0o755);
+
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "wip change");
+
+  const marker = path.join(tmpdir(), "pi-ran");
+  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "approved"); // pre-fix: "rejected" by the build check
+    assert.ok(fs.existsSync(marker)); // …with no reviewer run; now it reaches pi
   } finally {
     restore();
   }
