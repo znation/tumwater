@@ -7,6 +7,7 @@ import { runPi } from "./pi.js";
 import { buildReviewPrompt, readPrinciples } from "./prompt.js";
 import { verdictLines } from "./reply-contract.js";
 import { saveLoopState } from "./state.js";
+import { shortSha } from "./text.js";
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
  * a warning: a misconfigured reviewer model must not be able to wedge a loop into re-reviewing
@@ -198,7 +199,7 @@ export async function reviewAheadOfMain(
       logEvent(root, {
         loop: role,
         type: "warning",
-        message: `discarding unreviewed leftover after ${REVIEW_FAILURE_LIMIT} failed reviews (${head.slice(0, 8)})`,
+        message: `discarding unreviewed leftover after ${REVIEW_FAILURE_LIMIT} failed reviews (${shortSha(head)})`,
       });
     }
     return { decision: "failed", detail: message, run: pi };

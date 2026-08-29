@@ -1,3 +1,4 @@
+import { shortSha } from "./text.js";
 import type { HarnessEvent } from "./types.js";
 
 /** Human one-liner for an event, shared by `logs`, `run` output, the TUI activity pane, and the
@@ -19,7 +20,7 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} tick #${e.tick} ${e.result}${extra}`;
     }
     case "merged":
-      return `${time} ${loop} merged ${String(e.commit).slice(0, 8)} to main — ${e.summary}`;
+      return `${time} ${loop} merged ${shortSha(e.commit)} to main — ${e.summary}`;
     case "question_posted":
       // Routine operation (a loop asked the user something), not a warning.
       return `${time} ${loop} question posted: ${e.question}`;
@@ -38,15 +39,15 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} counters reset${scope} (ticks, commits, tokens, cost)`;
     }
     case "review_start":
-      return `${time} ${loop} reviewing ${String(e.head).slice(0, 8)} before merge`;
+      return `${time} ${loop} reviewing ${shortSha(e.head)} before merge`;
     case "review_verdict":
-      return `${time} ${loop} review approved ${String(e.head).slice(0, 8)}${e.reason ? ` — ${e.reason}` : ""}`;
+      return `${time} ${loop} review approved ${shortSha(e.head)}${e.reason ? ` — ${e.reason}` : ""}`;
     case "review_rejected": {
       const reasons = Array.isArray(e.reasons) ? (e.reasons as string[]) : [];
-      return `${time} ${loop} review rejected ${String(e.head).slice(0, 8)} — ${reasons[0] ?? "no reasons given"}`;
+      return `${time} ${loop} review rejected ${shortSha(e.head)} — ${reasons[0] ?? "no reasons given"}`;
     }
     case "review_failed":
-      return `${time} ${loop} review failed for ${String(e.head).slice(0, 8)}: ${e.message} (commit kept for re-review)`;
+      return `${time} ${loop} review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)`;
     case "resume":
       return `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
     case "warning":
