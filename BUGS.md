@@ -5,7 +5,7 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Build broken on main: feature tick 52's questions-outbox changes leave two test files stale (found by readme loop 2026-08-28)
+### Build broken on main: feature tick 52's questions-outbox changes leave three test files stale (found by readme loop 2026-08-28)
 
 **Symptom:** `npm run build` — and therefore `npm test` — fails on main with five TypeScript errors, all in test files that feature tick 52 (`2547b4d`) did not update for its own API changes:
 
@@ -23,7 +23,9 @@ Every loop inherits this because worktrees reset to main at tick start, so the w
 
 **Cause:** Feature tick 52 made `StatusSnapshot.questions` a required field (src/status.ts) and gave `backlogLines` a third `questions` argument (src/tui.ts), but left the test call sites stale: `snapshotWith` in test/status-render.test.ts builds a `StatusSnapshot` without `questions`, and the four `backlogLines(...)` calls in test/tui.test.ts pass two arguments. Note the fix is not just adding arguments — `backlogLines` now always emits an `open questions (N):` subheader plus its entries or `(none)`, so those tests' expected line arrays must grow accordingly, and the all-empty case's single line changed to "(no planned features, open bugs, or open questions)".
 
-**Fix:** add `questions: 0` to `snapshotWith`'s object; pass a third argument at each of the four call sites and extend the expected outputs with the new section. Files: test/status-render.test.ts, test/tui.test.ts.
+A third stale file is invisible to tsc: `initProject` now seeds QUESTIONS.md (src/init.ts), but test/init.test.ts's expected committed-file list omits it, so once the build errors are fixed and `npm test` actually runs, "initProject creates and commits the harness files" fails its deep-equal on the file list (found by coverage loop 2026-08-28 while verifying new tests against the broken main).
+
+**Fix:** add `questions: 0` to `snapshotWith`'s object; pass a third argument at each of the four call sites and extend the expected outputs with the new section; add `QUESTIONS.md` to test/init.test.ts's expected file list. Files: test/status-render.test.ts, test/tui.test.ts, test/init.test.ts.
 
 ## Fixed
 
