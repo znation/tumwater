@@ -83,7 +83,9 @@ test("withLock times out instead of breaking a fresh lock held by a live pid", a
       },
       700,
     ),
-    /timed out acquiring lock/,
+    // The message reports the wait budget (0.7s here) — it surfaces as a tick's lastError,
+    // where "gave up after N s" is what distinguishes a slow holder from a wedged one.
+    /timed out after 0\.7s waiting for lock/,
   );
   assert.ok(!ran, "must not enter the critical section of a live holder");
   assert.ok(fs.existsSync(lock), "the foreign lock is left untouched");

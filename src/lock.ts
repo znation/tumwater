@@ -35,7 +35,9 @@ export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs =
       break;
     } catch {
       tryBreakStale(dir);
-      if (Date.now() > deadline) throw new Error(`timed out acquiring lock ${dir}`);
+      // Report the wait budget: this surfaces as a tick's lastError, and "gave up after
+      // 120s" is what distinguishes a slow holder from a wedged one.
+      if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}`);
       await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
     }
   }
