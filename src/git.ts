@@ -108,6 +108,7 @@ export function readBranchHead(root: string, branch: string): string | null {
   return null;
 }
 
+/** True when `dir` is inside a git repository — its `rev-parse --git-dir` probe succeeds. */
 export async function isGitRepo(dir: string): Promise<boolean> {
   return (await gitTry(dir, "rev-parse", "--git-dir")) !== null;
 }
@@ -128,6 +129,8 @@ export async function currentBranch(root: string): Promise<string | null> {
   return out;
 }
 
+/** True when the worktree has uncommitted changes of any kind (staged, modified, or
+ * untracked) — anything `git status --porcelain` reports. */
 export async function isDirty(cwd: string): Promise<boolean> {
   const out = await git(cwd, "status", "--porcelain");
   return out.length > 0;
