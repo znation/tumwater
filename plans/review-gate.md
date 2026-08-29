@@ -5,7 +5,9 @@ state plumbing; stale file refs after the status-layer split; combined-diff revi
 ticks) · refined 2026-08-27 (reviewer model override moves to the top-level `review` section —
 role validation rejects pseudo-role ids) · refined 2026-08-28 (deterministic build pre-check —
 feature tick 49's landing broke main's build with the gate active, exposing that the reviewer
-cannot compile) · from the "Senior Tumwater" report (HN 49421554) · report item R1
+cannot compile) · refined 2026-08-28 (build pre-check disambiguated and unblocked — worktree
+node_modules walk-up, npm-ENOENT handling; main's build green again since `c02189c`) · from the
+"Senior Tumwater" report (HN 49421554) · report item R1
 
 ## Status (plan-loop audit 2026-08-27, re-audited 2026-08-28)
 
@@ -27,17 +29,19 @@ cannot compile) · from the "Senior Tumwater" report (HN 49421554) · report ite
 5. All four review event types render in formatEvent; status shows `reviewing <elapsed>` while
    under review and suppresses the reviewer's own live detail from the work-item cell.
 
-Remaining — three test gaps against the acceptance criteria, nothing structural:
-(a) reject → next-prompt injection is untested: `buildRejectedReviewNote` (src/prompt.ts) has no
-coverage; add a unit test plus a tick-level e2e where a rejected change's reasons appear in the
-role's next prompt.
+Remaining — two test gaps plus the build pre-check, nothing structural:
+(a) Landed since this audit: coverage tick `8ea49b8` added the tick-level e2e (a rejected
+change's reasons appear in the role's next prompt); unit tests for `buildRejectedReviewNote`
+are in test/prompt.test.ts.
 (b) "the merge lock is not held during review" is structurally true (the gate runs before
 `withLock`) but untested — two fake-pi loops, one under review while the other merges.
 (c) The `reviewing <elapsed>` state cell has no test in status-render.test.ts.
 (d) The deterministic build pre-check (section below; refined 2026-08-28 after feature tick 49's
-landing broke main's build with the gate active — the open BUGS.md entry names this hole
-explicitly) is not yet implemented. It cannot be verified until that bug lands and `npm test` is
-green on main again; items (a)–(c) are unaffected by it.
+landing broke main's build with the gate active — the BUGS.md entry names this hole explicitly,
+now fixed and under Fixed) is not yet implemented but UNBLOCKED: main's build has been green
+since `c02189c` (suite 355/355 at `ec17c86`). Its one open ambiguity — where node_modules lives
+when the worktree itself carries no install — is resolved in the section below (walk-up rule), as
+is npm-ENOENT handling. Items (b)–(c) are unaffected by it and independently pickable.
 
 The dogfood `tumwater.json` review section remains optional — defaults already enable the gate; a
 strong-model override is a user decision.
@@ -130,26 +134,36 @@ BUGS.md) got through precisely this hole. Fix it structurally — the same spiri
 operations belong to the harness": a check whose correctness must not depend on model compliance
 is run by the harness, not asked of the reviewer.
 
-- **Placement:** inside `reviewAheadOfMain`, after the exemption short-circuit (an md-only diff
-  cannot break the build and merges with no check at all) and before `review_start` / the
-  reviewer's pi run. Both gate callers (the tick path and `recoverLeftover`) get it for free.
-- **Command detection** (pure helper, no config knob — one sensible way): read `<wt>/package.json`
-  AND require a `node_modules` directory at the project root (npm resolves worktree-local scripts
-  by walking up to it; without an install there is nothing to run — skip rather than false-reject).
-  When both hold: prefer `scripts.typecheck`, else `scripts.build`; neither → no check (the model
-  review still applies; non-JS projects are untouched in v1). Missing/unreadable/malformed file →
-  no check — detection never throws into the gate.
+- **Placement:** inside `reviewAheadOfMain`, after BOTH early returns — the already-approved-HEAD
+  skip and the exemption short-circuit (an md-only diff cannot break the build and merges with no
+  check at all) — and before `logEvent(review_start)` / `state.phase = "review"` / the reviewer's
+  pi run, so a deterministic rejection never shows as "reviewing" on the dashboards. Both gate
+  callers (the tick path and `recoverLeftover`) get it for free.
+- **Command detection** (pure helper, no config knob — one sensible way): find the project root by
+  walking UP from the worktree — at most five levels — to the nearest ancestor directory that
+  contains BOTH a `package.json` and a `node_modules/` directory; read scripts from THAT file. The
+  walk is required, not optional: tumwater's own worktrees live at `<repo>/.tumwater/worktrees/<role>`
+  with no install of their own (node_modules is gitignored — it exists only where someone ran npm
+  install, i.e. the main repo root), so a literal `<wt>/package.json` + `<wt>/node_modules` check
+  would silently disable the pre-check forever in dogfood. When both hold at one level: prefer
+  `scripts.typecheck`, else `scripts.build`; neither → no check (the model review still applies;
+  non-JS projects are untouched in v1). No qualifying ancestor within five levels, or a missing/
+  unreadable/malformed package.json → no check — detection never throws into the gate.
 - **Execution:** `npm run <script>` via `execFile` with cwd = worktree (the same spawn pattern as
   git.ts), combined stdout+stderr captured, hard cap 300 s (module constant; a parameter of the
-  helper so tests can shorten it). Running a local script needs no network.
-- **Outcomes:** exit 0 → proceed to the reviewer run unchanged. Nonzero exit or spawn error → a
-  review REJECTION with machine-generated reasons — `build check failed (<script>): …` plus the
-  clipped output tail — routed through the existing reject path verbatim (`resetWorktreeToMain`,
+  helper so tests can shorten it). Running a local script needs no network. Tests stay offline per
+  PRINCIPLES: a scratch dir with a package.json (`"build": "node -e 'process.exit(2)'"` etc.) plus
+  an EMPTY `node_modules/` directory is enough — npm resolves the script without any install.
+- **Outcomes:** exit 0 → proceed to the reviewer run unchanged. Nonzero exit from a started
+  process → a review REJECTION with machine-generated reasons — `build check failed (<script>): …`
+  plus the clipped output tail — routed through the existing reject path verbatim (`resetWorktreeToMain`,
   `state.lastReview`, `review_rejected` event, next-prompt injection via
-  `buildRejectedReviewNote`); no pi run is consumed (`GateResult.run` absent, as on exempt). The
-  author's next tick sees the compiler lines and fixes them. Timeout → environmental, not the
-  author's fault: one `warning` event ("build check timed out after Ns; proceeding to model
-  review") and the reviewer run proceeds — deliberately NOT fail-closed, so a hung build script
+  `buildRejectedReviewNote`); no pi run is consumed (`GateResult.run` absent, as on exempt) and
+  `unreviewFailures` resets exactly like a model reject — a deterministic verdict about this HEAD.
+  The author's next tick sees the compiler lines and fixes them. Timeout — or a spawn ENOENT where
+  the `npm` binary itself is missing — is environmental, not the author's fault: one `warning`
+  event ("build check timed out after Ns; proceeding to model review" / "no npm on PATH; skipping
+  build check") and the reviewer run proceeds — deliberately NOT fail-closed, so a hung build script
   (watch mode) cannot wedge every code tick into the 3-strike discard of good work. Accepted cost:
   while such a script hangs, every code tick pays the cap before its model review.
 - **Output clipping:** keep the TAIL of the combined output — last ≤10 non-empty lines, each via
@@ -259,8 +273,10 @@ via the combined-diff review; stray-edit reset; fresh session naming), README.
   model review: a failing `npm run <script>` rejects through the existing reject path with the
   compiler tail as reasons (branch reset, `review_rejected` logged, zero reviewer pi runs); a
   passing one proceeds to the reviewer; a timed-out one logs a warning and still proceeds.
-  Detection is pure and total — no package.json, neither script present, malformed JSON, or no
-  root node_modules all yield "no check" without throwing (unit-tested).
+  Detection is pure and total — no qualifying ancestor within five levels (no package.json, no
+  node_modules), neither script present, or malformed JSON all yield "no check" without throwing
+  (unit-tested, including the dogfood shape: a worktree at `<repo>/.tumwater/worktrees/<role>`
+  resolving the main repo root's package.json + node_modules).
 - A failed/verdict-less review never merges: the commit stays on the branch, the tick ends
   `review_error`, and the next tick's recovery re-reviews it; after 3 consecutive failures for one
   HEAD the leftover is discarded with a warning.
