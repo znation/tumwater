@@ -56,9 +56,12 @@ not in the vocabulary.
   `thrashTurns` assistant turns (config, default 40) or ran longer than `thrashMinutes` (default
   60), mark the outcome `highFriction: true`, log a `warning` event, and — once the review gate
   exists — include the flag in the review prompt so the reviewer applies extra scrutiny. The
-  commit-body note ("high-friction change: N turns / M minutes") lands with
-  [commit-bodies.md](commit-bodies.md), which already reserves that trailer line; until then the
-  event and `lastSummary` carry it. Friction becomes data instead of disappearing.
+  commit-body note lands with [commit-bodies.md](commit-bodies.md), which reserved the slot
+  ("appends to this line when set"); the format is now decided (2026-08-29 re-audit) as a sibling
+  git-trailer line after the Tick line — `Friction: high (<turns> turns / <minutes>m)` — rather
+  than an extension of that line, which keeps its asserted format stable and gives minutes (absent
+  from it) a home; only changed ticks carry it. Until it lands, the event and `lastSummary` carry
+  the flag. Friction becomes data instead of disappearing.
   Data sources: turn count is a small `PiStreamParser` addition (a counter over assistant
   message-end events) exposed as `PiRunResult.turns` — commit-bodies.md needs the same field for
   its trailer, so

@@ -6,7 +6,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 ### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-27, audited 2026-08-28)
+refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-29)
 
 Full plan: [plans/refusal-and-thrash.md](plans/refusal-and-thrash.md). A new
 `TUMWATER_REFUSED: <reason>` sentinel and `refused` tick outcome let a loop decline work that
@@ -58,6 +58,51 @@ e2e assertions on the trailer content. (c) **AC5 untested**: config validation f
 `thrashTurns`/`thrashMinutes` has no assertions in test/config.test.ts. Files for the remainder:
 test/refusal.test.ts (new), src/commit-message.ts, src/loop.ts, test/commit-message.test.ts,
 test/config.test.ts.
+
+**Re-audited 2026-08-29 (plan loop) — item-(a) claim corrected; trailer format decided.** The
+"entire planned test suite is missing" claim above is stale on current main: the sentinel-parse
+half has landed. Coverage tick `0326a2a` added test/refusal.test.ts — `extractRefusal` units
+(line-start anchor, whitespace tolerance, bare-sentinel null, mid-sentence mention ignored,
+first parseable line wins) and parser-flag tests (refused + reason captured; intermediate-message
+regression; empty reason for a bare sentinel). Coverage tick `82c7631` then tested the refusal
+path's git helpers in test/git.test.ts — `changedFiles` (clean tree; modified/untracked/deleted by
+repo-relative path; C-quoted porcelain decoding) and `commitPathsAndDiscardRest` (null with no side
+effects when nothing stageable; null when the paths hold no changes; commits only the given paths,
+discards every other change) — and in doing so fixed a real bug: `unquotePorcelainPath` decoded
+non-ASCII C-quoted paths one octal escape at a time into characters instead of collecting latin1
+bytes first and reassembling as UTF-8 (`héllo.md` came back `hÃ©llo.md`) — a refusal note in a
+non-ASCII-named file would have staged the wrong path. Verified at `c0ec4b`: build clean, suite
+391/391. What actually remains — five items, pickable independently: (a) **loop e2e** in
+test/loop.test.ts (zero refusal tests there today): md-only refusal — fake pi appends a Refused
+note to PLANS.md and ends with the sentinel → outcome `refused`, note lands on main under subject
+`tumwater(<role>): refuse — <reason>`; mixed refusal — note plus a tracked src edit plus an
+untracked file → note commits and merges, both code changes discarded (worktree clean at tick end);
+no-note refusal — bare sentinel with no edits → worktree reset to main, outcome `refused`, reason
+in event + lastSummary. (b) **thrash flag** in test/loop.test.ts: a changed tick past either
+threshold sets `highFriction` — warning event carrying the thresholds, `TickOutcome.highFriction`
+set, review prompt carries its HIGH-FRICTION marker; one test per threshold (low `thrashTurns`,
+low `thrashMinutes`). (c) **prompt contract** in test/prompt.test.ts: assert the four shipped
+strings — COMMON_RULES skip rule ("skip entries carrying a Refused note"), feature find-text line,
+bugfix analogue, director's unblock-routing line. (d) **AC3's high-friction trailer line** — small
+code change, format now decided below. (e) **AC5 config validation** in test/config.test.ts:
+defaults 40/60 present; negative and non-numeric `thrashTurns`/`thrashMinutes` rejected with
+actionable errors.
+
+**Trailer format (decided):** commit-bodies.md's reservation ("appends to this line when set") is
+refined into a sibling git-trailer line after the Tick line — `Friction: high (<turns> turns /
+<minutes>m)`, minutes rounded, e.g. `Friction: high (41 turns / 62m)` — rather than an extension of
+the Tick line itself: that keeps the Tick line's asserted format stable and gives minutes (absent
+from it) a home. Mechanically: `commitTrailer` gains an optional fifth argument
+(`highFrictionMinutes?: number`) whose presence appends the line; src/loop.ts's changed-tick call
+site passes `highFriction ? minutes : undefined` — both are already computed before the commit, so
+no reordering; the refusal-path call site is untouched (a refused tick is not a "changed" tick and
+the flag is defined for changed ticks only); update the two stale comments that say the flag stays
+visible in event/lastSummary/review-prompt until this lands. Tests: unit in
+test/commit-message.test.ts (with-flag exact format; without-flag unchanged) plus an e2e in
+test/loop.test.ts that a low-threshold changed tick's commit carries the Friction line in its git
+log. Files for the remainder: src/commit-message.ts, src/loop.ts, test/loop.test.ts,
+test/prompt.test.ts, test/commit-message.test.ts, test/config.test.ts. Nothing structural remains
+beyond item (d)'s small code change; items (a)–(c) and (e) are pure test work.
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28)
