@@ -1057,3 +1057,111 @@ test("thinking-only growth counts as progress (reasoning models stream thinking 
   parser.feed(thinkUpdate("hmm, let me think harder")); // identical size: a keepalive
   assert.equal(parser.progressCount, 2);
 });
+
+test("a change whose build fails is rejected by the pre-check and its compiler tail rides on the next prompt", async () => {
+  const repo = await initializedRepo();
+  // Install signature at the repo root: detectBuildCheck walks up from the worktree to it,
+  // and npm resolves the toolchain from there. The build script fails with a compiler-style line.
+  fs.mkdirSync(path.join(repo, "node_modules", ".bin"), { recursive: true });
+  const tool = path.join(repo, "node_modules", ".bin", "buildcheck-tool");
+  fs.writeFileSync(tool, "#!/bin/sh\necho 'src/bad.ts(3,5): error TS2345: not assignable'\nexit 1\n");
+  fs.chmodSync(tool, 0o755);
+  fs.writeFileSync(
+    path.join(repo, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --fail" } }),
+  );
+
+  // The reviewer branch (any run whose prompt asks for a VERDICT) approves — it must never be
+  // reached, because the pre-check decides first. Author runs record their full argv so the
+  // test can assert what each tick was actually told.
+  const promptsFile = path.join(tmpdir(), "prompts.log");
+  const marker = path.join(tmpdir(), "changed-once");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  printf '%s\n' '${assistantLine("did it\nSUMMARY: add broken code")}'`,
+      `  echo bad > broken.ts`,
+      `else`,
+      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    // Tick 1: the change is committed, then rejected deterministically — no reviewer run.
+    assert.equal((await runner.tick()).result, "rejected");
+    assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "the failing build did not merge");
+
+    // Tick 2: the machine-generated reasons are the cross-tick memory of what broke — every
+    // tick starts a fresh pi session, so they must ride along on this tick's prompt.
+    assert.equal((await runner.tick()).result, "no_change");
+    const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
+    assert.equal(runs.length, 2, "exactly two author runs were recorded");
+    assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
+    const second = runs[1] ?? "";
+    assert.match(second, /Your previous change was rejected in review:/);
+    assert.match(second, /build check failed \(build\): src\/bad\.ts\(3,5\)/);
+  } finally {
+    restore();
+  }
+});
+
+test("the merge lock is not held while a tick is under review: another loop merges concurrently", async () => {
+  const repo = await initializedRepo();
+  // Role A's reviewer run touches the marker, then sleeps — A sits in "reviewing" for ~5s.
+  // Role B waits for that marker, then does its whole tick (author + instant review + merge).
+  // If the gate ran inside withLock, B's merge would block until A's tick had fully ended;
+  // instead B must land while A is still under review.
+  const marker = path.join(tmpdir(), "a-reviewing");
+  const approveLine = assistantLine("VERDICT: approve");
+  const restore = fakePi(
+    [
+      `case "$PWD" in`,
+      `*improve)`,
+      `  for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${marker}'; sleep 5; printf '%s\n' '${approveLine}'; exit 0;; esac; done`,
+      `  printf '%s\n' '${assistantLine("slow work\\nSUMMARY: slow change")}'`,
+      `  echo a > a.txt`,
+      `  ;;`,
+      `*organize)`,
+      `  i=0; while [ ! -f "${marker}" ] && [ $i -lt 60 ]; do sleep 0.2; i=$((i+1)); done`,
+      `  for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${approveLine}'; exit 0;; esac; done`,
+      `  printf '%s\n' '${assistantLine("fast work\\nSUMMARY: fast change")}'`,
+      `  echo b > b.txt`,
+      `  ;;`,
+      `esac`,
+    ].join("\n"),
+  );
+  try {
+    const a = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const b = new LoopRunner(repo, "organize", defaultConfig(), "main");
+    let aEndAt = 0;
+    let bEndAt = 0;
+    const pa = (async () => {
+      const outcome = await a.tick();
+      aEndAt = Date.now();
+      return outcome;
+    })();
+    const pb = (async () => {
+      const outcome = await b.tick();
+      bEndAt = Date.now();
+      return outcome;
+    })();
+    const [aOutcome, bOutcome] = await Promise.all([pa, pb]);
+    assert.equal(aOutcome.result, "changed");
+    assert.equal(bOutcome.result, "changed");
+    // B's merge landed while A was still under review — the gate does not hold the lock.
+    assert.ok(
+      bEndAt < aEndAt,
+      `B finished at ${bEndAt} before A's tick ended at ${aEndAt}: its merge must have run during A's review`,
+    );
+    // Both commits are on main, linearly — no lock contention broke either merge.
+    assert.ok(fs.existsSync(path.join(repo, "a.txt")));
+    assert.ok(fs.existsSync(path.join(repo, "b.txt")));
+    assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
+  } finally {
+    restore();
+  }
+});

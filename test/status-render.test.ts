@@ -280,6 +280,26 @@ test("loopPhase live detail degrades to plain working when the tick has no start
   assert.equal(loopPhase(s, true, root), "working · turn 2 · ctx 3000");
 });
 
+test("loopPhase shows the review gate instead of pi detail while a tick is under review", () => {
+  const s = freshLoopState("feature");
+  s.running = true;
+  s.phase = "review";
+  s.lastTickStartedAt = Date.now() - 90_000;
+  // ±1s of drift between setting the timestamp and formatting it.
+  assert.match(loopPhase(s, true), /^reviewing 1m(29|30|31)s$/);
+
+  const bare = freshLoopState("feature");
+  bare.running = true;
+  bare.phase = "review";
+  assert.equal(loopPhase(bare, true), "reviewing"); // no start time: nothing to show elapsed for
+
+  // The review label wins over live pi detail even when a log tail exists — the tail now
+  // describes the reviewer run, not the author's.
+  const root = tmpdir();
+  writePiLog(root, "feature", [SESSION, assistantLine("working", { tokens: 3_000 })]);
+  assert.match(loopPhase(s, true, root), /^reviewing /);
+});
+
 // Current work item in the table's state cell (renderStatus row level).
 
 test("renderStatus prepends the current work item to a working loop's state cell", () => {

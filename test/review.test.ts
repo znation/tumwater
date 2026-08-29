@@ -9,6 +9,7 @@ import {
   reviewAheadOfMain,
   REVIEW_FAILURE_LIMIT,
 } from "../src/review.js";
+import { clipBuildTail, detectBuildCheck, runBuildCheck } from "../src/build-check.js";
 import { aheadOfMain, ensureWorktree, headOf } from "../src/git.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/state.js";
@@ -332,6 +333,207 @@ test("gate pre-check compiles the worktree against the root install — a health
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
     assert.equal(result.decision, "approved"); // pre-fix: "rejected" by the build check
     assert.ok(fs.existsSync(marker)); // …with no reviewer run; now it reaches pi
+  } finally {
+    restore();
+  }
+});
+
+// ── Build pre-check: detection edge cases, tail clipping, no-npm skip ───────────────
+
+test("detectBuildCheck prefers typecheck over build when both scripts are declared", () => {
+  const base = tmpdir("buildcheck-");
+  const dir = path.join(base, "proj");
+  fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({ scripts: { build: "tsc", typecheck: "tsc --noEmit" } }),
+  );
+  assert.deepEqual(detectBuildCheck(dir), { rootDir: dir, script: "typecheck" });
+});
+
+test("detectBuildCheck returns the NEAREST qualifying ancestor when several qualify", () => {
+  const base = tmpdir("buildcheck-");
+  const outer = path.join(base, "outer");
+  const inner = path.join(outer, "inner");
+  for (const [dir, script] of [
+    [outer, "echo outer"],
+    [inner, "echo inner"],
+  ] as const) {
+    fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { build: script } }));
+  }
+  // Start from a worktree-shaped path below the inner root — inner is closer and must win.
+  const start = path.join(inner, ".tumwater", "worktrees", ROLE);
+  fs.mkdirSync(start, { recursive: true });
+  assert.deepEqual(detectBuildCheck(start), { rootDir: inner, script: "build" });
+});
+
+test("detectBuildCheck stops at the first qualifying ancestor even when it has no check script", () => {
+  // The first directory with package.json + node_modules IS the project. An unrelated
+  // install further up must never be used for its scripts — malformed JSON and a
+  // script-less manifest are both dead ends, and detection never throws.
+  const base = tmpdir("buildcheck-");
+  const outer = path.join(base, "outer");
+  fs.mkdirSync(path.join(outer, "node_modules"), { recursive: true });
+  fs.writeFileSync(path.join(outer, "package.json"), JSON.stringify({ scripts: { build: "echo x" } }));
+
+  const malformed = path.join(outer, "malformed");
+  fs.mkdirSync(path.join(malformed, "node_modules"), { recursive: true });
+  fs.writeFileSync(path.join(malformed, "package.json"), "{ not json");
+  assert.equal(detectBuildCheck(malformed), null);
+
+  const scriptless = path.join(outer, "scriptless");
+  fs.mkdirSync(path.join(scriptless, "node_modules"), { recursive: true });
+  fs.writeFileSync(path.join(scriptless, "package.json"), JSON.stringify({ name: "no-scripts-here" }));
+  assert.equal(detectBuildCheck(scriptless), null);
+});
+
+test("detectBuildCheck gives up past maxLevels ancestors", () => {
+  const base = tmpdir("buildcheck-");
+  const root = path.join(base, "proj");
+  fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ scripts: { build: "echo x" } }));
+  // The start dir sits four levels below the install — beyond a cap of two.
+  const start = path.join(root, "a", "b", "c", "d");
+  fs.mkdirSync(start, { recursive: true });
+  assert.equal(detectBuildCheck(start, 2), null);
+  // …and the same walk with the default cap still finds it.
+  assert.deepEqual(detectBuildCheck(start), { rootDir: root, script: "build" });
+});
+
+test("clipBuildTail keeps the last ten non-empty lines", () => {
+  const many = Array.from({ length: 15 }, (_, i) => `line ${i + 1}`).join("\n");
+  assert.deepEqual(clipBuildTail(many), [
+    "line 6",
+    "line 7",
+    "line 8",
+    "line 9",
+    "line 10",
+    "line 11",
+    "line 12",
+    "line 13",
+    "line 14",
+    "line 15",
+  ]);
+});
+
+test("clipBuildTail drops blank lines and npm's script banner, and clips long ones with an ellipsis", () => {
+  const out = clipBuildTail(`> proj@1.0.0 build\n> tsc --noEmit\na\n${"x".repeat(400)}\n\nb\n`);
+  assert.deepEqual(out, ["a", "x".repeat(299) + "…", "b"]);
+});
+
+test("clipBuildTail yields no lines for empty or whitespace-only output", () => {
+  assert.deepEqual(clipBuildTail(""), []);
+  assert.deepEqual(clipBuildTail("\n   \n\t\n"), []);
+});
+
+/** Scratch project mirroring the fixture in build-check.test.ts (the check's unit home):
+ * `root` has package.json + a fake toolchain in node_modules/.bin; `wt` sits inside it at the
+ * real worktree location with its own tracked package.json and no install — so root is an
+ * ancestor, as detectBuildCheck requires. */
+function buildCheckFixture(): { root: string; wt: string } {
+  const base = tmpdir("buildcheck-");
+  const root = path.join(base, "project");
+  const binDir = path.join(root, "node_modules", ".bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  const tool = path.join(binDir, "buildcheck-tool");
+  fs.writeFileSync(tool, "#!/bin/sh\necho buildcheck-ok\n");
+  fs.chmodSync(tool, 0o755);
+
+  const wt = path.join(root, ".tumwater", "worktrees", ROLE);
+  fs.mkdirSync(wt, { recursive: true });
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  return { root, wt };
+}
+
+test("runBuildCheck skips (not fails closed) when npm is missing from PATH", async () => {
+  const { root, wt } = buildCheckFixture();
+  const oldPath = process.env.PATH;
+  process.env.PATH = tmpdir("empty-path-"); // a directory with no executables
+  try {
+    const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+    assert.equal(outcome.status, "skipped");
+    assert.equal(outcome.skipReason, "no-npm");
+  } finally {
+    process.env.PATH = oldPath;
+  }
+});
+
+// ── Build pre-check: gate-level e2e (failing build, hanging build) ──────────────────
+
+/** A repo whose root carries the install signature (package.json + node_modules) and a
+ * worktree with a committed change; both manifests declare the same build script. `toolBody`,
+ * when given, is installed as an executable at the root's node_modules/.bin/buildcheck-tool —
+ * the dogfood layout where the worktree resolves its toolchain from the installed root. */
+async function gateBuildFixture(buildScript: string, toolBody?: string): Promise<{ root: string; wt: string }> {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
+  if (toolBody) {
+    const tool = path.join(root, "node_modules", ".bin", "buildcheck-tool");
+    fs.writeFileSync(tool, toolBody);
+    fs.chmodSync(tool, 0o755);
+  }
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: buildScript } }),
+  );
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: buildScript } }),
+  );
+  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "wip change");
+  return { root, wt };
+}
+
+test("gate pre-check rejects a failing build with zero reviewer runs and the compiler tail as reasons", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho 'src/bad.ts(3,5): error TS2345: Argument of type string is not assignable'\nexit 1\n",
+  );
+
+  // The fake pi records ANY invocation — the pre-check must decide before it is ever asked.
+  const marker = path.join(tmpdir(), "pi-ran");
+  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "rejected"); // deterministic — no model verdict involved
+    assert.ok(!fs.existsSync(marker), "the reviewer never ran: the pre-check decided alone");
+    assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
+    assert.match(result.detail ?? "", /^build check failed \(build\): /);
+    assert.equal(state.lastReview?.verdict, "reject");
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.match(reasons[0] ?? "", /^build check failed \(build\): src\/bad\.ts\(3,5\)/); // header + first output line
+    assert.equal(state.unreviewFailures, 0); // a deterministic verdict resets strikes like a model reject
+    const rejected = readEvents(root).find((e) => e.type === "review_rejected");
+    assert.ok(rejected, "the rejection is logged for tumwater logs");
+    assert.match(String(rejected?.reasons), /TS2345/); // the compiler tail rides on the event
+  } finally {
+    restore();
+  }
+});
+
+test("gate pre-check timeout warns and still proceeds to the model review", async () => {
+  const { root, wt } = await gateBuildFixture("sleep 5"); // hangs past the shortened cap
+  const marker = path.join(tmpdir(), "pi-ran");
+  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), buildCheckTimeoutMs: 400 }, state);
+    assert.equal(result.decision, "approved"); // a timeout is environmental — not fail-closed
+    assert.ok(fs.existsSync(marker), "the reviewer still ran after the warning");
+    const warning = readEvents(root).find((e) => e.type === "warning");
+    assert.match(String(warning?.message), /build check timed out after 0\.4s; proceeding to model review/);
   } finally {
     restore();
   }

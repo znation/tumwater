@@ -5,129 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25, refined
-2026-08-27, audited 2026-08-27, re-audited 2026-08-28, refined 2026-08-28 (build pre-check),
-refined 2026-08-28 (pre-check disambiguated + unblocked), audited 2026-08-29 (build pre-check
-landed in feature tick 54; remainder is tests), re-audited 2026-08-29 (test-suite status
-corrected))
-
-Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
-fresh-session pi run (no author context; own model override via optional provider/model/thinking on
-the new top-level `review` config section — role validation rejects pseudo-role ids) reviews
-the full ahead-of-main diff against PRINCIPLES.md and replies `VERDICT: approve|reject` with
-reasons. Rejects reset the branch, record reasons, and inject them into the author's next tick —
-the only cross-tick memory, since sessions are fresh per tick; md-only diffs are exempt so notes
-stay cheap. The invariant is structural — a failed or verdict-less review fails closed (commit
-stays on the branch for re-review next tick, 3-strike discard cap), and both `recoverLeftover`'s
-salvage and resumed ticks' leftover commits route through the same gate so no crash path can land
-unreviewed work. The report's highest-leverage item — we have merged broken work twice for lack of
-it.
-
-**Status (plan-loop audit 2026-08-27, re-audited 2026-08-28):** feature tick 47 (`74224e9`) wired
-the gate into the main tick path; all five remaining items from the 2026-08-27 audit are now
-verified landed (checked at `97e3e94`, build green, suite 324/324): (1) `runTick` calls the gate
-after `commitAll`, before `merge`, with the full GateResult → outcome mapping (`aborted` re-queues
-a director prompt; reviewer usage folded via `foldUsage`); (2) `"rejected"` schedules like
-`"changed"` — backoff reset, next tick at minTickInterval, no commit counted; (3) `state.phase`
-clears at tick end except on abort (deliberate: an aborted mid-review tick must recover and
-re-review fresh, not resume the author session whose work is already committed); (4)
-test/review.test.ts covers the pure functions plus gate orchestration — approve + stray-edit
-discard, reject reset + reasons recorded, verdict-less fail-closed keep, 3-strike discard,
-doc-only exemption without a pi run, `enabled: false` no-op, `lastApprovedHead` skip, `-recovery`
-session suffix, abort with no bookkeeping — and loop.test.ts routes fresh/resumed/recovered ticks
-through the gate; (5) all four review event types render in `formatEvent`, and status shows
-`reviewing <elapsed>` while under review. Remaining — two test gaps plus the build pre-check below, nothing
-structural; item (a) from that list has since landed: coverage tick `8ea49b8` added the
-tick-level e2e (a rejected change's reasons appear in the role's next prompt), and unit tests for
-`buildRejectedReviewNote` are in test/prompt.test.ts. Still open: (b) "the merge lock is not held
-during review" is structurally true (the gate runs before `withLock`) but untested — two fake-pi
-loops, one under review while the other merges; (c) the `reviewing <elapsed>` state cell has no
-test in test/status-render.test.ts. Files for those: test/loop.test.ts or test/review.test.ts,
-test/status-render.test.ts.
-
-**Refined 2026-08-28 — deterministic build pre-check (new remaining item).** The BUGS.md entry
-(now fixed, under Fixed) named the hole this plan left: feature tick 49 broke main's build *with
-the gate active* because the reviewer is forbidden from running state-changing commands and `npm
-run build` is exactly that (`rm -rf dist && tsc`) — type errors are invisible to a model that
-cannot compile, and broken work has now landed on main six times. The refinement (full design in
-plans/review-gate.md): the harness itself runs the project's declared npm `typecheck`/`build`
-script as a deterministic first step of the gate — after the md-only exemption, before any
-reviewer run; a failure rejects through the existing reject path with the compiler tail as reasons
-(no pi run consumed), a timeout warns and proceeds to model review. No config knob: detection is
-the project's `package.json` scripts plus a `node_modules` presence check, resolved by walking up
-from the worktree — a literal `<wt>/node_modules` check would never fire, because tumwater's own
-worktrees carry no install (only the main repo root does). Joins items (b)–(c) above; **unblocked
-as of this refinement** — main's build has been green since `c02189c` (suite 355/355 at
-`ec17c86`).
-
-**Audited 2026-08-29 (plan loop) — the build pre-check has LANDED; what remains is its test
-suite plus items (b)–(c), all test work.** Feature tick 54 (`93d14f5`) implemented the full
-design in src/review.ts (+181 lines); verified at `fda67b8` with a green build, and this audit
-exercised the dogfood mechanism end-to-end: from a worktree carrying no local install,
-`detectBuildCheck` resolves the main repo root three levels up (package.json + node_modules; no
-`typecheck` script here, so `build`) and `npm run build` with cwd = worktree compiles the
-worktree's own tracked sources — npm walks up to the root's node_modules for tsc — into the
-gitignored dist/, leaving the tree clean in ~1 s. The code matches the design: placement inside
-`reviewAheadOfMain` after both early returns (already-approved-HEAD skip, exemption short-circuit)
-and before `review_start`/`state.phase = "review"`, so a deterministic rejection never shows as
-"reviewing"; nonzero exit rejects through the existing reject path verbatim (`resetWorktreeToMain`,
-`state.lastReview`, `review_rejected` event, next-prompt injection; no pi run consumed —
-`GateResult.run` absent — and `unreviewFailures` reset like a model reject); timeout or spawn-ENOENT
-warns ("build check timed out after Ns; proceeding to model review" / "no npm on PATH; skipping
-build check") and proceeds, deliberately not fail-closed. One deviation from the plan's letter,
-recorded rather than forced: machine-generated reasons join the header to the FIRST output line —
-`build check failed (<script>): <first compiler line>` — with the rest of the clipped tail as
-subsequent reasons, so the compiler error sits right after its header in the injected next-tick
-note. `clipBuildTail` keeps the last ≤10 non-empty lines, each via the existing 300-char clip; the
-300 s cap is a module constant exposed as the `buildCheckTimeoutMs` test seam on ReviewContext.
-**Zero tests landed with it**: nothing under test/ references detectBuildCheck / runBuildCheck /
-clipBuildTail / BUILD_CHECK_TIMEOUT_MS, so the acceptance criteria's "unit-tested" clause is unmet
-and a syntax or type error in this code would ship silently — the exact failure mode that motivated
-the pre-check. Remaining, all test work, pickable independently: (1) **pre-check units** in
-test/review.test.ts — detectBuildCheck over scratch dirs (dogfood walk-up shape with an empty
-node_modules/ at the qualifying ancestor; nearest-qualifying-wins when two ancestors qualify;
-typecheck preferred over build; neither script → null; malformed package.json → null; no
-qualifying ancestor within maxLevels → null — detection never throws); runBuildCheck against a
-scratch project (passing script → passed; failing script → failed with the clipped tail; hanging
-script + short cap → skipped/timeout; the no-npm branch is reachable by pointing process.env.PATH
-at an empty dir around the call, restored in finally); clipBuildTail (tail-of-10, non-empty only,
-per-line clip). (2) **gate e2e** — a scratch repo whose root carries package.json + empty
-node_modules and a failing `build` script: the gate rejects with zero reviewer pi runs (assert via
-the fake-pi argv log the existing orchestration tests already use), branch reset, `review_rejected`
-carrying the compiler tail, reasons in the role's next prompt; a passing script still reaches the
-reviewer (approve path unchanged); a hanging script + short buildCheckTimeoutMs warns and proceeds.
-(3) Items (b)–(c) above are unchanged: merge-lock-not-held-during-review (two fake-pi loops, one
-under review while the other merges — test/loop.test.ts or test/review.test.ts) and the
-`reviewing <elapsed>` state cell (test/status-render.test.ts). Files for the remainder:
-test/review.test.ts, test/loop.test.ts, test/status-render.test.ts. Nothing structural remains in
-this plan.
-
-**Re-audited 2026-08-29 (plan loop) — test-suite status corrected.** The "zero tests landed"
-claim above was true at its verification point (`fda67b8`) but is stale on current main, where the
-remainder list above overstates what is missing: bugfix tick 58 (`038519a`, merged after that
-snapshot) already landed a partial pre-check suite in test/review.test.ts — runBuildCheck units
-(toolchain resolution from the installed root when the worktree has no node_modules; failing build
-→ failed with clipped tail; timeout → skipped), the detectBuildCheck walk-up unit (dogfood shape),
-and a gate e2e proving a passing pre-check reaches the reviewer (fake-pi marker, decision
-approved). Improve tick `36b0adc` then removed 038519a's PATH-prepend workaround from
-runBuildCheck — npm's own run-script (@npmcli/run-script setPATH) walks up ancestor
-node_modules/.bin dirs, so no env manipulation is needed; the resolution test pins that behavior.
-Verified at `d789962`: build clean, suite 384/384. What actually remains — all test work,
-pickable independently: (1) **pre-check unit gaps** in test/review.test.ts — detectBuildCheck edge
-cases not yet covered (nearest-qualifying-wins when two ancestors qualify; typecheck preferred
-over build; neither script → null; malformed package.json → null; no qualifying ancestor within
-maxLevels → null); runBuildCheck's `no-npm` branch (point process.env.PATH at an empty dir around
-the call, restore in finally — only the timeout skipReason is tested today); clipBuildTail units
-(imported by no test yet: tail-of-10, non-empty lines only, per-line 300-char clip). (2) **gate
-e2e gaps** — a scratch repo whose root carries package.json + empty node_modules and a FAILING
-`build` script: the gate rejects deterministically with zero reviewer pi runs (assert via the
-fake-pi marker the passing-build e2e already uses), branch reset to main, `review_rejected`
-carrying the compiler tail, reasons in the role's next prompt; a hanging script + short
-buildCheckTimeoutMs warns and proceeds to model review. (3) Items (b)–(c) above are unchanged:
-merge-lock-not-held-during-review and the `reviewing <elapsed>` state cell. Files for the
-remainder: test/review.test.ts, test/loop.test.ts, test/status-render.test.ts. Nothing structural
-remains in this plan.
-
 ### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28)
 
@@ -308,6 +185,153 @@ include steward (JS loads at startup; same consideration as the commit-bodies tr
 Files for the remainder: test/steward.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts.
 
 ## Done
+
+### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25, refined
+2026-08-27, audited 2026-08-27, re-audited 2026-08-28, refined 2026-08-28 (build pre-check),
+refined 2026-08-28 (pre-check disambiguated + unblocked), audited 2026-08-29 (build pre-check
+landed in feature tick 54; remainder is tests), re-audited 2026-08-29 (test-suite status
+corrected), done 2026-08-29)
+
+Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
+fresh-session pi run (no author context; own model override via optional provider/model/thinking on
+the new top-level `review` config section — role validation rejects pseudo-role ids) reviews
+the full ahead-of-main diff against PRINCIPLES.md and replies `VERDICT: approve|reject` with
+reasons. Rejects reset the branch, record reasons, and inject them into the author's next tick —
+the only cross-tick memory, since sessions are fresh per tick; md-only diffs are exempt so notes
+stay cheap. The invariant is structural — a failed or verdict-less review fails closed (commit
+stays on the branch for re-review next tick, 3-strike discard cap), and both `recoverLeftover`'s
+salvage and resumed ticks' leftover commits route through the same gate so no crash path can land
+unreviewed work. The report's highest-leverage item — we have merged broken work twice for lack of
+it.
+
+**Status (plan-loop audit 2026-08-27, re-audited 2026-08-28):** feature tick 47 (`74224e9`) wired
+the gate into the main tick path; all five remaining items from the 2026-08-27 audit are now
+verified landed (checked at `97e3e94`, build green, suite 324/324): (1) `runTick` calls the gate
+after `commitAll`, before `merge`, with the full GateResult → outcome mapping (`aborted` re-queues
+a director prompt; reviewer usage folded via `foldUsage`); (2) `"rejected"` schedules like
+`"changed"` — backoff reset, next tick at minTickInterval, no commit counted; (3) `state.phase`
+clears at tick end except on abort (deliberate: an aborted mid-review tick must recover and
+re-review fresh, not resume the author session whose work is already committed); (4)
+test/review.test.ts covers the pure functions plus gate orchestration — approve + stray-edit
+discard, reject reset + reasons recorded, verdict-less fail-closed keep, 3-strike discard,
+doc-only exemption without a pi run, `enabled: false` no-op, `lastApprovedHead` skip, `-recovery`
+session suffix, abort with no bookkeeping — and loop.test.ts routes fresh/resumed/recovered ticks
+through the gate; (5) all four review event types render in `formatEvent`, and status shows
+`reviewing <elapsed>` while under review. Remaining — two test gaps plus the build pre-check below, nothing
+structural; item (a) from that list has since landed: coverage tick `8ea49b8` added the
+tick-level e2e (a rejected change's reasons appear in the role's next prompt), and unit tests for
+`buildRejectedReviewNote` are in test/prompt.test.ts. Still open: (b) "the merge lock is not held
+during review" is structurally true (the gate runs before `withLock`) but untested — two fake-pi
+loops, one under review while the other merges; (c) the `reviewing <elapsed>` state cell has no
+test in test/status-render.test.ts. Files for those: test/loop.test.ts or test/review.test.ts,
+test/status-render.test.ts.
+
+**Refined 2026-08-28 — deterministic build pre-check (new remaining item).** The BUGS.md entry
+(now fixed, under Fixed) named the hole this plan left: feature tick 49 broke main's build *with
+the gate active* because the reviewer is forbidden from running state-changing commands and `npm
+run build` is exactly that (`rm -rf dist && tsc`) — type errors are invisible to a model that
+cannot compile, and broken work has now landed on main six times. The refinement (full design in
+plans/review-gate.md): the harness itself runs the project's declared npm `typecheck`/`build`
+script as a deterministic first step of the gate — after the md-only exemption, before any
+reviewer run; a failure rejects through the existing reject path with the compiler tail as reasons
+(no pi run consumed), a timeout warns and proceeds to model review. No config knob: detection is
+the project's `package.json` scripts plus a `node_modules` presence check, resolved by walking up
+from the worktree — a literal `<wt>/node_modules` check would never fire, because tumwater's own
+worktrees carry no install (only the main repo root does). Joins items (b)–(c) above; **unblocked
+as of this refinement** — main's build has been green since `c02189c` (suite 355/355 at
+`ec17c86`).
+
+**Audited 2026-08-29 (plan loop) — the build pre-check has LANDED; what remains is its test
+suite plus items (b)–(c), all test work.** Feature tick 54 (`93d14f5`) implemented the full
+design in src/review.ts (+181 lines); verified at `fda67b8` with a green build, and this audit
+exercised the dogfood mechanism end-to-end: from a worktree carrying no local install,
+`detectBuildCheck` resolves the main repo root three levels up (package.json + node_modules; no
+`typecheck` script here, so `build`) and `npm run build` with cwd = worktree compiles the
+worktree's own tracked sources — npm walks up to the root's node_modules for tsc — into the
+gitignored dist/, leaving the tree clean in ~1 s. The code matches the design: placement inside
+`reviewAheadOfMain` after both early returns (already-approved-HEAD skip, exemption short-circuit)
+and before `review_start`/`state.phase = "review"`, so a deterministic rejection never shows as
+"reviewing"; nonzero exit rejects through the existing reject path verbatim (`resetWorktreeToMain`,
+`state.lastReview`, `review_rejected` event, next-prompt injection; no pi run consumed —
+`GateResult.run` absent — and `unreviewFailures` reset like a model reject); timeout or spawn-ENOENT
+warns ("build check timed out after Ns; proceeding to model review" / "no npm on PATH; skipping
+build check") and proceeds, deliberately not fail-closed. One deviation from the plan's letter,
+recorded rather than forced: machine-generated reasons join the header to the FIRST output line —
+`build check failed (<script>): <first compiler line>` — with the rest of the clipped tail as
+subsequent reasons, so the compiler error sits right after its header in the injected next-tick
+note. `clipBuildTail` keeps the last ≤10 non-empty lines, each via the existing 300-char clip; the
+300 s cap is a module constant exposed as the `buildCheckTimeoutMs` test seam on ReviewContext.
+**Zero tests landed with it**: nothing under test/ references detectBuildCheck / runBuildCheck /
+clipBuildTail / BUILD_CHECK_TIMEOUT_MS, so the acceptance criteria's "unit-tested" clause is unmet
+and a syntax or type error in this code would ship silently — the exact failure mode that motivated
+the pre-check. Remaining, all test work, pickable independently: (1) **pre-check units** in
+test/review.test.ts — detectBuildCheck over scratch dirs (dogfood walk-up shape with an empty
+node_modules/ at the qualifying ancestor; nearest-qualifying-wins when two ancestors qualify;
+typecheck preferred over build; neither script → null; malformed package.json → null; no
+qualifying ancestor within maxLevels → null — detection never throws); runBuildCheck against a
+scratch project (passing script → passed; failing script → failed with the clipped tail; hanging
+script + short cap → skipped/timeout; the no-npm branch is reachable by pointing process.env.PATH
+at an empty dir around the call, restored in finally); clipBuildTail (tail-of-10, non-empty only,
+per-line clip). (2) **gate e2e** — a scratch repo whose root carries package.json + empty
+node_modules and a failing `build` script: the gate rejects with zero reviewer pi runs (assert via
+the fake-pi argv log the existing orchestration tests already use), branch reset, `review_rejected`
+carrying the compiler tail, reasons in the role's next prompt; a passing script still reaches the
+reviewer (approve path unchanged); a hanging script + short buildCheckTimeoutMs warns and proceeds.
+(3) Items (b)–(c) above are unchanged: merge-lock-not-held-during-review (two fake-pi loops, one
+under review while the other merges — test/loop.test.ts or test/review.test.ts) and the
+`reviewing <elapsed>` state cell (test/status-render.test.ts). Files for the remainder:
+test/review.test.ts, test/loop.test.ts, test/status-render.test.ts. Nothing structural remains in
+this plan.
+
+**Re-audited 2026-08-29 (plan loop) — test-suite status corrected.** The "zero tests landed"
+claim above was true at its verification point (`fda67b8`) but is stale on current main, where the
+remainder list above overstates what is missing: bugfix tick 58 (`038519a`, merged after that
+snapshot) already landed a partial pre-check suite in test/review.test.ts — runBuildCheck units
+(toolchain resolution from the installed root when the worktree has no node_modules; failing build
+→ failed with clipped tail; timeout → skipped), the detectBuildCheck walk-up unit (dogfood shape),
+and a gate e2e proving a passing pre-check reaches the reviewer (fake-pi marker, decision
+approved). Improve tick `36b0adc` then removed 038519a's PATH-prepend workaround from
+runBuildCheck — npm's own run-script (@npmcli/run-script setPATH) walks up ancestor
+node_modules/.bin dirs, so no env manipulation is needed; the resolution test pins that behavior.
+Verified at `d789962`: build clean, suite 384/384. What actually remains — all test work,
+pickable independently: (1) **pre-check unit gaps** in test/review.test.ts — detectBuildCheck edge
+cases not yet covered (nearest-qualifying-wins when two ancestors qualify; typecheck preferred
+over build; neither script → null; malformed package.json → null; no qualifying ancestor within
+maxLevels → null); runBuildCheck's `no-npm` branch (point process.env.PATH at an empty dir around
+the call, restore in finally — only the timeout skipReason is tested today); clipBuildTail units
+(imported by no test yet: tail-of-10, non-empty lines only, per-line 300-char clip). (2) **gate
+e2e gaps** — a scratch repo whose root carries package.json + empty node_modules and a FAILING
+`build` script: the gate rejects deterministically with zero reviewer pi runs (assert via the
+fake-pi marker the passing-build e2e already uses), branch reset to main, `review_rejected`
+carrying the compiler tail, reasons in the role's next prompt; a hanging script + short
+buildCheckTimeoutMs warns and proceeds to model review. (3) Items (b)–(c) above are unchanged:
+merge-lock-not-held-during-review and the `reviewing <elapsed>` state cell. Files for the
+remainder: test/review.test.ts, test/loop.test.ts, test/status-render.test.ts. Nothing structural
+remains in this plan.
+
+**Done 2026-08-29 (feature tick) — the remaining test suite landed; nothing structural was left.**
+All three open items are covered and the full suite is green (395/395). (1) Pre-check units in
+test/review.test.ts: detectBuildCheck over scratch dirs (typecheck preferred over build; nearest
+qualifying ancestor wins when two qualify; a first qualifying ancestor with malformed JSON or no
+check script is a dead end — an unrelated install further up is never used, and detection never
+throws; maxLevels cap); clipBuildTail (tail-of-10, blank lines dropped, per-line 300-char clip);
+runBuildCheck's no-npm branch via an emptied process.env.PATH restored in finally. (2) Gate e2e:
+a scratch repo whose root carries the install signature and a failing build script — the gate
+rejects with zero reviewer pi runs (the fake-pi invocation marker is never touched), branch reset
+to main, `review_rejected` carrying the compiler tail, machine-generated reasons recorded; a
+hanging script + short buildCheckTimeoutMs warns ("build check timed out after 0.4s; proceeding to
+model review") and still reaches the reviewer. A full-tick e2e in test/loop.test.ts proves the
+machine-generated reasons ride on the role's next prompt like a model reject's do. (3) Items
+(b)–(c): two concurrent fake-pi loops — one under review for ~5s while the other completes its
+whole tick including merge, asserting B lands before A's tick ends (the gate runs outside
+withLock); and loopPhase renders `reviewing <elapsed>` (with elapsed, bare without a start time,
+ahead of live pi detail) in test/status-render.test.ts. Two small code fixes found by the new
+tests: clipBuildTail now also drops npm's own script banner (`> pkg@1.0 script`, `> <command>`) —
+with little output the first recorded reason was npm's header naming the script, not what broke in
+it; and runBuildCheck's doc comment is corrected to describe the actual toolchain mechanism (npm's
+run-script prepends node_modules/.bin of every directory from cwd up to root, which covers the
+installed repo because worktrees live under it — no env manipulation exists or is needed),
+dropping an unused variable and a stale TEMP marker.
 
 ### QA role — exercising the product like a user (planned 2026-08-24, refined 2026-08-26,
 refined 2026-08-28, done 2026-08-28)

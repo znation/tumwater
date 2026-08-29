@@ -105,17 +105,19 @@ export interface BuildCheckOutcome {
   status: "passed" | "failed" | "skipped";
   /** The script that was run (or attempted). */
   script: string;
-  /** Clipped tail of the combined output on failure — last ≤10 non-empty lines, each clipped
-   * to MAX_REASON_CHARS. */
+  /** Clipped tail of the combined output on failure — last ≤10 meaningful lines (non-blank,
+   * npm banner excluded), each clipped to MAX_REASON_CHARS. */
   outputTail?: string[];
   /** Why no verdict was reached ("skipped"). */
   skipReason?: "timeout" | "no-npm";
 }
 
-/** Keep the TAIL of a build's combined output: last ≤10 non-empty lines, each via clipReason —
- * so a chatty build cannot bloat persisted state or the injected next-tick note. */
+/** Keep the TAIL of a build's combined output: last ≤10 meaningful lines, each via clipReason —
+ * so a chatty build cannot bloat persisted state or the injected next-tick note. Blank lines
+ * and npm's own script banner (`> pkg@1.0 script`, `> <command>`) are dropped: they name the
+ * script that ran, not what broke in it. */
 export function clipBuildTail(output: string): string[] {
-  const lines = output.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = output.split("\n").map((l) => l.trim()).filter((l) => l !== "" && !/^>\s/.test(l));
   return lines.slice(-10).map(clipReason);
 }
 
@@ -127,7 +129,7 @@ export function clipBuildTail(output: string): string[] {
  * `node_modules/.bin` to the script's PATH (@npmcli/run-script setPATH), so the toolchain at
  * check.rootDir — an ancestor of wt by detectBuildCheck construction — is resolvable without
  * any help. The script still runs in wt, compiling the branch state — which is what this
- * check exists for; test/review.test.ts pins the no-node_modules-worktree resolution. */
+ * check exists for; build-check.test.ts pins the no-node_modules-worktree resolution. */
 export async function runBuildCheck(
   wt: string,
   check: BuildCheck,
