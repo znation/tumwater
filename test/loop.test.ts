@@ -1109,6 +1109,78 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
   }
 });
 
+// Refusal handling (plans/refusal-and-thrash.md): the TUMWATER_REFUSED sentinel routes a
+// tick to handleRefusal, where only the markdown objection note may land — it is the durable
+// record that blocks the entry for later ticks. Non-markdown half-work is discarded and the
+// note commit merges directly (md-only diffs are review-exempt by construction).
+
+test("a refused tick lands only its markdown note, discards code changes, and skips review", async () => {
+  const repo = await initializedRepo();
+  // The fake pi counts its invocations in a file OUTSIDE the worktree: exactly one run is
+  // expected (the author). A second invocation would mean the note commit went through the
+  // review gate, which handleRefusal deliberately bypasses.
+  const counter = path.join(tmpdir(), "pi-calls");
+  fs.writeFileSync(counter, "0");
+  const restore = fakePi(
+    [
+      `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'`,
+      // Declines the work and leaves a Refused note under the entry in PLANS.md — plus
+      // half-done code changes (one tracked edit, one untracked file) that must NOT land.
+      `printf '%s\\n' '${assistantLine("declining this plan\nTUMWATER_REFUSED: it would delete user data")}'`,
+      `printf '\\n## Entry\\n\\n**Refused:** it would delete user data\\n' >> PLANS.md`,
+      `echo bad >> seed.txt`,
+      `echo bad > broken.ts`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "refused");
+    assert.equal(outcome.summary, "it would delete user data");
+
+    // The note landed on main with the refusal subject...
+    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): refuse — it would delete user data/);
+    assert.ok(
+      fs.readFileSync(path.join(repo, "PLANS.md"), "utf8").includes("**Refused:** it would delete user data"),
+      "the objection note is the durable record on main",
+    );
+    // ...and nothing else did: the tracked edit was reset and the untracked file cleaned.
+    assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "seed\n", "the code change was discarded");
+    assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "untracked half-work is cleaned");
+
+    // The note commit merged directly: no reviewer run was burned on an md-only diff.
+    assert.equal(fs.readFileSync(counter, "utf8").trim(), "1", "exactly one pi run (the author)");
+  } finally {
+    restore();
+  }
+});
+
+test("a refused tick with no note resets the worktree and reports a fallback reason", async () => {
+  const repo = await initializedRepo();
+  // Bare sentinel (no parseable reason) and only non-markdown half-work: nothing may land.
+  const restore = fakePi(
+    [
+      `printf '%s\\n' '${assistantLine("TUMWATER_REFUSED")}'`,
+      `echo bad > broken.ts`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const before = sh(repo, "git", "rev-parse", "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "refused");
+    assert.equal(outcome.summary, "no reason given", "a bare sentinel falls back to a generic reason");
+
+    // Nothing landed on main and the worktree is reset clean for the next tick.
+    assert.equal(sh(repo, "git", "rev-parse", "main"), before, "no commit without a note");
+    const wt = worktreePath(repo, "improve");
+    assert.ok(!fs.existsSync(path.join(wt, "broken.ts")), "the half-work was discarded");
+    assert.equal(sh(wt, "git", "status", "--porcelain"), "", "the worktree is clean after the reset");
+  } finally {
+    restore();
+  }
+});
+
 test("the merge lock is not held while a tick is under review: another loop merges concurrently", async () => {
   const repo = await initializedRepo();
   // Role A's reviewer run touches the marker, then sleeps — A sits in "reviewing" for ~5s.
