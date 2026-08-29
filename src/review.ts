@@ -292,6 +292,20 @@ export async function reviewAheadOfMain(
   if (!config.review.enabled) return { decision: "exempt" };
 
   const head = await headOf(wt, "HEAD");
+
+  // The one reject path: every rejection of this HEAD — deterministic build-check failure or
+  // model verdict — shares this bookkeeping. Record lastReview (injected into the role's next
+  // tick prompt), reset the failure count (a verdict about this HEAD is a successful review
+  // either way), discard the branch by resetting it to main, and log review_rejected.
+  // Callers attach `run` when a pi run was consumed.
+  const reject = async (reasons: string[]): Promise<GateResult> => {
+    state.lastReview = { verdict: "reject", reasons, head, at: Date.now() };
+    state.unreviewFailures = 0;
+    await resetWorktreeToMain(wt, mainBranch);
+    logEvent(root, { loop: role, type: "review_rejected", head, reasons });
+    return { decision: "rejected", detail: reasons[0] ?? "no reasons given" };
+  };
+
   // Already reviewed this exact HEAD (e.g. a merge_blocked retry): do not burn another run.
   if (state.lastApprovedHead === head) return { decision: "approved" };
 
@@ -307,23 +321,16 @@ export async function reviewAheadOfMain(
     const timeoutMs = ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS;
     const outcome = await runBuildCheck(wt, check, timeoutMs);
     if (outcome.status === "failed") {
-      // A deterministic rejection routed through the existing reject path verbatim: branch
-      // reset, machine-generated reasons recorded for next-prompt injection, review_rejected
-      // logged — with no pi run consumed and unreviewFailures resetting exactly like a model
-      // reject (a deterministic verdict about this HEAD).
       // Machine-generated reasons: the header joined to the first output line (so the
       // compiler error sits right after it in the injected next-tick note), then the rest of
-      // the clipped tail.
+      // the clipped tail. The rejection itself routes through the shared reject path — no pi
+      // run consumed, unreviewFailures resetting exactly like a model reject.
       const first = (outcome.outputTail ?? [])[0];
       const reasons =
         first !== undefined
           ? [`build check failed (${check.script}): ${first}`, ...(outcome.outputTail ?? []).slice(1)]
           : [`build check failed (${check.script})`];
-      state.lastReview = { verdict: "reject", reasons, head, at: Date.now() };
-      state.unreviewFailures = 0;
-      await resetWorktreeToMain(wt, mainBranch);
-      logEvent(root, { loop: role, type: "review_rejected", head, reasons });
-      return { decision: "rejected", detail: reasons[0] ?? `build check failed (${check.script})` };
+      return reject(reasons);
     }
     if (outcome.status === "skipped") {
       // Environmental — warn and proceed to the model review; deliberately NOT fail-closed,
@@ -392,12 +399,8 @@ export async function reviewAheadOfMain(
   }
 
   if (verdict.verdict === "reject") {
-    state.lastReview = { verdict: "reject", reasons: verdict.reasons, head, at: Date.now() };
-    // A parseable verdict is a successful review: the failure count resets either way.
-    state.unreviewFailures = 0;
-    await resetWorktreeToMain(wt, mainBranch);
-    logEvent(root, { loop: role, type: "review_rejected", head, reasons: verdict.reasons });
-    return { decision: "rejected", detail: verdict.reasons[0] ?? "no reasons given", run: pi };
+    const rejected = await reject(verdict.reasons);
+    return { ...rejected, run: pi };
   }
 
   // Approve: record the reviewed HEAD and discard any stray working-tree edits the reviewer
