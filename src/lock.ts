@@ -1,17 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import { pidAlive } from "./process.js";
 
 /** How old a lock must be before we consider stealing it from a dead process. */
 const STALE_MS = 10 * 60 * 1000;
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function tryBreakStale(dir: string): void {
   try {

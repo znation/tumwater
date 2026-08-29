@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig, LoopState } from "./types.js";
 import { readJsonFile } from "./files.js";
+import { pidAlive } from "./process.js";
 import { orchestratorStatePath, statePath } from "./paths.js";
 
 /** A new LoopState for one role, before its first tick. */
@@ -69,14 +70,9 @@ export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
   return readJsonFile<OrchestratorInfo>(orchestratorStatePath(root));
 }
 
-/** True when the recorded orchestrator's pid is still alive (signal-0 probe). */
+/** True when the recorded orchestrator's pid is still alive (see pidAlive). */
 export function orchestratorAlive(root: string): boolean {
   const info = readOrchestratorInfo(root);
   if (!info) return false;
-  try {
-    process.kill(info.pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+  return pidAlive(info.pid);
 }
