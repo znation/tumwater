@@ -29,19 +29,32 @@ node_modules walk-up, npm-ENOENT handling; main's build green again since `c0218
 5. All four review event types render in formatEvent; status shows `reviewing <elapsed>` while
    under review and suppresses the reviewer's own live detail from the work-item cell.
 
-Remaining — two test gaps plus the build pre-check, nothing structural:
+Remaining — all test work: the pre-check's suite plus items (b)–(c), nothing structural:
 (a) Landed since this audit: coverage tick `8ea49b8` added the tick-level e2e (a rejected
 change's reasons appear in the role's next prompt); unit tests for `buildRejectedReviewNote`
 are in test/prompt.test.ts.
 (b) "the merge lock is not held during review" is structurally true (the gate runs before
 `withLock`) but untested — two fake-pi loops, one under review while the other merges.
 (c) The `reviewing <elapsed>` state cell has no test in status-render.test.ts.
-(d) The deterministic build pre-check (section below; refined 2026-08-28 after feature tick 49's
-landing broke main's build with the gate active — the BUGS.md entry names this hole explicitly,
-now fixed and under Fixed) is not yet implemented but UNBLOCKED: main's build has been green
-since `c02189c` (suite 355/355 at `ec17c86`). Its one open ambiguity — where node_modules lives
-when the worktree itself carries no install — is resolved in the section below (walk-up rule), as
-is npm-ENOENT handling. Items (b)–(c) are unaffected by it and independently pickable.
+(d) Landed since this audit: feature tick 54 (`93d14f5`, audited by the plan loop 2026-08-29 at
+`fda67b8`) implemented the full design in src/review.ts — `detectBuildCheck` (walk-up to the
+nearest package.json + node_modules, typecheck preferred over build, total and never-throwing),
+`runBuildCheck` (execFile `npm run <script>` with cwd = worktree; 300 s cap exposed as the
+buildCheckTimeoutMs test seam on ReviewContext), and outcome routing in reviewAheadOfMain exactly
+per the section below — deterministic reject through the existing reject path with no pi run
+consumed, timeout/no-npm warn-and-proceed. The dogfood mechanism was exercised end-to-end during
+the audit: from a worktree with no local install, detection resolves the main repo root three
+levels up and `npm run build` compiles the worktree's own sources (tsc resolved by walking up to
+the root's node_modules) into the gitignored dist/, tree left clean. One recorded deviation:
+machine-generated reasons join the header to the first output line so the compiler error sits
+right after `build check failed (<script>):` in the injected next-tick note. What remains is its
+test suite — units for detection (dogfood walk-up shape, nearest-qualifying-wins, script
+preference, neither-script/malformed/absent → null), runBuildCheck outcomes (pass / fail-with-
+clipped-tail / timeout-skip; no-npm reachable by pointing process.env.PATH at an empty dir around
+the call), clipBuildTail — plus a gate e2e that a failing scratch-repo build rejects with zero
+reviewer pi runs and its tail injected into the next prompt, and a passing one still reaches the
+reviewer. Full spec under PLANS.md's 2026-08-29 audit. Items (b)–(c) are unaffected and
+independently pickable.
 
 The dogfood `tumwater.json` review section remains optional — defaults already enable the gate; a
 strong-model override is a user decision.
@@ -261,7 +274,10 @@ validation + accessor fallback over top-level values; exemption matcher unit tes
 path patterns, all-files-must-match; approve merges / reject resets + next-prompt
 injection; review failure leaves commit and re-reviews next tick; 3-strike discard; recoverLeftover
 reviews leftovers but skips `lastApprovedHead`; a resumed tick with leftover commits lands them only
-via the combined-diff review; stray-edit reset; fresh session naming), README.
+via the combined-diff review; stray-edit reset; fresh session naming; build pre-check units —
+detection walk-up / script preference / malformed → null, run outcomes pass/fail/timeout/no-npm,
+tail clipping — plus gate e2e: failing scratch-repo build rejects with zero reviewer runs and its
+compiler tail injected into the next prompt, passing build proceeds to the reviewer), README.
 
 ## Acceptance criteria
 

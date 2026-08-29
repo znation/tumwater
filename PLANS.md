@@ -7,7 +7,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-27, re-audited 2026-08-28, refined 2026-08-28 (build pre-check),
-refined 2026-08-28 (pre-check disambiguated + unblocked))
+refined 2026-08-28 (pre-check disambiguated + unblocked), audited 2026-08-29 (build pre-check
+landed in feature tick 54; remainder is tests))
 
 Full plan: [plans/review-gate.md](plans/review-gate.md). No code diff reaches main unreviewed: a
 fresh-session pi run (no author context; own model override via optional provider/model/thinking on
@@ -57,6 +58,48 @@ from the worktree — a literal `<wt>/node_modules` check would never fire, beca
 worktrees carry no install (only the main repo root does). Joins items (b)–(c) above; **unblocked
 as of this refinement** — main's build has been green since `c02189c` (suite 355/355 at
 `ec17c86`).
+
+**Audited 2026-08-29 (plan loop) — the build pre-check has LANDED; what remains is its test
+suite plus items (b)–(c), all test work.** Feature tick 54 (`93d14f5`) implemented the full
+design in src/review.ts (+181 lines); verified at `fda67b8` with a green build, and this audit
+exercised the dogfood mechanism end-to-end: from a worktree carrying no local install,
+`detectBuildCheck` resolves the main repo root three levels up (package.json + node_modules; no
+`typecheck` script here, so `build`) and `npm run build` with cwd = worktree compiles the
+worktree's own tracked sources — npm walks up to the root's node_modules for tsc — into the
+gitignored dist/, leaving the tree clean in ~1 s. The code matches the design: placement inside
+`reviewAheadOfMain` after both early returns (already-approved-HEAD skip, exemption short-circuit)
+and before `review_start`/`state.phase = "review"`, so a deterministic rejection never shows as
+"reviewing"; nonzero exit rejects through the existing reject path verbatim (`resetWorktreeToMain`,
+`state.lastReview`, `review_rejected` event, next-prompt injection; no pi run consumed —
+`GateResult.run` absent — and `unreviewFailures` reset like a model reject); timeout or spawn-ENOENT
+warns ("build check timed out after Ns; proceeding to model review" / "no npm on PATH; skipping
+build check") and proceeds, deliberately not fail-closed. One deviation from the plan's letter,
+recorded rather than forced: machine-generated reasons join the header to the FIRST output line —
+`build check failed (<script>): <first compiler line>` — with the rest of the clipped tail as
+subsequent reasons, so the compiler error sits right after its header in the injected next-tick
+note. `clipBuildTail` keeps the last ≤10 non-empty lines, each via the existing 300-char clip; the
+300 s cap is a module constant exposed as the `buildCheckTimeoutMs` test seam on ReviewContext.
+**Zero tests landed with it**: nothing under test/ references detectBuildCheck / runBuildCheck /
+clipBuildTail / BUILD_CHECK_TIMEOUT_MS, so the acceptance criteria's "unit-tested" clause is unmet
+and a syntax or type error in this code would ship silently — the exact failure mode that motivated
+the pre-check. Remaining, all test work, pickable independently: (1) **pre-check units** in
+test/review.test.ts — detectBuildCheck over scratch dirs (dogfood walk-up shape with an empty
+node_modules/ at the qualifying ancestor; nearest-qualifying-wins when two ancestors qualify;
+typecheck preferred over build; neither script → null; malformed package.json → null; no
+qualifying ancestor within maxLevels → null — detection never throws); runBuildCheck against a
+scratch project (passing script → passed; failing script → failed with the clipped tail; hanging
+script + short cap → skipped/timeout; the no-npm branch is reachable by pointing process.env.PATH
+at an empty dir around the call, restored in finally); clipBuildTail (tail-of-10, non-empty only,
+per-line clip). (2) **gate e2e** — a scratch repo whose root carries package.json + empty
+node_modules and a failing `build` script: the gate rejects with zero reviewer pi runs (assert via
+the fake-pi argv log the existing orchestration tests already use), branch reset, `review_rejected`
+carrying the compiler tail, reasons in the role's next prompt; a passing script still reaches the
+reviewer (approve path unchanged); a hanging script + short buildCheckTimeoutMs warns and proceeds.
+(3) Items (b)–(c) above are unchanged: merge-lock-not-held-during-review (two fake-pi loops, one
+under review while the other merges — test/loop.test.ts or test/review.test.ts) and the
+`reviewing <elapsed>` state cell (test/status-render.test.ts). Files for the remainder:
+test/review.test.ts, test/loop.test.ts, test/status-render.test.ts. Nothing structural remains in
+this plan.
 
 ### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28)
