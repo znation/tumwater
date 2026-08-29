@@ -55,7 +55,7 @@ reviewer run; a failure rejects through the existing reject path with the compil
 unverifiable until main's build is green again.
 
 ### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-27)
+refined 2026-08-27, audited 2026-08-28)
 
 Full plan: [plans/refusal-and-thrash.md](plans/refusal-and-thrash.md). A new
 `TUMWATER_REFUSED: <reason>` sentinel and `refused` tick outcome let a loop decline work that
@@ -69,6 +69,44 @@ data. A refusal blocks its entry until unblocked: fixed `**Refused <date> by <ro
 shape, a COMMON_RULES skip rule plus feature/bugfix find-text lines keep fresh-session ticks from
 re-refusing the same entry (normal backoff bounds any violation), and only a human or the
 director clears it — the steward may prune stale ones.
+
+**Status (plan-loop audit 2026-08-28):** feature tick 51 (`c2f541a`) landed the full design;
+verified at `8ea49b8` with a green build and a 339/339 suite. Sentinel: `REFUSED_SENTINEL`
+beside `NOTHING_TO_DO`, COMMON_RULES bullet carries the recording rule, the fixed
+`**Refused <YYYY-MM-DD> by <role>: …**` note shape, and the skip rule in one place (src/prompt.ts).
+Parser: whole-reply scan sets `PiRunResult.refused`; the reason comes from line-anchored
+`extractRefusal` on the first parseable sentinel line — prose that merely mentions the sentinel
+cannot set it (src/pi.ts, src/prompt.ts). Loop: `handleRefusal` classifies via `changedFiles`
+(porcelain paths) — md-only commits through the shared `buildCommitMessage` as
+`tumwater(<role>): refuse — <reason>` (subject + trailer only, no body) and merges directly,
+deliberately bypassing the gate since md-only diffs are review-exempt by construction; mixed
+changes stage only the markdown paths via `commitPathsAndDiscardRest` then discard tracked edits
+(`reset --hard HEAD`) and untracked files (`clean -fd`); a no-note refusal resets to main with
+the reason kept in event + lastSummary. Scheduling: `refused` falls through to the backoff
+branch exactly as planned (backoff like no_change), `lastResult = "refused"` / `lastSummary`
+= reason render in both dashboards for free. Thrash: `tickTurns > thrashTurns || minutes >
+thrashMinutes` at tick end sets `highFriction`, logs the warning event with thresholds, passes
+the flag into `buildReviewPrompt` ("HIGH-FRICTION … extra scrutiny") and annotates finalSummary;
+`tickTurns` is the same counter commit-bodies' trailer reads. Config: defaults 40/60 plus
+`>= 0` validation (src/config.ts, src/types.ts). Prompts: feature find-text gains refuse-rather-
+than-force + skip line, bugfix its analogue (src/roles.ts), and the director's routing block
+gains the unblock line. Remaining — three items against the acceptance criteria:
+(a) **the entire planned test suite is missing** — `test/refusal.test.ts` never landed; grep
+finds zero refusal tests anywhere under test/. Per the plan's Files-touched list: sentinel parse
+(`extractRefusal` + parser flag); md-only refusal commits and merges (loop e2e, note lands on
+main with outcome `refused`); mixed refusal keeps the note and discards tracked *and* untracked
+code changes (loop e2e); no-note refusal resets cleanly with the reason in event + lastSummary;
+thrash flag set past either threshold; plus prompt-contract assertions — skip rule in
+COMMON_RULES, feature + bugfix find-text lines, director's unblock-routing line. (b) **AC3's
+trailer line was never implemented**: commit-bodies.md has since landed and reserved the slot
+("The high-friction flag … appends to this line when set"), but `commitTrailer`
+(src/commit-message.ts) takes no friction argument — a changed tick past either threshold
+carries no marker in git history; only the event, lastSummary, and review prompt do. Small code
+change: optional flag on `commitTrailer`, passed from loop.ts's changed-tick path, with unit +
+e2e assertions on the trailer content. (c) **AC5 untested**: config validation for
+`thrashTurns`/`thrashMinutes` has no assertions in test/config.test.ts. Files for the remainder:
+test/refusal.test.ts (new), src/commit-message.ts, src/loop.ts, test/commit-message.test.ts,
+test/config.test.ts.
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28)
