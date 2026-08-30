@@ -18,7 +18,7 @@ const execFileAsync = promisify(execFile);
 /** Per-reason length cap with ellipsis — bounds one line of machine-generated or reviewer
  * text so it cannot bloat persisted state (shared by clipBuildTail here and parseVerdict in
  * review.ts). */
-export const MAX_REASON_CHARS = 300;
+const MAX_REASON_CHARS = 300;
 
 /** Cap one line of text to MAX_REASON_CHARS with an ellipsis (unchanged when it fits). */
 export function clipReason(r: string): string {
