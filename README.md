@@ -73,10 +73,14 @@ with a warning event plus extra review scrutiny, since difficulty is a signal th
 The plan loop re-audited it on 2026-08-29: the planned test suite has since landed its refusal-path
 git-helper units (test/git.test.ts, which also fixed a UTF-8 mojibake bug in C-quoted porcelain path
 decoding) and its loop e2e half (coverage tick `bc479b6`: md-only + mixed refusal lands only the note
-with code changes discarded and skips review; no-note refusal resets clean), leaving four items —
-the thrash-flag tests, prompt-contract assertions, AC3's high-friction trailer line (small code
-change; format decided as a sibling `Friction: high (<turns> turns / <minutes>m)` git-trailer line),
-and AC5's config validation for `thrashTurns`/`thrashMinutes`. The slow-clock steward has
+with code changes discarded and skips review; no-note refusal resets clean). Feature tick 57
+(`c477ce9`) then landed three of the four remaining items — AC3's high-friction trailer line (the
+decided sibling `Friction: high (<turns> turns / <minutes>m)` git-trailer after the Tick line,
+carried only by changed ticks), the prompt-contract assertions, and AC5's config validation for
+`thrashTurns`/`thrashMinutes`; its contract tests first broke on prompt line-wrapping (recorded in
+BUGS.md's Fixed section) until an improve tick made them reflow-robust. What remains is one item: the
+thrash-flag loop tests in test/loop.test.ts — one per threshold plus a negative control, with the
+turns-threshold e2e doubling as the trailer line's git-log assertion. The slow-clock steward has
 landed in code (feature tick 49): a markdown-only curation role on a ~6 h per-role clock (the new
 `minTickIntervalSeconds` override of the global interval), enabled by default; its landing commit's
 build break is fixed (BUGS.md). The plan loop audited it on 2026-08-28 (verified at `ceb6019`, suite green): what remains is test gaps — no role-prompt contract tests, and the per-role interval untested at scheduler level — plus dogfood pending (no `tumwater(steward)` commit in history yet). Self-explaining commit bodies has landed in code (feature
@@ -245,5 +249,6 @@ npm test               # build + unit tests (node:test)
 ```
 
 Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `orchestrator.ts` the scheduler,
-`pi.ts` the pi subprocess integration, `git.ts` the worktree/merge machinery), `test/` unit tests.
+`pi.ts` the pi subprocess integration, `git.ts` the git/worktree helpers, `merge.ts` the
+rebase/fast-forward/conflict-resolution landing flow), `test/` unit tests.
 Tests fake pi with a shell shim on PATH, so they run offline.
