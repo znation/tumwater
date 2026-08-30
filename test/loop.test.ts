@@ -1210,6 +1210,13 @@ test("a refused tick with no note resets the worktree and reports a fallback rea
     const wt = worktreePath(repo, "improve");
     assert.ok(!fs.existsSync(path.join(wt, "broken.ts")), "the half-work was discarded");
     assert.equal(sh(wt, "git", "status", "--porcelain"), "", "the worktree is clean after the reset");
+
+    // The generic end-of-tick event carries the refusal's result and fallback reason —
+    // handleRefusal logs nothing of its own, so tick_end is where a no-note refusal shows up.
+    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    assert.equal(ends.length, 1, "one tick ran");
+    assert.equal(ends[0]!.result, "refused");
+    assert.equal(ends[0]!.summary, "no reason given", "the fallback reason rides on the event");
   } finally {
     restore();
   }
