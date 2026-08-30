@@ -6,7 +6,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 ### Daily cost budget — cap the fleet's autonomous spend (planned 2026-08-30, audited
-2026-08-30)
+2026-08-30, re-audited 2026-08-30)
 
 Full plan: [plans/daily-cost-budget.md](plans/daily-cost-budget.md). The harness measures
 spend (per-loop `totalCostUsd`, cost column + totals row) but nothing acts on it — a fleet
@@ -57,6 +57,65 @@ persists at tick-end save only (a crash loses the interrupted run's spend — an
 undercount for a safety valve; no mid-tick save added), and renderStatus/gui.ts derive the per-
 row `budgetPaused` flag from one fleet-wide predicate computed off `snap.budget`. Nothing
 structural changed; the plan is ready for the feature loop.
+
+**Re-audited 2026-08-30 (plan loop) — the code has fully landed; what remains is the test suite
+plus the README clause, all pickable independently.** Feature tick 62 (`041fd55`) implemented the
+full design and coverage tick `01c28ce` landed the gate e2e; verified at `5be72e9`: build clean,
+suite 450/450. Every code clause of the acceptance criteria is in place: config (default 50 in
+`defaultConfig`, TOP_LEVEL_KEYS, `checkNumber … >= 0` with "0 disables" — src/config.ts); state
+helpers (`todayStamp`/`dailyCost`/`recordDailyCost`/`fleetDailyCost`/`budgetPaused` in
+src/state.ts; `freshLoopState` defaults the window to `""`/`0`; merge-over-fresh loads old files
+unchanged); the write path (`foldUsage` → `recordDailyCost`, so every pi run of a tick routes
+through it — src/loop.ts); the gate (the poll loop computes the predicate once per cycle from all
+runners' states and the live config, skips role runners before `isEligible`, director exempt; one
+harness-level transition event each with spentUsd/capUsd — src/orchestrator.ts); display
+(`StatusSnapshot.budget` null when disabled; header badge standing while enabled; `loopPhase`
+trailing flag → `budget paused` for idle role rows on both surfaces, derived once from the
+snapshot — src/status.ts, status-render.ts, gui.ts, gui-page.ts); and the e2e (tiny $0.50 cap vs a
+$1 fake run: the startup tick lands the spend with one transition event, the scheduled nextRunAt
+passes while paused with no second tick, a queued director prompt still runs, and a live raise to
+100 resumes within one poll with exactly one resume event; the predicate sums every runner's
+state — director included (src/orchestrator.ts) — so the director's spend counts toward the cap as
+designed). What remains against the acceptance criteria — six items, all test
+work plus one README edit, pickable independently:
+
+(a) **state-helper units** in test/state.test.ts (AC6 "units for every pure helper"; AC2's test
+clauses) — today the file has zero references to any of the five helpers: `recordDailyCost`
+accumulates same-day and rolls over at local midnight on write (a tick crossing midnight
+attributes its spend to the new day); `dailyCost` reads $0 for a stale or missing stamp and the
+window's value when fresh, never mutating; `fleetDailyCost` sums across loops with stale ones
+reading $0; `budgetPaused` is false at cap 0 (disabled) and below the cap, true at/above it. Two
+clause extensions: the existing "zeroCounters zeroes … preserves everything else" test gains an
+assertion that dayStamp/dayCostUsd survive (AC2's reset-counters clause — the fields postdate the
+test), and "loadLoopState fills fields missing from an older or partial file" gains a saved-file-
+without-the-fields case reading $0 through `dailyCost`.
+(b) **config units** in test/config.test.ts (AC1's test clauses) — no maxDailyCostUsd assertion
+exists: defaultConfig carries 50; negative and non-numeric values rejected with actionable errors
+like the thrash-thresholds test above it; a typo'd key name fails via TOP_LEVEL_KEYS' unknown-key
+error; loadConfig over an existing file lacking the key picks up the default without editing.
+(c) **event rendering units** in test/event-format.test.ts (AC4's render clause) — no budget case
+exists: `budget_paused` and `budget_resumed` render as plain lines carrying spend and cap, no
+warning prefix, like counters_reset.
+(d) **GUI surface units** in test/gui.test.ts (AC5's GUI half; the TUI half is covered by
+test/status-render.test.ts) — /api/status carries `budget` while enabled and null when disabled;
+the served page's header assembly includes the badge; a paused fleet's per-loop phase payload
+reads `budget paused` for idle role loops.
+(e) **two untested AC3 clauses** in test/orchestrator.test.ts (small additions to the existing
+gate e2e or a sibling test): startup with spend already at cap starts no role ticks (pre-seed a
+state file with today's stamp and spend ≥ cap before starting the orchestrator), and a main-moved
+wake while paused stays blocked (advance main after the pause, assert no tick across several
+polls). In-flight completion is recorded as a structural guarantee rather than tested: spend folds
+only at run end (`foldUsage` post-run), so a tick cannot be paused by its own spend mid-run, and
+the gate skips scheduling only — nothing kills an in-flight task.
+(f) **README clause** (the plan's README section): `maxDailyCostUsd` is documented nowhere outside
+the status section — Usage gains what it caps (role loops' new ticks, per local day), that 0
+disables, that the director is exempt, and that edits apply live within ~2 s; How-it-works gains a
+short paragraph on pause/resume behavior and the two events.
+
+Nothing structural remains in code — every AC's code clause verified landed above; items (a)–(e)
+are pure test work and (f) is documentation. Once all six land, move this plan to Done. Files for
+the remainder: test/state.test.ts, test/config.test.ts, test/event-format.test.ts,
+test/gui.test.ts, test/orchestrator.test.ts, README.md.
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28)
