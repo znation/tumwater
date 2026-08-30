@@ -1,6 +1,7 @@
 # Daily cost budget — cap the fleet's autonomous spend
 
-Planned 2026-08-30 · by the plan loop
+Planned 2026-08-30 · audited 2026-08-30 (plan loop — verified against main; clarifications
+folded in) · by the plan loop
 
 ## Goal
 
@@ -53,7 +54,10 @@ everyone else.
   a new exported pure helper in src/state.ts, e.g. `recordDailyCost(s, usd, now)`: if
   `s.dayStamp !== todayStamp(now)` it resets `dayCostUsd = 0` and sets the stamp (local-midnight
   rollover), then adds `usd`. A tick that crosses midnight attributes its spend to the correct
-  day; the value persists at tick end with the rest of the state.
+  day; the value persists at tick end with the rest of the state. Persistence timing is decided:
+  no mid-tick save is added — a run interrupted by a crash loses only its own spend from the
+  budget (the window survives on disk up to the last tick-end save), an acceptable undercount
+  for a safety valve.
 - **Read path** — never mutates: `dailyCost(s, now)` in src/state.ts returns
   `s.dayStamp === todayStamp(now) ? s.dayCostUsd : 0`. Both the orchestrator (in-memory runner
   states) and status.ts (state files) read through it, so a loop that hasn't ticked since
@@ -78,6 +82,18 @@ everyone else.
 - Why not inside `isEligible`: the budget is fleet-wide (a sum across loops), while
   `isEligible`'s per-loop contract and its existing unit tests stay intact. One new pure
   function plus a few lines in the poll loop.
+- **The director's spend counts toward the total.** The exemption is from *pausing*, not from
+  *counting*: director runs fold through the same `foldUsage`, so `fleetDailyCost` includes them
+  (the orchestrator sums every runner's state; status.ts's snapshot loops include the director
+  row). A human who burns the budget with prompts still pauses the role loops — the cap bounds
+  total spend, and only autonomous ticks yield to it.
+- **Config source:** evaluate the predicate with the same last-known-good config the poll just
+  pushed into the runners — a local current-config variable updated on successful reload (kept
+  when the file is broken), so a broken tumwater.json keeps the last known cap rather than
+  flipping the gate.
+- **The resume burst is intended:** once unpaused, every role loop whose `nextRunAt` has passed
+  becomes eligible in the next poll — a catch-up burst bounded by `maxConcurrent`. That is the
+  "the world changed while we were paused" behavior; do not smooth it with an artificial delay.
 - **Resume is live and stateless**: raising/disabling the cap or crossing local midnight flips
   the predicate on the next poll (~2 s) — there is no paused flag to clear, so nothing can get
   stuck. (Contrast with e.g. backoff: no new scheduling field is introduced.)
@@ -103,11 +119,14 @@ everyone else.
   when non-zero), spend is standing information for a money-spending system, so it shows at all
   levels; on narrow terminals the header's existing last-resort whole-line clipping applies.
 - State cell: `loopPhase` gains an optional trailing `budgetPaused?: boolean`; when set and the
-  loop is not running and is not the director, it returns `budget paused`. renderStatus passes
-  it from the snapshot; src/gui.ts passes it into its existing per-loop `phase` payload field —
-  one function covers both surfaces, and the GUI page needs no state-cell JS change. The GUI
-  header badge mirrors the TUI's in gui-page.ts's header assembly (the same place inbox/
-  questions badges are built).
+  loop is not running and is not the director, it returns `budget paused`. The flag is derived,
+  not stored: renderStatus computes the fleet predicate once from `snap.budget`
+  (`spentUsd >= capUsd`; null → false) and passes that single boolean as loopPhase's trailing
+  argument for every row — only non-running role rows surface it (loopPhase ignores it while a
+  tick is running or for the director); src/gui.ts does the same with its snapshot when building
+  the existing per-loop `phase` payload field. One function covers both surfaces, and the GUI
+  page needs no state-cell JS change. The GUI header badge mirrors the TUI's in gui-page.ts's
+  header assembly (the same place inbox/questions badges are built).
 
 ### README
 
@@ -138,9 +157,12 @@ test/gui.test.ts, README.md.
   crossing midnight attributes its spend to the new day; `reset-counters` leaves the daily
   window untouched.
 - While fleet daily spend ≥ cap, no role loop starts a new tick (scheduled, main-moved wake, or
-  startup) — verified end-to-end with the fake pi shim reporting cost (tiny cap: first tick
-  lands, second is blocked while a queued director prompt still runs); in-flight ticks finish;
-  raising/disabling the cap live resumes role loops within ~2 s.
+  startup) — verified end-to-end with the fake pi shim reporting cost. No new shim plumbing is
+  needed: test/util.ts's `assistantLine(text, {cost})` already emits `usage.cost.total`, which
+  PiStreamParser sums into `PiRunResult.costUsd`, so the shim script just prints such a line.
+  Pin "tiny cap" to exactly one fake run's cost (e.g. $1 per run, cap 1): tick 1 lands, spend
+  reaches the cap, tick 2 is blocked while a queued director prompt still runs; in-flight ticks
+  finish; raising/disabling the cap live resumes role loops within ~2 s.
 - `budget_paused`/`budget_resumed` events land once per transition and render in
   `tumwater logs`, the TUI activity pane, and the GUI feed.
 - Both dashboards show the header badge with today's spend vs cap while enabled (absent when

@@ -5,7 +5,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Daily cost budget — cap the fleet's autonomous spend (planned 2026-08-30)
+### Daily cost budget — cap the fleet's autonomous spend (planned 2026-08-30, audited
+2026-08-30)
 
 Full plan: [plans/daily-cost-budget.md](plans/daily-cost-budget.md). The harness measures
 spend (per-loop `totalCostUsd`, cost column + totals row) but nothing acts on it — a fleet
@@ -35,6 +36,27 @@ event rendering; header badge + `budget paused` state cell on both surfaces. Fil
 src/config.ts, src/state.ts, src/loop.ts, src/orchestrator.ts, src/status.ts, src/status-render.ts,
 src/gui.ts, src/gui-page.ts, src/event-format.ts, test/{config,state,orchestrator,status-
 render,event-format,gui}.test.ts, README.md.
+
+**Audited 2026-08-30 (plan loop) — verified against main; clarifications folded into the plan
+file.** Every structural claim checked out on current main: `foldUsage` is the single fold point
+for every pi run of a tick (main + transient retry + conflict resolution + review-gate runs), so
+all spend routes through it; `loadLoopState`'s merge-over-fresh makes old state files load
+unchanged with a missing stamp reading $0; `zeroCounters`' spread preserves the new daily-window
+fields automatically (the in-place reset fix is compatible); `configForStatus`,
+`TOP_LEVEL_KEYS`/`checkNumber`, the poll-loop insertion point, and both dashboards'
+header-badge assembly all exist as described. Clarifications folded into plans/daily-cost-
+budget.md: (1) the director's spend COUNTS toward the fleet total — its exemption is from
+pausing, not counting; (2) the gate evaluates with the same last-known-good config the poll
+pushes to runners (a local variable updated on successful reload), so a broken tumwater.json
+keeps the last known cap rather than flipping the gate; (3) the e2e needs no new shim plumbing —
+test/util.ts's `assistantLine(text, {cost})` already emits `usage.cost.total`, and "tiny cap" is
+pinned to exactly one fake run's cost so tick 1 lands and tick 2 blocks while a queued director
+prompt still runs; (4) the post-resume catch-up burst (every eligible loop at once, bounded by
+maxConcurrent) is intended behavior, not a defect to smooth. Two smaller pins: the daily window
+persists at tick-end save only (a crash loses the interrupted run's spend — an acceptable
+undercount for a safety valve; no mid-tick save added), and renderStatus/gui.ts derive the per-
+row `budgetPaused` flag from one fleet-wide predicate computed off `snap.budget`. Nothing
+structural changed; the plan is ready for the feature loop.
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28)
