@@ -673,3 +673,70 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     await orch.stop();
   }
 });
+
+// --- Daily cost budget gate (plans/daily-cost-budget.md) ---
+
+test("a reached daily cap pauses role ticks but not the director; raising the cap resumes", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "budget gate e2e test");
+  // Tiny cap: exactly one fake run's cost. After clean's first tick the fleet has spent
+  // $1 >= $0.50, so every later poll reads budget-paused until the cap is raised live.
+  const config = fastConfig(["clean", "director"]);
+  config.maxDailyCostUsd = 0.5;
+  saveConfig(repo, config);
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
+  const orch = startLiveOrchestrator(repo);
+  try {
+    // clean's startup tick lands the first spend; the transition is logged exactly once,
+    // harness-level, with the spend and cap that triggered it.
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "the startup tick to finish",
+    );
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
+    const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
+    assert.equal(paused.length, 1, "one transition event per pause");
+    assert.equal(paused[0]?.loop, "harness");
+    assert.equal(paused[0]?.capUsd, 0.5);
+    // The spend is the fake run's cost folded into clean's daily window — not just its
+    // lifetime totalCostUsd (which would also read $1 here, but from a different field).
+    assert.equal(paused[0]?.spentUsd, 1);
+
+    // The paused role starts no new ticks even though its schedule says to run: wait well
+    // past nextRunAt plus several poll cycles — an ungated loop would have ticked by then.
+    const scheduled = loadLoopState(repo, "clean").nextRunAt;
+    await waitFor(() => Date.now() >= scheduled + 5000, "the schedule to pass while paused");
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "a budget-paused role starts no new ticks");
+
+    // The director is exempt: a queued human prompt still runs while the fleet is paused.
+    enqueuePrompt(repo, "steer me while the fleet is paused");
+    await waitFor(
+      () => loadLoopState(repo, "director").ticks >= 1 && !loadLoopState(repo, "director").running,
+      "the director to tick while budget-paused",
+    );
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "still paused after the director's run");
+
+    // Raising the cap live resumes within a poll cycle: one transition event, then the role
+    // ticks again. The director's spend counts toward the fleet total ($2 now), so this also
+    // proves resume is about the cap, not a reset of the daily window.
+    const raised = fastConfig(["clean", "director"]);
+    raised.maxDailyCostUsd = 100;
+    saveConfig(repo, raised);
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_resumed"), "a budget_resumed event");
+    const resumed = readEvents(repo).filter((e) => e.type === "budget_resumed");
+    assert.equal(resumed.length, 1, "one transition event per resume");
+    assert.equal(resumed[0]?.loop, "harness");
+    assert.equal(resumed[0]?.capUsd, 100);
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 2 && !loadLoopState(repo, "clean").running,
+      "the paused role to tick again after the cap raise",
+    );
+
+    // Exactly one of each transition for the whole run — no per-poll event spam.
+    assert.equal(readEvents(repo).filter((e) => e.type === "budget_paused").length, 1);
+    assert.equal(readEvents(repo).filter((e) => e.type === "budget_resumed").length, 1);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
