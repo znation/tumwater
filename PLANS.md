@@ -196,8 +196,48 @@ live-reloads), so live ticks will start stamping trailers on the next restart an
 on a dogfood tick" verifies then. Files for the remainder: test/pi.test.ts, test/loop.test.ts
 (or a new test/commit-bodies.test.ts).
 
+### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
+refined 2026-08-27, audited 2026-08-28)
+
+Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
+~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
+configForRole at all read sites; enabled by default with no config edit) that re-reads the initial
+prompt, PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move: prune/
+merge plans (the only role allowed to delete entries), flag drift, keep the complexity budget
+honest. The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes
+mandatory.
+
+**Status (plan-loop audit 2026-08-28):** feature tick 49 (`6e3f487`) landed the full design;
+verified at `ceb6019` with a green build and a 338/338 suite. Catalog: steward is last in ROLES
+(after `improve`; the director is appended separately by `allRoleIds()`), so it has exactly the
+lowest tie-break priority planned. Defaulting: `defaultConfig()` carries
+`{ enabled: true, minTickIntervalSeconds: 21600 }` and `loadConfig` merges per-role defaults for
+ids absent from the file — this repo's tumwater.json lists every other role but not steward, so it
+enables with no config edit. Validation: `minTickIntervalSeconds` is in ROLE_ENTRY_KEYS with a
+`checkNumber … >= 0`. Resolution: `configForRole` falls back per-role → global; `isEligible`
+reads through it, so the slow clock gates both scheduled ticks and "main moved" early wakes;
+tick() resolves once at the top and uses it in every interval branch — the three planned branches
+(changed/skipped/cut-off-resume) plus review-gate's later-added `rejected` branch (scheduled like
+changed), while aborted/backoff are untouched as planned. Prompt: curation move list, markdown-
+only restriction, PLANS.md deletion / PRINCIPLES.md edit powers, and the conditional QUESTIONS.md
+mention are all present in roles.ts; md-only diffs stay review-exempt via the gate's `*.md` /
+`docs/**` paths. Remaining — test gaps against the acceptance criteria plus the dogfood
+observation, nothing structural: (a) no role prompt contract tests exist — the plan's
+test/steward.test.ts never landed; add assertions for the curation move list, markdown-only
+restriction, deletion/principles powers, and conditional QUESTIONS.md mention; (b) the per-role
+interval is untested at scheduler level — only `configForRole` resolution has a regression test
+(test/config.test.ts); add an orchestrator-level test that a shortened override gates
+`isEligible`'s min-gap (including early wakes) and loop tests that tick()'s nextRunAt branches
+honor the override with global fallback when unset; (c) dogfood pending: no `tumwater(steward)`
+commit in history as of this audit, and PRINCIPLES.md's Budgets section is still absent — note
+the running fleet process must have started after 6e3f487 for its compiled defaultConfig to
+include steward (JS loads at startup; same consideration as the commit-bodies trailer note).
+Files for the remainder: test/steward.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts.
+
+## Done
+
 ### Questions outbox — loops that know when to ask (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-26, audited 2026-08-28)
+refined 2026-08-26, audited 2026-08-28, re-audited 2026-08-29, done 2026-08-29)
 
 Full plan: [plans/questions-outbox.md](plans/questions-outbox.md). A tracked QUESTIONS.md
 (Open/Answered) any loop appends to when a decision is genuinely the user's — context, options,
@@ -283,45 +323,25 @@ Files for the remainder: src/merge.ts, test/loop.test.ts, test/prompt.test.ts,
 test/status-render.test.ts, test/tui.test.ts. Nothing structural remains beyond item (a)'s small
 code change; items (b)–(e) are pure test work.
 
-### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-27, audited 2026-08-28)
-
-Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
-~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
-configForRole at all read sites; enabled by default with no config edit) that re-reads the initial
-prompt, PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move: prune/
-merge plans (the only role allowed to delete entries), flag drift, keep the complexity budget
-honest. The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes
-mandatory.
-
-**Status (plan-loop audit 2026-08-28):** feature tick 49 (`6e3f487`) landed the full design;
-verified at `ceb6019` with a green build and a 338/338 suite. Catalog: steward is last in ROLES
-(after `improve`; the director is appended separately by `allRoleIds()`), so it has exactly the
-lowest tie-break priority planned. Defaulting: `defaultConfig()` carries
-`{ enabled: true, minTickIntervalSeconds: 21600 }` and `loadConfig` merges per-role defaults for
-ids absent from the file — this repo's tumwater.json lists every other role but not steward, so it
-enables with no config edit. Validation: `minTickIntervalSeconds` is in ROLE_ENTRY_KEYS with a
-`checkNumber … >= 0`. Resolution: `configForRole` falls back per-role → global; `isEligible`
-reads through it, so the slow clock gates both scheduled ticks and "main moved" early wakes;
-tick() resolves once at the top and uses it in every interval branch — the three planned branches
-(changed/skipped/cut-off-resume) plus review-gate's later-added `rejected` branch (scheduled like
-changed), while aborted/backoff are untouched as planned. Prompt: curation move list, markdown-
-only restriction, PLANS.md deletion / PRINCIPLES.md edit powers, and the conditional QUESTIONS.md
-mention are all present in roles.ts; md-only diffs stay review-exempt via the gate's `*.md` /
-`docs/**` paths. Remaining — test gaps against the acceptance criteria plus the dogfood
-observation, nothing structural: (a) no role prompt contract tests exist — the plan's
-test/steward.test.ts never landed; add assertions for the curation move list, markdown-only
-restriction, deletion/principles powers, and conditional QUESTIONS.md mention; (b) the per-role
-interval is untested at scheduler level — only `configForRole` resolution has a regression test
-(test/config.test.ts); add an orchestrator-level test that a shortened override gates
-`isEligible`'s min-gap (including early wakes) and loop tests that tick()'s nextRunAt branches
-honor the override with global fallback when unset; (c) dogfood pending: no `tumwater(steward)`
-commit in history as of this audit, and PRINCIPLES.md's Budgets section is still absent — note
-the running fleet process must have started after 6e3f487 for its compiled defaultConfig to
-include steward (JS loads at startup; same consideration as the commit-bodies trailer note).
-Files for the remainder: test/steward.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts.
-
-## Done
+**Done 2026-08-29 (plan-loop audit) — all five remaining items have landed; nothing left.**
+Feature tick 58 (`1a48edc`) closed four of the five in one tick. (a) The emission in tryMerge
+(src/merge.ts): `before = openQuestions(ctx.root)` captured inside withLock before rebase, and one
+`{ loop, type: "question_posted", question }` per heading present after ffMergeToMain but absent
+from `before`, logged alongside the existing `merged` event — exactly as specified. (b) The loop
+e2e in test/loop.test.ts: a tick that posts an Open entry merges as md-only (exactly one pi run,
+gate skipped by construction), and the event log carries both `merged` and exactly one
+`question_posted` naming the new heading, with a negative control proving a non-question change
+emits none. (c) The prompt contract in test/prompt.test.ts: read-first list names QUESTIONS.md,
+ask-don't-guess bullet, director answer-routing bullet — all matched with whitespace collapsed per
+the tick-57 reflow caution. (d) The header badge at N > 0 in test/status-render.test.ts: `·
+questions: N` present when snap.questions > 0, omitted at zero. Coverage tick `931ca26` closed the
+last item: (e) the TUI nudge line is tested by "open questions add a nudge line above the activity
+pane" — absent while QUESTIONS.md's Open section is empty, present as `questions: 1 awaiting
+answers` after posting an entry. One file deviation from this entry's spec, recorded rather than
+forced: item (e) named test/tui.test.ts, but frame-level runTui assertions live in the fake-TTY
+integration harness test/tui-run.test.ts, which is where it landed; the backlogLines subheader
+units remain in test/tui.test.ts as before. Verified at `15657bd`: build clean, suite 423/423 —
+every acceptance criterion of plans/questions-outbox.md now met or tested.
 
 ### Adversarial review gate before merge (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-27, re-audited 2026-08-28, refined 2026-08-28 (build pre-check),
