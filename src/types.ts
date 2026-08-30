@@ -91,7 +91,25 @@ export type TickResult =
   | "review_error" // the review gate failed (no parseable verdict); commit left for retry
   | "error" // pi errored or timed out
   | "aborted" // harness shutdown killed the run mid-tick; partial work discarded
-  | "skipped"; // nothing to run (e.g. director with an empty inbox)
+  | "skipped"; // nothing to run (e.g. director with an empty inbox);
+
+/** The outcome of one full tick: its result plus what the harness learned from it.
+ * Consumed by the orchestrator's dashboards and by state.ts's post-tick scheduling
+ * (applyTickOutcome). */
+export interface TickOutcome {
+  result: TickResult;
+  summary?: string;
+  commit?: string;
+  /** The tick's authoring run burned more than the configured thrashTurns/thrashMinutes
+   * thresholds (plans/refusal-and-thrash.md): difficulty is a signal, so the change went to
+   * review flagged and a warning event was logged. */
+  highFriction?: boolean;
+  /** The run was truncated at the model's context ceiling before it could finish (a
+   * no_change tick whose final message carried no text or tool call). The work so far
+   * survives in the pi session, which pi compacted at end of run — so the loop resumes
+   * it promptly instead of backing off as if the role were idle. */
+  cutOff?: boolean;
+}
 
 /** Persisted per-loop state in .tumwater/state/<role>.json. */
 export interface LoopState {
