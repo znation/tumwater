@@ -578,11 +578,12 @@ export class LoopRunner {
       });
     }
     // The trailer is harness-stamped truth: turns and peak ctx over this tick's pre-commit
-    // runs only (conflict-resolution and review runs fold after the commit).
+    // runs only (conflict-resolution and review runs fold after the commit). A high-friction
+    // tick appends its Friction line here — both values are already computed above.
     const message = buildCommitMessage(
       `tumwater(${this.role}): ${summary}`,
       body,
-      commitTrailer(this.role, s.ticks, this.tickTurns, s.peakContextTokens),
+      commitTrailer(this.role, s.ticks, this.tickTurns, s.peakContextTokens, highFriction ? minutes : undefined),
     );
     const commit = await commitAll(wt, message);
 
@@ -618,8 +619,8 @@ export class LoopRunner {
 
     const result = await this.merge(wt, summary);
     if (result !== "changed") s.lastError = `merge failed: ${result}`;
-    // The friction flag rides along in lastSummary and the tick_end event too — until commit
-    // bodies carry a dedicated trailer line, those are where it stays visible.
+    // The flag's durable record is the Friction trailer line stamped on the commit above;
+    // lastSummary and the tick_end event carry it too for dashboards and logs.
     const finalSummary = highFriction
       ? `${summary} (high friction: ${this.tickTurns} turns / ${Math.round(minutes)}m)`
       : summary;

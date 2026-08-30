@@ -69,8 +69,9 @@ export interface TumwaterConfig {
   /** Delete pi session files older than this many days at orchestrator start (0 disables). */
   sessionRetentionDays: number;
   /** Friction threshold in assistant turns: a changed tick using MORE than this many turns is
-   * flagged high-friction (warning event + extra review scrutiny) — difficulty is a signal that
-   * the work may not fit. See plans/refusal-and-thrash.md. */
+   * flagged high-friction (Friction trailer line on its commit, warning event, and extra review
+   * scrutiny) — difficulty is a signal that the work may not fit. See plans/refusal-and-thrash.md.
+   */
   thrashTurns: number;
   /** Friction threshold in wall-clock minutes, same semantics as thrashTurns. */
   thrashMinutes: number;

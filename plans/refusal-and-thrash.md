@@ -60,8 +60,9 @@ not in the vocabulary.
   ("appends to this line when set"); the format is now decided (2026-08-29 re-audit) as a sibling
   git-trailer line after the Tick line — `Friction: high (<turns> turns / <minutes>m)` — rather
   than an extension of that line, which keeps its asserted format stable and gives minutes (absent
-  from it) a home; only changed ticks carry it. Until it lands, the event and `lastSummary` carry
-  the flag. Friction becomes data instead of disappearing.
+  from it) a home; only changed ticks carry it. Landed 2026-08-29: `commitTrailer`'s optional
+  fifth argument appends the line on flagged changed ticks; the event and `lastSummary` carry
+  the flag too. Friction becomes data instead of disappearing.
   Data sources: turn count is a small `PiStreamParser` addition (a counter over assistant
   message-end events) exposed as `PiRunResult.turns` — commit-bodies.md needs the same field for
   its trailer, so

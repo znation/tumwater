@@ -40,6 +40,28 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   }
 });
 
+test("defaultConfig carries the thrash thresholds and validation guards them", () => {
+  // AC5 (plans/refusal-and-thrash.md): the friction thresholds default to 40 turns / 60
+  // minutes, and invalid values are rejected with actionable errors like every other knob.
+  const config = defaultConfig();
+  assert.equal(config.thrashTurns, 40);
+  assert.equal(config.thrashMinutes, 60);
+  assert.doesNotThrow(() => validateConfig(config));
+
+  for (const [key, bad] of [
+    ["thrashTurns", -1],
+    ["thrashMinutes", -0.5],
+    ["thrashTurns", "40"],
+    ["thrashMinutes", null],
+  ] as const) {
+    assert.match(
+      validationError({ [key]: bad }),
+      new RegExp(`^invalid tumwater\\.json:.*${key} must be a number of 0 or more \(got ${JSON.stringify(bad)}\)`),
+      `${key}: ${bad} should be rejected with an actionable error`,
+    );
+  }
+});
+
 test("loadConfig without a file returns defaults", () => {
   const dir = tmpdir();
   assert.deepEqual(loadConfig(dir), defaultConfig());

@@ -83,6 +83,21 @@ test("commitTrailer compacts context at 10k and below", () => {
   assert.equal(commitTrailer("bugfix", 1, 3, 12_345), "Tick: bugfix #1 · turns 3 · ctx 12.3k");
 });
 
+test("commitTrailer appends a sibling Friction line only when flagged high-friction", () => {
+  // Without the flag: exactly the Tick line — its asserted format stays stable (plans/
+  // refusal-and-thrash.md, trailer format decided in the 2026-08-29 re-audit).
+  assert.equal(
+    commitTrailer("feature", 7, 41, 9_999),
+    "Tick: feature #7 · turns 41 · ctx 9999",
+  );
+  // With it: a sibling git-trailer line after the Tick line — minutes rounded to whole
+  // minutes, e.g. `Friction: high (41 turns / 62m)`. Only changed ticks carry it.
+  assert.equal(
+    commitTrailer("feature", 7, 41, 9_999, 62.4),
+    "Tick: feature #7 · turns 41 · ctx 9999\nFriction: high (41 turns / 62m)",
+  );
+});
+
 test("buildCommitMessage assembles subject, body, and trailer as separate paragraphs", () => {
   const trailer = commitTrailer("clean", 3, 1, 500);
   assert.equal(
