@@ -1,4 +1,5 @@
 import { compactTokens } from "./text.js";
+import { labeledLine } from "./reply-contract.js";
 
 /** Assembling tick commit messages from pi's final reply: the SUMMARY line becomes the
  * subject, the WHY/RISK/VERIFIED block becomes the body, and the harness stamps a trailer
@@ -9,9 +10,8 @@ import { compactTokens } from "./text.js";
 
 /** Pull the SUMMARY: line out of a pi final reply; null when absent. */
 export function extractSummary(finalText: string): string | null {
-  const match = finalText.match(/^\s*SUMMARY:\s*(.+)\s*$/m);
-  if (!match?.[1]) return null;
-  return match[1].trim().slice(0, 100);
+  const summary = labeledLine(finalText, "SUMMARY");
+  return summary === null ? null : summary.slice(0, 100);
 }
 
 /** Cap on each commit-body field, so a verbose model cannot bloat every commit. */
@@ -26,20 +26,19 @@ export interface CommitBody {
   verified?: string;
 }
 
-/** Pull the WHY:/RISK:/VERIFIED: lines out of a pi final reply. One anchored regex per field,
- * tolerant of any subset being absent (a non-compliant reply still commits), each field capped
- * at 200 chars (truncate + ellipsis). Null when none were found. */
+/** Pull the WHY:/RISK:/VERIFIED: lines out of a pi final reply via the shared labeled-line
+ * parser, tolerant of any subset being absent (a non-compliant reply still commits), each field
+ * capped at 200 chars (truncate + ellipsis). Null when none were found. */
 export function extractCommitBody(finalText: string): CommitBody | null {
-  const pick = (re: RegExp): string | undefined => {
-    const m = finalText.match(re);
-    if (!m?.[1]) return undefined;
-    const v = m[1].trim();
+  const pick = (label: string): string | undefined => {
+    const v = labeledLine(finalText, label);
+    if (v === null) return undefined;
     return v.length > COMMIT_BODY_FIELD_MAX ? `${v.slice(0, COMMIT_BODY_FIELD_MAX - 1)}…` : v;
   };
   const body: CommitBody = {
-    why: pick(/^\s*WHY:\s*(.+)\s*$/m),
-    risk: pick(/^\s*RISK:\s*(.+)\s*$/m),
-    verified: pick(/^\s*VERIFIED:\s*(.+)\s*$/m),
+    why: pick("WHY"),
+    risk: pick("RISK"),
+    verified: pick("VERIFIED"),
   };
   return body.why || body.risk || body.verified ? body : null;
 }

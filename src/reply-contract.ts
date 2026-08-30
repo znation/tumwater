@@ -21,14 +21,21 @@ export function isNothingToDo(text: string): boolean {
  * commit subject of the refusal note and the tick's lastSummary. */
 export const REFUSED_SENTINEL = "TUMWATER_REFUSED";
 
+/** The trimmed remainder of the first line that starts with `<label>:` (leading whitespace on
+ * the line allowed); null when no such line carries content. Shared by every parser that pulls a
+ * labeled field out of pi's final reply — SUMMARY/WHY/RISK/VERIFIED in commit-message.ts and the
+ * TUMWATER_REFUSED reason here — so the anchored-line shape lives in one place instead of drifting. */
+export function labeledLine(text: string, label: string): string | null {
+  const match = text.match(new RegExp(`^\\s*${label}:\\s*(.+)\\s*$`, "m"));
+  return match?.[1] ? match[1].trim() : null;
+}
+
 /** Extract the one-line reason from a TUMWATER_REFUSED sentinel line; null when no such line
  * exists. Anchored at line start like the VERDICT line, so prose that merely mentions the
  * sentinel mid-sentence cannot set the reason (pi.ts's boolean detection is deliberately
  * looser — a whole-reply scan, matching the nothing-to-do sentinel). */
 export function extractRefusal(text: string): string | null {
-  const match = text.match(new RegExp(`^\\s*${REFUSED_SENTINEL}:\\s*(.+)$`, "m"));
-  if (!match?.[1]) return null;
-  return match[1].trim();
+  return labeledLine(text, REFUSED_SENTINEL);
 }
 
 // The review gate's verdict line as stated in buildReviewPrompt (prompt.ts): the reviewer
