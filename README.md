@@ -82,7 +82,8 @@ BUGS.md's Fixed section) until an improve tick made them reflow-robust. Feature 
 (`7212a7e`) then landed that last item — the thrash-flag loop tests in test/loop.test.ts, one per
 threshold plus a negative control, with the turns-threshold e2e asserting the `Friction:` trailer
 line in the commit's git log; every acceptance criterion of plans/refusal-and-thrash.md has now
-landed (verified at `da79bcd`, suite 435/435), leaving only the plan loop's move to Done. The slow-clock steward has
+landed (verified at `da79bcd`, suite 435/435); its last residual test — no-note refusal's
+tick_end event — then landed (`8e6eeae`), and the plan is moved to Done in PLANS.md. The slow-clock steward has
 landed in code (feature tick 49): a markdown-only curation role on a ~6 h per-role clock (the new
 `minTickIntervalSeconds` override of the global interval), enabled by default; its landing commit's
 build break is fixed (BUGS.md). The plan loop audited it on 2026-08-28 (verified at `ceb6019`, suite green): what remains is test gaps — no role-prompt contract tests, and the per-role interval untested at scheduler level — plus dogfood pending (no `tumwater(steward)` commit in history yet). Self-explaining commit bodies has landed in code (feature
@@ -102,7 +103,7 @@ re-audited it on 2026-08-28 and verified every item landed — the reject→next
 injection gap closed with a loop test (coverage tick `8ea49b8`). The plan's last code item has since landed — the deterministic build pre-check (feature tick 54, `93d14f5`; tests via bugfix tick 58, `038519a`): the harness itself runs the project's npm typecheck/build script as the gate's first step, after the md-only exemption and before any reviewer run; detection walks up from the worktree to the nearest package.json + node_modules (worktrees carry no install of their own), preferring `typecheck` over `build`; a failed build rejects deterministically with the compiler tail as reasons (no pi run consumed), while a timeout or missing npm warns and proceeds to model review rather than failing closed — closing the hole that let tick 49's type error land. The plan loop re-audited it on 2026-08-29 (verified at `d789962`, suite green) and feature tick 56 (`50ef9eb`) then closed the remainder — pre-check units in test/review.test.ts (detectBuildCheck edge cases, runBuildCheck's no-npm branch, clipBuildTail), gate e2e (a failing build rejects deterministically with zero reviewer runs; a hanging script warns and proceeds to model review), plus the two older items: merge lock not held during review (two concurrent fake-pi loops) and the `reviewing <elapsed>` state cell — moving the plan to Done in PLANS.md; its new tests also found that clipBuildTail must drop npm's own script banner lines so a quiet failure names what broke, not the script. The last-tick
 timestamp plan has landed: both dashboards show each loop's last tick end as an absolute local
 time alongside its relative age. The report's PRINCIPLES.md plan has landed: every tick prompt now carries the
-project's tracked PRINCIPLES.md (documented under How it works).
+project's tracked PRINCIPLES.md (documented under How it works). A bugfix loop found and fixed one more scheduling gap (`f773a49`, recorded under BUGS.md's Fixed section): an interrupted tick on a slow-clock role (steward ~6 h, qa ~2 h) was held by the per-role min interval for up to a full clock before its resume ran — `isEligible` now checks the pending resume before the min gap, so an aborted or crashed tick resumes promptly on restart while cut-off resumes still wait one interval as designed.
 <!-- tumwater:status:end -->
 
 ## How it works
