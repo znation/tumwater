@@ -557,6 +557,59 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
   }
 });
 
+// A pi that commits during the tick (forbidden by the prompt, but a confused pi might do it)
+// leaves an extra commit under the harness's own commit. When the merge's rebase stops on
+// the stray one and the resolution run ALSO commits its resolution, `rebase --continue`
+// replays the remaining authoring commit onto that stray commit, hits a SECOND conflict,
+// and throws — merge.ts's catch must abort cleanly and report merge_conflict instead of
+// crashing or landing broken work (the only path that reaches it; see continueRebase's doc
+// comment). Phase detection in the shim: reviewer runs carry VERDICT:, resolution runs find
+// conflict markers in seed.txt, everything else is the authoring run.
+test("a stray pi commit makes rebase --continue stop a second time: aborted, merge_conflict", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [
+      // The tick's commit goes through the review gate before the (conflicting) merge.
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      // Phase 2 (the resolution run): seed.txt carries conflict markers — resolve them, then
+      // commit anyway. That stray commit is what `rebase --continue` replays the remaining
+      // authoring commit onto.
+      `if grep -q '<<<<<<<' seed.txt 2>/dev/null; then`,
+      `  echo resolved > seed.txt`,
+      `  git add -A && git commit -m "stray resolver commit"`,
+      `else`,
+      // Phase 1 (the tick): pi commits its first edit itself (a stray commit the harness
+      // never reviewed as such), then leaves a second edit uncommitted — the harness's
+      // commitAll lands it on top, so the branch is two commits ahead of main. Main advances
+      // with an edit that conflicts with the STRAY one, so the rebase stops there first.
+      `  echo branch change 1 > seed.txt`,
+      `  git add -A && git commit -m "stray authoring commit"`,
+      `  echo branch change 2 > seed.txt`,
+      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
+      `  echo main change > "${repo}/seed.txt"`,
+      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "merge_conflict", "the second conflict is reported, not crashed on");
+    // Nothing landed: main keeps its version…
+    assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n", "main keeps its version");
+    // …and both of the tick's commits stay stranded on the branch for the next tick's
+    // recovery, exactly like any other failed merge.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "2", "the tick's commits are kept for recovery");
+    const wt = path.join(repo, ".tumwater/worktrees/improve");
+    // No rebase is left in progress: the branch ref is checked out again (mid-rebase HEAD
+    // would be detached), and no conflict markers survive.
+    assert.equal(sh(wt, "git", "symbolic-ref", "--short", "HEAD"), "tumwater/improve");
+    assert.ok(!sh(wt, "git", "status", "--porcelain").includes("UU"));
+  } finally {
+    restore();
+  }
+});
+
 test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit kept for recovery", async () => {
   const repo = await initializedRepo();
   // The user has uncommitted edits to seed.txt in the PRIMARY checkout (on main). The tick's
