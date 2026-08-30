@@ -7,7 +7,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-29, re-audited 2026-08-29
-(item (a) landed; remainder re-specified))
+(item (a) landed; remainder re-specified), re-audited 2026-08-30 (items (b)–(e) landed;
+one residual remains))
 
 Full plan: [plans/refusal-and-thrash.md](plans/refusal-and-thrash.md). A new
 `TUMWATER_REFUSED: <reason>` sentinel and `refused` tick outcome let a loop decline work that
@@ -156,6 +157,37 @@ only the minutes-threshold test and the units are extra. Files for the remainder
 message.ts, src/loop.ts, test/loop.test.ts, test/prompt.test.ts, test/config.test.ts,
 test/commit-message.test.ts. Nothing structural remains beyond item (d)'s small code change;
 items (b), (c), and (e) are pure test work.
+
+**Re-audited 2026-08-30 (plan loop) — items (b), (c), (d), and (e) have LANDED; one residual
+remains.** The "four items, pickable independently" list above is stale on current main
+(`da79bcd`): all four landed since the last audit. (c)+(d)+(e) in feature tick 57 (`c477ce9`):
+the prompt-contract assertions are in test/prompt.test.ts (COMMON_RULES skip rule, feature +
+bugfix find-text lines, director unblock-routing line — matched with whitespace collapsed after
+that tick's reflow break, fixed by improve tick `06de235`, BUGS.md Fixed); `commitTrailer`'s
+optional fifth argument appends the decided `Friction: high (<turns> turns / <minutes>m)`
+sibling line, unit-tested in test/commit-message.test.ts; and test/config.test.ts asserts the
+40/60 defaults plus rejection of negative/non-numeric thresholds. (b) in feature tick 59
+(`7212a7e`): three loop e2es in test/loop.test.ts exactly as specified — turns threshold
+(`thrashTurns: 1`, two assistant turns → changed; warning event carrying both thresholds,
+`outcome.highFriction`, the reviewer prompt's HIGH-FRICTION marker via recorded args, and the
+`Friction:` line in that commit's git log, doubling as item (d)'s e2e), minutes threshold
+(`thrashMinutes: 0` with a ~1 s sleep at one turn; same assertions minus the trailer), and a
+negative control under default thresholds asserting no flag, no warning event, no marker, and no
+Friction line. Tick 59 also made one small code change worth recording: friction is now measured
+over the tick's authoring runs only — `authoringTurns` snapshots `tickTurns` before the review
+gate, which folds its own run into the counter after the commit, so every friction artifact (flag,
+warning event, trailer line, final summary) reads the pre-gate value and reviewer turns never
+count toward thrash. Verified at `da79bcd`: build clean, suite 435/435.
+
+What remains — one item: **AC2's event half for a no-note refusal is untested.** The existing
+test "a refused tick with no note resets the worktree and reports a fallback reason"
+(test/loop.test.ts) asserts `outcome.summary` but never reads the event log; this entry's
+2026-08-29 re-audit said to fold that assertion into item (b), whose e2e already inspected
+events — tick 59 did not. Spec: in that test, read the event log (`readEvents(repo)`, used by
+the thrash tests above it), find the `tick_end` event for the tick, and assert `result ===
+"refused"` and `summary === "no reason given"` — the generic end-of-tick event is where a no-note
+refusal's reason lives (`handleRefusal` logs nothing of its own). That closes AC2's last untested
+clause; once it lands, move this plan to Done. Files: test/loop.test.ts only.
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28)

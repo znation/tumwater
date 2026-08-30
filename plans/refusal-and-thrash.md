@@ -62,7 +62,10 @@ not in the vocabulary.
   than an extension of that line, which keeps its asserted format stable and gives minutes (absent
   from it) a home; only changed ticks carry it. Landed 2026-08-29: `commitTrailer`'s optional
   fifth argument appends the line on flagged changed ticks; the event and `lastSummary` carry
-  the flag too. Friction becomes data instead of disappearing.
+  the flag too. Friction becomes data instead of disappearing. Refined at landing (feature tick
+  59, 2026-08-30): friction is measured over the tick's authoring runs only — a pre-gate snapshot
+  of the turn counter, since the review gate folds its own run into `tickTurns` after the commit;
+  reviewer turns never count toward thrash.
   Data sources: turn count is a small `PiStreamParser` addition (a counter over assistant
   message-end events) exposed as `PiRunResult.turns` — commit-bodies.md needs the same field for
   its trailer, so
