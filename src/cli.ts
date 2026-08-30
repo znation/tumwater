@@ -33,7 +33,8 @@ Usage:
                                    the director)
   tumwater status                  One-shot status table
   tumwater logs [-f] [-n N]        Show (and follow) harness events
-  tumwater logs --role <id> [-f]   Show (and follow) that loop's pi transcript
+  tumwater logs --role <id> [-f] [-n N]
+                                   Show (and follow) that loop's pi transcript
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
   tumwater help | version
