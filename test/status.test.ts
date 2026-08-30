@@ -63,6 +63,43 @@ test("snapshot survives a broken tumwater.json and recovers when it is fixed", a
   assert.ok(!snap.loops.some((l) => l.role === "clean"));
 });
 
+test("snapshot serves unchanged loop state from the stat-keyed cache without re-reading", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  const state = freshLoopState("clean");
+  state.ticks = 3;
+  saveLoopState(repo, state);
+  assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 3); // populates the cache
+
+  let cleanReads = 0;
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  try {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
+      if (typeof args[0] === "string" && args[0].endsWith(`${path.sep}state${path.sep}clean.json`))
+        cleanReads += 1;
+      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
+    };
+    const snap = snapshot(repo);
+    assert.equal(snap.loops.find((l) => l.role === "clean")!.ticks, 3); // unchanged — served from cache
+    assert.equal(cleanReads, 0); // no re-read of the state file at all
+    // Each poll still gets its own objects: mutating one snapshot must not poison later ones.
+    snap.loops.find((l) => l.role === "clean")!.ticks = 99;
+    assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 3);
+  } finally {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
+  }
+
+  // A same-size edit is picked up via mtime, not just size: ticks 3 → 4 keeps the file's byte
+  // length identical, so utimes forces a distinct mtime regardless of filesystem timestamp
+  // granularity (two fast writes could otherwise share one on coarse-grained filesystems).
+  const bumped = freshLoopState("clean");
+  bumped.ticks = 4;
+  saveLoopState(repo, bumped);
+  const t = new Date(Date.now() + 5000);
+  fs.utimesSync(path.join(repo, ".tumwater", "state", "clean.json"), t, t);
+  assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 4);
+});
+
 test("loopPhase describes each loop state", () => {
   const s = freshLoopState("clean");
   assert.equal(loopPhase(s, false), "stopped");
