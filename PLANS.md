@@ -5,6 +5,37 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Daily cost budget — cap the fleet's autonomous spend (planned 2026-08-30)
+
+Full plan: [plans/daily-cost-budget.md](plans/daily-cost-budget.md). The harness measures
+spend (per-loop `totalCostUsd`, cost column + totals row) but nothing acts on it — a fleet
+running 24/7 against a paid API can spend unbounded. A top-level `maxDailyCostUsd` config key
+(number ≥ 0, **0 disables**, default **50** — enabled by default: an unattended fleet must not
+spend unbounded; local-model fleets report $0 so the cap never fires for them) caps the fleet's
+per-local-day spend. Per-loop daily window in LoopState (`dayStamp`/`dayCostUsd`, fresh defaults
+so old state files load unchanged): `foldUsage` records through a new pure helper that rolls over
+at local midnight on write; reads go through `dailyCost(s, now)`, which returns $0 for a stale or
+missing stamp — no save needed. While fleet daily spend ≥ cap the orchestrator's poll loop skips
+role runners before `isEligible` (no scheduled tick, main-moved wake, or startup tick starts;
+in-flight ticks finish; **the director is exempt** — an explicit human prompt outranks the
+autonomous-spend cap). Resume is live and stateless: raising/disabling the cap or crossing
+midnight flips the pure `budgetPaused` predicate on the next poll (~2 s) via the existing
+live-reload path. One `budget_paused`/`budget_resumed` harness event per transition (rendered in
+logs/TUI/GUI feed); both dashboards show a `· budget: $12.34/$50 today` header badge while
+enabled and paused role loops' state cell reads `budget paused` (`loopPhase` gains an optional
+trailing flag; gui.ts passes it into the existing phase payload). `reset-counters`
+deliberately does NOT zero the daily window — the budget is a safety valve, not an observation
+window. Kept as one entry: gate and display are coupled (a silently-stopped fleet with no
+dashboard explanation is a usability hole; display without the gate is meaningless).
+Acceptance criteria: config default + validation (0 disables; negative/non-numeric rejected);
+daily-window units (rollover on write, stale/missing reads $0, midnight-crossing tick,
+reset-counters leaves it untouched); e2e with the fake pi shim reporting cost — tiny cap blocks
+the second role tick while a queued director prompt still runs, live cap raise resumes within ~2 s;
+event rendering; header badge + `budget paused` state cell on both surfaces. Files: src/types.ts,
+src/config.ts, src/state.ts, src/loop.ts, src/orchestrator.ts, src/status.ts, src/status-render.ts,
+src/gui.ts, src/gui-page.ts, src/event-format.ts, test/{config,state,orchestrator,status-
+render,event-format,gui}.test.ts, README.md.
+
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28)
 
