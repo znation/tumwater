@@ -305,18 +305,23 @@ test("guidance is a single shared constant, not drifting copies", () => {
 // Prompt contract for the refusal design (plans/refusal-and-thrash.md): a fresh-session tick
 // has no memory of an earlier refusal except what the markdown says, so the skip rule and the
 // recording shape must ride along in every prompt that picks work or routes decisions.
+// The prose is hard-wrapped and formatting ticks reflow it, so assertions match content with
+// whitespace collapsed — a phrase wrapped across lines must not break a contract check (the
+// first landing of these tests did exactly that: four red unit tests on main).
+
+const oneLine = (s: string) => s.replace(/\s+/g, " ");
 
 test("COMMON_RULES carries the Refused-note skip rule for every role", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   assert.match(prompt, /skip entries carrying a Refused note — do not pick them and do not re-refuse them/);
 });
 
 test("the feature find text refuses rather than forces and skips refused plans", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   assert.match(prompt, /A plan that resists implementation is a finding/);
   assert.match(prompt, /refuse it with the objection recorded rather than forcing it/);
   assert.match(prompt, /Skip plans whose entry carries a Refused note/);
@@ -325,13 +330,13 @@ test("the feature find text refuses rather than forces and skips refused plans",
 test("the bugfix find text refuses harmful fixes and skips refused bugs", () => {
   const role = roleById("bugfix");
   assert.ok(role);
-  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   assert.match(prompt, /A "bug" whose fix would harm the project is refused, not force-fixed/);
   assert.match(prompt, /Skip BUGS\.md entries carrying a Refused note/);
 });
 
 test("the director routes refusal decisions by clearing the Refused note", () => {
-  const prompt = buildDirectorPrompt("clear the refusal on plan X", "a project");
+  const prompt = oneLine(buildDirectorPrompt("clear the refusal on plan X", "a project"));
   assert.match(prompt, /A decision about a refused entry/);
   assert.match(prompt, /clear its \*\*Refused …\*\* note from PLANS\.md\/BUGS\.md/);
   assert.match(prompt, /so loops can pick it up again/);

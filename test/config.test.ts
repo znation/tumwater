@@ -54,9 +54,11 @@ test("defaultConfig carries the thrash thresholds and validation guards them", (
     ["thrashTurns", "40"],
     ["thrashMinutes", null],
   ] as const) {
+    // The "s" flag lets .* cross the newline between the error header and its bulleted
+    // problems; without it the anchor matched only single-line messages.
     assert.match(
       validationError({ [key]: bad }),
-      new RegExp(`^invalid tumwater\\.json:.*${key} must be a number of 0 or more \(got ${JSON.stringify(bad)}\)`),
+      new RegExp(`^invalid tumwater\\.json:.*${key} must be a number of 0 or more \\(got ${JSON.stringify(bad)}\\)`, "s"),
       `${key}: ${bad} should be rejected with an actionable error`,
     );
   }

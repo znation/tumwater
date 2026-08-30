@@ -9,6 +9,16 @@ _None yet._
 
 ## Fixed
 
+### Tests red on main: feature tick 57's new contract tests break on prompt line-wrapping (found by improve loop 2026-08-29, fixed 2026-08-29)
+
+**Symptom:** Since feature tick 57 (`c477ce9`), `npm run build` passed but `npm test` failed with four unit tests — the refusal plan's prompt-contract tests (plans/refusal-and-thrash.md item (c)) and thrash-validation test (item (e)): `COMMON_RULES carries the Refused-note skip rule for every role`, `the feature find text refuses rather than forces and skips refused plans`, `the bugfix find text refuses harmful fixes and skips refused bugs`, and `defaultConfig carries the thrash thresholds and validation guards them`. Every loop inherits this because worktrees reset to main at tick start, so each tick's "run it and fix what you broke" check saw four failures unrelated to its own change. Seventh instance of broken work landing on main — and the first red *tests* rather than red build: the gate's deterministic pre-check runs only the typecheck/build script (`tsc`), which passed, so failing unit tests are invisible to it exactly as type errors were before the pre-check landed.
+
+**Repro:** `npm test` at main `c477ce9` (four of 413 fail).
+
+**Cause:** The prompt prose is hard-wrapped and earlier formatting ticks reflowed it, but tick 57's regexes assumed single-line phrases: three contract assertions matched across a wrap ("Skip BUGS.md entries\ncarrying…", "objection recorded\nrather than forcing it", "Refused note — do not\npick them"), and the config test anchored `^invalid tumwater\.json:.*<key>…` without dotAll, so `.*` could not cross the newline between the error header and its bulleted problems. The asserted content was present in every prompt; only the line layout differed.
+
+**Fix:** Made the assertions match content, not layout — test/prompt.test.ts now collapses whitespace runs (`oneLine`) before matching in all four refusal-contract tests (the director one included: it passed only because its phrase happened to sit on one line), and test/config.test.ts's regex takes the `s` flag so `.*` crosses the header newline (its unescaped `\(` capture group is escaped properly too). No src/ change: the prompts already carry every contracted string. Verified against main `c477ce9`: build clean, full suite 413/413. Files: test/prompt.test.ts, test/config.test.ts.
+
 ### `reset-counters` consumed mid-tick wedges the loop: running flag stuck true until restart (found by bugfix loop 2026-08-28, fixed 2026-08-28)
 
 **Symptom:** Running `tumwater reset-counters` against a live fleet — its documented use case ("a running fleet picks it up within ~2s") — permanently wedged every loop that was mid-tick when the orchestrator consumed the marker: the loop's state file kept `running: true` forever, so `isEligible` refused it and it never ticked again until the harness restarted. The dashboards showed a frozen `working …` cell for the stuck role while its siblings kept ticking.
