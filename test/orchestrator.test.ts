@@ -58,6 +58,30 @@ test("a sleeping loop wakes when main moves, respecting the min gap", () => {
   assert.equal(isEligible(r, now, "new", 0).run, false);
 });
 
+test("an interrupted tick resumes promptly on restart despite the min gap", () => {
+  const r = runner("clean");
+  const now = Date.now();
+  // Aborted (or crashed) moments ago — far inside the role's min gap, which would otherwise
+  // hold its half-finished work for a full interval (e.g. the steward's ~6 h).
+  r.state.ticks = 5;
+  r.state.lastTickEndedAt = now - 1000;
+  r.state.nextRunAt = now - 1000; // aborted ticks schedule at "now"
+  r.state.resumePending = true;
+  const eligible = isEligible(r, now, "abc", 0);
+  assert.equal(eligible.run, true, "the min gap must not hold an interrupted tick");
+  assert.equal(eligible.reason, "resume");
+});
+
+test("a cut-off resume still waits out its interval even with the min-gap bypass", () => {
+  const r = runner("clean");
+  const now = Date.now();
+  r.state.ticks = 5;
+  r.state.lastTickEndedAt = now - 1000; // inside the min gap
+  r.state.nextRunAt = now + 60_000; // cut-off ticks schedule one interval out
+  r.state.resumePending = true;
+  assert.equal(isEligible(r, now, "abc", 0).run, false);
+});
+
 test("the director only runs when the inbox has work", () => {
   const r = runner("director");
   assert.equal(isEligible(r, Date.now(), "abc", 0).run, false);

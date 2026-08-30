@@ -62,6 +62,14 @@ export function isEligible(
     return inboxCount > 0 ? { run: true, reason: "inbox" } : { run: false };
   }
 
+  // An interrupted tick (graceful abort or crash) leaves half-finished work in its pi
+  // session and worktree: resume it promptly on restart instead of holding it for a full
+  // interval — the min gap below throttles scheduled ticks, not recovery. nextRunAt still
+  // gates cut-off resumes, which deliberately wait one interval from their compacted context.
+  if (s.resumePending) {
+    return now >= s.nextRunAt ? { run: true, reason: "resume" } : { run: false };
+  }
+
   // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates both scheduled
   // ticks and "main moved" early wakes — resolved here so a live-reloaded config applies.
   const minGap = configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000;
