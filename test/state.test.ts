@@ -4,12 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   applyTickOutcome,
+  budgetPaused,
+  dailyCost,
+  fleetDailyCost,
   freshLoopState,
   loadLoopState,
   nextBackoffSeconds,
   orchestratorAlive,
   readOrchestratorInfo,
+  recordDailyCost,
   saveLoopState,
+  todayStamp,
   zeroCounters,
 } from "../src/state.js";
 import type { LoopState, TumwaterConfig } from "../src/types.js";
@@ -62,6 +67,9 @@ test("loadLoopState fills fields missing from an older or partial file", () => {
   assert.equal(s.backoffSeconds, 0);
   assert.equal(s.lastMainHead, "");
   assert.ok(Number.isFinite(s.nextRunAt));
+  // A file written before the daily budget window existed reads $0 through dailyCost —
+  // spend recorded before dayStamp/dayCostUsd were fields is unknown, not infinite.
+  assert.equal(dailyCost(s), 0);
 });
 
 test("loadLoopState recovers from torn or non-object JSON", () => {
@@ -88,6 +96,8 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
   s.lastSummary = "did a thing";
   s.lastTickStartedAt = 1;
   s.lastTickEndedAt = 2;
+  s.dayStamp = todayStamp(); // daily budget window — must survive a reset
+  s.dayCostUsd = 12.5;
 
   const z = zeroCounters(s);
   assert.equal(z.ticks, 0);
@@ -104,6 +114,11 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
   assert.equal(z.lastMainHead, "abc123");
   assert.equal(z.lastResult, "changed");
   assert.equal(z.lastSummary, "did a thing");
+  // The daily cost budget window is deliberately preserved: it is a safety valve, not an
+  // observation window — zeroing today's spend would let the cap be bypassed by running
+  // reset-counters.
+  assert.equal(z.dayStamp, s.dayStamp);
+  assert.equal(z.dayCostUsd, 12.5);
   // Pure: the input is unchanged and the result is a new object.
   assert.equal(s.ticks, 12);
   assert.notEqual(z, s);
@@ -115,6 +130,88 @@ test("nextBackoffSeconds caps an initial above max and treats non-positive curre
   assert.equal(nextBackoffSeconds(0, config), 30); // min(initial, max)
   assert.equal(nextBackoffSeconds(-5, config), 30); // current <= 0 → initial (capped)
   assert.equal(nextBackoffSeconds(29, config), 30); // growth still capped at max
+});
+
+// --- Daily cost budget window (plans/daily-cost-budget.md) ---
+
+/** Two local-time timestamps straddling midnight, built with the local Date constructor so
+ * the test holds in any timezone: dayA is an evening, dayB just after local midnight. */
+function midnightPair(): { dayA: number; dayB: number } {
+  return {
+    dayA: new Date(2026, 7, 30, 20, 0, 0).getTime(), // Aug 30, 8 pm local
+    dayB: new Date(2026, 7, 31, 0, 0, 1).getTime(), // Aug 31, just after midnight
+  };
+}
+
+test("recordDailyCost accumulates same-day spend and rolls over at local midnight on write", () => {
+  const s = freshLoopState("feature");
+  const { dayA, dayB } = midnightPair();
+
+  recordDailyCost(s, 1.5, dayA); // first run of the day (fresh state: no stamp yet)
+  assert.equal(s.dayStamp, todayStamp(dayA));
+  assert.equal(s.dayCostUsd, 1.5);
+
+  recordDailyCost(s, 0.25, dayA + 3_600_000); // an hour later, same local day
+  assert.equal(s.dayStamp, todayStamp(dayA));
+  assert.equal(s.dayCostUsd, 1.75);
+
+  // A tick that crosses midnight attributes its spend to the NEW day: the window resets
+  // first, so yesterday's $1.75 cannot leak into today's budget (or vice versa).
+  recordDailyCost(s, 0.5, dayB);
+  assert.equal(s.dayStamp, todayStamp(dayB));
+  assert.notEqual(s.dayStamp, todayStamp(dayA));
+  assert.equal(s.dayCostUsd, 0.5);
+});
+
+test("dailyCost reads $0 for a stale or missing stamp and the window's value when fresh", () => {
+  const s = freshLoopState("feature"); // dayStamp "" — never ticked
+  assert.equal(dailyCost(s), 0);
+
+  const { dayA, dayB } = midnightPair();
+  recordDailyCost(s, 2.5, dayA);
+  assert.equal(dailyCost(s, dayA), 2.5); // fresh: the window's value
+  assert.equal(dailyCost(s, dayB), 0); // read "tomorrow": stale → $0
+
+  // Reads never mutate — a stale read must not reset or touch the recorded window.
+  assert.equal(s.dayStamp, todayStamp(dayA));
+  assert.equal(s.dayCostUsd, 2.5);
+});
+
+test("fleetDailyCost sums every loop's daily window with stale ones reading $0", () => {
+  const { dayA, dayB } = midnightPair();
+  const a = freshLoopState("feature");
+  recordDailyCost(a, 1.25, dayA); // spent on day A
+  const b = freshLoopState("clean"); // never ticked: missing stamp → $0
+  const c = freshLoopState("dry");
+  recordDailyCost(c, 0.75, dayB); // spent on day B only
+
+  assert.equal(fleetDailyCost([a, b, c], dayA), 1.25);
+  assert.equal(fleetDailyCost([a, b, c], dayB), 0.75);
+  assert.equal(fleetDailyCost([], dayA), 0);
+});
+
+test("budgetPaused is false at cap 0 (disabled) and below the cap, true at/above it", () => {
+  const s = freshLoopState("feature");
+  const { dayA, dayB } = midnightPair();
+  recordDailyCost(s, 10, dayA);
+
+  const cfg = defaultConfig(); // maxDailyCostUsd: 50
+  assert.equal(budgetPaused([s], cfg, dayA), false); // $10 < $50
+
+  cfg.maxDailyCostUsd = 10;
+  assert.equal(budgetPaused([s], cfg, dayA), true); // exactly at the cap (>=)
+
+  cfg.maxDailyCostUsd = 9.99;
+  assert.equal(budgetPaused([s], cfg, dayA), true); // above it
+
+  cfg.maxDailyCostUsd = 0;
+  assert.equal(budgetPaused([s], cfg, dayA), false); // 0 disables the budget entirely
+
+  // A stale window reads $0: a fleet that hasn't ticked since yesterday is never paused.
+  const other = freshLoopState("clean");
+  recordDailyCost(other, 100, dayB);
+  cfg.maxDailyCostUsd = 1;
+  assert.equal(budgetPaused([other], cfg, dayA), false);
 });
 
 // --- Post-tick outcome recording + next-run scheduling (extracted from LoopRunner.tick) ---
