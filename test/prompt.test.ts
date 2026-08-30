@@ -9,8 +9,10 @@ import {
   buildRejectedReviewNote,
   buildResumePrompt,
   buildTickPrompt,
+  buildReviewPrompt,
   readPrinciples,
 } from "../src/prompt.js";
+import { parseVerdict } from "../src/review.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
 import { DECOMPOSITION_GUIDANCE, ROLES, roleById } from "../src/roles.js";
@@ -378,4 +380,44 @@ test("the director routes answers back by moving the entry to Answered verbatim"
   const prompt = oneLine(buildDirectorPrompt("answer Q3: choose SQLite", "a project"));
   assert.match(prompt, /An answer to an open question/);
   assert.match(prompt, /to ## Answered verbatim with the decision recorded/);
+});
+
+// Prompt contract for the review gate (src/review.ts): the reviewer is told to end with
+// exactly one VERDICT line, and a reply without a parseable line fails the review closed —
+// three such failures discard the commit. If the form the prompt advertises ever drifts from
+// what parseVerdict accepts, every real merge starts failing; no e2e test can catch it because
+// the fake pi emits whatever the test tells it to.
+
+test("buildReviewPrompt advertises exactly the verdict forms parseVerdict accepts", () => {
+  const prompt = oneLine(buildReviewPrompt("diff body"));
+  assert.match(prompt, /End your reply with exactly one line in this form/);
+  // The instruction names both forms as line-start "VERDICT: <word>" tokens — nothing else.
+  const advertised = [...prompt.matchAll(/VERDICT:\s*(\w+)/g)].map((m) => m[1]);
+  assert.deepEqual(advertised, ["approve", "reject"]);
+  // A reply written exactly as instructed — preamble, the final line in the advertised form,
+  // then numbered reasons — must parse to that verdict with its reasons in order.
+  for (const v of ["approve", "reject"]) {
+    const reply = `I checked the diff against the principles.\nVERDICT: ${v}\n1. build passes\n2. no new deps`;
+    assert.deepEqual(parseVerdict(reply), { verdict: v, reasons: ["build passes", "no new deps"] });
+  }
+});
+
+test("buildReviewPrompt embeds diff, summary, commit body, and principles verbatim", () => {
+  const prompt = buildReviewPrompt(
+    "diff-body-marker",
+    "summary-marker",
+    "body-marker",
+    "principles-marker",
+  );
+  assert.ok(prompt.includes("<diff>\ndiff-body-marker\n</diff>"));
+  assert.match(prompt, /The author's summary of the change:\nsummary-marker/);
+  assert.match(prompt, /claimed motivation, risk, verification — check these claims against the diff\):\nbody-marker/);
+  assert.ok(prompt.includes("<principles>\nprinciples-marker\n</principles>"));
+});
+
+test("buildReviewPrompt omits optional sections when their arguments are absent", () => {
+  const prompt = buildReviewPrompt("diff-only");
+  assert.ok(!prompt.includes("The author's summary of the change:"), "no empty summary section");
+  assert.ok(!prompt.includes("The author's commit body"), "no empty commit-body section");
+  assert.ok(!prompt.includes("<principles>"), "no principles block without a file");
 });
