@@ -6,20 +6,12 @@ import {
   changedFiles,
   commitAll,
   commitPathsAndDiscardRest,
-  conflictedFiles,
-  continueRebase,
   ensureWorktree,
-  ffMergeToMain,
   git,
   gitTry,
-  hasConflictMarkers,
-  headOf,
   isDirty,
-  rebaseOntoMain,
-  rebaseOntoMainLeaveConflicts,
   resetWorktreeToMain,
 } from "./git.js";
-import { withLock } from "./lock.js";
 import { logEvent } from "./events.js";
 import { hasResumableSession, runPi } from "./pi.js";
 import {
@@ -30,7 +22,6 @@ import {
   formatCommitBody,
 } from "./commit-message.js";
 import {
-  buildConflictPrompt,
   buildDirectorPrompt,
   buildRejectedReviewNote,
   buildResumePrompt,
@@ -42,7 +33,8 @@ import { configForRole } from "./config.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { loadLoopState, nextBackoffSeconds, saveLoopState, zeroCounters } from "./state.js";
-import { mergeLockDir, piLogPath, sessionDir } from "./paths.js";
+import { mergeToMain } from "./merge.js";
+import { piLogPath, sessionDir } from "./paths.js";
 
 export interface TickOutcome {
   result: TickResult;
@@ -158,26 +150,21 @@ export class LoopRunner {
     if (userPrompt) enqueuePrompt(this.root, userPrompt);
   }
 
-  /** Land the worktree branch on main under the shared merge lock: rebase it onto main
-   * (keeping history linear) and fast-forward. On conflict, makes one pi-driven resolution
-   * attempt (outside the lock) before giving up. A routine conflict is normal operation,
-   * not a warning: success lands as an ordinary `merged` event and failure surfaces via the
-   * tick's merge_conflict result — no separate log line for the hand-off itself. */
+  /** Land the worktree branch on main (see src/merge.ts for the rebase → ff-merge → conflict-
+   * retry flow): delegates with this loop's identity, tick number, and shared pi wiring so a
+   * conflict-resolution run folds into this tick's counters like any other pi run. */
   private async merge(wt: string, summary: string): Promise<TickResult> {
-    const first = await this.tryMerge(wt, summary);
-    if (first !== "merge_conflict") return first;
-    if (!(await this.resolveConflict(wt))) return "merge_conflict";
-    return this.tryMerge(wt, summary);
-  }
-
-  private async tryMerge(wt: string, summary: string): Promise<TickResult> {
-    return withLock(mergeLockDir(this.root), async () => {
-      if (!(await rebaseOntoMain(wt, this.mainBranch))) return "merge_conflict";
-      if (!(await ffMergeToMain(this.root, this.role, this.mainBranch))) return "merge_blocked";
-      const commit = await headOf(this.root, this.mainBranch);
-      logEvent(this.root, { loop: this.role, type: "merged", commit, summary });
-      return "changed";
-    });
+    return mergeToMain(
+      {
+        root: this.root,
+        role: this.role,
+        mainBranch: this.mainBranch,
+        tick: this.state.ticks,
+        runPi: (w, prompt, sessionName) => this.runRolePi(w, prompt, sessionName),
+      },
+      wt,
+      summary,
+    );
   }
 
   /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost / turns). Every
@@ -233,33 +220,6 @@ export class LoopRunner {
     }
     this.foldUsage(pi);
     return pi;
-  }
-
-  /** Re-run the conflicting rebase leaving markers in place, let pi resolve them, and
-   * continue the rebase. Returns true when the branch now sits cleanly on top of main. */
-  private async resolveConflict(wt: string): Promise<boolean> {
-    const state = await rebaseOntoMainLeaveConflicts(wt, this.mainBranch);
-    if (state === "clean") return true;
-    if (state === "failed") return false;
-    const files = await conflictedFiles(wt);
-    const pi = await this.runRolePi(
-      wt,
-      buildConflictPrompt(this.role, files),
-      `tumwater-${this.role}-${this.state.ticks}-conflict`,
-    );
-    if (!pi.ok || hasConflictMarkers(wt, files)) {
-      await abortSync(wt);
-      return false;
-    }
-    try {
-      await continueRebase(wt);
-    } catch {
-      // The rebase stopped again — a second conflict, only possible when pi itself
-      // authored extra commits during the tick. One resolution attempt per tick.
-      await abortSync(wt);
-      return false;
-    }
-    return true;
   }
 
   /** Run the adversarial review gate over everything ahead of main in `wt` (see
