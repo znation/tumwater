@@ -58,7 +58,8 @@ to ask.
   any follow-on work. Durable decisions graduate to PRINCIPLES.md
   ([principles.md](principles.md)).
 - **Events**: a `question_posted` event (loop, id, first line) when a merged diff adds an Open
-  entry. Detection lives in `tryMerge` (src/loop.ts): capture `openQuestionCount(root)` before
+  entry. Detection lives in `tryMerge` (src/merge.ts — the merge machinery was extracted from loop.ts on
+2026-08-29): capture `openQuestionCount(root)` before
   the rebase and compare after `ffMergeToMain` succeeds; for each new entry log one
   `question_posted` alongside the existing `merged` event — pi stays out of the event system.
   Add `question_posted` to the `HarnessEvent.type` union (src/types.ts) with plain rendering in
@@ -74,7 +75,8 @@ parsing), `src/backlog.ts` (`openQuestions(root)` reader reusing `parseEntries`)
 `src/status-render.ts` (header badge in renderStatus), `src/gui.ts` (statusPayload gains a
 fresh-per-poll `questions` list beside `plans`/`bugs`), `src/gui-page.ts` (header badge + open-
 questions section in the project status panel), `src/tui.ts` (highlighted line + open-questions
-list in the Ctrl+T project-status view), `src/loop.ts` (post-merge count diff → event),
+list in the Ctrl+T project-status view),
+`src/merge.ts` (post-merge count diff → event in tryMerge; extracted from loop.ts 2026-08-29),
 `src/types.ts` (event type) +
 `src/event-format.ts` (plain rendering); tests: new `test/questions.test.ts` (count parsing,
 header rendering, prompt contract text, director routing text, post-merge event emission) plus

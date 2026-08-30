@@ -244,6 +244,45 @@ entry emits `question_posted` alongside `merged` — which doubles as the regres
 Files for the remainder: src/loop.ts, test/questions.test.ts (new), test/backlog.test.ts,
 test/status-render.test.ts, test/gui.test.ts, test/tui.test.ts, test/prompt.test.ts.
 
+**Re-audited 2026-08-29 (plan loop) — most of item (b)'s suite has landed; file reference
+corrected; remainder re-specified.** The audit above is stale on current main (`43267c3`): the
+openQuestions reader units have landed in test/backlog.test.ts (section isolation, missing file →
+[], placeholder skip, fresh-read visibility of an answer), and coverage tick `0294f45` landed the
+GUI payload field + panel section + header-badge page tests in test/gui.test.ts; the TUI project-
+status view's list is covered by the backlogLines subheader units already present in
+test/tui.test.ts. All code has landed except the emission itself: init seeding, the prompt contract
+(read-first line names QUESTIONS.md; ask-don't-guess bullet; director answer-routing bullet — all
+in src/prompt.ts), `StatusSnapshot.questions`, the status-render header badge (`· questions: N`
+only when > 0), and the TUI nudge line (bold `questions: N awaiting answers (see QUESTIONS.md)`
+above the activity pane while any await) are in place. One file reference is stale: organize commit
+`467504c` extracted the merge machinery out of src/loop.ts into src/merge.ts — tryMerge now lives
+there, so item (a)'s code change and its Files list move with it. What remains — five items,
+pickable independently:
+
+(a) **the emission** in tryMerge (src/merge.ts): inside the `withLock` section, capture
+`before = openQuestions(ctx.root)` before `rebaseOntoMain`; after `ffMergeToMain` succeeds, read
+`after` and log one `{ loop: ctx.role, type: "question_posted", question: <heading> }` per heading
+in `after` not in `before`, alongside the existing `merged` event (import openQuestions from
+./backlog.js). The lock makes the diff exact — no other merge can land between capture and compare,
+and on the conflict path only the second tryMerge call ever reaches the post-ff code, so nothing
+double-emits. The rendering already reads `e.question`.
+(b) **loop e2e** in test/loop.test.ts: a tick that appends an Open entry to QUESTIONS.md merges as
+md-only and emits `question_posted` alongside `merged` — assert both events in the event log with
+question = the new heading; doubles as the regression for (a).
+(c) **prompt contract** in test/prompt.test.ts: read-first list names QUESTIONS.md; ask-don't-guess
+bullet ("do not guess: append a question to QUESTIONS.md"); director answer-routing bullet ("An
+answer to an open question" … "## Answered verbatim"). Match content with whitespace collapsed, not
+layout — the tick-57 reflow break (BUGS.md) is the cautionary tale.
+(d) **header badge at N > 0** in test/status-render.test.ts: renderStatus's header line carries
+`· questions: N` when snap.questions > 0 and omits it at zero (the GUI page's badge is already
+tested; this covers the TUI/one-shot surface).
+(e) **TUI nudge line** in test/tui.test.ts: while any question awaits, a highlighted `questions: N
+awaiting answers (see QUESTIONS.md)` line appears above the activity pane and disappears at zero.
+
+Files for the remainder: src/merge.ts, test/loop.test.ts, test/prompt.test.ts,
+test/status-render.test.ts, test/tui.test.ts. Nothing structural remains beyond item (a)'s small
+code change; items (b)–(e) are pure test work.
+
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28)
 
