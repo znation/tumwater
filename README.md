@@ -78,9 +78,11 @@ with code changes discarded and skips review; no-note refusal resets clean). Fea
 decided sibling `Friction: high (<turns> turns / <minutes>m)` git-trailer after the Tick line,
 carried only by changed ticks), the prompt-contract assertions, and AC5's config validation for
 `thrashTurns`/`thrashMinutes`; its contract tests first broke on prompt line-wrapping (recorded in
-BUGS.md's Fixed section) until an improve tick made them reflow-robust. What remains is one item: the
-thrash-flag loop tests in test/loop.test.ts — one per threshold plus a negative control, with the
-turns-threshold e2e doubling as the trailer line's git-log assertion. The slow-clock steward has
+BUGS.md's Fixed section) until an improve tick made them reflow-robust. Feature tick 59
+(`7212a7e`) then landed that last item — the thrash-flag loop tests in test/loop.test.ts, one per
+threshold plus a negative control, with the turns-threshold e2e asserting the `Friction:` trailer
+line in the commit's git log; every acceptance criterion of plans/refusal-and-thrash.md has now
+landed (verified at `da79bcd`, suite 435/435), leaving only the plan loop's move to Done. The slow-clock steward has
 landed in code (feature tick 49): a markdown-only curation role on a ~6 h per-role clock (the new
 `minTickIntervalSeconds` override of the global interval), enabled by default; its landing commit's
 build break is fixed (BUGS.md). The plan loop audited it on 2026-08-28 (verified at `ceb6019`, suite green): what remains is test gaps — no role-prompt contract tests, and the per-role interval untested at scheduler level — plus dogfood pending (no `tumwater(steward)` commit in history yet). Self-explaining commit bodies has landed in code (feature
