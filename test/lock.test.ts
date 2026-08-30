@@ -70,6 +70,45 @@ test("withLock steals an old lock even when its pid is still alive", async () =>
   assert.ok(ran, "stale-by-age lock is stolen despite a live pid");
 });
 
+test("withLock breaks an orphaned lock whose holder died before writing its pid", async () => {
+  // A crash between mkdir and the pid write leaves a dir with no pid file. Before the fix
+  // such a lock could never be broken (the pid read threw before the age check ran), so
+  // every merge timed out after 120s forever; now it is stolen once past the grace.
+  const lock = path.join(tmpdir(), "orphan.lock");
+  fs.mkdirSync(lock);
+  const sixSecondsAgo = new Date(Date.now() - 6 * 1000);
+  fs.utimesSync(lock, sixSecondsAgo, sixSecondsAgo);
+  let ran = false;
+  await withLock(
+    lock,
+    async () => {
+      ran = true;
+    },
+    5000,
+  );
+  assert.ok(ran, "orphaned lock past the grace is stolen");
+});
+
+test("withLock does not break a fresh lock that has no pid file yet", async () => {
+  // The creator may still be between mkdir and the pid write: within the grace we must
+  // wait rather than steal, so two live processes never hold the lock at once.
+  const lock = path.join(tmpdir(), "fresh-orphan.lock");
+  fs.mkdirSync(lock);
+  let ran = false;
+  await assert.rejects(
+    withLock(
+      lock,
+      async () => {
+        ran = true;
+      },
+      700,
+    ),
+    /timed out after 0\.7s waiting for lock/,
+  );
+  assert.ok(!ran, "must not enter the critical section of a fresh no-pid lock");
+  assert.ok(fs.existsSync(lock), "the foreign lock is left untouched");
+});
+
 test("withLock times out instead of breaking a fresh lock held by a live pid", async () => {
   const lock = path.join(tmpdir(), "x.lock");
   fs.mkdirSync(lock);
