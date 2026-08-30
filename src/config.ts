@@ -23,6 +23,10 @@ export function defaultConfig(): TumwaterConfig {
     quietTimeoutSeconds: 1800,
     logMaxBytes: 16 * 1024 * 1024,
     sessionRetentionDays: 7,
+    // An unattended fleet must not spend unbounded (plans/daily-cost-budget.md): $50/day is
+    // generous for a normal day of autonomous work on mid-tier API models and low enough to
+    // catch a runaway. Local-model fleets report $0 cost, so the cap never fires for them.
+    maxDailyCostUsd: 50,
     thrashTurns: 40,
     thrashMinutes: 60,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },
@@ -65,6 +69,7 @@ const TOP_LEVEL_KEYS = [
   "quietTimeoutSeconds",
   "logMaxBytes",
   "sessionRetentionDays",
+  "maxDailyCostUsd",
   "thrashTurns",
   "thrashMinutes",
   "idleBackoff",
@@ -142,6 +147,7 @@ export function validateConfig(raw: unknown): void {
   checkNumber(r, "", "quietTimeoutSeconds", (n) => n >= 0, "a number of 0 or more (0 disables)");
   checkNumber(r, "", "logMaxBytes", (n) => n > 0, "a number greater than 0");
   checkNumber(r, "", "sessionRetentionDays", (n) => n >= 0, "a number of 0 or more (0 disables)");
+  checkNumber(r, "", "maxDailyCostUsd", (n) => n >= 0, "a number of 0 or more (0 disables)");
   checkNumber(r, "", "thrashTurns", (n) => n >= 0, "a number of 0 or more");
   checkNumber(r, "", "thrashMinutes", (n) => n >= 0, "a number of 0 or more");
 

@@ -4,7 +4,13 @@ import { defaultConfig, enabledRoleIds, loadConfigSafe } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./files.js";
 import { inboxSize } from "./inbox.js";
 import { statePath } from "./paths.js";
-import { freshLoopState, loadLoopState, orchestratorAlive, readOrchestratorInfo } from "./state.js";
+import {
+  fleetDailyCost,
+  freshLoopState,
+  loadLoopState,
+  orchestratorAlive,
+  readOrchestratorInfo,
+} from "./state.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts. */
@@ -16,6 +22,10 @@ export interface StatusSnapshot {
   /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
   questions: number;
   loops: LoopState[];
+  /** The daily cost budget while enabled (`maxDailyCostUsd` > 0): today's fleet spend vs the
+   * cap, for the `· budget: $X/$Y today` header badge on both dashboards. Null when disabled.
+   * Spend lags in-flight ticks by up to one tick boundary — exactly like the cost column. */
+  budget: { spentUsd: number; capUsd: number } | null;
 }
 
 // The last config each root loaded successfully. snapshot is polled every second by the
@@ -62,13 +72,17 @@ function loopStateForPoll(root: string, role: string): LoopState {
 }
 
 export function snapshot(root: string): StatusSnapshot {
-  const roles = enabledRoleIds(configForStatus(root));
+  const cfg = configForStatus(root);
+  const roles = enabledRoleIds(cfg);
   const info = readOrchestratorInfo(root);
+  const loops = roles.map((r) => loopStateForPoll(root, r));
   return {
     running: orchestratorAlive(root),
     pid: info?.pid,
     inbox: inboxSize(root),
     questions: openQuestions(root).length,
-    loops: roles.map((r) => loopStateForPoll(root, r)),
+    loops,
+    budget:
+      cfg.maxDailyCostUsd > 0 ? { spentUsd: fleetDailyCost(loops), capUsd: cfg.maxDailyCostUsd } : null,
   };
 }

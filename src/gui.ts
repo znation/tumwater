@@ -41,15 +41,22 @@ function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, r
 /** JSON payload for GET /api/status. */
 export function statusPayload(root: string): object {
   const snap = snapshot(root);
+  // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
+  // reached the cap, every idle role loop's phase reads `budget paused` — one flag covers
+  // both dashboards through loopPhase.
+  const budgetPausedNow = snap.budget !== null && snap.budget.spentUsd >= snap.budget.capUsd;
   return {
     running: snap.running,
     pid: snap.pid,
     inbox: snap.inbox,
+    // The daily cost budget while enabled — the page derives its `· budget: $X/$Y today`
+    // header badge from this (absent when disabled).
+    budget: snap.budget ?? null,
     loops: snap.loops.map((s) => {
       const m = displayTokenMetrics(root, s);
       return {
         role: s.role,
-        phase: loopPhase(s, snap.running, root),
+        phase: loopPhase(s, snap.running, root, budgetPausedNow),
         // What a working loop is doing right now (first assistant text of the in-flight run).
         // Null when idle — never show a stale item from a finished tick.
         currentWork: s.running ? readLiveProgress(root, s.role)?.currentWork ?? null : null,

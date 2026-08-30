@@ -61,8 +61,15 @@ export function workingDetail(root: string, s: LoopState): string {
 
 /** Human label of where a loop is in its cycle (stopped / working / waiting for prompts /
  * sleeping / queued). Pass `root` so an in-flight tick expands into live detail
- * (elapsed · turn · ctx · tool); without it a working loop shows plain "working". */
-export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: string): string {
+ * (elapsed · turn · ctx · tool); without it a working loop shows plain "working".
+ * `budgetPaused` marks the fleet's daily cost budget as reached: idle role loops show
+ * `budget paused` instead of their sleep/queue state — that is why they are not ticking. */
+export function loopPhase(
+  s: LoopState,
+  orchestratorRunning: boolean,
+  root?: string,
+  budgetPaused = false,
+): string {
   if (!orchestratorRunning) return "stopped";
   if (s.running) {
     // The tick's work is committed and under adversarial review: the live log tail now
@@ -71,9 +78,12 @@ export function loopPhase(s: LoopState, orchestratorRunning: boolean, root?: str
       const elapsed = s.lastTickStartedAt ? duration(Date.now() - s.lastTickStartedAt) : "";
       return `reviewing ${elapsed}`.trim();
     }
+    // In-flight ticks finish even while the budget is paused — only NEW ticks are blocked,
+    // so a running loop keeps its live detail.
     return root ? workingDetail(root, s) : "working";
   }
-  if (s.role === DIRECTOR_ROLE) return "waiting for prompts";
+  if (s.role === DIRECTOR_ROLE) return "waiting for prompts"; // exempt from the cap
+  if (budgetPaused) return "budget paused";
   if (s.nextRunAt > Date.now()) {
     // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
     // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder
@@ -107,8 +117,8 @@ export function displayTokenMetrics(root: string, s: LoopState): { generated: nu
  * gets clipped first. Idle loops are untouched: their log tail describes a finished tick and
  * must not leak its work item into the state cell. (The GUI shows the same item in its own
  * `current` column instead, so its state cell stays clean.) */
-function stateCell(root: string, s: LoopState, orchestratorRunning: boolean): string {
-  const phase = loopPhase(s, orchestratorRunning, root);
+function stateCell(root: string, s: LoopState, orchestratorRunning: boolean, budgetPaused = false): string {
+  const phase = loopPhase(s, orchestratorRunning, root, budgetPaused);
   // While under review the log tail's "current work" is the reviewer's own output, not the
   // author's task — show the bare gate label.
   if (!s.running || s.phase === "review") return phase;
@@ -138,22 +148,34 @@ const COLUMN_GAP = 2;
 
 /** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is
  * given, wide cells are clipped so no line exceeds it (terminal rows never wrap). */
+/** The budget cap for display: whole dollars stay bare ($50), fractional ones keep their
+ * cents ($12.34) — the badge reads `· budget: $12.34/$50 today`. */
+function usdCap(n: number): string {
+  return `$${n.toFixed(2).replace(/\.00$/, "")}`;
+}
+
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
   const name = path.basename(path.resolve(root));
   const lines: string[] = [];
   const header = snap.running ? `running (pid ${snap.pid})` : "not running — start with `tumwater run`";
   // The questions badge (like the inbox one) appears only when something needs an answer.
+  // The budget badge is standing information for a money-spending system, so it shows at all
+  // levels while enabled (absent when disabled); on narrow terminals the header's existing
+  // last-resort whole-line clipping applies.
   lines.push(
     `tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
       snap.questions ? ` · questions: ${snap.questions}` : ""
-    }`,
+    }${snap.budget ? ` · budget: $${snap.budget.spentUsd.toFixed(2)}/${usdCap(snap.budget.capUsd)} today` : ""}`,
   );
   lines.push("");
   const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "last tick", "last result"];
+  // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
+  // reached the cap, every idle role loop shows `budget paused` in its state cell.
+  const budgetPausedNow = snap.budget !== null && snap.budget.spentUsd >= snap.budget.capUsd;
   const withMetrics = snap.loops.map((s) => ({ s, m: displayTokenMetrics(root, s) }));
   const rows = withMetrics.map(({ s, m }) => [
     s.role,
-    stateCell(root, s, snap.running),
+    stateCell(root, s, snap.running, budgetPausedNow),
     String(s.ticks),
     String(s.commits),
     compactTokens(m.generated),

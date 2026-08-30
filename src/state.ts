@@ -18,6 +18,8 @@ export function freshLoopState(role: string): LoopState {
     generatedTokens: 0,
     peakContextTokens: 0,
     totalCostUsd: 0,
+    dayStamp: "",
+    dayCostUsd: 0,
   };
 }
 
@@ -43,9 +45,57 @@ export function saveLoopState(root: string, state: LoopState): void {
  * fields (nextRunAt, backoffSeconds), wake tracking (lastMainHead), and the last-result
  * fields. peakContextTokens is zeroed too: under per-tick semantics it holds the loop's
  * last completed tick's peak, so a fresh window must clear it or sleeping loops keep
- * showing their old value until they next tick. */
+ * showing their old value until they next tick. The daily cost budget window (dayStamp/
+ * dayCostUsd) is deliberately NOT zeroed: the budget is a safety valve, not an observation
+ * window — zeroing today's spend would let the cap be bypassed by running reset-counters.
+ */
 export function zeroCounters(s: LoopState): LoopState {
   return { ...s, ticks: 0, commits: 0, generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0 };
+}
+
+/** The local calendar day as YYYY-MM-DD — the same local-time convention as every other
+ * wall-clock display in the harness (lastTickCell). */
+export function todayStamp(now = Date.now()): string {
+  const d = new Date(now);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** This loop's spend for the local day (the daily cost budget window): $0 when its stamp is
+ * stale or missing — a loop that hasn't ticked since yesterday reads as $0 today with no save
+ * required, and spend recorded before this field existed is unknown. Reads never mutate.
+ * See plans/daily-cost-budget.md. */
+export function dailyCost(s: LoopState, now = Date.now()): number {
+  return s.dayStamp === todayStamp(now) ? (s.dayCostUsd ?? 0) : 0;
+}
+
+/** Record a pi run's cost into the loop's daily window, rolling over at local midnight:
+ * when `now` is on a different day than the recorded stamp the window resets first, so a tick
+ * that crosses midnight attributes its spend to the correct day. Mutates `s` in place — like
+ * applyTickOutcome and foldUsage's other counter updates, the caller's state object is
+ * authoritative across an in-flight tick; the value persists at tick end with the rest of the
+ * state. */
+export function recordDailyCost(s: LoopState, usd: number, now = Date.now()): void {
+  const stamp = todayStamp(now);
+  if (s.dayStamp !== stamp) {
+    s.dayStamp = stamp;
+    s.dayCostUsd = 0;
+  }
+  s.dayCostUsd = (s.dayCostUsd ?? 0) + usd;
+}
+
+/** The fleet's spend for the local day: every loop's daily window summed. */
+export function fleetDailyCost(states: LoopState[], now = Date.now()): number {
+  return states.reduce((sum, s) => sum + dailyCost(s, now), 0);
+}
+
+/** True while the fleet's spend for the local day has reached `maxDailyCostUsd` (a cap of 0
+ * disables the budget). The orchestrator re-evaluates this every poll from its runners' live
+ * states and the freshly reloaded config — resume is stateless, so raising/disabling the cap
+ * or crossing midnight flips it on the next cycle and nothing can get stuck. Lives here (not
+ * in orchestrator.ts) because observers must not depend on the scheduler module. */
+export function budgetPaused(states: LoopState[], config: TumwaterConfig, now = Date.now()): boolean {
+  return config.maxDailyCostUsd > 0 && fleetDailyCost(states, now) >= config.maxDailyCostUsd;
 }
 
 /** Next backoff after a no-change tick: initial on the first, then multiplied, capped. */

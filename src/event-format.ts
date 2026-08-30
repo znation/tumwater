@@ -47,6 +47,17 @@ export function formatEvent(e: HarnessEvent): string {
     }
     case "review_failed":
       return `${time} ${loop} review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)`;
+    case "budget_paused": {
+      // Routine state change, like counters_reset — no warning prefix.
+      const spent = Number(e.spentUsd ?? 0).toFixed(2);
+      const cap = Number(e.capUsd ?? 0).toFixed(2);
+      return `${time} ${loop} budget paused — $${spent} of $${cap} daily cost reached`;
+    }
+    case "budget_resumed": {
+      const spent = Number(e.spentUsd ?? 0).toFixed(2);
+      const cap = Number(e.capUsd ?? 0).toFixed(2);
+      return `${time} ${loop} budget resumed ($${spent} of $${cap} today)`;
+    }
     case "resume":
       return `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
     case "warning":

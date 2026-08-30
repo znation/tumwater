@@ -78,7 +78,10 @@ export const GUI_PAGE = `<!doctype html>
       document.getElementById("header").textContent =
         (d.running ? "running (pid " + d.pid + ")" : "orchestrator not running") +
         (d.inbox ? " · inbox: " + d.inbox : "") +
-        (qn ? " · questions: " + qn : "");
+        (qn ? " · questions: " + qn : "") +
+        // The daily cost budget badge mirrors the TUI's header line; standing information
+        // while enabled, absent when disabled (payload sends null).
+        (d.budget ? " · budget: $" + d.budget.spentUsd.toFixed(2) + "/$" + d.budget.capUsd + " today" : "");
       document.getElementById("loops").innerHTML = d.loops.map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";

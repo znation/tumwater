@@ -68,6 +68,11 @@ export interface TumwaterConfig {
   logMaxBytes: number;
   /** Delete pi session files older than this many days at orchestrator start (0 disables). */
   sessionRetentionDays: number;
+  /** Daily cost budget in USD for the fleet's autonomous spend: while the sum of every loop's
+   * spend for the local day has reached this, role loops stop starting new ticks until the next
+   * local midnight or a live edit raises/disables it (0 disables). The director is exempt — an
+   * explicit human prompt outranks the autonomous-spend cap. See plans/daily-cost-budget.md. */
+  maxDailyCostUsd: number;
   /** Friction threshold in assistant turns: a changed tick using MORE than this many turns is
    * flagged high-friction (Friction trailer line on its commit, warning event, and extra review
    * scrutiny) — difficulty is a signal that the work may not fit. See plans/refusal-and-thrash.md.
@@ -161,6 +166,13 @@ export interface LoopState {
    * window, reset at tick start). */
   peakContextTokens: number;
   totalCostUsd: number;
+  /** Local calendar day (YYYY-MM-DD) that `dayCostUsd` belongs to; a stale or missing stamp
+   * reads as $0 today — spend before this field existed is unknown, and a tick crossing local
+   * midnight attributes its spend to the new day. See plans/daily-cost-budget.md. */
+  dayStamp?: string;
+  /** This loop's spend for `dayStamp`'s local day (the daily cost budget window). Deliberately
+   * NOT zeroed by reset-counters: the budget is a safety valve, not an observation window. */
+  dayCostUsd?: number;
   lastError?: string;
 }
 
@@ -183,6 +195,8 @@ export interface HarnessEvent {
     | "review_verdict"
     | "review_rejected"
     | "review_failed"
+    | "budget_paused" // fleet daily spend reached maxDailyCostUsd; role loops stop starting ticks
+    | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
     | "warning";
   [key: string]: unknown;
 }

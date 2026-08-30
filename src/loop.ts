@@ -32,7 +32,7 @@ import { readInitialPrompt } from "./readme.js";
 import { configForRole } from "./config.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
-import { applyTickOutcome, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
+import { applyTickOutcome, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
 import { mergeToMain } from "./merge.js";
 import { piLogPath, sessionDir } from "./paths.js";
 
@@ -154,6 +154,9 @@ export class LoopRunner {
     s.generatedTokens += run.outputTokens;
     s.peakContextTokens = Math.max(s.peakContextTokens, run.peakContextTokens);
     s.totalCostUsd += run.costUsd;
+    // The daily cost budget window (plans/daily-cost-budget.md): every pi run of a tick folds
+    // here exactly once, so the fleet's spend for the local day is complete at each tick end.
+    recordDailyCost(s, run.costUsd);
     this.tickTurns += run.turns;
   }
 

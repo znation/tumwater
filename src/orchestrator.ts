@@ -3,6 +3,7 @@ import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
 import { configForRole, enabledRoleIds, loadConfigSafe } from "./config.js";
+import { budgetPaused, fleetDailyCost } from "./state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry, readBranchHead } from "./git.js";
@@ -129,6 +130,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   // one-shot enable/disable transition warnings).
   let lastConfigError: string | null = null;
   let prevEnabled = new Set<string>(enabled);
+  // The previous poll's budget-paused state, for one-shot pause/resume transition events.
+  let prevBudgetPaused = false;
 
   try {
     while (!signal.aborted) {
@@ -194,8 +197,29 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
       const inboxCount = inboxSize(root);
       const now = Date.now();
 
+      // Daily cost budget gate (plans/daily-cost-budget.md): while the fleet's spend for the
+      // local day has reached maxDailyCostUsd, role loops start no new ticks — scheduled,
+      // main-moved wake, or startup. The director is exempt: an explicit human prompt outranks
+      // the autonomous-spend cap. In-flight ticks finish; only NEW ticks are blocked. Resume is
+      // live and stateless — raising/disabling the cap (live-reloaded above) or crossing local
+      // midnight flips this on the next poll, so nothing can get stuck. All runners share one
+      // config object (the initial one until a reload replaces it), so any runner's copy is
+      // the live config.
+      const states = runners.map((r) => r.state);
+      const pausedNow = budgetPaused(states, runners[0]?.config ?? config, now);
+      if (pausedNow !== prevBudgetPaused) {
+        logEvent(root, {
+          loop: "harness",
+          type: pausedNow ? "budget_paused" : "budget_resumed",
+          spentUsd: fleetDailyCost(states, now),
+          capUsd: (runners[0]?.config ?? config).maxDailyCostUsd,
+        });
+        prevBudgetPaused = pausedNow;
+      }
+
       const reasons = new Map<LoopRunner, string | undefined>();
       for (const runner of runners) {
+        if (pausedNow && runner.role !== DIRECTOR_ROLE) continue; // budget gate: no new role ticks while paused
         const { run, reason } = isEligible(runner, now, mainHead, inboxCount);
         if (run) reasons.set(runner, reason);
       }

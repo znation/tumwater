@@ -18,12 +18,16 @@ function writePiLog(root: string, role: string, lines: string[]): string {
   return file;
 }
 
-function snapshotWith(loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string }>): StatusSnapshot {
+function snapshotWith(
+  loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string }>,
+  budget: StatusSnapshot["budget"] = null,
+): StatusSnapshot {
   return {
     running: false,
     inbox: 0,
     questions: 0,
     loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial })),
+    budget,
   };
 }
 
@@ -361,4 +365,74 @@ test("work items survive narrow-terminal clipping at the head of the state cell"
   // and gets clipped hard (an appended item would be invisible at this width).
   const narrow = renderStatus(root, snap, 60).split("\n").find((l) => l.startsWith("feature")) ?? "";
   assert.match(narrow, /^feature\s+implement p…/);
+});
+
+// The daily cost budget (plans/daily-cost-budget.md): the header badge is standing
+// information while enabled, and paused role loops' state cell reads `budget paused`.
+
+test("the status header carries a budget badge while enabled and none when disabled", () => {
+  const enabled = renderStatus(
+    tmpdir(),
+    snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50 }),
+  ).split("\n")[0] ?? "";
+  assert.match(enabled, /· budget: \$12\.34\/\$50 today$/);
+
+  // Fractional caps keep their cents; whole-dollar spent values stay two-decimal like the cost column.
+  const fractional = renderStatus(
+    tmpdir(),
+    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 12.34 }),
+  ).split("\n")[0] ?? "";
+  assert.match(fractional, /· budget: \$0\.00\/\$12\.34 today$/);
+
+  // Disabled (cap 0 → snapshot sends null): no badge at all.
+  const disabled = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  assert.doesNotMatch(disabled, /budget/);
+});
+
+test("loopPhase reads budget paused for idle role loops while the cap is reached", () => {
+  const s = freshLoopState("feature");
+  // Not paused: ordinary phase labels are untouched.
+  assert.equal(loopPhase(s, true, undefined, false), "queued");
+  // Paused: an idle role loop shows why it isn't ticking — ahead of its sleep/queue state.
+  assert.equal(loopPhase(s, true, undefined, true), "budget paused");
+
+  // A sleeping loop is paused too (the cap holds it past nextRunAt).
+  const sleeping = freshLoopState("clean");
+  sleeping.nextRunAt = Date.now() + 3_600_000;
+  assert.equal(loopPhase(sleeping, true, undefined, false), "sleeping (for 1h)");
+  assert.equal(loopPhase(sleeping, true, undefined, true), "budget paused");
+
+  // The director is exempt from the cap: its phase never changes.
+  const d = freshLoopState("director");
+  assert.equal(loopPhase(d, true, undefined, true), "waiting for prompts");
+
+  // In-flight ticks finish even while paused — only NEW ticks are blocked.
+  const running = freshLoopState("feature");
+  running.running = true;
+  assert.equal(loopPhase(running, true, undefined, true), "working");
+
+  // A stopped orchestrator still reads stopped (nothing is ticking at all).
+  assert.equal(loopPhase(s, false, undefined, true), "stopped");
+});
+
+test("renderStatus shows budget paused in idle role loops' state cells while the cap is reached", () => {
+  const root = tmpdir();
+  // Spend below the cap: ordinary labels.
+  const under = renderStatus(
+    root,
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 10, capUsd: 50 }), running: true },
+  );
+  assert.match(under, /feature\s+queued/);
+  assert.doesNotMatch(under, /budget paused/);
+
+  // Spend at the cap: idle role loops read `budget paused`; the director keeps its own phase.
+  const reached = renderStatus(
+    root,
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 50, capUsd: 50 }), running: true },
+  );
+  assert.match(reached, /feature\s+budget paused/);
+  assert.match(reached, /director\s+waiting for prompts/);
+
+  // The header badge shows the reached budget on the same render.
+  assert.match(reached.split("\n")[0] ?? "", /· budget: \$50\.00\/\$50 today$/);
 });
