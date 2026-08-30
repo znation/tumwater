@@ -557,6 +557,40 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
   }
 });
 
+test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit kept for recovery", async () => {
+  const repo = await initializedRepo();
+  // The user has uncommitted edits to seed.txt in the PRIMARY checkout (on main). The tick's
+  // branch changes the same file, so `git merge --ff-only` must refuse to overwrite the local
+  // edit — the one way ffMergeToMain fails after a clean rebase. A broken failure path here
+  // would either clobber the user's work or report "changed" for work that never landed.
+  const restore = fakePi(
+    [
+      // The review gate (any run whose prompt asks for a VERDICT) approves, so the tick reaches
+      // the merge and can be blocked there.
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
+      `echo branch change > seed.txt`,
+    ].join("\n"),
+  );
+  try {
+    fs.writeFileSync(path.join(repo, "seed.txt"), "user's uncommitted edit\n");
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "merge_blocked");
+    // The user's local edit survives — the blocked merge must not touch it.
+    assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "user's uncommitted edit\n");
+    // main did not move; the tick's commit stays on the branch for the next tick's recovery.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
+    assert.match(sh(repo, "git", "show", "main:seed.txt"), /^seed$/);
+    // The failure is recorded and the loop backs off like any other error.
+    assert.equal(runner.state.lastError, "merge failed: merge_blocked");
+    assert.ok(runner.state.backoffSeconds > 0);
+    assert.ok(runner.state.nextRunAt > Date.now());
+  } finally {
+    restore();
+  }
+});
+
 test("leftover commits from a failed merge are recovered on the next tick", async () => {
   const repo = await initializedRepo();
   const m1 = path.join(tmpdir(), "phase1");
