@@ -11,12 +11,11 @@ export function formatEvent(e: HarnessEvent): string {
     case "tick_start":
       return `${time} ${loop} tick #${e.tick} started`;
     case "tick_end": {
-      const extra =
-        e.result === "changed"
-          ? ` — ${e.summary}`
-          : e.result === "error"
-            ? ` — ${e.error}`
-            : "";
+      // The payload that explains the outcome: summary for changed/refused/rejected/
+      // review_error ticks, error (lastError) for error and merge-failed ones. Showing it
+      // for every result that carries one keeps the event feed self-explanatory — a bare
+      // "tick #N refused" would force operators to open the transcript for the reason.
+      const extra = e.summary ? ` — ${e.summary}` : e.error ? ` — ${e.error}` : "";
       return `${time} ${loop} tick #${e.tick} ${e.result}${extra}`;
     }
     case "merged":

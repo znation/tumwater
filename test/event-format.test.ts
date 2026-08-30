@@ -39,6 +39,54 @@ test("formatEvent renders wake reasons and warning messages operators rely on", 
   assert.match(stop, /orchestrator stopped/);
 });
 
+test("formatEvent carries the reason on non-changed tick outcomes", () => {
+  // The event feed is where operators see why a tick did not land its work. refused and
+  // rejected ticks log their reason in `summary`, merge failures log lastError in `error` —
+  // showing only "changed"/"error" left those outcomes as bare result words.
+  const refused = formatEvent({
+    ts: 0,
+    loop: "feature",
+    type: "tick_end",
+    tick: 7,
+    result: "refused",
+    summary: "plan harms the architecture",
+  } as never);
+  assert.match(refused, /tick #7 refused — plan harms the architecture/, `refusal reason must show: ${refused}`);
+
+  const rejected = formatEvent({
+    ts: 0,
+    loop: "feature",
+    type: "tick_end",
+    tick: 8,
+    result: "rejected",
+    summary: "adds a runtime dep",
+  } as never);
+  assert.match(rejected, /tick #8 rejected — adds a runtime dep/, `rejection detail must show: ${rejected}`);
+
+  const mergeFailed = formatEvent({
+    ts: 0,
+    loop: "bugfix",
+    type: "tick_end",
+    tick: 9,
+    result: "merge_conflict",
+    error: "merge failed: merge_conflict",
+  } as never);
+  assert.match(mergeFailed, /tick #9 merge_conflict — merge failed: merge_conflict/, `merge failure must show its error: ${mergeFailed}`);
+
+  // review_error ticks carry both (summary = gate detail, error = "review failed: …"); the
+  // summary is the more specific of the two and wins.
+  const reviewError = formatEvent({
+    ts: 0,
+    loop: "feature",
+    type: "tick_end",
+    tick: 10,
+    result: "review_error",
+    summary: "no parseable VERDICT line in the reviewer's reply",
+    error: "review failed: no parseable VERDICT line in the reviewer's reply",
+  } as never);
+  assert.match(reviewError, /tick #10 review_error — no parseable VERDICT line/);
+});
+
 test("formatEvent renders a no-change tick with no summary or error suffix", () => {
   // The third arm of the tick_end ternary is the empty string: a regression that gave every
   // result a suffix would print "— undefined" on every idle tick in every display surface.
