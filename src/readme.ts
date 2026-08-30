@@ -30,13 +30,18 @@ ${STATUS_END}
 `;
 }
 
-/** The project's initial prompt, extracted from README.md's managed section. */
+/** The project's initial prompt, extracted from README.md's managed section. The closing
+ * marker is searched for only AFTER the opening one: an end marker mentioned in prose before
+ * the real block (e.g. README docs explaining how to edit the prompt) must not make a valid
+ * later block unreadable — every loop would then run without its project prompt, and init's
+ * guard would reject re-init as if the section were missing. */
 export function readInitialPrompt(root: string): string {
   const readme = path.join(root, "README.md");
   if (!fs.existsSync(readme)) return "";
   const text = fs.readFileSync(readme, "utf8");
   const start = text.indexOf(PROMPT_START);
-  const end = text.indexOf(PROMPT_END);
-  if (start < 0 || end < 0 || end < start) return "";
+  if (start < 0) return "";
+  const end = text.indexOf(PROMPT_END, start + PROMPT_START.length);
+  if (end < 0) return "";
   return text.slice(start + PROMPT_START.length, end).trim();
 }

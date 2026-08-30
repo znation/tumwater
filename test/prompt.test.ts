@@ -54,6 +54,18 @@ test("readInitialPrompt returns empty when the markers are reversed", () => {
   assert.equal(readInitialPrompt(dir), "");
 });
 
+// An end marker mentioned in prose BEFORE the managed block (e.g. README docs explaining how
+// to edit the prompt) must not shadow the real section: pre-fix, indexOf(PROMPT_END) found the
+// prose mention first, `end < start` bailed out, and every loop ran without its project prompt.
+test("readInitialPrompt ignores an end marker that appears before the managed block", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "README.md"),
+    `# proj\n\nThe managed section is closed by ${PROMPT_END} — edit only between the markers.\n\n## Initial prompt\n${PROMPT_START}\nThe real prompt.\n${PROMPT_END}\n`,
+  );
+  assert.equal(readInitialPrompt(dir), "The real prompt.");
+});
+
 test("buildTickPrompt includes role, project prompt, rules, and extras", () => {
   const role = roleById("coverage");
   assert.ok(role);
