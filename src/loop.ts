@@ -526,14 +526,18 @@ export class LoopRunner {
     // Measured over this tick's main authoring run (a transient retry included via runRolePi),
     // like the trailer; conflict-resolution runs happen later inside merge().
     const minutes = (Date.now() - piStartedAt) / 60_000;
+    // Friction is measured over this tick's authoring runs only — the review gate folds its
+    // run into tickTurns AFTER the commit, so every friction artifact (flag, warning event,
+    // trailer line, final summary) reads this pre-gate snapshot instead of the live counter.
+    const authoringTurns = this.tickTurns;
     const highFriction =
-      this.tickTurns > this.config.thrashTurns || minutes > this.config.thrashMinutes;
+      authoringTurns > this.config.thrashTurns || minutes > this.config.thrashMinutes;
     if (highFriction) {
       logEvent(this.root, {
         loop: this.role,
         type: "warning",
         message:
-          `high-friction tick: ${this.tickTurns} turns in ${Math.round(minutes)} min ` +
+          `high-friction tick: ${authoringTurns} turns in ${Math.round(minutes)} min ` +
           `(thresholds: ${this.config.thrashTurns} turns / ${this.config.thrashMinutes} min)`,
       });
     }
@@ -543,7 +547,7 @@ export class LoopRunner {
     const message = buildCommitMessage(
       `tumwater(${this.role}): ${summary}`,
       body,
-      commitTrailer(this.role, s.ticks, this.tickTurns, s.peakContextTokens, highFriction ? minutes : undefined),
+      commitTrailer(this.role, s.ticks, authoringTurns, s.peakContextTokens, highFriction ? minutes : undefined),
     );
     const commit = await commitAll(wt, message);
 
@@ -582,7 +586,7 @@ export class LoopRunner {
     // The flag's durable record is the Friction trailer line stamped on the commit above;
     // lastSummary and the tick_end event carry it too for dashboards and logs.
     const finalSummary = highFriction
-      ? `${summary} (high friction: ${this.tickTurns} turns / ${Math.round(minutes)}m)`
+      ? `${summary} (high friction: ${authoringTurns} turns / ${Math.round(minutes)}m)`
       : summary;
     return { result, summary: finalSummary, commit, highFriction };
   }

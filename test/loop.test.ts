@@ -1344,3 +1344,124 @@ test("the merge lock is not held while a tick is under review: another loop merg
     restore();
   }
 });
+
+// Thrash flag (plans/refusal-and-thrash.md item b): a changed tick whose authoring run burned
+// more than thrashTurns turns or thrashMinutes of wall clock is flagged high-friction — one
+// warning event carrying both thresholds, the outcome flag, the reviewer prompt's HIGH-FRICTION
+// marker, and (for the turns case) the Friction trailer line on the commit itself. The fake pi
+// identifies reviewer runs by their VERDICT prompt (the pattern this file already uses for gate
+// tests) and records that run's args to a file outside the worktree.
+
+test("a changed tick past thrashTurns is flagged high-friction end to end", async () => {
+  const repo = await initializedRepo();
+  const reviewArgs = path.join(tmpdir(), "review-args");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      // Two assistant turns with thrashTurns set to 1 → past the turn threshold (the time
+      // threshold stays at its default of 60 min, so only the turns side can fire).
+      `printf '%s\\n' '${assistantLine("first turn of work")}'`,
+      `printf '%s\\n' '${assistantLine("second turn\nSUMMARY: slow change", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.thrashTurns = 1;
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed");
+    assert.ok(outcome.highFriction, "the tick is flagged high-friction");
+    // The flag annotates the summary for dashboards and lastSummary.
+    assert.match(String(outcome.summary), /^slow change \(high friction: 2 turns \/ \d+m\)$/);
+
+    // The warning event carries both thresholds.
+    const events = readEvents(repo);
+    const warnings = events.filter(
+      (e) => e.type === "warning" && /high-friction/.test(String(e.message)),
+    );
+    assert.equal(warnings.length, 1, "exactly one high-friction warning event");
+    assert.match(
+      String(warnings[0]!.message),
+      /^high-friction tick: 2 turns in \d+ min \(thresholds: 1 turns \/ 60 min\)$/,
+    );
+
+    // The reviewer run's prompt carried the HIGH-FRICTION marker for extra scrutiny.
+    assert.match(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
+
+    // The commit on main carries the Friction trailer line after the Tick line (item d's e2e).
+    const body = sh(repo, "git", "log", "-1", "--format=%B");
+    assert.match(body, /^Tick: improve #\d+ · turns 2 · ctx \S+\nFriction: high \(2 turns \/ \d+m\)$/m);
+  } finally {
+    restore();
+  }
+});
+
+test("a changed tick past thrashMinutes is flagged high-friction", async () => {
+  const repo = await initializedRepo();
+  const reviewArgs = path.join(tmpdir(), "review-args");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      // One turn (far under the default thrashTurns of 40) but ~1 s of wall clock with
+      // thrashMinutes set to 0 → past the time threshold, so only the minutes side can fire.
+      `sleep 1`,
+      `printf '%s\\n' '${assistantLine("slow work\nSUMMARY: slow change", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.thrashMinutes = 0; // validation allows >= 0
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed");
+    assert.ok(outcome.highFriction, "the tick is flagged high-friction");
+
+    const events = readEvents(repo);
+    const warnings = events.filter(
+      (e) => e.type === "warning" && /high-friction/.test(String(e.message)),
+    );
+    assert.equal(warnings.length, 1, "exactly one high-friction warning event");
+    assert.match(
+      String(warnings[0]!.message),
+      /^high-friction tick: 1 turns in \d+ min \(thresholds: 40 turns \/ 0 min\)$/,
+    );
+
+    // The reviewer run's prompt carried the HIGH-FRICTION marker for extra scrutiny.
+    assert.match(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
+  } finally {
+    restore();
+  }
+});
+
+test("an ordinary changed tick under both thresholds is not flagged high-friction", async () => {
+  const repo = await initializedRepo();
+  const reviewArgs = path.join(tmpdir(), "review-args");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  try {
+    // Default thresholds (40 turns / 60 min): one fast turn is far under both.
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed");
+    assert.ok(!outcome.highFriction, "an ordinary tick is not flagged high-friction");
+
+    // No high-friction warning event…
+    const events = readEvents(repo);
+    assert.ok(
+      !events.some((e) => e.type === "warning" && /high-friction/.test(String(e.message))),
+      "no high-friction warning event",
+    );
+    // …the reviewer prompt carries no marker, and the commit has no Friction line.
+    assert.doesNotMatch(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
+    assert.doesNotMatch(sh(repo, "git", "log", "-1", "--format=%B"), /Friction:/);
+  } finally {
+    restore();
+  }
+});
