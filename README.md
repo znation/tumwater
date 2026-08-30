@@ -70,8 +70,13 @@ which blocks the entry until a human or the director clears it, since every role
 carrying a Refused note — and discarding any non-markdown half-work; changed ticks burning more than
 `thrashTurns` turns (default 40) or `thrashMinutes` minutes (default 60) are flagged high-friction,
 with a warning event plus extra review scrutiny, since difficulty is a signal the work may not fit.
-The plan loop audited it on 2026-08-28 (verified at `8ea49b8`, suite green): what remains is three items — the planned test suite has only its sentinel-parse half (test/refusal.test.ts
-landed via a coverage tick; loop e2e, thrash-flag, and prompt-contract tests are still missing), AC3's high-friction trailer line was never implemented (`commitTrailer` takes no friction argument, so a flagged tick carries no marker in git history), and AC5's config validation for `thrashTurns`/`thrashMinutes` is untested. The slow-clock steward has
+The plan loop re-audited it on 2026-08-29: the planned test suite has since landed its refusal-path
+git-helper units (test/git.test.ts, which also fixed a UTF-8 mojibake bug in C-quoted porcelain path
+decoding) and its loop e2e half (coverage tick `bc479b6`: md-only + mixed refusal lands only the note
+with code changes discarded and skips review; no-note refusal resets clean), leaving four items —
+the thrash-flag tests, prompt-contract assertions, AC3's high-friction trailer line (small code
+change; format decided as a sibling `Friction: high (<turns> turns / <minutes>m)` git-trailer line),
+and AC5's config validation for `thrashTurns`/`thrashMinutes`. The slow-clock steward has
 landed in code (feature tick 49): a markdown-only curation role on a ~6 h per-role clock (the new
 `minTickIntervalSeconds` override of the global interval), enabled by default; its landing commit's
 build break is fixed (BUGS.md). The plan loop audited it on 2026-08-28 (verified at `ceb6019`, suite green): what remains is test gaps — no role-prompt contract tests, and the per-role interval untested at scheduler level — plus dogfood pending (no `tumwater(steward)` commit in history yet). Self-explaining commit bodies has landed in code (feature
