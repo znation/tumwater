@@ -1181,6 +1181,79 @@ test("a refused tick with no note resets the worktree and reports a fallback rea
   }
 });
 
+// Questions outbox (plans/questions-outbox.md): a merged diff that adds an entry under
+// QUESTIONS.md's ## Open emits one question_posted per new heading alongside the merged event,
+// so `tumwater logs` shows what the fleet is asking for. The emission lives in tryMerge
+// (src/merge.ts), which captures the Open list before the rebase and diffs it after the ff.
+
+test("a tick that posts a question merges it and emits question_posted with the merged event", async () => {
+  const repo = await initializedRepo();
+  // md-only diff: review-exempt by construction, so exactly one pi run (the author) is
+  // expected — a second invocation would mean the gate ran on a markdown-only change.
+  const counter = path.join(tmpdir(), "pi-calls");
+  fs.writeFileSync(counter, "0");
+  const restore = fakePi(
+    [
+      `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'`,
+      // Replace the first _None yet._ placeholder (the one under ## Open — the seeded file
+      // has one per section) with a real entry, as a loop would.
+      `awk '!done && /^_None yet\\._$/ { print "### Q1: which database?"; done=1; next } { print }' QUESTIONS.md > .q.tmp && mv .q.tmp QUESTIONS.md`,
+      `printf '%s\\n' '${assistantLine("asked the user about the database\nSUMMARY: post a question", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed");
+
+    // The question landed on main under ## Open…
+    const questionsMd = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
+    assert.match(questionsMd, /## Open\n\n### Q1: which database?/);
+
+    // …and the event log carries both events: merged plus one question_posted naming the new heading.
+    const events = readEvents(repo);
+    const merged = events.filter((e) => e.type === "merged");
+    assert.equal(merged.length, 1);
+    const posted = events.filter((e) => e.type === "question_posted");
+    assert.equal(posted.length, 1, "exactly one new Open entry was posted");
+    assert.equal(posted[0]!.loop, "improve");
+    assert.equal(posted[0]!.question, "Q1: which database?");
+    // The question event lands alongside (after) the merged event for the same commit.
+    assert.ok(
+      events.findIndex((e) => e.type === "merged") < events.findIndex((e) => e.type === "question_posted"),
+      "question_posted follows merged in the log",
+    );
+
+    // The md-only diff skipped the review gate: no reviewer run was burned.
+    assert.equal(fs.readFileSync(counter, "utf8").trim(), "1", "exactly one pi run (the author)");
+  } finally {
+    restore();
+  }
+});
+
+test("a tick that changes other files emits no question_posted event", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [
+      // Non-md diff goes through the review gate: approve the reviewer run (identified by its
+      // VERDICT prompt) so the tick lands like "a tick that changes files commits and merges".
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "changed");
+    // The seeded QUESTIONS.md has no Open entries before or after: nothing to emit.
+    const events = readEvents(repo);
+    assert.ok(events.some((e) => e.type === "merged"), "the tick merged");
+    assert.equal(events.filter((e) => e.type === "question_posted").length, 0);
+  } finally {
+    restore();
+  }
+});
+
 test("the merge lock is not held while a tick is under review: another loop merges concurrently", async () => {
   const repo = await initializedRepo();
   // Role A's reviewer run touches the marker, then sleeps — A sits in "reviewing" for ~5s.

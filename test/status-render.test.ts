@@ -51,6 +51,19 @@ test("totals row shows zeros without breaking alignment", () => {
   assert.match(totals, /\$0\.00/);
 });
 
+// The questions badge (plans/questions-outbox.md) rides the header line like the inbox one:
+// visible only while something needs an answer, so a quiet project's header stays uncluttered.
+
+test("the status header carries a questions badge only while questions await", () => {
+  const zero = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  assert.doesNotMatch(zero, /questions/);
+
+  const snap = snapshotWith([{ role: "clean" }]);
+  snap.questions = 2;
+  const header = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  assert.match(header, /· questions: 2$/);
+});
+
 test("renderStatus with maxWidth clips every line and truncates wide cells", () => {
   const snap = snapshotWith([
     {

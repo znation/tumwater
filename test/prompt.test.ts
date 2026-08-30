@@ -341,3 +341,29 @@ test("the director routes refusal decisions by clearing the Refused note", () =>
   assert.match(prompt, /clear its \*\*Refused …\*\* note from PLANS\.md\/BUGS\.md/);
   assert.match(prompt, /so loops can pick it up again/);
 });
+
+// Prompt contract for the questions outbox (plans/questions-outbox.md): every tick reads
+// QUESTIONS.md first and carries the ask-don't-guess rule; the director routes answers back.
+// Same whitespace-collapsed matching as the refusal contract above — the prose is hard-wrapped
+// and formatting ticks reflow it, so assertions match content, not layout.
+
+test("every role prompt lists QUESTIONS.md in the read-first list", () => {
+  const role = roleById("feature");
+  assert.ok(role);
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  assert.match(prompt, /First read README\.md, PLANS\.md, BUGS\.md, and QUESTIONS\.md/);
+});
+
+test("every role prompt carries the ask-don't-guess rule", () => {
+  const role = roleById("feature");
+  assert.ok(role);
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  assert.match(prompt, /do not guess: append a question to QUESTIONS\.md under ## Open with context/);
+  assert.match(prompt, /Never block on an unanswered question/);
+});
+
+test("the director routes answers back by moving the entry to Answered verbatim", () => {
+  const prompt = oneLine(buildDirectorPrompt("answer Q3: choose SQLite", "a project"));
+  assert.match(prompt, /An answer to an open question/);
+  assert.match(prompt, /to ## Answered verbatim with the decision recorded/);
+});

@@ -1,3 +1,4 @@
+import { openQuestions } from "./backlog.js";
 import { logEvent } from "./events.js";
 import {
   abortSync,
@@ -40,7 +41,9 @@ export interface MergeContext {
  * history linear) and fast-forward. On conflict, makes one pi-driven resolution attempt
  * (outside the lock) before giving up. A routine conflict is normal operation, not a warning:
  * success lands as an ordinary `merged` event and failure surfaces via the tick's merge_conflict
- * result — no separate log line for the hand-off itself. */
+ * result — no separate log line for the hand-off itself. A merged diff that adds entries under
+ * QUESTIONS.md's ## Open also emits one `question_posted` per new heading alongside the `merged`
+ * event, so `tumwater logs` shows what the fleet is asking for (plans/questions-outbox.md). */
 export async function mergeToMain(ctx: MergeContext, wt: string, summary: string): Promise<TickResult> {
   const first = await tryMerge(ctx, wt, summary);
   if (first !== "merge_conflict") return first;
@@ -50,10 +53,20 @@ export async function mergeToMain(ctx: MergeContext, wt: string, summary: string
 
 async function tryMerge(ctx: MergeContext, wt: string, summary: string): Promise<TickResult> {
   return withLock(mergeLockDir(ctx.root), async () => {
+    // Capture the Open questions before the rebase so a merged diff that posts new ones can
+    // emit one question_posted per entry. The lock keeps no other merge landing between capture
+    // and compare, so the diff is exact; on the conflict path only the second tryMerge call ever
+    // reaches the post-ff code, so nothing double-emits.
+    const before = openQuestions(ctx.root);
     if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return "merge_conflict";
     if (!(await ffMergeToMain(ctx.root, ctx.role, ctx.mainBranch))) return "merge_blocked";
     const commit = await headOf(ctx.root, ctx.mainBranch);
     logEvent(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
+    for (const question of openQuestions(ctx.root)) {
+      if (!before.includes(question)) {
+        logEvent(ctx.root, { loop: ctx.role, type: "question_posted", question });
+      }
+    }
     return "changed";
   });
 }
