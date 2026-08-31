@@ -7,7 +7,7 @@ import { initProject } from "../src/init.js";
 import { aheadOfMain, ensureWorktree } from "../src/git.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/types.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { makeRepo, sh } from "./util.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
 function piResult(over: Partial<PiRunResult> = {}): PiRunResult {
