@@ -1525,3 +1525,56 @@ test("an ordinary changed tick under both thresholds is not flagged high-frictio
     restore();
   }
 });
+
+// Self-explaining commit bodies (plans/commit-bodies.md item a): the reply contract's
+// WHY/RISK/VERIFIED lines land in an ACTUAL tick commit on main, and a SUMMARY-only reply
+// commits subject + trailer only. The pure-function units live in test/commit-message.test.ts;
+// this e2e reads real `git log` content from two ticks of one loop — the first compliant,
+// the second non-compliant — so both halves of buildCommitMessage's assembly are pinned
+// against what git actually stores, including that the reviewer run does not inflate the
+// trailer's turn count.
+
+test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only reply commits subject + trailer only", async () => {
+  const repo = await initializedRepo();
+  // The fake pi counts its invocations in a file OUTSIDE the worktree (so it never dirties
+  // the tree) and answers each author run differently: tick 1 compliant, tick 2 SUMMARY-only.
+  const counter = path.join(tmpdir(), "pi-calls");
+  fs.writeFileSync(counter, "0");
+  const compliant = assistantLine(
+    [
+      "done",
+      "SUMMARY: add hello file",
+      "WHY: the loops needed a hello file to prove the pipeline works",
+      "RISK: none that I can see",
+      "VERIFIED: npm test, all pass",
+    ].join("\n"),
+    { tokens: 42, output: 42, cost: 0.05 },
+  );
+  const summaryOnly = assistantLine("done\nSUMMARY: add world file", { tokens: 7, output: 7, cost: 0.01 });
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done\n` +
+      `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
+      `[ "$n" -eq 1 ] && { printf '%s\\n' '${compliant}'; echo hello > hello.txt; } || { printf '%s\\n' '${summaryOnly}'; echo world > world.txt; }`,
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+
+    // Tick 1: compliant reply → the commit on main carries subject, body (all three fields,
+    // in contract order), and the harness-stamped trailer as separate paragraphs. One author
+    // turn plus one reviewer run — the trailer counts only the pre-commit author turns.
+    assert.equal((await runner.tick()).result, "changed");
+    const first = sh(repo, "git", "log", "-1", "--format=%B");
+    assert.match(
+      first,
+      /^tumwater\(improve\): add hello file\n\nWHY: the loops needed a hello file to prove the pipeline works\nRISK: none that I can see\nVERIFIED: npm test, all pass\n\nTick: improve #1 · turns 1 · ctx 42$/m,
+    );
+
+    // Tick 2: SUMMARY-only reply → subject + trailer only; no body paragraph at all.
+    assert.equal((await runner.tick()).result, "changed");
+    const second = sh(repo, "git", "log", "-1", "--format=%B");
+    assert.match(second, /^tumwater\(improve\): add world file\n\nTick: improve #2 · turns 1 · ctx 7$/m);
+    assert.doesNotMatch(second, /WHY:|RISK:|VERIFIED:/);
+  } finally {
+    restore();
+  }
+});
