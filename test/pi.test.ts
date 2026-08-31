@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { PiStreamParser, piArgs, runPi } from "../src/pi.js";
+import { REFUSED_SENTINEL } from "../src/reply-contract.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
@@ -33,6 +34,54 @@ test("parser does not flag nothing-to-do when no message carries the sentinel", 
   parser.feed(assistantLine("thinking about it") + "\n");
   parser.feed(assistantLine("all done\nSUMMARY: x") + "\n");
   assert.equal(parser.declaredNothingToDo, false);
+});
+
+// The refusal flag and reason must survive later messages, mirroring the nothing-to-do sentinel
+// (a compliant run emits the sentinel once, in its final message — but a closing remark after it
+// must not erase the declaration).
+
+test("parser records refused + reason from the sentinel line", () => {
+  const parser = new PiStreamParser();
+  parser.feed(assistantLine(`declining\n${REFUSED_SENTINEL}: plan conflicts with PRINCIPLES.md`) + "\n");
+  assert.equal(parser.refused, true);
+  assert.equal(parser.refusedReason, "plan conflicts with PRINCIPLES.md");
+});
+
+test("parser keeps a refusal declared in an intermediate message (regression)", () => {
+  const parser = new PiStreamParser();
+  parser.feed(assistantLine(`${REFUSED_SENTINEL}: too risky to land`) + "\n");
+  parser.feed(assistantLine("closing remarks about the refusal") + "\n");
+  assert.equal(parser.finalText, "closing remarks about the refusal", "finalText stays the last message");
+  assert.equal(parser.refused, true, "refusal from an earlier turn is not lost");
+  assert.equal(parser.refusedReason, "too risky to land");
+});
+
+test("parser sets refused with an empty reason for a bare sentinel", () => {
+  const parser = new PiStreamParser();
+  parser.feed(assistantLine(`${REFUSED_SENTINEL}`) + "\n");
+  assert.equal(parser.refused, true);
+  assert.equal(parser.refusedReason, "", "no parseable reason — the loop falls back to 'no reason given'");
+});
+
+test("parser flags a mid-sentence mention but leaves the reason empty", () => {
+  const parser = new PiStreamParser();
+  parser.feed(assistantLine(`I would say ${REFUSED_SENTINEL}: no, let me keep going`) + "\n");
+  assert.equal(parser.refused, true, "boolean scan is deliberately loose (whole-reply includes)");
+  assert.equal(parser.refusedReason, "", "anchored extraction rejects the mid-sentence mention");
+});
+
+test("parser keeps the first parseable reason across messages", () => {
+  const parser = new PiStreamParser();
+  parser.feed(assistantLine(`${REFUSED_SENTINEL}: original objection`) + "\n");
+  parser.feed(assistantLine(`${REFUSED_SENTINEL}: a later, different line`) + "\n");
+  assert.equal(parser.refusedReason, "original objection", "first reason wins; a compliant run emits the sentinel once");
+});
+
+test("parser does not set refused when no message carries the sentinel", () => {
+  const parser = new PiStreamParser();
+  parser.feed(assistantLine("all done\nSUMMARY: fix it") + "\n");
+  assert.equal(parser.refused, false);
+  assert.equal(parser.refusedReason, "");
 });
 
 test("parser flags a contentless final message (generation cut off mid-stream)", () => {
