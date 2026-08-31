@@ -5,81 +5,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
-2026-08-27, audited 2026-08-28, re-audited 2026-08-31)
-
-Full plan: [plans/commit-bodies.md](plans/commit-bodies.md). Reply contract grows WHY/RISK/
-VERIFIED lines after SUMMARY (each capped at 200 chars; VERIFIED says `none` when nothing was
-run); commits get that body plus a harness-stamped trailer — exact format decided:
-`Tick: <role> #<tick> · turns <t> · ctx <c>` from a pure helper in prompt.ts. Trailer numbers
-decided: turns accumulate through the existing `foldUsage` per-tick windows (main + transient
-retry; conflict-resolution runs fold after commit and are excluded), ctx reads the existing
-per-tick peak — no LoopState schema change. Gives the reviewer, steward, and human a paper trail
-of claimed understanding (TonyAlicea10's do-i-understand, inverted for agents). The trailer's
-turn count is the same `PiRunResult.turns` field the refusal plan needs — whichever lands first
-adds it; assembly stays one shared helper so refusal commits route through it too.
-
-**Status (plan-loop audit 2026-08-28):** feature tick 48 (`b41185d`) landed the full design;
-verified at `b101c02` with a green build and a 334/334 suite. SUMMARY_RULE carries the
-WHY/RISK/VERIFIED lines in all three prompt paths (tick + director via COMMON_RULES, resume
-bridge); `extractCommitBody` is line-anchored per field, subset-tolerant, capped at 200 chars
-with an ellipsis; `commitTrailer` stamps the exact decided format with compact ctx (`10.0k` at
-≥10,000); `buildCommitMessage` is the single assembly site and its doc comment reserves the
-refusal plan's routing; the parser counts assistant turns into `PiRunResult.turns`; non-
-persisted `tickTurns` resets at tick start and folds in `foldUsage`, so the trailer holds main +
-transient-retry runs while conflict-resolution runs — folded inside `merge()`, after
-`commitAll` — are excluded; the review prompt receives the body with "check these claims against
-the diff" (src/review.ts passes it through). One deviation: the plan's new test/commit-bodies.
-test.ts landed as unit tests in test/prompt.test.ts instead (coverage tick `0f73491`) — same
-coverage, different file. Remaining — two test gaps against the acceptance criteria, nothing
-structural: (a) no tick-level e2e that a compliant fake-pi reply produces an actual commit
-carrying WHY/RISK/VERIFIED plus the trailer, and that a SUMMARY-only reply commits subject +
-trailer only (pure-function units exist; no test reads real `git log` content from a tick);
-(b) the turn counter feeding the trailer is untested at every level — parser-level
-`parser.turns` over message_end events, and loop-level that a transient-retry tick's trailer
-sums both runs' turns while conflict-resolution runs do not inflate it. Dogfood note: no commit
-in the history carries a trailer yet, including the six after `b41185d` — consistent with the
-running fleet process having started before that tick (JS loads at startup; only tumwater.json
-live-reloads), so live ticks will start stamping trailers on the next restart and AC1's "git log
-on a dogfood tick" verifies then. Files for the remainder: test/pi.test.ts, test/loop.test.ts
-(or a new test/commit-bodies.test.ts).
-
-**Re-audited 2026-08-31 (plan loop) — item (a) has LANDED; remainder re-specified.** The "two
-test gaps" list above is stale on current main (`6e3ac7a`): coverage tick `d930959` landed the
-tick-level e2e in test/loop.test.ts ("a compliant reply commits WHY/RISK/VERIFIED plus trailer;
-a SUMMARY-only reply commits subject + trailer only") — it reads real `git log` and asserts the
-exact trailer for both reply shapes (`Tick: improve #1 · turns 1 · ctx 42` with the body in
-contract order; `Tick: improve #2 · turns 1 · ctx 7`, no body paragraph), and its one-author-
-turn-plus-one-reviewer-run setup pins reviewer runs out of the count. What remains — one item,
-the turn-counter coverage at the two levels the audit named, re-specified against current main:
-
-(a) **parser level** in test/pi.test.ts — `parser.turns` (src/pi.ts: incremented per message_end,
-surfaced as `PiRunResult.turns`) has zero assertions anywhere under test/: the existing "parser
-keeps the last non-empty assistant text and sums usage" feeds two assistant messages but asserts
-only outputTokens/peak/cost/stopReason. Add the assertion there (turns === 2 for that stream)
-plus a zero case — a parser fed only thinking/tool lines reads turns 0.
-(b) **loop level: transient retry** in test/loop.test.ts — the existing transient-retry e2e
-("a transient model-server timeout is retried once and the tick succeeds") is a no_change tick,
-so it never commits and its trailer is unobservable. New test: a CHANGED tick whose first run
-emits N assistant messages before an idle-stream timeout error and whose retry run (the phase-
-file trick that e2e already uses) emits M → the landed commit's Tick line reads `turns N+M` —
-runRolePi folds both runs into tickTurns via foldUsage before buildCommitMessage assembles the
-trailer.
-(c) **loop level: conflict resolution stays out** in test/loop.test.ts — extend "a rebase
-conflict is resolved by a second pi run and lands with linear history" (or add a sibling): assert
-the landed commit's Tick line carries only the authoring run's turns, not the resolution run's —
-the resolution run folds into tickTurns after the trailer string is already assembled.
-
-Already covered — do not duplicate: single-run multi-turn counting is pinned by the friction e2e
-(`turns 2` in both the Tick and Friction lines), and reviewer-run exclusion by d930959's e2e
-above. No src/ change is needed for any of this — the mechanism exists (foldUsage accumulates
-every run; the trailer assembles after main+retry, before conflict resolution); all three items
-are pure test work in test/pi.test.ts and test/loop.test.ts. Once they land, move this plan to
-Done.
-
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
-(item (a)'s file reference updated))
+(item (a)'s file reference updated), re-audited 2026-08-31 (item (b2) landed))
 
 Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
 ~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
@@ -178,7 +106,110 @@ and dogfood is still pending — no `tumwater(steward)` commit on main, PRINCIPL
 section still absent. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
 test/orchestrator.test.ts, test/config.test.ts.
 
+**Re-audited 2026-08-31 (plan loop) — item (b2) has LANDED; remainder is (a), (b1), (b3), and
+dogfood (c).** The "three items, pickable independently" list above is stale on current main
+(`2b294a2`): coverage tick `be6dc56` landed item (b2) in test/orchestrator.test.ts — "isEligible
+gates on the role's own interval, not the global knob", both directions as specified: a steward
+with a 3600 s per-role override over a 20 s global stays ineligible across a main-moved wake deep
+inside its window even though nextRunAt has passed (a direct read of the global knob would have
+woken it), and the inverse — qa at 20 s over a 3600 s global with nextRunAt not yet due — wakes on
+the shorter per-role gap. Verified at `2b294a2`: build clean, suite 475/475. What remains — three
+test items plus dogfood, pickable independently: (a) prompt contract tests in test/prompt.test.ts;
+(b1) the configForRole → applyTickOutcome chain through a real tick in test/loop.test.ts (still
+zero references to minTickIntervalSeconds there); (b3) validation rejecting a negative per-role
+`minTickIntervalSeconds` in test/config.test.ts; and (c) dogfood — still no `tumwater(steward)`
+commit on main. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
+test/config.test.ts.
+
 ## Done
+
+### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
+2026-08-27, audited 2026-08-28, re-audited 2026-08-31, done 2026-08-31)
+
+Full plan: [plans/commit-bodies.md](plans/commit-bodies.md). Reply contract grows WHY/RISK/
+VERIFIED lines after SUMMARY (each capped at 200 chars; VERIFIED says `none` when nothing was
+run); commits get that body plus a harness-stamped trailer — exact format decided:
+`Tick: <role> #<tick> · turns <t> · ctx <c>` from a pure helper in prompt.ts. Trailer numbers
+decided: turns accumulate through the existing `foldUsage` per-tick windows (main + transient
+retry; conflict-resolution runs fold after commit and are excluded), ctx reads the existing
+per-tick peak — no LoopState schema change. Gives the reviewer, steward, and human a paper trail
+of claimed understanding (TonyAlicea10's do-i-understand, inverted for agents). The trailer's
+turn count is the same `PiRunResult.turns` field the refusal plan needs — whichever lands first
+adds it; assembly stays one shared helper so refusal commits route through it too.
+
+**Status (plan-loop audit 2026-08-28):** feature tick 48 (`b41185d`) landed the full design;
+verified at `b101c02` with a green build and a 334/334 suite. SUMMARY_RULE carries the
+WHY/RISK/VERIFIED lines in all three prompt paths (tick + director via COMMON_RULES, resume
+bridge); `extractCommitBody` is line-anchored per field, subset-tolerant, capped at 200 chars
+with an ellipsis; `commitTrailer` stamps the exact decided format with compact ctx (`10.0k` at
+≥10,000); `buildCommitMessage` is the single assembly site and its doc comment reserves the
+refusal plan's routing; the parser counts assistant turns into `PiRunResult.turns`; non-
+persisted `tickTurns` resets at tick start and folds in `foldUsage`, so the trailer holds main +
+transient-retry runs while conflict-resolution runs — folded inside `merge()`, after
+`commitAll` — are excluded; the review prompt receives the body with "check these claims against
+the diff" (src/review.ts passes it through). One deviation: the plan's new test/commit-bodies.
+test.ts landed as unit tests in test/prompt.test.ts instead (coverage tick `0f73491`) — same
+coverage, different file. Remaining — two test gaps against the acceptance criteria, nothing
+structural: (a) no tick-level e2e that a compliant fake-pi reply produces an actual commit
+carrying WHY/RISK/VERIFIED plus the trailer, and that a SUMMARY-only reply commits subject +
+trailer only (pure-function units exist; no test reads real `git log` content from a tick);
+(b) the turn counter feeding the trailer is untested at every level — parser-level
+`parser.turns` over message_end events, and loop-level that a transient-retry tick's trailer
+sums both runs' turns while conflict-resolution runs do not inflate it. Dogfood note: no commit
+in the history carries a trailer yet, including the six after `b41185d` — consistent with the
+running fleet process having started before that tick (JS loads at startup; only tumwater.json
+live-reloads), so live ticks will start stamping trailers on the next restart and AC1's "git log
+on a dogfood tick" verifies then. Files for the remainder: test/pi.test.ts, test/loop.test.ts
+(or a new test/commit-bodies.test.ts).
+
+**Re-audited 2026-08-31 (plan loop) — item (a) has LANDED; remainder re-specified.** The "two
+test gaps" list above is stale on current main (`6e3ac7a`): coverage tick `d930959` landed the
+tick-level e2e in test/loop.test.ts ("a compliant reply commits WHY/RISK/VERIFIED plus trailer;
+a SUMMARY-only reply commits subject + trailer only") — it reads real `git log` and asserts the
+exact trailer for both reply shapes (`Tick: improve #1 · turns 1 · ctx 42` with the body in
+contract order; `Tick: improve #2 · turns 1 · ctx 7`, no body paragraph), and its one-author-
+turn-plus-one-reviewer-run setup pins reviewer runs out of the count. What remains — one item,
+the turn-counter coverage at the two levels the audit named, re-specified against current main:
+
+(a) **parser level** in test/pi.test.ts — `parser.turns` (src/pi.ts: incremented per message_end,
+surfaced as `PiRunResult.turns`) has zero assertions anywhere under test/: the existing "parser
+keeps the last non-empty assistant text and sums usage" feeds two assistant messages but asserts
+only outputTokens/peak/cost/stopReason. Add the assertion there (turns === 2 for that stream)
+plus a zero case — a parser fed only thinking/tool lines reads turns 0.
+(b) **loop level: transient retry** in test/loop.test.ts — the existing transient-retry e2e
+("a transient model-server timeout is retried once and the tick succeeds") is a no_change tick,
+so it never commits and its trailer is unobservable. New test: a CHANGED tick whose first run
+emits N assistant messages before an idle-stream timeout error and whose retry run (the phase-
+file trick that e2e already uses) emits M → the landed commit's Tick line reads `turns N+M` —
+runRolePi folds both runs into tickTurns via foldUsage before buildCommitMessage assembles the
+trailer.
+(c) **loop level: conflict resolution stays out** in test/loop.test.ts — extend "a rebase
+conflict is resolved by a second pi run and lands with linear history" (or add a sibling): assert
+the landed commit's Tick line carries only the authoring run's turns, not the resolution run's —
+the resolution run folds into tickTurns after the trailer string is already assembled.
+
+Already covered — do not duplicate: single-run multi-turn counting is pinned by the friction e2e
+(`turns 2` in both the Tick and Friction lines), and reviewer-run exclusion by d930959's e2e
+above. No src/ change is needed for any of this — the mechanism exists (foldUsage accumulates
+every run; the trailer assembles after main+retry, before conflict resolution); all three items
+are pure test work in test/pi.test.ts and test/loop.test.ts. Once they land, move this plan to
+Done.
+
+**Done 2026-08-31 (plan-loop audit) — all three remaining items have landed; nothing remains.**
+Feature tick 67 (`4021c1d`) closed the re-specified remainder exactly as specified. (a) Parser
+level in test/pi.test.ts: `parser.turns === 2` asserted in "parser keeps the last non-empty
+assistant text and sums usage", plus a zero case — structural events, streaming updates, and a
+user message_end count no turns. (b) Loop level in test/loop.test.ts: "a transient-retry changed
+tick's trailer sums both runs' turns" — a CHANGED tick whose first run emits two work turns then
+an idle-stream timeout error (the errored final message is itself an assistant message_end, so
+attempt 1 counts three) and whose retry run emits one more → the landed commit reads `turns 4 ·
+ctx 42`, with the reviewer run folding after the commit. (c) Loop level in test/loop.test.ts:
+"a rebase conflict is resolved by a second pi run and lands with linear history" extended so the
+resolution run deliberately emits two assistant turns; the landed commit's Tick line still reads
+`turns 1`, proving resolution runs stay out of the count. Verified at `2b294a2`: build clean,
+suite 475/475. Residual dogfood observation only (not work): no live-fleet commit carries a
+trailer yet — the running fleet process started before feature tick 48 (JS loads at startup), so
+AC1's "git log on a dogfood tick" verifies after the next restart.
 
 ### Daily cost budget — cap the fleet's autonomous spend (planned 2026-08-30, audited
 2026-08-30, re-audited 2026-08-30, re-audited 2026-08-31, done 2026-08-31)
