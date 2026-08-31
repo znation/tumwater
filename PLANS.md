@@ -157,7 +157,7 @@ on a dogfood tick" verifies then. Files for the remainder: test/pi.test.ts, test
 (or a new test/commit-bodies.test.ts).
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-27, audited 2026-08-28)
+refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30)
 
 Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
 ~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
@@ -193,6 +193,47 @@ commit in history as of this audit, and PRINCIPLES.md's Budgets section is still
 the running fleet process must have started after 6e3f487 for its compiled defaultConfig to
 include steward (JS loads at startup; same consideration as the commit-bodies trailer note).
 Files for the remainder: test/steward.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts.
+
+**Re-audited 2026-08-30 (plan loop) — item (b)'s spec is stale on current main; remainder re-
+specified.** The "loop tests that tick()'s nextRunAt branches honor the override" half of item (b)
+names code that has since moved: organize tick `225c1d9` extracted post-tick scheduling out of
+loop.ts into the pure `applyTickOutcome(s, cfg, role, outcome)` in src/state.ts — tick() now
+resolves `cfg = configForRole(this.config, this.role)` once at the top and passes it through. And
+test/state.test.ts already unit-tests every interval branch (changed; rejected + skipped;
+cut-off-resume under and over the streak limit) against a plain config's
+`minTickIntervalSeconds`, so "the branches read cfg.minTickIntervalSeconds" is covered — as is
+item (b)'s global-fallback half, by test/config.test.ts's configForRole assertions (steward 21600,
+qa 7200, every other role inherits the global). What actually remains against AC3 — three items,
+pickable independently:
+
+(b1) **the resolution chain through a real tick** in test/loop.test.ts — one e2e pinning
+configForRole → applyTickOutcome end to end: a role with a per-role `minTickIntervalSeconds`
+override distinct from the global (e.g. 3600 over a fast global) lands a changed tick; assert the
+persisted state's `nextRunAt - lastTickEndedAt ≈ 3600 s`, not the global interval. This is the only
+untested link in the chain: applyTickOutcome's branches are unit-covered, configForRole's
+resolution is unit-covered, and nothing yet proves tick() hands the resolved value to the
+scheduler.
+(b2) **isEligible's min-gap with a per-role override** in test/orchestrator.test.ts — a variant of
+"a sleeping loop wakes when main moves, respecting the min gap" (which exercises only the global
+knob): a role whose per-role override is large (e.g. 3600) over a small global stays ineligible
+across a main-moved wake while inside the window even though its nextRunAt has passed — proving
+the read site resolves per-role rather than reading `config.minTickIntervalSeconds` directly; the
+inverse (small override, large global) wakes at the shorter value.
+(b3) **AC3's validation clause** in test/config.test.ts — no assertion rejects a negative per-role
+`minTickIntervalSeconds`: add one to "validateConfig reports every invalid value in one error"
+(or a sibling), e.g. `roles.feature.minTickIntervalSeconds = -5` → an actionable error naming the
+field, like its siblings' existing assertions.
+
+AC3's "applies live on tumwater.json edits (no restart)" is recorded as a structural guarantee
+rather than tested: runners' config objects are replaced on every ~2 s poll — e2e-tested for role
+fields by the live-reload plan ("mid-run model edits reach pi's --model") — and both read sites
+(`isEligible`'s min-gap, tick()'s top-of-tick resolution) call `configForRole(runner.config, …)`
+at call time, so a cadence edit applies from the next eligibility check or tick with no restart.
+Item (a) (prompt contract tests in test/steward.test.ts — curation move list, markdown-only
+restriction, deletion/PRINCIPLES powers, conditional QUESTIONS.md mention; catalog order last)
+and item (c) (dogfood: still no `tumwater(steward)` commit on main as of this audit,
+PRINCIPLES.md's Budgets section still absent) are unchanged. Files for the remainder:
+test/steward.test.ts (new), test/loop.test.ts, test/orchestrator.test.ts, test/config.test.ts.
 
 ## Done
 
