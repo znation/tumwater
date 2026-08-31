@@ -5,6 +5,85 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Live maxConcurrent — resize the concurrency cap without a restart (planned 2026-08-31)
+
+**Goal.** Make `maxConcurrent` live-reloadable like every other tumwater.json setting: a mid-run
+edit changes how many pi runs execute concurrently within ~2 s, with no restart. Today it is one of
+only two settings read once at startup (the Semaphore's capacity in runOrchestrator), and the README
+documents both as restart-only. The motivating case is the failure mode the README itself describes
+under "Match clients to slots": when `maxConcurrent` exceeds a local model server's slot count, KV
+prefix caches thrash and ticks starve — and today the remedy (lowering the cap) requires Ctrl+C'ing
+the whole fleet, interrupting in-flight ticks, just to change one number. Sibling entry: Live
+sessionRetentionDays below; together they close the last two restart requirements so every
+tumwater.json edit applies live. Either lands independently.
+
+**Approach.** src/semaphore.ts: track `capacity` and `inUse` (a plain `available` count is subtly
+wrong — shrinking below current in-use cannot be represented as free permits). acquire() takes a
+permit when `inUse < capacity`, else queues; release() hands its permit directly to the next queued
+waiter if any, else decrements `inUse`; new `setCapacity(n)` sets the capacity, then wakes queued
+waiters while `inUse < n`, taking one permit for each woken waiter. Growing thus admits up to all
+queued waiters (bounded by the new headroom); shrinking never preempts in-flight work — it only
+caps future grants until releases bring `inUse` under the new cap. Config validation already
+enforces `maxConcurrent >= 1`, so no new validation is needed. src/orchestrator.ts: in the existing
+reload block, right after pushing the fresh config into every runner, apply
+`semaphore.setCapacity(reloaded.config.maxConcurrent)`; remember the last-applied value and log one
+harness-level event when it actually changes (new HarnessEvent type, e.g. `max_concurrent_changed`
+carrying old/new — a plain line in event-format.ts like its siblings, not a warning), so an edit is
+visible in `tumwater logs`/TUI/GUI without per-poll spam. src/types.ts: add the new type to the
+HarnessEvent union. README.md: reword the Usage sentence "only `maxConcurrent` and
+`sessionRetentionDays` require a restart" — whichever sibling entry lands first names only the
+survivor; once both are done it reads that all edits apply live.
+
+**Files touched.** src/semaphore.ts, src/orchestrator.ts, src/types.ts, src/event-format.ts,
+test/semaphore.test.ts, test/orchestrator.test.ts, README.md.
+
+**Acceptance criteria.**
+- Unit (test/semaphore.test.ts): growing capacity wakes queued acquirers up to the new headroom and
+  never lets more than `capacity` hold permits at once; shrinking leaves in-flight work untouched —
+  after a shrink below current in-use, no new acquire() proceeds until releases bring in-use under
+  the cap; release hands a permit straight to a queued waiter (no double grant); repeated
+  grow/shrink cycles leak no permits and starve no waiter.
+- E2E (test/orchestrator.test.ts, following the "mid-run tumwater.json edits steer the fleet"
+  pattern): start with `maxConcurrent` 1 and two eligible fake-pi loops whose shim records peak
+  concurrency (increment on run start, decrement on exit, persist the max) — peak stays 1 while the
+  second loop waits on its slot; a live edit to 2 lets the already-queued tick proceed without a
+  restart so runs overlap (peak ≥ 2); conversely, shrinking from 2→1 while one run is in flight
+  admits no new concurrent run until it finishes. Exactly one change event per distinct value
+  change; unchanged polls log nothing.
+- Build clean, full suite green; README sentence updated as specified.
+
+### Live sessionRetentionDays — re-prune old pi sessions without a restart (planned 2026-08-31)
+
+**Goal.** Make `sessionRetentionDays` live-reloadable and actually enforced for long-running
+fleets. Today pruning runs only at orchestrator startup, so (a) a mid-run edit to the retention
+window does nothing until the next restart — it is one of only two settings documented as
+restart-only — and (b) a fleet that runs for weeks without a restart accumulates pi session files
+past its configured window. Sibling entry: Live maxConcurrent above; together they close the last
+two restart requirements so every tumwater.json edit applies live. Either lands independently.
+
+**Approach.** In runOrchestrator's poll cycle, track the last-applied retention value and the last
+prune time (both initialized from the existing startup behavior). On each successful reload: if the
+value changed and is > 0, re-run `pruneOldFiles(sessionsRootDir(root), days)` immediately.
+Independently of edits: while retention > 0, run the same prune at most once per day — a cheap
+gate checked per poll (the actual recursive scan only when a day has passed since the last prune)
+so a never-restarted fleet still honors its window. The once-per-day decision lives in a small pure
+helper (e.g. `dueForPrune(lastPruneAt, now, retentionDays)`) so it is unit-testable with fake
+timestamps. Both paths log the existing warning shape ("pruned N old pi session file(s)") only when
+N > 0 — pruning is normal operation and quiet polls stay silent.
+
+**Files touched.** src/orchestrator.ts, test/orchestrator.test.ts, README.md (same sentence handoff
+as the sibling entry).
+
+**Acceptance criteria.**
+- E2E (test/orchestrator.test.ts, beside the existing startup-pruning tests): start with retention
+  30 and plant a session file whose mtime is backdated past one day (`fs.utimesSync`) — it survives
+  startup; a live edit to 1 removes it within one poll cycle with exactly one warning naming the
+  count; raising the value prunes nothing; setting 0 disables pruning even for ancient files.
+- The pure helper: due when a full day has passed since the last prune, not due within a day, and
+  never due at retention 0 (unit-tested with fake timestamps); the e2e above pins the on-change path
+  through a real orchestrator.
+- Build clean, full suite green; README sentence updated as specified.
+
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
 (item (a)'s file reference updated), re-audited 2026-08-31 (item (b2) landed))
