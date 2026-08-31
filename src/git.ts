@@ -390,10 +390,14 @@ export async function commitAll(wt: string, message: string): Promise<string> {
   return headOf(wt, "HEAD");
 }
 
-/** Paths currently in conflict (unmerged) in the worktree. */
+/** Paths currently in conflict (unmerged) in the worktree. C-quoted names are decoded to
+ * real paths — a non-ASCII conflicted file arrives as `"h\303\251llo.ts"` (core.quotePath is on
+ * by default), and undecoded it does not exist on disk: hasConflictMarkers could never read
+ * it, so an unresolved conflict in such a file passed the marker check and continueRebase
+ * committed its markers to main. */
 export async function conflictedFiles(wt: string): Promise<string[]> {
   const out = await gitTry(wt, "diff", "--name-only", "--diff-filter=U");
-  return out ? out.split("\n").filter(Boolean) : [];
+  return out ? out.split("\n").filter(Boolean).map(unquotePorcelainPath) : [];
 }
 
 /** Attempt to rebase the worktree branch onto main and classify the outcome WITHOUT

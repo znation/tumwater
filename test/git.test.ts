@@ -10,6 +10,7 @@ import {
   changedFiles,
   commitAll,
   commitPathsAndDiscardRest,
+  conflictedFiles,
   currentBranch,
   continueRebase,
   ensureWorktree,
@@ -270,6 +271,33 @@ test("hasConflictMarkers does not flag setext/RST underlines of seven equals (re
 test("hasConflictMarkers treats a deleted file as resolved", () => {
   const dir = tmpdir();
   assert.ok(!hasConflictMarkers(dir, ["gone.txt"]));
+});
+
+// A non-ASCII conflicted filename arrives C-quoted from `git diff --name-only` (core.quotePath
+// is on by default). Undecoded it does not exist on disk, so hasConflictMarkers could never
+// read the file — an unresolved conflict in such a file passed the marker check and
+// continueRebase committed its markers to main.
+test("conflictedFiles decodes C-quoted paths for non-ASCII filenames", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "h\u00e9llo.ts"), "base\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "seed non-ascii file");
+  const wt = await ensureWorktree(repo, "clean", "main");
+
+  fs.writeFileSync(path.join(wt, "h\u00e9llo.ts"), "branch version\n");
+  await commitAll(wt, "branch edit");
+  fs.writeFileSync(path.join(repo, "h\u00e9llo.ts"), "main version\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "main edit");
+
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+  const files = await conflictedFiles(wt);
+  // The decoded name is the real path on disk — not git's C-quoted form.
+  assert.deepEqual(files, ["h\u00e9llo.ts"]);
+  assert.ok(fs.existsSync(path.join(wt, files[0] ?? "")));
+  // And the marker check can actually read it: an unresolved conflict is detected.
+  assert.ok(hasConflictMarkers(wt, files));
+  await resetWorktreeToMain(wt, "main");
 });
 
 test("readBranchHead matches git rev-parse across loose and packed refs", () => {
