@@ -64,6 +64,39 @@ test("defaultConfig carries the thrash thresholds and validation guards them", (
   }
 });
 
+test("defaultConfig carries the daily cost budget cap and validation guards it", () => {
+  // AC1 (plans/daily-cost-budget.md): an unattended fleet must not spend unbounded, so the
+  // cap defaults to $50/day; 0 disables. Invalid values are rejected with actionable errors
+  // like every other knob.
+  const config = defaultConfig();
+  assert.equal(config.maxDailyCostUsd, 50);
+  assert.doesNotThrow(() => validateConfig({ maxDailyCostUsd: 0 }));
+
+  for (const bad of [-1, "50", null]) {
+    // The "s" flag lets .* cross the newline between the error header and its bulleted
+    // problems; without it the anchor matched only single-line messages.
+    assert.match(
+      validationError({ maxDailyCostUsd: bad }),
+      new RegExp(`^invalid tumwater\\.json:.*maxDailyCostUsd must be a number of 0 or more \\(0 disables\\) \\(got ${JSON.stringify(bad)}\\)`, "s"),
+      `maxDailyCostUsd: ${bad} should be rejected with an actionable error`,
+    );
+  }
+
+  // A typo'd key name would otherwise be silently ignored and the default used — a fleet
+  // that meant to cap its spend would then spend unbounded. TOP_LEVEL_KEYS must fail it.
+  assert.match(
+    validationError({ maxDailyCostUss: 50 }),
+    /unknown key "maxDailyCostUss" in tumwater\.json \(valid keys: .*maxDailyCostUsd.*\)/,
+  );
+
+  // loadConfig over an existing file lacking the key picks up the default without editing.
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  const loaded = loadConfig(dir);
+  assert.equal(loaded.model, "sonnet");
+  assert.equal(loaded.maxDailyCostUsd, 50);
+});
+
 test("loadConfig without a file returns defaults", () => {
   const dir = tmpdir();
   assert.deepEqual(loadConfig(dir), defaultConfig());
