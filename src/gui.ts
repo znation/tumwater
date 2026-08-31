@@ -81,16 +81,21 @@ export function statusPayload(root: string): object {
   };
 }
 
-/** Max request body for /api/prompt. Over it the promise rejects ("body too large") and
- * buffering STOPS — later chunks are drained and discarded, so a client that keeps uploading
- * after the cap cannot grow the buffer past ~one chunk over the limit. Without the stop, every
- * late chunk was still appended to `body` long after the rejection: an unbounded allocation on
- * a network-facing endpoint. */
+/** Max request body for /api/prompt, in wire bytes. Over it the promise rejects
+ * ("body too large") and buffering STOPS — later chunks are drained and discarded, so a client
+ * that keeps uploading after the cap cannot grow the buffer past ~one chunk over the limit.
+ * Without the stop, every late chunk was still appended to the body long after the rejection:
+ * an unbounded allocation on a network-facing endpoint. */
 const MAX_BODY_BYTES = 64 * 1024;
 
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
-    let body = "";
+    // Accumulate raw bytes and decode ONCE at the end. Chunk boundaries are arbitrary TCP
+    // framing, so a multi-byte UTF-8 character can straddle two chunks — decoding each chunk
+    // independently would replace every split byte with U+FFFD, silently corrupting the prompt
+    // (one 3-byte character split in two becomes three replacement characters).
+    const chunks: Buffer[] = [];
+    let bytes = 0;
     let settled = false;
     const cleanup = () => {
       req.off("data", onData);
@@ -99,17 +104,21 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     };
     function onData(chunk: Buffer): void {
       if (settled) return; // over the cap: discard — only memory would grow
-      body += chunk.toString("utf8");
-      if (body.length > MAX_BODY_BYTES) {
+      bytes += chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
         settled = true;
+        chunks.length = 0; // release what we kept before rejecting
         cleanup();
         req.resume(); // keep draining so the upload can finish and the socket closes cleanly
         reject(new Error("body too large"));
+        return;
       }
+      chunks.push(chunk);
     }
     function onEnd(): void {
       if (settled) return;
       settled = true;
+      const body = Buffer.concat(chunks).toString("utf8");
       cleanup();
       resolve(body);
     }

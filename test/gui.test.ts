@@ -6,7 +6,7 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
-import { inboxSize } from "../src/inbox.js";
+import { dequeuePrompt, inboxSize } from "../src/inbox.js";
 import { orchestratorStatePath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState, todayStamp } from "../src/state.js";
 import { assistantLine, makeRepo } from "./util.js";
@@ -401,6 +401,59 @@ test("gui rejects oversized prompt bodies with 413 instead of buffering them unb
     });
     assert.equal(ok.status, 200);
     assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("multi-byte UTF-8 characters straddling chunk boundaries arrive intact", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui utf8 test");
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  try {
+    // A prompt containing a CJK character (3 bytes in UTF-8). The chunked upload is framed
+    // so that character straddles two chunks — socket/chunk boundaries are arbitrary TCP
+    // framing, and decoding each chunk independently would replace the split character with
+    // U+FFFD, silently corrupting what the director receives.
+    const text = "fix the 数据库 bug";
+    const body = Buffer.from(JSON.stringify({ text }), "utf8");
+    const charStart = body.indexOf(Buffer.from("数", "utf8"));
+    assert.ok(charStart > 0 && charStart + 3 <= body.length, "test body contains the CJK character");
+    const splitAt = charStart + 1; // inside the 3-byte sequence
+
+    const socket = net.connect(addr.port, "127.0.0.1");
+    let response = "";
+    socket.on("data", (d: Buffer) => {
+      response += d.toString("ascii");
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(
+        "POST /api/prompt HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\nContent-Type: application/json\r\n\r\n",
+        () => resolve(),
+      );
+    });
+    const frame = (b: Buffer): Buffer =>
+      Buffer.concat([Buffer.from(`${b.length.toString(16)}\r\n`, "ascii"), b, Buffer.from("\r\n", "ascii")]);
+    // Send the two halves as separate frames with a pause between them so the server reads
+    // (and decodes) each chunk on its own — the condition that corrupts per-chunk decoding.
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(frame(body.subarray(0, splitAt)), () => setTimeout(resolve, 50));
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(Buffer.concat([frame(body.subarray(splitAt)), Buffer.from("0\r\n\r\n", "ascii")]), () => resolve());
+    });
+    // Wait for the response to land.
+    await new Promise((r) => setTimeout(r, 200));
+
+    assert.match(response, /^HTTP\/1\.1 200/, `expected 200, got: ${response.split("\r\n")[0]}`);
+    const queued = dequeuePrompt(repo);
+    assert.equal(queued, text, "the prompt arrives byte-for-byte intact");
+    socket.destroy();
   } finally {
     server.close();
   }
