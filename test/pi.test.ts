@@ -19,6 +19,29 @@ test("parser keeps the last non-empty assistant text and sums usage", () => {
   assert.equal(parser.peakContextTokens, 100, "peak is the largest request context, not a sum");
   assert.ok(Math.abs(parser.costUsd - 0.03) < 1e-9);
   assert.equal(parser.stopReason, "stop");
+  // plans/commit-bodies.md: turns counts completed assistant messages — it feeds
+  // PiRunResult.turns, which the commit trailer and the high-friction flag read.
+  assert.equal(parser.turns, 2, "one turn per assistant message_end");
+});
+
+test("parser counts zero turns when no assistant message completes", () => {
+  // Structural events (turn boundaries), streaming updates, and user messages are not
+  // completed assistant turns — only an assistant message_end counts one.
+  const parser = new PiStreamParser();
+  parser.feed(JSON.stringify({ type: "turn_start" }) + "\n");
+  parser.feed(
+    JSON.stringify({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "thinking", thinking: "hmm" }] },
+    }) + "\n",
+  );
+  parser.feed(
+    JSON.stringify({
+      type: "message_end",
+      message: { role: "user", content: [{ type: "text", text: "prompt" }] },
+    }) + "\n",
+  );
+  assert.equal(parser.turns, 0);
 });
 
 test("parser keeps a sentinel declared in an intermediate message (regression)", () => {

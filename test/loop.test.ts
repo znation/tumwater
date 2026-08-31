@@ -502,6 +502,11 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
       `  echo main change > "${repo}/seed.txt"`,
       `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
       `else`,
+      // The resolution run emits two assistant turns on purpose (plans/commit-bodies.md
+      // item c): if it leaked into the trailer's count, the Tick line below would read
+      // turns 3 instead of turns 1.
+      `  printf '%s\\n' '${assistantLine("looking at the conflict markers")}'`,
+      `  printf '%s\\n' '${assistantLine("resolved\nSUMMARY: merged both sides")}'`,
       `  echo resolved > seed.txt`,
       `fi`,
     ].join("\n"),
@@ -513,6 +518,11 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
     // The resolution landed as a plain rebased commit: no merge commits on main.
     assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
+    // Self-explaining commit bodies (plans/commit-bodies.md item c): the trailer counts
+    // only the authoring run's turns — the reviewer and conflict-resolution runs fold into
+    // tickTurns after the trailer string is already assembled.
+    const body = sh(repo, "git", "log", "-1", "--format=%B");
+    assert.match(body, /^Tick: improve #\d+ · turns 1 · ctx 0$/m);
     // Routine conflict → pi-resolve → land is normal operation, not something to warn
     // about: the merged event and tick_end already cover observability.
     const warnings = readEvents(repo).filter((e) => e.type === "warning");
@@ -917,6 +927,46 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
       warnings.some((w) => /retrying the pi run once/.test(w)),
       `expected a retry warning, got: ${JSON.stringify(warnings)}`,
     );
+  } finally {
+    restore();
+  }
+});
+
+// Self-explaining commit bodies (plans/commit-bodies.md item b): the trailer's turn count is
+// the sum over this tick's PRE-COMMIT runs — main attempt plus, on a transient model-server
+// timeout, the one resumed retry. runRolePi folds both into tickTurns via foldUsage before
+// buildCommitMessage assembles the trailer, so a retried CHANGED tick's commit must read the
+// combined count (the no_change regression above never commits, so its trailer is unobservable).
+test("a transient-retry changed tick's trailer sums both runs' turns", async () => {
+  const repo = await initializedRepo();
+  const marker = path.join(tmpdir(), "phase");
+  // Attempt 1 (the tick's pi run): two assistant turns of work, then LM Studio kills the
+  // idle predict stream — a failed run with transientServerTimeout set. The errored final
+  // message is itself an assistant message_end, so attempt 1 counts as THREE turns. Attempt
+  // 2 (the harness retry, detected by the phase file): one more turn that finishes the work.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  printf '%s\\n' '${assistantLine("first turn of work")}'`,
+      `  printf '%s\\n' '${assistantLine("second turn, still working")}'`,
+      `  printf '%s\\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
+      `  exit 1`,
+      `else`,
+      `  printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `  echo hello > hello.txt`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed", "the retry's work lands the tick");
+    // The trailer sums both runs' turns (3 + 1) — and only them: the reviewer run folds
+    // after the commit. Peak ctx is the retry run's 42; attempt 1 carried no usage.
+    const body = sh(repo, "git", "log", "-1", "--format=%B");
+    assert.match(body, /^Tick: improve #\d+ · turns 4 · ctx 42$/m);
   } finally {
     restore();
   }
