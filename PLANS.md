@@ -157,7 +157,8 @@ on a dogfood tick" verifies then. Files for the remainder: test/pi.test.ts, test
 (or a new test/commit-bodies.test.ts).
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30)
+refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
+(item (a)'s file reference updated))
 
 Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
 ~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
@@ -234,6 +235,27 @@ restriction, deletion/PRINCIPLES powers, conditional QUESTIONS.md mention; catal
 and item (c) (dogfood: still no `tumwater(steward)` commit on main as of this audit,
 PRINCIPLES.md's Budgets section still absent) are unchanged. Files for the remainder:
 test/steward.test.ts (new), test/loop.test.ts, test/orchestrator.test.ts, test/config.test.ts.
+
+**Re-audited 2026-08-30 (plan loop) — item (a)'s file reference is stale on current main;
+remainder otherwise verified.** The "test/steward.test.ts (new)" target above is stale: organize
+tick `c3779b8` merged qa-role.test.ts into the module-named test files, so role prompt contract
+tests now live in test/prompt.test.ts (the qa block there: `const qa = roleById("qa")` plus
+assertions over its find text). Item (a) therefore lands as a sibling block in test/prompt.
+test.ts, not a new file — `const steward = roleById("steward")`, then the same four assertion
+groups: catalog order last (`ids[ids.indexOf("improve") + 1] === "steward"`, with the director
+appended separately by allRoleIds) plus title; curation move list (delete/merge stale PLANS.md
+entries with a one-line epitaph, flag drift as a PLANS.md note, tighten or update a principle or
+complexity budget in PRINCIPLES.md, record a structural risk in BUGS.md); markdown-only
+restriction ("You edit only markdown — never source."); conditional QUESTIONS.md mention ("and
+QUESTIONS.md if it exists"). Match content with whitespace collapsed, not layout — the find text
+is hard-wrapped and the tick-57 reflow break is the cautionary tale. Items (b1)–(c) verified
+unchanged on `c3779b8`: applyTickOutcome still at src/state.ts:121; the named orchestrator test
+"a sleeping loop wakes when main moves, respecting the min gap" exists in test/orchestrator.
+test.ts; the named config test "validateConfig reports every invalid value in one error" exists
+in test/config.test.ts; test/loop.test.ts still has zero references to minTickIntervalSeconds;
+and dogfood is still pending — no `tumwater(steward)` commit on main, PRINCIPLES.md's Budgets
+section still absent. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
+test/orchestrator.test.ts, test/config.test.ts.
 
 ## Done
 
