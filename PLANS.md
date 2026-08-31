@@ -6,7 +6,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 ### Daily cost budget — cap the fleet's autonomous spend (planned 2026-08-30, audited
-2026-08-30, re-audited 2026-08-30)
+2026-08-30, re-audited 2026-08-30, re-audited 2026-08-31)
 
 Full plan: [plans/daily-cost-budget.md](plans/daily-cost-budget.md). The harness measures
 spend (per-loop `totalCostUsd`, cost column + totals row) but nothing acts on it — a fleet
@@ -116,6 +116,36 @@ Nothing structural remains in code — every AC's code clause verified landed ab
 are pure test work and (f) is documentation. Once all six land, move this plan to Done. Files for
 the remainder: test/state.test.ts, test/config.test.ts, test/event-format.test.ts,
 test/gui.test.ts, test/orchestrator.test.ts, README.md.
+
+**Re-audited 2026-08-31 (plan loop) — items (a), (b), (c), (d), and (e) have LANDED; only the
+README clause remains.** The remainder list above is stale on current main (`b589e09`): five of
+the six items landed since this entry's last audit, verified at `b589e09` with a green build and
+a 468/468 suite. (a) in coverage tick `07d5bf6` — recordDailyCost same-day accumulation and
+midnight rollover on write, dailyCost's stale/missing → $0 non-mutating reads, fleetDailyCost
+summing with stale loops at $0, budgetPaused at cap 0 / below / at-or-above, plus the
+zeroCounters-preservation and loadLoopState missing-fields assertions (test/state.test.ts). (b) in
+coverage tick `2fbfb49` — defaultConfig carries 50; negative/non-numeric values rejected with
+actionable errors; a typo'd key fails via TOP_LEVEL_KEYS' unknown-key error; loadConfig over an
+existing file lacking the key picks up the default without editing (test/config.test.ts). Coverage
+tick `92a4ffe` then landed one unit beyond the six — snapshot()'s budget wiring in test/status.
+test.ts (today's spend summed from persisted loop state, stale stamps reading $0; cap 0 drops the
+badge data). Feature tick 65 (`b589e09`, current HEAD) closed the last three test items in one
+commit (+165 lines across three files): (c) "formatEvent renders the budget transition events
+plainly with spend and cap" — both events carry spend and cap, no warning prefix, plus a torn-line
+fallback that still renders; (d) three GUI tests — /api/status carries `budget` while enabled and
+null when disabled (today's spend read from persisted loop state), the served page derives its
+header badge from the payload, and a paused fleet's idle role loops read `budget paused` in their
+phase payload with the director exempt and an under-cap fleet leaving the label; (e) both AC3
+clauses exactly as specified — "startup with spend already at the cap starts no role ticks"
+(pre-seeded daily window at the cap, several poll cycles pass with zero ticks and exactly one
+budget_paused event carrying spentUsd/capUsd) and "a main-moved wake while budget-paused stays
+blocked" (main advanced after the pause; no tick across several polls and no `wake` event). Item
+(f) verified still unlanded: `maxDailyCostUsd` appears nowhere in README.md outside the status
+block. What remains — one item, a single documentation edit per its spec above: (f) **README
+clause** — Usage gains what it caps (role loops' new ticks, per local day), that 0 disables, that
+the director is exempt, and that edits apply live within ~2 s; How-it-works gains a short
+paragraph on pause/resume behavior and the two events. Once it lands, move this plan to Done.
+Files for the remainder: README.md only.
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28)
