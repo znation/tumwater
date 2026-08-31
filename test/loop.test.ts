@@ -27,6 +27,26 @@ async function waitForFile(file: string, timeoutMs = 10_000): Promise<void> {
   }
 }
 
+/** Poll until `branch` is at least one commit ahead of main (bounded). Times an abort to
+ * land AFTER the author run's commit and BEFORE/IN the review gate's run — a fixed sleep
+ * would race the commit under parallel load. The branch does not exist until ensureWorktree
+ * creates it, so a missing revision reads as "not ahead yet", not a poll failure. */
+async function waitForAhead(repo: string, branch: string, timeoutMs = 10_000): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    let count = 0;
+    try {
+      count = Number(sh(repo, "git", "rev-list", "--count", `main..${branch}`));
+    } catch {
+      // Branch not created yet — keep polling.
+    }
+    if (count >= 1) return;
+    if (Date.now() - start > timeoutMs)
+      throw new Error(`timed out waiting for ${branch} to get ahead of main`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 test("a tick that changes files commits and merges to main", async () => {
   const repo = await initializedRepo();
   const restore = fakePi(
@@ -824,6 +844,54 @@ test("a failed recovery review keeps its commit on the branch for re-review", as
       `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,
     );
   } finally {
+    restore();
+  }
+});
+
+test("a shutdown mid-review fails closed: commit stays on the branch and the prompt is re-queued", async () => {
+  const repo = await initializedRepo();
+  // Author run (the tick prompt): make a change and finish. Review run (its prompt contains
+  // VERDICT): hang until the abort kills it — simulating Ctrl+C while under review.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  const controller = new AbortController();
+  try {
+    enqueuePrompt(repo, "ship the hello file");
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main", controller.signal);
+    const tick = runner.tick();
+    // Abort only once the author run has committed (branch ahead of main): an earlier abort
+    // would hit the author-run path instead of the review gate.
+    await waitForAhead(repo, "tumwater/director");
+    controller.abort();
+    const outcome = await tick;
+    assert.equal(outcome.result, "aborted", "a mid-review shutdown is an abort, not a failed review");
+
+    // Fail closed: nothing merged — the commit stays on the branch for re-review.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "1");
+    assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
+
+    // The unfulfilled director prompt goes back in the inbox: the director recovers via the
+    // re-queued prompt (a fresh run), not a session resume.
+    assert.equal(inboxSize(repo), 1);
+    assert.equal(dequeuePrompt(repo), "ship the hello file");
+    assert.ok(!runner.state.resumePending, "the director does not resume an author session");
+
+    // phase="review" survives to disk: on the next launch runTick must re-review the
+    // committed work fresh instead of resuming an author session whose task is already
+    // committed (a regression that cleared it would also misreport the tick as a failed
+    // review with backoff instead of a prompt-resume).
+    const s = loadLoopState(repo, "director");
+    assert.equal(s.phase, "review", "the review phase marker survives the abort");
+    assert.ok(s.nextRunAt <= Date.now(), "resumes promptly on restart");
+  } finally {
+    // Kill any in-flight fake pi BEFORE PATH is restored: an orphaned run spawned after
+    // restore would resolve `pi` to a later test's fake (or the real one) and corrupt it.
+    controller.abort();
     restore();
   }
 });
