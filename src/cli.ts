@@ -5,15 +5,15 @@ import path from "node:path";
 import { enabledRoleIds, loadConfig } from "./config.js";
 import { allRoleIds } from "./roles.js";
 import { loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from "./state.js";
-import { createTranscriptRenderer, formatTranscript } from "./transcript.js";
+import { createTranscriptRenderer, readTranscriptTail } from "./transcript.js";
 import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
 import { submitPrompt } from "./inbox.js";
 import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
-import { findOnPath, statOrNull } from "./files.js";
-import { followFile, readCompleteLines } from "./tail.js";
+import { findOnPath } from "./files.js";
+import { followFile } from "./tail.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { runTui } from "./tui.js";
@@ -259,27 +259,28 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
  * log is pi's streaming event stream, so only complete renderable events are shown. */
 async function cmdLogsTranscript(root: string, role: string, limit: number, follow: boolean): Promise<void> {
   const file = piLogPath(root, role);
-  const size = statOrNull(file)?.size ?? 0; // No log yet → 0.
 
   const printEntry = (lines: string[]) => {
     if (lines.length > 0) process.stdout.write(lines.join("\n") + "\n");
   };
 
-  // Initial window: the last `limit` entries of what is on disk. The offset stops at the
-  // last complete newline, so a torn trailing line is re-read once it completes instead of lost.
+  // Initial window: the last `limit` entries of what is on disk. readTranscriptTail scans back
+  // from EOF only as far as needed instead of re-reading the whole (up to logMaxBytes) file,
+  // and its offset stops at the last complete newline, so a torn trailing line is re-read once
+  // it completes instead of lost.
   let offset = 0;
-  if (size > 0) {
-    const { lines, end } = readCompleteLines(file, 0, size);
-    for (const entry of formatTranscript(lines).slice(-limit)) printEntry(entry);
-    offset = end;
-  } else {
+  const tail = readTranscriptTail(file, limit); // null when there's no log yet (or it's empty).
+  if (!tail) {
     process.stdout.write(`no transcript yet for ${role}\n`);
+  } else {
+    for (const entry of tail.entries) printEntry(entry);
+    offset = tail.end;
   }
   if (!follow) return;
 
   // Follow from where the initial window stopped, so each turn prints exactly once when its
   // message_end lands (torn trailing lines are held back by followFile). A fresh renderer:
-  // formatTranscript already flushed any pending separator for what was on disk.
+  // readTranscriptTail's formatTranscript already flushed any pending separator for what was on disk.
   const renderer = createTranscriptRenderer();
   followFile(file, offset, (lines) => {
     for (const line of lines) printEntry(renderer.feed(line));
