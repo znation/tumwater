@@ -37,16 +37,21 @@ export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
   return full;
 }
 
-/** Files at or under this size are read whole; larger ones get a tail window. */
-const TAIL_SCAN_THRESHOLD = 256 * 1024;
-/** Chunk size for the backwards tail scan of a large event log. */
-const TAIL_CHUNK_BYTES = 64 * 1024;
+/** Files at or under this size are read whole in one go; larger ones get a tail window.
+ * Small on purpose: below it a single read is cheapest, and above it the windowed path
+ * reads only what `limit` lines need — so a poll asking for ~40 events never pays to
+ * re-read log growth (the event log reaches EVENTS_MAX_BYTES between rotations). */
+const TAIL_SCAN_THRESHOLD = 8 * 1024;
+/** Chunk size for the backwards tail scan. Small on purpose: a poll asking for ~30–40 events
+ * needs only a few KB, and one oversized chunk per second would re-read bytes no caller asked
+ * for — with the old 64KB chunk, every poll of a grown log cost as much as reading it whole. */
+const TAIL_CHUNK_BYTES = 8 * 1024;
 
 /** Read the last `limit` events (best-effort; skips malformed lines).
  * Observers poll this every second and only ever need the tail, so past
  * TAIL_SCAN_THRESHOLD we read just enough bytes from the end of the file to cover
- * `limit` lines instead of rescanning the whole log (which grows up to
- * EVENTS_MAX_BYTES between rotations). */
+ * `limit` lines instead of rescanning the whole log: per-poll I/O is bounded by what
+ * `limit` lines occupy, not by how far the log has grown. */
 export function readEvents(root: string, limit = 200): HarnessEvent[] {
   const file = eventsLogPath(root);
   const st = statOrNull(file);

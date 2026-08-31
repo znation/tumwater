@@ -30,17 +30,25 @@ function referenceTail(root: string, limit: number) {
   return lines.slice(-limit).map((l) => JSON.parse(l));
 }
 
-test("readEvents matches a full-file read on a log past the tail-scan threshold", () => {
-  const dir = tmpdir();
-  // ~150 bytes per event; 4000 events ≈ 600KB, well over the 256KB threshold.
-  for (let i = 0; i < 4000; i++) {
-    logEvent(dir, { loop: "clean", type: "warning", message: `event number ${i} with some padding to grow the file` });
-  }
-  assert.ok(fs.statSync(eventsLogPath(dir)).size > 256 * 1024);
-  for (const limit of [1, 7, 40, 200, 3999]) {
-    const got = readEvents(dir, limit).map((e) => e.message as string);
-    const want = referenceTail(dir, limit).map((e: { message?: unknown }) => String(e.message));
-    assert.deepEqual(got, want, `limit ${limit}`);
+// The windowed path must return exactly the last `limit` lines at every log size past the
+// whole-read threshold — including mid-size logs where limit < total line count (the case a
+// grown event log spends most of its life in, polled every second by the TUI and GUI).
+test("readEvents matches a full-file read on logs past the tail-scan threshold", () => {
+  for (const [count, minBytes] of [
+    [100, 8 * 1024], // just over the threshold: window smaller than the file
+    [4000, 384 * 1024], // well past it: many chunks back from EOF
+  ] as const) {
+    const dir = tmpdir();
+    // ~115 bytes per event; 4000 events ≈ 460KB.
+    for (let i = 0; i < count; i++) {
+      logEvent(dir, { loop: "clean", type: "warning", message: `event number ${i} with some padding to grow the file` });
+    }
+    assert.ok(fs.statSync(eventsLogPath(dir)).size > minBytes);
+    for (const limit of [1, 7, 40, 200, count - 1]) {
+      const got = readEvents(dir, limit).map((e) => e.message as string);
+      const want = referenceTail(dir, limit).map((e: { message?: unknown }) => String(e.message));
+      assert.deepEqual(got, want, `count ${count}, limit ${limit}`);
+    }
   }
 });
 
