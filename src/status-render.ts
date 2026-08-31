@@ -2,6 +2,7 @@ import path from "node:path";
 import { DIRECTOR_ROLE } from "./roles.js";
 import type { LoopState } from "./types.js";
 import type { StatusSnapshot } from "./status.js";
+import { budgetReached } from "./state.js";
 import { readLiveProgress } from "./progress.js";
 import { compactTokens } from "./text.js";
 
@@ -171,7 +172,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "last tick", "last result"];
   // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
   // reached the cap, every idle role loop shows `budget paused` in its state cell.
-  const budgetPausedNow = snap.budget !== null && snap.budget.spentUsd >= snap.budget.capUsd;
+  const budgetPausedNow = budgetReached(snap.budget);
   const withMetrics = snap.loops.map((s) => ({ s, m: displayTokenMetrics(root, s) }));
   const rows = withMetrics.map(({ s, m }) => [
     s.role,

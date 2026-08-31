@@ -6,6 +6,7 @@ import { submitPrompt } from "./inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "./roles.js";
 import { readLiveProgress } from "./progress.js";
+import { budgetReached } from "./state.js";
 import { snapshot } from "./status.js";
 import { displayTokenMetrics, loopPhase } from "./status-render.js";
 import { readTranscript } from "./transcript.js";
@@ -44,7 +45,7 @@ export function statusPayload(root: string): object {
   // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
   // reached the cap, every idle role loop's phase reads `budget paused` — one flag covers
   // both dashboards through loopPhase.
-  const budgetPausedNow = snap.budget !== null && snap.budget.spentUsd >= snap.budget.capUsd;
+  const budgetPausedNow = budgetReached(snap.budget);
   return {
     running: snap.running,
     pid: snap.pid,

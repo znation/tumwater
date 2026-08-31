@@ -89,13 +89,23 @@ export function fleetDailyCost(states: LoopState[], now = Date.now()): number {
   return states.reduce((sum, s) => sum + dailyCost(s, now), 0);
 }
 
+/** True when today's spend has reached the daily cost budget — the view is non-null (the cap
+ * is enabled) and spend sits at or above it. The single definition of "the budget gate is on":
+ * the orchestrator evaluates it from live loop states via budgetPaused, and both dashboards
+ * evaluate it from the snapshot's materialized budget field (status.ts), so the comparison
+ * cannot drift between what the scheduler enforces and what users see. */
+export function budgetReached(budget: { spentUsd: number; capUsd: number } | null): boolean {
+  return budget !== null && budget.spentUsd >= budget.capUsd;
+}
+
 /** True while the fleet's spend for the local day has reached `maxDailyCostUsd` (a cap of 0
  * disables the budget). The orchestrator re-evaluates this every poll from its runners' live
  * states and the freshly reloaded config — resume is stateless, so raising/disabling the cap
  * or crossing midnight flips it on the next cycle and nothing can get stuck. Lives here (not
  * in orchestrator.ts) because observers must not depend on the scheduler module. */
 export function budgetPaused(states: LoopState[], config: TumwaterConfig, now = Date.now()): boolean {
-  return config.maxDailyCostUsd > 0 && fleetDailyCost(states, now) >= config.maxDailyCostUsd;
+  const cap = config.maxDailyCostUsd;
+  return budgetReached(cap > 0 ? { spentUsd: fleetDailyCost(states, now), capUsd: cap } : null);
 }
 
 /** Next backoff after a no-change tick: initial on the first, then multiplied, capped. */

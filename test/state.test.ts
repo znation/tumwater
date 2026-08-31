@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   applyTickOutcome,
   budgetPaused,
+  budgetReached,
   dailyCost,
   fleetDailyCost,
   freshLoopState,
@@ -212,6 +213,13 @@ test("budgetPaused is false at cap 0 (disabled) and below the cap, true at/above
   recordDailyCost(other, 100, dayB);
   cfg.maxDailyCostUsd = 1;
   assert.equal(budgetPaused([other], cfg, dayA), false);
+});
+
+test("budgetReached is false for a disabled (null) or under-cap view, true at/above the cap", () => {
+  assert.equal(budgetReached(null), false); // null = budget disabled
+  assert.equal(budgetReached({ spentUsd: 10, capUsd: 50 }), false); // below the cap
+  assert.equal(budgetReached({ spentUsd: 50, capUsd: 50 }), true); // exactly at the cap (>=)
+  assert.equal(budgetReached({ spentUsd: 50.01, capUsd: 50 }), true); // above it
 });
 
 // --- Post-tick outcome recording + next-run scheduling (extracted from LoopRunner.tick) ---
