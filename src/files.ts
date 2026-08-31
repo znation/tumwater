@@ -129,5 +129,3 @@ export function pruneOldFiles(dir: string, days: number): number {
   }
   return pruned;
 }
-
-

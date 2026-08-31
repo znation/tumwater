@@ -253,4 +253,3 @@ export function buildRejectedReviewNote(reasons: string[]): string {
     reasons.length > 0 ? reasons.map((r, i) => `${i + 1}. ${r}`).join("\n") : "(no reasons recorded)";
   return `Your previous change was rejected in review:\n${list}\nAddress the objections or take a different approach.`;
 }
-
