@@ -6,7 +6,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
-2026-08-27, audited 2026-08-28)
+2026-08-27, audited 2026-08-28, re-audited 2026-08-31)
 
 Full plan: [plans/commit-bodies.md](plans/commit-bodies.md). Reply contract grows WHY/RISK/
 VERIFIED lines after SUMMARY (each capped at 200 chars; VERIFIED says `none` when nothing was
@@ -43,6 +43,39 @@ running fleet process having started before that tick (JS loads at startup; only
 live-reloads), so live ticks will start stamping trailers on the next restart and AC1's "git log
 on a dogfood tick" verifies then. Files for the remainder: test/pi.test.ts, test/loop.test.ts
 (or a new test/commit-bodies.test.ts).
+
+**Re-audited 2026-08-31 (plan loop) — item (a) has LANDED; remainder re-specified.** The "two
+test gaps" list above is stale on current main (`6e3ac7a`): coverage tick `d930959` landed the
+tick-level e2e in test/loop.test.ts ("a compliant reply commits WHY/RISK/VERIFIED plus trailer;
+a SUMMARY-only reply commits subject + trailer only") — it reads real `git log` and asserts the
+exact trailer for both reply shapes (`Tick: improve #1 · turns 1 · ctx 42` with the body in
+contract order; `Tick: improve #2 · turns 1 · ctx 7`, no body paragraph), and its one-author-
+turn-plus-one-reviewer-run setup pins reviewer runs out of the count. What remains — one item,
+the turn-counter coverage at the two levels the audit named, re-specified against current main:
+
+(a) **parser level** in test/pi.test.ts — `parser.turns` (src/pi.ts: incremented per message_end,
+surfaced as `PiRunResult.turns`) has zero assertions anywhere under test/: the existing "parser
+keeps the last non-empty assistant text and sums usage" feeds two assistant messages but asserts
+only outputTokens/peak/cost/stopReason. Add the assertion there (turns === 2 for that stream)
+plus a zero case — a parser fed only thinking/tool lines reads turns 0.
+(b) **loop level: transient retry** in test/loop.test.ts — the existing transient-retry e2e
+("a transient model-server timeout is retried once and the tick succeeds") is a no_change tick,
+so it never commits and its trailer is unobservable. New test: a CHANGED tick whose first run
+emits N assistant messages before an idle-stream timeout error and whose retry run (the phase-
+file trick that e2e already uses) emits M → the landed commit's Tick line reads `turns N+M` —
+runRolePi folds both runs into tickTurns via foldUsage before buildCommitMessage assembles the
+trailer.
+(c) **loop level: conflict resolution stays out** in test/loop.test.ts — extend "a rebase
+conflict is resolved by a second pi run and lands with linear history" (or add a sibling): assert
+the landed commit's Tick line carries only the authoring run's turns, not the resolution run's —
+the resolution run folds into tickTurns after the trailer string is already assembled.
+
+Already covered — do not duplicate: single-run multi-turn counting is pinned by the friction e2e
+(`turns 2` in both the Tick and Friction lines), and reviewer-run exclusion by d930959's e2e
+above. No src/ change is needed for any of this — the mechanism exists (foldUsage accumulates
+every run; the trailer assembles after main+retry, before conflict resolution); all three items
+are pure test work in test/pi.test.ts and test/loop.test.ts. Once they land, move this plan to
+Done.
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
