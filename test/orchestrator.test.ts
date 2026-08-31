@@ -59,6 +59,43 @@ test("a sleeping loop wakes when main moves, respecting the min gap", () => {
   assert.equal(isEligible(r, now, "new", 0).run, false);
 });
 
+test("isEligible gates on the role's own interval, not the global knob", () => {
+  const now = Date.now();
+
+  // Large per-role override over a small global: the loop stays ineligible inside its own
+  // (long) window even though nextRunAt has passed AND main moved. If isEligible read
+  // config.minTickIntervalSeconds directly (20s), it would have woken here — sinceLast is
+  // 21s, past the global gap.
+  const slow = defaultConfig();
+  slow.minTickIntervalSeconds = 20;
+  slow.roles.steward!.minTickIntervalSeconds = 3600;
+  const r1 = new LoopRunner(makeRepo(), "steward", slow, "main");
+  r1.state.ticks = 1;
+  r1.state.lastTickEndedAt = now - 21_000; // past the global gap, deep inside the role's own
+  r1.state.nextRunAt = now - 1000; // its schedule has passed too
+  r1.state.lastMainHead = "old";
+  assert.equal(
+    isEligible(r1, now, "new", 0).run,
+    false,
+    "the per-role gap must gate main-moved wakes",
+  );
+
+  // The inverse: a small override over a large global wakes at the shorter value. If
+  // isEligible read config.minTickIntervalSeconds directly (3600s), it would still be
+  // asleep here — sinceLast is only 21s.
+  const fast = defaultConfig();
+  fast.minTickIntervalSeconds = 3600;
+  fast.roles.qa!.minTickIntervalSeconds = 20;
+  const r2 = new LoopRunner(makeRepo(), "qa", fast, "main");
+  r2.state.ticks = 1;
+  r2.state.lastTickEndedAt = now - 21_000; // past the role's own gap, deep inside the global
+  r2.state.nextRunAt = now + 60_000; // schedule NOT passed — only a main-moved wake can run it
+  r2.state.lastMainHead = "old";
+  const woken = isEligible(r2, now, "new", 0);
+  assert.equal(woken.run, true, "the shorter per-role gap must allow the wake");
+  assert.equal(woken.reason, "main moved");
+});
+
 test("an interrupted tick resumes promptly on restart despite the min gap", () => {
   const r = runner("clean");
   const now = Date.now();
