@@ -187,9 +187,11 @@ export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
   return readJsonFile<OrchestratorInfo>(orchestratorStatePath(root));
 }
 
-/** True when the recorded orchestrator's pid is still alive (see pidAlive). */
-export function orchestratorAlive(root: string): boolean {
-  const info = readOrchestratorInfo(root);
-  if (!info) return false;
-  return pidAlive(info.pid);
+/** True when the recorded orchestrator's pid is still alive (see pidAlive). Callers that have
+ * already loaded the info file may pass it in to avoid a second read — snapshot() loads it once
+ * per poll and uses it for both the displayed pid and this liveness check. */
+export function orchestratorAlive(root: string, info?: OrchestratorInfo | null): boolean {
+  const i = info ?? readOrchestratorInfo(root);
+  if (!i) return false;
+  return pidAlive(i.pid);
 }

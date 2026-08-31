@@ -100,6 +100,35 @@ test("snapshot serves unchanged loop state from the stat-keyed cache without re-
   assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 4);
 });
 
+test("snapshot reads the orchestrator info file once per poll", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  // A live orchestrator's info file: both consumers (the pid column and the running flag)
+  // have data to work with.
+  fs.mkdirSync(path.join(repo, ".tumwater", "state"), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, ".tumwater", "state", "orchestrator.json"),
+    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["feature"] }),
+  );
+  assert.equal(snapshot(repo).running, true); // first read
+
+  let reads = 0;
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  try {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
+      if (typeof args[0] === "string" && args[0].endsWith(`${path.sep}state${path.sep}orchestrator.json`))
+        reads += 1;
+      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
+    };
+    const snap = snapshot(repo);
+    assert.equal(snap.pid, process.pid); // the info was read and used for the pid…
+    assert.equal(snap.running, true); // …and for the liveness check from that same read
+    assert.equal(reads, 1); // one read serves both — not two
+  } finally {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
+  }
+});
+
 test("snapshot carries the daily cost budget aggregated from persisted loop state", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget snapshot test"); // seeds tumwater.json with maxDailyCostUsd: 50

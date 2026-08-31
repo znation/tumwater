@@ -74,10 +74,12 @@ function loopStateForPoll(root: string, role: string): LoopState {
 export function snapshot(root: string): StatusSnapshot {
   const cfg = configForStatus(root);
   const roles = enabledRoleIds(cfg);
+  // One read of the orchestrator info file per poll: it serves both the displayed pid and the
+  // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
   const loops = roles.map((r) => loopStateForPoll(root, r));
   return {
-    running: orchestratorAlive(root),
+    running: orchestratorAlive(root, info),
     pid: info?.pid,
     inbox: inboxSize(root),
     questions: openQuestions(root).length,
