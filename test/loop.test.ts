@@ -54,6 +54,40 @@ test("a tick that changes files commits and merges to main", async () => {
   }
 });
 
+test("a changed tick schedules its next run at the role's own interval, not the global", async () => {
+  // AC3 chain (plans/steward-role.md): applyTickOutcome's branches and configForRole's
+  // resolution are unit-covered; this pins the link between them — that tick() resolves
+  // the per-role override once at the top and hands it to the scheduler. A role with a
+  // slow clock (3600 s) over the fast global (20 s) must land its next run ~1 h out, not
+  // 20 s: a read of config.minTickIntervalSeconds directly would have scheduled it in seconds.
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    assert.equal(config.minTickIntervalSeconds, 20, "the global stays fast");
+    config.roles.improve = { enabled: true, minTickIntervalSeconds: 3600 };
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    assert.equal((await runner.tick()).result, "changed");
+    // The persisted state — what a restarted process would read — schedules ~1 h out.
+    const s = loadLoopState(repo, "improve");
+    const ended = s.lastTickEndedAt;
+    assert.ok(ended !== undefined, "the tick recorded its end time");
+    const gapMs = s.nextRunAt - ended;
+    assert.ok(
+      Math.abs(gapMs - 3_600_000) < 10_000,
+      `next run is ~1 h after the tick ended, got ${gapMs} ms`,
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("gen / peak ctx are per-tick windows: a second tick does not accumulate on the first", async () => {
   const repo = await initializedRepo();
   // The fake pi counts its invocations in a file OUTSIDE the worktree (so it never dirties

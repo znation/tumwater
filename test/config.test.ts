@@ -209,7 +209,7 @@ test("validateConfig reports every invalid value in one error", () => {
     logMaxBytes: 0,
     piArgs: "--verbose",
     idleBackoff: { factor: 0 },
-    roles: { clean: { enabled: "false" } },
+    roles: { clean: { enabled: "false" }, feature: { minTickIntervalSeconds: -5 } },
   });
   assert.match(msg, /^invalid tumwater\.json:/);
   for (const field of [
@@ -219,6 +219,9 @@ test("validateConfig reports every invalid value in one error", () => {
     'piArgs must be an array of strings (got "--verbose")',
     "idleBackoff.factor must be a number of at least 1 (got 0)",
     'roles.clean.enabled must be true or false (got "false")',
+    // AC3 (plans/steward-role.md): the per-role slow clock is validated like its siblings —
+    // a negative interval would schedule ticks in the past and spin the loop.
+    "roles.feature.minTickIntervalSeconds must be a number of 0 or more (got -5)",
   ]) {
     assert.ok(msg.includes(field), `error message should mention: ${field}`);
   }

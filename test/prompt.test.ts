@@ -498,3 +498,54 @@ test("buildTickPrompt for qa carries the find text plus the shared rules", () =>
   assert.ok(prompt.includes(qa!.find.trim()), "the full find text is embedded");
   assert.match(prompt, /TUMWATER_NOTHING_TO_DO/);
 });
+
+// Prompt contract for the steward role (plans/steward-role.md): a markdown-only curation
+// role on a slow clock. Every tick is a fresh session with no memory of earlier curation
+// moves, so the find text must carry the move list, the markdown-only restriction, and its
+// deletion/principles powers in prose; these assertions pin that contract. Same whitespace-
+// collapsed matching as the refusal and questions contracts above — the prose is hard-wrapped
+// and formatting ticks reflow it, so assertions match content, not layout.
+
+const steward = roleById("steward");
+
+test("the steward role exists last in catalog order", () => {
+  assert.ok(steward, "roleById('steward') returns a role");
+  const ids = ROLES.map((r) => r.id);
+  // The director is appended separately by allRoleIds(), so within the catalog the steward
+  // sits right after improve — exactly the lowest tie-break priority planned.
+  assert.equal(ids[ids.indexOf("improve") + 1], "steward", "steward sits right after improve");
+  assert.equal(steward.title, "project steward");
+});
+
+test("the steward prompt makes ONE curation move from the planned list", () => {
+  const find = oneLine(steward!.find);
+  // It re-reads the durable state first — QUESTIONS.md only conditionally (init seeds it,
+  // but older repos may not have it).
+  assert.match(find, /Re-read the initial prompt, PRINCIPLES\.md, PLANS\.md, BUGS\.md/);
+  assert.match(find, /and QUESTIONS\.md if it exists/);
+  assert.match(find, /skim the codebase's shape \(sizes, module list, test count\)/);
+  // One move per tick, and the four planned moves: prune plans (with an epitaph), flag
+  // drift as a PLANS.md note, tighten or update a principle or complexity budget in
+  // PRINCIPLES.md, record a structural risk in BUGS.md.
+  assert.match(find, /make ONE curation move, the most valuable one/);
+  assert.match(
+    find,
+    /delete or merge stale\/duplicative\/superseded PLANS\.md entries \(with a one-line epitaph in the entry's place or in Done\)/,
+  );
+  assert.match(find, /flag drift between what is being built and the initial prompt as a PLANS\.md note/);
+  assert.match(find, /tighten or update a principle or complexity budget in PRINCIPLES\.md/);
+  assert.match(find, /record a structural risk in BUGS\.md/);
+});
+
+test("the steward prompt restricts writes to markdown", () => {
+  // Markdown-only is what keeps the role review-exempt (the gate's *.md exemption) and
+  // safe on a slow clock: its diffs can never break the build.
+  const find = oneLine(steward!.find);
+  assert.match(find, /You edit only markdown — never source\./);
+});
+
+test("buildTickPrompt for steward carries the find text plus the shared rules", () => {
+  const prompt = buildTickPrompt({ role: steward!, initialPrompt: "" });
+  assert.match(prompt, /"steward" loop \(project steward\)/);
+  assert.ok(prompt.includes(steward!.find.trim()), "the full find text is embedded");
+});
