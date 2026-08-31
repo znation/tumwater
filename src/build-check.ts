@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { truncate } from "./text.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,7 +23,7 @@ const MAX_REASON_CHARS = 300;
 
 /** Cap one line of text to MAX_REASON_CHARS with an ellipsis (unchanged when it fits). */
 export function clipReason(r: string): string {
-  return r.length > MAX_REASON_CHARS ? r.slice(0, MAX_REASON_CHARS - 1) + "…" : r;
+  return truncate(r, MAX_REASON_CHARS);
 }
 
 // ── Detection ─────────────────────────────────────────────────────────────────────────────

@@ -1,9 +1,10 @@
-/** Shared text-shaping helpers for the observability layer's display labels (live progress,
- * transcripts, tool-call descriptions) and its number formats: whitespace collapsing,
+/** Shared text-shaping helpers for human-facing one-line text — the observability layer's
+ * display labels (live progress, transcripts, tool-call descriptions), tick commit subjects and
+ * body fields, and build-check reason lines — plus number formats: whitespace collapsing,
  * ellipsis truncation, compact token counts, and abbreviated commit hashes. Presentation only:
- * depends on nothing, so any display surface can import it without reaching into another
- * module's internals — and the collapse/truncation/compaction/abbreviation semantics live in
- * exactly one place instead of drifting per consumer. */
+ * depends on nothing, so any surface can import it without reaching into another module's
+ * internals — and the collapse/truncation/compaction/abbreviation semantics live in exactly one
+ * place instead of drifting per consumer. */
 
 /** Collapse every run of whitespace to a single space and trim both ends — the shape every
  * one-line label takes before display (multi-line pi text, command strings, error messages). */

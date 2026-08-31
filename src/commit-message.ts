@@ -1,4 +1,4 @@
-import { compactTokens } from "./text.js";
+import { compactTokens, truncate } from "./text.js";
 import { labeledLine } from "./reply-contract.js";
 
 /** Assembling tick commit messages from pi's final reply: the SUMMARY line becomes the
@@ -17,10 +17,7 @@ const COMMIT_SUMMARY_MAX = 100;
  * COMMIT_SUMMARY_MAX chars with an ellipsis (consistent with extractCommitBody's field cap). */
 export function extractSummary(finalText: string): string | null {
   const summary = labeledLine(finalText, "SUMMARY");
-  if (summary === null) return null;
-  return summary.length > COMMIT_SUMMARY_MAX
-    ? `${summary.slice(0, COMMIT_SUMMARY_MAX - 1)}…`
-    : summary;
+  return summary === null ? null : truncate(summary, COMMIT_SUMMARY_MAX);
 }
 
 /** Cap on each commit-body field, so a verbose model cannot bloat every commit. */
@@ -41,8 +38,7 @@ export interface CommitBody {
 export function extractCommitBody(finalText: string): CommitBody | null {
   const pick = (label: string): string | undefined => {
     const v = labeledLine(finalText, label);
-    if (v === null) return undefined;
-    return v.length > COMMIT_BODY_FIELD_MAX ? `${v.slice(0, COMMIT_BODY_FIELD_MAX - 1)}…` : v;
+    return v === null ? undefined : truncate(v, COMMIT_BODY_FIELD_MAX);
   };
   const body: CommitBody = {
     why: pick("WHY"),
