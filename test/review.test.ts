@@ -80,6 +80,18 @@ test("isExemptPath matches a slash-bearing pattern against the full path, * with
   assert.ok(!isExemptPath("other/a.md", ["docs/**"]));
 });
 
+test("isExemptPath: **/ matches zero or more segments (root-level files included)", () => {
+  // Leading **/ — root-level and nested both match.
+  assert.ok(isExemptPath("notes.md", ["**/*.md"])); // zero directories
+  assert.ok(isExemptPath("docs/notes.md", ["**/*.md"])); // one directory
+  assert.ok(isExemptPath("a/b/c/notes.md", ["**/*.md"])); // many directories
+  assert.ok(!isExemptPath("src/foo.ts", ["**/*.md"])); // wrong extension
+  // Embedded **/ — zero intermediate segments matches.
+  assert.ok(isExemptPath("docs/archive.md", ["docs/**/archive.md"]));
+  assert.ok(isExemptPath("docs/sub/archive.md", ["docs/**/archive.md"]));
+  assert.ok(!isExemptPath("other/archive.md", ["docs/**/archive.md"])); // wrong prefix
+});
+
 test("isExemptPath ignores empty patterns and never matches with none left", () => {
   assert.ok(!isExemptPath("anything.ts", []));
   assert.ok(!isExemptPath("anything.ts", ["", "   "])); // "" is skipped; "   " is a literal that matches nothing here

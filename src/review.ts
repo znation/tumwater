@@ -16,15 +16,23 @@ import { BUILD_CHECK_TIMEOUT_MS, clipReason, detectBuildCheck, runBuildCheck } f
 export const REVIEW_FAILURE_LIMIT = 3;
 
 /** Convert one exemption glob pattern to an anchored regex: `**` crosses path segments, `*`
- * stays within one segment, everything else is literal. */
+ * stays within one segment, everything else is literal. A leading or embedded double-star
+ * followed by a slash matches ZERO or more complete segments (standard glob semantics), so
+ * such patterns also exempt files at the repository root, not only nested ones. */
 function globToRegex(pattern: string): RegExp {
   let re = "";
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern.charAt(i);
     if (c === "*") {
       if (pattern[i + 1] === "*") {
-        re += ".*";
-        i++;
+        if (pattern[i + 2] === "/") {
+          // `**/` — zero or more complete path segments (each ending in /).
+          re += "(?:.*/)?";
+          i += 2; // skip both * and the /
+        } else {
+          re += ".*";
+          i++; // skip second *
+        }
       } else {
         re += "[^/]*";
       }
