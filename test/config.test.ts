@@ -121,6 +121,19 @@ test("loadConfig merges partial files over defaults", () => {
   assert.equal(config.roles.perf?.enabled, true);
 });
 
+test("loadConfig enables qa with its slow clock when the file omits it", () => {
+  // This repo's tumwater.json lists every other role but not qa (or steward): per-role
+  // defaults merge in for ids absent from the file, so enabling needs no config edit.
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "tumwater.json"),
+    JSON.stringify({ roles: { feature: { enabled: true } } }),
+  );
+  const config = loadConfig(dir);
+  assert.equal(config.roles.qa?.enabled, true);
+  assert.equal(configForRole(config, "qa").minTickIntervalSeconds, 7200);
+});
+
 test("saveConfig round-trips", () => {
   const dir = tmpdir();
   const config = defaultConfig();
