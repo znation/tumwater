@@ -134,6 +134,12 @@ export function clipToWidth(text: string, width: number): string {
   return width <= 1 ? text.slice(0, width) : text.slice(0, width - 1) + "…";
 }
 
+/** The budget cap for display: whole dollars stay bare ($50), fractional ones keep their
+ * cents ($12.34) — the badge reads `· budget: $12.34/$50 today`. */
+function usdCap(n: number): string {
+  return `$${n.toFixed(2).replace(/\.00$/, "")}`;
+}
+
 /** Columns allowed to shrink when the table is wider than the terminal, widest offender
  * first: `last result` (holds the tick summary), then `state` (live working detail), then
  * `last tick` — it shrinks last so on a narrow terminal it loses " · 3m ago" before whole
@@ -148,12 +154,6 @@ const COLUMN_GAP = 2;
 
 /** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is
  * given, wide cells are clipped so no line exceeds it (terminal rows never wrap). */
-/** The budget cap for display: whole dollars stay bare ($50), fractional ones keep their
- * cents ($12.34) — the badge reads `· budget: $12.34/$50 today`. */
-function usdCap(n: number): string {
-  return `$${n.toFixed(2).replace(/\.00$/, "")}`;
-}
-
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
   const name = path.basename(path.resolve(root));
   const lines: string[] = [];
