@@ -15,9 +15,19 @@ test("extractSummary finds the SUMMARY line anywhere in the reply", () => {
   assert.equal(extractSummary(""), null);
 });
 
-test("extractSummary truncates absurdly long summaries", () => {
+test("extractSummary caps over-long summaries at exactly 100 chars with an ellipsis", () => {
+  // Consistent with the commit-body fields: a truncated subject is visibly marked (…)
+  // rather than silently cut mid-word, and lands at exactly the cap.
   const summary = extractSummary(`SUMMARY: ${"x".repeat(500)}`);
-  assert.ok(summary && summary.length <= 100);
+  assert.ok(summary && summary.length === 100, "capped at exactly 100");
+  assert.match(summary!, /…$/);
+});
+
+test("extractSummary leaves a compliant (under-cap) summary untouched", () => {
+  // The prompt asks for ≤72 chars; anything under the cap must pass through verbatim —
+  // no ellipsis, no truncation.
+  const s = extractSummary(`SUMMARY: ${"y".repeat(72)}`);
+  assert.equal(s, "y".repeat(72));
 });
 
 // The commit body is the author's own explanation (WHY/RISK/VERIFIED), parsed out of pi's

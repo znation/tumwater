@@ -8,10 +8,19 @@ import { labeledLine } from "./reply-contract.js";
  * reply-contract.ts) — because turning a reply into what `git commit` receives is the git side
  * of the contract, consumed only by loop.ts. */
 
-/** Pull the SUMMARY: line out of a pi final reply; null when absent. */
+/** Cap on the commit subject's summary portion (the SUMMARY line), so a verbose model cannot
+ * bloat every commit subject. Truncated with an ellipsis — like the body fields below — rather
+ * than silently cut mid-word, which would read as if the subject were complete. */
+const COMMIT_SUMMARY_MAX = 100;
+
+/** Pull the SUMMARY: line out of a pi final reply; null when absent. Capped at
+ * COMMIT_SUMMARY_MAX chars with an ellipsis (consistent with extractCommitBody's field cap). */
 export function extractSummary(finalText: string): string | null {
   const summary = labeledLine(finalText, "SUMMARY");
-  return summary === null ? null : summary.slice(0, 100);
+  if (summary === null) return null;
+  return summary.length > COMMIT_SUMMARY_MAX
+    ? `${summary.slice(0, COMMIT_SUMMARY_MAX - 1)}…`
+    : summary;
 }
 
 /** Cap on each commit-body field, so a verbose model cannot bloat every commit. */
