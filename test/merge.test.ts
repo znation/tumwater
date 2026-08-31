@@ -210,6 +210,33 @@ test("a fast-forward that git refuses reports merge_blocked without landing", as
   assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0);
 });
 
+test("the landing-flow git helpers are exported from merge.js (regression)", async () => {
+  // Organize tick 78 deleted these six functions from src/git.ts intending to move them
+  // here, but never added them — main's build broke with TS2305 in this file and in
+  // test/git.test.ts until the bugfix completed the move. Pin the placement at runtime so a
+  // half-finished re-move fails loudly instead of silently stranding the landing flow.
+  const merge = await import("../src/merge.js");
+  for (const name of [
+    "conflictedFiles",
+    "rebaseOntoMain",
+    "rebaseOntoMainLeaveConflicts",
+    "hasConflictMarkers",
+    "continueRebase",
+    "ffMergeToMain",
+  ] as const) {
+    assert.equal(typeof merge[name], "function", `merge.js exports ${name}`);
+  }
+  // And one of them actually works from its new home: a real rebase onto an advanced main.
+  const { root, wt } = await setup();
+  fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
+  commitIn(wt, "branch work");
+  fs.writeFileSync(path.join(root, "seed.txt"), "main advanced\n");
+  commitIn(root, "main edit");
+  assert.equal(await merge.rebaseOntoMain(wt, "main"), true);
+  assert.equal(await merge.ffMergeToMain(root, "improve", "main"), true);
+  assert.equal(sh(root, "git", "rev-parse", "main"), sh(wt, "git", "rev-parse", "HEAD"));
+});
+
 test("a merged diff that posts new Open questions emits one question_posted per entry", async () => {
   const root = await initializedRoot();
   fs.writeFileSync(

@@ -1,18 +1,20 @@
+import fs from "node:fs";
+import path from "node:path";
 import { openQuestions } from "./backlog.js";
 import { logEvent } from "./events.js";
 import {
   abortSync,
-  conflictedFiles,
-  continueRebase,
-  ffMergeToMain,
-  hasConflictMarkers,
+  COMMIT_IDENT,
+  currentBranch,
+  git,
+  gitTry,
   headOf,
-  rebaseOntoMain,
-  rebaseOntoMainLeaveConflicts,
+  runGit,
+  unquotePorcelainPath,
 } from "./git.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";
-import { mergeLockDir } from "./paths.js";
+import { branchName, mergeLockDir } from "./paths.js";
 import type { PiRunResult, TickResult } from "./types.js";
 
 /** Landing a tick's worktree branch on main: rebase onto main (keeping history linear),
@@ -96,4 +98,103 @@ async function resolveConflict(ctx: MergeContext, wt: string): Promise<boolean> 
     return false;
   }
   return true;
+}
+
+// ── Git helpers for the landing flow ───────────────────────────────────────────────────────
+// Moved here from git.ts (organize tick 78): every one of them is used only by this module —
+// they are the rebase/ff-merge surface of landing, not general git plumbing. git.ts keeps
+// the shared primitives they build on (git/runGit/gitTry, COMMIT_IDENT, headOf) and exports
+// runGit + unquotePorcelainPath for them.
+
+/** Paths currently in conflict (unmerged) in the worktree. C-quoted names are decoded to
+ * real paths — a non-ASCII conflicted file arrives as `"h\303\251llo.ts"` (core.quotePath is on
+ * by default), and undecoded it does not exist on disk: hasConflictMarkers could never read
+ * it, so an unresolved conflict in such a file passed the marker check and continueRebase
+ * committed its markers to main. */
+export async function conflictedFiles(wt: string): Promise<string[]> {
+  const out = await gitTry(wt, "diff", "--name-only", "--diff-filter=U");
+  return out ? out.split("\n").filter(Boolean).map(unquotePorcelainPath) : [];
+}
+
+/** Attempt to rebase the worktree branch onto main and classify the outcome WITHOUT
+ * cleaning up: "rebased" (including already up to date), "conflict" (the rebase stopped on
+ * unmerged paths, which remain in the worktree for a resolver), or "other" (any other
+ * failure). Shared by the two rebase wrappers below, which differ only in cleanup policy.
+ * Rebase — not merge — keeps main's history linear: each tick lands as its own commit on top
+ * of whatever main holds. */
+async function attemptRebase(
+  wt: string,
+  mainBranch: string,
+): Promise<"rebased" | "conflict" | "other"> {
+  try {
+    // The -c ident is needed for the rewritten committer identity.
+    await runGit(wt, [...COMMIT_IDENT, "rebase", mainBranch]);
+    return "rebased";
+  } catch {
+    return (await conflictedFiles(wt)).length > 0 ? "conflict" : "other";
+  }
+}
+
+/** Rebase the worktree branch onto main (main may have advanced during the tick).
+ * Returns false and aborts the rebase on conflict. */
+export async function rebaseOntoMain(wt: string, mainBranch: string): Promise<boolean> {
+  const state = await attemptRebase(wt, mainBranch);
+  if (state !== "rebased") await gitTry(wt, "rebase", "--abort");
+  return state === "rebased";
+}
+
+/** Rebase the worktree branch onto main, leaving conflict markers in place for a
+ * resolver to work on. "clean" = rebased (or already up to date); "conflict" = the rebase
+ * stopped on conflicts and the worktree holds them mid-rebase; "failed" = anything else
+ * (aborted and cleaned up). */
+export async function rebaseOntoMainLeaveConflicts(
+  wt: string,
+  mainBranch: string,
+): Promise<"clean" | "conflict" | "failed"> {
+  const state = await attemptRebase(wt, mainBranch);
+  if (state === "other") await gitTry(wt, "rebase", "--abort");
+  return state === "rebased" ? "clean" : state === "conflict" ? "conflict" : "failed";
+}
+
+/** True if any of the given files still contains a git conflict marker.
+ * A deleted file counts as resolved (the resolver chose the deletion). */
+export function hasConflictMarkers(wt: string, files: string[]): boolean {
+  // Only start/end markers are checked: every real conflict block carries them, while a bare
+  // `=======` line is legitimate content (a markdown setext or RST underline of exactly seven
+  // characters), and flagging it would reject clean resolutions forever. A resolver that
+  // leaves only a separator line behind is treated as resolved; its stray line is content the
+  // project's own tests can catch.
+  const marker = /^(<{7}|>{7})( |$)/m;
+  return files.some((f) => {
+    const p = path.join(wt, f);
+    try {
+      return marker.test(fs.readFileSync(p, "utf8"));
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Conclude an in-progress rebase with everything in the worktree as the resolution.
+ * GIT_EDITOR=true so `rebase --continue` can never block on a commit-message prompt. A
+ * resolution that leaves no unique content (the branch's change was fully superseded by
+ * main) is skipped automatically by git, finishing the rebase cleanly. Throws when the
+ * rebase stops again — e.g. on a second conflict from an extra commit pi authored during
+ * the tick; the caller aborts and reports merge_conflict. */
+export async function continueRebase(wt: string): Promise<string> {
+  await git(wt, "add", "-A");
+  await runGit(wt, [...COMMIT_IDENT, "rebase", "--continue"], { GIT_EDITOR: "true" });
+  return headOf(wt, "HEAD");
+}
+
+/** Fast-forward main to the role branch, without touching any remote.
+ * Uses a working-tree merge when the primary checkout is on main (so its files update),
+ * otherwise a local ref push. Returns true on success. */
+export async function ffMergeToMain(root: string, role: string, mainBranch: string): Promise<boolean> {
+  const branch = branchName(role);
+  const primaryBranch = await currentBranch(root);
+  if (primaryBranch === mainBranch) {
+    return (await gitTry(root, "merge", "--ff-only", branch)) !== null;
+  }
+  return (await gitTry(root, "push", ".", `${branch}:${mainBranch}`)) !== null;
 }

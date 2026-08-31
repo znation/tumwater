@@ -10,21 +10,25 @@ import {
   changedFiles,
   commitAll,
   commitPathsAndDiscardRest,
-  conflictedFiles,
   currentBranch,
-  continueRebase,
   ensureWorktree,
-  ffMergeToMain,
   hasCommits,
-  hasConflictMarkers,
   headOf,
   isDirty,
   isGitRepo,
   readBranchHead,
-  rebaseOntoMain,
-  rebaseOntoMainLeaveConflicts,
   resetWorktreeToMain,
 } from "../src/git.js";
+// The landing-flow git helpers live in merge.ts (their only production consumer) — moved
+// there by the bugfix for the half-finished organize tick 78 move that broke main's build.
+import {
+  conflictedFiles,
+  continueRebase,
+  ffMergeToMain,
+  hasConflictMarkers,
+  rebaseOntoMain,
+  rebaseOntoMainLeaveConflicts,
+} from "../src/merge.js";
 import { branchName } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
