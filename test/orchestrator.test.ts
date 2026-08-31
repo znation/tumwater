@@ -17,6 +17,7 @@ import {
   orchestratorAlive,
   readOrchestratorInfo,
   saveLoopState,
+  todayStamp,
   zeroCounters,
 } from "../src/state.js";
 import { resetRequestPath } from "../src/paths.js";
@@ -735,6 +736,74 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     // Exactly one of each transition for the whole run — no per-poll event spam.
     assert.equal(readEvents(repo).filter((e) => e.type === "budget_paused").length, 1);
     assert.equal(readEvents(repo).filter((e) => e.type === "budget_resumed").length, 1);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+// AC3's two startup/wake clauses (plans/daily-cost-budget.md): the gate also blocks a fleet
+// that is ALREADY at cap when the orchestrator starts, and it holds main-moved wakes while
+// paused — both are "no tick starts" guarantees, so they assert absence across several polls.
+
+test("startup with spend already at the cap starts no role ticks", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "budget startup test");
+  // Tiny cap: the pre-seeded window ($1) already reaches it before any tick runs.
+  const config = fastConfig(["clean"]);
+  config.maxDailyCostUsd = 1;
+  saveConfig(repo, config);
+  // A fleet that spent its budget on an earlier run of the harness today: seed clean's daily
+  // window at the cap so the gate is closed from the very first poll.
+  const s = freshLoopState("clean");
+  s.dayStamp = todayStamp();
+  s.dayCostUsd = 1;
+  saveLoopState(repo, s);
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
+  const orch = startLiveOrchestrator(repo);
+  try {
+    // The loop is schedule-eligible (fresh state, nextRunAt 0) — an ungated fleet would have
+    // ticked within the first poll. Several cycles pass with no role tick starting.
+    await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
+    await new Promise((r) => setTimeout(r, 5000));
+    assert.equal(loadLoopState(repo, "clean").ticks, 0, "a fleet at cap starts no role ticks");
+    // The pause is announced exactly once, with the spend and cap that closed the gate.
+    const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
+    assert.equal(paused.length, 1);
+    assert.equal(paused[0]?.capUsd, 1);
+    assert.equal(paused[0]?.spentUsd, 1);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a main-moved wake while budget-paused stays blocked", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "budget main-move test");
+  // Tiny cap: clean's startup tick spends $1 >= $0.50 and pauses the fleet.
+  const config = fastConfig(["clean"]);
+  config.maxDailyCostUsd = 0.5;
+  saveConfig(repo, config);
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
+  const orch = startLiveOrchestrator(repo);
+  try {
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "the startup tick to finish",
+    );
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
+
+    // The world changed: advance main. An ungated fleet would wake clean early ("main moved")…
+    fs.writeFileSync(path.join(repo, "world.txt"), "changed\n");
+    sh(repo, "git", "add", "-A");
+    sh(repo, "git", "commit", "-m", "advance main while paused");
+
+    // …but the gate skips role runners before eligibility is even evaluated: several poll
+    // cycles pass with no tick and no wake event.
+    await new Promise((r) => setTimeout(r, 5000));
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "a main move cannot wake a budget-paused fleet");
+    assert.ok(!readEvents(repo).some((e) => e.type === "wake"), "no wake logged for the blocked main move");
   } finally {
     restore();
     await orch.stop();

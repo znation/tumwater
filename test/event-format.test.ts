@@ -168,3 +168,31 @@ test("formatEvent renders the resume event", () => {
   const line = formatEvent({ ts: 0, loop: "feature", type: "resume" } as never);
   assert.match(line, /feature\s+resuming the tick a shutdown interrupted \(same pi session and worktree\)/);
 });
+
+// The daily cost budget's transition events (plans/daily-cost-budget.md): routine state
+// changes like counters_reset — plain lines carrying the spend and cap that triggered them,
+// no warning prefix.
+test("formatEvent renders the budget transition events plainly with spend and cap", () => {
+  const paused = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_paused",
+    spentUsd: 50.123,
+    capUsd: 50,
+  } as never);
+  assert.match(paused, /harness\s+budget paused — \$50\.12 of \$50\.00 daily cost reached/);
+  assert.ok(!paused.includes("warning"), "a routine state change is not a warning");
+
+  const resumed = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_resumed",
+    spentUsd: 12.345,
+    capUsd: 50,
+  } as never);
+  assert.match(resumed, /harness\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
+
+  // A torn or hand-edited event line could carry no payloads; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "harness", type: "budget_paused" } as never);
+  assert.match(bare, /budget paused — \$0\.00 of \$0\.00 daily cost reached/);
+});

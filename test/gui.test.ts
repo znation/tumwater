@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { loadConfig, saveConfig } from "../src/config.js";
 import { statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
 import { inboxSize } from "../src/inbox.js";
-import { piLogPath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { orchestratorStatePath, piLogPath } from "../src/paths.js";
+import { freshLoopState, saveLoopState, todayStamp } from "../src/state.js";
 import { assistantLine, makeRepo } from "./util.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
@@ -307,6 +308,71 @@ test("the dashboard page renders the open-questions section and header badge fro
   // …and the header badge derives its count from that same list, shown only when N > 0.
   assert.match(GUI_PAGE, /const qn = \(d\.questions \|\| \[\]\)\.length/);
   assert.match(GUI_PAGE, /\(qn \? " · questions: " \+ qn : ""\)/);
+});
+
+// The daily cost budget on the GUI surface (plans/daily-cost-budget.md): /api/status carries
+// `budget` while enabled and null when disabled, the page derives its header badge from it,
+// and a paused fleet's idle role loops read `budget paused` in their phase payload.
+
+test("status payload carries the daily budget while enabled and null when disabled", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui budget test"); // defaultConfig: maxDailyCostUsd 50 (enabled)
+  let payload = statusPayload(repo) as { budget: { spentUsd: number; capUsd: number } | null };
+  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50 }, "enabled by default with no spend yet");
+
+  // Today's spend is summed from the loops' persisted daily windows (a stale stamp reads $0).
+  const s = freshLoopState("clean");
+  s.dayStamp = todayStamp();
+  s.dayCostUsd = 12.34;
+  saveLoopState(repo, s);
+  payload = statusPayload(repo) as typeof payload;
+  assert.equal(payload.budget?.spentUsd, 12.34, "today's spend shows in the badge data");
+
+  // 0 disables: the badge data disappears entirely (the page renders no badge for null).
+  const cfg = loadConfig(repo);
+  cfg.maxDailyCostUsd = 0;
+  saveConfig(repo, cfg);
+  payload = statusPayload(repo) as typeof payload;
+  assert.equal(payload.budget, null, "cap 0 disables the budget");
+});
+
+test("the dashboard page derives its header badge from the payload's budget", async () => {
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+  // Standing while enabled (payload sends an object), absent when disabled (null).
+  assert.match(
+    GUI_PAGE,
+    /d\.budget \? " · budget: \$" \+ d\.budget\.spentUsd\.toFixed\(2\) \+ "\/\$" \+ d\.budget\.capUsd \+ " today"/,
+  );
+});
+
+test("a paused fleet's idle role loops read budget paused in the phase payload", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui budget pause test");
+  // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
+  const infoFile = orchestratorStatePath(repo);
+  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
+  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }));
+  // …and spend at the cap so the fleet-wide pause flag is set.
+  const cfg = loadConfig(repo);
+  cfg.maxDailyCostUsd = 10;
+  saveConfig(repo, cfg);
+  const s = freshLoopState("clean");
+  s.dayStamp = todayStamp();
+  s.dayCostUsd = 12.5; // >= cap → paused
+  saveLoopState(repo, s);
+
+  let payload = statusPayload(repo) as { loops: Array<{ role: string; phase: string }> };
+  assert.equal(payload.loops.find((l) => l.role === "clean")?.phase, "budget paused");
+  // The director is exempt from the cap — its phase keeps its own label.
+  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "waiting for prompts");
+
+  // Under the cap again: the idle loop goes back to its sleep/queue state.
+  const under = freshLoopState("clean");
+  under.dayStamp = todayStamp();
+  under.dayCostUsd = 1;
+  saveLoopState(repo, under);
+  payload = statusPayload(repo) as typeof payload;
+  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "budget paused");
 });
 
 test("gui rejects oversized prompt bodies with 413 instead of buffering them unboundedly", async () => {
