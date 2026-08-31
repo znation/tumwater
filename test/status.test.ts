@@ -6,7 +6,7 @@ import { loadConfig, saveConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import { snapshot } from "../src/status.js";
 import { loopPhase, renderStatus } from "../src/status-render.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, recordDailyCost, saveLoopState } from "../src/state.js";
 import { initProject } from "../src/init.js";
 import { makeRepo } from "./util.js";
 
@@ -98,6 +98,34 @@ test("snapshot serves unchanged loop state from the stat-keyed cache without re-
   const t = new Date(Date.now() + 5000);
   fs.utimesSync(path.join(repo, ".tumwater", "state", "clean.json"), t, t);
   assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 4);
+});
+
+test("snapshot carries the daily cost budget aggregated from persisted loop state", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "budget snapshot test"); // seeds tumwater.json with maxDailyCostUsd: 50
+
+  // Two loops spent in today's window; a third carries yesterday's spend (stale stamp) that
+  // must not count toward today — the badge is a daily figure.
+  const clean = freshLoopState("clean");
+  recordDailyCost(clean, 1.25);
+  saveLoopState(repo, clean);
+  const organize = freshLoopState("organize");
+  recordDailyCost(organize, 0.75);
+  saveLoopState(repo, organize);
+  const dry = freshLoopState("dry");
+  dry.dayStamp = "2000-01-01"; // not today's stamp → $0 today
+  dry.dayCostUsd = 9;
+  saveLoopState(repo, dry);
+
+  let snap = snapshot(repo);
+  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50 });
+
+  // Disabling the cap (0) drops the badge data entirely — renderStatus shows no budget line.
+  const cfg = loadConfig(repo);
+  cfg.maxDailyCostUsd = 0;
+  saveConfig(repo, cfg);
+  snap = snapshot(repo);
+  assert.equal(snap.budget, null);
 });
 
 test("loopPhase describes each loop state", () => {
