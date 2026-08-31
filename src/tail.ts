@@ -1,8 +1,11 @@
 import fs from "node:fs";
+import { statOrNull } from "./files.js";
+import { piLogPath } from "./paths.js";
 
 /** Incremental consumption of append-only logs (the harness's JSONL event and pi logs):
  * complete-line window reads, per-file tail state that folds only appended bytes on each
- * poll, and byte-offset following for `logs -f`. Split out of files.ts — which keeps the
+ * poll (plus the shared stat-and-clear entry point for polling a role's pi log), and
+ * byte-offset following for `logs -f`. Split out of files.ts — which keeps the
  * generic file helpers — because this is one self-contained concern with its own internal
  * structure (readCompleteLines as the primitive; withTail and followFile built on it) used
  * only by the observer layer that polls those logs. */
@@ -77,6 +80,25 @@ export function withTail<T>(
     if (end > tail.offset) tail.offset = end; // A torn trailing line is re-read next poll.
   }
   return tail.value;
+}
+
+/** Stat a role's raw pi log for incremental consumption, dropping any stale TailState when
+ * the file is missing or has vanished (null = "no data yet", so callers bail out before
+ * seeding). Shared by progress.ts and transcript.ts — both poll one role's log per second
+ * through their own TailState map keyed by this exact path, so the missing-file bookkeeping
+ * lives in one place instead of drifting between them. */
+export function statRoleLog<T>(
+  tails: Map<string, T>,
+  root: string,
+  role: string,
+): { file: string; st: fs.Stats } | null {
+  const file = piLogPath(root, role);
+  const st = statOrNull(file);
+  if (!st) {
+    tails.delete(file); // Missing (or vanished) — drop any stale state.
+    return null;
+  }
+  return { file, st };
 }
 
 /** Follow an append-only file from byte `offset`, delivering every complete line at or past

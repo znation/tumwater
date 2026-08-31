@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import { statOrNull } from "./files.js";
-import { readCompleteLines, TailState, withTail } from "./tail.js";
-import { piLogPath } from "./paths.js";
+import { readCompleteLines, statRoleLog, TailState, withTail } from "./tail.js";
 import { collapseWhitespace, truncate } from "./text.js";
 import { describeToolCall } from "./tool-call.js";
 
@@ -312,13 +311,9 @@ function feedEntries(value: TranscriptValue, line: string): void {
  * second (the TUI's transcript view, the GUI panel) stop rescanning up to 16MB of JSON per
  * role per poll. A torn trailing line is left unconsumed until its newline lands. */
 export function readTranscript(root: string, role: string, limit = 50): string[] {
-  const file = piLogPath(root, role);
-  const st = statOrNull(file);
-  if (!st) {
-    tails.delete(file); // Missing (or vanished) — drop any stale state.
-    return [];
-  }
-  if (st.size === 0) return [];
+  const log = statRoleLog(tails, root, role);
+  if (!log) return []; // No raw log yet — nothing to show.
+  if (log.st.size === 0) return [];
 
   const want = Math.min(limit, MAX_ENTRIES);
   // Seed by parsing the whole current file once — exactly what every poll used to do; now it
@@ -326,8 +321,8 @@ export function readTranscript(root: string, role: string, limit = 50): string[]
   // appends.
   const value = withTail(
     tails,
-    file,
-    st,
+    log.file,
+    log.st,
     () => ({ fromOffset: 0, value: { renderer: createTranscriptRenderer(), entries: [] } }),
     feedEntries,
   );

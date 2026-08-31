@@ -1,8 +1,6 @@
 import { collapseWhitespace, truncate } from "./text.js";
 import { describeToolCall } from "./tool-call.js";
-import { statOrNull } from "./files.js";
-import { TailState, withTail } from "./tail.js";
-import { piLogPath } from "./paths.js";
+import { statRoleLog, TailState, withTail } from "./tail.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
  * The log is append-only across ticks; each tick's pi run starts with a `session` event,
@@ -123,18 +121,14 @@ export function parseProgress(lines: string[], quietMs: number): LiveProgress {
  * the last poll — observers that call this every second (TUI, GUI) stop rescanning up to
  * TAIL_BYTES of JSON per role per poll. */
 export function readLiveProgress(root: string, role: string): LiveProgress | null {
-  const file = piLogPath(root, role);
-  const st = statOrNull(file);
-  if (!st) {
-    tails.delete(file); // Missing (or vanished) — drop any stale state.
-    return null;
-  }
-  const quietMs = Math.max(0, Date.now() - st.mtimeMs);
+  const log = statRoleLog(tails, root, role);
+  if (!log) return null; // No raw log yet — nothing to show.
+  const quietMs = Math.max(0, Date.now() - log.st.mtimeMs);
   // Seed from the tail window; a leading partial line is unparseable and skipped by feedLine.
   const progress = withTail(
     tails,
-    file,
-    st,
+    log.file,
+    log.st,
     (size) => ({ fromOffset: Math.max(0, size - TAIL_BYTES), value: freshProgress(quietMs) }),
     feedLine,
   );
