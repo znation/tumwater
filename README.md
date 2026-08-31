@@ -125,6 +125,13 @@ one loop per enabled role. Every loop tick:
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
+The fleet's autonomous spend is capped by `maxDailyCostUsd` (default $50; set 0 to disable).
+While the day's total cost has reached the cap, role loops stop starting new ticks — scheduled,
+main-moved wakes, or startup — until local midnight or a live edit raises/disables the cap;
+in-flight ticks finish and the director stays exempt (its spend still counts toward the cap).
+Each transition lands as one `budget_paused`/`budget_resumed` event, visible in `tumwater logs`,
+the TUI activity pane, and the GUI feed.
+
 Every tick prompt also carries the project's `PRINCIPLES.md` — its design principles, the codified
 answer to "what would a senior engineer on this team always do" — so all loops share one standard of
 taste. Only the director and steward roles edit that file; every other loop treats it as read-only.
@@ -179,6 +186,11 @@ both by default), and tune backoff in
 within ~2s — enabling/disabling roles, per-role provider/model/thinking/instructions, tick
 intervals, and backoff all apply live; only `maxConcurrent` and `sessionRetentionDays` require a
 restart.
+
+Spend is capped by `maxDailyCostUsd` in tumwater.json (default 50; set 0 to disable): once the
+day's total cost across all loops reaches it, role loops stop starting new ticks for the rest of
+the local day — in-flight ticks finish and the director keeps running your prompts. Edits apply
+live within ~2s.
 
 ## Notes on local model servers
 

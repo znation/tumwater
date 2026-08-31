@@ -5,148 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Daily cost budget — cap the fleet's autonomous spend (planned 2026-08-30, audited
-2026-08-30, re-audited 2026-08-30, re-audited 2026-08-31)
-
-Full plan: [plans/daily-cost-budget.md](plans/daily-cost-budget.md). The harness measures
-spend (per-loop `totalCostUsd`, cost column + totals row) but nothing acts on it — a fleet
-running 24/7 against a paid API can spend unbounded. A top-level `maxDailyCostUsd` config key
-(number ≥ 0, **0 disables**, default **50** — enabled by default: an unattended fleet must not
-spend unbounded; local-model fleets report $0 so the cap never fires for them) caps the fleet's
-per-local-day spend. Per-loop daily window in LoopState (`dayStamp`/`dayCostUsd`, fresh defaults
-so old state files load unchanged): `foldUsage` records through a new pure helper that rolls over
-at local midnight on write; reads go through `dailyCost(s, now)`, which returns $0 for a stale or
-missing stamp — no save needed. While fleet daily spend ≥ cap the orchestrator's poll loop skips
-role runners before `isEligible` (no scheduled tick, main-moved wake, or startup tick starts;
-in-flight ticks finish; **the director is exempt** — an explicit human prompt outranks the
-autonomous-spend cap). Resume is live and stateless: raising/disabling the cap or crossing
-midnight flips the pure `budgetPaused` predicate on the next poll (~2 s) via the existing
-live-reload path. One `budget_paused`/`budget_resumed` harness event per transition (rendered in
-logs/TUI/GUI feed); both dashboards show a `· budget: $12.34/$50 today` header badge while
-enabled and paused role loops' state cell reads `budget paused` (`loopPhase` gains an optional
-trailing flag; gui.ts passes it into the existing phase payload). `reset-counters`
-deliberately does NOT zero the daily window — the budget is a safety valve, not an observation
-window. Kept as one entry: gate and display are coupled (a silently-stopped fleet with no
-dashboard explanation is a usability hole; display without the gate is meaningless).
-Acceptance criteria: config default + validation (0 disables; negative/non-numeric rejected);
-daily-window units (rollover on write, stale/missing reads $0, midnight-crossing tick,
-reset-counters leaves it untouched); e2e with the fake pi shim reporting cost — tiny cap blocks
-the second role tick while a queued director prompt still runs, live cap raise resumes within ~2 s;
-event rendering; header badge + `budget paused` state cell on both surfaces. Files: src/types.ts,
-src/config.ts, src/state.ts, src/loop.ts, src/orchestrator.ts, src/status.ts, src/status-render.ts,
-src/gui.ts, src/gui-page.ts, src/event-format.ts, test/{config,state,orchestrator,status-
-render,event-format,gui}.test.ts, README.md.
-
-**Audited 2026-08-30 (plan loop) — verified against main; clarifications folded into the plan
-file.** Every structural claim checked out on current main: `foldUsage` is the single fold point
-for every pi run of a tick (main + transient retry + conflict resolution + review-gate runs), so
-all spend routes through it; `loadLoopState`'s merge-over-fresh makes old state files load
-unchanged with a missing stamp reading $0; `zeroCounters`' spread preserves the new daily-window
-fields automatically (the in-place reset fix is compatible); `configForStatus`,
-`TOP_LEVEL_KEYS`/`checkNumber`, the poll-loop insertion point, and both dashboards'
-header-badge assembly all exist as described. Clarifications folded into plans/daily-cost-
-budget.md: (1) the director's spend COUNTS toward the fleet total — its exemption is from
-pausing, not counting; (2) the gate evaluates with the same last-known-good config the poll
-pushes to runners (a local variable updated on successful reload), so a broken tumwater.json
-keeps the last known cap rather than flipping the gate; (3) the e2e needs no new shim plumbing —
-test/util.ts's `assistantLine(text, {cost})` already emits `usage.cost.total`, and "tiny cap" is
-pinned to exactly one fake run's cost so tick 1 lands and tick 2 blocks while a queued director
-prompt still runs; (4) the post-resume catch-up burst (every eligible loop at once, bounded by
-maxConcurrent) is intended behavior, not a defect to smooth. Two smaller pins: the daily window
-persists at tick-end save only (a crash loses the interrupted run's spend — an acceptable
-undercount for a safety valve; no mid-tick save added), and renderStatus/gui.ts derive the per-
-row `budgetPaused` flag from one fleet-wide predicate computed off `snap.budget`. Nothing
-structural changed; the plan is ready for the feature loop.
-
-**Re-audited 2026-08-30 (plan loop) — the code has fully landed; what remains is the test suite
-plus the README clause, all pickable independently.** Feature tick 62 (`041fd55`) implemented the
-full design and coverage tick `01c28ce` landed the gate e2e; verified at `5be72e9`: build clean,
-suite 450/450. Every code clause of the acceptance criteria is in place: config (default 50 in
-`defaultConfig`, TOP_LEVEL_KEYS, `checkNumber … >= 0` with "0 disables" — src/config.ts); state
-helpers (`todayStamp`/`dailyCost`/`recordDailyCost`/`fleetDailyCost`/`budgetPaused` in
-src/state.ts; `freshLoopState` defaults the window to `""`/`0`; merge-over-fresh loads old files
-unchanged); the write path (`foldUsage` → `recordDailyCost`, so every pi run of a tick routes
-through it — src/loop.ts); the gate (the poll loop computes the predicate once per cycle from all
-runners' states and the live config, skips role runners before `isEligible`, director exempt; one
-harness-level transition event each with spentUsd/capUsd — src/orchestrator.ts); display
-(`StatusSnapshot.budget` null when disabled; header badge standing while enabled; `loopPhase`
-trailing flag → `budget paused` for idle role rows on both surfaces, derived once from the
-snapshot — src/status.ts, status-render.ts, gui.ts, gui-page.ts); and the e2e (tiny $0.50 cap vs a
-$1 fake run: the startup tick lands the spend with one transition event, the scheduled nextRunAt
-passes while paused with no second tick, a queued director prompt still runs, and a live raise to
-100 resumes within one poll with exactly one resume event; the predicate sums every runner's
-state — director included (src/orchestrator.ts) — so the director's spend counts toward the cap as
-designed). What remains against the acceptance criteria — six items, all test
-work plus one README edit, pickable independently:
-
-(a) **state-helper units** in test/state.test.ts (AC6 "units for every pure helper"; AC2's test
-clauses) — today the file has zero references to any of the five helpers: `recordDailyCost`
-accumulates same-day and rolls over at local midnight on write (a tick crossing midnight
-attributes its spend to the new day); `dailyCost` reads $0 for a stale or missing stamp and the
-window's value when fresh, never mutating; `fleetDailyCost` sums across loops with stale ones
-reading $0; `budgetPaused` is false at cap 0 (disabled) and below the cap, true at/above it. Two
-clause extensions: the existing "zeroCounters zeroes … preserves everything else" test gains an
-assertion that dayStamp/dayCostUsd survive (AC2's reset-counters clause — the fields postdate the
-test), and "loadLoopState fills fields missing from an older or partial file" gains a saved-file-
-without-the-fields case reading $0 through `dailyCost`.
-(b) **config units** in test/config.test.ts (AC1's test clauses) — no maxDailyCostUsd assertion
-exists: defaultConfig carries 50; negative and non-numeric values rejected with actionable errors
-like the thrash-thresholds test above it; a typo'd key name fails via TOP_LEVEL_KEYS' unknown-key
-error; loadConfig over an existing file lacking the key picks up the default without editing.
-(c) **event rendering units** in test/event-format.test.ts (AC4's render clause) — no budget case
-exists: `budget_paused` and `budget_resumed` render as plain lines carrying spend and cap, no
-warning prefix, like counters_reset.
-(d) **GUI surface units** in test/gui.test.ts (AC5's GUI half; the TUI half is covered by
-test/status-render.test.ts) — /api/status carries `budget` while enabled and null when disabled;
-the served page's header assembly includes the badge; a paused fleet's per-loop phase payload
-reads `budget paused` for idle role loops.
-(e) **two untested AC3 clauses** in test/orchestrator.test.ts (small additions to the existing
-gate e2e or a sibling test): startup with spend already at cap starts no role ticks (pre-seed a
-state file with today's stamp and spend ≥ cap before starting the orchestrator), and a main-moved
-wake while paused stays blocked (advance main after the pause, assert no tick across several
-polls). In-flight completion is recorded as a structural guarantee rather than tested: spend folds
-only at run end (`foldUsage` post-run), so a tick cannot be paused by its own spend mid-run, and
-the gate skips scheduling only — nothing kills an in-flight task.
-(f) **README clause** (the plan's README section): `maxDailyCostUsd` is documented nowhere outside
-the status section — Usage gains what it caps (role loops' new ticks, per local day), that 0
-disables, that the director is exempt, and that edits apply live within ~2 s; How-it-works gains a
-short paragraph on pause/resume behavior and the two events.
-
-Nothing structural remains in code — every AC's code clause verified landed above; items (a)–(e)
-are pure test work and (f) is documentation. Once all six land, move this plan to Done. Files for
-the remainder: test/state.test.ts, test/config.test.ts, test/event-format.test.ts,
-test/gui.test.ts, test/orchestrator.test.ts, README.md.
-
-**Re-audited 2026-08-31 (plan loop) — items (a), (b), (c), (d), and (e) have LANDED; only the
-README clause remains.** The remainder list above is stale on current main (`b589e09`): five of
-the six items landed since this entry's last audit, verified at `b589e09` with a green build and
-a 468/468 suite. (a) in coverage tick `07d5bf6` — recordDailyCost same-day accumulation and
-midnight rollover on write, dailyCost's stale/missing → $0 non-mutating reads, fleetDailyCost
-summing with stale loops at $0, budgetPaused at cap 0 / below / at-or-above, plus the
-zeroCounters-preservation and loadLoopState missing-fields assertions (test/state.test.ts). (b) in
-coverage tick `2fbfb49` — defaultConfig carries 50; negative/non-numeric values rejected with
-actionable errors; a typo'd key fails via TOP_LEVEL_KEYS' unknown-key error; loadConfig over an
-existing file lacking the key picks up the default without editing (test/config.test.ts). Coverage
-tick `92a4ffe` then landed one unit beyond the six — snapshot()'s budget wiring in test/status.
-test.ts (today's spend summed from persisted loop state, stale stamps reading $0; cap 0 drops the
-badge data). Feature tick 65 (`b589e09`, current HEAD) closed the last three test items in one
-commit (+165 lines across three files): (c) "formatEvent renders the budget transition events
-plainly with spend and cap" — both events carry spend and cap, no warning prefix, plus a torn-line
-fallback that still renders; (d) three GUI tests — /api/status carries `budget` while enabled and
-null when disabled (today's spend read from persisted loop state), the served page derives its
-header badge from the payload, and a paused fleet's idle role loops read `budget paused` in their
-phase payload with the director exempt and an under-cap fleet leaving the label; (e) both AC3
-clauses exactly as specified — "startup with spend already at the cap starts no role ticks"
-(pre-seeded daily window at the cap, several poll cycles pass with zero ticks and exactly one
-budget_paused event carrying spentUsd/capUsd) and "a main-moved wake while budget-paused stays
-blocked" (main advanced after the pause; no tick across several polls and no `wake` event). Item
-(f) verified still unlanded: `maxDailyCostUsd` appears nowhere in README.md outside the status
-block. What remains — one item, a single documentation edit per its spec above: (f) **README
-clause** — Usage gains what it caps (role loops' new ticks, per local day), that 0 disables, that
-the director is exempt, and that edits apply live within ~2 s; How-it-works gains a short
-paragraph on pause/resume behavior and the two events. Once it lands, move this plan to Done.
-Files for the remainder: README.md only.
-
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28)
 
@@ -288,6 +146,157 @@ section still absent. Files for the remainder: test/prompt.test.ts, test/loop.te
 test/orchestrator.test.ts, test/config.test.ts.
 
 ## Done
+
+### Daily cost budget — cap the fleet's autonomous spend (planned 2026-08-30, audited
+2026-08-30, re-audited 2026-08-30, re-audited 2026-08-31, done 2026-08-31)
+
+Full plan: [plans/daily-cost-budget.md](plans/daily-cost-budget.md). The harness measures
+spend (per-loop `totalCostUsd`, cost column + totals row) but nothing acts on it — a fleet
+running 24/7 against a paid API can spend unbounded. A top-level `maxDailyCostUsd` config key
+(number ≥ 0, **0 disables**, default **50** — enabled by default: an unattended fleet must not
+spend unbounded; local-model fleets report $0 so the cap never fires for them) caps the fleet's
+per-local-day spend. Per-loop daily window in LoopState (`dayStamp`/`dayCostUsd`, fresh defaults
+so old state files load unchanged): `foldUsage` records through a new pure helper that rolls over
+at local midnight on write; reads go through `dailyCost(s, now)`, which returns $0 for a stale or
+missing stamp — no save needed. While fleet daily spend ≥ cap the orchestrator's poll loop skips
+role runners before `isEligible` (no scheduled tick, main-moved wake, or startup tick starts;
+in-flight ticks finish; **the director is exempt** — an explicit human prompt outranks the
+autonomous-spend cap). Resume is live and stateless: raising/disabling the cap or crossing
+midnight flips the pure `budgetPaused` predicate on the next poll (~2 s) via the existing
+live-reload path. One `budget_paused`/`budget_resumed` harness event per transition (rendered in
+logs/TUI/GUI feed); both dashboards show a `· budget: $12.34/$50 today` header badge while
+enabled and paused role loops' state cell reads `budget paused` (`loopPhase` gains an optional
+trailing flag; gui.ts passes it into the existing phase payload). `reset-counters`
+deliberately does NOT zero the daily window — the budget is a safety valve, not an observation
+window. Kept as one entry: gate and display are coupled (a silently-stopped fleet with no
+dashboard explanation is a usability hole; display without the gate is meaningless).
+Acceptance criteria: config default + validation (0 disables; negative/non-numeric rejected);
+daily-window units (rollover on write, stale/missing reads $0, midnight-crossing tick,
+reset-counters leaves it untouched); e2e with the fake pi shim reporting cost — tiny cap blocks
+the second role tick while a queued director prompt still runs, live cap raise resumes within ~2 s;
+event rendering; header badge + `budget paused` state cell on both surfaces. Files: src/types.ts,
+src/config.ts, src/state.ts, src/loop.ts, src/orchestrator.ts, src/status.ts, src/status-render.ts,
+src/gui.ts, src/gui-page.ts, src/event-format.ts, test/{config,state,orchestrator,status-
+render,event-format,gui}.test.ts, README.md.
+
+**Audited 2026-08-30 (plan loop) — verified against main; clarifications folded into the plan
+file.** Every structural claim checked out on current main: `foldUsage` is the single fold point
+for every pi run of a tick (main + transient retry + conflict resolution + review-gate runs), so
+all spend routes through it; `loadLoopState`'s merge-over-fresh makes old state files load
+unchanged with a missing stamp reading $0; `zeroCounters`' spread preserves the new daily-window
+fields automatically (the in-place reset fix is compatible); `configForStatus`,
+`TOP_LEVEL_KEYS`/`checkNumber`, the poll-loop insertion point, and both dashboards'
+header-badge assembly all exist as described. Clarifications folded into plans/daily-cost-
+budget.md: (1) the director's spend COUNTS toward the fleet total — its exemption is from
+pausing, not counting; (2) the gate evaluates with the same last-known-good config the poll
+pushes to runners (a local variable updated on successful reload), so a broken tumwater.json
+keeps the last known cap rather than flipping the gate; (3) the e2e needs no new shim plumbing —
+test/util.ts's `assistantLine(text, {cost})` already emits `usage.cost.total`, and "tiny cap" is
+pinned to exactly one fake run's cost so tick 1 lands and tick 2 blocks while a queued director
+prompt still runs; (4) the post-resume catch-up burst (every eligible loop at once, bounded by
+maxConcurrent) is intended behavior, not a defect to smooth. Two smaller pins: the daily window
+persists at tick-end save only (a crash loses the interrupted run's spend — an acceptable
+undercount for a safety valve; no mid-tick save added), and renderStatus/gui.ts derive the per-
+row `budgetPaused` flag from one fleet-wide predicate computed off `snap.budget`. Nothing
+structural changed; the plan is ready for the feature loop.
+
+**Re-audited 2026-08-30 (plan loop) — the code has fully landed; what remains is the test suite
+plus the README clause, all pickable independently.** Feature tick 62 (`041fd55`) implemented the
+full design and coverage tick `01c28ce` landed the gate e2e; verified at `5be72e9`: build clean,
+suite 450/450. Every code clause of the acceptance criteria is in place: config (default 50 in
+`defaultConfig`, TOP_LEVEL_KEYS, `checkNumber … >= 0` with "0 disables" — src/config.ts); state
+helpers (`todayStamp`/`dailyCost`/`recordDailyCost`/`fleetDailyCost`/`budgetPaused` in
+src/state.ts; `freshLoopState` defaults the window to `""`/`0`; merge-over-fresh loads old files
+unchanged); the write path (`foldUsage` → `recordDailyCost`, so every pi run of a tick routes
+through it — src/loop.ts); the gate (the poll loop computes the predicate once per cycle from all
+runners' states and the live config, skips role runners before `isEligible`, director exempt; one
+harness-level transition event each with spentUsd/capUsd — src/orchestrator.ts); display
+(`StatusSnapshot.budget` null when disabled; header badge standing while enabled; `loopPhase`
+trailing flag → `budget paused` for idle role rows on both surfaces, derived once from the
+snapshot — src/status.ts, status-render.ts, gui.ts, gui-page.ts); and the e2e (tiny $0.50 cap vs a
+$1 fake run: the startup tick lands the spend with one transition event, the scheduled nextRunAt
+passes while paused with no second tick, a queued director prompt still runs, and a live raise to
+100 resumes within one poll with exactly one resume event; the predicate sums every runner's
+state — director included (src/orchestrator.ts) — so the director's spend counts toward the cap as
+designed). What remains against the acceptance criteria — six items, all test
+work plus one README edit, pickable independently:
+
+(a) **state-helper units** in test/state.test.ts (AC6 "units for every pure helper"; AC2's test
+clauses) — today the file has zero references to any of the five helpers: `recordDailyCost`
+accumulates same-day and rolls over at local midnight on write (a tick crossing midnight
+attributes its spend to the new day); `dailyCost` reads $0 for a stale or missing stamp and the
+window's value when fresh, never mutating; `fleetDailyCost` sums across loops with stale ones
+reading $0; `budgetPaused` is false at cap 0 (disabled) and below the cap, true at/above it. Two
+clause extensions: the existing "zeroCounters zeroes … preserves everything else" test gains an
+assertion that dayStamp/dayCostUsd survive (AC2's reset-counters clause — the fields postdate the
+test), and "loadLoopState fills fields missing from an older or partial file" gains a saved-file-
+without-the-fields case reading $0 through `dailyCost`.
+(b) **config units** in test/config.test.ts (AC1's test clauses) — no maxDailyCostUsd assertion
+exists: defaultConfig carries 50; negative and non-numeric values rejected with actionable errors
+like the thrash-thresholds test above it; a typo'd key name fails via TOP_LEVEL_KEYS' unknown-key
+error; loadConfig over an existing file lacking the key picks up the default without editing.
+(c) **event rendering units** in test/event-format.test.ts (AC4's render clause) — no budget case
+exists: `budget_paused` and `budget_resumed` render as plain lines carrying spend and cap, no
+warning prefix, like counters_reset.
+(d) **GUI surface units** in test/gui.test.ts (AC5's GUI half; the TUI half is covered by
+test/status-render.test.ts) — /api/status carries `budget` while enabled and null when disabled;
+the served page's header assembly includes the badge; a paused fleet's per-loop phase payload
+reads `budget paused` for idle role loops.
+(e) **two untested AC3 clauses** in test/orchestrator.test.ts (small additions to the existing
+gate e2e or a sibling test): startup with spend already at cap starts no role ticks (pre-seed a
+state file with today's stamp and spend ≥ cap before starting the orchestrator), and a main-moved
+wake while paused stays blocked (advance main after the pause, assert no tick across several
+polls). In-flight completion is recorded as a structural guarantee rather than tested: spend folds
+only at run end (`foldUsage` post-run), so a tick cannot be paused by its own spend mid-run, and
+the gate skips scheduling only — nothing kills an in-flight task.
+(f) **README clause** (the plan's README section): `maxDailyCostUsd` is documented nowhere outside
+the status section — Usage gains what it caps (role loops' new ticks, per local day), that 0
+disables, that the director is exempt, and that edits apply live within ~2 s; How-it-works gains a
+short paragraph on pause/resume behavior and the two events.
+
+Nothing structural remains in code — every AC's code clause verified landed above; items (a)–(e)
+are pure test work and (f) is documentation. Once all six land, move this plan to Done. Files for
+the remainder: test/state.test.ts, test/config.test.ts, test/event-format.test.ts,
+test/gui.test.ts, test/orchestrator.test.ts, README.md.
+
+**Re-audited 2026-08-31 (plan loop) — items (a), (b), (c), (d), and (e) have LANDED; only the
+README clause remains.** The remainder list above is stale on current main (`b589e09`): five of
+the six items landed since this entry's last audit, verified at `b589e09` with a green build and
+a 468/468 suite. (a) in coverage tick `07d5bf6` — recordDailyCost same-day accumulation and
+midnight rollover on write, dailyCost's stale/missing → $0 non-mutating reads, fleetDailyCost
+summing with stale loops at $0, budgetPaused at cap 0 / below / at-or-above, plus the
+zeroCounters-preservation and loadLoopState missing-fields assertions (test/state.test.ts). (b) in
+coverage tick `2fbfb49` — defaultConfig carries 50; negative/non-numeric values rejected with
+actionable errors; a typo'd key fails via TOP_LEVEL_KEYS' unknown-key error; loadConfig over an
+existing file lacking the key picks up the default without editing (test/config.test.ts). Coverage
+tick `92a4ffe` then landed one unit beyond the six — snapshot()'s budget wiring in test/status.
+test.ts (today's spend summed from persisted loop state, stale stamps reading $0; cap 0 drops the
+badge data). Feature tick 65 (`b589e09`, current HEAD) closed the last three test items in one
+commit (+165 lines across three files): (c) "formatEvent renders the budget transition events
+plainly with spend and cap" — both events carry spend and cap, no warning prefix, plus a torn-line
+fallback that still renders; (d) three GUI tests — /api/status carries `budget` while enabled and
+null when disabled (today's spend read from persisted loop state), the served page derives its
+header badge from the payload, and a paused fleet's idle role loops read `budget paused` in their
+phase payload with the director exempt and an under-cap fleet leaving the label; (e) both AC3
+clauses exactly as specified — "startup with spend already at the cap starts no role ticks"
+(pre-seeded daily window at the cap, several poll cycles pass with zero ticks and exactly one
+budget_paused event carrying spentUsd/capUsd) and "a main-moved wake while budget-paused stays
+blocked" (main advanced after the pause; no tick across several polls and no `wake` event). Item
+(f) verified still unlanded: `maxDailyCostUsd` appears nowhere in README.md outside the status
+block. What remains — one item, a single documentation edit per its spec above: (f) **README
+clause** — Usage gains what it caps (role loops' new ticks, per local day), that 0 disables, that
+the director is exempt, and that edits apply live within ~2 s; How-it-works gains a short
+paragraph on pause/resume behavior and the two events. Once it lands, move this plan to Done.
+Files for the remainder: README.md only.
+
+**Done 2026-08-31 (feature tick) — item (f), the last remainder, has landed; nothing remains.** The
+README clause per its spec above: Usage documents `maxDailyCostUsd` — what it caps (role loops' new
+ticks, per local day), that 0 disables, that the director stays exempt, and that edits apply live
+within ~2 s — and How-it-works gains a short paragraph on pause/resume behavior and the two
+transition events. Items (a)–(e) had all landed before this tick — coverage ticks `07d5bf6`,
+`2fbfb49`, and `92a4ffe`, plus feature tick 65 (`b589e09`) for items (c)–(e) — so the change is
+documentation only: README.md plus this PLANS.md move. Verified against main `1ee92c3`: build clean,
+suite 469/469 (no code or test files touched). Files: README.md, PLANS.md.
 
 ### The right to refuse, and friction as a signal (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-29, re-audited 2026-08-29
