@@ -30,7 +30,12 @@ export function readCompleteLines(file: string, offset: number, size: number): {
       complete = lastNl + 1;
     }
     const text = buf.toString("utf8", 0, complete);
-    return { lines: text.split("\n"), end: offset + complete };
+    // The region always ends at a newline (complete stops just past the last \n), so split's
+    // trailing "" is an artifact, not a line — drop it so callers get exactly the complete
+    // lines and need no defensive filter of their own.
+    const lines = text.split("\n");
+    if (lines[lines.length - 1] === "") lines.pop();
+    return { lines, end: offset + complete };
   } finally {
     fs.closeSync(fd);
   }
