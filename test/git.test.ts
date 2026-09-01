@@ -18,6 +18,7 @@ import {
   isGitRepo,
   readBranchHead,
   resetWorktreeToMain,
+  unquotePorcelainPath,
 } from "../src/git.js";
 // The landing-flow git helpers live in merge.ts (their only production consumer) — moved
 // there by the bugfix for the half-finished organize tick 78 move that broke main's build.
@@ -365,6 +366,31 @@ test("changedFiles decodes C-quoted porcelain paths (quote, tab, newline, backsl
 
   const files = await changedFiles(repo);
   assert.deepEqual(files.sort(), [...names].sort());
+});
+
+// Carriage return is a control character too: git C-quotes it as \r, and the decoded form
+// must be the real on-disk path — changedFiles feeds it straight back to `git add` (the
+// refusal path's commitPathsAndDiscardRest), so a misdecode stages nothing. The sibling
+// escapes (\n, \t, \\, \", octal) are pinned by the test above; \r was not.
+test("changedFiles decodes C-quoted carriage returns in filenames", async () => {
+  const repo = makeRepo();
+  const name = "car\rreturn.txt";
+  fs.writeFileSync(path.join(repo, name), "x\n");
+
+  const files = await changedFiles(repo);
+  assert.deepEqual(files, [name]);
+  // The decoded path is the real file on disk — not git's C-quoted form.
+  assert.ok(fs.existsSync(path.join(repo, files[0] ?? "")));
+});
+
+// Defensive branches unquotePorcelainPath keeps for input git would never emit: a missing
+// closing quote and unrecognized escapes must degrade to "keep as-is", not drop or mangle
+// the entry — changedFiles/conflictedFiles feed whatever comes back straight back to git.
+test("unquotePorcelainPath keeps malformed and unrecognized escapes as-is", () => {
+  assert.equal(unquotePorcelainPath('"no closing quote'), '"no closing quote'); // end < 1
+  assert.equal(unquotePorcelainPath('"a\\xb"'), "axb"); // \x: not an escape, kept literally
+  assert.equal(unquotePorcelainPath('"a\\8b"'), "a8b"); // 8 is not an octal digit
+  assert.equal(unquotePorcelainPath('"a\\1"'), "a1"); // truncated octal at the end: keep the digit
 });
 
 test("commitPathsAndDiscardRest returns null without side effects when nothing is stageable", async () => {
