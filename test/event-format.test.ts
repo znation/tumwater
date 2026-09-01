@@ -164,6 +164,25 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   assert.match(failed, /\(commit kept for re-review\)/);
 });
 
+// The questions-outbox feature emits question_posted alongside merged (emission is pinned in
+// test/merge.test.ts and test/loop.test.ts); this pins what operators actually read in logs,
+// the TUI activity pane, and the GUI feed: the new Open heading verbatim on a plain line —
+// routine operation, not a warning.
+test("formatEvent renders question_posted with the posted heading and no warning prefix", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "feature",
+    type: "question_posted",
+    question: "Should we support multiple repos per fleet?",
+  } as never);
+  assert.match(
+    line,
+    /feature\s+question posted: Should we support multiple repos per fleet\?/,
+    `the posted heading must show verbatim: ${line}`,
+  );
+  assert.ok(!line.includes("warning"), `a posted question is routine, not a warning: ${line}`);
+});
+
 test("formatEvent renders the resume event", () => {
   const line = formatEvent({ ts: 0, loop: "feature", type: "resume" } as never);
   assert.match(line, /feature\s+resuming the tick a shutdown interrupted \(same pi session and worktree\)/);
