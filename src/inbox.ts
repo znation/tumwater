@@ -3,6 +3,7 @@ import path from "node:path";
 import { logEvent } from "./events.js";
 import { inboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
+import { truncate } from "./text.js";
 
 /** File-based queue of user prompts for the director loop. Any process can enqueue;
  * the orchestrator pops. Ordering comes from the timestamped filenames. */
@@ -43,10 +44,12 @@ export function dequeuePrompt(root: string): string | null {
 }
 
 /** A user submits a new prompt (TUI, GUI, or CLI): enqueue it for the director and
- * record it in the event log. Returns the trimmed prompt that was queued. */
+ * record it in the event log. Returns the trimmed prompt that was queued. The logged preview
+ * goes through truncate — not a raw slice — so an over-long prompt is marked with an ellipsis
+ * like every other label and never carries a lone surrogate at the cut point. */
 export function submitPrompt(root: string, text: string): string {
   const prompt = text.trim();
   enqueuePrompt(root, prompt);
-  logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_enqueued", preview: prompt.slice(0, 80) });
+  logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_enqueued", preview: truncate(prompt, 80) });
   return prompt;
 }

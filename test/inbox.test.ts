@@ -26,5 +26,17 @@ test("submitPrompt trims, enqueues, and logs a prompt_enqueued event", () => {
   const events = readEvents(dir).filter((e) => e.type === "prompt_enqueued");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.loop, "director");
-  assert.equal(String(events[0]?.preview), "x".repeat(80)); // preview capped at 80 chars
+  assert.equal(
+    String(events[0]?.preview),
+    `${"x".repeat(79)}…`, // preview capped at 80 chars, ellipsis included (truncate)
+  );
+});
+
+test("submitPrompt's event preview never carries a lone surrogate", () => {
+  const dir = tmpdir();
+  submitPrompt(dir, `${"x".repeat(78)}🎉y`); // the emoji straddles the cut point (code unit 79)
+  const events = readEvents(dir).filter((e) => e.type === "prompt_enqueued");
+  assert.equal(events.length, 1);
+  // The pair is dropped whole rather than split: no lone high surrogate at the cut.
+  assert.equal(String(events[0]?.preview), `${"x".repeat(78)}…`);
 });

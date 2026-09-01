@@ -52,6 +52,29 @@ test("truncate handles tiny max values without breaking", () => {
   assert.ok(truncate("anything at all", 3).length <= 3);
 });
 
+test("truncate never splits a surrogate pair (no lone surrogates in clipped labels)", () => {
+  // Astral characters (emoji) are two UTF-16 code units; cutting between them would leave a
+  // lone high surrogate that terminals render as garbage. The cut backs off and drops the
+  // whole character instead, keeping the length invariant.
+  const s = "ab🎉cd"; // 🎉 occupies code units 2..3
+  assert.equal(truncate(s, 4), "ab…"); // cut at 3 would split the pair → back off to 2
+  assert.equal(truncate("🎉", 1), "…"); // nothing but the ellipsis fits
+  assert.equal(truncate("🎉x", 2), "…"); // cut at 1 splits the pair → back off to 0
+  for (let max = 1; max <= s.length + 2; max++) {
+    const out = truncate(s, max);
+    assert.ok(out.length <= max, `max ${max}: ${out.length} chars: ${JSON.stringify(out)}`);
+    for (let i = 0; i < out.length; i++) {
+      const code = out.charCodeAt(i);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        assert.ok(
+          out.charCodeAt(i + 1) >= 0xdc00 && out.charCodeAt(i + 1) <= 0xdfff,
+          `lone surrogate at ${i} in ${JSON.stringify(out)}`,
+        );
+      }
+    }
+  }
+});
+
 test("truncate never returns a string longer than max (the display-width invariant)", () => {
   // Every consumer sizes its column budget off this: progress work items (60), transcript
   // lines (120) and thinking (80), tool-call details (32). A result over max would wrap in

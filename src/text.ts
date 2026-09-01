@@ -13,12 +13,36 @@ export function collapseWhitespace(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/** True when `code` is a UTF-16 high (leading) surrogate — the first code unit of an astral
+ * character's two-unit encoding (emoji and other non-BMP characters). */
+function isHighSurrogate(code: number): boolean {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+/** True when `code` is a UTF-16 low (trailing) surrogate — the second code unit of an astral
+ * character's two-unit encoding. */
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
+/** True when cutting `s` at code-unit index `i` would split a surrogate pair — leaving a lone
+ * high surrogate in the kept part, which terminals render as garbage (a U+FFFD box). The display
+ * clippers (truncate here and clipToWidth in status-render) back off one unit before such a cut
+ * so no clipped line ever carries a lone surrogate. */
+export function cutSplitsSurrogatePair(s: string, i: number): boolean {
+  return i > 0 && i < s.length && isHighSurrogate(s.charCodeAt(i - 1)) && isLowSurrogate(s.charCodeAt(i));
+}
+
 /** Shorten `s` to at most `max` characters: unchanged when it fits, otherwise cut to
  * `max - 1`, drop any trailing space the cut may have left behind, and append an ellipsis.
- * The result is never longer than `max`. */
+ * The result is never longer than `max`. A cut that would split a surrogate pair (an astral
+ * character such as emoji) backs off one unit instead — dropping the whole character rather
+ * than emitting a lone surrogate, which terminals render as garbage. */
 export function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
-  return `${s.slice(0, max - 1).trimEnd()}…`;
+  let cut = max - 1;
+  if (cutSplitsSurrogatePair(s, cut)) cut -= 1; // Never emit a lone high surrogate.
+  return `${s.slice(0, cut).trimEnd()}…`;
 }
 
 /** Compact token count for display: one-decimal `k` at ≥10,000 (`12.3k`), bare integer

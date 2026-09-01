@@ -4,7 +4,7 @@ import type { LoopState } from "./types.js";
 import type { StatusSnapshot } from "./status.js";
 import { budgetReached } from "./state.js";
 import { readLiveProgress } from "./progress.js";
-import { compactTokens, formatTime, pad2 } from "./text.js";
+import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2 } from "./text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
  * cycle position, time/token formatters, and the width-aware table shared by
@@ -128,10 +128,15 @@ function stateCell(root: string, s: LoopState, orchestratorRunning: boolean, bud
 
 /** Truncate to `width` with a trailing ellipsis when over. The result never exceeds
  * `width` characters (even at width ≤ 1), so clipped lines cannot wrap in a terminal of
- * that many columns. Shared by the status table and the TUI's line rendering. */
+ * that many columns. A cut that would split a surrogate pair backs off one unit, so no line
+ * ever carries a lone surrogate (terminals render it as garbage). Shared by the status table
+ * and the TUI's line rendering. */
 export function clipToWidth(text: string, width: number): string {
   if (text.length <= width) return text;
-  return width <= 1 ? text.slice(0, width) : text.slice(0, width - 1) + "…";
+  const bare = width <= 1; // No room for an ellipsis at degenerate widths.
+  let cut = bare ? width : width - 1;
+  if (cutSplitsSurrogatePair(text, cut)) cut -= 1; // Never emit a lone high surrogate.
+  return bare ? text.slice(0, cut) : `${text.slice(0, cut)}…`;
 }
 
 /** The budget cap for display: whole dollars stay bare ($50), fractional ones keep their
