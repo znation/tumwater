@@ -4,6 +4,7 @@ import type { TumwaterConfig, LoopState, TickOutcome } from "./types.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { readJsonFile } from "./files.js";
 import { pidAlive } from "./process.js";
+import { formatDate } from "./text.js";
 import { orchestratorStatePath, statePath } from "./paths.js";
 
 /** A new LoopState for one role, before its first tick. */
@@ -56,9 +57,7 @@ export function zeroCounters(s: LoopState): LoopState {
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other
  * wall-clock display in the harness (lastTickCell). */
 export function todayStamp(now = Date.now()): string {
-  const d = new Date(now);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return formatDate(new Date(now));
 }
 
 /** This loop's spend for the local day (the daily cost budget window): $0 when its stamp is

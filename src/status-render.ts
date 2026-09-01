@@ -4,7 +4,7 @@ import type { LoopState } from "./types.js";
 import type { StatusSnapshot } from "./status.js";
 import { budgetReached } from "./state.js";
 import { readLiveProgress } from "./progress.js";
-import { compactTokens } from "./text.js";
+import { compactTokens, formatTime, pad2 } from "./text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
  * cycle position, time/token formatters, and the width-aware table shared by
@@ -33,9 +33,8 @@ function ago(ts: number | undefined): string {
 export function lastTickCell(ts: number | undefined): string {
   if (!ts) return "-";
   const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  let s = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  if (Date.now() - ts > 86_400_000) s = `${p(d.getMonth() + 1)}-${p(d.getDate())} ${s}`;
+  let s = formatTime(d);
+  if (Date.now() - ts > 86_400_000) s = `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${s}`;
   return `${s} · ${ago(ts)}`;
 }
 

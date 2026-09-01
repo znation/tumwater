@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { statOrNull } from "./files.js";
 import { readCompleteLines, statRoleLog, TailState, withTail } from "./tail.js";
-import { collapseWhitespace, truncate } from "./text.js";
+import { collapseWhitespace, formatDate, formatTime, truncate } from "./text.js";
 import { describeToolCall } from "./tool-call.js";
 
 /** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its
@@ -12,16 +12,10 @@ const THINKING_MAX_CHARS = 80;
 const TEXT_LINE_MAX_COLS = 120;
 const TEXT_LINES_PER_MESSAGE = 4;
 
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
 /** Local wall-clock time for an epoch-ms timestamp (e.g. `2026-08-23 14:32:05`). */
 function formatTimestamp(ms: number): string {
   const d = new Date(ms);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(
-    d.getHours(),
-  )}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  return `${formatDate(d)} ${formatTime(d)}`;
 }
 
 type ContentBlock = {
