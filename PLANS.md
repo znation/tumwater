@@ -5,81 +5,15 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Live maxConcurrent — resize the concurrency cap without a restart (planned 2026-08-31, refined 2026-08-31)
-
-**Goal.** Make `maxConcurrent` live-reloadable like every other tumwater.json setting: a mid-run
-edit changes how many pi runs execute concurrently within ~2 s, with no restart. Today it is one of
-only two settings read once at startup (the Semaphore's capacity in runOrchestrator), and the README
-documents both as restart-only. The motivating case is the failure mode the README itself describes
-under "Match clients to slots": when `maxConcurrent` exceeds a local model server's slot count, KV
-prefix caches thrash and ticks starve — and today the remedy (lowering the cap) requires Ctrl+C'ing
-the whole fleet, interrupting in-flight ticks, just to change one number. Sibling entry: Live
-sessionRetentionDays below; together they close the last two restart requirements so every
-tumwater.json edit applies live. Either lands independently.
-
-**Approach.** src/semaphore.ts: track `capacity` and `inUse` (a plain `available` count is subtly
-wrong — shrinking below current in-use cannot be represented as free permits). acquire() takes a
-permit when `inUse < capacity`, else queues; release() decrements `inUse` and then wakes queued
-waiters while `inUse < capacity`, taking one permit for each woken waiter (see the refinement below —
-in the common case this is observationally identical to handing the permit straight to the next
-waiter); new `setCapacity(n)` sets the capacity, then wakes queued
-waiters while `inUse < n`, taking one permit for each woken waiter. Growing thus admits up to all
-queued waiters (bounded by the new headroom); shrinking never preempts in-flight work — it only
-caps future grants until releases bring `inUse` under the new cap. Config validation already
-enforces `maxConcurrent >= 1`, so no new validation is needed. src/orchestrator.ts: in the existing
-reload block, right after pushing the fresh config into every runner, apply
-`semaphore.setCapacity(reloaded.config.maxConcurrent)`; remember the last-applied value and log one
-harness-level event when it actually changes (new HarnessEvent type, e.g. `max_concurrent_changed`
-carrying old/new — a plain line in event-format.ts like its siblings, not a warning), so an edit is
-visible in `tumwater logs`/TUI/GUI without per-poll spam. src/types.ts: add the new type to the
-HarnessEvent union. README.md: reword the Usage sentence "only `maxConcurrent` and
-`sessionRetentionDays` require a restart" — whichever sibling entry lands first names only the
-survivor; once both are done it reads that all edits apply live.
-
-**Refined 2026-08-31 (plan loop) — release() semantics corrected; unit AC strengthened.** The
-original spec's `release()` ("hands its permit directly to the next queued waiter if any, else
-decrements `inUse`") contradicted this plan's own intent and acceptance criteria: after a shrink
-below current in-use with waiters already queued (capacity 2→1, two holders, one waiter), every
-release would hand straight to a waiter without ever decrementing `inUse`, so concurrency stays
-pinned at the old level — above the new cap — for as long as eligible loops keep re-queueing (which
-they do, once per poll). Both the stated goal in this entry ("caps future grants until releases
-bring `inUse` under the new cap") and the unit AC ("no new acquire() proceeds until releases bring
-in-use under the cap") are unmet by that mechanism. Corrected: `release()` always decrements
-`inUse` first, then wakes waiters while `inUse < capacity`. In the common case — a release with
-`inUse == capacity` and waiters queued — it admits exactly one waiter in FIFO order,
-observationally identical to direct handoff, so test/semaphore.test.ts's "release wakes waiters in
-FIFO order" passes unchanged; only the post-shrink path differs, where each release steps
-concurrency down toward the cap before admitting anyone. The unit AC below carries an explicit
-clause pinning that path.
-
-**Files touched.** src/semaphore.ts, src/orchestrator.ts, src/types.ts, src/event-format.ts,
-test/semaphore.test.ts, test/orchestrator.test.ts, README.md.
-
-**Acceptance criteria.**
-- Unit (test/semaphore.test.ts): growing capacity wakes queued acquirers up to the new headroom and
-  never lets more than `capacity` hold permits at once; shrinking never preempts in-flight work —
-  concretely, capacity 2→1 with two holders and one queued waiter admits nobody on the first
-  release (in-use steps 2→1, still at the cap) and exactly one waiter on the second (1→0), so
-  concurrency reaches the new cap within one release per finishing holder; a release with in-use at
-  capacity admits exactly one queued waiter in FIFO order (no double grant); repeated grow/shrink
-  cycles leak no permits and starve no waiter.
-- E2E (test/orchestrator.test.ts, following the "mid-run tumwater.json edits steer the fleet"
-  pattern): start with `maxConcurrent` 1 and two eligible fake-pi loops whose shim records peak
-  concurrency (increment on run start, decrement on exit, persist the max) — peak stays 1 while the
-  second loop waits on its slot; a live edit to 2 lets the already-queued tick proceed without a
-  restart so runs overlap (peak ≥ 2); conversely, shrinking from 2→1 while one run is in flight
-  admits no new concurrent run until it finishes. Exactly one change event per distinct value
-  change; unchanged polls log nothing.
-- Build clean, full suite green; README sentence updated as specified.
-
 ### Live sessionRetentionDays — re-prune old pi sessions without a restart (planned 2026-08-31)
 
 **Goal.** Make `sessionRetentionDays` live-reloadable and actually enforced for long-running
 fleets. Today pruning runs only at orchestrator startup, so (a) a mid-run edit to the retention
 window does nothing until the next restart — it is one of only two settings documented as
 restart-only — and (b) a fleet that runs for weeks without a restart accumulates pi session files
-past its configured window. Sibling entry: Live maxConcurrent above; together they close the last
-two restart requirements so every tumwater.json edit applies live. Either lands independently.
+past its configured window. Its sibling — Live maxConcurrent, landed by feature tick 70
+(`af61b7e`) and moved to Done below — closed one of the two; this entry closes the last restart
+requirement so every tumwater.json edit applies live.
 
 **Approach.** In runOrchestrator's poll cycle, track the last-applied retention value and the last
 prune time (both initialized from the existing startup behavior). On each successful reload: if the
@@ -221,6 +155,96 @@ commit on main. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
 test/config.test.ts.
 
 ## Done
+
+### Live maxConcurrent — resize the concurrency cap without a restart (planned 2026-08-31,
+refined 2026-08-31, done 2026-09-01)
+
+**Goal.** Make `maxConcurrent` live-reloadable like every other tumwater.json setting: a mid-run
+edit changes how many pi runs execute concurrently within ~2 s, with no restart. Today it is one of
+only two settings read once at startup (the Semaphore's capacity in runOrchestrator), and the README
+documents both as restart-only. The motivating case is the failure mode the README itself describes
+under "Match clients to slots": when `maxConcurrent` exceeds a local model server's slot count, KV
+prefix caches thrash and ticks starve — and today the remedy (lowering the cap) requires Ctrl+C'ing
+the whole fleet, interrupting in-flight ticks, just to change one number. Sibling entry: Live
+sessionRetentionDays; together they close the last two restart requirements so every
+tumwater.json edit applies live. Either lands independently.
+
+**Approach.** src/semaphore.ts: track `capacity` and `inUse` (a plain `available` count is subtly
+wrong — shrinking below current in-use cannot be represented as free permits). acquire() takes a
+permit when `inUse < capacity`, else queues; release() decrements `inUse` and then wakes queued
+waiters while `inUse < capacity`, taking one permit for each woken waiter (see the refinement below —
+in the common case this is observationally identical to handing the permit straight to the next
+waiter); new `setCapacity(n)` sets the capacity, then wakes queued
+waiters while `inUse < n`, taking one permit for each woken waiter. Growing thus admits up to all
+queued waiters (bounded by the new headroom); shrinking never preempts in-flight work — it only
+caps future grants until releases bring `inUse` under the new cap. Config validation already
+enforces `maxConcurrent >= 1`, so no new validation is needed. src/orchestrator.ts: in the existing
+reload block, right after pushing the fresh config into every runner, apply
+`semaphore.setCapacity(reloaded.config.maxConcurrent)`; remember the last-applied value and log one
+harness-level event when it actually changes (new HarnessEvent type, e.g. `max_concurrent_changed`
+carrying old/new — a plain line in event-format.ts like its siblings, not a warning), so an edit is
+visible in `tumwater logs`/TUI/GUI without per-poll spam. src/types.ts: add the new type to the
+HarnessEvent union. README.md: reword the Usage sentence "only `maxConcurrent` and
+`sessionRetentionDays` require a restart" — whichever sibling entry lands first names only the
+survivor; once both are done it reads that all edits apply live.
+
+**Refined 2026-08-31 (plan loop) — release() semantics corrected; unit AC strengthened.** The
+original spec's `release()` ("hands its permit directly to the next queued waiter if any, else
+decrements `inUse`") contradicted this plan's own intent and acceptance criteria: after a shrink
+below current in-use with waiters already queued (capacity 2→1, two holders, one waiter), every
+release would hand straight to a waiter without ever decrementing `inUse`, so concurrency stays
+pinned at the old level — above the new cap — for as long as eligible loops keep re-queueing (which
+they do, once per poll). Both the stated goal in this entry ("caps future grants until releases
+bring `inUse` under the new cap") and the unit AC ("no new acquire() proceeds until releases bring
+in-use under the cap") are unmet by that mechanism. Corrected: `release()` always decrements
+`inUse` first, then wakes waiters while `inUse < capacity`. In the common case — a release with
+`inUse == capacity` and waiters queued — it admits exactly one waiter in FIFO order,
+observationally identical to direct handoff, so test/semaphore.test.ts's "release wakes waiters in
+FIFO order" passes unchanged; only the post-shrink path differs, where each release steps
+concurrency down toward the cap before admitting anyone. The unit AC below carries an explicit
+clause pinning that path.
+
+**Files touched.** src/semaphore.ts, src/orchestrator.ts, src/types.ts, src/event-format.ts,
+test/semaphore.test.ts, test/orchestrator.test.ts, README.md.
+
+**Acceptance criteria.**
+- Unit (test/semaphore.test.ts): growing capacity wakes queued acquirers up to the new headroom and
+  never lets more than `capacity` hold permits at once; shrinking never preempts in-flight work —
+  concretely, capacity 2→1 with two holders and one queued waiter admits nobody on the first
+  release (in-use steps 2→1, still at the cap) and exactly one waiter on the second (1→0), so
+  concurrency reaches the new cap within one release per finishing holder; a release with in-use at
+  capacity admits exactly one queued waiter in FIFO order (no double grant); repeated grow/shrink
+  cycles leak no permits and starve no waiter.
+- E2E (test/orchestrator.test.ts, following the "mid-run tumwater.json edits steer the fleet"
+  pattern): start with `maxConcurrent` 1 and two eligible fake-pi loops whose shim records peak
+  concurrency (increment on run start, decrement on exit, persist the max) — peak stays 1 while the
+  second loop waits on its slot; a live edit to 2 lets the already-queued tick proceed without a
+  restart so runs overlap (peak ≥ 2); conversely, shrinking from 2→1 while one run is in flight
+  admits no new concurrent run until it finishes. Exactly one change event per distinct value
+  change; unchanged polls log nothing.
+- Build clean, full suite green; README sentence updated as specified.
+
+**Done 2026-09-01 (plan-loop audit) — feature tick 70 (`af61b7e`) closed the plan in full; every
+acceptance criterion met or tested.** The Semaphore tracks `capacity` and `inUse` separately with
+`setCapacity(n)` exactly per the refined spec: `release()` always decrements `inUse` first, then
+admits one FIFO waiter while there is headroom — so a post-shrink release steps concurrency down
+toward the cap before admitting anyone — and a grow wakes queued waiters up to the new headroom.
+The orchestrator's reload block applies it within one ~2 s poll right after pushing the fresh config
+into every runner, remembering the last-applied value so exactly one `max_concurrent_changed`
+harness event lands per distinct change (a plain line in logs/TUI/GUI, no warning prefix).
+test/semaphore.test.ts carries every unit clause: grow bounded by headroom with peak never above
+capacity; shrink 2→1 with two holders and one waiter admitting nobody on the first release (in-use
+steps 2→1, still at the cap) and exactly one on the second; a single FIFO grant per release with no
+double-grant; five alternating grow/shrink cycles leaking no permits and starving no waiter. The
+e2e in test/orchestrator.test.ts ("a live maxConcurrent edit resizes the cap without a restart")
+records peak concurrency through a fake-pi shim: peak stays 1 at cap 1, a live edit to 2 overlaps
+runs (peak ≥ 2) with no restart, and shrinking back admits no new concurrent run until in-flight
+work finishes — exactly two change events for the two distinct edits. One deviation from the plan's
+letter, recorded rather than forced: the e2e uses three fast-ticking roles over one slot instead of
+the specified two — a two-role fleet settles into strict alternation where every poll schedules
+exactly one loop, so there would be no queued tick for the grow to wake (the test comment says as
+much). The README handoff sentence landed as specified ("only `sessionRetentionDays` requires a
+restart"). Verified at `510c098`: build clean, suite 503/503.
 
 ### Self-explaining commit bodies (planned 2026-08-24, refined 2026-08-25, refined
 2026-08-27, audited 2026-08-28, re-audited 2026-08-31, done 2026-08-31)
