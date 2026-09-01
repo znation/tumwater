@@ -189,6 +189,7 @@ export interface HarnessEvent {
     | "orchestrator_start"
     | "orchestrator_stop"
     | "prompt_enqueued"
+    | "prompt_cancelled" // a queued prompt was removed before the director ran it (tumwater prompt --cancel)
     | "counters_reset"
     | "resume"
     | "review_start"

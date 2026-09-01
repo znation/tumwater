@@ -183,6 +183,23 @@ test("formatEvent renders question_posted with the posted heading and no warning
   assert.ok(!line.includes("warning"), `a posted question is routine, not a warning: ${line}`);
 });
 
+// The director inbox's prompt_cancelled event (director inbox management plan): a plain line
+// like its prompt_enqueued sibling — routine operation, not a warning.
+test("formatEvent renders prompt_cancelled plainly with the preview", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "director",
+    type: "prompt_cancelled",
+    preview: "add dark mode",
+  } as never);
+  assert.match(line, /director\s+user prompt cancelled: add dark mode/, `the preview must show: ${line}`);
+  assert.ok(!line.includes("warning"), `a cancelled prompt is routine, not a warning: ${line}`);
+
+  // A torn or hand-edited event line could carry no preview; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "director", type: "prompt_cancelled" } as never);
+  assert.match(bare, /user prompt cancelled:/);
+});
+
 test("formatEvent renders the resume event", () => {
   const line = formatEvent({ ts: 0, loop: "feature", type: "resume" } as never);
   assert.match(line, /feature\s+resuming the tick a shutdown interrupted \(same pi session and worktree\)/);

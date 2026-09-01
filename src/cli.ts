@@ -8,7 +8,8 @@ import { loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from ".
 import { createTranscriptRenderer, readTranscriptTail } from "./transcript.js";
 import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
-import { submitPrompt } from "./inbox.js";
+import { cancelPrompt, queuedPrompts, submitPrompt } from "./inbox.js";
+import { truncate } from "./text.js";
 import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
@@ -36,6 +37,8 @@ Usage:
   tumwater logs --role <id> [-f] [-n N]
                                    Show (and follow) that loop's pi transcript
   tumwater prompt <text...>        Queue a prompt for the director loop
+  tumwater prompt --list           Show queued prompts, numbered in execution order
+  tumwater prompt --cancel <n>     Remove the Nth queued prompt (as shown by --list)
   tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
   tumwater help | version
 
@@ -184,6 +187,59 @@ function parseInitArgs(args: string[]): string {
     }
   }
   return args.join(" ");
+}
+
+/** The three modes of `tumwater prompt`: enqueue free-form text (the default), list the
+ * queue, or cancel one entry by its 1-based position. */
+type PromptArgs =
+  | { mode: "enqueue"; text: string }
+  | { mode: "list" }
+  | { mode: "cancel"; position: number };
+
+/** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
+ * positionals are free-form prompt content — but a double-dash token must be a real flag
+ * (`--list`, `--cancel <n>`), or it would be baked into the queued prompt (the same class of
+ * bug parseInitArgs fixed: today `tumwater prompt --foo text` enqueues "--foo text").
+ * Single-dash positionals remain prompt content. `--list` and `--cancel` are mutually
+ * exclusive and may not combine with positional text.
+ */
+function parsePromptArgs(args: string[]): PromptArgs {
+  for (const arg of args) {
+    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel") {
+      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --list, --cancel <n>)`);
+    }
+  }
+  const listFlag = args.indexOf("--list");
+  const cancelFlag = args.indexOf("--cancel");
+  if (args.filter((a) => a === "--list").length > 1) fail("--list may only be given once");
+  if (args.filter((a) => a === "--cancel").length > 1) fail("--cancel may only be given once");
+  if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
+
+  if (listFlag >= 0) {
+    const extra = args.find((_, i) => i !== listFlag);
+    if (extra !== undefined) {
+      fail(`unexpected argument ${JSON.stringify(extra)} — with --list there is no prompt text`);
+    }
+    return { mode: "list" };
+  }
+
+  if (cancelFlag >= 0) {
+    const raw = args[cancelFlag + 1];
+    if (!raw || raw.startsWith("--")) fail(`--cancel needs a position number`);
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1) fail(`--cancel needs a positive integer (got ${JSON.stringify(raw)})`);
+    // The position is the only token --cancel may carry; anything else alongside it would be
+    // prompt text, and this mode has none.
+    const extra = args.find((_, i) => i !== cancelFlag && i !== cancelFlag + 1);
+    if (extra !== undefined) {
+      fail(`unexpected argument ${JSON.stringify(extra)} — with --cancel there is no prompt text`);
+    }
+    return { mode: "cancel", position: n };
+  }
+
+  const text = args.join(" ").trim();
+  if (!text) fail("prompt text required");
+  return { mode: "enqueue", text };
 }
 
 async function cmdInit(root: string, args: string[]): Promise<void> {
@@ -369,9 +425,34 @@ async function main(): Promise<void> {
       break;
     case "prompt": {
       await requireReadyRepo(root);
-      const text = args.join(" ").trim();
-      if (!text) fail("prompt text required");
-      submitPrompt(root, text);
+      const parsed = parsePromptArgs(args);
+      if (parsed.mode === "list") {
+        // Full text, verbatim: this is the inspection command that tells you what a queued
+        // prompt actually says before you cancel it.
+        const prompts = queuedPrompts(root);
+        if (prompts.length === 0) {
+          process.stdout.write("nothing queued for the director\n");
+        } else {
+          prompts.forEach((p, i) => process.stdout.write(`${i + 1}. ${p}\n`));
+        }
+        break;
+      }
+      if (parsed.mode === "cancel") {
+        let outcome; // CancelOutcome
+        try {
+          outcome = cancelPrompt(root, parsed.position);
+        } catch (err) {
+          fail(err instanceof Error ? err.message : String(err));
+        }
+        if (outcome.status === "gone") {
+          // A concurrent dequeue is a normal race, not an error: report it and exit clean.
+          process.stdout.write(`prompt ${parsed.position} is no longer queued — the director already took it\n`);
+        } else {
+          process.stdout.write(`cancelled: ${truncate(outcome.text, 80)}\n`);
+        }
+        break;
+      }
+      submitPrompt(root, parsed.text);
       process.stdout.write("queued for the director loop\n");
       break;
     }

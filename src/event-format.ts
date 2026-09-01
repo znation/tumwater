@@ -39,6 +39,9 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} orchestrator stopped`;
     case "prompt_enqueued":
       return `${time} ${loop} user prompt queued: ${String(e.preview)}`;
+    case "prompt_cancelled":
+      // Routine operation (the user removed a queued prompt), not a warning.
+      return `${time} ${loop} user prompt cancelled: ${String(e.preview)}`;
     case "counters_reset": {
       // One role → the event is filed under that loop; several → one harness-level event
       // listing them.

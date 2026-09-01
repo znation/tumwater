@@ -34,6 +34,47 @@ export function inboxSize(root: string): number {
   return queuedFiles(root).length;
 }
 
+/** Full text of every queued prompt in execution order (oldest first) — the same filename
+ * sort dequeuePrompt pops by. A missing inbox directory reads as an empty queue, like
+ * inboxSize and dequeuePrompt. */
+export function queuedPrompts(root: string): string[] {
+  return queuedFiles(root).map((f) => fs.readFileSync(f, "utf8"));
+}
+
+/** Outcome of cancelPrompt: the cancelled prompt's text, or "gone" when the director dequeued
+ * it between listing and removal (a concurrent pop is a normal race, not an error). */
+export type CancelOutcome = { status: "cancelled"; text: string } | { status: "gone" };
+
+/** Remove the Nth queued prompt — 1-based, as shown by `tumwater prompt --list` — and log one
+ * prompt_cancelled event under the director loop (preview through truncate, exactly like its
+ * prompt_enqueued sibling). Throws for out-of-range positions with no side effects; returns
+ * { status: "gone" } when the file disappears between listing and removal instead of throwing.
+ * The event is logged only after a successful removal — a prompt the director just dequeued
+ * ran, it was not cancelled. */
+export function cancelPrompt(root: string, position: number): CancelOutcome {
+  const files = queuedFiles(root);
+  if (position < 1 || position > files.length) {
+    throw new Error(`no prompt at position ${position} (${files.length} queued)`);
+  }
+  const file = files[position - 1];
+  if (!file) throw new Error(`no prompt at position ${position} (${files.length} queued)`); // Unreachable: the range check above.
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { status: "gone" };
+    throw err;
+  }
+  try {
+    fs.rmSync(file);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { status: "gone" };
+    throw err;
+  }
+  logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_cancelled", preview: truncate(text, 80) });
+  return { status: "cancelled", text };
+}
+
 /** Remove and return the oldest queued prompt, or null when empty. */
 export function dequeuePrompt(root: string): string | null {
   const [oldest] = queuedFiles(root);
