@@ -32,6 +32,7 @@ import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { applyTickOutcome, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
 import { mergeToMain } from "./merge.js";
+import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
 import { piLogPath, sessionDir } from "./paths.js";
 
@@ -400,35 +401,24 @@ export class LoopRunner {
       return { result: "error" };
     }
     if (!changed) {
-      const cutOff = !pi.nothingToDo && pi.finalMessageContentless;
+      // No sentinel anywhere in the reply is either non-compliance or truncation —
+      // diagnoseNoChange (src/no-change.ts) tells which, so the warning event below is
+      // diagnosable on its own.
+      const diagnosis = diagnoseNoChange(pi);
       if (!pi.nothingToDo) {
-        // No sentinel anywhere in the reply. Make the warning diagnosable: surface an
-        // abnormal stopReason (e.g. "length" = truncated final message, so a cut-off
-        // sentinel is distinguishable from plain non-compliance) and note when pi
-        // produced no assistant text at all.
-        const notes: string[] = [];
-        if (pi.stopReason && pi.stopReason !== "stop") notes.push(`stopReason=${pi.stopReason}`);
-        if (!pi.finalText.trim()) notes.push("no assistant text");
-        // A final message with neither text nor a tool call means the generation was cut
-        // off mid-stream, not that the model ignored the sentinel rule — typically pi
-        // clamped max output tokens to what little space remained under the declared
-        // context window and the provider reported the truncation as a normal stop.
-        if (pi.finalMessageContentless)
-          notes.push("final message had no text or tool call — likely cut off at the context ceiling");
-        if (pi.compacted) notes.push("pi auto-compacted the session");
         logEvent(this.root, {
           loop: this.role,
           type: "warning",
           message:
             `pi finished without changes and without declaring nothing-to-do` +
-            (notes.length ? ` (${notes.join(", ")})` : ""),
+            (diagnosis.notes.length ? ` (${diagnosis.notes.join(", ")})` : ""),
         });
       }
       // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
       // to the inbox to rerun fresh; a role loop resumes the just-compacted session
       // next tick (see the cutOff handling in tick()).
-      if (cutOff) this.requeueUnfulfilledPrompt(userPrompt);
-      return { result: "no_change", cutOff: cutOff || undefined };
+      if (diagnosis.cutOff) this.requeueUnfulfilledPrompt(userPrompt);
+      return { result: "no_change", cutOff: diagnosis.cutOff || undefined };
     }
 
     const summary = extractSummary(pi.finalText) ?? `${this.role} tick ${s.ticks}`;
