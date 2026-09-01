@@ -65,6 +65,13 @@ function renderAssistantMessage(content: unknown): string[] {
   return out;
 }
 
+/** The event types createTranscriptRenderer's feed() acts on — everything else (streaming
+ * deltas, tool/turn bookkeeping) renders nothing. `message_end` covers both roles: assistant
+ * turns render and user messages stamp the run separator. Also used by feed()'s pre-filter to
+ * skip JSON.parse for pi lines whose type is verifiably not one of these; a new renderable case
+ * in the switch must be added here too or it will never reach the renderer. */
+const RENDERABLE_TYPES = new Set(["agent_start", "message_end", "auto_retry_start"]);
+
 export interface TranscriptRenderer {
   /** Feed one raw JSONL line; returns the rendered lines of any entry this line completes
    * (empty for deltas, bookkeeping events, and user messages). */
@@ -82,7 +89,8 @@ export interface TranscriptRenderer {
  * produce output: `agent_start` (a run separator, stamped from the first user message's
  * epoch-ms timestamp), assistant `message_end` turns, and `auto_retry_start` warnings.
  * Streaming deltas (`message_update`), tool-execution/turn bookkeeping, and user messages —
- * in particular the multi-KB tick prompt sent each run — are never rendered. */
+ * in particular the multi-KB tick prompt sent each run — are never rendered; feed() skips
+ * even parsing them via a fast path over pi's compact `type`-first JSON shape. */
 export function createTranscriptRenderer(): TranscriptRenderer {
   let runOpen = false; // agent_start seen for this run, separator not yet emitted
   let runTime: string | null = null;
@@ -98,6 +106,20 @@ export function createTranscriptRenderer(): TranscriptRenderer {
     feed(line: string): string[] {
       const trimmed = line.trim();
       if (!trimmed) return [];
+      // Cheap pre-filter before JSON.parse: pi's logs are ~97% streaming delta lines
+      // (message_update), which the switch below discards after parsing them. Pi serializes
+      // every event as compact JSON with `type` first (`{"type":"<event>",…}` — 100% of lines
+      // in observed logs), so for that shape we read just the type value (~30ns) and skip the
+      // parse when it is not one this renderer acts on; measured ~28–46ms → ~5–8ms of
+      // parse/render per 12–21MB log (seeding or a full re-read).
+      // Any line NOT matching that exact prefix (a future pi serialization, torn or foreign
+      // JSON) falls through to a full parse — exactly today's behavior — so the fast path can
+      // only ever skip lines whose type is verifiably non-renderable, never lose output. A new
+      // renderable case in the switch below must be added to RENDERABLE_TYPES too.
+      if (trimmed.startsWith('{"type":"')) {
+        const end = trimmed.indexOf('"', 9);
+        if (end > 9 && !RENDERABLE_TYPES.has(trimmed.slice(9, end))) return [];
+      }
       let event: Record<string, unknown>;
       try {
         event = JSON.parse(trimmed);

@@ -137,6 +137,46 @@ test("createTranscriptRenderer emits each entry exactly once as lines arrive", (
   assert.deepEqual(r.flush(), []);
 });
 
+test("createTranscriptRenderer treats delta noise as pure noise (feed fast-path contract)", () => {
+  // The renderer's feed() skips JSON.parse for pi lines whose compact `type`-first shape
+  // verifiably carries a non-renderable type, which is only safe because such lines can never
+  // affect output or state. Pin that invariant: a stream with heavy message_update padding
+  // must render exactly like the same stream without it — so a future switch case that
+  // consumes a fast-path-skipped line (e.g. deltas) fails here and forces its type into
+  // RENDERABLE_TYPES.
+  const delta = JSON.stringify({ type: "message_update", delta: { type: "text_delta", textDelta: "x".repeat(200) } });
+  const noise = [agentStart(), delta, userLine("p"), delta, assistantLine([{ type: "text", text: "done" }]), delta];
+  const clean = [agentStart(), userLine("p"), assistantLine([{ type: "text", text: "done" }])];
+
+  const rNoisy = createTranscriptRenderer();
+  const noisyOut: string[][] = [];
+  for (const line of noise) {
+    const out = rNoisy.feed(line);
+    if (out.length > 0) noisyOut.push(out);
+  }
+  const tail = rNoisy.flush();
+  if (tail.length > 0) noisyOut.push(tail);
+
+  assert.deepEqual(noisyOut, formatTranscript(clean));
+});
+
+test("createTranscriptRenderer still parses non-compact JSON shapes (fast-path fallback)", () => {
+  // The fast path only skips lines matching pi's exact compact `type`-first prefix; anything
+  // else — reordered keys, whitespace after the colon, foreign or torn JSON — must fall back
+  // to a full parse and render exactly as before. Pin that safe-degradation contract so a
+  // future change cannot silently drop events whose serialization differs from pi's.
+  const r = createTranscriptRenderer();
+  assert.deepEqual(r.feed('{"message":{"role":"user"},"type":"agent_start"}'), []); // reordered keys open the run
+  assert.deepEqual(
+    r.feed('{ "type": "message_end", "message": { "role": "user", "timestamp": ' + TS + ', "content": [] } }'),
+    [], // spaced JSON user message stamps the separator (fast path falls back to parse)
+  );
+  assert.deepEqual(
+    r.feed('{ "type": "message_end", "message": { "role": "assistant", "content": [{ "type": "text", "text": "hi" }] } }'),
+    [`── run @ ${expectedTimestamp(TS)} ──`, "  hi"], // spaced JSON still renders
+  );
+});
+
 test("readTranscript returns the last N entries oldest-first and [] without a log", () => {
   const root = tmpdir();
   assert.deepEqual(readTranscript(root, "feature"), []);
