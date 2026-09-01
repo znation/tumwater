@@ -5,6 +5,88 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Director inbox management — list and cancel queued prompts (planned 2026-09-01)
+
+**Goal.** Let users inspect and remove prompts queued for the director. Today `tumwater prompt`
+only enqueues: the queue is durable files under `.tumwater/inbox/`, dashboards show only an
+`inbox: N` count badge (plus 80-char previews in the event feed), and there is no way to see what
+is queued or remove a stale or mistyped prompt. That matters because the director executes every
+queued prompt back-to-back with no cooldown (`isEligible`: inbox > 0 → run immediately, no min-gap,
+no backoff) — a bad prompt will always eventually run, and the only countermeasures today are
+Ctrl+C'ing the whole fleet or hand-editing files under `.tumwater/`. Sibling entry: "Show queued
+director prompts in TUI/GUI" (dashboard display; this entry owns the CLI surface and the shared
+inbox reader).
+
+**Approach.** src/inbox.ts: export `queuedPrompts(root): string[]` — full text of the queued
+prompts in execution order (oldest first), reusing the existing private `queuedFiles` ordering;
+missing directory → []. Export `cancelPrompt(root, position)` for 1-based positions as shown by
+`--list`: list files with the same sort, read and remove the Nth file, and log one
+`prompt_cancelled` event under loop "director" (preview via the existing surrogate-safe
+`truncate`, exactly like `prompt_enqueued`). If the file disappears between listing and removal
+(the director dequeued it concurrently), return a distinct "gone" result instead of throwing —
+the CLI reports that prompt N is no longer queued. Out-of-range positions are an error with no
+side effects. src/types.ts: add `"prompt_cancelled"` to the HarnessEvent union. src/event-format.ts:
+render it as a plain line like its sibling — `<time> <loop> user prompt cancelled: <preview>` (no
+warning prefix). src/cli.ts: give the `prompt` command real flag parsing following init's pattern
+— double-dash tokens must be `--list` or `--cancel`; single-dash positionals remain prompt content;
+`--list` prints the queued prompts numbered in execution order (empty → a clear "nothing queued"
+line); `--cancel <n>` takes one positive integer, removes the Nth prompt, and confirms with its
+preview; `--list`/`--cancel` are mutually exclusive and may not combine with positional text. This
+also closes a latent hole: today `tumwater prompt --foo text` bakes `--foo` into the queued prompt
+(the same class of bug init's parseInitArgs fixed). README.md: one Usage line for the new flags.
+
+**Files touched.** src/inbox.ts, src/types.ts, src/event-format.ts, src/cli.ts,
+test/inbox.test.ts, test/cli.test.ts, test/event-format.test.ts, README.md.
+
+**Acceptance criteria.**
+- Unit (test/inbox.test.ts): `queuedPrompts` returns full text oldest-first and [] when the inbox
+  is empty or missing; `cancelPrompt` removes by 1-based position and reports the cancelled text;
+  an out-of-range position errors with no file touched; a file removed between listing and removal
+  yields the "gone" result without throwing.
+- Event: cancel logs exactly one `prompt_cancelled` under loop "director", preview truncated to 80
+  chars (surrogate-safe, same helper as its sibling); rendering is a plain line in
+  test/event-format.test.ts like prompt_enqueued's.
+- CLI (test/cli.test.ts): `--list` prints numbered prompts in execution order and the empty case;
+  `--cancel <n>` removes exactly the Nth (siblings keep their relative positions) and confirms;
+  unknown position / missing value / non-positive integer fail clearly with no side effects;
+  `--list` combined with text fails; an unknown double-dash flag (`--foo`) fails instead of being
+  enqueued as content (regression); single-dash positionals remain prompt content.
+- Build clean, full suite green; README Usage line updated.
+
+### Show queued director prompts in TUI/GUI (planned 2026-09-01)
+
+**Goal.** Both dashboards show what is queued for the director — not just how much — completing
+the main-prompt UX: users type prompts into the TUI prompt line and GUI form, so they should see
+the queue where they typed it. Today both surfaces show only an `· inbox: N` header badge; content
+is visible only via CLI (sibling entry "Director inbox management") or 80-char previews in the
+event feed. Cancellation stays CLI-only in this entry — one sensible way before adding a surface.
+
+**Approach.** src/status.ts: `StatusSnapshot` gains `inboxPrompts: string[]` — fresh per poll like
+`questions`, each entry truncated to 80 chars with the same surrogate-safe `truncate` used for
+event previews (the dashboards clip display width themselves; sending full text would bloat the
+GUI payload). Reuse the sibling entry's `queuedPrompts(root)` reader if it has landed, otherwise
+add that reader here first. src/tui.ts: while any prompts are queued, render one line per prompt
+(`1. <preview>`) between the status table and the activity pane — mirroring how the questions
+nudge consumes a line of budget; subtract those lines from `eventBudget` exactly like `hasQuestions`
+today so the no-wrap/no-scroll height invariant holds. src/gui-page.ts: `/api/status` carries
+`inboxPrompts`; the project status panel gains a "queued prompts" section via the existing
+`backlogList(title, items)` helper (always rendered, `(none)` when empty — consistent with the
+plans/bugs/questions sections).
+
+**Files touched.** src/status.ts, src/tui.ts, src/gui-page.ts, test/status.test.ts,
+test/tui-run.test.ts (or the TUI render tests), test/gui.test.ts.
+
+**Acceptance criteria.**
+- snapshot: `inboxPrompts` is [] when nothing is queued and carries 80-char truncated previews in
+  execution order otherwise; fresh per poll (a prompt enqueued between polls appears without a
+  restart) — test/status.test.ts.
+- TUI: with N prompts queued, the render shows exactly N numbered lines above the activity pane,
+each clipped to terminal width, and `eventBudget` shrinks by N (no line wraps or scrolls off);
+  zero prompts → no extra lines. Covered by the existing TUI render tests' pattern.
+- GUI: `/api/status` includes `inboxPrompts`; the project status panel shows a "queued prompts"
+  section listing them, `(none)` when empty — test/gui.test.ts against the served page and payload.
+- Build clean, full suite green. No cancel button in this entry (CLI-only by design).
+
 ### Live sessionRetentionDays — re-prune old pi sessions without a restart (planned 2026-08-31,
 refined 2026-09-01)
 
