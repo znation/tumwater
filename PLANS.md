@@ -5,7 +5,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Live maxConcurrent — resize the concurrency cap without a restart (planned 2026-08-31)
+### Live maxConcurrent — resize the concurrency cap without a restart (planned 2026-08-31, refined 2026-08-31)
 
 **Goal.** Make `maxConcurrent` live-reloadable like every other tumwater.json setting: a mid-run
 edit changes how many pi runs execute concurrently within ~2 s, with no restart. Today it is one of
@@ -19,8 +19,10 @@ tumwater.json edit applies live. Either lands independently.
 
 **Approach.** src/semaphore.ts: track `capacity` and `inUse` (a plain `available` count is subtly
 wrong — shrinking below current in-use cannot be represented as free permits). acquire() takes a
-permit when `inUse < capacity`, else queues; release() hands its permit directly to the next queued
-waiter if any, else decrements `inUse`; new `setCapacity(n)` sets the capacity, then wakes queued
+permit when `inUse < capacity`, else queues; release() decrements `inUse` and then wakes queued
+waiters while `inUse < capacity`, taking one permit for each woken waiter (see the refinement below —
+in the common case this is observationally identical to handing the permit straight to the next
+waiter); new `setCapacity(n)` sets the capacity, then wakes queued
 waiters while `inUse < n`, taking one permit for each woken waiter. Growing thus admits up to all
 queued waiters (bounded by the new headroom); shrinking never preempts in-flight work — it only
 caps future grants until releases bring `inUse` under the new cap. Config validation already
@@ -34,15 +36,33 @@ HarnessEvent union. README.md: reword the Usage sentence "only `maxConcurrent` a
 `sessionRetentionDays` require a restart" — whichever sibling entry lands first names only the
 survivor; once both are done it reads that all edits apply live.
 
+**Refined 2026-08-31 (plan loop) — release() semantics corrected; unit AC strengthened.** The
+original spec's `release()` ("hands its permit directly to the next queued waiter if any, else
+decrements `inUse`") contradicted this plan's own intent and acceptance criteria: after a shrink
+below current in-use with waiters already queued (capacity 2→1, two holders, one waiter), every
+release would hand straight to a waiter without ever decrementing `inUse`, so concurrency stays
+pinned at the old level — above the new cap — for as long as eligible loops keep re-queueing (which
+they do, once per poll). Both the stated goal in this entry ("caps future grants until releases
+bring `inUse` under the new cap") and the unit AC ("no new acquire() proceeds until releases bring
+in-use under the cap") are unmet by that mechanism. Corrected: `release()` always decrements
+`inUse` first, then wakes waiters while `inUse < capacity`. In the common case — a release with
+`inUse == capacity` and waiters queued — it admits exactly one waiter in FIFO order,
+observationally identical to direct handoff, so test/semaphore.test.ts's "release wakes waiters in
+FIFO order" passes unchanged; only the post-shrink path differs, where each release steps
+concurrency down toward the cap before admitting anyone. The unit AC below carries an explicit
+clause pinning that path.
+
 **Files touched.** src/semaphore.ts, src/orchestrator.ts, src/types.ts, src/event-format.ts,
 test/semaphore.test.ts, test/orchestrator.test.ts, README.md.
 
 **Acceptance criteria.**
 - Unit (test/semaphore.test.ts): growing capacity wakes queued acquirers up to the new headroom and
-  never lets more than `capacity` hold permits at once; shrinking leaves in-flight work untouched —
-  after a shrink below current in-use, no new acquire() proceeds until releases bring in-use under
-  the cap; release hands a permit straight to a queued waiter (no double grant); repeated
-  grow/shrink cycles leak no permits and starve no waiter.
+  never lets more than `capacity` hold permits at once; shrinking never preempts in-flight work —
+  concretely, capacity 2→1 with two holders and one queued waiter admits nobody on the first
+  release (in-use steps 2→1, still at the cap) and exactly one waiter on the second (1→0), so
+  concurrency reaches the new cap within one release per finishing holder; a release with in-use at
+  capacity admits exactly one queued waiter in FIFO order (no double grant); repeated grow/shrink
+  cycles leak no permits and starve no waiter.
 - E2E (test/orchestrator.test.ts, following the "mid-run tumwater.json edits steer the fleet"
   pattern): start with `maxConcurrent` 1 and two eligible fake-pi loops whose shim records peak
   concurrency (increment on run start, decrement on exit, persist the max) — peak stays 1 while the
