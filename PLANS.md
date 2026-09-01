@@ -88,7 +88,7 @@ each clipped to terminal width, and `eventBudget` shrinks by N (no line wraps or
 - Build clean, full suite green. No cancel button in this entry (CLI-only by design).
 
 ### Live sessionRetentionDays — re-prune old pi sessions without a restart (planned 2026-08-31,
-refined 2026-09-01)
+refined 2026-09-01, re-audited 2026-09-01)
 
 **Goal.** Make `sessionRetentionDays` live-reloadable and actually enforced for long-running
 fleets. Today pruning runs only at orchestrator startup, so (a) a mid-run edit to the retention
@@ -165,6 +165,61 @@ so its units sit beside the e2e in test/orchestrator.test.ts (the helper takes p
 sibling reference: Usage's "only `sessionRetentionDays` requires a restart" clause drops out entirely
 so the sentence reads that every tumwater.json edit applies live; do not touch the status block's
 mention of it — that text belongs to the readme loop.
+
+**Re-audited 2026-09-01 (plan loop) — the core has LANDED in feature tick 73 (`eaa9848`); two
+deviations from this entry's pins recorded; remainder re-specified.** The Approach above is stale on
+current main: everything it describes except the change event already exists. Verified at `377ad2c`
+(build clean, suite 515/515; current main `53c0477` adds only director-inbox code and tests on top —
+no retention files touched):
+
+- **The pure helper** is exported from src/orchestrator.ts exactly where this entry pinned it:
+  `dueForPrune(lastPruneAt, now, retentionDays)` — due when retention > 0 and a full day has passed
+  since the last prune.
+- **The poll-cycle bookkeeping** matches refinement gap #3: `lastRetention`/`lastPruneAt` are seeded
+  at startup; every poll reads `(runners[0]?.config ?? config).sessionRetentionDays` — the same
+  last-known-good source as the budget gate, independent of reload success; a mid-run edit re-prunes
+  immediately (even inside the daily window), an unchanged fleet prunes at most once per day; both
+  trackers update after scanning so an on-change prune does not also trigger the daily scan in the
+  same poll; the warning shape ("pruned N old pi session file(s)") fires only when N > 0. Startup
+  pruning is untouched.
+
+Two deviations from this entry's pins, recorded rather than forced: (1) `dueForPrune` takes
+`number | null`, not "plain numbers — never null" — it carries an explicit "never pruned → due
+immediately" branch; under the current wiring that branch is unreachable through the orchestrator
+(an edit from 0 to N fires the on-change path first, which sets `lastPruneAt`), but it is exported
+and unit-testable. (2) `lastPruneAt` initializes to null when startup retention is 0 rather than
+always Date.now(); observable behavior is identical for every edit sequence — a later 0→N edit goes
+through the on-change path and prunes immediately either way, and `dueForPrune` returns false while
+retention stays at 0.
+
+What remains — four items, pickable independently except (c) lands after (a):
+
+(a) **the `retention_changed` event** (refinement gap #4; unimplemented — no type in src/types.ts,
+no rendering in src/event-format.ts, no emission in the retention block). Small code change: add
+`"retention_changed"` to the HarnessEvent union beside `max_concurrent_changed`; emit it inside the
+existing retention block when `retention !== lastRetention` — on every distinct value change including
+transitions to/from 0 (pruning itself still runs only when > 0); render as a plain line like its
+sibling, `<time> <loop> sessionRetentionDays changed: <from> → <to>`, no warning prefix; rendering
+unit in test/event-format.test.ts.
+(b) **`dueForPrune` units** in test/orchestrator.test.ts (zero references today): due when a full day
+has passed since the last prune, not due within a day, never due at retention 0, and null
+`lastPruneAt` → immediately due when retention > 0.
+(c) **the live-edit e2e per AC1** in test/orchestrator.test.ts — lands after (a), because it asserts
+the change event: start with retention 30 and plant a ~2-day-old session (`seedOldSession`, already in
+that file) → survives startup; a live edit to 1 removes it within one poll cycle with exactly one
+`retention_changed` and one prune warning naming the count; raising back to 30 prunes nothing (no
+second warning); then plant a ~45-day-old file mid-run (the daily gate is not due, so it sits) and set
+retention to 0 — the on-change path skips pruning at 0, so the ancient file survives: 0 disables rather
+than "delete all". Exactly one change event per distinct edit (three total for this sequence);
+unchanged polls log nothing.
+(d) **the README handoff** — Usage's "only `sessionRetentionDays` requires a restart" clause is now
+stale (the behavior applies live): drop it entirely so the sentence reads that every tumwater.json
+edit applies live; do not touch the status block's mention of it — that text belongs to the readme
+loop.
+
+Files for the remainder: src/types.ts, src/event-format.ts, src/orchestrator.ts,
+test/orchestrator.test.ts, test/event-format.test.ts, README.md. Once (a)–(d) land, move this plan
+to Done.
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
