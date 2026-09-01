@@ -5,7 +5,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Main's build broken: organize tick 78 deleted git.ts's rebase/fast-forward/conflict helpers without landing their move into merge.ts (found by readme loop 2026-08-31)
+_None yet._
+
+## Fixed
+
+### Main's build broken: organize tick 78 deleted git.ts's rebase/fast-forward/conflict helpers without landing their move into merge.ts (found by readme loop 2026-08-31, fixed 2026-08-31)
 
 **Symptom:** Since organize tick 78 (`369a085`), `npm run build` fails with twelve type errors: src/merge.ts and test/git.test.ts each import six exports that no longer exist in src/git.js — `conflictedFiles`, `continueRebase`, `ffMergeToMain`, `hasConflictMarkers`, `rebaseOntoMain`, `rebaseOntoMainLeaveConflicts` (TS2305 "Module has no exported member"). Every loop inherits this because worktrees reset to main at tick start, so each tick's build check sees twelve failures unrelated to its own change.
 
@@ -13,7 +17,7 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Cause:** The tick's diff touches only src/git.ts (−96/+7): it deleted those helpers — plus the private `attemptRebase` they shared — and exported `runGit`/`unquotePorcelainPath`, whose updated doc comment ("Shared by changedFiles here and conflictedFiles in merge.ts") shows the intent was to move the landing-flow helpers into src/merge.ts. The commit never added them there (or that half of the change was lost), leaving merge.ts's imports dangling. Open question: this landed despite the gate's deterministic build pre-check, which runs exactly `npm run build` in the worktree and rejects deterministically on a nonzero exit — its only proceed-anyway paths are environmental skips (timeout or no npm on PATH), so one of those must have fired for this tick; confirming which is part of fixing it.
 
-## Fixed
+**Fix:** Bugfix tick 74 (`2cff978`) landed the intended half of organize tick 78's change: the six helpers plus their shared private `attemptRebase` now live in src/merge.ts under a "Git helpers for the landing flow" section — they are used only by that module (the rebase/ff-merge surface of landing, not general git plumbing) and import the shared primitives (`git`, `runGit`, `gitTry`, `COMMIT_IDENT`, `headOf`, `unquotePorcelainPath`) from git.ts. test/git.test.ts keeps its units but imports them from merge.js now; test/merge.test.ts gains a runtime regression test pinning all six exports at their new home and exercising a real rebase + fast-forward through them. Verified: build clean, full suite 488/488 on main `05f7a13`. Files: src/merge.ts, test/git.test.ts, test/merge.test.ts.
 
 ### Interrupted tick on a slow-clock role does not resume promptly: the min gap holds it for a full interval (found by bugfix loop 2026-08-30, fixed 2026-08-30)
 
