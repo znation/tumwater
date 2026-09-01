@@ -21,6 +21,18 @@ function messageText(msg: PiMessage): string {
     .join("\n");
 }
 
+/** Context-overflow errors often surface only in retry events, not the final message,
+ * so feedLine matches this against every error text it sees. Stateless (no `g` flag), so
+ * one shared instance is safe for repeated .test() calls.
+ * Module-private: only PiStreamParser.feedLine below matches against it. */
+const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded|exceeds? (the )?context|too (long|large) for .*context/i;
+
+/** LM Studio kills predict streams idle >600 s (e.g. the machine slept mid-run) and reports
+ * it back through pi as a server error on an assistant message. Fresh requests succeed
+ * within seconds of a wake, so this is retryable — unlike every other error class.
+ * Module-private: only PiStreamParser.feedLine below matches against it. */
+const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
+
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";
@@ -201,18 +213,6 @@ function terminateChild(child: ChildProcess): void {
 /** Prefix of PiRunResult.errorMessage when the pi process never started (no session file
  * is created for such a run). */
 const SPAWN_ERROR_PREFIX = "failed to spawn pi";
-
-/** Context-overflow errors often surface only in retry events, not the final message,
- * so feedLine matches this against every error text it sees. Stateless (no `g` flag), so
- * one shared instance is safe for repeated .test() calls.
- * Module-private: only feedLine above matches against it. */
-const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded|exceeds? (the )?context|too (long|large) for .*context/i;
-
-/** LM Studio kills predict streams idle >600 s (e.g. the machine slept mid-run) and reports
- * it back through pi as a server error on an assistant message. Fresh requests succeed
- * within seconds of a wake, so this is retryable — unlike every other error class.
- * Module-private: only feedLine above matches against it. */
-const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
 
 /** Run pi non-interactively in a worktree and distill the result. Never throws. */
 export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
