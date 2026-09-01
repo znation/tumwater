@@ -1,6 +1,14 @@
 import { shortSha } from "./text.js";
 import type { HarnessEvent } from "./types.js";
 
+/** The `$<spent> of $<cap>` fragment both budget transition events share: the fields arrive
+ * loosely typed on HarnessEvent, so each is coerced and pinned to two decimals in one place. */
+function budgetPhrase(e: HarnessEvent): string {
+  const spent = Number(e.spentUsd ?? 0).toFixed(2);
+  const cap = Number(e.capUsd ?? 0).toFixed(2);
+  return `$${spent} of $${cap}`;
+}
+
 /** Human one-liner for an event, shared by `logs`, `run` output, the TUI activity pane, and the
  * GUI event feed. Presentation only: depends on the event shape (types.ts), not on events.ts's
  * log I/O — so display surfaces never import formatting from the logging module. */
@@ -47,17 +55,11 @@ export function formatEvent(e: HarnessEvent): string {
     }
     case "review_failed":
       return `${time} ${loop} review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)`;
-    case "budget_paused": {
+    case "budget_paused":
       // Routine state change, like counters_reset — no warning prefix.
-      const spent = Number(e.spentUsd ?? 0).toFixed(2);
-      const cap = Number(e.capUsd ?? 0).toFixed(2);
-      return `${time} ${loop} budget paused — $${spent} of $${cap} daily cost reached`;
-    }
-    case "budget_resumed": {
-      const spent = Number(e.spentUsd ?? 0).toFixed(2);
-      const cap = Number(e.capUsd ?? 0).toFixed(2);
-      return `${time} ${loop} budget resumed ($${spent} of $${cap} today)`;
-    }
+      return `${time} ${loop} budget paused — ${budgetPhrase(e)} daily cost reached`;
+    case "budget_resumed":
+      return `${time} ${loop} budget resumed (${budgetPhrase(e)} today)`;
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
       return `${time} ${loop} maxConcurrent changed: ${e.from} → ${e.to}`;
