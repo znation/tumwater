@@ -5,7 +5,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Live sessionRetentionDays — re-prune old pi sessions without a restart (planned 2026-08-31)
+### Live sessionRetentionDays — re-prune old pi sessions without a restart (planned 2026-08-31,
+refined 2026-09-01)
 
 **Goal.** Make `sessionRetentionDays` live-reloadable and actually enforced for long-running
 fleets. Today pruning runs only at orchestrator startup, so (a) a mid-run edit to the retention
@@ -25,18 +26,63 @@ helper (e.g. `dueForPrune(lastPruneAt, now, retentionDays)`) so it is unit-testa
 timestamps. Both paths log the existing warning shape ("pruned N old pi session file(s)") only when
 N > 0 — pruning is normal operation and quiet polls stay silent.
 
-**Files touched.** src/orchestrator.ts, test/orchestrator.test.ts, README.md (same sentence handoff
-as the sibling entry).
+**Files touched.** src/orchestrator.ts, src/types.ts, src/event-format.ts,
+test/orchestrator.test.ts, test/event-format.test.ts, README.md (final handoff — see the refinement
+below for the exact sentence).
 
 **Acceptance criteria.**
 - E2E (test/orchestrator.test.ts, beside the existing startup-pruning tests): start with retention
-  30 and plant a session file whose mtime is backdated past one day (`fs.utimesSync`) — it survives
-  startup; a live edit to 1 removes it within one poll cycle with exactly one warning naming the
-  count; raising the value prunes nothing; setting 0 disables pruning even for ancient files.
+  30 and plant a session file backdated ~2 days (`fs.utimesSync` — older than the new window of 1,
+  younger than the initial 30) — it survives startup; a live edit to 1 removes it within one poll
+  cycle with exactly one change event and one warning naming the count; raising the value back to
+  30 prunes nothing (no second warning); then plant a ~45-day-old file mid-run (the daily gate is
+  not due, so it sits) and set retention to 0 — the on-change path skips pruning at 0, so the
+  ancient file survives: 0 disables rather than "delete all". Exactly one change event per distinct
+  edit; unchanged polls log nothing.
 - The pure helper: due when a full day has passed since the last prune, not due within a day, and
   never due at retention 0 (unit-tested with fake timestamps); the e2e above pins the on-change path
   through a real orchestrator.
+- The change event renders as a plain line in test/event-format.test.ts like its sibling —
+  `sessionRetentionDays changed: <from> → <to>`, no warning prefix.
 - Build clean, full suite green; README sentence updated as specified.
+
+**Refined 2026-09-01 (plan loop) — audited against current main (`dd01cf6`); four spec gaps
+closed.** Every structural claim verified on current main first: pruning runs only at orchestrator
+startup (the `config.sessionRetentionDays > 0` block in src/orchestrator.ts logging the existing
+warning shape), `pruneOldFiles(dir, days)` is recursive and mtime-based and returns a count
+(src/files.ts), validation already enforces `>= 0` with "0 disables" (src/config.ts), and the
+sibling's live-edit pattern — `lastMaxConcurrent` tracked beside the reload block plus exactly one
+`max_concurrent_changed` event per distinct value change — is the template this entry follows. Four
+gaps in the original spec, corrected:
+
+1. **The e2e's planted-file age was ambiguous.** "Backdated past one day" could mean 45 days — which
+   would not survive startup under retention 30 and the test would fail for the wrong reason. The AC
+   now pins a full sequence with explicit ages (~2-day file before startup; ~45-day file planted
+   mid-run before the edit to 0), all implementable with the existing `seedOldSession` helper in
+   test/orchestrator.test.ts.
+2. **Initialization semantics pinned.** Both trackers initialize at orchestrator start regardless of
+   whether startup pruning ran: `lastAppliedRetention = config.sessionRetentionDays`,
+   `lastPruneAt = Date.now()`. With retention 0 at startup nothing is pruned, but a fresh daily
+   window is still correct — the on-change path fires independently when the value later becomes > 0.
+3. **The daily gate must not depend on a successful reload.** The change path sits inside
+   `if (reloaded.config)` (new values only arrive there), but the once-per-day check runs every poll
+   against the same last-known-good source as the budget gate (`runners[0]?.config ?? config`) —
+   otherwise a persistently broken tumwater.json would silently stop pruning while the fleet keeps
+   running on the old value. Both paths update `lastPruneAt` after scanning (even when nothing was
+   deleted), so an on-change prune does not also trigger the daily scan in the same poll.
+4. **Live edits were invisible.** The original spec had no signal that an edit took effect when
+   nothing was pruned (e.g., loosening 7 → 30). Add one harness event per distinct value change —
+   `retention_changed` carrying from/to, rendered as a plain line in event-format.ts like its sibling
+   (`sessionRetentionDays changed: <from> → <to>`, no warning prefix) — mirroring the maxConcurrent
+   pattern. The event fires on every distinct change including transitions to/from 0; pruning itself
+   runs only when the new value is > 0.
+
+Two small pins: `dueForPrune` lives in src/orchestrator.ts, exported like `isEligible`/`fairOrder`,
+so its units sit beside the e2e in test/orchestrator.test.ts (the helper takes plain numbers —
+`lastPruneAt` is always initialized, never null). And the README handoff is final rather than a
+sibling reference: Usage's "only `sessionRetentionDays` requires a restart" clause drops out entirely
+so the sentence reads that every tumwater.json edit applies live; do not touch the status block's
+mention of it — that text belongs to the readme loop.
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
