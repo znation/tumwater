@@ -132,6 +132,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   let prevEnabled = new Set<string>(enabled);
   // The previous poll's budget-paused state, for one-shot pause/resume transition events.
   let prevBudgetPaused = false;
+  // The cap last applied to the semaphore (live-resized on each reload), so a change logs
+  // exactly one event per distinct value — not once per ~2s poll.
+  let lastMaxConcurrent = Math.max(1, config.maxConcurrent);
 
   try {
     while (!signal.aborted) {
@@ -140,6 +143,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
       const reloaded = loadConfigSafe(root);
       if (reloaded.config) {
         for (const r of runners) r.config = reloaded.config;
+        // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute
+        // concurrently within this poll — no restart. Growing admits already-queued ticks;
+        // shrinking never preempts in-flight work, it only caps future grants.
+        const newMaxConcurrent = Math.max(1, reloaded.config.maxConcurrent);
+        if (newMaxConcurrent !== lastMaxConcurrent) {
+          semaphore.setCapacity(newMaxConcurrent);
+          logEvent(root, { loop: "harness", type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
+          lastMaxConcurrent = newMaxConcurrent;
+        }
         const nowEnabled = enabledRoleIds(reloaded.config);
         // Enabling a role mid-run starts it: create its runner (its persisted state survives).
         for (const role of nowEnabled) {

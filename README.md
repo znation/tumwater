@@ -184,8 +184,7 @@ level, set a per-role tick interval (the steward runs on a ~6 h clock and qa on 
 both by default), and tune backoff in
 `tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
 within ~2s — enabling/disabling roles, per-role provider/model/thinking/instructions, tick
-intervals, and backoff all apply live; only `maxConcurrent` and `sessionRetentionDays` require a
-restart.
+intervals, and backoff all apply live; only `sessionRetentionDays` requires a restart.
 
 Spend is capped by `maxDailyCostUsd` in tumwater.json (default 50; set 0 to disable): once the
 day's total cost across all loops reaches it, role loops stop starting new ticks for the rest of

@@ -58,6 +58,10 @@ export function formatEvent(e: HarnessEvent): string {
       const cap = Number(e.capUsd ?? 0).toFixed(2);
       return `${time} ${loop} budget resumed ($${spent} of $${cap} today)`;
     }
+    case "max_concurrent_changed": {
+      // Routine state change, like counters_reset — no warning prefix.
+      return `${time} ${loop} maxConcurrent changed: ${e.from} → ${e.to}`;
+    }
     case "resume":
       return `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
     case "warning":
