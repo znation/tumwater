@@ -99,6 +99,14 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
   });
 }
 
+/** Is a once-per-day session prune due? Exported for tests. Due when retention is enabled
+ * (> 0) and a full day has passed since the last prune (or no prune has run yet). */
+export function dueForPrune(lastPruneAt: number | null, now: number, retentionDays: number): boolean {
+  if (retentionDays <= 0) return false; // 0 disables pruning — never due.
+  if (lastPruneAt === null) return true; // Never pruned yet — due immediately.
+  return now - lastPruneAt >= 24 * 3600 * 1000;
+}
+
 /** Run all enabled loops until the signal aborts. */
 export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const { root, config, mainBranch, signal } = opts;
@@ -135,6 +143,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   // The cap last applied to the semaphore (live-resized on each reload), so a change logs
   // exactly one event per distinct value — not once per ~2s poll.
   let lastMaxConcurrent = Math.max(1, config.maxConcurrent);
+  // Live session-retention bookkeeping: the window last applied and when we last pruned —
+  // both seeded from the startup prune above, so a mid-run edit re-prunes immediately while
+  // an unchanged fleet prunes at most once per day (dueForPrune).
+  let lastRetention = config.sessionRetentionDays;
+  let lastPruneAt: number | null = config.sessionRetentionDays > 0 ? Date.now() : null;
 
   try {
     while (!signal.aborted) {
@@ -169,6 +182,24 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
       } else if (reloaded.error && reloaded.error !== lastConfigError) {
         logEvent(root, { loop: "harness", type: "warning", message: `tumwater.json invalid — keeping current config: ${reloaded.error}` });
         lastConfigError = reloaded.error;
+      }
+
+      // Live session retention (the last restart-only setting): a mid-run edit to the window
+      // re-prunes immediately; independently of edits, an unchanged fleet prunes at most once
+      // per day so a never-restarted fleet still honors its window. Both paths log the startup
+      // warning shape only when files were actually deleted — quiet polls stay silent. The live
+      // config (last-known-good while the file is broken) drives both checks, like the budget gate.
+      const retention = (runners[0]?.config ?? config).sessionRetentionDays;
+      if (retention !== lastRetention || dueForPrune(lastPruneAt, Date.now(), retention)) {
+        // A change to a positive window prunes immediately even inside the daily window — an
+        // operator tightening the window wants it applied now, not at tomorrow's pass.
+        const pruneNow = Date.now();
+        if (retention > 0) {
+          const pruned = pruneOldFiles(sessionsRootDir(root), retention);
+          if (pruned > 0) logEvent(root, { loop: "harness", type: "warning", message: `pruned ${pruned} old pi session file(s)` });
+          lastPruneAt = pruneNow;
+        }
+        lastRetention = retention;
       }
 
       // Consume a reset request from `tumwater reset-counters`: the CLI already zeroed the
