@@ -3,9 +3,7 @@ import { DIRECTOR_ROLE, roleById } from "./roles.js";
 import {
   abortSync,
   aheadOfMain,
-  changedFiles,
   commitAll,
-  commitPathsAndDiscardRest,
   ensureWorktree,
   git,
   gitTry,
@@ -34,6 +32,7 @@ import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { applyTickOutcome, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
 import { mergeToMain } from "./merge.js";
+import { handleRefusal } from "./refusal.js";
 import { piLogPath, sessionDir } from "./paths.js";
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
@@ -234,40 +233,6 @@ export class LoopRunner {
     );
   }
 
-  /** Handle a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended
-   * with TUMWATER_REFUSED. Only the markdown objection note may land — it is the durable record
-   * that blocks the entry for later ticks; any non-markdown half-work is discarded, tracked
-   * edits via reset --hard and untracked files via clean -fd (the committed note is safe at
-   * HEAD by then). A refusal with no note left resets the worktree cleanly and lets the reason
-   * live in the event + lastSummary only. The note commit merges directly: md-only diffs are
-   * review-exempt by construction under the gate's exemption patterns, so routing it through
-   * the gate would burn nothing but add a failure mode for a record that is not code. */
-  private async handleRefusal(wt: string, pi: PiRunResult): Promise<TickOutcome> {
-    const s = this.state;
-    const reason = (pi.refusedReason ?? "").trim() || "no reason given";
-    const notes = (await changedFiles(wt)).filter((f) => f.toLowerCase().endsWith(".md"));
-    let commit: string | undefined;
-    if (notes.length > 0) {
-      // Subject + trailer only — a refusal carries no WHY/RISK/VERIFIED body; the reason is
-      // the subject, and the trailer's turn count is the same field the friction flag reads.
-      const message = buildCommitMessage(
-        `tumwater(${this.role}): refuse — ${reason}`,
-        null,
-        commitTrailer(this.role, s.ticks, this.tickTurns, s.peakContextTokens),
-      );
-      commit = (await commitPathsAndDiscardRest(wt, message, notes)) ?? undefined;
-    }
-    if (!commit) {
-      // No note landed (none left, or nothing stageable): reset and keep the reason in the
-      // event + lastSummary only.
-      await resetWorktreeToMain(wt, this.mainBranch);
-      return { result: "refused", summary: reason };
-    }
-    const result = await this.merge(wt, `refused: ${reason}`);
-    if (result !== "changed") s.lastError = `refusal note merge failed: ${result}`;
-    return { result: "refused", summary: reason, commit };
-  }
-
   /** Salvage commits left on the branch by a previous run whose merge never landed. Leftovers
    * route through the SAME review gate as fresh ticks — every path that can move a commit into
    * main reviews the full ahead-of-main diff first, so no crash or abort path smuggles
@@ -411,8 +376,19 @@ export class LoopRunner {
     }
 
     // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel
-    // and any note it left are the run's verdict — classify what it left behind.
-    if (pi.refused) return await this.handleRefusal(wt, pi);
+    // and any note it left are the run's verdict — classify what it left behind (src/refusal.ts).
+    if (pi.refused)
+      return handleRefusal(
+        {
+          role: this.role,
+          mainBranch: this.mainBranch,
+          turns: this.tickTurns,
+          merge: (w, sum) => this.merge(w, sum),
+        },
+        this.state,
+        wt,
+        pi,
+      );
 
     const changed = await isDirty(wt);
     if (!pi.ok && !changed) {
