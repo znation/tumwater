@@ -272,6 +272,35 @@ test("prompt --list and --cancel reject duplicates, combinations, and stray posi
   r = await cli(repo, "prompt", "--cancel", "1", "extra");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unexpected argument "extra" — with --cancel there is no prompt text/);
+
+  // The failures are parse-time: nothing reaches the inbox.
+  assert.equal(inboxSize(repo), 0, "nothing enqueued on failure");
+});
+
+test("prompt rejects unknown double-dash flags instead of baking them into content", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt unknown flag");
+
+  // Before parsePromptArgs existed, `tumwater prompt --foo text` enqueued "--foo text" as the
+  // prompt — the same class of hole init's parseInitArgs closed. The flag must fail and leave
+  // the queue untouched.
+  const r = await cli(repo, "prompt", "--foo", "text");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --foo/);
+  assert.match(r.stderr, /--list, --cancel <n>/);
+  assert.equal(inboxSize(repo), 0, "the flag was not baked into queued content");
+});
+
+test("prompt keeps single-dash positionals as prompt content", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt single dash");
+
+  // Only double-dash tokens are flags; a leading single dash is free-form content, like the
+  // bullets init accepts.
+  const r = await cli(repo, "prompt", "-x");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /queued for the director loop/);
+  assert.equal(dequeuePrompt(repo), "-x");
 });
 
 test("logs -n validates its value instead of misbehaving", async () => {
