@@ -183,3 +183,37 @@ test("readLiveProgress reseeds when the log is rotated (renamed) mid-observation
   assert.equal(p?.turns, 1);
   assert.equal(p?.contextTokens, 7);
 });
+
+test("parseProgress ignores streaming deltas and other event types (fast-path equivalence)", () => {
+  // message_update lines are ~97% of pi's log; the type-first pre-filter skips parsing them
+  // entirely. Behavior must be identical to parsing-and-discarding: no turns, tools, or work.
+  const delta = JSON.stringify({
+    type: "message_update",
+    message: { content: [{ type: "text", text: "x".repeat(10_000) }], usage: { totalTokens: 999_999 } },
+  });
+  const p = parseProgress([SESSION, delta, JSON.stringify({ type: "agent_start" }), assistantLine("done", { tokens: 5 })], 0);
+  assert.equal(p.turns, 1);
+  assert.equal(p.toolCalls, 0);
+  assert.equal(p.contextTokens, 5);
+  assert.equal(p.currentWork, "done");
+});
+
+test("parseProgress still parses non-compact JSON shapes (fast-path fallback)", () => {
+  // The fast path only skips lines matching pi's exact compact `type`-first prefix; anything
+  // else — reordered keys, whitespace after the colon, foreign or torn JSON — must fall back
+  // to a full parse and count exactly as before. Pin that safe-degradation contract so a
+  // future change cannot silently drop events whose serialization differs from pi's.
+  const spaced = parseProgress(
+    ['{ "type": "message_end", "message": { "role": "assistant", "content": [{ "type": "text", "text": "hi" }], "usage": { "totalTokens": 7, "output": 2, "cost": { "total": 0 } }, "stopReason": "stop" } }'],
+    0,
+  ); // spaced JSON still counts (fast path falls back to parse)
+  assert.equal(spaced.turns, 1);
+  assert.equal(spaced.contextTokens, 7);
+
+  const reordered = parseProgress(
+    ['{"message":{"role":"assistant","content":[],"usage":{"totalTokens":9,"output":1,"cost":{"total":0}},"stopReason":"stop"},"type":"message_end"}'],
+    0,
+  ); // type not first: the prefix check cannot apply, full parse still counts it
+  assert.equal(reordered.turns, 1);
+  assert.equal(reordered.contextTokens, 9);
+});

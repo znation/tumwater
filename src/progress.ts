@@ -69,9 +69,29 @@ function freshProgress(quietMs: number): LiveProgress {
   };
 }
 
+/** The event types feedLine acts on — everything else (streaming deltas, turn/agent
+ * bookkeeping) is ignored. Also used by feedLine's pre-filter to skip JSON.parse for pi lines
+ * whose type is verifiably not one of these; a new case in the switch must be added here too.
+ */
+const PROGRESS_TYPES = new Set(["session", "tool_execution_start", "message_end"]);
+
 /** Apply one raw log line to a progress object (mutates it). Non-JSON noise is skipped. */
 function feedLine(progress: LiveProgress, line: string): void {
-  if (!line.trim()) return;
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  // Cheap pre-filter before JSON.parse: pi's logs are ~97% streaming delta lines
+  // (message_update), which the switch below discards after parsing them. Pi serializes every
+  // event as compact JSON with `type` first (`{"type":"<event>",…}` — 100% of lines in observed
+  // logs), so for that shape we read just the type value and skip the parse when it is not one
+  // this feedLine acts on; measured ~7ms → ~1ms per 4MB seed window (the same fast path as
+  // transcript.ts's renderer, which consumes the identical log). Any line NOT matching that
+  // exact prefix (a future pi serialization, torn or foreign JSON) falls through to a full
+  // parse — exactly today's behavior — so the fast path can only ever skip lines whose type is
+  // verifiably non-progress-relevant, never lose output.
+  if (trimmed.startsWith('{"type":"')) {
+    const end = trimmed.indexOf('"', 9);
+    if (end > 9 && !PROGRESS_TYPES.has(trimmed.slice(9, end))) return;
+  }
   let event: {
     type?: string;
     toolName?: string;
@@ -79,7 +99,7 @@ function feedLine(progress: LiveProgress, line: string): void {
     message?: { role?: string; content?: unknown; usage?: { totalTokens?: number; output?: number } };
   };
   try {
-    event = JSON.parse(line);
+    event = JSON.parse(trimmed);
   } catch {
     return;
   }
