@@ -250,3 +250,63 @@ test("formatEvent renders the retention change event plainly with from and to", 
   const bare = formatEvent({ ts: 0, loop: "harness", type: "retention_changed" } as never);
   assert.match(bare, /sessionRetentionDays changed:/);
 });
+
+// Per-tick usage in the event feed (PLANS.md): tick_end carries this tick's tokens and cost so
+// operators see where spend went — after result/summary/error, "·"-separated like the budget
+// badge. Zero or absent fields render byte-identical to a pre-feature line (no trailing sep).
+test("formatEvent renders per-tick usage on tick_end after result, summary, and error", () => {
+  // Both parts, in order: tokens first (compactTokens), then two-decimal cost.
+  const both = formatEvent({
+    ts: 0,
+    loop: "feature",
+    type: "tick_end",
+    tick: 7,
+    result: "changed",
+    summary: "add per-tick usage",
+    tokens: 18400,
+    costUsd: 0.37,
+  } as never);
+  assert.match(
+    both,
+    /tick #7 changed — add per-tick usage · 18\.4k tok · \$0\.37$/,
+    `both parts must render in order after the summary: ${both}`,
+  );
+
+  // Tokens-only (the local-model case where pi reports no cost): just the token part.
+  const tokensOnly = formatEvent({
+    ts: 0,
+    loop: "feature",
+    type: "tick_end",
+    tick: 8,
+    result: "no_change",
+    tokens: 1234,
+  } as never);
+  assert.match(tokensOnly, /tick #8 no_change · 1234 tok$/, `tokens-only must render just the token part: ${tokensOnly}`);
+
+  // Cost rides after an error payload too (error ticks are exactly where spend matters).
+  const withError = formatEvent({
+    ts: 0,
+    loop: "bugfix",
+    type: "tick_end",
+    tick: 9,
+    result: "error",
+    error: "boom",
+    tokens: 500,
+    costUsd: 1.5,
+  } as never);
+  assert.match(withError, /tick #9 error — boom · 500 tok · \$1\.50$/, `cost is two decimals after the error: ${withError}`);
+
+  // Zero or absent fields render byte-identical to today's line — no trailing separator.
+  const zero = formatEvent({
+    ts: 0,
+    loop: "clean",
+    type: "tick_end",
+    tick: 5,
+    result: "no_change",
+    tokens: 0,
+    costUsd: 0,
+  } as never);
+  const absent = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 5, result: "no_change" } as never);
+  assert.equal(zero, absent, `zero fields must render exactly like absent ones: ${JSON.stringify([zero, absent])}`);
+  assert.match(absent, /tick #5 no_change$/);
+});

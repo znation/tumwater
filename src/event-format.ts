@@ -1,4 +1,4 @@
-import { shortSha } from "./text.js";
+import { compactTokens, shortSha } from "./text.js";
 import type { HarnessEvent } from "./types.js";
 
 /** The `$<spent> of $<cap>` fragment both budget transition events share: the fields arrive
@@ -24,7 +24,16 @@ export function formatEvent(e: HarnessEvent): string {
       // for every result that carries one keeps the event feed self-explanatory — a bare
       // "tick #N refused" would force operators to open the transcript for the reason.
       const extra = e.summary ? ` — ${e.summary}` : e.error ? ` — ${e.error}` : "";
-      return `${time} ${loop} tick #${e.tick} ${e.result}${extra}`;
+      // Per-tick usage (PLANS.md, per-tick-usage plan): where the day's spend went. The
+      // fields arrive loosely typed on HarnessEvent and are omitted when zero or absent,
+      // so skipped ticks and zero-usage error ticks render byte-identical to a pre-feature
+      // line — no trailing separator. "·" is the separator the budget badge already uses.
+      const tokens = Number(e.tokens ?? 0);
+      const costUsd = Number(e.costUsd ?? 0);
+      const usage =
+        (tokens > 0 ? ` · ${compactTokens(tokens)} tok` : "") +
+        (costUsd > 0 ? ` · $${costUsd.toFixed(2)}` : "");
+      return `${time} ${loop} tick #${e.tick} ${e.result}${extra}${usage}`;
     }
     case "merged":
       return `${time} ${loop} merged ${shortSha(e.commit)} to main — ${e.summary}`;

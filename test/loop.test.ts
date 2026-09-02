@@ -1672,3 +1672,50 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     restore();
   }
 });
+
+// Per-tick usage in the event feed (PLANS.md): tick_end carries this tick's tokens and cost,
+// so `tumwater logs` shows where spend went without diffing status-table snapshots. The
+// rendering rules live in test/event-format.test.ts; these e2es pin that a real tick emits
+// the fields on its event — summed over every pi run of the tick (here: author + zero-usage
+// reviewer) — and that a skipped tick carries neither.
+
+test("a changed tick's tick_end event carries its per-tick tokens and cost", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [
+      // The reviewer run reports zero usage, so the tick's totals are exactly the author
+      // run's — the same numbers the status table's gen column shows for this tick.
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 18400, output: 18400, cost: 0.37 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "changed");
+
+    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    assert.equal(ends.length, 1, "one tick ran");
+    // tokens is the per-tick window (output summed over every pi run of the tick), costUsd
+    // this tick's spend — not lifetime totals.
+    assert.equal(ends[0]!.tokens, 18400);
+    assert.equal(ends[0]!.costUsd, 0.37);
+    // The state file still carries the same per-tick window (the gen column's source).
+    assert.equal(runner.state.generatedTokens, 18400);
+  } finally {
+    restore();
+  }
+});
+
+test("a skipped tick's tick_end event carries no usage fields", async () => {
+  // A director with an empty inbox skips without running pi: its tick_end must carry neither
+  // tokens nor costUsd, so it renders byte-identical to a pre-feature line.
+  const repo = await initializedRepo();
+  const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+  assert.equal((await runner.tick()).result, "skipped");
+
+  const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+  assert.equal(ends.length, 1, "one tick ran");
+  assert.equal(ends[0]!.tokens, undefined, "no tokens field on a skipped tick");
+  assert.equal(ends[0]!.costUsd, undefined, "no costUsd field on a skipped tick");
+});

@@ -53,6 +53,11 @@ export class LoopRunner {
    * fold after the commit and never inflate it. Deliberately not on LoopState: its only
    * consumer is the trailer stamped into the commit message itself, which is durable. */
   private tickTurns = 0;
+  /** USD cost folded into THIS tick so far (non-persisted): reset at tick start alongside
+   * tickTurns, grown in foldUsage. Deliberately not on LoopState — unlike generatedTokens,
+   * no dashboard reads it mid-run; its only consumer is the tick_end event, which fires before
+   * the next tick resets it (plans: per-tick usage in the event feed). */
+  private tickCostUsd = 0;
 
   constructor(
     readonly root: string,
@@ -154,6 +159,7 @@ export class LoopRunner {
     s.generatedTokens += run.outputTokens;
     s.peakContextTokens = Math.max(s.peakContextTokens, run.peakContextTokens);
     s.totalCostUsd += run.costUsd;
+    this.tickCostUsd += run.costUsd;
     // The daily cost budget window (plans/daily-cost-budget.md): every pi run of a tick folds
     // here exactly once, so the fleet's spend for the local day is complete at each tick end.
     recordDailyCost(s, run.costUsd);
@@ -285,6 +291,7 @@ export class LoopRunner {
     s.generatedTokens = 0;
     s.peakContextTokens = 0;
     this.tickTurns = 0;
+    this.tickCostUsd = 0;
     s.running = true;
     s.lastTickStartedAt = Date.now();
     const tick = s.ticks;
@@ -304,6 +311,12 @@ export class LoopRunner {
     applyTickOutcome(s, cfg, this.role, outcome);
     s.lastMainHead = (await gitTry(this.root, "rev-parse", this.mainBranch)) ?? s.lastMainHead;
     this.save();
+    // Per-tick usage (PLANS.md, per-tick-usage plan): the event feed is where operators see
+    // spend — this tick's tokens and cost ride on tick_end so a budget pause or a money-burning
+    // no_change/error/rejected/refused tick shows what it spent without diffing status-table
+    // snapshots. Both fields are per-tick windows (reset above, folded in foldUsage over every
+    // pi run of the tick); they ride on HarnessEvent's index signature like other payloads and
+    // are omitted when zero so skipped ticks render byte-identical to a pre-feature line.
     logEvent(this.root, {
       loop: this.role,
       type: "tick_end",
@@ -311,6 +324,8 @@ export class LoopRunner {
       result: outcome.result,
       summary: outcome.summary,
       error: s.lastError,
+      ...(s.generatedTokens > 0 ? { tokens: s.generatedTokens } : {}),
+      ...(this.tickCostUsd > 0 ? { costUsd: this.tickCostUsd } : {}),
     });
     return outcome;
   }
