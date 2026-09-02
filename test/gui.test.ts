@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import type os from "node:os";
 import net from "node:net";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { statusPayload, startGui } from "../src/gui.js";
+import { lanAddresses, statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { orchestratorStatePath, piLogPath } from "../src/paths.js";
@@ -12,6 +13,62 @@ import { freshLoopState, saveLoopState, todayStamp } from "../src/state.js";
 import { assistantLine, makeRepo } from "./util.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
+
+// The --all-interfaces URL filter decides which addresses the dashboard advertises as
+// reachable for an UNAUTHENTICATED server, so its inclusions/exclusions are pinned here
+// against a synthetic interface table: the e2e test can only observe what this machine has,
+// and on boxes without an external IPv4 (CI, containers) it passes vacuously.
+// Full interface infos with the boilerplate fields (netmask/mac/cidr) filled in, so the
+// tables below read as address/family/internal — the only fields the filter looks at.
+const v4 = (address: string, internal: boolean): os.NetworkInterfaceInfo => ({
+  address,
+  netmask: "255.255.255.0",
+  mac: "aa:bb:cc:dd:ee:ff",
+  cidr: null,
+  family: "IPv4",
+  internal,
+});
+const v6 = (address: string, internal: boolean): os.NetworkInterfaceInfo => ({
+  address,
+  netmask: "ffff:ffff:ffff:ffff::",
+  mac: "aa:bb:cc:dd:ee:ff",
+  cidr: null,
+  scopeid: 7,
+  family: "IPv6",
+  internal,
+});
+
+test("lanAddresses keeps external IPv4 only — skips loopback, IPv6, and empty interfaces", () => {
+  const table = {
+    lo0: [v4("127.0.0.1", true)],
+    en0: [
+      v6("fe80::a%en0", false), // link-local IPv6
+      v4("192.168.1.50", false),
+    ],
+    utun3: undefined, // an interface with no addresses — the live table's real shape
+  };
+  assert.deepEqual(lanAddresses(table), ["192.168.1.50"]);
+
+  // Every external IPv4 counts (multiple interfaces), in table order; an IPv4-mapped
+  // address is still family "IPv6", so it stays excluded.
+  const multi = {
+    eth0: [v4("10.0.0.2", false)],
+    en0: [
+      v6("::ffff:192.168.1.50", false),
+      v4("192.168.1.50", false),
+    ],
+  };
+  assert.deepEqual(lanAddresses(multi), ["10.0.0.2", "192.168.1.50"]);
+
+  assert.deepEqual(lanAddresses({}), []);
+
+  // The default (live) table: whatever it returns, every entry is a non-loopback IPv4 —
+  // the property that makes printing them safe.
+  for (const addr of lanAddresses()) {
+    assert.match(addr, /^\d{1,3}(\.\d{1,3}){3}$/, `IPv4 dotted quad: ${addr}`);
+    assert.notEqual(addr, "127.0.0.1", "loopback is never advertised");
+  }
+});
 
 test("gui binds localhost by default and all interfaces on request", async () => {
   const repo = makeRepo();

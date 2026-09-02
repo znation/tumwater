@@ -826,8 +826,9 @@ test("gui passes a permission error through with the raw message", async () => {
 test("gui --all-interfaces prints the reachable LAN URLs and serves until killed", async () => {
   // The success path of `tumwater gui` (banner, LAN URL lines, exposure warning) is only
   // reachable with a live child: startGui resolves once listening, then the CLI prints and
-  // blocks. README documents that --all-interfaces "prints the LAN URLs it is reachable at"
-  // — lanAddresses' filter (IPv4, non-loopback) had no test coverage at all.
+  // blocks. README documents that --all-interfaces "prints the LAN URLs it is reachable at";
+  // lanAddresses' filter semantics are pinned in test/gui.test.ts (this e2e covers the
+  // printing wiring against whatever interfaces this machine actually has).
   const repo = makeRepo();
   await initProject(repo, "cli gui all interfaces");
 

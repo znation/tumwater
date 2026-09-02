@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { enabledRoleIds, loadConfig } from "./config.js";
 import {
@@ -26,7 +25,7 @@ import { followFile } from "./tail.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { runTui } from "./tui.js";
-import { startGui } from "./gui.js";
+import { lanAddresses, startGui } from "./gui.js";
 import { eventsLogPath, piLogPath, resetRequestPath } from "./paths.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
@@ -54,20 +53,6 @@ The harness runs inside a git repo. Each role loop owns a persistent worktree an
 under .tumwater/, does one task per tick with pi, commits, and merges to main. Loops back
 off while the project is quiet and wake when main moves. Everything is local: no remotes.
 `;
-
-/** External IPv4 addresses of this machine's network interfaces, for printing the URLs a
- * `gui --all-interfaces` server is reachable at. IPv6 and internal (loopback) addresses are
- * skipped: the loopback URL is printed separately, and bracketed IPv6 URLs are rarely what
- * someone types on another device. */
-function lanAddresses(): string[] {
-  const out: string[] = [];
-  for (const addrs of Object.values(os.networkInterfaces())) {
-    for (const a of addrs ?? []) {
-      if (a.family === "IPv4" && !a.internal) out.push(a.address);
-    }
-  }
-  return out;
-}
 
 async function resolveMainBranch(root: string): Promise<string> {
   const branch = await currentBranch(root);

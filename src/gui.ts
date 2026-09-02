@@ -1,4 +1,5 @@
 import http from "node:http";
+import os from "node:os";
 import { openBugs, openQuestions, plannedPlans } from "./backlog.js";
 import { readEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
@@ -135,6 +136,27 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     req.on("end", onEnd);
     req.on("error", onError);
   });
+}
+
+/** External IPv4 addresses of this machine's network interfaces, for printing the URLs a
+ * `gui --all-interfaces` server is reachable at. IPv6 and internal (loopback) addresses are
+ * skipped: the loopback URL is printed separately, and bracketed IPv6 URLs are rarely what
+ * someone types on another device. The interface table is injectable (defaulting to the live
+ * one) so the filter's inclusions and exclusions stay unit-testable on machines — CI boxes,
+ * containers — that have no external address of their own. The parameter type says what
+ * os.networkInterfaces() really returns: an interface with no addresses maps to undefined,
+ * which is why the `?? []` below is load-bearing.
+ */
+export function lanAddresses(
+  interfaces: { [name: string]: os.NetworkInterfaceInfo[] | undefined } = os.networkInterfaces(),
+): string[] {
+  const out: string[] = [];
+  for (const addrs of Object.values(interfaces)) {
+    for (const a of addrs ?? []) {
+      if (a.family === "IPv4" && !a.internal) out.push(a.address);
+    }
+  }
+  return out;
 }
 
 /** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
