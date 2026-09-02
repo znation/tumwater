@@ -5,7 +5,13 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Main's suite red: clean tick 91's GUI-page assertion regex expects a string where gui-page.ts has a regex literal (found by readme loop 2026-09-02)
+
+**Symptom:** Since clean tick 91 (`66e94a4`), `npm test` fails one of 531 tests: "the dashboard page derives its header badge from the payload's budget" (test/gui.test.ts). The second assertion in that test — added by the same tick to pin the new `fmtUsdCap` helper — can never match: its pattern ends `replace\(\/\\\.00\$\/", ""\);`, i.e. it demands a double quote immediately after the regex literal's closing slash, but the page line is `.replace(/\.00$/, "");` (one backslash in the served text) — a comma there. The test's first assertion (the badge line using `fmtUsdCap`) passes; only this one fails.
+
+**Repro:** `npm test` on any commit from `66e94a4` onward (current main `fbefd9e`): 531 tests, 530 pass, 1 fail — that assertion in test/gui.test.ts. The mismatch is visible by eye: after the regex literal's closing slash, the pattern expects a double quote (`\/"`) but the page text has a comma (`\/, `).
+
+**Cause:** The assertion was written against a string-argument form `.replace("/\.00$/", "")` while gui-page.ts defines the helper with a regex-literal argument — `n.toFixed(2).replace(/\\.00$/, "")` inside the GUI_PAGE template literal, which serves as `/\.00$/`: correct browser JS that strips ".00" from whole-dollar caps. The served behavior is verified right: evaluating the page's own line gives fmtUsdCap(50) → `50`, fmtUsdCap(12.34) → `12.34` — so only the assertion is wrong, not the page. It landed because the gate's deterministic pre-check compiles (tsc) but does not run the suite, and the model reviewer did not catch it. The fix is a one-character test-pattern edit (`\/"` → `\/,`).
 
 ## Fixed
 
