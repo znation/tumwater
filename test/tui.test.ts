@@ -3,6 +3,8 @@ import path from "node:path";
 import readline from "node:readline";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { logEvent } from "../src/events.js";
+import { submitPrompt } from "../src/inbox.js";
 import { initProject } from "../src/init.js";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { applyKey, backlogLines, renderInputView, runTui } from "../src/tui.js";
@@ -330,6 +332,55 @@ test("open questions add a nudge line above the activity pane", async () => {
     // Any keypress re-renders; the nudge appears and the question counts in the header.
     tui.key(undefined, "left");
     assert.match(tui.lastFrame(), /questions: 1 awaiting answers/);
+  } finally {
+    await tui.quit();
+  }
+});
+
+test("queued prompts render numbered above the activity pane and shrink its budget", async () => {
+  const repo = await makeTuiRepo();
+  // Seed enough events that the recent-activity pane is full at the default budget, so a
+  // shrinking budget visibly drops body lines instead of just showing fewer than it could.
+  for (let i = 1; i <= 30; i++) logEvent(repo, { loop: "clean", type: "tick_start", tick: i });
+
+  const tui = startTui(repo);
+  try {
+    // Nothing queued → no numbered lines anywhere in the frame.
+    assert.doesNotMatch(tui.lastFrame(), /^\d+\. /m);
+
+    // Body lines run from after the pane header to the blank line before the hint.
+    const bodyLen = () => {
+      const ls = tui.lines();
+      const h = ls.findIndex((l) => l.includes("recent activity"));
+      let n = 0;
+      for (let i = h + 1; i < ls.length && (ls[i] ?? "") !== ""; i++) n++;
+      return n;
+    };
+    const full = bodyLen();
+
+    submitPrompt(repo, "fix the login bug");
+    submitPrompt(repo, "z".repeat(120)); // overlong: preview truncated to 80 chars upstream
+    tui.key(undefined, "left"); // any keypress re-renders with a fresh snapshot
+
+    const ls = tui.lines();
+    const h = ls.findIndex((l) => l.includes("recent activity"));
+    assert.equal(ls[h - 2], "1. fix the login bug", "first queue line sits above the pane");
+    assert.ok((ls[h - 1] ?? "").startsWith("2. "), "second queue line is numbered in order");
+    // The overlong prompt's preview is ≤80 chars, so its line fits the terminal width.
+    assert.ok((ls[h - 1] ?? "").length <= 100);
+
+    // Each queue line consumes exactly one line of budget: the full pane lost two body lines.
+    assert.equal(bodyLen(), full - 2);
+
+    // A narrower terminal clips each queue line to its width — no wrap, no scroll.
+    (process.stdout as { columns?: number }).columns = 60;
+    tui.key(undefined, "left");
+    const ls2 = tui.lines();
+    const h2 = ls2.findIndex((l) => l.includes("recent activity"));
+    for (const line of [ls2[h2 - 2], ls2[h2 - 1]]) {
+      assert.ok(line !== undefined && line.length <= 60, `queue line fits the width: ${JSON.stringify(line)}`);
+    }
+    (process.stdout as { columns?: number }).columns = 100;
   } finally {
     await tui.quit();
   }

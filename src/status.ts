@@ -2,7 +2,8 @@ import type { LoopState, TumwaterConfig } from "./types.js";
 import { openQuestions } from "./backlog.js";
 import { defaultConfig, enabledRoleIds, loadConfigSafe } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./files.js";
-import { inboxSize } from "./inbox.js";
+import { inboxSize, queuedPrompts } from "./inbox.js";
+import { truncate } from "./text.js";
 import { statePath } from "./paths.js";
 import {
   fleetDailyCost,
@@ -19,6 +20,10 @@ export interface StatusSnapshot {
   running: boolean;
   pid?: number;
   inbox: number;
+  /** Previews of those queued prompts in execution order, each truncated to 80 chars with
+   * the same surrogate-safe truncate as event previews — full text would bloat the GUI payload,
+   * and dashboards clip display width themselves. Fresh per poll like `questions`. */
+  inboxPrompts: string[];
   /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
   questions: number;
   loops: LoopState[];
@@ -82,6 +87,9 @@ export function snapshot(root: string): StatusSnapshot {
     running: orchestratorAlive(root, info),
     pid: info?.pid,
     inbox: inboxSize(root),
+    // A separate read, not derived from the count: queuedPrompts reads each file's content,
+    // so it must keep working (and stay fresh) on its own like `questions` above.
+    inboxPrompts: queuedPrompts(root).map((p) => truncate(p, 80)),
     questions: openQuestions(root).length,
     loops,
     budget:

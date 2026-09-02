@@ -104,40 +104,6 @@ so seeding the queue needs no new plumbing. Spec:
   positionals remain prompt content (`prompt "-x"` enqueues `-x`).
 Once it lands, move this plan to Done. Files for the remainder: test/cli.test.ts only.
 
-### Show queued director prompts in TUI/GUI (planned 2026-09-01)
-
-**Goal.** Both dashboards show what is queued for the director — not just how much — completing
-the main-prompt UX: users type prompts into the TUI prompt line and GUI form, so they should see
-the queue where they typed it. Today both surfaces show only an `· inbox: N` header badge; content
-is visible only via CLI (sibling entry "Director inbox management") or 80-char previews in the
-event feed. Cancellation stays CLI-only in this entry — one sensible way before adding a surface.
-
-**Approach.** src/status.ts: `StatusSnapshot` gains `inboxPrompts: string[]` — fresh per poll like
-`questions`, each entry truncated to 80 chars with the same surrogate-safe `truncate` used for
-event previews (the dashboards clip display width themselves; sending full text would bloat the
-GUI payload). Reuse the sibling entry's `queuedPrompts(root)` reader if it has landed, otherwise
-add that reader here first. src/tui.ts: while any prompts are queued, render one line per prompt
-(`1. <preview>`) between the status table and the activity pane — mirroring how the questions
-nudge consumes a line of budget; subtract those lines from `eventBudget` exactly like `hasQuestions`
-today so the no-wrap/no-scroll height invariant holds. src/gui-page.ts: `/api/status` carries
-`inboxPrompts`; the project status panel gains a "queued prompts" section via the existing
-`backlogList(title, items)` helper (always rendered, `(none)` when empty — consistent with the
-plans/bugs/questions sections).
-
-**Files touched.** src/status.ts, src/tui.ts, src/gui-page.ts, test/status.test.ts,
-test/tui-run.test.ts (or the TUI render tests), test/gui.test.ts.
-
-**Acceptance criteria.**
-- snapshot: `inboxPrompts` is [] when nothing is queued and carries 80-char truncated previews in
-  execution order otherwise; fresh per poll (a prompt enqueued between polls appears without a
-  restart) — test/status.test.ts.
-- TUI: with N prompts queued, the render shows exactly N numbered lines above the activity pane,
-each clipped to terminal width, and `eventBudget` shrinks by N (no line wraps or scrolls off);
-  zero prompts → no extra lines. Covered by the existing TUI render tests' pattern.
-- GUI: `/api/status` includes `inboxPrompts`; the project status panel shows a "queued prompts"
-  section listing them, `(none)` when empty — test/gui.test.ts against the served page and payload.
-- Build clean, full suite green. No cancel button in this entry (CLI-only by design).
-
 ### Live sessionRetentionDays — re-prune old pi sessions without a restart (planned 2026-08-31,
 refined 2026-09-01, re-audited 2026-09-01)
 
@@ -389,6 +355,55 @@ commit on main. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
 test/config.test.ts.
 
 ## Done
+
+### Show queued director prompts in TUI/GUI (planned 2026-09-01, done 2026-09-01)
+
+**Goal.** Both dashboards show what is queued for the director — not just how much — completing
+the main-prompt UX: users type prompts into the TUI prompt line and GUI form, so they should see
+the queue where they typed it. Today both surfaces show only an `· inbox: N` header badge; content
+is visible only via CLI (sibling entry "Director inbox management") or 80-char previews in the
+event feed. Cancellation stays CLI-only in this entry — one sensible way before adding a surface.
+
+**Approach.** src/status.ts: `StatusSnapshot` gains `inboxPrompts: string[]` — fresh per poll like
+`questions`, each entry truncated to 80 chars with the same surrogate-safe `truncate` used for
+event previews (the dashboards clip display width themselves; sending full text would bloat the
+GUI payload). Reuse the sibling entry's `queuedPrompts(root)` reader if it has landed, otherwise
+add that reader here first. src/tui.ts: while any prompts are queued, render one line per prompt
+(`1. <preview>`) between the status table and the activity pane — mirroring how the questions
+nudge consumes a line of budget; subtract those lines from `eventBudget` exactly like `hasQuestions`
+today so the no-wrap/no-scroll height invariant holds. src/gui-page.ts: `/api/status` carries
+`inboxPrompts`; the project status panel gains a "queued prompts" section via the existing
+`backlogList(title, items)` helper (always rendered, `(none)` when empty — consistent with the
+plans/bugs/questions sections).
+
+**Files touched.** src/status.ts, src/tui.ts, src/gui.ts, src/gui-page.ts, test/status.test.ts,
+test/tui.test.ts, test/gui.test.ts, test/status-render.test.ts (one-line fix for the new required
+field).
+
+**Acceptance criteria.**
+- snapshot: `inboxPrompts` is [] when nothing is queued and carries 80-char truncated previews in
+  execution order otherwise; fresh per poll (a prompt enqueued between polls appears without a
+  restart) — test/status.test.ts.
+- TUI: with N prompts queued, the render shows exactly N numbered lines above the activity pane,
+each clipped to terminal width, and `eventBudget` shrinks by N (no line wraps or scrolls off);
+  zero prompts → no extra lines. Covered by the existing TUI render tests' pattern.
+- GUI: `/api/status` includes `inboxPrompts`; the project status panel shows a "queued prompts"
+  section listing them, `(none)` when empty — test/gui.test.ts against the served page and payload.
+- Build clean, full suite green. No cancel button in this entry (CLI-only by design).
+
+**Done 2026-09-01 (feature tick) — every acceptance criterion met; nothing remains.**
+`StatusSnapshot.inboxPrompts` carries execution-order previews truncated to 80 chars via the shared
+surrogate-safe `truncate`, read fresh per poll alongside `inboxSize` (a separate read, so the count
+keeps working even if an individual prompt file is unreadable). The TUI renders one numbered line
+per queued prompt between the table and the activity pane, each consuming exactly one line of
+`eventBudget` like the questions nudge; `/api/status` carries the previews (src/gui.ts) and the
+project status panel lists them via `backlogList`, `(none)` when empty. Verified: build clean,
+full suite 525/525 with four new tests — snapshot truncation/freshness in test/status.test.ts,
+numbered lines + exact one-line-per-prompt budget shrink + width clipping at a narrower terminal
+in the fake-TUI harness (test/tui.test.ts), payload freshness and page section in
+test/gui.test.ts; live smoke against a scratch project confirmed `/api/status` returns
+execution-order previews with an overlong prompt truncated to 80 chars and the served page carries
+the new panel section. Cancellation stays CLI-only as planned.
 
 ### Live maxConcurrent — resize the concurrency cap without a restart (planned 2026-08-31,
 refined 2026-08-31, done 2026-09-01)

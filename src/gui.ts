@@ -50,6 +50,9 @@ export function statusPayload(root: string): object {
     running: snap.running,
     pid: snap.pid,
     inbox: snap.inbox,
+    // Previews of the queued director prompts in execution order (truncated server-side —
+    // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.
+    inboxPrompts: snap.inboxPrompts,
     // The daily cost budget while enabled — the page derives its `· budget: $X/$Y today`
     // header badge from this (absent when disabled).
     budget: snap.budget ?? null,

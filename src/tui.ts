@@ -113,7 +113,11 @@ export async function runTui(root: string): Promise<void> {
     // A highlighted nudge above the activity pane while questions await a human answer —
     // a cheap signal that something needs a decision. It consumes one line of the budget.
     const hasQuestions = snap.questions > 0;
-    const eventBudget = Math.max(3, rows - statusLines - 6 - (hasQuestions ? 1 : 0));
+    // Numbered previews of prompts queued for the director, between the table and the
+    // activity pane: what will run next, in execution order. Each line consumes exactly
+    // one line of the budget, like the questions nudge above it.
+    const queued = snap.inboxPrompts;
+    const eventBudget = Math.max(3, rows - statusLines - 6 - (hasQuestions ? 1 : 0) - queued.length);
     // The pane occupies the same slot as recent activity: one header line plus at most
     // eventBudget clipped lines, so the height-budget math is unchanged either way.
     let header: string;
@@ -146,6 +150,9 @@ export async function runTui(root: string): Promise<void> {
       parts.push(
         `${BOLD}${clipToWidth(`questions: ${snap.questions} awaiting answers (see QUESTIONS.md)`, width)}${RESET}`,
       );
+    }
+    for (const [i, preview] of queued.entries()) {
+      parts.push(clipToWidth(`${i + 1}. ${preview}`, width));
     }
     parts.push(header);
     parts.push(body.length ? body.map((l) => `${DIM}${l}${RESET}`).join("\n") : `${DIM}${emptyNote}${RESET}`);

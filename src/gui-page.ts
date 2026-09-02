@@ -102,7 +102,10 @@ export const GUI_PAGE = `<!doctype html>
         (items.length ? items.map(esc).join("\\n") : "(none)");
       document.getElementById("backlog").innerHTML =
         backlogList("planned features", d.plans || []) + "\\n\\n" + backlogList("open bugs", d.bugs || []) +
-        "\\n\\n" + backlogList("open questions", d.questions || []);
+        "\\n\\n" + backlogList("open questions", d.questions || []) +
+        // Queued director prompts in execution order (previews, truncated server-side);
+        // (none) while the inbox is empty, like the other sections.
+        "\\n\\n" + backlogList("queued prompts", d.inboxPrompts || []);
       const feed = document.getElementById("feed");
       const stick = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 4;
       feed.innerHTML = d.events.map(esc).join("<br>");

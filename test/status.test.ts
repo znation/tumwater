@@ -3,6 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig, saveConfig } from "../src/config.js";
+import { dequeuePrompt, submitPrompt } from "../src/inbox.js";
 import { allRoleIds } from "../src/roles.js";
 import { snapshot } from "../src/status.js";
 import { loopPhase, renderStatus } from "../src/status-render.js";
@@ -155,6 +156,28 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   saveConfig(repo, cfg);
   snap = snapshot(repo);
   assert.equal(snap.budget, null);
+});
+
+test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "inbox snapshot test");
+  assert.deepEqual(snapshot(repo).inboxPrompts, []); // no inbox dir yet
+
+  submitPrompt(repo, "first prompt");
+  submitPrompt(repo, "x".repeat(120)); // overlong: must come back as an ≤80-char preview
+  let snap = snapshot(repo);
+  assert.equal(snap.inbox, 2);
+  assert.deepEqual(snap.inboxPrompts[0], "first prompt");
+  const preview = snap.inboxPrompts[1]!;
+  assert.ok(preview.length <= 80 && preview.endsWith("…"), `preview truncated: ${JSON.stringify(preview)}`);
+
+  // Fresh per poll like questions: a prompt enqueued between snapshots appears without a
+  // restart, and the director consuming one drops it on the next.
+  submitPrompt(repo, "third");
+  assert.equal(snapshot(repo).inboxPrompts.length, 3);
+  dequeuePrompt(repo);
+  snap = snapshot(repo);
+  assert.deepEqual(snap.inboxPrompts, [preview, "third"]);
 });
 
 test("loopPhase describes each loop state", () => {

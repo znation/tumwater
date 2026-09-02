@@ -25,6 +25,7 @@ function snapshotWith(
   return {
     running: false,
     inbox: 0,
+    inboxPrompts: [],
     questions: 0,
     loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial })),
     budget,

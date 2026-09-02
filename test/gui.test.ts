@@ -6,7 +6,7 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
-import { dequeuePrompt, inboxSize } from "../src/inbox.js";
+import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { orchestratorStatePath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState, todayStamp } from "../src/state.js";
 import { assistantLine, makeRepo } from "./util.js";
@@ -308,6 +308,37 @@ test("the dashboard page renders the open-questions section and header badge fro
   // …and the header badge derives its count from that same list, shown only when N > 0.
   assert.match(GUI_PAGE, /const qn = \(d\.questions \|\| \[\]\)\.length/);
   assert.match(GUI_PAGE, /\(qn \? " · questions: " \+ qn : ""\)/);
+});
+
+// Queued director prompts ride /api/status as truncated previews in execution order; the
+// project status panel lists them like its other sections — (none) while the inbox is empty.
+
+test("status payload carries queued prompt previews, fresh per poll", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui inbox test"); // no inbox dir yet
+  let payload = statusPayload(repo) as { inbox: number; inboxPrompts: string[] };
+  assert.equal(payload.inbox, 0);
+  assert.deepEqual(payload.inboxPrompts, []);
+
+  submitPrompt(repo, "fix the login bug");
+  submitPrompt(repo, "y".repeat(120)); // overlong → truncated preview in the payload
+  payload = statusPayload(repo) as { inbox: number; inboxPrompts: string[] };
+  assert.equal(payload.inbox, 2);
+  assert.deepEqual(payload.inboxPrompts[0], "fix the login bug");
+  const preview = payload.inboxPrompts[1]!;
+  assert.ok(preview.length <= 80 && preview.endsWith("…"), `preview truncated: ${JSON.stringify(preview)}`);
+
+  // Fresh per poll: the director consuming one drops it from the next payload.
+  dequeuePrompt(repo);
+  payload = statusPayload(repo) as { inbox: number; inboxPrompts: string[] };
+  assert.equal(payload.inbox, 1);
+  assert.deepEqual(payload.inboxPrompts, [preview]);
+});
+
+test("the dashboard page lists queued prompts in its project status panel", async () => {
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+  // The #backlog panel gets a queued-prompts section alongside plans/bugs/questions.
+  assert.match(GUI_PAGE, /backlogList\("queued prompts", d\.inboxPrompts \|\| \[\]\)/);
 });
 
 // The daily cost budget on the GUI surface (plans/daily-cost-budget.md): /api/status carries
