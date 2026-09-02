@@ -232,3 +232,21 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   const bare = formatEvent({ ts: 0, loop: "harness", type: "budget_paused" } as never);
   assert.match(bare, /budget paused — \$0\.00 of \$0\.00 daily cost reached/);
 });
+
+// The live session-retention change event (PLANS.md, Live sessionRetentionDays): a routine
+// state change like max_concurrent_changed — a plain line carrying from → to, no warning prefix.
+test("formatEvent renders the retention change event plainly with from and to", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "retention_changed",
+    from: 30,
+    to: 1,
+  } as never);
+  assert.match(line, /harness\s+sessionRetentionDays changed: 30 → 1/);
+  assert.ok(!line.includes("warning"), "a routine state change is not a warning");
+
+  // A torn or hand-edited event line could carry no payloads; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "harness", type: "retention_changed" } as never);
+  assert.match(bare, /sessionRetentionDays changed:/);
+});

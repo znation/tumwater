@@ -101,7 +101,7 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
 
 /** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
  * has passed since the last prune (or no prune has run yet). */
-function dueForPrune(lastPruneAt: number | null, now: number, retentionDays: number): boolean {
+export function dueForPrune(lastPruneAt: number | null, now: number, retentionDays: number): boolean {
   if (retentionDays <= 0) return false; // 0 disables pruning — never due.
   if (lastPruneAt === null) return true; // Never pruned yet — due immediately.
   return now - lastPruneAt >= 24 * 3600 * 1000;
@@ -192,7 +192,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
       const retention = (runners[0]?.config ?? config).sessionRetentionDays;
       if (retention !== lastRetention || dueForPrune(lastPruneAt, Date.now(), retention)) {
         // A change to a positive window prunes immediately even inside the daily window — an
-        // operator tightening the window wants it applied now, not at tomorrow's pass.
+        // operator tightening the window wants it applied now, not at tomorrow's pass. Every
+        // distinct value change logs one event (like its maxConcurrent sibling) so live edits
+        // are visible in logs/TUI/GUI even when nothing was pruned; pruning itself still runs
+        // only for a positive window.
+        if (retention !== lastRetention) {
+          logEvent(root, { loop: "harness", type: "retention_changed", from: lastRetention, to: retention });
+        }
         const pruneNow = Date.now();
         if (retention > 0) {
           const pruned = pruneOldFiles(sessionsRootDir(root), retention);

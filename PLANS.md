@@ -104,8 +104,126 @@ so seeding the queue needs no new plumbing. Spec:
   positionals remain prompt content (`prompt "-x"` enqueues `-x`).
 Once it lands, move this plan to Done. Files for the remainder: test/cli.test.ts only.
 
+### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
+refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
+(item (a)'s file reference updated), re-audited 2026-08-31 (item (b2) landed))
+
+Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
+~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
+configForRole at all read sites; enabled by default with no config edit) that re-reads the initial
+prompt, PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move: prune/
+merge plans (the only role allowed to delete entries), flag drift, keep the complexity budget
+honest. The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes
+mandatory.
+
+**Status (plan-loop audit 2026-08-28):** feature tick 49 (`6e3f487`) landed the full design;
+verified at `ceb6019` with a green build and a 338/338 suite. Catalog: steward is last in ROLES
+(after `improve`; the director is appended separately by `allRoleIds()`), so it has exactly the
+lowest tie-break priority planned. Defaulting: `defaultConfig()` carries
+`{ enabled: true, minTickIntervalSeconds: 21600 }` and `loadConfig` merges per-role defaults for
+ids absent from the file — this repo's tumwater.json lists every other role but not steward, so it
+enables with no config edit. Validation: `minTickIntervalSeconds` is in ROLE_ENTRY_KEYS with a
+`checkNumber … >= 0`. Resolution: `configForRole` falls back per-role → global; `isEligible`
+reads through it, so the slow clock gates both scheduled ticks and "main moved" early wakes;
+tick() resolves once at the top and uses it in every interval branch — the three planned branches
+(changed/skipped/cut-off-resume) plus review-gate's later-added `rejected` branch (scheduled like
+changed), while aborted/backoff are untouched as planned. Prompt: curation move list, markdown-
+only restriction, PLANS.md deletion / PRINCIPLES.md edit powers, and the conditional QUESTIONS.md
+mention are all present in roles.ts; md-only diffs stay review-exempt via the gate's `*.md` /
+`docs/**` paths. Remaining — test gaps against the acceptance criteria plus the dogfood
+observation, nothing structural: (a) no role prompt contract tests exist — the plan's
+test/steward.test.ts never landed; add assertions for the curation move list, markdown-only
+restriction, deletion/principles powers, and conditional QUESTIONS.md mention; (b) the per-role
+interval is untested at scheduler level — only `configForRole` resolution has a regression test
+(test/config.test.ts); add an orchestrator-level test that a shortened override gates
+`isEligible`'s min-gap (including early wakes) and loop tests that tick()'s nextRunAt branches
+honor the override with global fallback when unset; (c) dogfood pending: no `tumwater(steward)`
+commit in history as of this audit, and PRINCIPLES.md's Budgets section is still absent — note
+the running fleet process must have started after 6e3f487 for its compiled defaultConfig to
+include steward (JS loads at startup; same consideration as the commit-bodies trailer note).
+Files for the remainder: test/steward.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts.
+
+**Re-audited 2026-08-30 (plan loop) — item (b)'s spec is stale on current main; remainder re-
+specified.** The "loop tests that tick()'s nextRunAt branches honor the override" half of item (b)
+names code that has since moved: organize tick `225c1d9` extracted post-tick scheduling out of
+loop.ts into the pure `applyTickOutcome(s, cfg, role, outcome)` in src/state.ts — tick() now
+resolves `cfg = configForRole(this.config, this.role)` once at the top and passes it through. And
+test/state.test.ts already unit-tests every interval branch (changed; rejected + skipped;
+cut-off-resume under and over the streak limit) against a plain config's
+`minTickIntervalSeconds`, so "the branches read cfg.minTickIntervalSeconds" is covered — as is
+item (b)'s global-fallback half, by test/config.test.ts's configForRole assertions (steward 21600,
+qa 7200, every other role inherits the global). What actually remains against AC3 — three items,
+pickable independently:
+
+(b1) **the resolution chain through a real tick** in test/loop.test.ts — one e2e pinning
+configForRole → applyTickOutcome end to end: a role with a per-role `minTickIntervalSeconds`
+override distinct from the global (e.g. 3600 over a fast global) lands a changed tick; assert the
+persisted state's `nextRunAt - lastTickEndedAt ≈ 3600 s`, not the global interval. This is the only
+untested link in the chain: applyTickOutcome's branches are unit-covered, configForRole's
+resolution is unit-covered, and nothing yet proves tick() hands the resolved value to the
+scheduler.
+(b2) **isEligible's min-gap with a per-role override** in test/orchestrator.test.ts — a variant of
+"a sleeping loop wakes when main moves, respecting the min gap" (which exercises only the global
+knob): a role whose per-role override is large (e.g. 3600) over a small global stays ineligible
+across a main-moved wake while inside the window even though its nextRunAt has passed — proving
+the read site resolves per-role rather than reading `config.minTickIntervalSeconds` directly; the
+inverse (small override, large global) wakes at the shorter value.
+(b3) **AC3's validation clause** in test/config.test.ts — no assertion rejects a negative per-role
+`minTickIntervalSeconds`: add one to "validateConfig reports every invalid value in one error"
+(or a sibling), e.g. `roles.feature.minTickIntervalSeconds = -5` → an actionable error naming the
+field, like its siblings' existing assertions.
+
+AC3's "applies live on tumwater.json edits (no restart)" is recorded as a structural guarantee
+rather than tested: runners' config objects are replaced on every ~2 s poll — e2e-tested for role
+fields by the live-reload plan ("mid-run model edits reach pi's --model") — and both read sites
+(`isEligible`'s min-gap, tick()'s top-of-tick resolution) call `configForRole(runner.config, …)`
+at call time, so a cadence edit applies from the next eligibility check or tick with no restart.
+Item (a) (prompt contract tests in test/steward.test.ts — curation move list, markdown-only
+restriction, deletion/PRINCIPLES powers, conditional QUESTIONS.md mention; catalog order last)
+and item (c) (dogfood: still no `tumwater(steward)` commit on main as of this audit,
+PRINCIPLES.md's Budgets section still absent) are unchanged. Files for the remainder:
+test/steward.test.ts (new), test/loop.test.ts, test/orchestrator.test.ts, test/config.test.ts.
+
+**Re-audited 2026-08-30 (plan loop) — item (a)'s file reference is stale on current main;
+remainder otherwise verified.** The "test/steward.test.ts (new)" target above is stale: organize
+tick `c3779b8` merged qa-role.test.ts into the module-named test files, so role prompt contract
+tests now live in test/prompt.test.ts (the qa block there: `const qa = roleById("qa")` plus
+assertions over its find text). Item (a) therefore lands as a sibling block in test/prompt.
+test.ts, not a new file — `const steward = roleById("steward")`, then the same four assertion
+groups: catalog order last (`ids[ids.indexOf("improve") + 1] === "steward"`, with the director
+appended separately by allRoleIds) plus title; curation move list (delete/merge stale PLANS.md
+entries with a one-line epitaph, flag drift as a PLANS.md note, tighten or update a principle or
+complexity budget in PRINCIPLES.md, record a structural risk in BUGS.md); markdown-only
+restriction ("You edit only markdown — never source."); conditional QUESTIONS.md mention ("and
+QUESTIONS.md if it exists"). Match content with whitespace collapsed, not layout — the find text
+is hard-wrapped and the tick-57 reflow break is the cautionary tale. Items (b1)–(c) verified
+unchanged on `c3779b8`: applyTickOutcome still at src/state.ts:121; the named orchestrator test
+"a sleeping loop wakes when main moves, respecting the min gap" exists in test/orchestrator.
+test.ts; the named config test "validateConfig reports every invalid value in one error" exists
+in test/config.test.ts; test/loop.test.ts still has zero references to minTickIntervalSeconds;
+and dogfood is still pending — no `tumwater(steward)` commit on main, PRINCIPLES.md's Budgets
+section still absent. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
+test/orchestrator.test.ts, test/config.test.ts.
+
+**Re-audited 2026-08-31 (plan loop) — item (b2) has LANDED; remainder is (a), (b1), (b3), and
+dogfood (c).** The "three items, pickable independently" list above is stale on current main
+(`2b294a2`): coverage tick `be6dc56` landed item (b2) in test/orchestrator.test.ts — "isEligible
+gates on the role's own interval, not the global knob", both directions as specified: a steward
+with a 3600 s per-role override over a 20 s global stays ineligible across a main-moved wake deep
+inside its window even though nextRunAt has passed (a direct read of the global knob would have
+woken it), and the inverse — qa at 20 s over a 3600 s global with nextRunAt not yet due — wakes on
+the shorter per-role gap. Verified at `2b294a2`: build clean, suite 475/475. What remains — three
+test items plus dogfood, pickable independently: (a) prompt contract tests in test/prompt.test.ts;
+(b1) the configForRole → applyTickOutcome chain through a real tick in test/loop.test.ts (still
+zero references to minTickIntervalSeconds there); (b3) validation rejecting a negative per-role
+`minTickIntervalSeconds` in test/config.test.ts; and (c) dogfood — still no `tumwater(steward)`
+commit on main. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
+test/config.test.ts.
+
+## Done
+
 ### Live sessionRetentionDays — re-prune old pi sessions without a restart (planned 2026-08-31,
-refined 2026-09-01, re-audited 2026-09-01)
+refined 2026-09-01, re-audited 2026-09-01, done 2026-09-02)
 
 **Goal.** Make `sessionRetentionDays` live-reloadable and actually enforced for long-running
 fleets. Today pruning runs only at orchestrator startup, so (a) a mid-run edit to the retention
@@ -238,123 +356,7 @@ Files for the remainder: src/types.ts, src/event-format.ts, src/orchestrator.ts,
 test/orchestrator.test.ts, test/event-format.test.ts, README.md. Once (a)–(d) land, move this plan
 to Done.
 
-### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
-refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
-(item (a)'s file reference updated), re-audited 2026-08-31 (item (b2) landed))
-
-Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
-~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
-configForRole at all read sites; enabled by default with no config edit) that re-reads the initial
-prompt, PRINCIPLES, PLANS, BUGS, and the codebase's shape, then makes one curation move: prune/
-merge plans (the only role allowed to delete entries), flag drift, keep the complexity budget
-honest. The tech-lead layer the "projects disintegrate past tens of kLOC" reports say becomes
-mandatory.
-
-**Status (plan-loop audit 2026-08-28):** feature tick 49 (`6e3f487`) landed the full design;
-verified at `ceb6019` with a green build and a 338/338 suite. Catalog: steward is last in ROLES
-(after `improve`; the director is appended separately by `allRoleIds()`), so it has exactly the
-lowest tie-break priority planned. Defaulting: `defaultConfig()` carries
-`{ enabled: true, minTickIntervalSeconds: 21600 }` and `loadConfig` merges per-role defaults for
-ids absent from the file — this repo's tumwater.json lists every other role but not steward, so it
-enables with no config edit. Validation: `minTickIntervalSeconds` is in ROLE_ENTRY_KEYS with a
-`checkNumber … >= 0`. Resolution: `configForRole` falls back per-role → global; `isEligible`
-reads through it, so the slow clock gates both scheduled ticks and "main moved" early wakes;
-tick() resolves once at the top and uses it in every interval branch — the three planned branches
-(changed/skipped/cut-off-resume) plus review-gate's later-added `rejected` branch (scheduled like
-changed), while aborted/backoff are untouched as planned. Prompt: curation move list, markdown-
-only restriction, PLANS.md deletion / PRINCIPLES.md edit powers, and the conditional QUESTIONS.md
-mention are all present in roles.ts; md-only diffs stay review-exempt via the gate's `*.md` /
-`docs/**` paths. Remaining — test gaps against the acceptance criteria plus the dogfood
-observation, nothing structural: (a) no role prompt contract tests exist — the plan's
-test/steward.test.ts never landed; add assertions for the curation move list, markdown-only
-restriction, deletion/principles powers, and conditional QUESTIONS.md mention; (b) the per-role
-interval is untested at scheduler level — only `configForRole` resolution has a regression test
-(test/config.test.ts); add an orchestrator-level test that a shortened override gates
-`isEligible`'s min-gap (including early wakes) and loop tests that tick()'s nextRunAt branches
-honor the override with global fallback when unset; (c) dogfood pending: no `tumwater(steward)`
-commit in history as of this audit, and PRINCIPLES.md's Budgets section is still absent — note
-the running fleet process must have started after 6e3f487 for its compiled defaultConfig to
-include steward (JS loads at startup; same consideration as the commit-bodies trailer note).
-Files for the remainder: test/steward.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts.
-
-**Re-audited 2026-08-30 (plan loop) — item (b)'s spec is stale on current main; remainder re-
-specified.** The "loop tests that tick()'s nextRunAt branches honor the override" half of item (b)
-names code that has since moved: organize tick `225c1d9` extracted post-tick scheduling out of
-loop.ts into the pure `applyTickOutcome(s, cfg, role, outcome)` in src/state.ts — tick() now
-resolves `cfg = configForRole(this.config, this.role)` once at the top and passes it through. And
-test/state.test.ts already unit-tests every interval branch (changed; rejected + skipped;
-cut-off-resume under and over the streak limit) against a plain config's
-`minTickIntervalSeconds`, so "the branches read cfg.minTickIntervalSeconds" is covered — as is
-item (b)'s global-fallback half, by test/config.test.ts's configForRole assertions (steward 21600,
-qa 7200, every other role inherits the global). What actually remains against AC3 — three items,
-pickable independently:
-
-(b1) **the resolution chain through a real tick** in test/loop.test.ts — one e2e pinning
-configForRole → applyTickOutcome end to end: a role with a per-role `minTickIntervalSeconds`
-override distinct from the global (e.g. 3600 over a fast global) lands a changed tick; assert the
-persisted state's `nextRunAt - lastTickEndedAt ≈ 3600 s`, not the global interval. This is the only
-untested link in the chain: applyTickOutcome's branches are unit-covered, configForRole's
-resolution is unit-covered, and nothing yet proves tick() hands the resolved value to the
-scheduler.
-(b2) **isEligible's min-gap with a per-role override** in test/orchestrator.test.ts — a variant of
-"a sleeping loop wakes when main moves, respecting the min gap" (which exercises only the global
-knob): a role whose per-role override is large (e.g. 3600) over a small global stays ineligible
-across a main-moved wake while inside the window even though its nextRunAt has passed — proving
-the read site resolves per-role rather than reading `config.minTickIntervalSeconds` directly; the
-inverse (small override, large global) wakes at the shorter value.
-(b3) **AC3's validation clause** in test/config.test.ts — no assertion rejects a negative per-role
-`minTickIntervalSeconds`: add one to "validateConfig reports every invalid value in one error"
-(or a sibling), e.g. `roles.feature.minTickIntervalSeconds = -5` → an actionable error naming the
-field, like its siblings' existing assertions.
-
-AC3's "applies live on tumwater.json edits (no restart)" is recorded as a structural guarantee
-rather than tested: runners' config objects are replaced on every ~2 s poll — e2e-tested for role
-fields by the live-reload plan ("mid-run model edits reach pi's --model") — and both read sites
-(`isEligible`'s min-gap, tick()'s top-of-tick resolution) call `configForRole(runner.config, …)`
-at call time, so a cadence edit applies from the next eligibility check or tick with no restart.
-Item (a) (prompt contract tests in test/steward.test.ts — curation move list, markdown-only
-restriction, deletion/PRINCIPLES powers, conditional QUESTIONS.md mention; catalog order last)
-and item (c) (dogfood: still no `tumwater(steward)` commit on main as of this audit,
-PRINCIPLES.md's Budgets section still absent) are unchanged. Files for the remainder:
-test/steward.test.ts (new), test/loop.test.ts, test/orchestrator.test.ts, test/config.test.ts.
-
-**Re-audited 2026-08-30 (plan loop) — item (a)'s file reference is stale on current main;
-remainder otherwise verified.** The "test/steward.test.ts (new)" target above is stale: organize
-tick `c3779b8` merged qa-role.test.ts into the module-named test files, so role prompt contract
-tests now live in test/prompt.test.ts (the qa block there: `const qa = roleById("qa")` plus
-assertions over its find text). Item (a) therefore lands as a sibling block in test/prompt.
-test.ts, not a new file — `const steward = roleById("steward")`, then the same four assertion
-groups: catalog order last (`ids[ids.indexOf("improve") + 1] === "steward"`, with the director
-appended separately by allRoleIds) plus title; curation move list (delete/merge stale PLANS.md
-entries with a one-line epitaph, flag drift as a PLANS.md note, tighten or update a principle or
-complexity budget in PRINCIPLES.md, record a structural risk in BUGS.md); markdown-only
-restriction ("You edit only markdown — never source."); conditional QUESTIONS.md mention ("and
-QUESTIONS.md if it exists"). Match content with whitespace collapsed, not layout — the find text
-is hard-wrapped and the tick-57 reflow break is the cautionary tale. Items (b1)–(c) verified
-unchanged on `c3779b8`: applyTickOutcome still at src/state.ts:121; the named orchestrator test
-"a sleeping loop wakes when main moves, respecting the min gap" exists in test/orchestrator.
-test.ts; the named config test "validateConfig reports every invalid value in one error" exists
-in test/config.test.ts; test/loop.test.ts still has zero references to minTickIntervalSeconds;
-and dogfood is still pending — no `tumwater(steward)` commit on main, PRINCIPLES.md's Budgets
-section still absent. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
-test/orchestrator.test.ts, test/config.test.ts.
-
-**Re-audited 2026-08-31 (plan loop) — item (b2) has LANDED; remainder is (a), (b1), (b3), and
-dogfood (c).** The "three items, pickable independently" list above is stale on current main
-(`2b294a2`): coverage tick `be6dc56` landed item (b2) in test/orchestrator.test.ts — "isEligible
-gates on the role's own interval, not the global knob", both directions as specified: a steward
-with a 3600 s per-role override over a 20 s global stays ineligible across a main-moved wake deep
-inside its window even though nextRunAt has passed (a direct read of the global knob would have
-woken it), and the inverse — qa at 20 s over a 3600 s global with nextRunAt not yet due — wakes on
-the shorter per-role gap. Verified at `2b294a2`: build clean, suite 475/475. What remains — three
-test items plus dogfood, pickable independently: (a) prompt contract tests in test/prompt.test.ts;
-(b1) the configForRole → applyTickOutcome chain through a real tick in test/loop.test.ts (still
-zero references to minTickIntervalSeconds there); (b3) validation rejecting a negative per-role
-`minTickIntervalSeconds` in test/config.test.ts; and (c) dogfood — still no `tumwater(steward)`
-commit on main. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
-test/config.test.ts.
-
-## Done
+**Done 2026-09-02 (feature tick) — items (a)–(c) landed; every acceptance criterion met or tested.** Item (d)'s README handoff had already landed in readme sync `349482e` (Usage's live-reload sentence names `sessionRetentionDays` among the settings that apply live). Item (a): `"retention_changed"` added to the HarnessEvent union beside `max_concurrent_changed`; emitted inside the existing retention block on every distinct value change including transitions to/from 0 — pruning itself still runs only when > 0; rendered as a plain line (`sessionRetentionDays changed: <from> → <to>`, no warning prefix) with its rendering unit in test/event-format.test.ts. Item (b): `dueForPrune` re-exported from src/orchestrator.ts — clean tick `b77b3df` had made it module-private for lack of test usage, and this item is that usage, per the plan's pin that the helper be exported like `isEligible`/`fairOrder` — with units in test/orchestrator.test.ts pinning due at a full day, not due one millisecond short, never due at retention 0 (both null and stamped), and null → immediately due when retention > 0. Item (c): the live-edit e2e per AC1 in test/orchestrator.test.ts — a ~2-day-old session survives startup under retention 30; a live edit to 1 removes it within one poll with exactly one change event and one prune warning naming the count; raising back to 30 logs a second change event but prunes nothing; a ~45-day-old file planted mid-run (the daily gate is not due) then survives an edit to 0 — 0 disables rather than "delete all"; exactly three change events total, unchanged polls log nothing. Verified on this tick's tree: build clean, full suite 534/534.
 
 ### Show queued director prompts in TUI/GUI (planned 2026-09-01, done 2026-09-01)
 

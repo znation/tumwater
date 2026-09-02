@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { fairOrder, isEligible, runOrchestrator } from "../src/orchestrator.js";
+import { dueForPrune, fairOrder, isEligible, runOrchestrator } from "../src/orchestrator.js";
 import { ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
@@ -373,6 +373,90 @@ test("a positive sessionRetentionDays still prunes old sessions at startup", asy
   try {
     await waitFor(() => !fs.existsSync(session), "the old session to be pruned");
     assert.equal(pruneWarnings(repo), 1, "one prune warning for the deleted file");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+// --- Live session retention (PLANS.md: Live sessionRetentionDays) ---
+
+test("dueForPrune: the once-per-day gate with fake timestamps", () => {
+  const day = 24 * 3600 * 1000;
+  // Due when a full day has passed since the last prune.
+  assert.equal(dueForPrune(1_000, 1_000 + day, 7), true);
+  // Not due within a day — one millisecond short is still inside the window.
+  assert.equal(dueForPrune(1_000, 1_000 + day - 1, 7), false);
+  // Never due at retention 0, whether or not a prune has run before.
+  assert.equal(dueForPrune(null, Number.MAX_SAFE_INTEGER, 0), false);
+  assert.equal(dueForPrune(1_000, 1_000 + day * 2, 0), false);
+  // Never pruned (null) → immediately due when retention is positive.
+  assert.equal(dueForPrune(null, 1_000, 7), true);
+});
+
+test("a live sessionRetentionDays edit re-prunes without a restart", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "live retention test");
+  // Retention 30 at startup: the ~2-day-old session is younger than the window and survives.
+  const base = fastConfig(["clean"]);
+  base.sessionRetentionDays = 30;
+  saveConfig(repo, base);
+  const recent = seedOldSession(repo, "clean", 2); // older than the new window of 1, younger than 30
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo);
+  try {
+    await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
+    // Startup pruning runs synchronously before the first poll; give it a beat so the
+    // survival assertion is not racing startup.
+    await new Promise((r) => setTimeout(r, 1000));
+    assert.ok(fs.existsSync(recent), "a ~2-day-old session survives startup under retention 30");
+
+    // Phase 1 (edit to 1): a mid-run edit re-prunes immediately — one change event and one
+    // prune warning naming the count, no restart.
+    const tight = fastConfig(["clean"]);
+    tight.sessionRetentionDays = 1;
+    saveConfig(repo, tight);
+    await waitFor(() => !fs.existsSync(recent), "the ~2-day-old session to be pruned");
+    assert.equal(pruneWarnings(repo), 1, "one prune warning for the deleted file");
+
+    // Phase 2 (back to 30): loosening changes the value but prunes nothing — a second change
+    // event with no second prune warning.
+    const loose = fastConfig(["clean"]);
+    loose.sessionRetentionDays = 30;
+    saveConfig(repo, loose);
+    await waitFor(
+      () => readEvents(repo).filter((e) => e.type === "retention_changed").length >= 2,
+      "the second retention_changed event",
+    );
+    assert.equal(pruneWarnings(repo), 1, "loosening the window prunes nothing");
+
+    // Phase 3 (to 0): plant a ~45-day-old file mid-run — the daily gate is not due (phase 1's
+    // prune set lastPruneAt seconds ago), so it sits until the edit. Setting retention to 0
+    // skips pruning: 0 disables rather than "delete all", so the ancient file survives.
+    const ancient = seedOldSession(repo, "clean", 45);
+    const off = fastConfig(["clean"]);
+    off.sessionRetentionDays = 0;
+    saveConfig(repo, off);
+    await waitFor(
+      () => readEvents(repo).filter((e) => e.type === "retention_changed").length >= 3,
+      "the third retention_changed event",
+    );
+    // The on-change path already ran when the third event was logged; a settle beat keeps the
+    // survival assertion from racing any later poll (none can prune: the daily gate is not due).
+    await new Promise((r) => setTimeout(r, 1000));
+    assert.ok(fs.existsSync(ancient), "retention 0 disables pruning — the ancient file survives");
+
+    // Exactly one change event per distinct edit (three total); unchanged polls log nothing.
+    const changes = readEvents(repo).filter((e) => e.type === "retention_changed");
+    assert.equal(changes.length, 3);
+    assert.deepEqual(
+      changes.map((c) => [c.loop, c.from, c.to]),
+      [
+        ["harness", 30, 1],
+        ["harness", 1, 30],
+        ["harness", 30, 0],
+      ],
+    );
   } finally {
     restore();
     await orch.stop();

@@ -67,6 +67,10 @@ export function formatEvent(e: HarnessEvent): string {
       // Routine state change, like counters_reset — no warning prefix.
       return `${time} ${loop} maxConcurrent changed: ${e.from} → ${e.to}`;
     }
+    case "retention_changed": {
+      // Routine state change, like its maxConcurrent sibling — no warning prefix.
+      return `${time} ${loop} sessionRetentionDays changed: ${e.from} → ${e.to}`;
+    }
     case "resume":
       return `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
     case "warning":
