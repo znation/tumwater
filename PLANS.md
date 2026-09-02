@@ -358,7 +358,8 @@ to Done.
 
 **Done 2026-09-02 (feature tick) — items (a)–(c) landed; every acceptance criterion met or tested.** Item (d)'s README handoff had already landed in readme sync `349482e` (Usage's live-reload sentence names `sessionRetentionDays` among the settings that apply live). Item (a): `"retention_changed"` added to the HarnessEvent union beside `max_concurrent_changed`; emitted inside the existing retention block on every distinct value change including transitions to/from 0 — pruning itself still runs only when > 0; rendered as a plain line (`sessionRetentionDays changed: <from> → <to>`, no warning prefix) with its rendering unit in test/event-format.test.ts. Item (b): `dueForPrune` re-exported from src/orchestrator.ts — clean tick `b77b3df` had made it module-private for lack of test usage, and this item is that usage, per the plan's pin that the helper be exported like `isEligible`/`fairOrder` — with units in test/orchestrator.test.ts pinning due at a full day, not due one millisecond short, never due at retention 0 (both null and stamped), and null → immediately due when retention > 0. Item (c): the live-edit e2e per AC1 in test/orchestrator.test.ts — a ~2-day-old session survives startup under retention 30; a live edit to 1 removes it within one poll with exactly one change event and one prune warning naming the count; raising back to 30 logs a second change event but prunes nothing; a ~45-day-old file planted mid-run (the daily gate is not due) then survives an edit to 0 — 0 disables rather than "delete all"; exactly three change events total, unchanged polls log nothing. Verified on this tick's tree: build clean, full suite 534/534.
 
-### Show queued director prompts in TUI/GUI (planned 2026-09-01, done 2026-09-01)
+### Show queued director prompts in TUI/GUI (planned 2026-09-01, refined 2026-09-01,
+done 2026-09-01)
 
 **Goal.** Both dashboards show what is queued for the director — not just how much — completing
 the main-prompt UX: users type prompts into the TUI prompt line and GUI form, so they should see
@@ -392,6 +393,67 @@ each clipped to terminal width, and `eventBudget` shrinks by N (no line wraps or
 - GUI: `/api/status` includes `inboxPrompts`; the project status panel shows a "queued prompts"
   section listing them, `(none)` when empty — test/gui.test.ts against the served page and payload.
 - Build clean, full suite green. No cancel button in this entry (CLI-only by design).
+
+**Refined 2026-09-01 (plan loop) — audited against current main (`66e94a4`); five spec gaps
+closed.** Every structural claim verified on current main first: the sibling's reader has LANDED —
+`queuedPrompts(root)` in src/inbox.ts (feature tick 74, `53c0477`) returns full text in execution
+order over the same filename sort `dequeuePrompt` pops by, [] when nothing is queued; StatusSnapshot
+already carries `inbox: number` and `questions: number`, both read fresh per poll in snapshot(), and
+both surfaces' header badges derive from that count (status-render.ts's `· inbox: N`; gui-page.ts's
+`(d.inbox ? …)`); the TUI renders its bold questions nudge between the status table and the activity
+pane and subtracts exactly 1 from `eventBudget = Math.max(3, rows - statusLines - 6 - (hasQuestions
+? 1 : 0))` — the template this entry generalizes to N lines; and the GUI project status panel renders
+its three sections through one shared `backlogList(title, items)` helper (muted counted title +
+entries or `(none)`, always rendered), fed by src/gui.ts's statusPayload reading those lists fresh per
+poll. Five gaps in the original spec, corrected:
+
+1. **Snapshot read consistency.** The Approach adds `inboxPrompts` beside the existing count without
+   saying how either is derived — implemented naively that is two directory reads per poll (the
+   current `inboxSize` plus the new reader), and a concurrent enqueue between them could show a badge
+   of 2 over one listed line. Pin: snapshot() calls `queuedPrompts(root)` ONCE and derives both fields
+   from it — `inbox: prompts.length`, `inboxPrompts: prompts.map((p) => truncate(p, 80))` (the
+   surrogate-safe helper in src/text.ts). `inboxSize` stays exported for the CLI and tests; only
+   snapshot's derivation changes.
+2. **TUI ordering and styling were unspecified.** With both queued prompts and open questions present,
+   pin: the numbered prompt lines render immediately after the status table — BEFORE the bold questions
+   nudge (the user's own queue sits closest to what they typed; the nudge stays the sole highlight as
+   the decision-needed signal). Lines are plain (unhighlighted), one per prompt, `1. <preview>`
+   numbered exactly as `tumwater prompt --list` numbers them — so a number seen in the TUI is directly
+   usable with `--cancel <n>`. Each line consumes one budget line: `eventBudget` shrinks by N prompts
+   (+1 when questions also present), keeping the no-wrap/no-scroll invariant. The TUI's cycling
+   project-status view (backlogLines) is untouched — queued prompts appear only as these always-
+   visible lines.
+3. **GUI panel position and payload wiring were unspecified.** Pin: "queued prompts" is the FIRST
+   section of the project status panel (before planned features — it is what the user asked for, and it
+   changes most often), rendered through the existing `backlogList` helper so it shows `(none)` when
+   empty like its siblings. The payload passthrough lives in src/gui.ts's statusPayload (`inboxPrompts:
+   snap.inboxPrompts`, passed through like `inbox`) — the page reads `d.inboxPrompts || []`; gui.ts does
+   not re-read the inbox itself, since snapshot already did.
+4. **Stale test-file reference.** The Approach names "test/tui-run.test.ts (or the TUI render tests)" —
+   that file no longer exists: it was merged into test/tui.test.ts, which now holds the fake-TTY harness
+   around runTui and the questions-nudge frame test this entry's TUI ACs mirror. Pin all TUI-level tests
+   to test/tui.test.ts.
+5. **Files list missed src/gui.ts.** The payload passthrough (gap 3) lives in statusPayload; add it,
+   alongside the corrected test file name from gap 4.
+
+Acceptance criteria, re-specified against current main (supersede the Approach's file references):
+- snapshot (test/status.test.ts): `inboxPrompts` is [] when nothing is queued and carries 80-char
+  truncated previews in execution order otherwise; count and list agree by construction (`snap.inbox ===
+  snap.inboxPrompts.length` with two prompts seeded); fresh per poll — a prompt enqueued via submitPrompt
+  between two snapshot() calls appears without a restart; an over-long prompt carrying astral characters
+  near the cut point truncates to ≤80 chars with no lone surrogate at the boundary.
+- TUI (test/tui.test.ts, fake-TTY harness): with N prompts queued the frame shows exactly N numbered
+  lines between the status table and the activity pane, each clipped to terminal width; `eventBudget`
+  shrinks by N so nothing wraps or scrolls off; zero prompts → no extra lines; with a question also open,
+  the prompt lines sit ABOVE the bold nudge line.
+- GUI (test/gui.test.ts): /api/status carries `inboxPrompts` ([] when empty, previews otherwise), fresh
+  per poll — mirror "status payload carries open questions, fresh per poll"; the served page's project
+  status panel shows a "queued prompts" section FIRST via backlogList with `(none)` when empty — mirror
+  the existing `backlogList("open questions", …)` assertion.
+- Build clean, full suite green; no cancel button in this entry (CLI-only by design).
+
+Files for the remainder: src/status.ts, src/gui.ts, src/tui.ts, src/gui-page.ts, test/status.test.ts,
+test/tui.test.ts, test/gui.test.ts.
 
 **Done 2026-09-01 (feature tick) — every acceptance criterion met; nothing remains.**
 `StatusSnapshot.inboxPrompts` carries execution-order previews truncated to 80 chars via the shared
