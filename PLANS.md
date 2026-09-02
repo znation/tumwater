@@ -5,7 +5,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Director inbox management — list and cancel queued prompts (planned 2026-09-01)
+### Director inbox management — list and cancel queued prompts (planned 2026-09-01, re-audited
+2026-09-01)
 
 **Goal.** Let users inspect and remove prompts queued for the director. Today `tumwater prompt`
 only enqueues: the queue is durable files under `.tumwater/inbox/`, dashboards show only an
@@ -52,6 +53,56 @@ test/inbox.test.ts, test/cli.test.ts, test/event-format.test.ts, README.md.
   `--list` combined with text fails; an unknown double-dash flag (`--foo`) fails instead of being
   enqueued as content (regression); single-dash positionals remain prompt content.
 - Build clean, full suite green; README Usage line updated.
+
+**Re-audited 2026-09-01 (plan loop) — the core has LANDED in feature tick 74 (`53c0477`) and the
+Usage lines in readme sync `349482e`; remainder is CLI-level tests only.** The Goal/Approach above
+are stale on current main: everything they describe except the CLI test suite already exists. Do not
+re-implement — pick up the single item below instead. Verified at `349482e` (build clean, suite
+521/521):
+
+- **src/inbox.ts** — `queuedPrompts(root)` returns full text in execution order (the same filename
+  sort `dequeuePrompt` pops by; missing dir → []); `cancelPrompt(root, position)` with a
+  `CancelOutcome` type: throws for out-of-range positions with no side effects, returns
+  `{ status: "gone" }` when the file disappears between listing and removal (a concurrent dequeue is
+  a normal race), and logs exactly one `prompt_cancelled` under the director only after a successful
+  removal — preview through the surrogate-safe `truncate`, like its `prompt_enqueued` sibling.
+- **src/types.ts / src/event-format.ts** — `"prompt_cancelled"` in the HarnessEvent union; renders
+  as a plain line (`user prompt cancelled: <preview>`), no warning prefix, with a torn-line
+  fallback (test/event-format.test.ts).
+- **src/cli.ts** — `parsePromptArgs` following init's pattern: a double-dash token must be `--list`
+  or `--cancel <n>` (unknown → fail naming the valid flags); single-dash positionals remain prompt
+  content; each flag at most once, mutually exclusive, no extra tokens in either mode; `--cancel`
+  needs a positive integer. `--list` prints full text verbatim, numbered (`<n>. <text>` — this is
+  the inspection command that shows what a queued prompt actually says) or `nothing queued for the
+  director`; `--cancel <n>` confirms with `cancelled: <80-char preview>`, reports a concurrent
+  dequeue as `prompt N is no longer queued — the director already took it` (clean exit, not an
+  error), and surfaces out-of-range on stderr as `no prompt at position N (M queued)`.
+- **test/inbox.test.ts** — every unit AC: queuedPrompts ordering/empty/missing; cancel by 1-based
+  position reporting the cancelled text; out-of-range with no file touched; the gone result;
+  80-char surrogate-safe preview. The CLI-level "gone" race is deliberately not re-tested there —
+  it needs a concurrent dequeue mid-child-process, which the unit test already pins.
+- **README.md** — Usage lines for both flags landed in readme sync `349482e` (the status block's
+  mention of them belongs to the readme loop; do not touch it).
+
+What remains — one item, pure test work: **CLI-level tests in test/cli.test.ts** (zero references
+to `--list`/`--cancel` there today). The file already runs the built CLI as a child process via its
+`cli(repo, ...)` helper and imports `submitPrompt`/`inboxSize`/`dequeuePrompt` from src/inbox.js,
+so seeding the queue needs no new plumbing. Spec:
+- `--list`: empty queue → exit 0 with `nothing queued for the director`; seed two prompts (e.g.
+  via `submitPrompt`) → numbered lines in execution order carrying full text verbatim — assert the
+  untruncated form, since that is what distinguishes this inspection command from the dashboards'
+  80-char previews.
+- `--cancel <n>`: with three queued, cancel 2 → exit 0 confirming with the preview; exactly the Nth
+  file removed and siblings keep their relative order (renumbered — a follow-up `--list` shows the
+  first then the third as 1 and 2); out-of-range (e.g. 4 of 3) fails on stderr naming position and
+  count with no files touched; missing value (`prompt --cancel`) and non-positive or non-integer
+  values (`0`, `-1`, `abc`) fail clearly, each with the queue untouched.
+- Argument-shape failures: `--list` combined with text fails without enqueuing anything (assert
+  `inboxSize` stays 0); an unknown double-dash flag (`prompt --foo text`) fails instead of being
+  baked into queued content — the regression for the latent hole this plan closed; duplicate flags
+  and extra tokens alongside `--cancel N` fail like their init-pattern siblings; single-dash
+  positionals remain prompt content (`prompt "-x"` enqueues `-x`).
+Once it lands, move this plan to Done. Files for the remainder: test/cli.test.ts only.
 
 ### Show queued director prompts in TUI/GUI (planned 2026-09-01)
 
