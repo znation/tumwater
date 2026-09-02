@@ -41,6 +41,9 @@ export interface RunOptions {
   config: TumwaterConfig;
   mainBranch: string;
   signal: AbortSignal;
+  /** Poll interval in ms (default POLL_MS). Tests pass a short value so multi-cycle behavior
+   * resolves quickly; production callers omit it and keep the real cadence. */
+  pollMs?: number;
 }
 
 /** Should this loop tick now? Exported for tests. */
@@ -109,6 +112,7 @@ export function dueForPrune(lastPruneAt: number | null, now: number, retentionDa
 /** Run all enabled loops until the signal aborts. */
 export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const { root, config, mainBranch, signal } = opts;
+  const pollMs = opts.pollMs ?? POLL_MS;
   const enabled = enabledRoleIds(config);
   if (enabled.length === 0) throw new Error("no roles enabled in tumwater.json");
 
@@ -294,7 +298,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
         void task.finally(() => inFlight.delete(task));
       }
 
-      await sleepInterruptible(POLL_MS, signal);
+      await sleepInterruptible(pollMs, signal);
     }
   } finally {
     await Promise.allSettled([...inFlight]);

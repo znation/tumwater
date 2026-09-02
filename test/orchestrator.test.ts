@@ -23,6 +23,14 @@ import {
 import { resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
+/** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
+ * 2s cadence: multi-cycle behavior (config reloads, marker consumption, wake events) resolves
+ * in ~100ms instead of seconds. Tests that verify timing margins against the real cadence —
+ * shutdown latency vs POLL_MS, and maxConcurrent's hold < poll boundary — keep the default.
+ * Safe because idle ticks back off 1s (fastConfig), so no assertion relies on a >=2s gap
+ * between polls to prevent back-to-back ticks. */
+const FAST_POLL_MS = 100;
+
 function runner(role: string): LoopRunner {
   return new LoopRunner(makeRepo(), role, defaultConfig(), "main");
 }
@@ -268,7 +276,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
   config.idleBackoff = { initialSeconds: 60, factor: 1, maxSeconds: 60 };
   saveConfig(repo, config);
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Wait for clean's startup tick to finish (its state save records the current main
     // head): from then on it sleeps ~60s, so only a main move can schedule it again.
@@ -347,12 +355,12 @@ test("sessionRetentionDays 0 disables pruning: old sessions survive orchestrator
   saveConfig(repo, config);
   const session = seedOldSession(repo, "clean", 30); // older than any positive retention
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // Pruning (or its skip) runs synchronously at startup; wait for the orchestrator to be
-    // up plus a poll cycle so the assertion is not racing the startup code.
+    // Pruning (or its skip) runs synchronously at startup; wait for the orchestrator to be up
+    // plus a few fast poll cycles so the assertion is not racing the startup code.
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 400));
     assert.ok(fs.existsSync(session), "a 30-day-old session survives when retention is 0");
     assert.equal(pruneWarnings(repo), 0, "no prune warning when pruning is disabled");
   } finally {
@@ -369,7 +377,7 @@ test("a positive sessionRetentionDays still prunes old sessions at startup", asy
   saveConfig(repo, config);
   const session = seedOldSession(repo, "clean", 30);
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => !fs.existsSync(session), "the old session to be pruned");
     assert.equal(pruneWarnings(repo), 1, "one prune warning for the deleted file");
@@ -403,12 +411,12 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
   saveConfig(repo, base);
   const recent = seedOldSession(repo, "clean", 2); // older than the new window of 1, younger than 30
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
-    // Startup pruning runs synchronously before the first poll; give it a beat so the
-    // survival assertion is not racing startup.
-    await new Promise((r) => setTimeout(r, 1000));
+    // Startup pruning runs synchronously before the first poll; a few fast poll cycles keep the
+    // survival assertion from racing startup.
+    await new Promise((r) => setTimeout(r, 400));
     assert.ok(fs.existsSync(recent), "a ~2-day-old session survives startup under retention 30");
 
     // Phase 1 (edit to 1): a mid-run edit re-prunes immediately — one change event and one
@@ -441,9 +449,10 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
       () => readEvents(repo).filter((e) => e.type === "retention_changed").length >= 3,
       "the third retention_changed event",
     );
-    // The on-change path already ran when the third event was logged; a settle beat keeps the
-    // survival assertion from racing any later poll (none can prune: the daily gate is not due).
-    await new Promise((r) => setTimeout(r, 1000));
+    // The on-change path already ran when the third event was logged; a few fast poll cycles
+    // keep the survival assertion from racing any later poll (none can prune: the daily gate is
+    // not due).
+    await new Promise((r) => setTimeout(r, 400));
     assert.ok(fs.existsSync(ancient), "retention 0 disables pruning — the ancient file survives");
 
     // Exactly one change event per distinct edit (three total); unchanged polls log nothing.
@@ -502,9 +511,18 @@ function fastConfig(roles: string[], model?: string): TumwaterConfig {
  * drive it while running. Returns its exit promise plus `stop`, which aborts the run and
  * awaits its exit — swallowing shutdown noise so the test's own failure (if any) stays
  * visible; call `stop` from finally after other cleanup (e.g. restoring a fake pi). */
-function startLiveOrchestrator(repo: string): { done: Promise<void>; stop: () => Promise<void> } {
+function startLiveOrchestrator(
+  repo: string,
+  pollMs?: number,
+): { done: Promise<void>; stop: () => Promise<void> } {
   const controller = new AbortController();
-  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal });
+  const done = runOrchestrator({
+    root: repo,
+    config: loadConfig(repo),
+    mainBranch: "main",
+    signal: controller.signal,
+    pollMs,
+  });
   return {
     done,
     async stop() {
@@ -525,7 +543,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
   const argsFile = path.join(tmpdir(), "argv.log");
   fs.rmSync(argsFile, { force: true }); // A previous run's lines must not leak into this one.
   const restore = recordingFakePi(argsFile);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Assert on what pi actually saw (its recorded argv), not on tick counts: a tick can be
     // scheduled before our file write lands, so only the argv evidence pins a run to a config.
@@ -607,6 +625,10 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   saveConfig(repo, base);
   const runDir = tmpdir();
   const restore = concurrencyRecordingFakePi(runDir);
+  // Keeps the DEFAULT poll interval on purpose: phase 3's "no overlap after shrink" assertion
+  // relies on the shim's ~1.5s hold being shorter than one poll, so every cap-2-era run file is
+  // gone by the time the shrink event is observed. A fast poll would let an in-flight file cross
+  // the boundary and false-fail the test.
   const orch = startLiveOrchestrator(repo);
   try {
     // Phase 1 (cap 1): all three loops tick — but never overlap. Wait until each has run at
@@ -669,7 +691,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
   await initProject(repo, "reset counters e2e test");
   saveConfig(repo, fastConfig(["clean"]));
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Let a couple of ticks accumulate counters in the runner's memory.
     await waitFor(
@@ -718,7 +740,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
   // flight is consumed mid-tick — the documented use case (resetting a running fleet), where
   // most loops are mid-tick at any moment.
   const restore = fakePi(`sleep 4\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => loadLoopState(repo, "clean").running === true, "a tick to be in flight");
 
@@ -777,7 +799,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
   saveConfig(repo, fastConfig(["clean", "dry"]));
   seedCounters(repo, "clean", "dry");
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // What `tumwater reset-counters` without --role writes: a marker naming every role.
     const markerFile = resetRequestPath(repo);
@@ -810,7 +832,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
   saveConfig(repo, fastConfig(["clean", "dry"]));
   seedCounters(repo, "clean", "dry");
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Garbage where the marker should be: JSON.parse throws → requested stays null → every
     // runner resets (a documented superset — skipping it would let the next tick's save
@@ -842,7 +864,7 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
   saveConfig(repo, fastConfig(["clean", "dry"]));
   const argsFile = path.join(tmpdir(), "argv.log");
   const restore = recordingFakePi(argsFile);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     const finished = (role: string) => {
       const s = loadLoopState(repo, role);
@@ -899,7 +921,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
   config.maxDailyCostUsd = 0.5;
   saveConfig(repo, config);
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // clean's startup tick lands the first spend; the transition is logged exactly once,
     // harness-level, with the spend and cap that triggered it.
@@ -917,9 +939,9 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     assert.equal(paused[0]?.spentUsd, 1);
 
     // The paused role starts no new ticks even though its schedule says to run: wait well
-    // past nextRunAt plus several poll cycles — an ungated loop would have ticked by then.
+    // past nextRunAt plus several (fast) poll cycles — an ungated loop would have ticked by then.
     const scheduled = loadLoopState(repo, "clean").nextRunAt;
-    await waitFor(() => Date.now() >= scheduled + 5000, "the schedule to pass while paused");
+    await waitFor(() => Date.now() >= scheduled + 1500, "the schedule to pass while paused");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a budget-paused role starts no new ticks");
 
     // The director is exempt: a queued human prompt still runs while the fleet is paused.
@@ -973,12 +995,12 @@ test("startup with spend already at the cap starts no role ticks", async () => {
   s.dayCostUsd = 1;
   saveLoopState(repo, s);
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // The loop is schedule-eligible (fresh state, nextRunAt 0) — an ungated fleet would have
-    // ticked within the first poll. Several cycles pass with no role tick starting.
+    // ticked within the first poll. Several (fast) poll cycles pass with no role tick starting.
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
-    await new Promise((r) => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, 1500));
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "a fleet at cap starts no role ticks");
     // The pause is announced exactly once, with the spend and cap that closed the gate.
     const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
@@ -999,7 +1021,7 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
   config.maxDailyCostUsd = 0.5;
   saveConfig(repo, config);
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
-  const orch = startLiveOrchestrator(repo);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
       () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
@@ -1012,9 +1034,9 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "advance main while paused");
 
-    // …but the gate skips role runners before eligibility is even evaluated: several poll
-    // cycles pass with no tick and no wake event.
-    await new Promise((r) => setTimeout(r, 5000));
+    // …but the gate skips role runners before eligibility is even evaluated: several (fast)
+    // poll cycles pass with no tick and no wake event.
+    await new Promise((r) => setTimeout(r, 1500));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a main move cannot wake a budget-paused fleet");
     assert.ok(!readEvents(repo).some((e) => e.type === "wake"), "no wake logged for the blocked main move");
   } finally {
