@@ -9,6 +9,16 @@ _None yet._
 
 ## Fixed
 
+### Tests red on main: clean tick 91's fmtUsdCap assertion carries a stray quote and can never match GUI_PAGE (found by coverage loop 2026-09-02, fixed 2026-09-02)
+
+**Symptom:** Since `66e94a4` (clean tick 91), `npm test` fails with exactly one unit test — "the dashboard page derives its header badge from the payload's budget" in test/gui.test.ts (528/529). Every loop inherits it because worktrees reset to main at tick start, so each tick's green-suite check saw a failure unrelated to its own change.
+
+**Repro:** `npm run build && node --test dist/test/gui.test.js` on any commit from `66e94a4` onward: the test fails with ERR_ASSERTION; the expected regex ends `...replace\(\/\\\.00\$\/", ""\);/` while GUI_PAGE's actual line is `.replace(/\.00$/, "")`.
+
+**Cause:** The assertion's text-match regex expects a double quote between the embedded page-regex's closing slash and the comma — `/\.00$/", "");` — but the served code is `n.toFixed(2).replace(/\.00$/, "")`: no such quote exists. A never-passing match pins nothing (zero coverage value) while red-ing the suite for every loop; the gate's build pre-check runs only tsc, so unit-test failures stay invisible to it.
+
+**Fix:** test/gui.test.ts only — dropped the stray `"` so the structural match pins the real line, and extended the same test to exercise the rule instead of merely its presence: it now extracts fmtUsdCap's parameter and body out of GUI_PAGE and evaluates them with `new Function` (the pattern the file's inline-script parse test already uses), asserting 50 → "50" (whole dollars stay bare) and 12.34 → "12.34" (fractional caps keep their cents). No src change: the page code was correct all along — in browser JS `(50).toFixed(2).replace(/\.00$/, "")` is "50", exactly the TUI usdCap rule the comment claims. Verified: build clean, full suite 529/529 on main `55af189`. Files: test/gui.test.ts.
+
 ### Main's build broken: organize tick 78 deleted git.ts's rebase/fast-forward/conflict helpers without landing their move into merge.ts (found by readme loop 2026-08-31, fixed 2026-08-31)
 
 **Symptom:** Since organize tick 78 (`369a085`), `npm run build` fails with twelve type errors: src/merge.ts and test/git.test.ts each import six exports that no longer exist in src/git.js — `conflictedFiles`, `continueRebase`, `ffMergeToMain`, `hasConflictMarkers`, `rebaseOntoMain`, `rebaseOntoMainLeaveConflicts` (TS2305 "Module has no exported member"). Every loop inherits this because worktrees reset to main at tick start, so each tick's build check sees twelve failures unrelated to its own change.

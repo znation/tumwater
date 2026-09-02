@@ -376,7 +376,14 @@ test("the dashboard page derives its header badge from the payload's budget", as
   );
   // The cap uses the same whole-dollars-bare rule as the TUI's usdCap ($50, not $50.00), so
   // both dashboards read identically for one config.
-  assert.match(GUI_PAGE, /const fmtUsdCap = \(n\) => n\.toFixed\(2\)\.replace\(\/\\\.00\$\/", ""\);/);
+  assert.match(GUI_PAGE, /const fmtUsdCap = \(n\) => n\.toFixed\(2\)\.replace\(\/\\\.00\$\/, ""\);/);
+  // Exercise the rule itself, not just its presence: pull the helper out of the page and run
+  // it — whole dollars stay bare, fractional caps keep their cents.
+  const m = GUI_PAGE.match(/const fmtUsdCap = \((\w+)\) => ([^;]+);/);
+  assert.ok(m, "fmtUsdCap definition found in the page");
+  const fmtUsdCap = new Function(m[1]!, `return (${m[2]});`) as (n: number) => string;
+  assert.equal(fmtUsdCap(50), "50", "whole dollars stay bare");
+  assert.equal(fmtUsdCap(12.34), "12.34", "fractional caps keep their cents");
 });
 
 test("a paused fleet's idle role loops read budget paused in the phase payload", async () => {
