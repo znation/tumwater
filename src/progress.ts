@@ -1,3 +1,4 @@
+import { piEventType } from "./pi.js";
 import { collapseWhitespace, truncate } from "./text.js";
 import { describeToolCall } from "./tool-call.js";
 import { statRoleLog, TailState, withTail } from "./tail.js";
@@ -80,18 +81,12 @@ function feedLine(progress: LiveProgress, line: string): void {
   const trimmed = line.trim();
   if (!trimmed) return;
   // Cheap pre-filter before JSON.parse: pi's logs are ~97% streaming delta lines
-  // (message_update), which the switch below discards after parsing them. Pi serializes every
-  // event as compact JSON with `type` first (`{"type":"<event>",…}` — 100% of lines in observed
-  // logs), so for that shape we read just the type value and skip the parse when it is not one
-  // this feedLine acts on; measured ~7ms → ~1ms per 4MB seed window (the same fast path as
-  // transcript.ts's renderer, which consumes the identical log). Any line NOT matching that
-  // exact prefix (a future pi serialization, torn or foreign JSON) falls through to a full
-  // parse — exactly today's behavior — so the fast path can only ever skip lines whose type is
-  // verifiably non-progress-relevant, never lose output.
-  if (trimmed.startsWith('{"type":"')) {
-    const end = trimmed.indexOf('"', 9);
-    if (end > 9 && !PROGRESS_TYPES.has(trimmed.slice(9, end))) return;
-  }
+  // (message_update), which the switch below discards after parsing them. Skip the parse when
+  // the line's type is verifiably not one this feedLine acts on; measured ~7ms → ~1ms per 4MB
+  // seed window (the same fast path as transcript.ts's renderer, which consumes the identical
+  // log).
+  const type = piEventType(trimmed);
+  if (type !== null && !PROGRESS_TYPES.has(type)) return;
   let event: {
     type?: string;
     toolName?: string;

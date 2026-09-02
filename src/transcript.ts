@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { statOrNull } from "./files.js";
+import { piEventType } from "./pi.js";
 import { readCompleteLines, statRoleLog, TailState, withTail } from "./tail.js";
 import { collapseWhitespace, formatDate, formatTime, truncate } from "./text.js";
 import { describeToolCall } from "./tool-call.js";
@@ -107,19 +108,12 @@ export function createTranscriptRenderer(): TranscriptRenderer {
       const trimmed = line.trim();
       if (!trimmed) return [];
       // Cheap pre-filter before JSON.parse: pi's logs are ~97% streaming delta lines
-      // (message_update), which the switch below discards after parsing them. Pi serializes
-      // every event as compact JSON with `type` first (`{"type":"<event>",…}` — 100% of lines
-      // in observed logs), so for that shape we read just the type value (~30ns) and skip the
-      // parse when it is not one this renderer acts on; measured ~28–46ms → ~5–8ms of
-      // parse/render per 12–21MB log (seeding or a full re-read).
-      // Any line NOT matching that exact prefix (a future pi serialization, torn or foreign
-      // JSON) falls through to a full parse — exactly today's behavior — so the fast path can
-      // only ever skip lines whose type is verifiably non-renderable, never lose output. A new
+      // (message_update), which the switch below discards after parsing them. Skip the parse
+      // when the line's type is verifiably not one this renderer acts on; measured
+      // ~28–46ms → ~5–8ms of parse/render per 12–21MB log (seeding or a full re-read). A new
       // renderable case in the switch below must be added to RENDERABLE_TYPES too.
-      if (trimmed.startsWith('{"type":"')) {
-        const end = trimmed.indexOf('"', 9);
-        if (end > 9 && !RENDERABLE_TYPES.has(trimmed.slice(9, end))) return [];
-      }
+      const type = piEventType(trimmed);
+      if (type !== null && !RENDERABLE_TYPES.has(type)) return [];
       let event: Record<string, unknown>;
       try {
         event = JSON.parse(trimmed);

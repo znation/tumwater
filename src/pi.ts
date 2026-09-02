@@ -32,6 +32,19 @@ const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded
  * Module-private: only PiStreamParser.feedLine below matches against it. */
 const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
 
+/** The `type` value of one pi event line in pi's compact type-first serialization
+ * (`{"type":"<event>",…}` — 100% of lines in observed logs), or null when the line does not
+ * match that exact prefix (a future pi serialization, torn or foreign JSON). Callers use it as
+ * a pre-filter before JSON.parse: a non-null type they do not act on is verifiably irrelevant
+ * and skips the parse; null falls through to a full parse — exactly the behavior without the
+ * fast path — so it can only ever skip lines whose type is verifiably uninteresting, never
+ * lose output. */
+export function piEventType(line: string): string | null {
+  if (!line.startsWith('{"type":"')) return null;
+  const end = line.indexOf('"', 9);
+  return end > 9 ? line.slice(9, end) : null;
+}
+
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { PiStreamParser, piArgs, runPi } from "../src/pi.js";
+import { PiStreamParser, piArgs, piEventType, runPi } from "../src/pi.js";
 import { REFUSED_SENTINEL } from "../src/reply-contract.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
@@ -277,6 +277,17 @@ test("piArgs omits unset options", () => {
   assert.ok(!args.includes("--provider"));
   assert.ok(!args.includes("--model"));
   assert.ok(!args.includes("--thinking"));
+});
+
+test("piEventType reads pi's compact type-first prefix and returns null on any other shape", () => {
+  assert.equal(piEventType('{"type":"message_end","x":1}'), "message_end");
+  assert.equal(piEventType('{"type":"session"}'), "session");
+  // Anything not matching that exact prefix must fall through to a full parse: spaced JSON,
+  // torn lines, foreign JSON with type later, and an empty type value.
+  assert.equal(piEventType('{ "type": "message_end" }'), null);
+  assert.equal(piEventType('{"type":"messag'), null);
+  assert.equal(piEventType('{"x":1,"type":"session"}'), null);
+  assert.equal(piEventType('{"type":""}'), null);
 });
 
 test("role overrides flow through to the pi argv and round-trip via config files", () => {
