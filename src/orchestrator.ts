@@ -99,9 +99,9 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
   });
 }
 
-/** Is a once-per-day session prune due? Exported for tests. Due when retention is enabled
- * (> 0) and a full day has passed since the last prune (or no prune has run yet). */
-export function dueForPrune(lastPruneAt: number | null, now: number, retentionDays: number): boolean {
+/** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
+ * has passed since the last prune (or no prune has run yet). */
+function dueForPrune(lastPruneAt: number | null, now: number, retentionDays: number): boolean {
   if (retentionDays <= 0) return false; // 0 disables pruning — never due.
   if (lastPruneAt === null) return true; // Never pruned yet — due immediately.
   return now - lastPruneAt >= 24 * 3600 * 1000;
