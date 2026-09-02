@@ -45,12 +45,20 @@ function duration(ms: number): string {
   return `${Math.floor(s / 3600)}h${Math.round((s % 3600) / 60)}m`;
 }
 
+/** The label for a loop's in-flight tick: `<label>` plus how long it has been running
+ * ("working 3m", "reviewing 2m") — shared by workingDetail and the review-gate branch of
+ * loopPhase so their elapsed formatting cannot drift. A tick with no recorded start time
+ * renders as just the bare label. */
+function inFlightLabel(s: LoopState, label: string): string {
+  const elapsed = s.lastTickStartedAt ? duration(Date.now() - s.lastTickStartedAt) : "";
+  return `${label} ${elapsed}`.trim();
+}
+
 /** The state cell for a working loop: elapsed · turns · live context · current tool. */
 export function workingDetail(root: string, s: LoopState): string {
   const live = readLiveProgress(root, s.role);
-  const elapsed = s.lastTickStartedAt ? duration(Date.now() - s.lastTickStartedAt) : "";
-  if (!live) return `working ${elapsed}`.trim();
-  const parts = [`working ${elapsed}`.trim(), `turn ${live.turns + 1}`];
+  if (!live) return inFlightLabel(s, "working");
+  const parts = [inFlightLabel(s, "working"), `turn ${live.turns + 1}`];
   if (live.contextTokens > 0) parts.push(`ctx ${compactTokens(live.contextTokens)}`);
   if (live.lastTool) parts.push(live.lastTool);
   // Silence under five minutes is normal (slow local-model prefills, long tool calls);
@@ -75,8 +83,7 @@ export function loopPhase(
     // The tick's work is committed and under adversarial review: the live log tail now
     // describes the reviewer run, not the author's — show the gate instead of pi detail.
     if (s.phase === "review") {
-      const elapsed = s.lastTickStartedAt ? duration(Date.now() - s.lastTickStartedAt) : "";
-      return `reviewing ${elapsed}`.trim();
+      return inFlightLabel(s, "reviewing");
     }
     // In-flight ticks finish even while the budget is paused — only NEW ticks are blocked,
     // so a running loop keeps its live detail.
