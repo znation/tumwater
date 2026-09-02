@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
 import { configForRole, enabledRoleIds, loadConfigSafe } from "./config.js";
@@ -8,7 +7,7 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry, readBranchHead } from "./git.js";
 import { logEvent } from "./events.js";
-import { pruneOldFiles, readJsonFile } from "./files.js";
+import { ensureParentDir, pruneOldFiles, readJsonFile } from "./files.js";
 import { inboxSize } from "./inbox.js";
 import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath, resetRequestPath, sessionsRootDir } from "./paths.js";
@@ -117,7 +116,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
 
   const infoFile = orchestratorStatePath(root);
-  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
+  ensureParentDir(infoFile);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
   fs.writeFileSync(infoFile, JSON.stringify(info, null, 2));
   logEvent(root, { loop: "harness", type: "orchestrator_start", pid: process.pid, roles: enabled });

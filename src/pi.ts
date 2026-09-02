@@ -1,8 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
-import { rotateIfLarge } from "./files.js";
+import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { extractRefusal, hasVerdictLine, isNothingToDo, REFUSED_SENTINEL } from "./reply-contract.js";
 
 interface PiMessage {
@@ -217,8 +216,8 @@ const SPAWN_ERROR_PREFIX = "failed to spawn pi";
 /** Run pi non-interactively in a worktree and distill the result. Never throws. */
 export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
   return new Promise((resolve) => {
-    fs.mkdirSync(opts.sessionDir, { recursive: true });
-    fs.mkdirSync(path.dirname(opts.rawLogFile), { recursive: true });
+    ensureDir(opts.sessionDir);
+    ensureParentDir(opts.rawLogFile);
     rotateIfLarge(opts.rawLogFile, opts.config.logMaxBytes);
     const rawLog = fs.createWriteStream(opts.rawLogFile, { flags: "a" });
     const parser = new PiStreamParser();

@@ -1,8 +1,7 @@
 import fs from "node:fs";
-import path from "node:path";
 import type { TumwaterConfig, LoopState, TickOutcome } from "./types.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { readJsonFile } from "./files.js";
+import { ensureParentDir, readJsonFile } from "./files.js";
 import { pidAlive } from "./process.js";
 import { formatDate } from "./text.js";
 import { orchestratorStatePath, statePath } from "./paths.js";
@@ -35,7 +34,7 @@ export function loadLoopState(root: string, role: string): LoopState {
  * leave a torn file behind. */
 export function saveLoopState(root: string, state: LoopState): void {
   const file = statePath(root, state.role);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   const tmp = file + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
   fs.renameSync(tmp, file);

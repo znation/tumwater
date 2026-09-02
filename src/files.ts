@@ -4,7 +4,8 @@ import path from "node:path";
 /** Shared file helpers: stat-or-missing for log readers, PATH lookup for the pi-installation
  * preflight, tolerant JSON-file reads for state files written by other processes, stat-keyed
  * caching of file-derived values polled on an interval, size-based rotation for append-only
- * logs, and age-based pruning of pi session files. Incremental consumption of those append-only
+ * logs, recursive directory creation before file writes, and age-based pruning of pi session
+ * files. Incremental consumption of those append-only
  * logs (complete-line tail reading, tail-state folding, byte-offset following) lives in tail.ts. */
 
 /** Stat a file, returning null when it does not exist (or cannot be read). The harness's
@@ -108,6 +109,19 @@ export function rotateIfLarge(file: string, maxBytes: number): boolean {
   } catch {
     return false; // Missing file or racing rotation; nothing to do.
   }
+}
+
+/** Ensure `dir` exists (created recursively if needed), so a write into it cannot fail on a
+ * missing path. The one place for that pre-write step — every writer of harness state/log/
+ * inbox/session files goes through this or ensureParentDir instead of mkdirSync itself. */
+export function ensureDir(dir: string): void {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+/** Ensure the parent directory of `file` exists — the common pre-write step before creating
+ * or appending a file whose path may not exist yet. */
+export function ensureParentDir(file: string): void {
+  ensureDir(path.dirname(file));
 }
 
 /** Delete regular files under `dir` (recursively) older than `days` days. */

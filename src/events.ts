@@ -1,8 +1,7 @@
 import fs from "node:fs";
-import path from "node:path";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
-import { rotateIfLarge, statOrNull } from "./files.js";
+import { ensureParentDir, rotateIfLarge, statOrNull } from "./files.js";
 
 type EventListener = (event: HarnessEvent) => void;
 const listeners = new Set<EventListener>();
@@ -30,7 +29,7 @@ export interface HarnessEventInput {
 export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
   const full = { ts: Date.now(), ...event };
   const file = eventsLogPath(root);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   rotateIfLarge(file, EVENTS_MAX_BYTES);
   fs.appendFileSync(file, JSON.stringify(full) + "\n");
   for (const listener of listeners) listener(full);

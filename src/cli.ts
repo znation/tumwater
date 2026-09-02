@@ -13,7 +13,7 @@ import { truncate } from "./text.js";
 import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
-import { findOnPath } from "./files.js";
+import { ensureParentDir, findOnPath } from "./files.js";
 import { followFile } from "./tail.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
@@ -296,7 +296,7 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   for (const e of readEvents(root, limit)) process.stdout.write(formatEvent(e) + "\n");
   if (!follow) return;
   const file = eventsLogPath(root);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   if (!fs.existsSync(file)) fs.writeFileSync(file, "");
   followFile(file, fs.statSync(file).size, (lines) => {
     for (const line of lines.filter(Boolean)) {
@@ -356,7 +356,7 @@ async function cmdResetCounters(root: string, args: string[]): Promise<void> {
   const targets = role ? [role] : Object.keys(config.roles); // Default: every role in the config.
   for (const r of targets) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
   const markerFile = resetRequestPath(root);
-  fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+  ensureParentDir(markerFile);
   fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: targets }, null, 2));
   process.stdout.write(`counters reset for ${targets.join(", ")} — a running fleet picks this up within ~2s\n`);
 }

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { ensureDir } from "./files.js";
 import { logEvent } from "./events.js";
 import { inboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
@@ -12,7 +13,7 @@ let seq = 0;
 
 export function enqueuePrompt(root: string, prompt: string): string {
   const dir = inboxDir(root);
-  fs.mkdirSync(dir, { recursive: true });
+  ensureDir(dir);
   // Timestamp orders across processes; the counter orders within one; pid breaks ties.
   const name = `${Date.now()}-${String(seq++).padStart(6, "0")}-${process.pid}.md`;
   const file = path.join(dir, name);
