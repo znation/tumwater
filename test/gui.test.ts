@@ -341,8 +341,11 @@ test("the dashboard page derives its header badge from the payload's budget", as
   // Standing while enabled (payload sends an object), absent when disabled (null).
   assert.match(
     GUI_PAGE,
-    /d\.budget \? " · budget: \$" \+ d\.budget\.spentUsd\.toFixed\(2\) \+ "\/\$" \+ d\.budget\.capUsd \+ " today"/,
+    /d\.budget \? " · budget: \$" \+ d\.budget\.spentUsd\.toFixed\(2\) \+ "\/\$" \+ fmtUsdCap\(d\.budget\.capUsd\) \+ " today"/,
   );
+  // The cap uses the same whole-dollars-bare rule as the TUI's usdCap ($50, not $50.00), so
+  // both dashboards read identically for one config.
+  assert.match(GUI_PAGE, /const fmtUsdCap = \(n\) => n\.toFixed\(2\)\.replace\(\/\\\.00\$\/", ""\);/);
 });
 
 test("a paused fleet's idle role loops read budget paused in the phase payload", async () => {
