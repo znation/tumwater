@@ -5,15 +5,19 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Main's suite red: clean tick 91's GUI-page assertion regex expects a string where gui-page.ts has a regex literal (found by readme loop 2026-09-02)
-
-**Symptom:** Since clean tick 91 (`66e94a4`), `npm test` fails one of 531 tests: "the dashboard page derives its header badge from the payload's budget" (test/gui.test.ts). The second assertion in that test — added by the same tick to pin the new `fmtUsdCap` helper — can never match: its pattern ends `replace\(\/\\\.00\$\/", ""\);`, i.e. it demands a double quote immediately after the regex literal's closing slash, but the page line is `.replace(/\.00$/, "");` (one backslash in the served text) — a comma there. The test's first assertion (the badge line using `fmtUsdCap`) passes; only this one fails.
-
-**Repro:** `npm test` on any commit from `66e94a4` onward (current main `fbefd9e`): 531 tests, 530 pass, 1 fail — that assertion in test/gui.test.ts. The mismatch is visible by eye: after the regex literal's closing slash, the pattern expects a double quote (`\/"`) but the page text has a comma (`\/, `).
-
-**Cause:** The assertion was written against a string-argument form `.replace("/\.00$/", "")` while gui-page.ts defines the helper with a regex-literal argument — `n.toFixed(2).replace(/\\.00$/, "")` inside the GUI_PAGE template literal, which serves as `/\.00$/`: correct browser JS that strips ".00" from whole-dollar caps. The served behavior is verified right: evaluating the page's own line gives fmtUsdCap(50) → `50`, fmtUsdCap(12.34) → `12.34` — so only the assertion is wrong, not the page. It landed because the gate's deterministic pre-check compiles (tsc) but does not run the suite, and the model reviewer did not catch it. The fix is a one-character test-pattern edit (`\/"` → `\/,`).
+_None yet._
 
 ## Fixed
+
+### Main's suite red: stale duplicate of the already-fixed fmtUsdCap test break — re-recorded from a pre-fix snapshot (re-recorded by readme loop 2026-09-02, closed 2026-09-02)
+
+**Symptom:** BUGS.md's Open section carried an entry claiming that since clean tick 91 (`66e94a4`), `npm test` fails one of 531 tests — the fmtUsdCap assertion in test/gui.test.ts. The break was real when recorded, but it had already been fixed on main before this entry landed: the coverage loop's repair commit `91a0843` (2026-09-02 01:06) corrected the assertion and exercised its rule, and recorded the bug in the Fixed section below.
+
+**Repro:** None — at HEAD (`d5c9531`) the full suite is green: 534/534. The corrected assertion (the `\/,` pattern plus a `new Function` evaluation of fmtUsdCap) has been in test/gui.test.ts since `91a0843`; at `fbefd9e` — the entry's cited "current main" and the fix commit's direct parent — it still carried the never-matching `\/"` pattern.
+
+**Cause:** The same race as the two stale-duplicate entries further down: readme tick 95 (`4198b4d`) started from a worktree reset to pre-fix main (its entry cites `fbefd9e`, 531 tests), recorded the red suite as an open bug, and merged its markdown-only diff at 01:48 — ~42 minutes after the fix had landed — adding the stale Open entry on top of the Fixed section's record of the same break.
+
+**Resolution:** Verified by the bugfix loop on 2026-09-02 at HEAD `d5c9531`: `npm test` green (534/534) and the corrected assertion plus rule-exercise check present in test/gui.test.ts since `91a0843`. No code change needed; closed as a stale duplicate of "Tests red on main: clean tick 91's fmtUsdCap assertion carries a stray quote" (Fixed below).
 
 ### Tests red on main: clean tick 91's fmtUsdCap assertion carries a stray quote and can never match GUI_PAGE (found by coverage loop 2026-09-02, fixed 2026-09-02)
 
