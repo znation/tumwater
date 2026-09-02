@@ -10,6 +10,7 @@ import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
+import { truncate } from "../src/text.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { orchestratorStatePath, piLogPath, resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
@@ -165,6 +166,112 @@ test("prompt queues for the director and logs an event; empty text fails", async
   r = await cli(repo, "logs", "-n", "5");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /user prompt queued: add dark mode/);
+});
+
+// --- prompt --list / --cancel: inspecting and removing queued prompts from the CLI ---
+
+test("prompt --list shows queued prompts numbered in execution order", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list");
+
+  // An empty queue is a clean one-liner, not an error.
+  let r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /nothing queued for the director/);
+
+  submitPrompt(repo, "first task");
+  // Full text verbatim — including newlines: --list is the inspection command that shows
+  // what a queued prompt actually says before you cancel it.
+  submitPrompt(repo, "second\nwith a newline");
+  r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^1\. first task$/m);
+  assert.match(r.stdout, /^2\. second\nwith a newline$/m);
+});
+
+test("prompt --cancel removes the Nth queued prompt and reports its text", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt cancel");
+
+  submitPrompt(repo, "alpha");
+  const long = `fix the ${"x".repeat(100)} bug`;
+  submitPrompt(repo, long);
+  submitPrompt(repo, "gamma");
+
+  let r = await cli(repo, "prompt", "--cancel", "2");
+  assert.equal(r.code, 0);
+  // Over-long text is reported through truncate (80 chars + ellipsis), like every other
+  // one-line label — never a raw multi-hundred-character line.
+  assert.ok(
+    r.stdout.includes(`cancelled: ${truncate(long, 80)}`),
+    `expected the truncated report in:\n${r.stdout}`,
+  );
+
+  // The removal renumbers the queue and is visible in --list and logs.
+  r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^1\. alpha$/m);
+  assert.match(r.stdout, /^2\. gamma$/m);
+  assert.ok(!r.stdout.includes("fix the"), "the cancelled prompt is gone from the list:\n" + r.stdout);
+
+  r = await cli(repo, "logs", "-n", "5");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /user prompt cancelled: /);
+});
+
+test("prompt --cancel fails on out-of-range or non-numeric positions without side effects", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt cancel validation");
+
+  submitPrompt(repo, "alpha");
+
+  // Out of range: the error names the position and the queue size.
+  let r = await cli(repo, "prompt", "--cancel", "2");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no prompt at position 2 \(1 queued\)/);
+
+  // Non-numeric or non-positive values are rejected by the parser before any file is touched.
+  for (const bad of ["0", "abc", "1.5"]) {
+    r = await cli(repo, "prompt", "--cancel", bad);
+    assert.equal(r.code, 1, `--cancel ${bad} should fail`);
+    assert.match(r.stderr, /--cancel needs a positive integer/);
+  }
+
+  // A missing value is its own error.
+  r = await cli(repo, "prompt", "--cancel");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--cancel needs a position number/);
+
+  assert.equal(inboxSize(repo), 1, "nothing touched on failure");
+});
+
+test("prompt --list and --cancel reject duplicates, combinations, and stray positionals", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt flag validation");
+
+  // Duplicates keep their existing behavior (first wins) only for other commands; here the
+  // modes are exclusive, so a second occurrence is always an error.
+  let r = await cli(repo, "prompt", "--list", "--list");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--list may only be given once/);
+
+  r = await cli(repo, "prompt", "--cancel", "1", "--cancel", "2");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--cancel may only be given once/);
+
+  // The two modes are mutually exclusive.
+  r = await cli(repo, "prompt", "--list", "--cancel", "1");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--list and --cancel are mutually exclusive/);
+
+  // Neither mode takes prompt text: a stray positional would otherwise be silently ignored.
+  r = await cli(repo, "prompt", "--list", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unexpected argument "extra" — with --list there is no prompt text/);
+
+  r = await cli(repo, "prompt", "--cancel", "1", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unexpected argument "extra" — with --cancel there is no prompt text/);
 });
 
 test("logs -n validates its value instead of misbehaving", async () => {
