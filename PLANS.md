@@ -5,6 +5,56 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Per-tick usage in the event feed — tokens and cost on every tick_end (planned 2026-09-02)
+
+**Goal.** Make each tick's spend visible where operators already watch: `tumwater logs`, the TUI
+activity pane, and the GUI event feed. Today a `tick_end` renders as `<time> <loop> tick #N
+<result>[ — summary|error]` with no usage; per-loop tokens/cost exist only in the status table
+(gen/ctx are per-tick windows but cost is a lifetime total), and the daily-budget badge shows fleet
+today-spend. When `budget paused` fires, or when a loop burns money on ticks that land nothing
+(no_change/error/rejected/refused), there is no way to see which tick spent what without diffing
+table snapshots between runs. The event feed already follows a self-explanatory rule — tick_end
+carries summary/error precisely so operators don't open the transcript for the why; per-tick usage
+is the missing half of spend observability, and it complements the just-landed daily cost budget:
+the cap tells you when the fleet stops, the tick lines tell you where the day's spend went.
+
+**Approach.**
+- src/loop.ts — track a per-tick cost window exactly like the existing `tickTurns` counter (private
+  field; reset alongside it at tick start, next to where `generatedTokens`/`peakContextTokens` are
+  zeroed; accumulated in `foldUsage`, which every pi run of a tick passes through exactly once: main
+  attempt, transient-timeout retry, conflict resolution, and the review-gate runs via its two
+  `this.foldUsage(gate.run)` call sites). No state-schema change: unlike `generatedTokens` (which
+  lives on LoopState because dashboards read it mid-run), cost only needs to survive until tick_end
+  emission. At the tick_end logEvent, add two payload fields: `tokens` — `s.generatedTokens`, the
+  per-tick window already reset at tick start and accumulated in foldUsage (the same number the
+  status table's gen column shows for this tick) — and `costUsd` — the new per-tick cost. The
+  HarnessEvent index signature carries them like every other event payload; no types.ts change.
+- src/event-format.ts — render a usage suffix on the tick_end line after result/summary/error,
+  using "·" (the separator the budget badge and commit trailer already use): ` · <compactTokens(
+  tokens)> tok` when tokens > 0, plus ` · $<cost.toFixed(2)>` when costUsd > 0 (two-decimal
+  pinning is house style — see budgetPhrase). Omit the whole suffix when both are zero so skipped
+  ticks and zero-usage error ticks render byte-identical to today. Import compactTokens from
+  text.js next to shortSha. Example: `14:03:22 feature   tick #7 changed — add per-tick usage ·
+  18.4k tok · $0.37`.
+- No dashboard changes: the TUI activity pane and GUI event feed both render through formatEvent,
+  so they pick up the suffix for free. The `merged` line deliberately gets no usage — one place
+  carries it (tick_end fires for every result type).
+
+**Files touched.** src/loop.ts, src/event-format.ts, test/event-format.test.ts, test/loop.test.ts.
+
+**Acceptance criteria.**
+- Unit (test/event-format.test.ts): a tick_end with tokens and cost renders both parts in order
+  after result/summary/error; tokens-only (cost 0 — the local-model case where pi reports no cost)
+  renders just ` · <n> tok`; zero or absent fields render byte-identical to today's line (no
+  trailing separator); token formatting goes through compactTokens (≥10,000 → one-decimal k,
+  e.g. 18400 → "18.4k") and cost is two decimals ($0.37, $1.50).
+- Loop e2e (test/loop.test.ts): a fake-pi shim that reports usage — test/util.ts's
+  `assistantLine(text, { output, cost })` already carries per-message_end usage into pi's parser —
+  lands a changed tick whose tick_end event (via readEvents) has `tokens` equal to the reported
+  output tokens and `costUsd` equal to the reported cost; a tick that runs no pi (skipped) emits a
+  tick_end with neither field set, rendering as today.
+- Build clean, full suite green.
+
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
 (item (a)'s file reference updated), re-audited 2026-08-31 (item (b2) landed))
