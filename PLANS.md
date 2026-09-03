@@ -45,6 +45,82 @@ test/gui.test.ts.
   page's loop table has a `today` header cell and renders `$<value>` from it.
 - Build clean, full suite green.
 
+### Abort a single loop's in-flight tick — `tumwater abort --role <id>` (planned 2026-09-03)
+
+**Goal.** Give operators a way to stop ONE loop's in-flight tick right now — without stopping the
+whole fleet or waiting for the hang guards. Today, when a loop is visibly thrashing on a bad task
+(the transcript pane shows it) or burning money on a doomed run, the only levers are Ctrl+C (kills
+every loop), editing tumwater.json to disable the role (blocks NEW ticks only — `isEligible` gates
+starts; an in-flight tick still runs to completion), or waiting for the quiet watchdog / tick
+timeout to fire. `tumwater abort --role <id>` closes that gap: kill this loop's current pi run,
+discard its half-done work (worktree reset to main), and let it go back to normal scheduling — the
+loop stays enabled, later ticks proceed as usual. One cohesive feature: the marker-file contract
+couples the CLI, the orchestrator, and the loop, so no part is independently shippable.
+
+**Approach.**
+- src/paths.ts: `abortRequestPath(root, role)` → `.tumwater/abort-<role>.json` — a per-role marker
+  file following the `reset-counters.json` pattern (presence = pending request; content `{ at }`).
+  Per-role files keep consumption race-free and need no parsing.
+- src/types.ts: add `"user_aborted"` to TickResult ("a user-initiated abort killed the run
+  mid-tick; work discarded, loop backed off") — deliberately distinct from `"aborted"` (harness
+  shutdown), which carries resume-promptly semantics a deliberate stop must not have. Add
+  `"tick_aborted"` to HarnessEvent's type union (routine state change, like counters_reset).
+- src/loop.ts: LoopRunner gains a private per-tick `AbortController`, created at tick start
+  alongside the counter resets; runRolePi and reviewGate pass the COMBINED signal —
+  `this.signal ? AbortSignal.any([this.signal, this.tickAbort.signal]) : this.tickAbort.signal`
+  (engines require Node ≥ 20). New method `abortTick()`: no-op when no tick is in flight
+  (`state.running` false); otherwise sets a private `userAborted` flag and calls
+  `tickAbort.abort()`. The flag is cleared at the next tick start. In runTick's two abort branches
+  (the author-run `pi.aborted` check and the review-gate `gate.aborted` check): when `userAborted`,
+  diverge from shutdown semantics — reset the worktree to main (`resetWorktreeToMain`, discarding
+  half-done edits AND any unmerged commit on the branch, so the next tick's leftover recovery finds
+  nothing), do NOT requeue a director prompt (an explicit abort is a decision about that request;
+  timeouts and cut-offs still requeue), and return `{ result: "user_aborted" }` instead of
+  `{ result: "aborted" }`. Known limitation, document in the code comment: if the marker is consumed
+  while the tick sits in its short git-only commit/merge window (no pi run in flight), the flag
+  takes effect at the next model-run boundary within the tick — or, for a tick that reaches no
+  further pi run, completes normally and the abort had no effect; re-issuing is the remedy.
+- src/state.ts: applyTickOutcome gains a `"user_aborted"` branch — schedule like an unproductive
+  tick (the final else's `nextBackoffSeconds` backoff), no `resumePending`; phase is already cleared
+  by the existing `result !== "aborted"` check.
+- src/orchestrator.ts: in the poll cycle beside the reset-counters marker consumption — for each
+  role with a pending abort marker file, find its runner; if `runner.state.running`, call
+  `runner.abortTick()` and log one `{ loop: role, type: "tick_aborted" }` event; remove the marker
+  either way (a request for an idle loop is a no-op, not an error).
+- src/event-format.ts: render `tick_aborted` as a plain line like counters_reset —
+  `<time> <role> tick aborted by user`; tick_end renders its result string verbatim, so
+  `"user_aborted"` flows through with no change.
+- src/cli.ts: new `abort` subcommand following reset-counters' pattern —
+  `rejectUnknownArgs("abort", args, [{ names: ["--role"], value: true, valueName: "<id>" }])`,
+  `requireReadyRepo`; `--role <id>` required and must be a known role id (actionable error listing
+  the valid ids otherwise); require the orchestrator to be running (`readOrchestratorInfo` +
+  pidAlive — actionable "no harness is running" error, since with no fleet nothing consumes the
+  marker); write the marker; confirm `abort requested for <role> — a running fleet applies it
+  within ~2s`. README.md: one Usage line (do not touch the status block — that text belongs to the
+  readme loop).
+
+**Files touched.** src/paths.ts, src/types.ts, src/loop.ts, src/state.ts, src/orchestrator.ts,
+src/event-format.ts, src/cli.ts, test/loop.test.ts, test/state.test.ts, test/orchestrator.test.ts,
+test/event-format.test.ts, test/cli.test.ts, README.md.
+
+**Acceptance criteria.**
+- Loop e2e (test/loop.test.ts): a fake-pi shim that hangs mid-run — `runner.abortTick()` kills the
+  child; the tick ends with result "user_aborted"; the worktree is reset to main (a planted dirty
+  file is gone); persisted state carries no resumePending and nextRunAt > now (backed off, not
+  immediate); the tick_end event carries user_aborted. Director variant: an aborted director tick
+  leaves the inbox EMPTY — its prompt was not requeued (contrast with timeout/cut-off, which do).
+- Orchestrator e2e (test/orchestrator.test.ts): a slow fake-pi tick under a real orchestrator;
+  writing `abortRequestPath(root, role)` kills the run within one poll cycle, removes the marker,
+  and logs exactly one tick_aborted event; a marker for an idle loop is removed with no event.
+- Scheduling units (test/state.test.ts): applyTickOutcome("user_aborted") advances backoff like an
+  unproductive tick, sets no resumePending, clears phase.
+- Events (test/event-format.test.ts): tick_aborted renders as a plain line under the role's loop;
+  tick_end with result user_aborted renders that string.
+- CLI (test/cli.test.ts): `abort --role feature` against a running harness writes the marker and
+  confirms; without a running harness it fails actionably naming `tumwater run`; an unknown role
+  fails listing valid ids; missing/unknown flags fail like reset-counters' siblings.
+- Build clean, full suite green.
+
 ## Done
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
