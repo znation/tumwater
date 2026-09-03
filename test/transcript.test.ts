@@ -377,6 +377,44 @@ test("readTranscriptTail re-reads fully when contentless turns undercount candid
   }
 });
 
+test("readTranscriptTail skips blank lines exactly like a full re-read", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Blank lines can land in pi's JSONL log (a torn write whose newline arrives separately,
+  // or a manual edit). The backward scan walks lines with its own arithmetic and has a
+  // dedicated skip for them — pin that it skips them exactly like the full re-read does:
+  // not counted as entry candidates, at every window size, including where one sits right
+  // before the stop boundary (limit 1/2) and at file start (leading blank).
+  const lines: string[] = [
+    "", // leading blank
+    agentStart(),
+    userLine("prompt 1", TS + 60_000),
+    assistantLine([{ type: "text", text: "turn 1" }]),
+    "",
+    "", // consecutive blanks between runs
+    agentStart(),
+    userLine("prompt 2", TS + 2 * 60_000),
+    assistantLine([{ type: "text", text: "turn 2" }]),
+    "",
+    agentStart(),
+    userLine("prompt 3", TS + 3 * 60_000),
+    assistantLine([{ type: "text", text: "turn 3" }]),
+    "", // trailing blank line (the file still ends with a newline)
+  ];
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  const size = fs.statSync(file).size;
+  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  assert.equal(full.length, 3, "sanity: three rendered runs");
+  for (const limit of [1, 2, 50]) {
+    const tail = readTranscriptTail(file, limit);
+    assert.ok(tail, `limit ${limit}`);
+    assert.deepEqual(tail.entries, full.slice(-limit), `limit ${limit} entries`);
+    assert.equal(tail.end, readCompleteLines(file, 0, size).end, `limit ${limit} end offset`);
+  }
+});
+
 test("readTranscriptTail handles torn tails and newline-less files", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");

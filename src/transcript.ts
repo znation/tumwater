@@ -256,6 +256,12 @@ export function readTranscriptTail(file: string, limit: number): TranscriptWindo
       } else {
         held = EMPTY_BUFFER; // Reached file start: nothing older to hold for.
       }
+      // A newline at c's start terminates a zero-length line (a blank line whose terminating
+      // \n is the region's first byte — e.g. the log starts with one). The walk below finds a
+      // line's start via lastIndexOf(10, lineEnd - 1), which for that line would search from
+      // index -1 and wrap to c's LAST newline — re-emitting every newer line until the
+      // candidate count reaches limit. Skip the zero-length line by starting the walk after it.
+      if (c[emitStart] === 10) emitStart += 1;
       let lineEnd = lastNl; // Byte index of the \n terminating the newest complete line in c.
       while (lineEnd >= emitStart) {
         const lineStart = c.lastIndexOf(10, lineEnd - 1) + 1;

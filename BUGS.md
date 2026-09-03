@@ -15,6 +15,16 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### readTranscriptTail returns duplicated entries when a pi log starts with a blank line (found by coverage loop 2026-09-03, fixed 2026-09-03)
+
+**Symptom:** When a role's raw pi log begins with a blank line (the file's first byte is `\n`), `tumwater logs --role <id>` shows the tail duplicated — up to `limit` copies of the same turns instead of the true window. readTranscriptTail's backward scan re-emits every line in its window until its entry-candidate count reaches limit, then stops at a run boundary and returns those duplicates as if they were distinct entries.
+
+**Repro:** Make a role's pi log start with `\n` (any append that lands a bare newline before the first event, or a manual edit), then run `tumwater logs --role <id>`: each rendered turn appears up to N times. Deterministic unit repro — test/transcript.test.ts "readTranscriptTail skips blank lines exactly like a full re-read" (added with this fix) fails on pre-fix code: for a three-run log, limit 50 returns 50 identical entries.
+
+**Cause:** The backward scan walks complete lines newest-to-oldest, finding each line's start via `c.lastIndexOf(10, lineEnd - 1) + 1`. When the scanned region c starts with `\n` (a zero-length line at its head), walking past the first real line sets lineEnd = 0; the next iteration calls lastIndexOf(10, -1), and a negative fromIndex makes V8 search the whole buffer — returning c's LAST newline. The walk then "finds" an empty range after it, takes the blank-line skip branch, resets lineEnd to the newest line, and re-pushes every line in the window; it only stops once the re-counted candidates reach limit at an agent_start boundary.
+
+**Fix:** src/transcript.ts — when c's first byte is a newline (a zero-length oldest line), advance emitStart past it before walking so the walk terminates at the region start instead of wrapping. One-line guard plus comment; behavior for logs without leading newlines is unchanged. Verified: build clean, full suite 554/554; transcript.js line coverage 98.99% → 100%. Files: src/transcript.ts, test/transcript.test.ts.
+
 ### Main's suite red: stale duplicate of the already-fixed fmtUsdCap test break — re-recorded from a pre-fix snapshot (re-recorded by readme loop 2026-09-02, closed 2026-09-02)
 
 **Symptom:** BUGS.md's Open section carried an entry claiming that since clean tick 91 (`66e94a4`), `npm test` fails one of 531 tests — the fmtUsdCap assertion in test/gui.test.ts. The break was real when recorded, but it had already been fixed on main before this entry landed: the coverage loop's repair commit `91a0843` (2026-09-02 01:06) corrected the assertion and exercised its rule, and recorded the bug in the Fixed section below.
