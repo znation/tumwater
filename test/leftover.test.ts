@@ -7,7 +7,7 @@ import { aheadOfMain, ensureWorktree, resetWorktreeToMain } from "../src/git.js"
 import { readEvents } from "../src/events.js";
 import type { GateResult } from "../src/review.js";
 import type { PiRunResult, TickResult } from "../src/types.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { makeRepo, sh } from "./util.js";
 
 // Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that re-reviews and
 // re-merges commits a previous run left on the branch. The loop e2e tests (test/loop.test.ts)
