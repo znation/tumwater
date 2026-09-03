@@ -146,6 +146,8 @@ export function allRoleIds(): string[] {
   return [...ROLES.map((r) => r.id), DIRECTOR_ROLE];
 }
 
+/** Look up a catalog role by id. Searches only the catalog, so unknown ids — and the
+ * director (which has no find prompt and is not in ROLES) — yield undefined. */
 export function roleById(id: string): Role | undefined {
   return ROLES.find((r) => r.id === id);
 }
