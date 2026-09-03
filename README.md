@@ -147,7 +147,7 @@ tick (a duplicate wake event plus an extra tick for one world change); it also p
 defensive branch — an unexpected throw inside runTick, Error or non-Error, degrades to an
 error result with backoff scheduling and a tick_end event instead of escaping into the
 orchestrator as an unhandled rejection that would crash the whole fleet over one loop's
-surprise. Current main (`4778102`): suite 545/545 green (verified 2026-09-02).
+surprise. Since then: organize tick `baeca7e` extracted leftover-commit recovery from loop.ts into src/leftover.ts — the self-contained ahead-check → shared review gate → merge-or-warn flow now lives in its own module (`recoverLeftover`, borrowing only identity, the loop's shared gate wiring, usage folding, and the shared merge landing through a `LeftoverContext`), so loop.ts keeps just the tick lifecycle around it; dry tick `edd332e` extracted the shared `promptPreview()` for queued-prompt previews — the 80-char cap in inbox.ts is now the single width behind the prompt_enqueued/prompt_cancelled event previews, the dashboards' inboxPrompts (status.ts), and the CLI's cancel output (cli.ts), surrogate-safe via truncate; coverage tick `ec1850e` then added test/leftover.test.ts — eight units over recoverLeftover's gate-decision branches (no leftover; approved merge with usage folded in; exempt diff without a reviewer run; unmergeable warned and left to the reset; shutdown mid-review failing closed; rejected already reset by the gate; failed under the strike cap kept for re-review; failed at the cap discarded). Current main (`ec1850e`): suite 553/553 green (verified 2026-09-02).
 <!-- tumwater:status:end -->
 
 ## How it works
