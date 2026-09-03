@@ -136,8 +136,18 @@ carrying two copies — with units in test/pi.test.ts pinning its null-on-any-ot
 contract; coverage tick 94 (`f2a4e73`) moved `lanAddresses` from cli.ts to gui.ts, the module
 that prints the `gui --all-interfaces` URLs, with an injectable interface table defaulting to
 the live one so its IPv4/external filter is unit-testable on machines (CI boxes, containers)
-with no external address of their own. Current main (`f2a4e73`): suite 544/544 green
-(verified 2026-09-02).
+with no external address of their own. Since then, feature tick `7b87824` moved the steward plan to Done in PLANS.md with a verified
+landing note — every code and test item landed (all four test items verified at `c3979e1`,
+suite 543/543), leaving only dogfood observation, which is not work — so PLANS.md's Planned
+section is now empty (`_None yet._`). Coverage tick 95 (`4778102`) then closed a duplicate-wake
+race in loop.ts: `lastMainHead`'s update moved ahead of `applyTickOutcome`, while the tick is
+still reserved (running=true), so a poll landing between the running-flag clear and the head
+update can no longer see stale state and re-wake the loop on the very move that triggered this
+tick (a duplicate wake event plus an extra tick for one world change); it also pinned tick()'s
+defensive branch — an unexpected throw inside runTick, Error or non-Error, degrades to an
+error result with backoff scheduling and a tick_end event instead of escaping into the
+orchestrator as an unhandled rejection that would crash the whole fleet over one loop's
+surprise. Current main (`4778102`): suite 545/545 green (verified 2026-09-02).
 <!-- tumwater:status:end -->
 
 ## How it works
