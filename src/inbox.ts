@@ -9,6 +9,18 @@ import { truncate } from "./text.js";
 /** File-based queue of user prompts for the director loop. Any process can enqueue;
  * the orchestrator pops. Ordering comes from the timestamped filenames. */
 
+/** Cap on a queued prompt's one-line preview, so an over-long prompt cannot bloat an event
+ * log line, the dashboard payload, or the CLI output. */
+const PROMPT_PREVIEW_MAX = 80;
+
+/** One-line preview of a queued prompt — the single width shared by the prompt_enqueued and
+ * prompt_cancelled event previews (this module), the dashboards' inboxPrompts (status.ts), and
+ * the CLI's cancel output (cli.ts). Surrogate-safe via truncate: an over-long prompt is marked
+ * with an ellipsis like every other label and never carries a lone surrogate at the cut point. */
+export function promptPreview(text: string): string {
+  return truncate(text, PROMPT_PREVIEW_MAX);
+}
+
 let seq = 0;
 
 export function enqueuePrompt(root: string, prompt: string): string {
@@ -47,7 +59,7 @@ export function queuedPrompts(root: string): string[] {
 export type CancelOutcome = { status: "cancelled"; text: string } | { status: "gone" };
 
 /** Remove the Nth queued prompt — 1-based, as shown by `tumwater prompt --list` — and log one
- * prompt_cancelled event under the director loop (preview through truncate, exactly like its
+ * prompt_cancelled event under the director loop (preview via promptPreview, exactly like its
  * prompt_enqueued sibling). Throws for out-of-range positions with no side effects; returns
  * { status: "gone" } when the file disappears between listing and removal instead of throwing.
  * The event is logged only after a successful removal — a prompt the director just dequeued
@@ -72,7 +84,7 @@ export function cancelPrompt(root: string, position: number): CancelOutcome {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return { status: "gone" };
     throw err;
   }
-  logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_cancelled", preview: truncate(text, 80) });
+  logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_cancelled", preview: promptPreview(text) });
   return { status: "cancelled", text };
 }
 
@@ -87,11 +99,11 @@ export function dequeuePrompt(root: string): string | null {
 
 /** A user submits a new prompt (TUI, GUI, or CLI): enqueue it for the director and
  * record it in the event log. Returns the trimmed prompt that was queued. The logged preview
- * goes through truncate — not a raw slice — so an over-long prompt is marked with an ellipsis
- * like every other label and never carries a lone surrogate at the cut point. */
+ * goes through promptPreview — not a raw slice — so an over-long prompt is marked with an
+ * ellipsis like every other label and never carries a lone surrogate at the cut point. */
 export function submitPrompt(root: string, text: string): string {
   const prompt = text.trim();
   enqueuePrompt(root, prompt);
-  logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_enqueued", preview: truncate(prompt, 80) });
+  logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_enqueued", preview: promptPreview(prompt) });
   return prompt;
 }

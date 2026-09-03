@@ -2,8 +2,7 @@ import type { LoopState, TumwaterConfig } from "./types.js";
 import { openQuestions } from "./backlog.js";
 import { defaultConfig, enabledRoleIds, loadConfigSafe } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./files.js";
-import { inboxSize, queuedPrompts } from "./inbox.js";
-import { truncate } from "./text.js";
+import { inboxSize, promptPreview, queuedPrompts } from "./inbox.js";
 import { statePath } from "./paths.js";
 import {
   fleetDailyCost,
@@ -20,9 +19,9 @@ export interface StatusSnapshot {
   running: boolean;
   pid?: number;
   inbox: number;
-  /** Previews of those queued prompts in execution order, each truncated to 80 chars with
-   * the same surrogate-safe truncate as event previews — full text would bloat the GUI payload,
-   * and dashboards clip display width themselves. Fresh per poll like `questions`. */
+  /** Previews of those queued prompts in execution order, each via promptPreview (the shared
+   * one-line preview width also used by the event previews) — full text would bloat the GUI
+   * payload, and dashboards clip display width themselves. Fresh per poll like `questions`. */
   inboxPrompts: string[];
   /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
   questions: number;
@@ -89,7 +88,7 @@ export function snapshot(root: string): StatusSnapshot {
     inbox: inboxSize(root),
     // A separate read, not derived from the count: queuedPrompts reads each file's content,
     // so it must keep working (and stay fresh) on its own like `questions` above.
-    inboxPrompts: queuedPrompts(root).map((p) => truncate(p, 80)),
+    inboxPrompts: queuedPrompts(root).map(promptPreview),
     questions: openQuestions(root).length,
     loops,
     budget:

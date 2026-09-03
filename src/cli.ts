@@ -15,8 +15,7 @@ import { loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from ".
 import { createTranscriptRenderer, readTranscriptTail } from "./transcript.js";
 import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
-import { cancelPrompt, queuedPrompts, submitPrompt } from "./inbox.js";
-import { truncate } from "./text.js";
+import { cancelPrompt, promptPreview, queuedPrompts, submitPrompt } from "./inbox.js";
 import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
@@ -277,7 +276,7 @@ async function main(): Promise<void> {
           // A concurrent dequeue is a normal race, not an error: report it and exit clean.
           process.stdout.write(`prompt ${parsed.position} is no longer queued — the director already took it\n`);
         } else {
-          process.stdout.write(`cancelled: ${truncate(outcome.text, 80)}\n`);
+          process.stdout.write(`cancelled: ${promptPreview(outcome.text)}\n`);
         }
         break;
       }
