@@ -1,6 +1,7 @@
 import http from "node:http";
 import os from "node:os";
 import { openBugs, openQuestions, plannedPlans } from "./backlog.js";
+import { parsePositiveInt } from "./cli-args.js";
 import { readEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
@@ -31,11 +32,12 @@ function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, r
   let n = 50;
   const nRaw = q.get("n");
   if (nRaw !== null) {
-    n = Number(nRaw);
-    if (!Number.isInteger(n) || n < 1) {
+    const parsed = parsePositiveInt(nRaw);
+    if (parsed === null) {
       sendJson(res, 400, { error: `n must be a positive integer (got ${JSON.stringify(nRaw)})` });
       return;
     }
+    n = parsed;
   }
   sendJson(res, 200, { lines: readTranscript(root, role, n) });
 }

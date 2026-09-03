@@ -3,11 +3,22 @@ import { allRoleIds } from "./roles.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
  * layer calls these before running a command, so a bad flag fails fast with an actionable
- * message instead of the command silently running with default behavior. */
+ * message instead of the command silently running with default behavior. parsePositiveInt is
+ * also used by gui.ts's query-param validation, so one definition of a valid count/position
+ * covers both input surfaces. */
 
 export function fail(message: string): never {
   process.stderr.write(`tumwater: ${message}\n`);
   process.exit(1);
+}
+
+/** Parse `raw` as a positive integer — the one definition of what counts as a valid count or
+ * position across every input surface (CLI flags and the GUI's query params). Null when it
+ * isn't one (NaN, fractional, zero, negative); each caller keeps its own missing-value check
+ * and failure mode (fail vs HTTP 400), and bounded variants like --port add their upper limit. */
+export function parsePositiveInt(raw: string): number | null {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n : null;
 }
 
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
@@ -15,8 +26,8 @@ export function fail(message: string): never {
  * (or drop leading lines) instead of showing the requested tail. */
 export function parseCountFlag(flag: string, raw: string | undefined): number {
   if (raw === undefined) fail(`${flag} needs a value`);
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1) fail(`${flag} needs a positive integer (got ${JSON.stringify(raw)})`);
+  const n = parsePositiveInt(raw);
+  if (n === null) fail(`${flag} needs a positive integer (got ${JSON.stringify(raw)})`);
   return n;
 }
 
@@ -25,8 +36,8 @@ export function parseCountFlag(flag: string, raw: string | undefined): number {
  * cannot be opened; out-of-range values only fail later via Node's raw RangeError. */
 export function parsePortFlag(raw: string | undefined): number {
   if (raw === undefined) fail("--port needs a value");
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1 || n > 65535)
+  const n = parsePositiveInt(raw);
+  if (n === null || n > 65535)
     fail(`--port must be an integer between 1 and 65535 (got ${JSON.stringify(raw)})`);
   return n;
 }
@@ -153,8 +164,8 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   if (cancelFlag >= 0) {
     const raw = args[cancelFlag + 1];
     if (!raw || raw.startsWith("--")) fail(`--cancel needs a position number`);
-    const n = Number(raw);
-    if (!Number.isInteger(n) || n < 1) fail(`--cancel needs a positive integer (got ${JSON.stringify(raw)})`);
+    const n = parsePositiveInt(raw);
+    if (n === null) fail(`--cancel needs a positive integer (got ${JSON.stringify(raw)})`);
     // The position is the only token --cancel may carry; anything else alongside it would be
     // prompt text, and this mode has none.
     const extra = args.find((_, i) => i !== cancelFlag && i !== cancelFlag + 1);
