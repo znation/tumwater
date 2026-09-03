@@ -2,7 +2,7 @@ import path from "node:path";
 import { DIRECTOR_ROLE } from "./roles.js";
 import type { LoopState } from "./types.js";
 import type { StatusSnapshot } from "./status.js";
-import { budgetReached } from "./state.js";
+import { dailyCost, fleetDailyCost, budgetReached } from "./state.js";
 import { readLiveProgress } from "./progress.js";
 import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2 } from "./text.js";
 
@@ -156,11 +156,12 @@ function usdCap(n: number): string {
  * first: `last result` (holds the tick summary), then `state` (live working detail), then
  * `last tick` — it shrinks last so on a narrow terminal it loses " · 3m ago" before whole
  * lines clip; its minimum is a bare HH:MM:SS. Indices are positional in the `cols` array
- * below — renumber when columns change. */
+ * below — renumber when columns change. (`today`, like `cost`, is a short fixed-width cell:
+ * never flexible.) */
 const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
-  { index: 8, minWidth: 12 },
+  { index: 9, minWidth: 12 },
   { index: 1, minWidth: 12 },
-  { index: 7, minWidth: 10 },
+  { index: 8, minWidth: 10 },
 ];
 const COLUMN_GAP = 2;
 
@@ -180,7 +181,11 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     }${snap.budget ? ` · budget: $${snap.budget.spentUsd.toFixed(2)}/${usdCap(snap.budget.capUsd)} today` : ""}`,
   );
   lines.push("");
-  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "last tick", "last result"];
+  // `today` is the loop's daily budget window (dailyCost): $0.00 while its stamp is stale
+  // or missing, so loops that never ticked — or last ticked yesterday — read zero without a
+  // save. It renders whether or not the cap is enabled: spend observability does not depend
+  // on it.
+  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last result"];
   // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
   // reached the cap, every idle role loop shows `budget paused` in its state cell.
   const budgetPausedNow = budgetReached(snap.budget);
@@ -193,6 +198,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     compactTokens(m.generated),
     compactTokens(m.peakCtx),
     `$${s.totalCostUsd.toFixed(2)}`,
+    `$${dailyCost(s).toFixed(2)}`,
     lastTickCell(s.lastTickEndedAt),
     s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
   ]);
@@ -204,6 +210,9 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     compactTokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
     compactTokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
     `$${snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0).toFixed(2)}`,
+    // The fleet's today-spend — by construction equal to the header badge's spend while
+    // enabled (snapshot derives both from the same loops), so table and badge cannot drift.
+    `$${fleetDailyCost(snap.loops).toFixed(2)}`,
     "",
     "",
   ];

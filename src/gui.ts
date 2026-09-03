@@ -7,7 +7,7 @@ import { submitPrompt } from "./inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "./roles.js";
 import { readLiveProgress } from "./progress.js";
-import { budgetReached } from "./state.js";
+import { dailyCost, budgetReached } from "./state.js";
 import { snapshot } from "./status.js";
 import { displayTokenMetrics, loopPhase } from "./status-render.js";
 import { readTranscript } from "./transcript.js";
@@ -70,6 +70,9 @@ export function statusPayload(root: string): object {
         generated: m.generated,
         peakCtx: m.peakCtx,
         costUsd: s.totalCostUsd,
+        // The loop's spend for the local day (the daily budget window): 0 while its stamp
+        // is stale or missing — same helper and semantics as the TUI's `today` column.
+        todayUsd: dailyCost(s),
         lastResult: s.lastResult ?? null,
         lastSummary: s.lastSummary ?? null,
         lastTickEndedAt: s.lastTickEndedAt ?? null,

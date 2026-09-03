@@ -37,7 +37,7 @@ export const GUI_PAGE = `<!doctype html>
   <button>send</button><span id="flash"></span>
 </form>
 <table>
-  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>last tick</th><th>last result</th></tr></thead>
+  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>today</th><th>last tick</th><th>last result</th></tr></thead>
   <tbody id="loops"></tbody>
 </table>
 <div id="transcript" hidden></div>
@@ -93,7 +93,9 @@ export const GUI_PAGE = `<!doctype html>
           + "<td class='wide " + cls + "'>" + esc(l.phase)
           + "</td><td class='wide'>" + esc(l.currentWork ?? "-") + "</td><td>" + l.ticks + "</td><td>" + l.commits + "</td><td>" + fmtTokens(l.generated) +
           "</td><td>" + fmtTokens(l.peakCtx) +
-          "</td><td>$" + l.costUsd.toFixed(2) + "</td><td>" + fmtLastTick(l.lastTickEndedAt) +
+          // today: the loop's spend for the local day (0 while its stamp is stale), same
+          // two-decimal rule as cost — formatted client-side from the payload, like cost.
+          "</td><td>$" + l.costUsd.toFixed(2) + "</td><td>$" + l.todayUsd.toFixed(2) + "</td><td>" + fmtLastTick(l.lastTickEndedAt) +
           "</td><td class='wide'>" + esc(last) + "</td></tr>";
       }).join("");
       // Project status: planned features, open bugs, and open questions — fresh from
