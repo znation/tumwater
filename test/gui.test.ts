@@ -269,9 +269,49 @@ test("the dashboard page has a current column after state", async () => {
 
 test("the dashboard page has a last tick column between cost and last result", async () => {
   const { GUI_PAGE } = await import("../src/gui-page.js");
-  assert.match(GUI_PAGE, /<th>cost<\/th><th>last tick<\/th><th>last result<\/th>/);
+  // The per-loop today-spend column (PLANS.md "Per-loop today spend") landed between cost and
+  // last tick, so the header order now pins all four cells at once.
+  assert.match(GUI_PAGE, /<th>cost<\/th><th>today<\/th><th>last tick<\/th><th>last result<\/th>/);
   // The cell renders client-side from the payload's existing lastTickEndedAt field.
   assert.match(GUI_PAGE, /fmtLastTick\(l\.lastTickEndedAt\)/);
+});
+
+// The per-loop today spend on the GUI surface (PLANS.md "Per-loop today spend"): /api/status
+// carries todayUsd per loop — the daily budget window, 0 while its stamp is stale or missing,
+// same helper and semantics as the TUI's `today` column — and the page renders its cell
+// client-side from that field.
+
+test("status payload carries todayUsd per loop from its daily window", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui today spend test");
+  // A state file with today's stamp rides the payload...
+  const fresh = freshLoopState("clean");
+  fresh.dayStamp = todayStamp();
+  fresh.dayCostUsd = 12.34;
+  saveLoopState(repo, fresh);
+  // ...a stale-stamp file with positive spend reads zero (dailyCost's rule)...
+  const stale = freshLoopState("dry");
+  stale.dayStamp = todayStamp(Date.now() - 86_400_000);
+  stale.dayCostUsd = 5.67;
+  saveLoopState(repo, stale);
+
+  let payload = statusPayload(repo) as { loops: Array<{ role: string; todayUsd: number }> };
+  assert.equal(payload.loops.find((l) => l.role === "clean")?.todayUsd, 12.34, "fresh window rides the payload");
+  assert.equal(payload.loops.find((l) => l.role === "dry")?.todayUsd, 0, "stale stamp reads zero");
+
+  // A loop that never ticked (default state file) also carries an explicit zero field.
+  saveLoopState(repo, freshLoopState("organize"));
+  payload = statusPayload(repo) as typeof payload;
+  assert.equal(payload.loops.find((l) => l.role === "organize")?.todayUsd, 0, "missing window reads zero");
+});
+
+test("the dashboard page renders the today cell from the payload's todayUsd", async () => {
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+  // The header cell sits between cost and last tick (pinned by the regex above)...
+  assert.match(GUI_PAGE, /<th>cost<\/th><th>today<\/th><th>last tick<\/th>/);
+  // ...and the cell renders client-side from todayUsd, beside its existing cost formatting.
+  assert.match(GUI_PAGE, /l\.costUsd\.toFixed\(2\)/);
+  assert.match(GUI_PAGE, /l\.todayUsd\.toFixed\(2\)/);
 });
 
 // Project status: planned features and open bugs from PLANS.md/BUGS.md.

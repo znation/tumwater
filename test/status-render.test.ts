@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { clipToWidth, lastTickCell, loopPhase, renderStatus, workingDetail } from "../src/status-render.js";
 import type { StatusSnapshot } from "../src/status.js";
-import { freshLoopState } from "../src/state.js";
+import { fleetDailyCost, freshLoopState, todayStamp } from "../src/state.js";
 import { piLogPath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
 
@@ -219,33 +219,149 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
   };
   const col = (w: number[], i: number): number => w[i] ?? -1;
   const natural = widthsOf(renderStatus(root, snap)); // unclipped render
-  assert.equal(col(natural, 7), 17, "fixture sanity: last tick column is HH:MM:SS · 3m ago");
+  assert.equal(col(natural, 8), 17, "fixture sanity: last tick column is HH:MM:SS · 3m ago");
   const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
 
   // Stage 1: only `last result` shrinks.
   let w = widthsOf(renderStatus(root, snap, total - 5));
-  assert.equal(col(w, 8), col(natural, 8) - 5, "last result absorbs the first overflow");
+  assert.equal(col(w, 9), col(natural, 9) - 5, "last result absorbs the first overflow");
   assert.equal(col(w, 1), col(natural, 1), "state untouched while last result has room");
-  assert.equal(col(w, 7), col(natural, 7), "last tick untouched until the others are exhausted");
+  assert.equal(col(w, 8), col(natural, 8), "last tick untouched until the others are exhausted");
 
   // Stage 2: `last result` clamped at its minimum; `state` shrinks next.
-  w = widthsOf(renderStatus(root, snap, total - (col(natural, 8) - 12) - 5));
-  assert.equal(col(w, 8), 12, "last result clamped at its minimum");
+  w = widthsOf(renderStatus(root, snap, total - (col(natural, 9) - 12) - 5));
+  assert.equal(col(w, 9), 12, "last result clamped at its minimum");
   assert.ok(col(w, 1) < col(natural, 1), "state shrinks after last result is exhausted");
-  assert.equal(col(w, 7), col(natural, 7), "last tick still untouched");
+  assert.equal(col(w, 8), col(natural, 8), "last tick still untouched");
 
   // Stage 3: both at their minimums; `last tick` shrinks last, down to a bare HH:MM:SS.
   w = widthsOf(
-    renderStatus(root, snap, total - (col(natural, 8) - 12) - (col(natural, 1) - 12) - (col(natural, 7) - 10)),
+    renderStatus(root, snap, total - (col(natural, 9) - 12) - (col(natural, 1) - 12) - (col(natural, 8) - 10)),
   );
-  assert.equal(col(w, 8), 12);
+  assert.equal(col(w, 9), 12);
   assert.equal(col(w, 1), 12);
-  assert.equal(col(w, 7), 10, "last tick shrinks last and only to its HH:MM:SS minimum");
+  assert.equal(col(w, 8), 10, "last tick shrinks last and only to its HH:MM:SS minimum");
 
   // And at a hard 80 columns nothing wraps.
   for (const line of renderStatus(root, snap, 80).split("\n")) {
     assert.ok(line.length <= 80, `line exceeds 80 cols: ${JSON.stringify(line)} (${line.length})`);
   }
+});
+
+// The per-loop today-spend column (PLANS.md "Per-loop today spend"): `today` sits between cost
+// and last tick, showing each loop's daily budget window via dailyCost — $0.00 while its stamp
+// is stale or missing, so loops that never ticked read zero without a save. It is not flexible
+// (a short fixed-width cell like cost), and the totals row sums the same windows as the badge.
+
+// Header labels are padded to their column widths, so they cannot be split on the two-space
+// gap — derive each label by slicing at the separator line's offsets instead.
+test("the status table has a today column between cost and last tick", () => {
+  const lines = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n");
+  const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length); // separator line
+  const cellAt = (row: string, i: number): string => {
+    let start = 0;
+    for (let j = 0; j < i; j++) start += (widths[j] ?? 0) + 2;
+    return row.slice(start, start + (widths[i] ?? 0)).trim();
+  };
+  const cols = widths.map((_, i) => cellAt(lines[2] ?? "", i)); // header labels by position
+  assert.ok(cols.includes("today"), "table has a today column");
+  assert.equal(cols.indexOf("cost"), cols.indexOf("today") - 1, "today sits directly after cost");
+  assert.equal(
+    cols.indexOf("last tick"),
+    cols.indexOf("today") + 1,
+    "today sits directly before last tick",
+  );
+});
+
+test("the today cell shows the loop's daily window and zeros for stale or missing stamps", () => {
+  const fresh = freshLoopState("clean");
+  fresh.dayStamp = todayStamp();
+  fresh.dayCostUsd = 12.34; // fresh stamp: the persisted window renders as-is
+  // Stale: yesterday's stamp with positive spend reads zero — the window rolled over.
+  const stale = freshLoopState("dry");
+  stale.dayStamp = todayStamp(Date.now() - 86_400_000);
+  stale.dayCostUsd = 5.67;
+  // Missing: a loop that never ticked (freshLoopState defaults) also reads zero, no save needed.
+  const snap = snapshotWith([fresh, stale, freshLoopState("organize")]);
+  const lines = renderStatus(tmpdir(), snap).split("\n");
+  const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length); // separator line
+  const cellAt = (row: string, i: number): string => {
+    let start = 0;
+    for (let j = 0; j < i; j++) start += (widths[j] ?? 0) + 2;
+    return row.slice(start, start + (widths[i] ?? 0)).trim();
+  };
+  const cols = widths.map((_, i) => cellAt(lines[2] ?? "", i)); // header labels by position
+  const cleanRow = lines.find((l) => l.startsWith("clean")) ?? "";
+  assert.equal(cellAt(cleanRow, cols.indexOf("today")), "$12.34", "fresh stamp renders its window");
+  assert.equal(cellAt(cleanRow, cols.indexOf("cost")), "$0.00", "lifetime cost stays a separate column");
+  for (const role of ["dry", "organize"]) {
+    const row = lines.find((l) => l.startsWith(role)) ?? "";
+    assert.equal(cellAt(row, cols.indexOf("today")), "$0.00", `${role}: stale/missing stamp reads zero`);
+  }
+});
+
+test("the totals row's today cell sums the loops' daily windows like the header badge", () => {
+  const a = freshLoopState("clean");
+  a.dayStamp = todayStamp();
+  a.dayCostUsd = 12.34;
+  const b = freshLoopState("dry");
+  b.dayStamp = todayStamp();
+  b.dayCostUsd = 0.66;
+  // A stale loop contributes nothing to the fleet total...
+  const c = freshLoopState("organize");
+  c.dayStamp = todayStamp(Date.now() - 86_400_000);
+  c.dayCostUsd = 9.99;
+  // ...and the badge carries the same sum (status.ts derives both from the loops).
+  const snap = snapshotWith([a, b, c], { spentUsd: fleetDailyCost([a, b, c]), capUsd: 50 });
+  const lines = renderStatus(tmpdir(), snap).split("\n");
+  const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length);
+  const cellAt = (row: string, i: number): string => {
+    let start = 0;
+    for (let j = 0; j < i; j++) start += (widths[j] ?? 0) + 2;
+    return row.slice(start, start + (widths[i] ?? 0)).trim();
+  };
+  const cols = widths.map((_, i) => cellAt(lines[2] ?? "", i)); // header labels by position
+  const totalsRow = lines[lines.length - 1] ?? "";
+  assert.equal(cellAt(totalsRow, cols.indexOf("today")), "$13.00", "totals sum the fresh windows only (12.34 + 0.66)");
+  // Equal to the badge spend on the same render — table and badge cannot drift.
+  assert.match(lines[0] ?? "", /· budget: \$13\.00\/\$50 today$/);
+});
+
+test("the today column keeps its natural width under overflow like cost", () => {
+  const root = tmpdir();
+  writePiLog(root, "feature", [
+    SESSION,
+    assistantLine(`implement plan "${"x".repeat(50)}"`),
+    toolStart("bash", { command: "npm test" }),
+  ]);
+  const s = freshLoopState("feature");
+  s.running = true;
+  s.lastTickStartedAt = Date.now() - 5_000;
+  s.lastResult = "changed";
+  s.lastSummary = "y".repeat(120); // wide last result so the flexible columns have room to shrink
+  s.dayStamp = todayStamp();
+  s.dayCostUsd = 12.34; // "$12.34" — one char wider than the $0.00 default
+  const snap = { ...snapshotWith([s]), running: true };
+  const widthsOf = (out: string): number[] => (out.split("\n")[3] ?? "").split("  ").map((seg) => seg.length);
+  const natural = widthsOf(renderStatus(root, snap));
+  // Header labels by position — the separator's offsets, not a two-space split (padded cells
+  // would leave stray leading spaces in the segments).
+  const headerLine = renderStatus(root, snap).split("\n")[2] ?? "";
+  const cols = natural.map((_, i) => {
+    let start = 0;
+    for (let j = 0; j < i; j++) start += (natural[j] ?? 0) + 2;
+    return headerLine.slice(start, start + (natural[i] ?? 0)).trim();
+  });
+  assert.equal(natural[cols.indexOf("today")], 6, "fixture sanity: $12.34 sets the column width");
+  const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
+  // Overflow past last result's minimum so at least one flexible column is shrinking...
+  const w = widthsOf(renderStatus(root, snap, total - (natural[cols.indexOf("last result")] ?? 0)));
+  assert.ok(
+    (w[cols.indexOf("last result")] ?? 0) < (natural[cols.indexOf("last result")] ?? 0),
+    "last result shrinks under overflow",
+  );
+  assert.equal(w[cols.indexOf("today")], natural[cols.indexOf("today")], "today keeps its natural width — never flexible");
+  assert.equal(w[cols.indexOf("cost")], natural[cols.indexOf("cost")], "cost likewise stays fixed");
 });
 
 // Working detail: the live per-loop state cell (workingDetail) and its use by loopPhase.
