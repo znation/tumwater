@@ -23,6 +23,11 @@ export function promptPreview(text: string): string {
 
 let seq = 0;
 
+/** Append a prompt to the queue as one timestamped file (creating the inbox dir if needed)
+ * and return its path. The filename orders prompts across processes by wall-clock time; the
+ * per-process counter and pid break ties within one process. No event is logged — submitPrompt
+ * is the user-facing wrapper that adds the prompt_enqueued line, and loop.ts's re-queue of an
+ * unfulfilled director prompt calls this directly. */
 export function enqueuePrompt(root: string, prompt: string): string {
   const dir = inboxDir(root);
   ensureDir(dir);
@@ -43,6 +48,8 @@ function queuedFiles(root: string): string[] {
     .map((f) => path.join(dir, f));
 }
 
+/** Number of prompts currently queued — a directory listing only; no file content is read.
+ * A missing inbox dir reads as 0, like queuedPrompts and dequeuePrompt. */
 export function inboxSize(root: string): number {
   return queuedFiles(root).length;
 }
