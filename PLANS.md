@@ -5,9 +5,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+_None yet._
+
+## Done
+
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
-(item (a)'s file reference updated), re-audited 2026-08-31 (item (b2) landed))
+(item (a)'s file reference updated), re-audited 2026-08-31 (item (b2) landed), done 2026-09-02)
 
 Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
 ~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
@@ -121,7 +125,23 @@ zero references to minTickIntervalSeconds there); (b3) validation rejecting a ne
 commit on main. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
 test/config.test.ts.
 
-## Done
+**Done 2026-09-02 (feature tick) — every code and test item has landed on main; the sole
+remainder is dogfood observation, not work.** All four test items verified at `c3979e1` (build
+clean, suite 543/543 green): (b2) in coverage tick `be6dc56` — "isEligible gates on the role's
+own interval, not the global knob" in test/orchestrator.test.ts, both directions; (a), (b1), and
+(b3) all in feature tick 68 (`bf42c98`) — the prompt contract block in test/prompt.test.ts
+(catalog order last + title, curation move list with the conditional QUESTIONS.md mention,
+markdown-only restriction, find-text embedding), the real-tick e2e in test/loop.test.ts ("a
+changed tick schedules its next run at the role's own interval, not the global" — a 3600 s
+per-role override over a 20 s global persists `nextRunAt - lastTickEndedAt ≈ 3600 s`), and the
+validation clause in test/config.test.ts (a negative per-role `minTickIntervalSeconds` rejected
+with an actionable error naming the field). AC3's "applies live" remains a structural
+guarantee: both read sites call `configForRole(runner.config, …)` at call time on config that is
+replaced every ~2 s poll. The two commits since (`f2a4e73`, `2332c9a`) touch only cli/gui and
+README — every item above is intact on current main. Residual dogfood observation only (not
+work): no `tumwater(steward)` commit in history and no Budgets section in PRINCIPLES.md yet; the
+running fleet process must have started after `6e3f487` for its compiled defaultConfig to
+include steward, and AC4 is verified by observation, not by test.
 
 ### Per-tick usage in the event feed — tokens and cost on every tick_end (planned 2026-09-02)
 
