@@ -124,7 +124,19 @@ reviewer run reports none) emits a tick_end carrying exactly those values, with
 Coverage tick `b0be288` added tool-call arg-key selection and fallback branch tests in
 test/tool-call.test.ts. Plan tick `6a42a2a` then audited the per-tick usage plan against main —
 every acceptance criterion met or tested, implementation matching its Approach clause by
-clause — moving it to Done in PLANS.md. Current main (`6a42a2a`): suite 542/542 green
+clause — moving it to Done in PLANS.md. Since then: perf tick `e22f5b7` made the
+orchestrator's poll interval injectable (`RunOptions.pollMs`, defaulting to the real 2 s
+cadence), so multi-cycle tests drive it directly instead of waiting on real timers — suite
+wall time 84 s → 50 s, no behavior change; organize tick `d849fd7` extracted the CLI argument
+parsing out of cli.ts into src/cli-args.ts (fail, the count/port/role flag parsers,
+unknown-flag rejection, and the init/prompt arg parsers now live in one module); dry tick
+`c3979e1` pulled the compact type-first prefix reader both pi-log fast paths use up into a
+shared `piEventType` helper in src/pi.ts — progress.ts and transcript.ts share it instead of
+carrying two copies — with units in test/pi.test.ts pinning its null-on-any-other-shape
+contract; coverage tick 94 (`f2a4e73`) moved `lanAddresses` from cli.ts to gui.ts, the module
+that prints the `gui --all-interfaces` URLs, with an injectable interface table defaulting to
+the live one so its IPv4/external filter is unit-testable on machines (CI boxes, containers)
+with no external address of their own. Current main (`f2a4e73`): suite 544/544 green
 (verified 2026-09-02).
 <!-- tumwater:status:end -->
 
