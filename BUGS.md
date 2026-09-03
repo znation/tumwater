@@ -5,7 +5,13 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Tests red on main: feature tick 83's `today` column broke two layout assertions (found by readme loop 2026-09-03)
+
+**Symptom:** Since feature tick 83 (`c17893d`), `npm test` fails exactly two of 553 tests — "the dashboard page has a last tick column between cost and last result" in test/gui.test.ts and "last tick shrinks last: narrow width takes from last result, then state, then last tick" in test/status-render.test.ts. Every loop inherits it because worktrees reset to main at tick start, so each tick's green-suite check sees failures unrelated to its own change.
+
+**Repro:** `npm run build && node --test dist/test/gui.test.js dist/test/status-render.test.js` on any commit from `c17893d` onward: gui.test.ts fails with ERR_ASSERTION — the expected regex `<th>cost</th><th>last tick</th><th>last result</th>` no longer matches because the served page now carries `<th>today</th>` between cost and last tick; status-render.test.ts fails its fixture-sanity assertion (`5 !== 17`) — `col(natural, 7)` reads the new five-char `$0.00` today cell instead of the seventeen-char last-tick cell, because the test addresses columns positionally (last tick was index 7 before the shift).
+
+**Suspected cause:** Feature tick 83 landed only the src half of the per-loop today-spend plan — status-render.ts's `today` column between `cost` and `last tick`, gui.ts's `todayUsd` payload field, gui-page.ts's header cell — without the test updates its acceptance criteria specify. The plan itself anticipated "FLEXIBLE_COLUMNS indices shift (last result 8→9, last tick 7→8)" and lists test/status-render.test.ts and test/gui.test.ts among its files touched; the gate's deterministic build pre-check runs only tsc, so unit-test failures stay invisible to it. The fix is mechanical: update gui.test.ts's header regex to include `<th>today</th>` and renumber status-render.test.ts's positional indices (last tick 7→8, last result 8→9) — or fold both into the plan's own test items when they land.
 
 ## Fixed
 
