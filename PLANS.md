@@ -5,7 +5,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Abort a single loop's in-flight tick — `tumwater abort --role <id>` (planned 2026-09-03)
+### Abort a single loop's in-flight tick — `tumwater abort --role <id>` (planned 2026-09-03,
+refined 2026-09-03)
 
 **Goal.** Give operators a way to stop ONE loop's in-flight tick right now — without stopping the
 whole fleet or waiting for the hang guards. Today, when a loop is visibly thrashing on a bad task
@@ -80,6 +81,47 @@ test/event-format.test.ts, test/cli.test.ts, README.md.
   confirms; without a running harness it fails actionably naming `tumwater run`; an unknown role
   fails listing valid ids; missing/unknown flags fail like reset-counters' siblings.
 - Build clean, full suite green.
+
+**Refined 2026-09-03 (plan loop) — audited against current main (`67fb3d9`); three spec gaps
+closed.** Every structural claim verified on current main first: `resetRequestPath(root)` in
+src/paths.ts is the marker template; TickResult and HarnessEvent's unions sit where described;
+LoopRunner's constructor takes a `signal?: AbortSignal`, runRolePi and reviewGate both pass it
+through, and pi.ts already handles a pre-aborted signal (`opts.signal?.aborted` → immediate
+onAbort), so the documented "next model-run boundary" limitation is accurate; the tick-start
+counter-reset block (generatedTokens/peakContextTokens/tickTurns/tickCostUsd zeroed in tick()) is
+the anchor for creating the per-tick AbortController; runTick's two abort branches are exactly as
+described — the author-run `pi.aborted` check and the review-gate `gate.aborted` check, each
+requeueing then returning `{ result: "aborted" }`; applyTickOutcome's final else is the backoff
+branch and its `result !== "aborted"` phase-clear covers `"user_aborted"` as claimed; the
+orchestrator poll cycle consumes the reset-counters marker beside where this entry sits (runners
+are an array — look one up by role); event-format renders tick_end's result verbatim and
+counters_reset as a plain line; every CLI helper named exists (`rejectUnknownArgs`/
+`parseRoleFlag` in src/cli-args.ts, `requireReadyRepo` in cli.ts, `readOrchestratorInfo` in
+state.ts, `pidAlive` in process.ts); and `resetWorktreeToMain` (src/git.ts) does abortSync +
+`git reset --hard <main>` + `git clean -fd`, which moves the branch pointer back to main — so it
+discards unmerged commits as well as dirty files, exactly as this entry claims. Three gaps in
+the original spec, corrected:
+
+1. **`pendingUserPrompt` must be cleared on a user-abort of the author run.** The existing
+   `pi.aborted` branch returns before tick()'s `this.pendingUserPrompt = null`, so today an
+   aborted director tick leaves its dequeued prompt held on the live runner (harmless under
+   shutdown — the process dies and the prompt was requeued — but a user-abort in a running
+   orchestrator neither requeues nor clears it). No functional bug today: every non-skipped
+   director tick calls tickPrompt() first, which overwrites the field before its sole read site —
+   but that makes the discard accidental rather than explicit. Pin: in the author-run branch's
+   `userAborted` divergence, clear `this.pendingUserPrompt = null` alongside skipping the requeue.
+   The review-gate branch needs no such clearing — by then tick() has already cleared it.
+2. **The no-runner case is unspecified.** Runners are built from enabled roles only, so a
+   valid-but-disabled role id has no runner at all — `tumwater abort --role <disabled>` reaches
+   the poll cycle with a marker but nothing to find. Pin: treat it like an idle loop — remove the
+   marker, log no event; the CLI's confirmation is unchanged (the request was accepted and
+   consumed). The orchestrator AC's "marker for an idle loop" case covers this shape — assert it
+   with a disabled role too.
+3. **The director prompt discard is invisible to the user.** The inbox is a file queue and
+   dequeuePrompt removes the prompt file at tick start, so a discarded prompt is gone from disk —
+   but the planned confirmation ("abort requested for <role> …") says nothing about it. Pin: when
+   `--role` is the director, append one clause to the CLI confirmation that its current in-flight
+   prompt will be discarded (re-submit with `tumwater prompt` if you want it retried).
 
 ## Done
 
