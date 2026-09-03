@@ -306,10 +306,14 @@ export class LoopRunner {
       s.lastError = err instanceof Error ? err.message : String(err);
     }
 
+    // Read main's current head while this tick is still reserved (running=true): the
+    // applyTickOutcome below clears running, and a poll landing between that clear and a later
+    // head update would see a stale lastMainHead and wake the loop again on the very move
+    // that triggered this tick — a duplicate wake event plus an extra tick for one world change.
+    s.lastMainHead = (await gitTry(this.root, "rev-parse", this.mainBranch)) ?? s.lastMainHead;
     // Record the outcome on state and schedule the next run (see src/state.ts for the
     // per-result policy: prompt retry, backoff, bounded cut-off resumes).
     applyTickOutcome(s, cfg, this.role, outcome);
-    s.lastMainHead = (await gitTry(this.root, "rev-parse", this.mainBranch)) ?? s.lastMainHead;
     this.save();
     // Per-tick usage (PLANS.md, per-tick-usage plan): the event feed is where operators see
     // spend — this tick's tokens and cost ride on tick_end so a budget pause or a money-burning

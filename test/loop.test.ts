@@ -303,6 +303,48 @@ test("a failing pi run records an error and backs off", async () => {
   }
 });
 
+// tick() promises to never throw: runTick's own error paths RETURN an "error" outcome, but
+// any unexpected exception (a bug in a new code path, a failed git call, …) must be caught
+// by tick()'s defensive branch and degrade the same way. Without it the rejection would
+// escape into the orchestrator's task wrapper as an unhandled rejection — crashing the whole
+// fleet over one loop's surprise.
+test("an unexpected throw inside runTick degrades to an error result instead of escaping", async () => {
+  const repo = await initializedRepo();
+  const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+  const stubRunTick = (impl: () => Promise<unknown>) => {
+    (runner as unknown as { runTick: () => Promise<unknown> }).runTick = impl;
+  };
+
+  // An Error throw is recorded by its message.
+  stubRunTick(async () => {
+    throw new Error("simulated internal failure");
+  });
+  const outcome = await runner.tick();
+  assert.equal(outcome.result, "error");
+  assert.equal(runner.state.lastError, "simulated internal failure");
+
+  // Scheduling continues as for any error tick: the loop backs off (no hot-looping), the
+  // running flag clears so the next poll can pick it up, and the result is persisted.
+  assert.equal(runner.state.running, false);
+  assert.equal(runner.state.lastResult, "error");
+  assert.ok(runner.state.backoffSeconds > 0, "backed off instead of retrying immediately");
+  assert.ok(runner.state.nextRunAt > Date.now(), "next run scheduled in the future");
+
+  // The tick stays observable: tick_end lands with the error result and message.
+  const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+  assert.equal(ends.length, 1);
+  assert.equal(ends[0]?.result, "error");
+  assert.match(String(ends[0]?.error), /simulated internal failure/);
+
+  // A non-Error throw is recorded via String(), not as "undefined" or a crash.
+  stubRunTick(async () => {
+    throw "raw failure value";
+  });
+  const outcome2 = await runner.tick();
+  assert.equal(outcome2.result, "error");
+  assert.equal(runner.state.lastError, "raw failure value");
+});
+
 test("director skips with an empty inbox and runs a queued prompt", async () => {
   const repo = await initializedRepo();
   const restore = fakePi(
