@@ -45,6 +45,55 @@ test/gui.test.ts.
   page's loop table has a `today` header cell and renders `$<value>` from it.
 - Build clean, full suite green.
 
+**Re-audited 2026-09-03 (plan loop) — the code half has LANDED in feature tick 83 (`c17893d`) but
+its test updates did not; main's suite is red because of it. Remainder re-specified.** The Approach
+above is stale on current main: everything it describes already exists, and no part of it should be
+re-implemented. Verified at `86e6559` (build clean, suite 553/555 — the two failures below):
+
+- **src/status-render.ts** — `today` sits between `cost` and `last tick` in `cols`, rendered as
+  `$${dailyCost(s).toFixed(2)}` per loop; the totals row's today cell is
+  `$${fleetDailyCost(snap.loops).toFixed(2)}`, with a comment pinning that it equals the header
+  badge's spend while enabled. `FLEXIBLE_COLUMNS` renumbered exactly as this entry anticipated —
+  last result 8→9, last tick 7→8 — and `today` (index 7) is not flexible, like `cost`, per its doc
+  comment.
+- **src/gui.ts** — statusPayload carries `todayUsd: dailyCost(s)` beside `costUsd`.
+- **src/gui-page.ts** — `<th>today</th>` after `cost`; the cell renders client-side as
+  `$" + l.todayUsd.toFixed(2)`, same pattern as cost.
+
+The src-only landing broke two pre-existing layout assertions that address the table positionally or
+by header order, leaving main's suite red (553/555 at `86e6559`; it was 551/553 at `c17893d` before
+coverage tick `86e6559` added one passing test). This is recorded in BUGS.md's Open section —
+"Tests red on main: feature tick 83's `today` column broke two layout assertions" — whose own fix
+note anticipates being folded into this plan's test items. What remains — three items, pickable
+independently (all pure test work; no src/ change is needed):
+
+(a) **repair the two broken layout assertions** (the open bug above; landing it makes main green
+again and moves that BUGS.md entry to Fixed). test/gui.test.ts "the dashboard page has a last tick
+column between cost and last result" (~line 270): its header regex must include the new column —
+`/<th>cost<\/th><th>today<\/th><th>last tick<\/th><th>last result<\/th>/`. test/status-render.test.ts
+"last tick shrinks last: narrow width takes from last result, then state, then last tick" (~line 191):
+renumber the positional indices for the new index-7 `today` column — last tick is now 8 (the fixture-
+sanity assertion becomes `col(natural, 8)` = 17) and last result is now 9 (`col(w, 9)` / `col(
+natural, 9)` in all three stages); the stage logic and the final 80-column no-wrap loop are
+unchanged. If a bugfix loop lands this first, item (a) is done and only (b)–(c) remain.
+(b) **the TUI/one-shot AC tests** in test/status-render.test.ts — `snapshotWith` takes partial
+LoopState objects, so no file seeding is needed: the header row carries `today` between `cost` and
+`last tick`; a loop with `dayStamp = todayStamp()` and `dayCostUsd = 12.34` renders `$12.34` in its
+today cell (fresh stamp, zero spend → `$0.00`); a stale stamp (`todayStamp(Date.now() - 86_400_000)`)
+with positive `dayCostUsd` and the freshLoopState default (missing stamp) both render `$0.00`; the
+totals row's today cell equals `fleetDailyCost` across loops — with two fresh-stamp loops summing to
+X and `snapshotWith(loops, { spentUsd: X, capUsd: 50 })`, assert the totals cell reads `$X`, equal
+to the badge spend so table and badge cannot drift; under overflow the today column keeps its
+natural width (non-flexible, like cost) while the flexible columns shrink.
+(c) **the GUI AC tests** in test/gui.test.ts — mirror the file's existing budget-test pattern
+(`freshLoopState`/`saveLoopState`/`todayStamp` are already imported): /api/status carries `todayUsd`
+per loop — a state file with today's stamp and `dayCostUsd = 12.34` reads 12.34, a stale-stamp file
+with positive spend reads 0; the served page renders the cell client-side from it (match GUI_PAGE on
+`l.todayUsd.toFixed(2)` beside its existing cost assertion). The header-cell half is item (a)'s
+regex.
+Once all three land, move this plan to Done. Files for the remainder: test/status-render.test.ts,
+test/gui.test.ts (plus BUGS.md's Open→Fixed move with item (a)).
+
 ### Abort a single loop's in-flight tick — `tumwater abort --role <id>` (planned 2026-09-03)
 
 **Goal.** Give operators a way to stop ONE loop's in-flight tick right now — without stopping the
