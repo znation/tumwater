@@ -12,7 +12,7 @@ import { defaultConfig, loadConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
-import { orchestratorStatePath, piLogPath, resetRequestPath } from "../src/paths.js";
+import { inboxDir, orchestratorStatePath, piLogPath, resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
@@ -243,6 +243,38 @@ test("prompt --cancel fails on out-of-range or non-numeric positions without sid
   assert.match(r.stderr, /--cancel needs a position number/);
 
   assert.equal(inboxSize(repo), 1, "nothing touched on failure");
+});
+
+test("prompt --cancel reports a concurrently dequeued prompt as gone and exits clean", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt cancel race");
+
+  // A dangling symlink is the deterministic stand-in for the race: readdir lists it (so the
+  // position exists) but readFileSync hits ENOENT — exactly what a queued file looks like when
+  // the director dequeues it between listing and removal. Its name sorts after real prompts,
+  // so it occupies position 2.
+  submitPrompt(repo, "alpha");
+  const raced = path.join(inboxDir(repo), `9999999999999-000001-${process.pid}.md`);
+  fs.symlinkSync(path.join(repo, "no-such-prompt.md"), raced);
+
+  // A concurrent dequeue is a normal race, not an error: exit 0 with the explanation.
+  const r = await cli(repo, "prompt", "--cancel", "2");
+  assert.equal(r.code, 0, `expected clean exit for a gone prompt:\n${r.stderr}`);
+  assert.match(r.stdout, /prompt 2 is no longer queued/);
+  assert.match(r.stdout, /the director already took it/);
+
+  // Nothing was removed or logged: the prompt ran (or will), it was not cancelled.
+  assert.ok(fs.lstatSync(raced).isSymbolicLink(), "the vanished file was left untouched");
+  const logs = await cli(repo, "logs", "-n", "10");
+  assert.equal(logs.code, 0);
+  assert.ok(!logs.stdout.includes("prompt cancelled"), `no cancel event logged:\n${logs.stdout}`);
+
+  // The sibling prompt is still queued and --list skips the vanished file instead of showing
+  // a phantom position.
+  const list = await cli(repo, "prompt", "--list");
+  assert.equal(list.code, 0);
+  assert.match(list.stdout, /^1\. alpha$/m);
+  assert.ok(!list.stdout.includes("2."), `no phantom second prompt:\n${list.stdout}`);
 });
 
 test("prompt --list and --cancel reject duplicates, combinations, and stray positionals", async () => {
