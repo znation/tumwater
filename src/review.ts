@@ -128,7 +128,8 @@ export interface GateResult {
 }
 
 /** Run the adversarial review gate over everything ahead of main in `wt` and update `state`
- * accordingly. Shared by the tick path (after commitAll) and recoverLeftover — every path
+ * accordingly. Shared by the tick path (after commitAll) and leftover recovery
+ * (leftover.ts's recoverLeftover) — every path
  * that can move a commit into main routes through here, so no crash or abort path smuggles
  * unreviewed work in:
  * - gate disabled, or an already-approved HEAD, or an exempt (doc-only) diff → merge as-is;
@@ -176,7 +177,7 @@ export async function reviewAheadOfMain(
   // Deterministic build pre-check — after BOTH early returns above (an md-only diff cannot
   // break the build) and before any reviewer run or the phase/event that would show
   // "reviewing": a deterministic rejection never shows as reviewing on the dashboards. Both
-  // gate callers (the tick path and recoverLeftover) get it for free.
+  // gate callers (the tick path and leftover.ts's recoverLeftover) get it for free.
   const check = detectBuildCheck(wt);
   if (check) {
     const timeoutMs = ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS;

@@ -2,7 +2,6 @@ import type { TumwaterConfig, LoopState, PiRunResult, TickOutcome, TickResult } 
 import { DIRECTOR_ROLE, roleById } from "./roles.js";
 import {
   abortSync,
-  aheadOfMain,
   commitAll,
   ensureWorktree,
   git,
@@ -31,6 +30,7 @@ import { configForRole } from "./config.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { applyTickOutcome, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
+import { recoverLeftover } from "./leftover.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
@@ -240,36 +240,6 @@ export class LoopRunner {
     );
   }
 
-  /** Salvage commits left on the branch by a previous run whose merge never landed. Leftovers
-   * route through the SAME review gate as fresh ticks — every path that can move a commit into
-   * main reviews the full ahead-of-main diff first, so no crash or abort path smuggles
-   * unreviewed work in (see src/review.ts). Returns true when the leftover was deliberately
-   * left on the branch for re-review (a failed review under the strike cap) so the caller keeps
-   * it instead of resetting to main. */
-  private async recoverLeftover(wt: string): Promise<boolean> {
-    const ahead = await aheadOfMain(wt, this.mainBranch).catch(() => 0);
-    if (ahead <= 0) return false;
-    const gate = await this.reviewGate(wt, undefined, undefined, "-recovery");
-    if (gate.run) this.foldUsage(gate.run);
-    // Shutdown mid-review: fail closed — the commit stays for next time. A reject already reset
-    // to main inside the gate; a failure below the strike cap leaves the commit on purpose.
-    if (gate.aborted) return true;
-    if (gate.decision === "rejected") return false;
-    if (gate.decision === "failed") {
-      // At/over the strike cap the gate already discarded the leftover — nothing left to keep.
-      return (await aheadOfMain(wt, this.mainBranch).catch(() => 0)) > 0;
-    }
-    const result = await this.merge(wt, `recovered leftover work from ${this.role}`);
-    if (result !== "changed") {
-      logEvent(this.root, {
-        loop: this.role,
-        type: "warning",
-        message: `discarding ${ahead} unmergeable leftover commit(s) (${result})`,
-      });
-    }
-    return false; // merged or warned-and-left-to-the-reset: caller resets to main as usual
-  }
-
   /** Run one full tick of this role loop: build (or resume) the prompt, run pi in the
    * worktree, commit and merge any changes it made, then schedule the next run from the
    * outcome — changed/skipped/cut-off ticks wait at least the minimum interval, an aborted
@@ -364,7 +334,19 @@ export class LoopRunner {
       await abortSync(wt);
       logEvent(this.root, { loop: this.role, type: "resume" });
     } else {
-      const leftForRetry = await this.recoverLeftover(wt);
+      // Salvage commits a previous run's merge never landed (src/leftover.ts): they route
+      // through the same review gate as fresh ticks, with this loop's shared wiring.
+      const leftForRetry = await recoverLeftover(
+        {
+          root: this.root,
+          role: this.role,
+          mainBranch: this.mainBranch,
+          reviewGate: (w) => this.reviewGate(w, undefined, undefined, "-recovery"),
+          foldUsage: (run) => this.foldUsage(run),
+          merge: (w, sum) => this.merge(w, sum),
+        },
+        wt,
+      );
       if (leftForRetry) {
         // A failed (or aborted) recovery review deliberately left its commit on the branch for
         // re-review — bounded by the gate's strike cap. Keep it; discard only uncommitted stray
