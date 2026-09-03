@@ -544,6 +544,44 @@ test("gui rejects oversized prompt bodies with 413 instead of buffering them unb
   }
 });
 
+test("gui answers JSON 500 when a handler throws unexpectedly and keeps serving", async () => {
+  // Skip under root, where chmod cannot stop the write and submitPrompt would succeed.
+  if (typeof process.getuid === "function" && process.getuid() === 0) return;
+
+  const repo = makeRepo();
+  await initProject(repo, "gui handler error test");
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  const inbox = path.join(repo, ".tumwater", "inbox");
+  fs.mkdirSync(inbox, { recursive: true });
+  try {
+    // An unwritable inbox makes submitPrompt throw (EACCES) — an unexpected error inside a
+    // request handler. Without the catch-all it would surface as an unhandled rejection and
+    // kill the dashboard process over one bad request; with it, the client gets a JSON 500
+    // naming the failure and every later request still works.
+    fs.chmodSync(inbox, 0o555);
+
+    const res = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "this write will fail" }),
+    });
+    assert.equal(res.status, 500);
+    const body = (await res.json()) as { error: string };
+    assert.match(body.error, /EACCES|permission denied/);
+    assert.equal(inboxSize(repo), 0, "the failed prompt queued nothing");
+
+    // The server survived the bad request and still serves.
+    const status = await fetch(base + "/api/status");
+    assert.equal(status.status, 200);
+  } finally {
+    fs.chmodSync(inbox, 0o755);
+    server.close();
+  }
+});
+
 test("multi-byte UTF-8 characters straddling chunk boundaries arrive intact", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui utf8 test");
