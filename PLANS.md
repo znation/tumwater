@@ -5,13 +5,52 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Per-loop today spend — which loop is eating the day's budget (planned 2026-09-02)
+
+**Goal.** Both dashboards show each loop's *today* spend alongside its lifetime cost. The
+daily-budget badge shows fleet-wide today-spend (`· budget: $12.34/$50 today`), and per-tick
+usage lines (the just-done "Per-tick usage in the event feed" plan) show individual ticks — but
+nothing answers "which loop spent the day?" at a glance. When `budget paused` fires or the badge
+nears its cap, an operator must sum tick_end lines by hand to see that one thrashing feature loop
+is at $30 while every other loop sits at $0.10. A per-loop `today` column completes spend
+observability: the cap tells you when the fleet stops, tick lines tell you where a single tick went,
+and this column tells you which loop is burning the day's budget.
+
+**Approach.**
+- src/status-render.ts: add a `today` column to the shared table between `cost` and `last tick`,
+  rendering `$<dailyCost(s).toFixed(2)>` — the existing tested helper in state.ts (same two-decimal
+  format as the cost column; a stale or missing day-stamp reads $0.00, so loops that never ticked or
+  last ticked yesterday show zero). The totals row sums it with `fleetDailyCost(snap.loops)` — by
+  construction equal to the header badge's spend while enabled, a cross-check worth pinning in tests.
+  FLEXIBLE_COLUMNS indices shift (last result 8→9, last tick 7→8); `today` is not flexible (short
+  fixed-width cell like cost).
+- src/gui.ts: statusPayload carries `todayUsd: dailyCost(s)` per loop beside the existing `costUsd`.
+- src/gui-page.ts: `<th>today</th>` after `cost`, cell `$<l.todayUsd.toFixed(2)>` (the page already
+  formats cost client-side from the payload — same pattern).
+- No snapshot change needed: LoopState already carries dayStamp/dayCostUsd and both surfaces read it
+  fresh per poll. The column renders whether or not the budget cap is enabled — spend observability
+  does not depend on the cap.
+
+**Files touched.** src/status-render.ts, src/gui.ts, src/gui-page.ts, test/status-render.test.ts,
+test/gui.test.ts.
+
+**Acceptance criteria.**
+- TUI/one-shot (test/status-render.test.ts): the table header carries `today` between `cost` and
+  `last tick`; a loop whose state file holds today's stamp renders its dayCostUsd in that cell
+  ($0.00 when zero); a loop with a stale (yesterday) or missing stamp renders $0.00; the totals row's
+  today cell equals fleetDailyCost across loops — asserted equal to snap.budget.spentUsd while the
+  budget is enabled, so table and badge cannot drift; narrow-width rendering still never wraps (the
+  new column participates in width computation like its siblings).
+- GUI (test/gui.test.ts): /api/status carries `todayUsd` per loop (0 for a stale stamp); the served
+  page's loop table has a `today` header cell and renders `$<value>` from it.
+- Build clean, full suite green.
 
 ## Done
 
 ### Steward role — whole-system judgment on a slow clock (planned 2026-08-24, refined 2026-08-25,
 refined 2026-08-27, audited 2026-08-28, re-audited 2026-08-30, re-audited 2026-08-30
-(item (a)'s file reference updated), re-audited 2026-08-31 (item (b2) landed), done 2026-09-02)
+(item (a)'s file reference updated), re-audited 2026-08-31 (item (b2) landed),
+re-audited 2026-09-02 (items (a), (b1), (b3) landed), done 2026-09-02)
 
 Full plan: [plans/steward-role.md](plans/steward-role.md). A markdown-only `steward` role on a
 ~6 h cadence (per-role `minTickIntervalSeconds` override of the existing global knob, resolved via
@@ -124,6 +163,27 @@ zero references to minTickIntervalSeconds there); (b3) validation rejecting a ne
 `minTickIntervalSeconds` in test/config.test.ts; and (c) dogfood — still no `tumwater(steward)`
 commit on main. Files for the remainder: test/prompt.test.ts, test/loop.test.ts,
 test/config.test.ts.
+
+**Re-audited 2026-09-02 (plan loop) — items (a), (b1), and (b3) have LANDED; remainder is
+dogfood only.** The "three test items plus dogfood, pickable independently" list above is
+stale on current main: feature tick 68 (`bf42c98`) closed all three in one commit. (a) Prompt
+contract tests landed as a sibling block in test/prompt.test.ts exactly where the 2026-08-30
+re-audit pinned them — `const steward = roleById("steward")` plus four assertion groups:
+catalog order last (`ids[ids.indexOf("improve") + 1] === "steward"`) with title; the curation
+move list (re-read of durable state including conditional QUESTIONS.md, one move per tick, all
+four moves — delete/merge stale entries with epitaph, flag drift as a PLANS.md note, tighten/
+update a principle or complexity budget in PRINCIPLES.md, record structural risk in BUGS.md);
+the markdown-only restriction ("You edit only markdown — never source."); and buildTickPrompt
+embedding the full find text. (b1) landed in test/loop.test.ts as "a changed tick schedules its
+next run at the role's own interval, not the global" — a 3600 s per-role override over the 20 s
+fast global lands a CHANGED tick whose persisted state reads `nextRunAt - lastTickEndedAt ≈ 3600 s`,
+pinning the configForRole → applyTickOutcome link through a real tick (the interval's wake-
+eligibility side was already pinned by item (b2)'s isEligible test in test/orchestrator.test.ts).
+(b3) landed in test/config.test.ts — `feature: { minTickIntervalSeconds: -5 }` under roles is
+rejected with "must be a number of 0 or more (got -5)" inside the one-error validation test.
+What remains — dogfood only: no `tumwater(steward)` commit on main as of this audit, and
+PRINCIPLES.md's Budgets section is still absent; both resolve when the running fleet next ticks
+the steward (its ~6 h clock), not by any loop work.
 
 **Done 2026-09-02 (feature tick) — every code and test item has landed on main; the sole
 remainder is dogfood observation, not work.** All four test items verified at `c3979e1` (build
