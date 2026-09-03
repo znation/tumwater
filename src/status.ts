@@ -2,7 +2,7 @@ import type { LoopState, TumwaterConfig } from "./types.js";
 import { openQuestions } from "./backlog.js";
 import { defaultConfig, enabledRoleIds, loadConfigSafe } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./files.js";
-import { inboxSize, promptPreview, queuedPrompts } from "./inbox.js";
+import { promptPreview, queuedPrompts } from "./inbox.js";
 import { statePath } from "./paths.js";
 import {
   fleetDailyCost,
@@ -82,13 +82,15 @@ export function snapshot(root: string): StatusSnapshot {
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
   const loops = roles.map((r) => loopStateForPoll(root, r));
+  // One inbox pass per poll serves both fields (queuedPrompts lists the directory and reads
+  // each file once): the count is the prompts' length, so a prompt enqueued or dequeued
+  // mid-snapshot can never make the header badge disagree with its numbered previews.
+  const inboxPrompts = queuedPrompts(root).map(promptPreview);
   return {
     running: orchestratorAlive(root, info),
     pid: info?.pid,
-    inbox: inboxSize(root),
-    // A separate read, not derived from the count: queuedPrompts reads each file's content,
-    // so it must keep working (and stay fresh) on its own like `questions` above.
-    inboxPrompts: queuedPrompts(root).map(promptPreview),
+    inbox: inboxPrompts.length,
+    inboxPrompts,
     questions: openQuestions(root).length,
     loops,
     budget:

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureDir } from "./files.js";
+import { cachedByStat, ensureDir, type StatKeyedValue } from "./files.js";
 import { logEvent } from "./events.js";
 import { inboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
@@ -54,11 +54,33 @@ export function inboxSize(root: string): number {
   return queuedFiles(root).length;
 }
 
+// Per-poll prompt-content cache (files.cachedByStat): both dashboards poll snapshot() every
+// second and read every queued prompt in full — to show an 80-char preview — but each file is
+// written once by enqueuePrompt and only deleted on dequeue/cancel, never rewritten. Serve an
+// unchanged file from the stat-keyed cache: one stat per file per poll instead of re-reading a
+// (possibly long) prompt in its entirety every second until the director consumes it. Capped
+// inside cachedByStat so many short-lived roots in tests cannot grow it unbounded.
+const promptCache = new Map<string, StatKeyedValue<string>>();
+
 /** Full text of every queued prompt in execution order (oldest first) — the same filename
  * sort dequeuePrompt pops by. A missing inbox directory reads as an empty queue, like
- * inboxSize and dequeuePrompt. */
+ * inboxSize and dequeuePrompt; a file that vanishes between listing and reading (a concurrent
+ * dequeue or cancel) is skipped rather than throwing, so a polled snapshot can never crash on
+ * it. Unchanged files are served from the stat-keyed cache above — fresh content requires an
+ * actual write to the path, which enqueuePrompt never does for an existing file. */
 export function queuedPrompts(root: string): string[] {
-  return queuedFiles(root).map((f) => fs.readFileSync(f, "utf8"));
+  const out: string[] = [];
+  for (const f of queuedFiles(root)) {
+    const text = cachedByStat(promptCache, f, f, () => {
+      try {
+        return fs.readFileSync(f, "utf8");
+      } catch {
+        return null; // Vanished mid-listing — skip it.
+      }
+    }, (t) => t); // Strings are immutable — no copy needed.
+    if (text !== null) out.push(text);
+  }
+  return out;
 }
 
 /** Outcome of cancelPrompt: the cancelled prompt's text, or "gone" when the director dequeued
