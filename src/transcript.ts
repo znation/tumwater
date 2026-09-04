@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { statOrNull } from "./files.js";
-import { piEventType } from "./pi.js";
+import { parsePiEventLine } from "./pi.js";
 import { readCompleteLines, statRoleLog, TailState, withTail } from "./tail.js";
 import { collapseWhitespace, formatDate, formatTime, truncate } from "./text.js";
 import { describeToolCall } from "./tool-call.js";
@@ -105,21 +105,8 @@ export function createTranscriptRenderer(): TranscriptRenderer {
 
   return {
     feed(line: string): string[] {
-      const trimmed = line.trim();
-      if (!trimmed) return [];
-      // Cheap pre-filter before JSON.parse: pi's logs are ~97% streaming delta lines
-      // (message_update), which the switch below discards after parsing them. Skip the parse
-      // when the line's type is verifiably not one this renderer acts on; measured
-      // ~28–46ms → ~5–8ms of parse/render per 12–21MB log (seeding or a full re-read). A new
-      // renderable case in the switch below must be added to RENDERABLE_TYPES too.
-      const type = piEventType(trimmed);
-      if (type !== null && !RENDERABLE_TYPES.has(type)) return [];
-      let event: Record<string, unknown>;
-      try {
-        event = JSON.parse(trimmed);
-      } catch {
-        return []; // torn or non-JSON line; skip without failing
-      }
+      const event = parsePiEventLine<Record<string, unknown>>(line, RENDERABLE_TYPES);
+      if (!event) return []; // Blank, unparseable, or a type this renderer does not act on.
       switch (event.type) {
         case "agent_start":
           runOpen = true;

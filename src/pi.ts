@@ -46,6 +46,30 @@ export function piEventType(line: string): string | null {
   return end > 9 ? line.slice(9, end) : null;
 }
 
+/** Parse one raw pi log line into an event object, or null when there is nothing for a consumer
+ * acting on `types`: blank lines, torn/non-JSON lines, and lines whose compact type-first prefix
+ * verifiably names a type outside `types` (the piEventType fast path) all yield null. A line
+ * whose prefix does not match pi's compact shape still gets a full parse — the pre-filter can only
+ * ever skip lines whose type is verifiably uninteresting, never lose output. Shared by every
+ * observer that folds raw pi log lines into per-type state (progress.ts's live tail,
+ * transcript.ts's renderer), so the trim → pre-filter → parse preamble and its skip-without-
+ * failing policy live in one place instead of drifting between consumers of the identical log —
+ * worth it because pi logs are ~97% streaming delta lines (message_update) that every consumer
+ * discards after parsing them. */
+export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  // Cheap pre-filter before JSON.parse (see piEventType): skip the parse when the line's type is
+  // verifiably not one this consumer acts on.
+  const type = piEventType(trimmed);
+  if (type !== null && !types.has(type)) return null;
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    return null; // Torn or non-JSON line — skip without failing.
+  }
+}
+
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";

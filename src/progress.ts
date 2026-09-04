@@ -1,4 +1,4 @@
-import { piEventType } from "./pi.js";
+import { parsePiEventLine } from "./pi.js";
 import { collapseWhitespace, truncate } from "./text.js";
 import { describeToolCall } from "./tool-call.js";
 import { statRoleLog, TailState, withTail } from "./tail.js";
@@ -71,33 +71,23 @@ function freshProgress(quietMs: number): LiveProgress {
 }
 
 /** The event types feedLine acts on — everything else (streaming deltas, turn/agent
- * bookkeeping) is ignored. Also used by feedLine's pre-filter to skip JSON.parse for pi lines
- * whose type is verifiably not one of these; a new case in the switch must be added here too.
- */
+ * bookkeeping) is ignored. Also passed as parsePiEventLine's pre-filter to skip JSON.parse for
+ * pi lines whose type is verifiably not one of these; a new case in the switch must be added
+ * here too. */
 const PROGRESS_TYPES = new Set(["session", "tool_execution_start", "message_end"]);
+
+/** The fields feedLine reads off a parsed progress event (a structural subset of pi's JSON). */
+interface ProgressEvent {
+  type?: string;
+  toolName?: string;
+  args?: unknown;
+  message?: { role?: string; content?: unknown; usage?: { totalTokens?: number; output?: number } };
+}
 
 /** Apply one raw log line to a progress object (mutates it). Non-JSON noise is skipped. */
 function feedLine(progress: LiveProgress, line: string): void {
-  const trimmed = line.trim();
-  if (!trimmed) return;
-  // Cheap pre-filter before JSON.parse: pi's logs are ~97% streaming delta lines
-  // (message_update), which the switch below discards after parsing them. Skip the parse when
-  // the line's type is verifiably not one this feedLine acts on; measured ~7ms → ~1ms per 4MB
-  // seed window (the same fast path as transcript.ts's renderer, which consumes the identical
-  // log).
-  const type = piEventType(trimmed);
-  if (type !== null && !PROGRESS_TYPES.has(type)) return;
-  let event: {
-    type?: string;
-    toolName?: string;
-    args?: unknown;
-    message?: { role?: string; content?: unknown; usage?: { totalTokens?: number; output?: number } };
-  };
-  try {
-    event = JSON.parse(trimmed);
-  } catch {
-    return;
-  }
+  const event = parsePiEventLine<ProgressEvent>(line, PROGRESS_TYPES);
+  if (!event) return; // Blank, unparseable, or a type this feed does not act on.
   switch (event.type) {
     case "session": // A new run starts: everything before it was a previous tick — restore the at-time-zero state.
       Object.assign(progress, freshProgress(progress.quietMs));
