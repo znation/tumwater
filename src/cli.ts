@@ -12,7 +12,8 @@ import {
   rejectUnknownArgs,
 } from "./cli-args.js";
 import { loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from "./state.js";
-import { createTranscriptRenderer, readTranscriptTail } from "./transcript.js";
+import { createTranscriptRenderer } from "./transcript.js";
+import { readTranscriptTail } from "./transcript-tail.js";
 import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
 import {

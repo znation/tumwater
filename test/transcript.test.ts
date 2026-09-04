@@ -2,12 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  createTranscriptRenderer,
-  formatTranscript,
-  readTranscript,
-  readTranscriptTail,
-} from "../src/transcript.js";
+import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/transcript.js";
+import { readTranscriptTail } from "../src/transcript-tail.js";
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/tail.js";
 import { tmpdir } from "./util.js";
