@@ -6,7 +6,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 ### Abort a single loop's in-flight tick — `tumwater abort --role <id>` (planned 2026-09-03,
-refined 2026-09-03, re-audited 2026-09-03)
+refined 2026-09-03, re-audited 2026-09-03, re-audited 2026-09-04)
 
 **Goal.** Give operators a way to stop ONE loop's in-flight tick right now — without stopping the
 whole fleet or waiting for the hang guards. Today, when a loop is visibly thrashing on a bad task
@@ -186,6 +186,54 @@ test groups. (c)–(f) are pure test work against landed behavior and independen
 Once all seven land, move this plan to Done. Files for the remainder: src/loop.ts, src/cli.ts,
 test/loop.test.ts, test/orchestrator.test.ts, test/state.test.ts, test/event-format.test.ts,
 test/cli.test.ts.
+
+**Re-audited 2026-09-04 (plan loop) — items (c) and (g) have LANDED; the "seven items" list
+above is stale. Remainder re-specified as five items plus two small assertions.** Verified at
+`70ebbc3` (current main; build clean, suite 594/594 run on this tick's tree — the two commits
+since the README's `bd7df5e` stamp are a readme sync and an annotation-only clean tick):
+
+- **(c) landed** in coverage tick `6b52731` — three tests in test/loop.test.ts: "a user-aborted
+  tick discards work, backs off, and does not resume" (fake pi writes a half-done edit then hangs;
+  `abortTick()` kills it; result "user_aborted"; the planted dirty file is gone from the worktree
+  and nothing lands on main; no resumePending; backoffSeconds at the initial idle value with
+  nextRunAt > now; tick_end carries user_aborted), "a user-aborted director tick drops the prompt
+  instead of re-queueing it" (inbox empty after the abort — but does NOT yet assert the runner's
+  `pendingUserPrompt` field is null, since item (a) has not landed), and a third test beyond the
+  AC spec, "a user-abort mid-review discards the committed work too" (abort during the review
+  gate: branch reset to main, no requeue, backed off).
+- **(g) landed** in coverage tick `0d4c41b` — three tests in test/cli.test.ts: "abort validates
+  its arguments before touching anything" (missing/bare --role, unknown role listing valid ids,
+  unknown flag, stray positional; no marker on any failure), "abort refuses when no harness is
+  running — missing or stale info file alike", and "abort drops a per-role marker for a live
+  harness and reports it" (marker content `{ at }`, other roles' markers untouched, the CLI itself
+  logs no event). The director-clause assertion is still absent — it waits on item (b), exactly as
+  planned.
+- **(a), (b), (d), (e), (f) verified NOT landed**: src/loop.ts's `userAborted` branch in the
+  author-run abort check still returns `{ result: "user_aborted" }` before the shared
+  `this.pendingUserPrompt = null`; cmdAbort's confirmation is unconditional (no director clause);
+  test/orchestrator.test.ts carries no abort-marker tests; test/state.test.ts and
+  test/event-format.test.ts have zero references to user_aborted/tick_aborted.
+
+What remains — five items, pickable independently: (a), (b), (d), (e), and (f) exactly as
+specified above (their specs stand unchanged). Plus two small assertions that complete the landed
+test groups once their src fixes exist:
+
+- **The tail of item (c)** — after item (a) lands, extend test/loop.test.ts's "a user-aborted
+  director tick drops the prompt instead of re-queueing it" to also assert the runner's
+  `pendingUserPrompt` field is null, via the `(runner as unknown as { … })` pattern this file
+  already uses. One assertion; makes the discard explicit rather than accidental, per item (a)'s
+  rationale.
+- **The tail of item (g)** — after item (b) lands, add to test/cli.test.ts: `--role director`'s
+  confirmation carries the discard clause while a non-director role's does not (the clause half of
+  item (g)'s spec that could not land before (b)).
+
+One note for whoever lands (d): test/loop.test.ts's comment block above its user-abort tests says
+"The marker-file plumbing that reaches here is covered by the orchestrator tests" — aspirational
+until (d) exists; landing (d) makes it true.
+
+Once all five items plus both assertions land, move this plan to Done. Files for the remainder:
+src/loop.ts, src/cli.ts, test/orchestrator.test.ts, test/state.test.ts, test/event-format.test.ts,
+test/loop.test.ts (the item-(c) tail only), test/cli.test.ts (the item-(g) tail only).
 
 ### Bound README's status section — state, not log (planned 2026-09-03)
 
