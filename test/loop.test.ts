@@ -515,6 +515,122 @@ test("an aborted director tick re-queues the user prompt", async () => {
   }
 });
 
+// User-initiated abort (tumwater abort --role <id>) vs harness shutdown: both kill the pi
+// child, but a deliberate stop discards the half-done work and backs off like an unproductive
+// tick instead of leaving it resumable. The marker-file plumbing that reaches here is covered
+// by the orchestrator tests; these pin LoopRunner's own contract (the abort plan's loop e2e
+// acceptance criterion).
+test("a user-aborted tick discards work, backs off, and does not resume", async () => {
+  const repo = await initializedRepo();
+  // Writes a half-done change, then hangs until killed. `exec` so SIGTERM reaches sleep.
+  const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  try {
+    const config = defaultConfig();
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const before = sh(repo, "git", "rev-parse", "main");
+    const tick = runner.tick();
+    // Abort only once the half-done edit has landed: a fixed timer can fire before the
+    // fake pi even starts under parallel load.
+    try {
+      await waitForFile(path.join(worktreePath(repo, "improve"), "partial.txt"));
+    } catch (err) {
+      runner.abortTick(); // don't leave the hung fake pi running after a wait timeout
+      throw err;
+    }
+    runner.abortTick();
+    const outcome = await tick;
+    assert.equal(outcome.result, "user_aborted");
+
+    // The work is discarded: nothing lands on main and the planted dirty file is gone from
+    // the worktree (reset --hard + clean -fd), so the next tick's leftover recovery finds
+    // nothing to salvage.
+    assert.equal(sh(repo, "git", "rev-parse", "main"), before, "nothing lands on main");
+    const wt = worktreePath(repo, "improve");
+    assert.ok(!fs.existsSync(path.join(wt, "partial.txt")), "the half-done edit is discarded");
+    assert.equal(sh(wt, "git", "status", "--porcelain"), "", "no uncommitted edits remain");
+
+    // A deliberate stop is not an interruption: no resume flag, and the loop backs off like
+    // an unproductive tick instead of retrying immediately.
+    const s = loadLoopState(repo, "improve");
+    assert.ok(!s.resumePending, "nothing to resume — the work was discarded");
+    assert.equal(s.backoffSeconds, config.idleBackoff.initialSeconds);
+    assert.ok(s.nextRunAt > Date.now(), "backed off, not immediate");
+
+    // The outcome is observable in the event feed.
+    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    assert.equal(ends.length, 1);
+    assert.equal(ends[0]?.result, "user_aborted");
+  } finally {
+    restore();
+  }
+});
+
+test("a user-aborted director tick drops the prompt instead of re-queueing it", async () => {
+  const repo = await initializedRepo();
+  // Hangs until killed; writes a marker first so the test can wait for the run to be in flight.
+  const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  try {
+    enqueuePrompt(repo, "important request");
+    assert.equal(inboxSize(repo), 1);
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const tick = runner.tick();
+    try {
+      await waitForFile(path.join(worktreePath(repo, "director"), "partial.txt"));
+    } catch (err) {
+      runner.abortTick(); // don't leave the hung fake pi running after a wait timeout
+      throw err;
+    }
+    runner.abortTick();
+    const outcome = await tick;
+    assert.equal(outcome.result, "user_aborted");
+
+    // Contrast with a shutdown abort (which re-queues): an explicit stop IS the answer to
+    // that request — the prompt is deliberately dropped, not retried.
+    assert.equal(inboxSize(repo), 0, "the aborted prompt was not re-queued");
+    const s = loadLoopState(repo, "director");
+    assert.ok(!s.resumePending, "the director never resumes an author session");
+  } finally {
+    restore();
+  }
+});
+
+test("a user-abort mid-review discards the committed work too", async () => {
+  const repo = await initializedRepo();
+  // Author run (the tick prompt): make a change and finish. Review run (its prompt contains
+  // VERDICT): hang until the abort kills it — simulating `tumwater abort` while under review.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  try {
+    enqueuePrompt(repo, "ship the hello file");
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const tick = runner.tick();
+    // Abort only once the author run has committed (branch ahead of main): an earlier abort
+    // would hit the author-run path instead of the review gate.
+    await waitForAhead(repo, "tumwater/director");
+    runner.abortTick();
+    const outcome = await tick;
+    assert.equal(outcome.result, "user_aborted", "a mid-review user abort is an abort, not a failed review");
+
+    // Unlike a shutdown (which fails closed and keeps the commit for re-review), a deliberate
+    // stop discards it: resetWorktreeToMain drops the unmerged commit too.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
+    assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
+
+    // And like the author-run branch: no re-queue of the unfulfilled prompt.
+    assert.equal(inboxSize(repo), 0, "the aborted prompt was not re-queued");
+    const s = loadLoopState(repo, "director");
+    assert.ok(!s.resumePending);
+    assert.ok(s.nextRunAt > Date.now(), "backed off, not immediate");
+  } finally {
+    restore();
+  }
+});
+
 test("a failing director tick re-queues the user prompt (regression)", async () => {
   const repo = await initializedRepo();
   // pi fails hard: non-zero exit, no assistant text, and no file changes.
