@@ -50,14 +50,16 @@ setting applies within ~2 s without a restart, including the `maxDailyCostUsd` d
 on each tick_end.
 
 Open items:
-- Planned (PLANS.md): `tumwater abort --role <id>` — code has landed (feature tick 87); its
-  acceptance-criteria tests remain before the plan moves to Done.
+- Planned (PLANS.md): `tumwater abort --role <id>` — src has landed; remainder is two small src
+  fixes (`pendingUserPrompt` cleared on a user-abort of the author run, and a director clause in
+  the CLI confirmation) plus four test groups (orchestrator e2e, scheduling units, events, CLI);
+  the loop e2e group has landed.
 - Planned (PLANS.md): bound this status section as a state-only snapshot rewritten wholesale on
   each sync, with no per-tick landing narrative (landings belong in PLANS.md/BUGS.md and git log).
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`f995ecb`): build clean, suite 587/587, verified 2026-09-03.
+Current main (`07b7a7e`): build clean, suite 591/591, verified 2026-09-03.
 <!-- tumwater:status:end -->
 
 ## How it works
