@@ -123,6 +123,70 @@ the original spec, corrected:
    `--role` is the director, append one clause to the CLI confirmation that its current in-flight
    prompt will be discarded (re-submit with `tumwater prompt` if you want it retried).
 
+### Bound README's status section — state, not log (planned 2026-09-03)
+
+**Goal.** The initial prompt says "First puts the initial prompt and project status into
+README.md" — but the status section has drifted from *state* to *log*. It is now a single ~38.7KB
+paragraph in a 52KB README (the file grew 13× in two weeks, 4KB → 52KB), accumulating per-tick
+landing narrative ("Since then: X landed…") on every readme sync. Every loop's prompt says "First
+read README.md", so each tick of all thirteen loops pays that cost in prefill — ~10k+ tokens of
+non-actionable history, growing without bound, so per-tick cost grows forever for a fleet meant
+to run for weeks. The narrative is redundant: PLANS.md's Done entries and BUGS.md's Fixed entries
+carry the same landings with more detail (commit hashes, audits), and git log preserves every
+version of README — no archive file is needed; git history *is* the archive. Fix: make the status
+section a snapshot of current state that each sync rewrites wholesale instead of appending to, so
+it stays small by construction.
+
+**Approach.**
+- src/roles.ts — rewrite the readme role's find text (today: "Update the status section … to
+  reflect reality: what works, what is in progress, how to build/run/test") into an explicit
+  contract:
+  - The status section (between the tumwater:status markers) describes CURRENT STATE ONLY and is
+    rewritten wholesale on each sync, never appended to: (a) a one-line version/capability summary
+    (which commands exist, which roles are enabled), (b) open items — planned features not yet
+    done, open bugs, open questions, one line each or "none", (c) the existing freshness-stamp
+    convention (`Current main (\`<sha>\`): build clean, suite N/N`).
+  - No per-tick landing narrative in the section: landings are recorded by their owning loops in
+    PLANS.md/BUGS.md and git log — stale narrative found in the section is deleted as part of
+    updating it (that is an update, not a loss).
+  - Drift guard: if the section exceeds ~8KB it has drifted back into narrative — prune it to the
+    state-only form above.
+  - Keep the existing constraints: PRINCIPLES.md belongs to director/steward; never edit the
+    tumwater:prompt block; "if the README is already accurate (including its freshness stamp),
+    there is nothing to do" — a moved main makes the stamp stale, so syncs still run after landings.
+- test/prompt.test.ts — a sibling contract block following the steward pattern (`const readme =
+  roleById("readme")`, matching `oneLine(readme.find)` so assertions are reflow-robust): the
+  rewrite-wholesale-not-append rule; the state-only content spec (capability summary, open items,
+  freshness stamp); the no-narrative rule naming PLANS.md/BUGS.md and git log as where landings
+  belong; the ~8KB drift guard. Also convert the existing readme assertion ("the readme role leaves
+  PRINCIPLES.md to the director and steward", which matches a literal `\n` inside the find text)
+  to match against `oneLine(...)` so the rewrite cannot break it on reflow.
+- Transition (NOT this plan's implementer): the first readme sync after landing rewrites the
+  current ~38KB paragraph into state-only form — a large md-only diff, review-exempt; the
+  pre-collapse text stays in git history.
+
+**Files touched.** src/roles.ts, test/prompt.test.ts. (README.md itself changes on a subsequent
+readme tick under the new contract.)
+
+**Acceptance criteria.**
+- Contract tests (test/prompt.test.ts): the readme find text carries all four clauses —
+  rewrite-wholesale-not-append; state-only content spec naming capability summary, open items,
+  and freshness stamp; no-narrative rule with landings belonging in PLANS.md/BUGS.md and git log;
+  ~8KB drift guard — each matched with whitespace collapsed; the existing readme assertion passes
+  against the rewritten text.
+- Build clean, full suite green.
+- Transition verified by observation on a subsequent readme tick (not this plan's implementer):
+  within a few readme ticks of landing, the status section is under 8KB and carries no per-tick
+  landing narrative — only capability summary, open items, and freshness stamp; git log preserves
+  the pre-collapse paragraph.
+
+**Sibling concern, deliberately not planned here.** PLANS.md (~150KB) and BUGS.md (~56KB) carry
+the same unbounded-history growth in their Done/Fixed sections, which every tick also reads. They
+decompose into separate entries with different owners (steward curation for PLANS.md;
+bugfix/steward for BUGS.md) and different policies (e.g. compressing a Done entry must wait until
+nothing remains), and this README case is the sharpest instance to prove the pattern first —
+revisit once it has landed.
+
 ## Done
 
 ### Per-loop today spend — which loop is eating the day's budget (planned 2026-09-02, done
