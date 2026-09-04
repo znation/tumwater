@@ -173,11 +173,55 @@ test("createTranscriptRenderer still parses non-compact JSON shapes (fast-path f
   );
 });
 
+test("formatTranscript ignores structurally valid but malformed events without failing", () => {
+  // pi's JSONL log is an external stream consumed by long-lived observers (the TUI, the GUI
+  // panel, logs -f) that poll it every second; a single line whose shape deviates from what
+  // the renderer expects must render nothing — not crash the observer or corrupt its
+  // pending-separator state. Torn and non-JSON lines are pinned above; this pins the guards
+  // for valid JSON with missing, null, wrong-typed, or unknown-role message fields.
+  const lines = [
+    agentStart(),
+    JSON.stringify({ type: "message_end" }), // no message field at all
+    JSON.stringify({ type: "message_end", message: null }),
+    JSON.stringify({ type: "message_end", message: "oops" }), // non-object message
+    JSON.stringify({ type: "message_end", message: { role: "system", content: [] } }), // unknown role
+    userLine("p"),
+    assistantLine([{ type: "text", text: "still fine" }]),
+  ];
+  const out = formatTranscript(lines).flat();
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(TS)} ──`, "  still fine"]);
+});
+
+test("formatTranscript renders no turn lines for non-array assistant content", () => {
+  // The renderer expects an array of content blocks; a plain string or null in its place
+  // must be swallowed by the guard (the separator still lands), and degenerate blocks — a
+  // null element, an empty thinking block, a text block with no text, a nameless tool call
+  // — render nothing / a bare "?" rather than throwing on String(undefined) territory.
+  const out = formatTranscript([
+    agentStart(),
+    userLine("p"),
+    JSON.stringify({ type: "message_end", message: { role: "assistant", content: "plain string" } }),
+    assistantLine([null, { type: "thinking" }, { type: "text" }, { type: "toolCall", id: "c1" }]),
+  ]).flat();
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(TS)} ──`, "→ ?"]);
+});
+
+test("formatTranscript falls back for auto_retry_start with missing or non-numeric fields", () => {
+  const out = formatTranscript([
+    agentStart(),
+    userLine("p"),
+    JSON.stringify({ type: "auto_retry_start" }), // no attempt, maxAttempts, or errorMessage
+  ]).flat();
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(TS)} ──`, "⚠ retry ?/?: unknown error"]);
+});
+
 test("readTranscript returns the last N entries oldest-first and [] without a log", () => {
   const root = tmpdir();
   assert.deepEqual(readTranscript(root, "feature"), []);
   const file = piLogPath(root, "feature");
   fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, ""); // log exists but is empty (pi created it, wrote nothing yet)
+  assert.deepEqual(readTranscript(root, "feature"), []);
   const lines: string[] = [];
   for (let i = 1; i <= 3; i++) {
     lines.push(agentStart());
