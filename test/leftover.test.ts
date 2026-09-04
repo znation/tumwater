@@ -42,7 +42,6 @@ function fakeRun(overrides: Partial<PiRunResult> = {}): PiRunResult {
  * GateResult or an async function (for gates that mutate the worktree, like reject/discard). */
 function fakeCtx(
   root: string,
-  wt: string,
   gate: GateResult | ((wt: string) => Promise<GateResult>),
   mergeResult: TickResult = "changed",
 ): { ctx: LeftoverContext; calls: { gates: number; merges: [string, string][]; folded: PiRunResult[] } } {
@@ -77,7 +76,7 @@ async function leftoverFixture(): Promise<{ root: string; wt: string }> {
 test("no leftover: returns false without running the gate or merging", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main"); // nothing ahead of main
-  const { ctx, calls } = fakeCtx(root, wt, { decision: "approved" });
+  const { ctx, calls } = fakeCtx(root, { decision: "approved" });
 
   assert.equal(await recoverLeftover(ctx, wt), false);
   assert.equal(calls.gates, 0, "the gate never runs when the branch is not ahead");
@@ -87,7 +86,7 @@ test("no leftover: returns false without running the gate or merging", async () 
 test("approved leftover merges; reviewer usage folds in and the summary names the role", async () => {
   const { root, wt } = await leftoverFixture();
   const run = fakeRun({ outputTokens: 42 });
-  const { ctx, calls } = fakeCtx(root, wt, { decision: "approved", run });
+  const { ctx, calls } = fakeCtx(root, { decision: "approved", run });
 
   assert.equal(await recoverLeftover(ctx, wt), false); // merged: caller resets as usual
   assert.equal(calls.gates, 1);
@@ -98,7 +97,7 @@ test("approved leftover merges; reviewer usage folds in and the summary names th
 
 test("exempt diff merges without a reviewer run and folds no usage", async () => {
   const { root, wt } = await leftoverFixture();
-  const { ctx, calls } = fakeCtx(root, wt, { decision: "exempt" }); // no `run` in the result
+  const { ctx, calls } = fakeCtx(root, { decision: "exempt" }); // no `run` in the result
 
   assert.equal(await recoverLeftover(ctx, wt), false);
   assert.equal(calls.merges.length, 1);
@@ -107,7 +106,7 @@ test("exempt diff merges without a reviewer run and folds no usage", async () =>
 
 test("unmergeable leftover is warned about and left to the caller's reset", async () => {
   const { root, wt } = await leftoverFixture();
-  const { ctx, calls } = fakeCtx(root, wt, { decision: "approved" }, "merge_conflict");
+  const { ctx, calls } = fakeCtx(root, { decision: "approved" }, "merge_conflict");
 
   assert.equal(await recoverLeftover(ctx, wt), false); // not kept for retry — it is gone after reset
   assert.equal(calls.merges.length, 1);
@@ -121,7 +120,7 @@ test("unmergeable leftover is warned about and left to the caller's reset", asyn
 test("shutdown mid-recovery-review fails closed: kept for retry, nothing merged", async () => {
   const { root, wt } = await leftoverFixture();
   const run = fakeRun({ aborted: true });
-  const { ctx, calls } = fakeCtx(root, wt, { decision: "failed", aborted: true, run });
+  const { ctx, calls } = fakeCtx(root, { decision: "failed", aborted: true, run });
 
   assert.equal(await recoverLeftover(ctx, wt), true); // caller keeps the commit for re-review
   assert.equal(calls.merges.length, 0, "an aborted review never reaches the merge");
@@ -132,7 +131,7 @@ test("shutdown mid-recovery-review fails closed: kept for retry, nothing merged"
 test("rejected leftover: the gate already reset to main and recovery does not re-merge", async () => {
   const { root, wt } = await leftoverFixture();
   // The real reject path resets the branch inside the gate; simulate that side effect.
-  const { ctx, calls } = fakeCtx(root, wt, async (w) => {
+  const { ctx, calls } = fakeCtx(root, async (w) => {
     await resetWorktreeToMain(w, "main");
     return { decision: "rejected", detail: "breaks the zero-dep rule" };
   });
@@ -145,7 +144,7 @@ test("rejected leftover: the gate already reset to main and recovery does not re
 test("failed review under the strike cap keeps the commit for re-review", async () => {
   const { root, wt } = await leftoverFixture();
   const run = fakeRun({ errorMessage: "no parseable VERDICT line in the reviewer's reply" });
-  const { ctx, calls } = fakeCtx(root, wt, { decision: "failed", detail: "no verdict", run });
+  const { ctx, calls } = fakeCtx(root, { decision: "failed", detail: "no verdict", run });
 
   assert.equal(await recoverLeftover(ctx, wt), true); // under the cap the gate left it on purpose
   assert.equal(calls.merges.length, 0);
@@ -155,7 +154,7 @@ test("failed review under the strike cap keeps the commit for re-review", async 
 test("failed review at the strike cap: the gate discarded it, so nothing is kept", async () => {
   const { root, wt } = await leftoverFixture();
   // At/over REVIEW_FAILURE_LIMIT the real gate resets to main and warns; simulate that.
-  const { ctx, calls } = fakeCtx(root, wt, async (w) => {
+  const { ctx, calls } = fakeCtx(root, async (w) => {
     await resetWorktreeToMain(w, "main");
     return { decision: "failed", detail: "no verdict" };
   });
