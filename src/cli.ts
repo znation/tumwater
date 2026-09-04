@@ -15,7 +15,13 @@ import { loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from ".
 import { createTranscriptRenderer, readTranscriptTail } from "./transcript.js";
 import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
-import { cancelPrompt, promptPreview, queuedPrompts, submitPrompt } from "./inbox.js";
+import {
+  type CancelOutcome,
+  cancelPrompt,
+  promptPreview,
+  queuedPrompts,
+  submitPrompt,
+} from "./inbox.js";
 import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
@@ -283,7 +289,7 @@ async function main(): Promise<void> {
         break;
       }
       if (parsed.mode === "cancel") {
-        let outcome; // CancelOutcome
+        let outcome: CancelOutcome;
         try {
           outcome = cancelPrompt(root, parsed.position);
         } catch (err) {
