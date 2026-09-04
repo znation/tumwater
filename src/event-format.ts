@@ -57,6 +57,10 @@ export function formatEvent(e: HarnessEvent): string {
       const scope = Array.isArray(e.roles) && e.roles.length > 0 ? ` for ${e.roles.join(", ")}` : "";
       return `${time} ${loop} counters reset${scope} (ticks, commits, tokens, cost)`;
     }
+    case "tick_aborted":
+      // Routine state change (the user stopped one loop's tick), like counters_reset — no
+      // warning prefix. The resulting tick_end line carries the user_aborted outcome.
+      return `${time} ${loop} tick aborted by user`;
     case "review_start":
       return `${time} ${loop} reviewing ${shortSha(e.head)} before merge`;
     case "review_verdict":

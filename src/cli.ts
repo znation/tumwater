@@ -25,7 +25,7 @@ import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { runTui } from "./tui.js";
 import { lanAddresses, startGui } from "./gui.js";
-import { eventsLogPath, piLogPath, resetRequestPath } from "./paths.js";
+import { abortRequestPath, eventsLogPath, piLogPath, resetRequestPath } from "./paths.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
 
@@ -46,6 +46,7 @@ Usage:
   tumwater prompt --list           Show queued prompts, numbered in execution order
   tumwater prompt --cancel <n>     Remove the Nth queued prompt (as shown by --list)
   tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
+  tumwater abort --role <id>             Abort that loop's in-flight tick (work discarded; the loop keeps running)
   tumwater help | version
 
 The harness runs inside a git repo. Each role loop owns a persistent worktree and branch
@@ -189,6 +190,22 @@ async function cmdResetCounters(root: string, args: string[]): Promise<void> {
   process.stdout.write(`counters reset for ${targets.join(", ")} — a running fleet picks this up within ~2s\n`);
 }
 
+/** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot
+ * reach into the orchestrator process, so the request rides on disk like reset-counters':
+ * a per-role marker file a running fleet consumes within one poll cycle (the runner's
+ * abortTick kills the pi child and resets the worktree to main). Requires a live harness —
+ * with no fleet there is nothing to consume the marker. The loop stays enabled: it backs
+ * off normally and later ticks proceed as usual. */
+async function cmdAbort(root: string, args: string[]): Promise<void> {
+  const role = parseRoleFlag(args);
+  if (!role) fail("abort requires --role <id> (e.g. `--role feature`)");
+  if (!orchestratorAlive(root)) fail("no harness is running — start it with `tumwater run` first");
+  const markerFile = abortRequestPath(root, role);
+  ensureParentDir(markerFile);
+  fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }, null, 2));
+  process.stdout.write(`abort requested for ${role} — a running fleet applies it within ~2s\n`);
+}
+
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   const root = process.cwd();
@@ -288,6 +305,12 @@ async function main(): Promise<void> {
       rejectUnknownArgs("reset-counters", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
       await requireReadyRepo(root);
       await cmdResetCounters(root, args);
+      break;
+    }
+    case "abort": {
+      rejectUnknownArgs("abort", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
+      await requireReadyRepo(root);
+      await cmdAbort(root, args);
       break;
     }
     case "version":

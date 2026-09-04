@@ -162,6 +162,13 @@ export function applyTickOutcome(
     // their user prompt, which runs fresh).
     if (role !== DIRECTOR_ROLE) s.resumePending = true;
     s.nextRunAt = Date.now();
+  } else if (outcome.result === "user_aborted") {
+    // A deliberate stop, not an interruption: the worktree was already reset to main and a
+    // director prompt deliberately dropped, so there is nothing to resume — schedule like an
+    // unproductive tick (idle backoff) instead of resuming promptly. phase is cleared by the
+    // `result !== "aborted"` check above.
+    s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg);
+    s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
   } else if (outcome.cutOff && role !== DIRECTOR_ROLE && (s.cutOffStreak ?? 0) < CUT_OFF_RESUME_LIMIT) {
     // Truncated at the context ceiling, not idle: the hour(s) of work survive in the
     // session pi just compacted, so resume it promptly instead of idle-backing-off.

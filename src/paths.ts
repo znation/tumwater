@@ -33,6 +33,14 @@ export function resetRequestPath(root: string): string {
   return path.join(tumwaterDir(root), "reset-counters.json");
 }
 
+/** Per-role marker file `tumwater abort --role <id>` drops for a running fleet to consume:
+ * kill that loop's in-flight tick. One file per role (presence = pending request; content is
+ * just `{ at }`) keeps consumption race-free and needs no parsing — unlike the single shared
+ * reset-counters marker, which must name its targets because it affects many loops. */
+export function abortRequestPath(root: string, role: string): string {
+  return path.join(tumwaterDir(root), `abort-${role}.json`);
+}
+
 export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", "events.jsonl");
 }

@@ -58,6 +58,15 @@ export class LoopRunner {
    * no dashboard reads it mid-run; its only consumer is the tick_end event, which fires before
    * the next tick resets it (plans: per-tick usage in the event feed). */
   private tickCostUsd = 0;
+  /** Per-tick abort controller, recreated at every tick start: `abortTick()` kills the
+   * in-flight pi run without touching the harness shutdown signal (`this.signal`), which
+   * would stop the whole fleet. */
+  private tickAbort = new AbortController();
+  /** Set by abortTick() when a user-initiated abort lands mid-tick: runTick's two abort
+   * branches (author run, review gate) then diverge from shutdown semantics — worktree reset
+   * to main, no director-prompt requeue, "user_aborted" result with normal backoff. Cleared
+   * at the next tick start so a stale request can never leak into a later tick. */
+  private userAborted = false;
 
   constructor(
     readonly root: string,
@@ -92,6 +101,24 @@ export class LoopRunner {
   resetCounters(): void {
     Object.assign(this.state, zeroCounters(this.state));
     this.save();
+  }
+
+  /** Kill this loop's in-flight tick on user request (`tumwater abort --role <id>`). No-op
+   * when no tick is running — the orchestrator checks `state.running` before calling, and a
+   * direct call must not arm a stale flag. Otherwise set the userAborted flag and abort the
+   * per-tick controller: runPi terminates the in-flight pi child (SIGTERM → SIGKILL
+   * escalation) exactly like a harness shutdown, but only this loop's run dies — the fleet
+   * keeps running. */
+  abortTick(): void {
+    if (!this.state.running) return;
+    this.userAborted = true;
+    this.tickAbort.abort();
+  }
+
+  /** The signal every pi run of the current tick watches: harness shutdown OR a per-tick user
+   * abort (Node ≥ 20's AbortSignal.any). */
+  private runSignal(): AbortSignal {
+    return this.signal ? AbortSignal.any([this.signal, this.tickAbort.signal]) : this.tickAbort.signal;
   }
 
   /** Decide the prompt for this tick, or null to skip (director with empty inbox). */
@@ -189,7 +216,7 @@ export class LoopRunner {
       sessionName,
       continueSession: resume,
       rawLogFile: piLogPath(this.root, this.role),
-      signal: this.signal,
+      signal: this.runSignal(),
     };
     const pi = await runPi(opts);
     if (!pi.aborted && !pi.timedOut && pi.transientServerTimeout && !pi.ok) {
@@ -231,7 +258,7 @@ export class LoopRunner {
         config: this.config,
         tick: this.state.ticks,
         sessionSuffix,
-        signal: this.signal,
+        signal: this.runSignal(),
       },
       this.state,
       summary,
@@ -262,6 +289,10 @@ export class LoopRunner {
     s.peakContextTokens = 0;
     this.tickTurns = 0;
     this.tickCostUsd = 0;
+    // A fresh per-tick abort controller and a cleared user-abort flag: an abort request that
+    // lands while the loop is idle must not leak into the next tick.
+    this.tickAbort = new AbortController();
+    this.userAborted = false;
     s.running = true;
     s.lastTickStartedAt = Date.now();
     const tick = s.ticks;
@@ -365,6 +396,19 @@ export class LoopRunner {
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.
     if (pi.aborted) {
+      if (this.userAborted) {
+        // A user-initiated abort is a decision, not an interruption: discard the half-done
+        // work — resetWorktreeToMain drops uncommitted edits AND any commit on the branch,
+        // so the next tick's leftover recovery finds nothing — and do NOT requeue a director
+        // prompt (the explicit stop IS the answer to that request; timeouts and cut-offs
+        // still requeue). The result backs off normally instead of resuming promptly. Known
+        // limitation: if the marker was consumed while this tick sat in its short git-only
+        // commit/merge window (no pi run in flight), the flag takes effect at the next
+        // model-run boundary within the tick — or, for a tick that reaches no further pi run,
+        // completes normally and the abort had no effect; re-issuing is the remedy.
+        await resetWorktreeToMain(wt, this.mainBranch);
+        return { result: "user_aborted" };
+      }
       this.requeueUnfulfilledPrompt(userPrompt);
       return { result: "aborted" };
     }
@@ -470,6 +514,13 @@ export class LoopRunner {
     );
     if (gate.run) this.foldUsage(gate.run);
     if (gate.aborted) {
+      if (this.userAborted) {
+        // User abort mid-review: same semantics as the author-run branch above, but the work
+        // is fully committed on the branch — resetWorktreeToMain discards that commit too,
+        // so nothing survives for leftover recovery to re-review. No prompt requeue either.
+        await resetWorktreeToMain(wt, this.mainBranch);
+        return { result: "user_aborted" };
+      }
       // Shutdown mid-review: fail closed — the commit stays on the branch and the next launch
       // re-reviews it via the combined ahead-of-main diff. Re-queue a director prompt like any
       // other unfulfilled abort.

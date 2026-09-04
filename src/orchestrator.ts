@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
 import { configForRole, enabledRoleIds, loadConfigSafe } from "./config.js";
@@ -10,7 +11,7 @@ import { logEvent } from "./events.js";
 import { ensureParentDir, pruneOldFiles, readJsonFile } from "./files.js";
 import { inboxSize } from "./inbox.js";
 import { Semaphore } from "./semaphore.js";
-import { orchestratorStatePath, resetRequestPath, sessionsRootDir } from "./paths.js";
+import { abortRequestPath, orchestratorStatePath, resetRequestPath, sessionsRootDir, STATE_DIR } from "./paths.js";
 
 const POLL_MS = 2000;
 
@@ -240,6 +241,31 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
         } catch {
           // Best-effort cleanup.
         }
+      }
+
+      // Consume per-role abort requests from `tumwater abort --role <id>`: one marker file
+      // per role (no parsing needed), so a request for an idle OR disabled loop is still
+      // cleaned up. A running tick gets killed and logs exactly one event; anything else is
+      // a silent no-op — the marker's presence IS the request, removing it acknowledges.
+      try {
+        const markers = fs.readdirSync(path.join(root, STATE_DIR));
+        for (const name of markers) {
+          const m = /^abort-(.+)\.json$/.exec(name);
+          if (!m) continue;
+          const role = m[1]!;
+          const runner = runners.find((r) => r.role === role);
+          if (runner?.state.running) {
+            runner.abortTick();
+            logEvent(root, { loop: role, type: "tick_aborted" });
+          }
+          try {
+            fs.rmSync(abortRequestPath(root, role));
+          } catch {
+            // Best-effort cleanup.
+          }
+        }
+      } catch {
+        // .tumwater/ missing — nothing to consume (a fresh repo before the first tick).
       }
 
       // Reading the ref file is microsecond-scale; spawning `git rev-parse` costs ~10ms and

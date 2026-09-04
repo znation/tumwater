@@ -216,6 +216,7 @@ tumwater prompt --list             # show queued prompts, numbered in execution 
 tumwater prompt --cancel <n>       # remove the Nth queued prompt (as shown by --list)
 tumwater reset-counters            # zero ticks/commits/tokens/cost (a running fleet picks it up within ~2s)
 tumwater reset-counters --role feature   # …or just one loop
+tumwater abort --role feature      # kill that loop's in-flight tick now (work discarded; the loop keeps running)
 ```
 
 `reset-counters` starts a fresh observation window (e.g. "cost since today") without touching

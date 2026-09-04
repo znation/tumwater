@@ -96,6 +96,7 @@ export type TickResult =
   | "review_error" // the review gate failed (no parseable verdict); commit left for retry
   | "error" // pi errored or timed out
   | "aborted" // harness shutdown killed the run mid-tick; partial work discarded
+  | "user_aborted" // a user-initiated abort (tumwater abort) killed the run mid-tick; work discarded, loop backed off
   | "skipped"; // nothing to run (e.g. director with an empty inbox);
 
 /** The outcome of one full tick: its result plus what the harness learned from it.
@@ -191,6 +192,7 @@ export interface HarnessEvent {
     | "prompt_enqueued"
     | "prompt_cancelled" // a queued prompt was removed before the director ran it (tumwater prompt --cancel)
     | "counters_reset"
+    | "tick_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
     | "resume"
     | "review_start"
     | "review_verdict"
