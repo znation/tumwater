@@ -342,6 +342,40 @@ test("a non-zero pi exit without assistant text is a failed run", async () => {
   assert.match(result.errorMessage ?? "", /pi exploded|exited 1/);
 });
 
+test("a multi-byte character straddling a stdout chunk boundary survives intact", async () => {
+  // pi's JSONL arrives in arbitrary chunks; decoding each Buffer with toString("utf8")
+  // replaces any non-ASCII character whose bytes split across two 'data' events with U+FFFD,
+  // garbling the parsed text (commit subjects, summaries, transcripts). The fake pi writes
+  // one line in two paced writes with é's UTF-8 bytes (0xC3 0xA9) split between them — the
+  // sleep guarantees the first write is drained as its own chunk, so the boundary falls
+  // inside the character. Pre-fix this produced "h\uFFFD\uFFFDllo".
+  const dir = tmpdir();
+  const restore = fakePi(
+    [
+      `printf '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"h\\303'`,
+      `sleep 0.3`,
+      `printf '\\251llo"}],"usage":{"totalTokens":5,"output":5,"cost":{"total":0}},"stopReason":"stop"}}\n'`,
+    ].join("\n"),
+  );
+  try {
+    const result = await runPi({
+      cwd: dir,
+      prompt: "p",
+      config: defaultConfig(),
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.finalText, "héllo", "the split character decodes intact");
+    assert.equal(result.turns, 1);
+    // The raw log is written from the same decoded lines — it must be clean too.
+    assert.ok(!fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8").includes("\uFFFD"));
+  } finally {
+    restore();
+  }
+});
+
 // Session lifecycle: every tick starts a fresh pi session (context never accumulates
 // across ticks); --continue exists only for the within-tick transient retry.
 

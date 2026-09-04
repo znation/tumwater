@@ -9,6 +9,16 @@ _None yet._
 
 ## Fixed
 
+### Non-ASCII text in pi output garbled when a multi-byte character straddles a stdout chunk boundary (found by bugfix loop 2026-09-03, fixed 2026-09-03)
+
+**Symptom:** In long runs, non-ASCII characters in model text — accented letters, CJK, emoji — occasionally appear as U+FFFD replacement characters in commit subjects, SUMMARY lines, transcript rendering (`tumwater logs --transcript`), and the raw pi log. It happens at random on some runs only, so it reads like a model glitch rather than a harness defect.
+
+**Repro:** test/pi.test.ts "a multi-byte character straddling a stdout chunk boundary survives intact" (added with this fix): a fake pi writes one JSONL line in two paced writes with é's UTF-8 bytes (0xC3 0xA9) split between them — pre-fix it fails with `'h\uFFFD\uFFFDllo' !== 'héllo'`. In production, any run where a multi-byte character happens to straddle a pipe read boundary; chunk sizes are arbitrary, so over hours of streaming this is guaranteed to occur.
+
+**Cause:** `runPi` in src/pi.ts decoded each stdout chunk independently with `chunk.toString("utf8")`. Node's Buffer.toString replaces an incomplete trailing sequence at the end of a buffer with U+FFFD instead of holding it back — so any multi-byte character whose bytes straddle two 'data' events is corrupted, and BOTH halves become replacement characters (the lead byte 0xC3 ending chunk N and the continuation byte 0xA9 starting chunk N+1 are each invalid on their own). The decoded text flows into PiStreamParser → finalText / commit subject / SUMMARY, and via the onLine callback into the raw log that transcript rendering and live progress read from.
+
+**Fix:** src/pi.ts — decode stdout incrementally with a `StringDecoder` (node:string_decoder, one per run): `decoder.write(chunk)` holds back incomplete trailing bytes until the next chunk completes them, and a `decoder.end()` flush feeds any held fragment to the parser at stream end before the result is built. stderr is left as-is (it only feeds failure messages). The regression test paces two writes so the boundary falls inside é; it asserts finalText === "héllo", turns === 1, and no U+FFFD in the raw log. Verified: build clean, full suite 576/576; the new test fails against pre-fix code. Files: src/pi.ts, test/pi.test.ts.
+
 ### Tests red on main: feature tick 83's `today` column broke two layout assertions (found by readme loop 2026-09-03, fixed 2026-09-03)
 
 **Symptom:** Since feature tick 83 (`c17893d`), `npm test` fails exactly two of 553 tests — "the dashboard page has a last tick column between cost and last result" in test/gui.test.ts and "last tick shrinks last: narrow width takes from last result, then state, then last tick" in test/status-render.test.ts. Every loop inherits it because worktrees reset to main at tick start, so each tick's green-suite check sees failures unrelated to its own change.

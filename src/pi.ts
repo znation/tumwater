@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import { StringDecoder } from "node:string_decoder";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { extractRefusal, hasVerdictLine, isNothingToDo, REFUSED_SENTINEL } from "./reply-contract.js";
@@ -234,6 +235,11 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     rotateIfLarge(opts.rawLogFile, opts.config.logMaxBytes);
     const rawLog = fs.createWriteStream(opts.rawLogFile, { flags: "a" });
     const parser = new PiStreamParser();
+    // Decode stdout incrementally instead of per chunk: a raw Buffer.toString("utf8")
+    // replaces any multi-byte character whose bytes straddle two 'data' events with U+FFFD,
+    // corrupting that line's text (commit subjects, summaries, transcripts). StringDecoder
+    // holds back the incomplete trailing bytes until the next chunk completes them.
+    const decoder = new StringDecoder("utf8");
     let stderr = "";
     let timedOut = false;
     let settled = false;
@@ -286,7 +292,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         : undefined;
 
     child.stdout.on("data", (chunk: Buffer) => {
-      parser.feed(chunk.toString("utf8"), (line) => rawLog.write(line + "\n"));
+      parser.feed(decoder.write(chunk), (line) => rawLog.write(line + "\n"));
     });
     child.stderr.on("data", (chunk: Buffer) => {
       // stderr is rare and meaningful (crash traces, warnings): treat it as progress.
@@ -336,6 +342,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     });
 
     child.on("close", (code) => {
+      // Flush any bytes the decoder held back at stream end so a final line is not lost.
+      parser.feed(decoder.end(), (line) => rawLog.write(line + "\n"));
       const failed =
         aborted ||
         timedOut ||
