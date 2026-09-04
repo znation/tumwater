@@ -5,6 +5,21 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Section-aware tick reads — stop paying for history every tick (planned 2026-09-04)
+
+Every loop's prompt says "First read README.md, PLANS.md, BUGS.md, and QUESTIONS.md (those that exist) to understand the project" (the two-line rule at the top of `COMMON_RULES` in src/prompt.ts), so each tick re-reads the backlog files whole. They grow without bound: PLANS.md is now 177KB with only ~17KB actionable — `## Planned` ends at line 116 and everything below is Done history — and BUGS.md is 59KB whose `## Open` section is currently empty, the rest being Fixed history. Recent pi logs show the feature loop offset-reading ALL of PLANS.md in every recent session (offsets up to ~line 1830 of 2126) while only its top matters for picking a plan; bugfix does the same for BUGS.md, and the plan loop reads it all too. That is roughly 45k tokens/tick for feature and plan and ~15k for bugfix spent on history no role needs to act on — concentrated in exactly the loops that run most often when there is work to do (hygiene roles mostly `head` the files, which is already cheap).
+
+Fix it at the prompt level, where the reading behavior lives: rewrite that one COMMON_RULES line into a section-aware rule. README.md read in full; PLANS.md and BUGS.md never read wholesale — their actionable sections come first by template convention (init.ts puts `## Planned` before `## Done`, `## Open` before `## Fixed`), so read the top of each file (Planned plus recent Done; Open plus recent Fixed) and consult older history via git log or a targeted read only when a specific entry is needed; QUESTIONS.md as today. Add an explicit carve-out for the steward role, whose job is curating those files and which must see them whole. No roles.ts changes are needed: every role's find text already names what it opens ("Open PLANS.md and pick…", "Open BUGS.md and pick…") — the diet governs how much of each file gets read, not which files.
+
+Relationship to other plans: this complements rather than duplicates the deferred curation siblings noted under the README status plan (steward compression of Done/Fixed). Curation bounds on-disk size; this rule bounds per-tick prefill, keeping it flat as history grows even before any curation lands. It also pairs with the pending "Bound README's status section" entry — same theme (prompt/prefill cost), different file: that one rewrites roles.ts's readme find text, this one rewrites prompt.ts's COMMON_RULES; no overlap.
+
+Files touched: src/prompt.ts (the two-line "First read…" rule in `COMMON_RULES`); test/prompt.test.ts (update the existing contract assertion at ~line 368 that pins the old wording — `/First read README\.md, PLANS\.md, BUGS\.md, and QUESTIONS\.md/` — to pin the new clauses instead, oneLine-based like its neighbors).
+
+Acceptance criteria:
+- `npm run build` clean; full suite green.
+- Contract tests assert each clause of the new rule in a tick prompt: README read in full; PLANS.md/BUGS.md not read wholesale with their actionable sections first; older history via git log or targeted reads; steward carve-out present.
+- Observable within a few ticks after landing: feature, bugfix, and plan loops' peak ctx drops substantially (feature from ~90k toward README+Planned size) in the status table's "peak ctx" column and per-role pi logs, with hygiene roles unchanged or lower — steady-state prefill no longer scales with Done/Fixed history.
+
 ### Bound README's status section — state, not log (planned 2026-09-03)
 
 **Goal.** The initial prompt says "First puts the initial prompt and project status into
