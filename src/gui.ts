@@ -60,13 +60,15 @@ export function statusPayload(root: string): object {
     // header badge from this (absent when disabled).
     budget: snap.budget ?? null,
     loops: snap.loops.map((s) => {
-      const m = displayTokenMetrics(root, s);
+      // One live tail read per running loop per poll (was up to three — see renderStatus).
+      const live = s.running ? readLiveProgress(root, s.role) : null;
+      const m = displayTokenMetrics(root, s, live);
       return {
         role: s.role,
-        phase: loopPhase(s, snap.running, root, budgetPausedNow),
+        phase: loopPhase(s, snap.running, root, budgetPausedNow, live),
         // What a working loop is doing right now (first assistant text of the in-flight run).
         // Null when idle — never show a stale item from a finished tick.
-        currentWork: s.running ? readLiveProgress(root, s.role)?.currentWork ?? null : null,
+        currentWork: live?.currentWork ?? null,
         ticks: s.ticks,
         commits: s.commits,
         generated: m.generated,

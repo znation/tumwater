@@ -3,7 +3,7 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import type { LoopState } from "./types.js";
 import type { StatusSnapshot } from "./status.js";
 import { dailyCost, fleetDailyCost, budgetReached } from "./state.js";
-import { readLiveProgress } from "./progress.js";
+import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2 } from "./text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
@@ -54,16 +54,19 @@ function inFlightLabel(s: LoopState, label: string): string {
   return `${label} ${elapsed}`.trim();
 }
 
-/** The state cell for a working loop: elapsed · turns · live context · current tool. */
-export function workingDetail(root: string, s: LoopState): string {
-  const live = readLiveProgress(root, s.role);
-  if (!live) return inFlightLabel(s, "working");
-  const parts = [inFlightLabel(s, "working"), `turn ${live.turns + 1}`];
-  if (live.contextTokens > 0) parts.push(`ctx ${compactTokens(live.contextTokens)}`);
-  if (live.lastTool) parts.push(live.lastTool);
+/** The state cell for a working loop: elapsed · turns · live context · current tool. Pass
+ * `live` — this frame's already-fetched tail (renderStatus reads once per running loop and
+ * threads it through every helper) — to avoid re-reading the log; without it, this reads on
+ * its own for standalone callers. */
+export function workingDetail(root: string, s: LoopState, live?: LiveProgress | null): string {
+  const p = live === undefined ? readLiveProgress(root, s.role) : live;
+  if (!p) return inFlightLabel(s, "working");
+  const parts = [inFlightLabel(s, "working"), `turn ${p.turns + 1}`];
+  if (p.contextTokens > 0) parts.push(`ctx ${compactTokens(p.contextTokens)}`);
+  if (p.lastTool) parts.push(p.lastTool);
   // Silence under five minutes is normal (slow local-model prefills, long tool calls);
   // only flag a stall once at least five minutes have passed without any pi output.
-  if (live.quietMs >= 300_000) parts.push(`no pi output for ${duration(live.quietMs)}`);
+  if (p.quietMs >= 300_000) parts.push(`no pi output for ${duration(p.quietMs)}`);
   return parts.join(" · ");
 }
 
@@ -71,12 +74,15 @@ export function workingDetail(root: string, s: LoopState): string {
  * sleeping / queued). Pass `root` so an in-flight tick expands into live detail
  * (elapsed · turn · ctx · tool); without it a working loop shows plain "working".
  * `budgetPaused` marks the fleet's daily cost budget as reached: idle role loops show
- * `budget paused` instead of their sleep/queue state — that is why they are not ticking. */
+ * `budget paused` instead of their sleep/queue state — that is why they are not ticking.
+ * `live`, when given, is the frame's precomputed tail (see workingDetail) — it skips the log
+ * read; without it an in-flight tick reads on its own. */
 export function loopPhase(
   s: LoopState,
   orchestratorRunning: boolean,
   root?: string,
   budgetPaused = false,
+  live?: LiveProgress | null,
 ): string {
   if (!orchestratorRunning) return "stopped";
   if (s.running) {
@@ -87,7 +93,7 @@ export function loopPhase(
     }
     // In-flight ticks finish even while the budget is paused — only NEW ticks are blocked,
     // so a running loop keeps its live detail.
-    return root ? workingDetail(root, s) : "working";
+    return root ? workingDetail(root, s, live) : "working";
   }
   if (s.role === DIRECTOR_ROLE) return "waiting for prompts"; // exempt from the cap
   if (budgetPaused) return "budget paused";
@@ -109,12 +115,17 @@ export function loopPhase(
  * log tail describes its last COMPLETED tick, whose tokens ARE the persisted values
  * (combining would double-count), while a stale `running` flag after a crash is still
  * correct to combine because that unfinished tick's counters were reset to 0 at tick start
- * and never re-saved. */
-export function displayTokenMetrics(root: string, s: LoopState): { generated: number; peakCtx: number } {
-  const live = s.running ? readLiveProgress(root, s.role) : null;
+ * and never re-saved. `live`, when given, is the frame's precomputed tail — it skips the log
+ * read; without it a running loop reads on its own (standalone callers). */
+export function displayTokenMetrics(
+  root: string,
+  s: LoopState,
+  live?: LiveProgress | null,
+): { generated: number; peakCtx: number } {
+  const p = s.running ? (live === undefined ? readLiveProgress(root, s.role) : live) : null;
   return {
-    generated: s.generatedTokens + (live?.outputTokens ?? 0),
-    peakCtx: Math.max(s.peakContextTokens, live?.peakContextTokens ?? 0),
+    generated: s.generatedTokens + (p?.outputTokens ?? 0),
+    peakCtx: Math.max(s.peakContextTokens, p?.peakContextTokens ?? 0),
   };
 }
 
@@ -124,12 +135,19 @@ export function displayTokenMetrics(root: string, s: LoopState): { generated: nu
  * gets clipped first. Idle loops are untouched: their log tail describes a finished tick and
  * must not leak its work item into the state cell. (The GUI shows the same item in its own
  * `current` column instead, so its state cell stays clean.) */
-function stateCell(root: string, s: LoopState, orchestratorRunning: boolean, budgetPaused = false): string {
-  const phase = loopPhase(s, orchestratorRunning, root, budgetPaused);
+function stateCell(
+  root: string,
+  s: LoopState,
+  orchestratorRunning: boolean,
+  budgetPaused = false,
+  live?: LiveProgress | null,
+): string {
+  const phase = loopPhase(s, orchestratorRunning, root, budgetPaused, live);
   // While under review the log tail's "current work" is the reviewer's own output, not the
   // author's task — show the bare gate label.
   if (!s.running || s.phase === "review") return phase;
-  const work = readLiveProgress(root, s.role)?.currentWork;
+  const p = live === undefined ? readLiveProgress(root, s.role) : live;
+  const work = p?.currentWork;
   return work ? `${work} · ${phase}` : phase;
 }
 
@@ -189,10 +207,16 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
   // reached the cap, every idle role loop shows `budget paused` in its state cell.
   const budgetPausedNow = budgetReached(snap.budget);
-  const withMetrics = snap.loops.map((s) => ({ s, m: displayTokenMetrics(root, s) }));
-  const rows = withMetrics.map(({ s, m }) => [
+  // One live tail read per running loop per frame, threaded through every cell that shows
+  // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
+  // its own, up to three stats + reads per loop per second.
+  const withMetrics = snap.loops.map((s) => {
+    const live = s.running ? readLiveProgress(root, s.role) : null;
+    return { s, m: displayTokenMetrics(root, s, live), live };
+  });
+  const rows = withMetrics.map(({ s, m, live }) => [
     s.role,
-    stateCell(root, s, snap.running, budgetPausedNow),
+    stateCell(root, s, snap.running, budgetPausedNow, live),
     String(s.ticks),
     String(s.commits),
     compactTokens(m.generated),
