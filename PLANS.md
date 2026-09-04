@@ -244,12 +244,56 @@ readme tick under the new contract.)
   landing narrative — only capability summary, open items, and freshness stamp; git log preserves
   the pre-collapse paragraph.
 
-**Sibling concern, deliberately not planned here.** PLANS.md (~150KB) and BUGS.md (~56KB) carry
+**Sibling concern, deliberately not planned here.** PLANS.md (~160KB) and BUGS.md (~57KB) carry
 the same unbounded-history growth in their Done/Fixed sections, which every tick also reads. They
 decompose into separate entries with different owners (steward curation for PLANS.md;
 bugfix/steward for BUGS.md) and different policies (e.g. compressing a Done entry must wait until
 nothing remains), and this README case is the sharpest instance to prove the pattern first —
 revisit once it has landed.
+
+**Refined 2026-09-03 (plan loop) — audited against current main (`548168d`); the transition
+already landed ahead of this plan, so the goal is reframed from collapse to durability.**
+Verified at `548168d`: every structural claim in the Approach still holds — src/roles.ts's readme
+find text is byte-identical to what the entry quotes ("Update the status section … to reflect
+reality: what works, what is in progress, how to build/run/test"); test/prompt.test.ts has no
+readme contract block yet; its `oneLine` helper sits at line 326 and the steward pattern it tells
+the implementer to follow (`const steward = roleById("steward")`, assertions on
+`oneLine(steward!.find)`) is exactly as described (lines ~509–548); and the existing readme
+assertion ("the readme role leaves PRINCIPLES.md to the director and steward", lines 182–185)
+still matches a literal `\n` inside the find text, so the oneLine conversion is still required.
+What changed: the Goal's size claims are stale. The transition this entry anticipated — rewriting
+the ~38KB narrative paragraph into state-only form — already landed at `1f70a95`
+("Rewrite status section as state-only snapshot at main f995ecb", 22 insertions / 112 deletions),
+ahead of any contract in roles.ts: the README is now ~15.5KB and the status section ~1.9KB, well
+under the 8KB guard, carrying exactly the spec'd shape (capability summary line, open items,
+`Current main (\`<sha>\`)` freshness stamp). The collapse happened once because every tick prompt
+tells its loop to read PLANS.md first (src/prompt.ts), where this entry spelled out the target
+form; nothing enforces it going forward. The find text still
+says "Update the status section … to reflect reality", which is what produced the original
+"Since then: X landed…" appends — so absent this contract, subsequent syncs regrow the log and
+every one of the thirteen loops pays it in prefill again. Corrected spec:
+
+1. **Goal reframed.** The remaining problem is durability, not collapse: codify the state-only
+   snapshot as an explicit contract in the readme role's find text so every future sync rewrites
+   the section wholesale and cannot drift back into per-tick narrative — small by construction,
+   with the ~8KB guard as the tripwire. The Goal's "~38.7KB paragraph in a 52KB README" framing is
+   superseded; cite `1f70a95` as the one-off that proved the target form.
+2. **Transition item retired.** The Approach's "Transition (NOT this plan's implementer)" bullet
+   and the AC's "Transition verified by observation" criterion are already satisfied at `1f70a95`
+   — remove them from the remaining work. Replace with a durability observation (still not this
+   plan's implementer): on subsequent readme syncs after landing, the section stays under 8KB and
+   gains no per-tick narrative; git log preserves both the pre-collapse paragraph and `1f70a95`.
+3. **Use the landed form as the reference example.** The contract's content spec (capability
+   summary / open items / freshness stamp) must match what `1f70a95` actually produced, so the
+   prompt codifies practice rather than inventing a new shape; the implementer should read that
+   commit's diff when writing the find text.
+4. **Sibling numbers refreshed.** PLANS.md is now ~160KB and BUGS.md ~57KB (was ~150/~56) — same
+growth, still deliberately not planned here.
+
+Everything else in this entry stands unchanged: the four contract clauses, the roles.ts rewrite,
+the test/prompt.test.ts work (new readme contract block + oneLine conversion of the existing
+assertion), and the files-touched list. The plan remains independently pickable by the feature
+loop as-is once these corrections are read with it.
 
 ## Done
 
