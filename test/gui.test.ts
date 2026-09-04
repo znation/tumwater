@@ -685,3 +685,50 @@ test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", 
     server.close();
   }
 });
+
+test("gui survives a client that disconnects mid-upload and keeps serving", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui aborted upload test");
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  try {
+    // A client that vanishes mid-upload (browser closed, flaky LAN): the body is cut off
+    // short of Content-Length, so Node fires 'error' (ECONNRESET) on the request stream.
+    // readBody must settle via that error — a handler left awaiting a never-settling promise
+    // would leak one per aborted upload, and an uncaught error from the dead connection could
+    // kill the dashboard over one dropped client. The partial body is not valid JSON, so even
+    // a regression that resolved it early could only 400 — nothing may be queued.
+    const socket = net.connect(addr.port, "127.0.0.1");
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(
+        "POST /api/prompt HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 4096\r\nConnection: close\r\n\r\n" +
+          '{"text": "cut off mid', // partial body — far short of Content-Length
+        () => resolve(),
+      );
+    });
+    await new Promise((r) => setTimeout(r, 50)); // let the server start reading the body
+    socket.destroy(); // client gone before the body completes
+
+    // Give the error path a moment to settle (req 'error' → readBody reject → handler catch).
+    await new Promise((r) => setTimeout(r, 200));
+
+    // The aborted upload queued nothing — a partial body must never become a prompt.
+    assert.equal(inboxSize(repo), 0, "the aborted upload queued no prompt");
+
+    // The dashboard survived the dropped connection and still serves: status answers and a
+    // fresh, complete prompt is accepted end to end.
+    const base = `http://127.0.0.1:${addr.port}`;
+    assert.equal((await fetch(base + "/api/status")).status, 200);
+    const res = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "sent after the abort" }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(dequeuePrompt(repo), "sent after the abort");
+  } finally {
+    server.close();
+  }
+});
