@@ -6,6 +6,7 @@ import {
   extractRefusal,
   hasVerdictLine,
   isNothingToDo,
+  labeledLine,
   verdictLines,
 } from "../src/reply-contract.js";
 
@@ -41,6 +42,49 @@ test("extractRefusal ignores mid-sentence mentions (line-start anchor)", () => {
 test("extractRefusal returns the first parseable line when several exist", () => {
   const text = `${REFUSED_SENTINEL}: first reason\n${REFUSED_SENTINEL}: second reason`;
   assert.equal(extractRefusal(text), "first reason");
+});
+
+// labeledLine is the shared parser every reply-field extraction goes through (SUMMARY/WHY/
+// RISK/VERIFIED in commit-message.ts, the TUMWATER_REFUSED reason above). These tests pin its
+// full contract directly — including the bare-label branch, which only surfaces when a label
+// line carries no content of its own.
+
+test("labeledLine returns the trimmed value of the first matching line", () => {
+  assert.equal(labeledLine("SUMMARY: did a thing\nWHY: because", "SUMMARY"), "did a thing");
+  assert.equal(labeledLine("  SUMMARY:   indented and padded  ", "SUMMARY"), "indented and padded");
+});
+
+test("labeledLine matches only whole labels at line start, not words containing them", () => {
+  // A longer label sharing the prefix must not match — but a later real line still does.
+  assert.equal(labeledLine("SUMMARYX: nope\nSUMMARY: real", "SUMMARY"), "real");
+  assert.equal(labeledLine("MY_SUMMARY: nope", "SUMMARY"), null);
+});
+
+test("labeledLine returns the first match when several lines carry the label", () => {
+  assert.equal(labeledLine("A: one\nA: two", "A"), "one");
+});
+
+test("labeledLine captures the following line when a label line carries no content", () => {
+  // The value pattern is \\s*(.+)\\s*$ and \\s spans newlines, so a bare (or whitespace-only)
+  // label line swallows the next line as its value. This leniency is what lets a model that
+  // wraps after "TUMWATER_REFUSED:" still hand over its reason; pin it so tightening the regex
+  // to stay on one line becomes a deliberate, test-visible change.
+  assert.equal(labeledLine("preamble\nSUMMARY:\nthe real summary", "SUMMARY"), "the real summary");
+  assert.equal(labeledLine("SUMMARY:   \nwrapped value", "SUMMARY"), "wrapped value");
+});
+
+test("labeledLine returns null when a bare label has no following content", () => {
+  assert.equal(labeledLine("preamble\nSUMMARY:", "SUMMARY"), null);
+  assert.equal(labeledLine("preamble\nSUMMARY:\n", "SUMMARY"), null);
+  assert.equal(labeledLine("no labels here at all", "SUMMARY"), null);
+});
+
+test("labeledLine matches each label independently (a swallowed line is not consumed)", () => {
+  // A bare WHY swallows the RISK line as its value, but the RISK label still matches on its
+  // own — extracting one field never hides another.
+  const text = "WHY: \nRISK: real risk";
+  assert.equal(labeledLine(text, "WHY"), "RISK: real risk");
+  assert.equal(labeledLine(text, "RISK"), "real risk");
 });
 
 // The verdict line is anchored at line start so prose that merely mentions "VERDICT:"
