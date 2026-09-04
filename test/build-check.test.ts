@@ -99,10 +99,19 @@ test("detectBuildCheck walks up from a worktree without node_modules to the inst
 // load-bearing one — skipping past a scriptless installed project to an unrelated ancestor would
 // run THAT project's build script against this worktree (or nothing of this project at all).
 
-test("detectBuildCheck prefers typecheck over build when both scripts are declared", () => {
+test("detectBuildCheck prefers test over typecheck and build when all three scripts are declared", () => {
   const base = tmpdir("buildcheck-pref-");
   const root = path.join(base, "project");
   fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
+
+  // All three declared: test wins — npm convention makes `npm test` the canonical verify command.
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "b", typecheck: "t", test: "x" } }),
+  );
+  assert.deepEqual(detectBuildCheck(root), { rootDir: root, script: "test" });
+
+  // Without a test script the old preference stands: typecheck over build.
   fs.writeFileSync(
     path.join(root, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "b", typecheck: "t" } }),
@@ -139,10 +148,10 @@ test("detectBuildCheck tolerates a malformed or scriptless package.json without 
   fs.writeFileSync(path.join(root, "package.json"), "{ not json ");
   assert.equal(detectBuildCheck(root), null);
 
-  // A scripts object with neither a usable typecheck nor build (empty string / non-string) is no check.
+  // A scripts object with neither a usable test, typecheck, nor build (empty string / non-string) is no check.
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "", typecheck: null } }),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "", build: "", typecheck: null } }),
   );
   assert.equal(detectBuildCheck(root), null);
 });

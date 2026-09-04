@@ -352,10 +352,19 @@ test("gate pre-check compiles the worktree against the root install — a health
 
 // ── Build pre-check: detection edge cases, tail clipping, no-npm skip ───────────────
 
-test("detectBuildCheck prefers typecheck over build when both scripts are declared", () => {
+test("detectBuildCheck prefers test over typecheck and build when all three scripts are declared", () => {
   const base = tmpdir("buildcheck-");
   const dir = path.join(base, "proj");
   fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+
+  // All three declared: test wins — npm convention makes `npm test` the canonical verify command.
+  fs.writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({ scripts: { build: "tsc", typecheck: "tsc --noEmit", test: "node --test" } }),
+  );
+  assert.deepEqual(detectBuildCheck(dir), { rootDir: dir, script: "test" });
+
+  // Without a test script the old preference stands: typecheck over build.
   fs.writeFileSync(
     path.join(dir, "package.json"),
     JSON.stringify({ scripts: { build: "tsc", typecheck: "tsc --noEmit" } }),
@@ -481,10 +490,15 @@ test("runBuildCheck skips (not fails closed) when npm is missing from PATH", asy
 // ── Build pre-check: gate-level e2e (failing build, hanging build) ──────────────────
 
 /** A repo whose root carries the install signature (package.json + node_modules) and a
- * worktree with a committed change; both manifests declare the same build script. `toolBody`,
- * when given, is installed as an executable at the root's node_modules/.bin/buildcheck-tool —
- * the dogfood layout where the worktree resolves its toolchain from the installed root. */
-async function gateBuildFixture(buildScript: string, toolBody?: string): Promise<{ root: string; wt: string }> {
+ * worktree with a committed change; both manifests declare the same check script under
+ * `scriptName` (default `build`). `toolBody`, when given, is installed as an executable at
+ * the root's node_modules/.bin/buildcheck-tool — the dogfood layout where the worktree
+ * resolves its toolchain from the installed root. */
+async function gateBuildFixture(
+  buildScript: string,
+  toolBody?: string,
+  scriptName = "build",
+): Promise<{ root: string; wt: string }> {
   const root = makeRepo();
   fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
   if (toolBody) {
@@ -494,12 +508,12 @@ async function gateBuildFixture(buildScript: string, toolBody?: string): Promise
   }
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: buildScript } }),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { [scriptName]: buildScript } }),
   );
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: buildScript } }),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { [scriptName]: buildScript } }),
   );
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
   sh(wt, "git", "add", "-A");
@@ -530,6 +544,31 @@ test("gate pre-check rejects a failing build with zero reviewer runs and the com
     const rejected = readEvents(root).find((e) => e.type === "review_rejected");
     assert.ok(rejected, "the rejection is logged for tumwater logs");
     assert.match(String(rejected?.reasons), /TS2345/); // the compiler tail rides on the event
+  } finally {
+    restore();
+  }
+});
+
+test("gate pre-check selects the declared test script — a failing suite rejects with zero reviewer runs", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho '1 failing of 3 tests: assert.equal'\nexit 1\n",
+    "test",
+  );
+
+  // The fake pi records ANY invocation — the pre-check must decide before it is ever asked.
+  const marker = path.join(tmpdir(), "pi-ran");
+  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "rejected"); // deterministic — no model verdict involved
+    assert.ok(!fs.existsSync(marker), "the reviewer never ran: the pre-check decided alone");
+    assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
+    assert.match(result.detail ?? "", /^build check failed \(test\): /);
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.match(reasons[0] ?? "", /^build check failed \(test\): 1 failing/); // header names the script that ran
+    assert.equal(state.unreviewFailures, 0); // a deterministic verdict resets strikes like a model reject
   } finally {
     restore();
   }

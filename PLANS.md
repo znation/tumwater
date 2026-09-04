@@ -113,7 +113,10 @@ the test/prompt.test.ts work (new readme contract block + oneLine conversion of 
 assertion), and the files-touched list. The plan remains independently pickable by the feature
 loop as-is once these corrections are read with it.
 
-### Run the project's own test suite in the deterministic pre-merge gate (planned 2026-09-04)
+## Done
+
+### Run the project's own test suite in the deterministic pre-merge gate (planned 2026-09-04,
+done 2026-09-04)
 
 **Goal.** The pre-check that gates every code merge recognizes only `typecheck` and `build` npm
 scripts — it never runs tests. tumwater itself declares no `typecheck`, so its own gate is a bare
@@ -161,7 +164,25 @@ it judges it stale.)
   (feasibility verified by the plan loop on 2026-09-04: 599/599 in ~53 s, no local node_modules
   needed — npm's run-script walks up to the installed ancestor).
 
-## Done
+**Done 2026-09-04 (feature tick) — implemented as planned against main `48131e9`; nothing remains.**
+Audited first: at `48131e9` no part had landed — `buildCheckFrom` still preferred only
+`typecheck`/`build`, and both test files still pinned the two-script preference. This tick landed
+all three Approach items in one change: src/build-check.ts's `buildCheckFrom` now prefers
+`scripts.test`, then `typecheck`, then `build` (module header and doc comments updated per spec —
+npm convention makes `test` the canonical verify command; for tumwater `test` subsumes `build`),
+with execution/classification behavior untouched. test/build-check.test.ts's preference test now
+pins the three-way order (all three declared → `test`; typecheck+build only → `typecheck`) and its
+malformed/scriptless fixture includes a non-usable `test`. test/review.test.ts got the same
+preference-test update, plus `gateBuildFixture` gained a script-name parameter and a new e2e —
+"gate pre-check selects the declared test script — a failing suite rejects with zero reviewer
+runs": a worktree declaring a failing `test` script is rejected deterministically (no pi run,
+branch reset to main, unreviewFailures reset) with reasons starting `build check failed (test):`.
+The Approach's optional fixture extension was taken; every other gate fixture still declares only
+`build`, so its `(build)` rejection-text assertions are unchanged. Consequence: from this landing
+onward tumwater's own pre-merge gate runs its full suite (`npm test` = build + node:test) instead
+of bare `tsc`. Verified on this tree: build clean, full suite 600/600 in ~51 s (main's 599 plus
+this tick's one new test). Files: src/build-check.ts, test/build-check.test.ts,
+test/review.test.ts, PLANS.md.
 
 ### Abort a single loop's in-flight tick — `tumwater abort --role <id>` (planned 2026-09-03,
 refined 2026-09-03, re-audited 2026-09-03, re-audited 2026-09-04, done 2026-09-04)

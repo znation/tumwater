@@ -7,8 +7,9 @@ import { truncate } from "./text.js";
 const execFileAsync = promisify(execFile);
 
 /** The deterministic build pre-check the review gate runs before any model reviewer: detect
- * the project's declared check (an npm script) by walking up to the installed root, run it in
- * the worktree with a hard timeout, and classify the outcome. Split out of review.ts — which
+ * the project's declared check (an npm script — `test` preferred per npm convention, then
+ * `typecheck`, then `build`) by walking up to the installed root, run it in the worktree with a
+ * hard timeout, and classify the outcome. Split out of review.ts — which
  * keeps the adversarial review gate itself — because this is a self-contained concern with its
  * own data model (BuildCheck/BuildCheckOutcome), detection algorithm (walk-up to the install),
  * and execution/classification logic: deterministic process verification, distinct from the
@@ -37,7 +38,7 @@ export function clipReason(r: string): string {
 interface BuildCheck {
   /** Directory holding the qualifying package.json + node_modules. */
   rootDir: string;
-  /** The npm script to run — `typecheck` preferred, else `build`. */
+  /** The npm script to run — `test` preferred, then `typecheck`, else `build`. */
   script: string;
 }
 
@@ -52,8 +53,11 @@ function hasInstall(dir: string): boolean {
   }
 }
 
-/** Read the check script from `dir`'s package.json: prefer typecheck, else build; null when
- * neither is present or the file cannot be read/parsed (detection never throws). */
+/** Read the check script from `dir`'s package.json: prefer test — npm convention makes
+ * `npm test` the canonical verify command — then typecheck, then build; null when none is
+ * present or the file cannot be read/parsed (detection never throws). For tumwater itself
+ * `test` subsumes `build`: its script runs `npm run build && node --test …`, so one gate run
+ * verifies both. */
 function buildCheckFrom(dir: string): BuildCheck | null {
   let pkg: unknown;
   try {
@@ -64,6 +68,7 @@ function buildCheckFrom(dir: string): BuildCheck | null {
   const scripts = (pkg as { scripts?: unknown }).scripts;
   if (!scripts || typeof scripts !== "object") return null;
   const s = scripts as Record<string, unknown>;
+  if (typeof s.test === "string" && s.test) return { rootDir: dir, script: "test" };
   if (typeof s.typecheck === "string" && s.typecheck) return { rootDir: dir, script: "typecheck" };
   if (typeof s.build === "string" && s.build) return { rootDir: dir, script: "build" };
   return null;
@@ -71,7 +76,8 @@ function buildCheckFrom(dir: string): BuildCheck | null {
 
 /** Find the project's deterministic build check by walking UP from `startDir` — at most
  * `maxLevels` ancestors (default 5) — to the nearest directory containing BOTH a package.json
- * and a node_modules/ directory, then preferring scripts.typecheck over scripts.build. The
+ * and a node_modules/ directory, then preferring scripts.test over scripts.typecheck and
+ * scripts.build (npm convention: `test` is the canonical verify command). The
  * walk is required: tumwater worktrees live under `<repo>/.tumwater/worktrees/<role>` with no
  * install of their own (node_modules is gitignored — it exists only where someone ran npm
  * install), so a literal startDir check would silently disable the pre-check forever in
