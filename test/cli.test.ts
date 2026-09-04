@@ -12,7 +12,7 @@ import { defaultConfig, loadConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
-import { inboxDir, orchestratorStatePath, piLogPath, resetRequestPath } from "../src/paths.js";
+import { abortRequestPath, inboxDir, orchestratorStatePath, piLogPath, resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
@@ -503,6 +503,111 @@ test("tui gates on repo readiness, rejects extra args, and fails cleanly without
   r = await cli(repo, "tui", "--json");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /takes no arguments/);
+});
+
+// --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---
+// The CLI cannot reach into the orchestrator process, so the request rides on disk: a
+// per-role marker (.tumwater/abort-<role>.json) a running fleet consumes within one poll
+// cycle. The fleet-side consumption is covered by test/orchestrator.test.ts; here we pin
+// what the CLI itself does — validation, the live-harness gate, and the marker it drops.
+
+test("abort validates its arguments before touching anything", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli abort validation");
+
+  // No flag at all: the command cannot know which loop to kill.
+  let r = await cli(repo, "abort");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /abort requires --role <id>/);
+
+  // A bare --role has no id to validate against.
+  r = await cli(repo, "abort", "--role");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--role needs a role id/);
+
+  // Unknown role: the parser fails before any marker could be written — a typo'd role must
+  // not drop a marker no runner will ever match.
+  r = await cli(repo, "abort", "--role", "bogus");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
+
+  // Unknown flags and stray positionals are rejected like every other command.
+  r = await cli(repo, "abort", "--rol", "feature");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --rol/);
+
+  r = await cli(repo, "abort", "--role", "feature", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: extra/);
+
+  // None of the failures left a marker behind.
+  for (const role of ["feature", "clean"]) {
+    assert.ok(!fs.existsSync(abortRequestPath(repo, role)), `no ${role} marker on failure`);
+  }
+});
+
+test("abort refuses when no harness is running — missing or stale info file alike", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli abort no harness");
+
+  // No orchestrator info at all: nothing would consume the marker.
+  let r = await cli(repo, "abort", "--role", "feature");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no harness is running/);
+  assert.match(r.stderr, /tumwater run/);
+  assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "no marker written");
+
+  // A stale info file (dead pid) must read the same way: a crash leaves the file behind,
+  // and a marker dropped now would sit in .tumwater until the NEXT fleet start — where its
+  // first poll would abort a tick that was never running when the user asked. Refuse.
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(
+    orchestratorStatePath(repo),
+    JSON.stringify({ pid: 2_000_000_000, startedAt: Date.now(), roles: [] }), // beyond any pid space
+  );
+  r = await cli(repo, "abort", "--role", "feature");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no harness is running/);
+  assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "stale info writes no marker");
+
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
+test("abort drops a per-role marker for a live harness and reports it", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli abort live");
+
+  // Record this test process as the running orchestrator (it is alive).
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(
+    orchestratorStatePath(repo),
+    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["feature"] }),
+  );
+
+  let r = await cli(repo, "abort", "--role", "feature");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /abort requested for feature/);
+  assert.match(r.stdout, /within ~2s/);
+
+  // The marker IS the request: one file per role, content just { at } — the fleet matches
+  // on the name and removes it to acknowledge.
+  const marker = JSON.parse(fs.readFileSync(abortRequestPath(repo, "feature"), "utf8")) as {
+    at: number;
+  };
+  assert.ok(marker.at > 0);
+
+  // Other roles' markers are untouched by an abort of one role.
+  fs.writeFileSync(abortRequestPath(repo, "clean"), JSON.stringify({ at: 1 }));
+  r = await cli(repo, "abort", "--role", "feature");
+  assert.equal(r.code, 0);
+  assert.ok(fs.existsSync(abortRequestPath(repo, "clean")), "other role's marker untouched");
+
+  // The CLI itself logs no event — the fleet logs tick_aborted when it applies the request.
+  const logs = await cli(repo, "logs", "-n", "10");
+  assert.equal(logs.code, 0);
+  assert.ok(!logs.stdout.includes("tick_aborted"), `no abort event from the CLI:\n${logs.stdout}`);
+
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
 
 // --- logs --role (per-role pi transcript) ---
