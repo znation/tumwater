@@ -113,6 +113,54 @@ the test/prompt.test.ts work (new readme contract block + oneLine conversion of 
 assertion), and the files-touched list. The plan remains independently pickable by the feature
 loop as-is once these corrections are read with it.
 
+### Run the project's own test suite in the deterministic pre-merge gate (planned 2026-09-04)
+
+**Goal.** The pre-check that gates every code merge recognizes only `typecheck` and `build` npm
+scripts — it never runs tests. tumwater itself declares no `typecheck`, so its own gate is a bare
+`tsc`: type errors are caught, but test failures land on main. That is the recurring failure mode
+in BUGS.md's Fixed section: "Tests red on main" / "Build broken on main" entries from 2026-08-27
+to 2026-09-03 (feature ticks 44/49/52, organize tick 78, clean tick 91, feature tick 83), each
+discovered only after landing by the readme loop and costing a bugfix tick plus a status sync.
+Fix: make detection prefer `test` when declared, so the gate runs the project's canonical
+verification — for tumwater, build + full node:test suite (~53 s measured in a worktree on
+2026-09-04) — and a red suite is rejected before merge with the clipped output tail as
+machine-generated reasons.
+
+**Approach.**
+- src/build-check.ts — `buildCheckFrom`: prefer `scripts.test`, then `typecheck`, then `build`
+  (still exactly one script per gate run). Update the module header and function doc comments:
+  the check is "the project's declared deterministic verification", following npm convention that
+  `npm test` is the canonical verify command; note that for tumwater `test` subsumes `build`. All
+  execution/classification behavior stays as-is: 300 s timeout → skipped (environmental, warn and
+  proceed), nonzero exit → failed with clipped tail, no npm on PATH → skipped.
+- test/build-check.test.ts — update "detectBuildCheck prefers typecheck over build when both
+  scripts are declared" to pin the three-way preference (`test` > `typecheck` > `build`; keep a
+  two-script case for typecheck-over-build); extend the malformed/scriptless fixture and comment
+  ("neither a usable typecheck nor build") to include `test`.
+- test/review.test.ts — the duplicated preference test (~line 355) gets the same update. Every
+  other gate fixture declares only `build`, so their `build check failed (build)` rejection-text
+  assertions stay valid unchanged; optionally extend one fixture to declare a failing `test`
+  script and pin that it is selected and rejected with reasons starting
+  `build check failed (test):`.
+- Deliberately no config knob (opinionated defaults over configuration): a project whose `test`
+  script hangs hits the existing timeout→skipped path, and a flaky suite produces loud
+  deterministic rejections — that is the gate surfacing suite health, not a defect to work around;
+the 3-strike discard cap bounds any damage. Do not weaken the gate to accommodate flakiness.
+
+**Files touched.** src/build-check.ts, test/build-check.test.ts, test/review.test.ts. (The
+README's "deterministic build pre-check" sentence stays accurate; the readme loop syncs wording if
+it judges it stale.)
+
+**Acceptance criteria.**
+- detectBuildCheck returns `test` when all three scripts are declared, `typecheck` when only
+  typecheck+build exist, and `build` alone as before — pinned by unit tests in both test files.
+- A worktree whose package.json declares a failing `test` script is rejected by the gate with zero
+  reviewer runs, reasons starting `build check failed (test):`, branch reset to main (existing
+  rejection-path semantics: no pi run consumed, unreviewFailures reset).
+- Build clean; full suite green — including running `npm test` with cwd = a tumwater worktree
+  (feasibility verified by the plan loop on 2026-09-04: 599/599 in ~53 s, no local node_modules
+  needed — npm's run-script walks up to the installed ancestor).
+
 ## Done
 
 ### Abort a single loop's in-flight tick — `tumwater abort --role <id>` (planned 2026-09-03,
