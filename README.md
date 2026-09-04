@@ -41,22 +41,15 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 `prompt --cancel <n>`, `reset-counters [--role <id>]`, and `abort --role <id>` (kills one loop's
 in-flight tick; work discarded, the loop keeps running). All twelve roles — feature, bugfix, plan,
 readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve, steward (~6 h clock) — plus
-the director are enabled by default. Every tick runs in a fresh pi session (durable knowledge lives
-in the repo's markdown, read at the start of each tick); changed work passes a deterministic
-pre-check — the project's declared verify script (`npm test` when declared, else typecheck/build)
-— and an adversarial review gate against PRINCIPLES.md before rebasing onto main under a
-shared merge lock; interrupted ticks resume on next launch. `tumwater.json` reloads live — every
-setting applies within ~2 s without a restart, including the `maxDailyCostUsd` daily spend cap
-(default $50/day; role loops pause at the cap, the director stays exempt) and per-tick token/cost
-on each tick_end.
+the director are enabled by default.
 
 Open items:
-- Planned (PLANS.md): bound this status section as a state-only snapshot rewritten wholesale on
-  each sync, with no per-tick landing narrative (landings belong in PLANS.md/BUGS.md and git log).
+- Planned (PLANS.md): section-aware tick reads — bound per-tick prefill by reading only the
+  actionable top sections of PLANS.md/BUGS.md instead of the whole files (planned 2026-09-04).
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`3b5ecbf`): build clean, suite 604/604, verified 2026-09-04.
+Current main (`1cc03b9`): build clean, suite 610/610, verified 2026-09-04.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -72,8 +65,10 @@ one loop per enabled role. Every loop tick:
    knowledge lives in the repo itself (README/PLANS/BUGS/QUESTIONS, read at the start of every tick), not
    in model context.
 3. If pi changed files: commits, then runs an adversarial review gate over the full ahead-of-main
-   diff — a fresh-session reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject`
-   (md-only diffs are exempt); rejects reset the branch with reasons injected into the author's
+   diff — first a deterministic build pre-check (the project's declared verify script: `npm test`
+   when declared, else typecheck/build; failure rejects without spending a model run), then a
+   fresh-session reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject` (md-only
+   diffs are exempt); rejects reset the branch with reasons injected into the author's
    next tick, failures keep the commit for re-review under a 3-strike discard cap. Approved work
    rebases the branch onto main (so main's history stays linear) and fast-forwards — all under a
    merge lock shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
