@@ -52,14 +52,15 @@ on each tick_end.
 Open items:
 - Planned (PLANS.md): `tumwater abort --role <id>` — src has landed; remainder is two small src
   fixes (`pendingUserPrompt` cleared on a user-abort of the author run, and a director clause in
-  the CLI confirmation) plus four test groups (orchestrator e2e, scheduling units, events, CLI);
-  the loop e2e group has landed.
+  the CLI confirmation) plus three test groups (orchestrator e2e, scheduling units, events); the
+  loop e2e and CLI groups have landed (the CLI group's director-clause assertion waits on that
+  src fix).
 - Planned (PLANS.md): bound this status section as a state-only snapshot rewritten wholesale on
   each sync, with no per-tick landing narrative (landings belong in PLANS.md/BUGS.md and git log).
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`07b7a7e`): build clean, suite 591/591, verified 2026-09-03.
+Current main (`bd7df5e`): build clean, suite 594/594, verified 2026-09-04.
 <!-- tumwater:status:end -->
 
 ## How it works
