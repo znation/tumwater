@@ -1310,8 +1310,8 @@ test("a transient timeout on both attempts errors with the real cause (regressio
   }
 });
 
-// Quiet watchdog: the run is killed when pi stops making *progress* (structural events or
-// real content growth), not merely when it stops running fast.
+// Quiet watchdog: the run is killed when pi stops making *progress* (message/turn/tool
+// boundary events — streaming deltas never count), not merely when it stops running fast.
 
 test("a pi run that goes silent is killed as hung and never commits partial work", async () => {
   const repo = await initializedRepo();

@@ -115,12 +115,12 @@ export class PiStreamParser {
   finalMessageContentless = false;
   /** True when pi auto-compacted the session during (or at the end of) the run. */
   compacted = false;
-  /** Incremented for every parsed event that represents real forward progress. A
-   * message_update counts only when its streamed content actually GREW — zombie streams
-   * (a dead generation whose connection stays open) drip content-free keepalive updates
-   * for hours, and those must not reset the harness's hang watchdog. */
+  /** Incremented for every parsed event that represents real forward progress — message,
+   * turn, and tool boundaries, retries, session events. Streaming deltas (message_update)
+   * never count: pi's JSON protocol strips the cumulative snapshot from them, so they carry
+   * nothing this parser acts on, and a zombie stream's content-free keepalives must not
+   * reset the harness's hang watchdog. */
   progressCount = 0;
-  private updateContentHighWater = 0;
   private buffer = "";
 
   feed(chunk: string, onLine?: (line: string) => void): void {
@@ -137,6 +137,12 @@ export class PiStreamParser {
   }
 
   private feedLine(line: string): void {
+    // Streaming deltas are ~72% of log bytes in observed runs, and pi's JSON protocol strips
+    // the cumulative message snapshot from them — they carry only constant-size usage plus a
+    // small delta event, none of which this parser acts on (progress comes from the boundary
+    // events around them). Skip even parsing them.
+    if (piEventType(line) === "message_update") return;
+
     let event: { type?: string; message?: PiMessage; errorMessage?: string; finalError?: string };
     try {
       event = JSON.parse(line);
@@ -150,27 +156,9 @@ export class PiStreamParser {
       // the session-poisoning heuristic and trigger needless retries.
       if (TRANSIENT_SERVER_TIMEOUT.test(text)) this.transientServerTimeout = true;
     }
-    if (event.type === "message_update") {
-      // Progress only when the streamed message got longer (content chars or tokens).
-      const msg = event.message;
-      let chars = 0;
-      for (const c of (msg?.content ?? []) as Array<Record<string, unknown>>) {
-        for (const key of ["text", "thinking"]) {
-          const v = c[key];
-          if (typeof v === "string") chars += v.length;
-        }
-      }
-      const grew = chars + (msg?.usage?.totalTokens ?? 0);
-      if (grew > this.updateContentHighWater) {
-        this.updateContentHighWater = grew;
-        this.progressCount += 1;
-      }
-      return;
-    }
-    // Every other structured event (turn/tool/message boundaries, retries, session) is
-    // real progress; the high-water mark resets so the next message streams from zero.
+    // Every structured event (turn/tool/message boundaries, retries, session) is real
+    // progress — streaming deltas never are (they are skipped above, before parsing).
     this.progressCount += 1;
-    this.updateContentHighWater = 0;
     if (event.type === "compaction_start") this.compacted = true;
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;
@@ -287,8 +275,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     opts.signal?.addEventListener("abort", onAbort, { once: true });
     if (opts.signal?.aborted) onAbort();
 
-    // Quiet watchdog: a healthy run makes PROGRESS continuously even when slow — streamed
-    // content grows, turns and tool calls complete. Prolonged lack of progress means a hung
+    // Quiet watchdog: a healthy run makes PROGRESS continuously even when slow — messages
+    // start and end, turns and tool calls complete. Prolonged lack of progress means a hung
     // tool (an interactive command waiting for input) or a zombie stream (a dead generation
     // whose connection drips content-free keepalive updates for hours) that would otherwise
     // burn the whole tick timeout. Raw output bytes deliberately do NOT reset the clock:

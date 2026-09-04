@@ -200,63 +200,38 @@ test("parser ignores user message_end events", () => {
 });
 
 // Progress counting feeds the quiet watchdog (runPi kills a run that stops making progress):
-// structural events and real content growth count; size-identical keepalive updates do not.
+// structural/boundary events count; streaming deltas never do. pi's JSON protocol strips the
+// cumulative message snapshot from message_update lines, so they carry nothing this parser
+// acts on — and skipping them before parsing is what keeps a zombie stream's content-free
+// keepalives (in any shape) from resetting the watchdog clock.
 
-test("message updates whose content grows count as progress and keep the run alive", () => {
+test("message updates never count as progress; boundary events do", () => {
   const parser = new PiStreamParser();
-  const update = (text: string) =>
-    JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text }] } }) + "\n";
+  // Current wire format: constant-size usage plus a small delta event, no cumulative message.
+  const update = (delta: string) =>
+    JSON.stringify({
+      type: "message_update",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {} },
+      assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta },
+    }) + "\n";
   parser.feed(update("a"));
   parser.feed(update("ab"));
-  const afterGrowth = parser.progressCount;
-  assert.ok(afterGrowth >= 2, "growing updates are progress");
-  parser.feed(update("ab"));
-  parser.feed(update("ab"));
-  assert.equal(parser.progressCount, afterGrowth, "size-identical keepalive updates are not progress");
+  assert.equal(parser.progressCount, 0, "deltas are not progress");
   parser.feed(JSON.stringify({ type: "turn_end" }) + "\n");
-  assert.equal(parser.progressCount, afterGrowth + 1, "structural events are progress");
+  assert.equal(parser.progressCount, 1, "structural events are progress");
 });
 
-test("the per-message high-water mark resets so a short message after a long one still counts", () => {
+test("message updates are skipped before parsing even in the old cumulative shape", () => {
   const parser = new PiStreamParser();
-  const update = (text: string) =>
-    JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text }] } }) + "\n";
-
-  // Message one streams to a large size, setting the high-water mark.
-  parser.feed(update("a".repeat(50)));
-  parser.feed(update("a".repeat(200)));
-  const afterFirst = parser.progressCount;
-  assert.equal(afterFirst, 2, "growing updates of message one are progress");
-
-  // A structural event ends the message and must reset the mark to zero...
-  parser.feed(JSON.stringify({ type: "turn_end" }) + "\n");
-  const afterBoundary = parser.progressCount;
-  assert.equal(afterBoundary, afterFirst + 1);
-
-  // ...so a second, much shorter message still registers progress as it streams.
-  // Without the reset its size never exceeds the first message's high-water mark and a
-  // healthy run alternating long/short messages would look like a zombie to the watchdog.
-  parser.feed(update("b".repeat(50)));
-  assert.equal(
-    parser.progressCount,
-    afterBoundary + 1,
-    "a shorter next message must still count as progress",
+  // The pre-strip wire format carried a growing message snapshot; whatever arrives under the
+  // message_update type is verifiably a delta and must not count as progress.
+  parser.feed(
+    JSON.stringify({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "a".repeat(50) }] },
+    }) + "\n",
   );
-});
-
-test("thinking-only growth counts as progress (reasoning models stream thinking before text)", () => {
-  const parser = new PiStreamParser();
-  const thinkUpdate = (thinking: string) =>
-    JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "thinking", thinking }] } }) + "\n";
-
-  // A run that spends minutes streaming a reasoning block with no text yet must not be
-  // killed as hung: growth in the thinking blocks is real progress.
-  parser.feed(thinkUpdate("hmm"));
-  assert.equal(parser.progressCount, 1);
-  parser.feed(thinkUpdate("hmm, let me think harder"));
-  assert.equal(parser.progressCount, 2, "growing thinking is progress");
-  parser.feed(thinkUpdate("hmm, let me think harder")); // identical size: a keepalive
-  assert.equal(parser.progressCount, 2);
+  assert.equal(parser.progressCount, 0);
 });
 
 test("piArgs reflects config", () => {
