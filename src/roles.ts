@@ -60,12 +60,19 @@ refining the weakest existing plan over adding another.`,
   {
     id: "readme",
     title: "README maintainer",
-    find: `Read README.md and compare it against the actual state of the project. Update the
-status section (between the tumwater:status markers) to reflect reality: what works, what is in
-progress, how to build/run/test. Fix any documentation that has drifted from the code — but not
-PRINCIPLES.md, which only the director and steward edit. Never edit
-the initial prompt between the tumwater:prompt markers. If the README is already accurate,
-there is nothing to do.`,
+    find: `Read README.md and compare it against the actual state of the project. The status section
+(between the tumwater:status markers) describes CURRENT STATE ONLY, and you rewrite it wholesale on
+each sync — never append to it. It carries exactly three things: (a) a one-line version/capability
+summary (which commands exist, which roles are enabled), (b) open items — planned features not yet
+done, open bugs, open questions — one line each or "none", and (c) the freshness stamp (\`Current
+main (\`<sha>\`): build clean, suite N/N\`). No per-tick landing narrative in the section: landings are
+recorded by their owning loops in PLANS.md/BUGS.md and git log; stale narrative found in the section
+is deleted as part of updating it (that is an update, not a loss). If the section exceeds ~8KB it has
+drifted back into narrative — prune it to the state-only form. Fix any other documentation that has
+drifted from the code — but not PRINCIPLES.md, which only the director and steward edit. Never edit
+the initial prompt between the tumwater:prompt markers. If the README is already accurate (including
+its freshness stamp), there is nothing to do; a moved main makes the stamp stale, so syncs still run
+after landings.`,
   },
   {
     id: "organize",

@@ -20,7 +20,9 @@ Acceptance criteria:
 - Contract tests assert each clause of the new rule in a tick prompt: README read in full; PLANS.md/BUGS.md not read wholesale with their actionable sections first; older history via git log or targeted reads; steward carve-out present.
 - Observable within a few ticks after landing: feature, bugfix, and plan loops' peak ctx drops substantially (feature from ~90k toward README+Planned size) in the status table's "peak ctx" column and per-role pi logs, with hygiene roles unchanged or lower — steady-state prefill no longer scales with Done/Fixed history.
 
-### Bound README's status section — state, not log (planned 2026-09-03)
+## Done
+
+### Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04)
 
 **Goal.** The initial prompt says "First puts the initial prompt and project status into
 README.md" — but the status section has drifted from *state* to *log*. It is now a single ~38.7KB
@@ -128,7 +130,32 @@ the test/prompt.test.ts work (new readme contract block + oneLine conversion of 
 assertion), and the files-touched list. The plan remains independently pickable by the feature
 loop as-is once these corrections are read with it.
 
-## Done
+**Done 2026-09-04 (feature tick) — implemented as planned against main `3b5ecbf`; nothing remains.**
+Audited first: at `3b5ecbf` no part had landed — src/roles.ts's readme find text still read "Update the
+status section … to reflect reality", and test/prompt.test.ts carried no readme contract block; the one-off
+collapse this entry's Refined section cites (`1f70a95`) had already landed ahead of any contract, which is
+exactly the durability gap this plan closes. This tick rewrote src/roles.ts's readme find text into the
+explicit state-only snapshot contract: the status section (between the tumwater:status markers) describes
+CURRENT STATE ONLY and is rewritten wholesale on each sync — never appended to — carrying exactly three
+things, matching the shape `1f70a95` actually produced: (a) a one-line version/capability summary (which
+commands exist, which roles are enabled), (b) open items — planned features not yet done, open bugs, open
+questions — one line each or "none", and (c) the freshness stamp (`Current main (`<sha>`): build clean,
+suite N/N`). No per-tick landing narrative in the section: landings are recorded by their owning loops in
+PLANS.md/BUGS.md and git log, and stale narrative found in the section is deleted as part of updating it (an
+update, not a loss); if the section exceeds ~8KB it has drifted back into narrative — prune it to the
+state-only form. The existing constraints are kept: PRINCIPLES.md belongs to director/steward, never edit
+the tumwater:prompt block, and "if the README is already accurate (including its freshness stamp), there is
+nothing to do" — a moved main makes the stamp stale, so syncs still run after landings. test/prompt.test.ts
+gained the sibling contract block after the steward block (`const readme = roleById("readme")`, five tests
+matching `oneLine(readme.find)`): rewrite-wholesale-not-append; the state-only content spec naming
+capability summary, open items, and the freshness stamp verbatim; the no-narrative rule with landings
+belonging in PLANS.md/BUGS.md and git log (including stale-narrative deletion); the ~8KB drift guard; and
+buildTickPrompt embedding the full find text. The existing "leaves PRINCIPLES.md to the director and
+steward" assertion was converted from a literal `\n` match to `oneLine(...)` so reflow cannot break it, per
+the Approach. Verified on this tree: build clean, full suite 609/609 in ~52 s (main's 604 plus this tick's
+five new tests). The entry's one residual — the durability observation that subsequent readme syncs keep the
+section under 8KB with no per-tick narrative — is not this plan's implementer and will be verified by
+observation as readme ticks run. Files: src/roles.ts, test/prompt.test.ts, PLANS.md.
 
 ### Run the project's own test suite in the deterministic pre-merge gate (planned 2026-09-04,
 done 2026-09-04)

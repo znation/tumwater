@@ -182,7 +182,8 @@ test("director routing records standing guidance in PRINCIPLES.md first", () => 
 test("the readme role leaves PRINCIPLES.md to the director and steward", () => {
   const role = roleById("readme");
   assert.ok(role);
-  assert.match(role.find, /but not\nPRINCIPLES\.md, which only the director and steward edit/);
+  // oneLine so a reflow of the hard-wrapped find text cannot break this contract check.
+  assert.match(oneLine(role.find), /but not PRINCIPLES\.md, which only the director and steward edit/);
 });
 
 // The resume prompt is sent into the SAME pi session as an interrupted run, which already
@@ -548,4 +549,55 @@ test("buildTickPrompt for steward carries the find text plus the shared rules", 
   const prompt = buildTickPrompt({ role: steward!, initialPrompt: "" });
   assert.match(prompt, /"steward" loop \(project steward\)/);
   assert.ok(prompt.includes(steward!.find.trim()), "the full find text is embedded");
+});
+
+// Prompt contract for the readme role (PLANS.md "Bound README's status section — state, not log"):
+// the status section is a state-only snapshot rewritten wholesale on each sync, never appended to,
+// so it stays small by construction and cannot drift back into per-tick landing narrative. Every
+// loop reads README.md first, so an unbounded log there would cost every tick's prefill forever;
+// these assertions pin the contract in the find text. Same whitespace-collapsed matching as above —
+// the prose is hard-wrapped and formatting ticks reflow it, so assertions match content, not layout.
+
+const readme = roleById("readme");
+
+test("the readme prompt rewrites the status section wholesale instead of appending", () => {
+  const find = oneLine(readme!.find);
+  assert.match(find, /describes CURRENT STATE ONLY/);
+  assert.match(find, /rewrite it wholesale on each sync — never append to it/);
+});
+
+test("the readme prompt names the state-only content: summary, open items, freshness stamp", () => {
+  const find = oneLine(readme!.find);
+  assert.match(
+    find,
+    /one-line version\/capability summary \(which commands exist, which roles are enabled\)/,
+  );
+  assert.match(
+    find,
+    /open items — planned features not yet done, open bugs, open questions — one line each or "none"/,
+  );
+  // The freshness-stamp convention verbatim: main's sha plus build/suite state.
+  assert.match(find, /Current main \(`<sha>`\): build clean, suite N\/N/);
+});
+
+test("the readme prompt forbids per-tick landing narrative; landings belong in PLANS.md/BUGS.md and git log", () => {
+  const find = oneLine(readme!.find);
+  assert.match(find, /No per-tick landing narrative in the section/);
+  assert.match(find, /landings are recorded by their owning loops in PLANS\.md\/BUGS\.md and git log/);
+  // Deleting stale narrative is part of the update — the one-off collapse at 1f70a95 must not read as loss.
+  assert.match(find, /stale narrative found in the section is deleted as part of updating it/);
+});
+
+test("the readme prompt carries the ~8KB drift guard", () => {
+  const find = oneLine(readme!.find);
+  assert.match(
+    find,
+    /exceeds ~8KB it has drifted back into narrative — prune it to the state-only form/,
+  );
+});
+
+test("buildTickPrompt for readme carries the find text plus the shared rules", () => {
+  const prompt = buildTickPrompt({ role: readme!, initialPrompt: "" });
+  assert.match(prompt, /"readme" loop \(README maintainer\)/);
+  assert.ok(prompt.includes(readme!.find.trim()), "the full find text is embedded");
 });
