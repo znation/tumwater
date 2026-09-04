@@ -281,6 +281,28 @@ test("applyTickOutcome: an aborted tick resumes promptly — role via resumePend
   assert.equal(d.resumePending, undefined, "the director reruns its re-queued prompt fresh");
 });
 
+test("applyTickOutcome: a user-aborted tick backs off like an unproductive one and sets no resume", () => {
+  // A deliberate stop is not an interruption: the worktree was already reset to main, so there
+  // is nothing to recover or re-review — idle backoff applies instead of prompt resume.
+  const s = freshLoopState("feature");
+  s.phase = "review"; // set around the gate's run — must not linger after a user-abort either
+  applyTickOutcome(s, testConfig(), "feature", { result: "user_aborted" });
+  assert.equal(s.lastResult, "user_aborted");
+  assert.equal(s.resumePending, undefined, "a deliberate stop leaves nothing to resume");
+  assert.equal(s.phase, undefined);
+  assert.equal(s.backoffSeconds, 30, "initial idle backoff, like an unproductive tick");
+  assert.ok(
+    s.nextRunAt >= Date.now() - 1_000 && s.nextRunAt <= Date.now() + 31_000,
+    "due after the backoff, not immediately",
+  );
+
+  // A second user-abort grows the backoff like any other unproductive tick.
+  const s2 = freshLoopState("feature");
+  s2.backoffSeconds = 30;
+  applyTickOutcome(s2, testConfig(), "feature", { result: "user_aborted" });
+  assert.equal(s2.backoffSeconds, 60); // 30 × factor 2
+});
+
 test("applyTickOutcome: cut-off ticks resume the compacted session until the streak limit, then back off", () => {
   const cfg = testConfig();
   // Under the limit (3): each consecutive cut-off resumes promptly and grows the streak.

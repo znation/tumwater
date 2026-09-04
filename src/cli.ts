@@ -32,6 +32,7 @@ import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { runTui } from "./tui.js";
 import { lanAddresses, startGui } from "./gui.js";
+import { DIRECTOR_ROLE } from "./roles.js";
 import { abortRequestPath, eventsLogPath, piLogPath, resetRequestPath } from "./paths.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
@@ -210,7 +211,14 @@ async function cmdAbort(root: string, args: string[]): Promise<void> {
   const markerFile = abortRequestPath(root, role);
   ensureParentDir(markerFile);
   fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }, null, 2));
-  process.stdout.write(`abort requested for ${role} — a running fleet applies it within ~2s\n`);
+  let confirmation = `abort requested for ${role} — a running fleet applies it within ~2s`;
+  if (role === DIRECTOR_ROLE) {
+    // The director's in-flight prompt was dequeued from the inbox file at tick start and an
+    // abort discards it without re-queueing — say so, since the discard is otherwise silent.
+    confirmation +=
+      "; its current in-flight prompt will be discarded (re-submit with `tumwater prompt` if you want it retried)";
+  }
+  process.stdout.write(confirmation + "\n");
 }
 
 async function main(): Promise<void> {

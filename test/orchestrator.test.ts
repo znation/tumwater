@@ -20,7 +20,7 @@ import {
   todayStamp,
   zeroCounters,
 } from "../src/state.js";
-import { resetRequestPath } from "../src/paths.js";
+import { abortRequestPath, resetRequestPath, worktreePath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 /** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
@@ -1039,6 +1039,78 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
     await new Promise((r) => setTimeout(r, 1500));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a main move cannot wake a budget-paused fleet");
     assert.ok(!readEvents(repo).some((e) => e.type === "wake"), "no wake logged for the blocked main move");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+// --- abort requests (PLANS.md, abort plan): the marker-file plumbing that reaches LoopRunner's
+// user-abort branch — consumption, kill, event, and the silent no-op shapes. The loop-level
+// semantics themselves are pinned in test/loop.test.ts; the CLI side in test/cli.test.ts. ---
+
+test("an abort request kills an in-flight tick, consumes its marker, and logs one event", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "abort e2e test");
+  // Only clean ticks; a long backoff so the aborted loop stays idle while the no-op cases
+  // below are asserted (no second tick can start and muddy the event count).
+  const cfg = defaultConfig();
+  cfg.minTickIntervalSeconds = 0;
+  cfg.idleBackoff = { initialSeconds: 30, factor: 1, maxSeconds: 30 };
+  for (const id of Object.keys(cfg.roles)) cfg.roles[id]!.enabled = id === "clean";
+  saveConfig(repo, cfg);
+  // A slow fake pi: writes a half-done edit then hangs until killed — the tick is in flight
+  // for as long as the marker sits on disk.
+  const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => fs.existsSync(path.join(worktreePath(repo, "clean"), "partial.txt")),
+      "a tick to be in flight",
+    );
+
+    // Reproduce what `tumwater abort --role clean` does from the CLI side: drop the per-role
+    // marker. (The CLI path itself is covered in test/cli.test.ts.)
+    const markerFile = abortRequestPath(repo, "clean");
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
+
+    // The fleet consumes the request within a poll cycle: kills the run and removes the marker.
+    await waitFor(() => !fs.existsSync(markerFile), "the abort marker to be consumed");
+
+    const aborted = () => readEvents(repo).filter((e) => e.type === "tick_aborted");
+    assert.equal(aborted().length, 1, "exactly one tick_aborted event");
+    assert.equal(aborted()[0]?.loop, "clean", "filed under the role's loop");
+
+    // The killed run ends user_aborted: half-done work discarded (worktree reset to main),
+    // backed off instead of resuming promptly.
+    await waitFor(() => !loadLoopState(repo, "clean").running, "the aborted tick to finish");
+    const s = loadLoopState(repo, "clean");
+    assert.equal(s.lastResult, "user_aborted");
+    assert.ok(!s.resumePending, "a deliberate stop leaves nothing to resume");
+    assert.ok(
+      !fs.existsSync(path.join(worktreePath(repo, "clean"), "partial.txt")),
+      "half-done work was discarded",
+    );
+    assert.ok(s.nextRunAt > Date.now() + 29_000, "backed off, not immediate");
+
+    // A request for a loop that is NOT running is a silent no-op: the marker is removed and
+    // no event logged — clean itself (now idle in its backoff) …
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
+    await waitFor(() => !fs.existsSync(markerFile), "the idle-loop marker to be consumed");
+    assert.equal(aborted().length, 1, "no event for an idle loop");
+
+    // … and the same holds for a disabled role, which has no runner at all (the no-runner shape).
+    for (const role of ["feature", "bugfix"]) {
+      const m = abortRequestPath(repo, role);
+      fs.mkdirSync(path.dirname(m), { recursive: true });
+      fs.writeFileSync(m, JSON.stringify({ at: Date.now() }));
+    }
+    await waitFor(
+      () => !fs.existsSync(abortRequestPath(repo, "feature")) && !fs.existsSync(abortRequestPath(repo, "bugfix")),
+      "the disabled roles' markers to be consumed",
+    );
+    assert.equal(aborted().length, 1, "no event for a role with no runner");
   } finally {
     restore();
     await orch.stop();

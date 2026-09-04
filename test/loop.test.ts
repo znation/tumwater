@@ -589,6 +589,14 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
     assert.equal(inboxSize(repo), 0, "the aborted prompt was not re-queued");
     const s = loadLoopState(repo, "director");
     assert.ok(!s.resumePending, "the director never resumes an author session");
+
+    // The discard is explicit, not accidental: the dequeued prompt is cleared on the live
+    // runner (item (a)) rather than left to be overwritten by the next tick's dequeue.
+    assert.equal(
+      (runner as unknown as { pendingUserPrompt: string | null }).pendingUserPrompt,
+      null,
+      "the dequeued prompt was discarded from the runner",
+    );
   } finally {
     restore();
   }

@@ -610,6 +610,36 @@ test("abort drops a per-role marker for a live harness and reports it", async ()
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
 
+test("abort's confirmation names the discarded prompt only for the director", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli abort director clause");
+
+  // Record this test process as the running orchestrator (it is alive).
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(
+    orchestratorStatePath(repo),
+    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["director"] }),
+  );
+
+  // The director's in-flight prompt was dequeued from the inbox file at tick start and an
+  // abort discards it without re-queueing — the confirmation must say so (item (b)).
+  const d = await cli(repo, "abort", "--role", "director");
+  assert.equal(d.code, 0);
+  assert.match(d.stdout, /abort requested for director/);
+  assert.match(d.stdout, /within ~2s/);
+  assert.match(d.stdout, /in-flight prompt will be discarded/);
+  assert.match(d.stdout, /re-submit with `tumwater prompt`/);
+
+  // Non-director roles carry no such clause: their ticks have no dequeued prompt to lose,
+  // and the base confirmation stays byte-identical.
+  const f = await cli(repo, "abort", "--role", "feature");
+  assert.equal(f.code, 0);
+  assert.match(f.stdout, /abort requested for feature — a running fleet applies it within ~2s/);
+  assert.ok(!f.stdout.includes("discarded"), `no director clause for non-director roles:\n${f.stdout}`);
+
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
 // --- logs --role (per-role pi transcript) ---
 
 test("logs --role validates the role id and reports a missing transcript", async () => {

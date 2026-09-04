@@ -406,6 +406,11 @@ export class LoopRunner {
         // commit/merge window (no pi run in flight), the flag takes effect at the next
         // model-run boundary within the tick — or, for a tick that reaches no further pi run,
         // completes normally and the abort had no effect; re-issuing is the remedy.
+        // An explicit abort discards the request itself too: clear the dequeued prompt here
+        // rather than at tick()'s shared clearing (which this early return skips), so nothing
+        // lingers on the live runner. The review-gate branch needs no such clearing — by then
+        // tick() has already cleared it.
+        this.pendingUserPrompt = null;
         await resetWorktreeToMain(wt, this.mainBranch);
         return { result: "user_aborted" };
       }
