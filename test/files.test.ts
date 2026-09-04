@@ -2,7 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { cachedByStat, findOnPath, pruneOldFiles, readJsonFile, rotateIfLarge, statOrNull } from "../src/files.js";
+import {
+  cachedByStat,
+  findOnPath,
+  pruneOldFiles,
+  readJsonFile,
+  rotateIfLarge,
+  statOrNull,
+  writeJsonFile,
+} from "../src/files.js";
 import { tmpdir } from "./util.js";
 
 test("rotateIfLarge rotates once over the cap and replaces the previous rotation", () => {
@@ -123,6 +131,18 @@ test("cachedByStat does not cache a failed load: it retries each poll and recove
 
   fs.writeFileSync(file, JSON.stringify({ v: 3 })); // repaired with new content
   assert.deepEqual(poll(), { v: 3 });
+});
+
+test("writeJsonFile creates parent dirs and writes pretty-printed JSON (overwriting)", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "nested", "marker.json"); // Parent does not exist yet.
+  writeJsonFile(file, { at: 123, roles: ["feature"] });
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), { at: 123, roles: ["feature"] });
+  const raw = fs.readFileSync(file, "utf8");
+  assert.ok(raw.includes('\n  "at": 123'), "two-space pretty print — the shared marker/info format");
+
+  writeJsonFile(file, { at: 456 }); // Overwrites an existing file in place.
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), { at: 456 });
 });
 
 test("cachedByStat evicts to stay bounded once the cap is reached", () => {

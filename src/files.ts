@@ -2,10 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Shared file helpers: stat-or-missing for log readers, PATH lookup for the pi-installation
- * preflight, tolerant JSON-file reads for state files written by other processes, stat-keyed
- * caching of file-derived values polled on an interval, size-based rotation for append-only
- * logs, recursive directory creation before file writes, and age-based pruning of pi session
- * files. Incremental consumption of those append-only
+ * preflight, tolerant JSON-file reads for state files written by other processes,
+ * pretty-printed JSON overwrites for marker/info files, stat-keyed caching of file-derived
+ * values polled on an interval, size-based rotation for append-only logs, recursive directory
+ * creation before file writes, and age-based pruning of pi session files. Incremental
+ * consumption of those append-only
  * logs (complete-line tail reading, tail-state folding, byte-offset following) lives in tail.ts. */
 
 /** Stat a file, returning null when it does not exist (or cannot be read). The harness's
@@ -122,6 +123,17 @@ export function ensureDir(dir: string): void {
  * or appending a file whose path may not exist yet. */
 export function ensureParentDir(file: string): void {
   ensureDir(path.dirname(file));
+}
+
+/** Write `value` to `file` as pretty-printed (2-space) JSON, creating the parent directory
+ * first — the shared pre-write step for every harness marker/info file that is a plain
+ * overwrite (the reset-counters and abort markers in cli.ts, the orchestrator info file), so
+ * their format cannot drift per writer. Writers with stronger guarantees keep their own
+ * paths: loop state writes atomically via tmp+rename (state.ts), tumwater.json appends a
+ * trailing newline (config.ts), and the event log appends + rotates (events.ts). */
+export function writeJsonFile(file: string, value: unknown): void {
+  ensureParentDir(file);
+  fs.writeFileSync(file, JSON.stringify(value, null, 2));
 }
 
 /** Delete regular files under `dir` (recursively) older than `days` days. */

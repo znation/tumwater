@@ -26,7 +26,7 @@ import {
 import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
-import { ensureParentDir, findOnPath } from "./files.js";
+import { ensureParentDir, findOnPath, writeJsonFile } from "./files.js";
 import { followFile } from "./tail.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
@@ -192,9 +192,7 @@ async function cmdResetCounters(root: string, args: string[]): Promise<void> {
   const role = parseRoleFlag(args);
   const targets = role ? [role] : Object.keys(config.roles); // Default: every role in the config.
   for (const r of targets) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
-  const markerFile = resetRequestPath(root);
-  ensureParentDir(markerFile);
-  fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: targets }, null, 2));
+  writeJsonFile(resetRequestPath(root), { at: Date.now(), roles: targets });
   process.stdout.write(`counters reset for ${targets.join(", ")} — a running fleet picks this up within ~2s\n`);
 }
 
@@ -208,9 +206,7 @@ async function cmdAbort(root: string, args: string[]): Promise<void> {
   const role = parseRoleFlag(args);
   if (!role) fail("abort requires --role <id> (e.g. `--role feature`)");
   if (!orchestratorAlive(root)) fail("no harness is running — start it with `tumwater run` first");
-  const markerFile = abortRequestPath(root, role);
-  ensureParentDir(markerFile);
-  fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }, null, 2));
+  writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
   let confirmation = `abort requested for ${role} — a running fleet applies it within ~2s`;
   if (role === DIRECTOR_ROLE) {
     // The director's in-flight prompt was dequeued from the inbox file at tick start and an
