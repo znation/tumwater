@@ -72,7 +72,7 @@ function ensureGitignore(root: string): boolean {
   return true;
 }
 
-export interface InitResult {
+interface InitResult {
   created: string[];
   committed: boolean;
 }

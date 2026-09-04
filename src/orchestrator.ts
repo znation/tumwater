@@ -37,7 +37,7 @@ function sleepInterruptible(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-export interface RunOptions {
+interface RunOptions {
   root: string;
   config: TumwaterConfig;
   mainBranch: string;

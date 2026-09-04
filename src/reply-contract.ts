@@ -54,7 +54,7 @@ export function hasVerdictLine(text: string): boolean {
 }
 
 /** One verdict line found in `text`: where it sits and which way it went. */
-export interface VerdictMatch {
+interface VerdictMatch {
   /** Index of the line's start in `text`. */
   index: number;
   /** Index just past the line's end — the reviewer's reasons follow here. */

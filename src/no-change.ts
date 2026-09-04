@@ -6,7 +6,7 @@ import type { PiRunResult } from "./types.js";
  * loop.ts so the classification — with its own data model — has a single testable home; the
  * tick lifecycle there only logs the warning and re-queues unfulfilled prompts from it. */
 
-export interface NoChangeDiagnosis {
+interface NoChangeDiagnosis {
   /** True when the run did real work but was truncated before it could declare its outcome:
    * no nothing-to-do sentinel AND a final message with neither text nor tool call (see
    * PiRunResult.finalMessageContentless). Such a tick is NOT fulfilled — a director prompt

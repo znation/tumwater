@@ -83,7 +83,7 @@ function principlesBlock(principles: string): string {
   return `Design principles this project holds — uphold them in everything you produce:\n<principles>\n${principles}\n</principles>`;
 }
 
-export interface TickPromptInput {
+interface TickPromptInput {
   role: Role;
   initialPrompt: string;
   /** PRINCIPLES.md content (see readPrinciples); omitted from the prompt when empty. */

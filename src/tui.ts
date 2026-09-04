@@ -14,7 +14,7 @@ const RESET = "\x1b[0m";
 
 /** The key fields applyKey cares about (a structural subset of readline.Key, so tests can
  * pass plain objects without a TTY). */
-export interface KeyLike {
+interface KeyLike {
   name?: string;
   ctrl?: boolean;
   meta?: boolean;

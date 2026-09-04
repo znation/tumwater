@@ -171,7 +171,7 @@ export class PiStreamParser {
   }
 }
 
-export interface PiRunOptions {
+interface PiRunOptions {
   cwd: string;
   prompt: string;
   config: TumwaterConfig;

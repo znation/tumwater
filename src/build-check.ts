@@ -34,7 +34,7 @@ export function clipReason(r: string): string {
 
 /** The project's declared deterministic check: an npm script name plus the directory whose
  * package.json declares it (the walk-up target holding both package.json and node_modules). */
-export interface BuildCheck {
+interface BuildCheck {
   /** Directory holding the qualifying package.json + node_modules. */
   rootDir: string;
   /** The npm script to run — `typecheck` preferred, else `build`. */
@@ -102,7 +102,7 @@ export const BUILD_CHECK_TIMEOUT_MS = 300_000;
  * output tail as machine-generated reasons (no pi run consumed). "skipped": environmental
  * (timeout, or no npm on PATH) — warn and still proceed to the model review; deliberately NOT
  * fail-closed so a hung build script cannot wedge every code tick into the 3-strike discard. */
-export interface BuildCheckOutcome {
+interface BuildCheckOutcome {
   status: "passed" | "failed" | "skipped";
   /** The script that was run (or attempted). */
   script: string;

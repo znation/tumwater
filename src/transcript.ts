@@ -7,7 +7,7 @@ import { describeToolCall } from "./tool-call.js";
 
 /** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its
  * run's separator) or a lone retry warning / run separator. */
-export type TranscriptEntry = string[];
+type TranscriptEntry = string[];
 
 const THINKING_MAX_CHARS = 80;
 const TEXT_LINE_MAX_COLS = 120;
@@ -73,7 +73,7 @@ function renderAssistantMessage(content: unknown): string[] {
  * in the switch must be added here too or it will never reach the renderer. */
 const RENDERABLE_TYPES = new Set(["agent_start", "message_end", "auto_retry_start"]);
 
-export interface TranscriptRenderer {
+interface TranscriptRenderer {
   /** Feed one raw JSONL line; returns the rendered lines of any entry this line completes
    * (empty for deltas, bookkeeping events, and user messages). */
   feed(line: string): string[];
@@ -189,7 +189,7 @@ function isEntryCandidate(line: string): boolean {
   );
 }
 
-export interface TranscriptWindow {
+interface TranscriptWindow {
   /** The last `limit` rendered entries, oldest first — identical to
    * formatTranscript(whole file).slice(-limit). */
   entries: TranscriptEntry[];

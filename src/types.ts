@@ -17,7 +17,7 @@ export interface RoleConfig {
 }
 
 /** Top-level review-gate config in tumwater.json (see src/review.ts). */
-export interface ReviewConfig {
+interface ReviewConfig {
   /** Enable the adversarial pre-merge review gate (default true). */
   enabled: boolean;
   /** Repo-relative path patterns whose diffs are exempt from review when EVERY changed

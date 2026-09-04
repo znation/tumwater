@@ -19,7 +19,7 @@ const EVENTS_MAX_BYTES = 16 * 1024 * 1024;
 
 /** An event to log. `logEvent` stamps `ts`; event-specific extra fields (tick, summary, …)
  * are allowed via the index signature. */
-export interface HarnessEventInput {
+interface HarnessEventInput {
   loop: string;
   type: HarnessEvent["type"];
   [key: string]: unknown;

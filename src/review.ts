@@ -67,7 +67,7 @@ export function isExemptDiff(files: string[], patterns: string[]): boolean {
 
 /** A parsed reviewer verdict with its reasons (numbered lines after the VERDICT line; any
  * other non-empty prose as a fallback). */
-export interface ReviewVerdict {
+interface ReviewVerdict {
   verdict: "approve" | "reject";
   reasons: string[];
 }
@@ -94,7 +94,7 @@ export function parseVerdict(text: string): ReviewVerdict | null {
 }
 
 /** Everything reviewAheadOfMain needs from its caller (a LoopRunner tick or recovery). */
-export interface ReviewContext {
+interface ReviewContext {
   root: string;
   role: string;
   /** The author's worktree, post-commit — the reviewer reads the full tree there. */
