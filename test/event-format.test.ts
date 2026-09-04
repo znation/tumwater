@@ -310,3 +310,44 @@ test("formatEvent renders per-tick usage on tick_end after result, summary, and 
   assert.equal(zero, absent, `zero fields must render exactly like absent ones: ${JSON.stringify([zero, absent])}`);
   assert.match(absent, /tick #5 no_change$/);
 });
+
+// The user-abort feature's events (PLANS.md, abort plan item (f)): when the orchestrator
+// consumes a role's abort marker it logs tick_aborted under that loop, and the killed tick
+// ends with result "user_aborted". These are the lines an operator reads in logs/TUI/GUI to
+// see that their `tumwater abort` landed — routine state changes, not warnings.
+test("formatEvent renders tick_aborted plainly under the role's loop", () => {
+  const line = formatEvent({ ts: 0, loop: "feature", type: "tick_aborted" } as never);
+  assert.match(
+    line,
+    /feature\s+tick aborted by user/,
+    `the abort must name the role and say who did it: ${line}`,
+  );
+  assert.ok(!line.includes("warning"), `a user-initiated abort is routine, not a warning: ${line}`);
+});
+
+test("formatEvent renders a user_aborted tick_end with its result verbatim", () => {
+  // "user_aborted" (deliberate stop) must stay distinct from "aborted" (harness shutdown):
+  // the result word is what tells them apart in the feed. The aborted outcome carries no
+  // summary or error, so the line ends at the result — a regression appending an empty
+  // payload would print "— undefined".
+  const line = formatEvent({ ts: 0, loop: "feature", type: "tick_end", tick: 12, result: "user_aborted" } as never);
+  assert.match(line, /tick #12 user_aborted$/, `the result must render verbatim with no suffix: ${line}`);
+  assert.ok(!line.includes("warning"), `a deliberate stop is not a warning: ${line}`);
+
+  // The kill can land after pi already streamed turns on the tick; runRolePi folds that
+  // partial spend, so usage still rides on the end line like every other result.
+  const withUsage = formatEvent({
+    ts: 0,
+    loop: "feature",
+    type: "tick_end",
+    tick: 12,
+    result: "user_aborted",
+    tokens: 900,
+    costUsd: 0.25,
+  } as never);
+  assert.match(
+    withUsage,
+    /tick #12 user_aborted · 900 tok · \$0\.25$/,
+    `partial spend must still show on the aborted end line: ${withUsage}`,
+  );
+});
