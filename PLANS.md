@@ -6,7 +6,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 ### Abort a single loop's in-flight tick — `tumwater abort --role <id>` (planned 2026-09-03,
-refined 2026-09-03)
+refined 2026-09-03, re-audited 2026-09-03)
 
 **Goal.** Give operators a way to stop ONE loop's in-flight tick right now — without stopping the
 whole fleet or waiting for the hang guards. Today, when a loop is visibly thrashing on a bad task
@@ -122,6 +122,70 @@ the original spec, corrected:
    but the planned confirmation ("abort requested for <role> …") says nothing about it. Pin: when
    `--role` is the director, append one clause to the CLI confirmation that its current in-flight
    prompt will be discarded (re-submit with `tumwater prompt` if you want it retried).
+
+**Re-audited 2026-09-03 (plan loop) — feature tick 87 (`b37e600`) landed the entire src half;
+two of the three refined pins were missed and no AC tests exist. Remainder re-specified.**
+Verified at `1f70a95` (build clean, suite 587/587): every Approach file is present as specified —
+`abortRequestPath` (`abort-<role>.json`) in src/paths.ts; both union members in src/types.ts;
+src/loop.ts's per-tick `AbortController` created at tick start beside the counter resets,
+`runSignal()` combining it with the harness signal via `AbortSignal.any`, `abortTick()` (no-op
+when idle, else flag + abort), and the `userAborted` divergence in BOTH runTick abort branches
+(`resetWorktreeToMain`, no requeue, `{ result: "user_aborted" }`); src/state.ts's
+applyTickOutcome branch (backoff like an unproductive tick, no resumePending, phase cleared by
+the existing `result !== "aborted"` check); the orchestrator's marker consumption beside the
+reset-counters one — running → `abortTick()` + exactly one `tick_aborted` event, idle/disabled/
+no-runner → marker removed silently (gap #2 implemented as pinned); src/event-format.ts's plain
+line `<time> <role> tick aborted by user`; and src/cli.ts's cmdAbort (`parseRoleFlag` with the
+valid-ids error, `requireReadyRepo` in main()'s dispatch, `orchestratorAlive` gate naming
+tumwater run, marker write, confirmation) plus the README Usage line. Two pins from the
+2026-09-03 refinement were NOT implemented:
+
+1. **`pendingUserPrompt` is not cleared on a user-abort of the author run** (gap #1). The
+   `userAborted` branch in src/loop.ts returns `{ result: "user_aborted" }` before the shared
+   `this.pendingUserPrompt = null`, so an aborted director tick leaves its dequeued prompt held
+   on the live runner. Non-functional per this entry's own analysis — every non-skipped FRESH
+   director tick calls tickPrompt() first, which overwrites the field before its sole read site,
+   and a user-abort never sets resumePending so no resumed tick can follow one — but the discard
+   is accidental rather than explicit, as pinned.
+2. **The CLI confirmation carries no director clause** (gap #3). cmdAbort writes an unconditional
+   `abort requested for <role> — a running fleet applies it within ~2s`; with `--role director`
+   its in-flight prompt is discarded from disk with no warning — exactly the invisibility gap #3
+   was written to close.
+
+What remains — seven items: (a)–(b) are small src fixes for the missed pins, (c)–(g) are the AC
+test groups. (c)–(f) are pure test work against landed behavior and independently pickable TODAY;
+(g)'s clause assertion needs (b), and (c)'s field-clearing assertion needs (a):
+
+(a) **Clear `pendingUserPrompt` on a user-abort of the author run** (src/loop.ts): in the
+   `userAborted` branch inside `if (pi.aborted)`, set `this.pendingUserPrompt = null` alongside
+   skipping the requeue — one line, with a comment that an explicit abort discards the request.
+   The review-gate branch needs no change (tick() has already cleared it by then).
+(b) **Director clause in the CLI confirmation** (src/cli.ts): when the role is director
+   (`DIRECTOR_ROLE` from roles.js), append one sentence to cmdAbort's confirmation that its
+   current in-flight prompt will be discarded — re-submit with `tumwater prompt` if you want it
+   retried. Non-director output stays byte-identical.
+(c) **Loop e2e** (test/loop.test.ts): per the AC above — a fake-pi shim that hangs mid-run;
+   `runner.abortTick()` kills the child; result "user_aborted"; a planted dirty file is gone
+   (worktree reset); persisted state carries no resumePending and nextRunAt > now (backed off,
+   not immediate); the tick_end event carries user_aborted. Director variant: an aborted director
+   tick leaves the inbox EMPTY, and — after item (a) — the runner's `pendingUserPrompt` field is
+   null (reachable via the `(runner as unknown as { … })` pattern this file already uses).
+(d) **Orchestrator e2e** (test/orchestrator.test.ts): per the AC above — a slow fake-pi tick
+   under a real orchestrator; writing `abortRequestPath(root, role)` kills the run within one poll
+   cycle, removes the marker, and logs exactly one tick_aborted event; a marker for an idle loop
+   is removed with no event — assert that case with a DISABLED role too (the no-runner shape).
+(e) **Scheduling units** (test/state.test.ts): applyTickOutcome("user_aborted") advances backoff
+   like an unproductive tick, sets no resumePending, clears phase.
+(f) **Events** (test/event-format.test.ts): tick_aborted renders as a plain line under the role's
+   loop; tick_end with result user_aborted renders that string verbatim.
+(g) **CLI** (test/cli.test.ts): per the AC above — `abort --role feature` against a running
+   harness writes the marker and confirms; without a running harness it fails actionably naming
+   tumwater run; an unknown role fails listing valid ids; missing/unknown flags fail like
+   reset-counters' siblings. Plus, after item (b): `--role director`'s confirmation carries the
+   discard clause while a non-director's does not.
+Once all seven land, move this plan to Done. Files for the remainder: src/loop.ts, src/cli.ts,
+test/loop.test.ts, test/orchestrator.test.ts, test/state.test.ts, test/event-format.test.ts,
+test/cli.test.ts.
 
 ### Bound README's status section — state, not log (planned 2026-09-03)
 
