@@ -42,8 +42,9 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in-flight tick; work discarded, the loop keeps running). All twelve roles — feature, bugfix, plan,
 readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve, steward (~6 h clock) — plus
 the director are enabled by default. Every tick runs in a fresh pi session (durable knowledge lives
-in the repo's markdown, read at the start of each tick); changed work passes a deterministic build
-pre-check and an adversarial review gate against PRINCIPLES.md before rebasing onto main under a
+in the repo's markdown, read at the start of each tick); changed work passes a deterministic
+pre-check — the project's declared verify script (`npm test` when declared, else typecheck/build)
+— and an adversarial review gate against PRINCIPLES.md before rebasing onto main under a
 shared merge lock; interrupted ticks resume on next launch. `tumwater.json` reloads live — every
 setting applies within ~2 s without a restart, including the `maxDailyCostUsd` daily spend cap
 (default $50/day; role loops pause at the cap, the director stays exempt) and per-tick token/cost
@@ -55,7 +56,7 @@ Open items:
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`ff42635`): build clean, suite 599/599, verified 2026-09-04.
+Current main (`051e197`): build clean, suite 601/601, verified 2026-09-04.
 <!-- tumwater:status:end -->
 
 ## How it works
