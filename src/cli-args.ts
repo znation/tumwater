@@ -95,6 +95,16 @@ export function rejectUnknownArgs(command: string, args: string[], specs: FlagSp
   }
 }
 
+/** Fail when any token is not at one of the `claimed` positions — the shared "no extra tokens"
+ * check for commands whose positionals are free-form prompt text (init, prompt): with their
+ * flags present, every other token would be silently baked into the prompt. Names the first
+ * stray token in the standard `unexpected argument <json> — <reason>` shape so the call sites'
+ * messages cannot drift. */
+function failStrayArg(args: string[], reason: string, ...claimed: number[]): void {
+  const extra = args.find((_, i) => !claimed.includes(i));
+  if (extra !== undefined) fail(`unexpected argument ${JSON.stringify(extra)} — ${reason}`);
+}
+
 /** `tumwater init` argument handling. Every other command runs rejectUnknownArgs, but init's
  * positionals are free-form prompt text, so that helper (which rejects ANY unconsumed token)
  * can't be used wholesale. The rules instead: a double-dash token must be `--file`, given at
@@ -113,10 +123,7 @@ export function parseInitArgs(args: string[]): string {
     if (args.filter((a) => a === "--file").length > 1) fail("--file may only be given once");
     const file = args[fileFlag + 1];
     if (!file) fail("--file needs a path");
-    const extra = args.find((_, i) => i !== fileFlag && i !== fileFlag + 1);
-    if (extra !== undefined) {
-      fail(`unexpected argument ${JSON.stringify(extra)} — with --file the prompt comes from the file`);
-    }
+    failStrayArg(args, "with --file the prompt comes from the file", fileFlag, fileFlag + 1);
     try {
       return fs.readFileSync(file, "utf8");
     } catch (err) {
@@ -154,10 +161,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
 
   if (listFlag >= 0) {
-    const extra = args.find((_, i) => i !== listFlag);
-    if (extra !== undefined) {
-      fail(`unexpected argument ${JSON.stringify(extra)} — with --list there is no prompt text`);
-    }
+    failStrayArg(args, "with --list there is no prompt text", listFlag);
     return { mode: "list" };
   }
 
@@ -168,10 +172,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     if (n === null) fail(`--cancel needs a positive integer (got ${JSON.stringify(raw)})`);
     // The position is the only token --cancel may carry; anything else alongside it would be
     // prompt text, and this mode has none.
-    const extra = args.find((_, i) => i !== cancelFlag && i !== cancelFlag + 1);
-    if (extra !== undefined) {
-      fail(`unexpected argument ${JSON.stringify(extra)} — with --cancel there is no prompt text`);
-    }
+    failStrayArg(args, "with --cancel there is no prompt text", cancelFlag, cancelFlag + 1);
     return { mode: "cancel", position: n };
   }
 
