@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -2042,5 +2043,64 @@ test("after a fix lands on main, the next tick re-checks the new SHA and authori
     );
   } finally {
     restore();
+  }
+});
+
+test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocking authoring", async () => {
+  // The baseline check's environmental-skip branch: when the detected check cannot RUN
+  // (npm missing from PATH), a blocked role must warn and still spend its authoring run —
+  // never block as main_red. Main is made genuinely red below so that warn-and-proceed is
+  // the ONLY reason this tick can land: a fail-closed regression would return "main_red"
+  // forever on any machine without npm.
+  const repo = await initializedRepo();
+  makeMainRed(repo, path.join(tmpdir(), "npm-runs"));
+
+  const marker = path.join(tmpdir(), "pi-invoked");
+  // A fake pi at a KNOWN directory (not fakePi's hidden one) so the PATH below can include
+  // it and git — but nothing else: execFile/spawn resolve bare commands via PATH, so npm is
+  // unresolvable no matter where this machine keeps it.
+  const piDir = tmpdir("fake-pi-");
+  fs.writeFileSync(
+    path.join(piDir, "pi"),
+    `#!/bin/sh\n${[
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+      // Redirection, not touch: the restricted PATH below has no /usr/bin, so this script
+      // may rely on shell builtins only.
+      `printf ok > '${marker}'`,
+    ].join("\n")}\n`,
+  );
+  fs.chmodSync(path.join(piDir, "pi"), 0o755);
+
+  const gitBin = tmpdir();
+  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  fs.symlinkSync(gitPath, path.join(gitBin, "git"));
+
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${piDir}:${gitBin}`; // pi + git only — no npm anywhere
+  try {
+    const runner = new LoopRunner(repo, "feature", defaultConfig(), "main");
+    const outcome = await runner.tick();
+
+    // Authoring proceeded and landed: the skip is environmental (warn-and-proceed), not a block.
+    assert.equal(outcome.result, "changed");
+    assert.ok(fs.existsSync(marker), "the authoring run started despite the unverifiable main");
+
+    // The baseline check's warning names the missing npm and that the MAIN BASELINE check was
+    // skipped — distinct from the gate's own pre-check warning ("skipping build check"), which
+    // this tick also logs. Both prove warn-and-proceed at their respective layers.
+    const warnings = readEvents(repo).filter((e) => e.type === "warning" && e.loop === "feature");
+    assert.ok(
+      warnings.some((w) => String(w.message ?? "") === "no npm on PATH; skipping main baseline check"),
+      `baseline skip warning missing:\n${JSON.stringify(warnings, null, 2)}`,
+    );
+
+    // No red-main block event: the harness-level "is red … blocked" warning is for a VERIFIED
+    // red SHA only — an unverifiable main must not announce itself as red.
+    const harnessWarnings = readEvents(repo).filter((e) => e.type === "warning" && e.loop === "harness");
+    assert.equal(harnessWarnings.length, 0, `no verified-red warning for an unverified main:\n${JSON.stringify(harnessWarnings)}`);
+  } finally {
+    process.env.PATH = oldPath;
   }
 });
