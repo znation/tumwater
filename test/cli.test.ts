@@ -6,6 +6,7 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { statusPayload } from "../src/gui.js";
 import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
@@ -458,14 +459,9 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   assert.match(r.stderr, /unknown argument: -ff/);
 
   // Commands with no flags reject any argument at all.
-  for (const [cmd, extra] of [
-    ["run", "--verbose"],
-    ["status", "--json"],
-  ] as const) {
-    r = await cli(repo, cmd, extra);
-    assert.equal(r.code, 1, `${cmd} ${extra}`);
-    assert.match(r.stderr, /takes no arguments/);
-  }
+  r = await cli(repo, "run", "--verbose");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /takes no arguments/);
 
   // Stray non-flag tokens are rejected too.
   r = await cli(repo, "reset-counters", "--role", "feature", "extra");
@@ -476,6 +472,61 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   // Valid combinations still work.
   r = await cli(repo, "logs", "-n", "3", "--role", "clean");
   assert.equal(r.code, 0);
+});
+
+// --- status --json: machine-readable fleet state — the same document GET /api/status
+// serves, printed with no server. The CLI runs as a child process, so the deep-equal below
+// compares its parsed stdout against statusPayload(root) computed in this process for the
+// same root; both read only from disk and nothing mutates the temp repo between the reads.
+
+test("status --json prints the /api/status payload; bare status keeps the table", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli status json");
+  seedCounters(repo, "feature");
+
+  let r = await cli(repo, "status", "--json");
+  assert.equal(r.code, 0);
+  const doc = JSON.parse(r.stdout) as Record<string, unknown>;
+  // Top-level fields — the same document GET /api/status serves for this root. `pid` is
+  // absent while no harness runs (undefined does not survive JSON.stringify).
+  for (const field of ["running", "inbox", "inboxPrompts", "budget", "loops", "events", "plans", "bugs", "questions"]) {
+    assert.ok(field in doc, `top-level ${field} present`);
+  }
+  assert.equal(doc.running, false, "no harness running");
+  assert.ok(!("pid" in doc), "no pid while the harness is not running");
+
+  // Per-loop fields on every row.
+  const loops = doc.loops as Array<Record<string, unknown>>;
+  assert.ok(loops.length > 0);
+  for (const l of loops) {
+    for (const field of ["role", "phase", "ticks", "commits", "generated", "peakCtx", "costUsd", "todayUsd", "lastResult", "lastSummary", "lastTickEndedAt"]) {
+      assert.ok(field in l, `loop field ${field} present`);
+    }
+  }
+  // Seeded counters surface verbatim — the JSON is state-file data, not a re-rendering.
+  const feature = loops.find((l) => l.role === "feature");
+  assert.ok(feature, "feature loop row present");
+  assert.equal(feature!.ticks, 7);
+  assert.equal(feature!.commits, 3);
+  assert.equal(feature!.generated, 424242);
+  assert.equal(feature!.costUsd, 1.5);
+
+  // Deep-equal against the same root's payload in this process — one definition of fleet
+  // state as JSON (gui.statusPayload) feeds both surfaces, so they cannot drift. Both sides
+  // go through a JSON round-trip: that is exactly what the endpoint and the flag emit.
+  assert.deepEqual(doc, JSON.parse(JSON.stringify(statusPayload(repo))));
+
+  // Bare status still renders the table — same command, human surface unchanged.
+  r = await cli(repo, "status");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /loop/);
+  assert.match(r.stdout, /last result/);
+  assert.match(r.stdout, /feature/);
+
+  // A misspelled flag is rejected like every other unknown argument.
+  r = await cli(repo, "status", "--jsonn");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --jsonn/);
 });
 
 // --- tui: main()'s tui case (arg rejection → readiness gate → runTui) had no end-to-end

@@ -32,7 +32,7 @@ import { followFile } from "./tail.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { runTui } from "./tui.js";
-import { lanAddresses, startGui } from "./gui.js";
+import { lanAddresses, startGui, statusPayload } from "./gui.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { abortRequestPath, eventsLogPath, piLogPath, resetRequestPath } from "./paths.js";
 
@@ -47,7 +47,8 @@ Usage:
                                    localhost only; --all-interfaces serves the whole
                                    network — no auth, anyone reaching it can prompt
                                    the director)
-  tumwater status                  One-shot status table
+  tumwater status [--json]         One-shot status table (--json prints machine-readable
+                                   fleet state — same payload as the GUI's /api/status)
   tumwater logs [-f] [-n N]        Show (and follow) harness events
   tumwater logs --role <id> [-f] [-n N]
                                    Show (and follow) that loop's pi transcript
@@ -265,11 +266,18 @@ async function main(): Promise<void> {
       break;
     }
     case "status":
-      rejectUnknownArgs("status", args, []);
+      rejectUnknownArgs("status", args, [{ names: ["--json"] }]);
       await requireReadyRepo(root);
-      process.stdout.write(
-        renderStatus(root, snapshot(root), process.stdout.isTTY ? process.stdout.columns : undefined) + "\n",
-      );
+      if (args.includes("--json")) {
+        // Machine-readable fleet state — the same document GET /api/status serves, printed
+        // with no server. A query, not a health verdict: exit 0 on any successful read and
+        // let scripts interpret fields themselves ("running": false is data, not failure).
+        process.stdout.write(JSON.stringify(statusPayload(root), null, 2) + "\n");
+      } else {
+        process.stdout.write(
+          renderStatus(root, snapshot(root), process.stdout.isTTY ? process.stdout.columns : undefined) + "\n",
+        );
+      }
       break;
     case "logs":
       rejectUnknownArgs("logs", args, [

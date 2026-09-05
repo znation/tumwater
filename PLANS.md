@@ -5,7 +5,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Machine-readable fleet state — `tumwater status --json` (planned 2026-09-05)
+## Done
+
+### Machine-readable fleet state — `tumwater status --json` (planned 2026-09-05, done 2026-09-05)
 
 **Goal.** Every observation surface is human-facing: the `status` table, the TUI, and the GUI. The only JSON surface is the GUI's `/api/status`, which requires starting a server bound to a port — so an unattended fleet has no scriptable one-shot health check that works while the harness is NOT running (cron jobs, alerting on "budget paused" or repeated error results, CI-style verification of open plans/bugs). Add `--json` to `tumwater status`: the same document `/api/status` serves, printed to stdout with no server — a fleet query that reads from disk exactly like the table does.
 
@@ -26,7 +28,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Relationship to other plans.** Complements the done Web GUI plan (2026-08-20): same payload, no server required. Independent of the red-main baseline check — when that lands, its `main_red` result and phase label appear in this output automatically through statusPayload's loops array; no interaction needed.
 
-## Done
+**Done 2026-09-05 (feature tick) — implemented as planned against main `943d4f6`; nothing remains.**
+Audited first: at `943d4f6` no part had landed — src/cli.ts's status case ran `rejectUnknownArgs("status", args, [])` and always rendered the table, and test/cli.test.ts pinned `["status", "--json"]` to fail with "takes no arguments" in its strict-args test. This tick implemented the plan as written: the status case now accepts `{ names: ["--json"] }`, keeps requireReadyRepo ahead of both paths, and when the flag is present prints `JSON.stringify(statusPayload(root), null, 2)` plus a trailing newline — statusPayload added to the existing gui.js import, no new serializer, so the CLI flag and the GUI endpoint cannot drift; exit code stays 0 on any successful read (a query, not a health verdict). The HELP text's status line documents the flag like every other command's. test/cli.test.ts dropped `["status", "--json"]` from the strict-args rejection list and gained one contract test: in a ready repo with seeded counters, `status --json` exits 0, stdout parses as JSON carrying all top-level fields (running/inbox/inboxPrompts/budget/loops/events/plans/bugs/questions — pid absent while no harness runs), every loop row carries role/phase/ticks/commits/generated/peakCtx/costUsd/todayUsd/lastResult/lastSummary/lastTickEndedAt, the seeded counters surface verbatim (ticks 7 / commits 3 / generated 424242 / costUsd 1.5), and the parsed document deep-equals a JSON round-trip of `statusPayload(root)` for the same root; bare `status` still renders the table unchanged, and `--jsonn` fails with "unknown argument". README.md gained the one Usage line per plan. Verified on this tree: build clean, full suite 654/654 — main at `943d4f6` runs 653/653 (measured in a detached worktree), so this tick adds exactly one test. Files: src/cli.ts, test/cli.test.ts, README.md, PLANS.md.
+
 
 ### Red-main baseline check — skip authoring runs while main is red (planned 2026-09-04, done 2026-09-05)
 

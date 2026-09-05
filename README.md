@@ -115,6 +115,7 @@ tumwater tui          # terminal 2: dashboard + main prompt
 tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N to change)
 tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
 tumwater status       # one-shot table
+tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
 tumwater prompt "prefer no third-party deps"
