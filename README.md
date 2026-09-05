@@ -37,7 +37,7 @@ locally and keep all project state within the git repo.
 
 <!-- tumwater:status:start -->
 v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
-`status`, `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` / `prompt --list` /
+`status` (`--json`), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` / `prompt --list` /
 `prompt --cancel <n>`, `reset-counters [--role <id>]`, and `abort --role <id>` (kills one loop's
 in-flight tick; work discarded, the loop keeps running). All twelve roles — feature, bugfix, plan,
 readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve, steward (~6 h clock) — plus
@@ -46,12 +46,12 @@ skip their authoring run and show a `main red` state in both dashboards until ma
 (director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix).
 
 Open items:
-- Planned (PLANS.md): machine-readable fleet state via `tumwater status --json` — the same payload
-  as the GUI's /api/status, printed with no server (planned 2026-09-05).
+- Planned (PLANS.md): none — the last plan (`tumwater status --json`, machine-readable fleet
+  state with no server) landed on main `e46b811` and moved to Done.
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`e7ef65c`): build clean, suite 652/652, verified 2026-09-05.
+Current main (`e46b811`): build clean, suite 654/654, verified 2026-09-05.
 <!-- tumwater:status:end -->
 
 ## How it works
