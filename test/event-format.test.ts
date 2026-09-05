@@ -233,6 +233,24 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   assert.match(bare, /budget paused — \$0\.00 of \$0\.00 daily cost reached/);
 });
 
+// The live concurrency-cap change event (PLANS.md, Live maxConcurrent): a routine state
+// change like counters_reset — a plain line carrying from → to in that order, no warning prefix.
+test("formatEvent renders the maxConcurrent change event plainly with from and to", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "max_concurrent_changed",
+    from: 1,
+    to: 4,
+  } as never);
+  assert.match(line, /harness\s+maxConcurrent changed: 1 → 4/);
+  assert.ok(!line.includes("warning"), "a routine state change is not a warning");
+
+  // A torn or hand-edited event line could carry no payloads; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "harness", type: "max_concurrent_changed" } as never);
+  assert.match(bare, /maxConcurrent changed:/);
+});
+
 // The live session-retention change event (PLANS.md, Live sessionRetentionDays): a routine
 // state change like max_concurrent_changed — a plain line carrying from → to, no warning prefix.
 test("formatEvent renders the retention change event plainly with from and to", () => {
