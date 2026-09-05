@@ -236,6 +236,52 @@ test("validateConfig rejects non-object top levels and bad containers", () => {
   assert.match(validationError({ roles: { clean: "nope" } }), /roles\.clean must be an object/);
 });
 
+test("validateConfig guards the review section like its sibling sections", () => {
+  // A non-object review (a hand-edited tumwater.json) fails with an actionable message
+  // instead of crashing deep in the gate — the same guard idleBackoff and roles get. The
+  // message names what was found so one edit fixes it.
+  for (const bad of ["on", 1, null, [".md"]]) {
+    const shown = JSON.stringify(bad);
+    assert.match(
+      validationError({ review: bad }),
+      new RegExp(`review must be an object \\(got ${shown.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)`),
+      `review: ${shown}`,
+    );
+  }
+
+  // A typo'd key inside the section would otherwise be silently ignored: a fleet that meant
+  // to point its reviewers at a strong model would review with the default and never know.
+  assert.match(
+    validationError({ review: { modle: "strong" } }),
+    /unknown key "modle" in review \(valid keys: enabled, exemptPaths, provider, model, thinking\)/,
+  );
+
+  // Inner values are type-checked like their siblings elsewhere in the file.
+  assert.match(validationError({ review: { enabled: "yes" } }), /review\.enabled must be true or false \(got "yes"\)/);
+  assert.match(
+    validationError({ review: { exemptPaths: "*.md" } }),
+    /review\.exemptPaths must be an array of strings \(got "\*\.md"\)/,
+  );
+  assert.match(validationError({ review: { exemptPaths: ["*.md", 3] } }), /review\.exemptPaths must be an array of strings/);
+  for (const key of ["provider", "model", "thinking"]) {
+    assert.match(
+      validationError({ review: { [key]: 7 } }),
+      new RegExp(`review\\.${key} must be a string \\(got 7\\)`),
+    );
+  }
+
+  // A fully valid section still passes.
+  assert.doesNotThrow(() =>
+    validateConfig({ review: { enabled: false, exemptPaths: ["*.md"], provider: "p", model: "m", thinking: "high" } }),
+  );
+
+  // The live-reload path (the orchestrator's config poll) surfaces the same message without
+  // stopping the fleet.
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ review: "on" }));
+  assert.match(loadConfigSafe(dir).error ?? "", /review must be an object/);
+});
+
 test("validateConfig rejects unknown keys with the valid ones listed", () => {
   // A misspelled key would otherwise be silently ignored and the default used.
   const top = validationError({ tickTimeoutSecondss: 90 });
