@@ -46,11 +46,12 @@ the director are enabled by default.
 Open items:
 - Planned (PLANS.md): red-main baseline check — while main's build/test suite is red, skip the
   authoring run for code-producing roles and surface the blockage in both dashboards (planned
-  2026-09-04).
+  2026-09-04); machine-readable fleet state via `tumwater status --json` — the same payload as
+  the GUI's /api/status, printed with no server (planned 2026-09-05).
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`a4874db`): build clean, suite 634/634, verified 2026-09-05.
+Current main (`f46b71e`): build clean, suite 635/635, verified 2026-09-05.
 <!-- tumwater:status:end -->
 
 ## How it works
