@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { cachedByStat, ensureDir, type StatKeyedValue } from "./files.js";
+import { ensureDir } from "./files.js";
+import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { logEvent } from "./events.js";
 import { inboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
@@ -54,7 +55,7 @@ export function inboxSize(root: string): number {
   return queuedFiles(root).length;
 }
 
-// Per-poll prompt-content cache (files.cachedByStat): both dashboards poll snapshot() every
+// Per-poll prompt-content cache (stat-cache.cachedByStat): both dashboards poll snapshot() every
 // second and read every queued prompt in full — to show an 80-char preview — but each file is
 // written once by enqueuePrompt and only deleted on dequeue/cancel, never rewritten. Serve an
 // unchanged file from the stat-keyed cache: one stat per file per poll instead of re-reading a

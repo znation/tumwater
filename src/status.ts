@@ -1,7 +1,7 @@
 import type { LoopState, TumwaterConfig } from "./types.js";
 import { openQuestions } from "./backlog.js";
 import { defaultConfig, enabledRoleIds, loadConfigSafe } from "./config.js";
-import { cachedByStat, type StatKeyedValue } from "./files.js";
+import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { promptPreview, queuedPrompts } from "./inbox.js";
 import { statePath } from "./paths.js";
 import {
@@ -50,7 +50,7 @@ function configForStatus(root: string): TumwaterConfig {
   return lastGoodConfig.get(root) ?? defaultConfig();
 }
 
-// Per-poll loop-state cache (files.cachedByStat): the TUI and GUI poll snapshot every second,
+// Per-poll loop-state cache (stat-cache.cachedByStat): the TUI and GUI poll snapshot every second,
 // but a role's state file changes only at its tick boundaries (start/end) — between ticks it
 // sits unchanged for minutes. Serve an unchanged file from the stat-keyed cache: one stat
 // syscall per file per poll instead of re-reading and re-parsing JSON that hasn't moved.

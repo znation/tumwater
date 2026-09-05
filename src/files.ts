@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** Shared file helpers: stat-or-missing for log readers, PATH lookup for the pi-installation
- * preflight, tolerant JSON-file reads for state files written by other processes,
- * pretty-printed JSON overwrites for marker/info files, stat-keyed caching of file-derived
- * values polled on an interval, size-based rotation for append-only logs, recursive directory
- * creation before file writes, and age-based pruning of pi session files. Incremental
- * consumption of those append-only
- * logs (complete-line tail reading, tail-state folding, byte-offset following) lives in tail.ts. */
+/** Generic file operations under the harness's error policy — missing is no data, cleanup
+ * must not throw, directories are created before writes: stat-or-missing for log readers,
+ * PATH lookup for the pi-installation preflight, size-based rotation for append-only logs,
+ * recursive directory creation before file writes, quiet deletes after marker consumption,
+ * and age-based pruning of pi session files. The JSON state-file convention (tolerant reads
+ * of possibly-torn writes, pretty-printed overwrites) lives in json-files.ts; stat-keyed
+ * caching of polled values in stat-cache.ts; incremental consumption of the append-only logs
+ * (complete-line tail reading, tail-state folding, byte-offset following) in tail.ts. */
 
 /** Stat a file, returning null when it does not exist (or cannot be read). The harness's
  * log readers all treat a missing log as "no data yet" rather than an error — this is the
@@ -38,68 +39,6 @@ export function findOnPath(name: string, pathEnv: string = process.env.PATH ?? "
   return null;
 }
 
-/** Read and parse a JSON file, returning null when it does not exist or cannot be read or
- * parsed. The harness's state files (loop state, orchestrator info, the reset-counters
- * marker) are written by other processes and may be missing or torn mid-write — readers
- * treat that as "no data" rather than an error, so a crash in one process can never take
- * down the observers polling these files. */
-export function readJsonFile<T>(file: string): T | null {
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as T;
-  } catch {
-    return null; // Missing or torn — no data.
-  }
-}
-
-/** One entry of a stat-keyed cache: the file's identity and freshness at read time plus the
- * value derived from it. */
-export interface StatKeyedValue<T> {
-  dev: number;
-  ino: number;
-  mtimeMs: number;
-  size: number;
-  value: T;
-}
-
-/** Safety cap so a stat-keyed cache can never grow unbounded (e.g. many short-lived roots in
- * tests). Evicting only costs one re-read per file on the next call. */
-const MAX_STAT_CACHED = 64;
-
-/** Serve `file`'s derived value from a stat-keyed cache: fresh when the file's identity or
- * mtime/size changed since this process last read it, cached otherwise — one stat syscall per
- * file per poll instead of re-reading and re-parsing data that grows without bound. Any write
- * invalidates via dev/ino/mtime/size (the same freshness check as tail.ts's incremental log
- * readers). `load` runs only on a miss (first observation or change) — never on a hit, so a
- * steady-state poll does no read I/O at all; it returns null when the file cannot be read. A
- * missing file yields null without attempting a doomed read, and any stale entry is dropped in
- * both cases. The result is always `clone`d, so each caller owns its data: mutating one result
- * must not poison later polls. */
-export function cachedByStat<T>(
-  cache: Map<string, StatKeyedValue<T>>,
-  key: string,
-  file: string,
-  load: () => T | null,
-  clone: (value: T) => T,
-): T | null {
-  const st = statOrNull(file);
-  if (!st) {
-    cache.delete(key); // Vanished — drop any stale entry.
-    return null;
-  }
-  const hit = cache.get(key);
-  if (hit && hit.dev === st.dev && hit.ino === st.ino && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
-    return clone(hit.value); // A copy: callers may treat the result as their own.
-  }
-  const value = load();
-  if (value === null) {
-    cache.delete(key); // Unreadable — don't serve a stale entry for it.
-    return null;
-  }
-  if (cache.size >= MAX_STAT_CACHED) cache.clear();
-  cache.set(key, { dev: st.dev, ino: st.ino, mtimeMs: st.mtimeMs, size: st.size, value });
-  return clone(value);
-}
-
 /** Keep an append-only log bounded: over `maxBytes` it is renamed to `<file>.1`
  * (replacing any previous rotation) and a fresh file starts. Returns true if rotated. */
 export function rotateIfLarge(file: string, maxBytes: number): boolean {
@@ -123,17 +62,6 @@ export function ensureDir(dir: string): void {
  * or appending a file whose path may not exist yet. */
 export function ensureParentDir(file: string): void {
   ensureDir(path.dirname(file));
-}
-
-/** Write `value` to `file` as pretty-printed (2-space) JSON, creating the parent directory
- * first — the shared pre-write step for every harness marker/info file that is a plain
- * overwrite (the reset-counters and abort markers in cli.ts, the orchestrator info file), so
- * their format cannot drift per writer. Writers with stronger guarantees keep their own
- * paths: loop state writes atomically via tmp+rename (state.ts), tumwater.json appends a
- * trailing newline (config.ts), and the event log appends + rotates (events.ts). */
-export function writeJsonFile(file: string, value: unknown): void {
-  ensureParentDir(file);
-  fs.writeFileSync(file, JSON.stringify(value, null, 2));
 }
 
 /** Delete a file, swallowing every error — the one place for cleanup deletes that must never

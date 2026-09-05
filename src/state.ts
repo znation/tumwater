@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import type { TumwaterConfig, LoopState, TickOutcome } from "./types.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { ensureParentDir, readJsonFile } from "./files.js";
+import { ensureParentDir } from "./files.js";
+import { readJsonFile } from "./json-files.js";
 import { pidAlive } from "./process.js";
 import { formatDate } from "./text.js";
 import { orchestratorStatePath, statePath } from "./paths.js";

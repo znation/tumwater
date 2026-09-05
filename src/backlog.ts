@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { cachedByStat, type StatKeyedValue } from "./files.js";
+import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 
 /** The project backlog data shown on both dashboards: planned features (PLANS.md), open bugs
  * (BUGS.md), and open questions (QUESTIONS.md). These are tracked markdown that loops edit, so
@@ -8,7 +8,7 @@ import { cachedByStat, type StatKeyedValue } from "./files.js";
  * files change only when a loop lands an edit. Each reader therefore serves an unchanged file
  * from a stat-keyed cache: one syscall per file per poll instead of re-reading and re-parsing
  * markdown that grows without bound over the project's lifetime (PLANS/BUGS are append-only
- * durable memory). Any write invalidates it via dev/ino/mtime/size (files.cachedByStat, the
+ * durable memory). Any write invalidates it via dev/ino/mtime/size (stat-cache.cachedByStat,
  * same freshness check as tail.ts's incremental log readers). Each dashboard formats this data
  * for its own surface (the
  * TUI's lines live in tui.ts; the GUI renders HTML in gui-page.ts) — this module owns only

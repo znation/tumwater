@@ -26,7 +26,8 @@ import {
 import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
-import { ensureParentDir, findOnPath, writeJsonFile } from "./files.js";
+import { ensureParentDir, findOnPath } from "./files.js";
+import { writeJsonFile } from "./json-files.js";
 import { followFile } from "./tail.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
