@@ -44,12 +44,14 @@ readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve, steward 
 the director are enabled by default.
 
 Open items:
-- Planned (PLANS.md): section-aware tick reads — bound per-tick prefill by reading only the
-  actionable top sections of PLANS.md/BUGS.md instead of the whole files (planned 2026-09-04).
+- Planned (PLANS.md): steward curation of PLANS.md's Done history — compress old done plans to
+  one-line epitaphs so the file stays bounded (planned 2026-09-04).
+- Planned (PLANS.md): steward curation of BUGS.md's Fixed history — compress old fixed bugs to
+  one-line records, same policy shape (planned 2026-09-04).
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`1cc03b9`): build clean, suite 610/610, verified 2026-09-04.
+Current main (`73c9e87`): build clean, suite 619/619, verified 2026-09-04.
 <!-- tumwater:status:end -->
 
 ## How it works
