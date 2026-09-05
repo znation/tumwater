@@ -362,11 +362,30 @@ test("the director routes refusal decisions by clearing the Refused note", () =>
 // Same whitespace-collapsed matching as the refusal contract above — the prose is hard-wrapped
 // and formatting ticks reflow it, so assertions match content, not layout.
 
-test("every role prompt lists QUESTIONS.md in the read-first list", () => {
+// Prompt contract for section-aware tick reads (PLANS.md, planned 2026-09-04): every tick
+// re-reads the backlog files, so the read-first rule bounds how much of each gets prefilled —
+// README in full, PLANS.md/BUGS.md only at their actionable tops, older history via git log or
+// a targeted read, and a carve-out for the steward, which curates those files whole.
+
+test("every role prompt carries the section-aware read-first rule", () => {
   const role = roleById("feature");
   assert.ok(role);
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /First read README\.md, PLANS\.md, BUGS\.md, and QUESTIONS\.md/);
+  // README is read in full; QUESTIONS.md keeps its place in the read set.
+  assert.match(prompt, /First read README\.md in full/);
+  assert.match(prompt, /plus QUESTIONS\.md when present/);
+  // PLANS.md and BUGS.md are never read wholesale — their actionable sections come first by
+  // template convention, so only the top of each file is read.
+  assert.match(prompt, /never read them wholesale/);
+  assert.match(prompt, /## Planned before ## Done; ## Open before ## Fixed/);
+  assert.match(prompt, /Planned plus recent Done entries, Open plus recent Fixed ones/);
+  // Older history is consulted only when a specific entry is needed.
+  assert.match(
+    prompt,
+    /Consult older history via git log or a targeted read only when a specific entry is needed/,
+  );
+  // The steward curates those files and must see them whole.
+  assert.match(prompt, /The steward role is the exception: it curates those files and must see them whole/);
 });
 
 test("every role prompt carries the ask-don't-guess rule", () => {

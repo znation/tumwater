@@ -26,8 +26,12 @@ const SUMMARY_RULE = `- If you did make changes, end your reply with a block in 
 
 const COMMON_RULES = `
 Rules for this run:
-- First read README.md, PLANS.md, BUGS.md, and QUESTIONS.md (those that exist) to understand
-  the project.
+- First read README.md in full to understand the project, plus QUESTIONS.md when present.
+  PLANS.md and BUGS.md grow without bound — never read them wholesale: their actionable sections
+  come first by template convention (## Planned before ## Done; ## Open before ## Fixed), so read
+  only the top of each file that exists — Planned plus recent Done entries, Open plus recent
+  Fixed ones. Consult older history via git log or a targeted read only when a specific entry is
+  needed. The steward role is the exception: it curates those files and must see them whole.
 - Do exactly ONE focused task, then stop. Small, complete, and correct beats big and half-done.
 - Leave the project working: if it has a build or test command, run it and fix what you broke.
 - Never create, amend, or revert git commits, branches, or merges — the harness handles all git
