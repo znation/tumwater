@@ -584,6 +584,41 @@ test("loopPhase reads budget paused for idle role loops while the cap is reached
   assert.equal(loopPhase(s, false, undefined, true), "stopped");
 });
 
+test("loopPhase shows main red for idle loops whose last tick was blocked by a red main", () => {
+  // Blocked: the label explains why the loop keeps waking and landing nothing — ahead of its
+  // sleep/queue state, like budget paused.
+  const s = freshLoopState("feature");
+  s.lastResult = "main_red";
+  assert.equal(loopPhase(s, true), "main red", "queued loop shows the blockage");
+  s.nextRunAt = Date.now() + 3_600_000;
+  assert.equal(loopPhase(s, true), "main red", "sleeping loop shows the blockage too");
+
+  // Other results keep their ordinary labels; a green wake overwrites lastResult and self-corrects.
+  const other = freshLoopState("feature");
+  other.lastResult = "no_change";
+  assert.equal(loopPhase(other, true), "queued");
+
+  // In-flight ticks are untouched (the label describes the finished tick only).
+  const running = freshLoopState("feature");
+  running.running = true;
+  running.lastResult = "main_red";
+  assert.equal(loopPhase(running, true), "working");
+
+  // A stopped orchestrator still reads stopped.
+  assert.equal(loopPhase(s, false), "stopped");
+});
+
+test("renderStatus shows the main-red blockage in a blocked loop's state cell and last-result line", () => {
+  const snap = snapshotWith([
+    { role: "feature", lastResult: "main_red", lastSummary: "code merges blocked until main is green" },
+    { role: "bugfix" }, // exempt roles keep their ordinary phase
+  ]);
+  const out = renderStatus(tmpdir(), { ...snap, running: true });
+  assert.match(out, /feature\s+main red/);
+  assert.match(out, /main_red — code merges blocked until main is green/);
+  assert.match(out, /bugfix\s+queued/);
+});
+
 test("renderStatus shows budget paused in idle role loops' state cells while the cap is reached", () => {
   const root = tmpdir();
   // Spend below the cap: ordinary labels.

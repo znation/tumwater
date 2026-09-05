@@ -184,6 +184,25 @@ You edit only markdown — never source.`,
   },
 ];
 
+/** The roles blocked from starting an authoring run while main's own build/test suite is known
+ * red (the red-main baseline check, PLANS.md "Red-main baseline check"): every role whose diff
+ * can carry non-exempt (code) changes — on a red main such a diff is rejected deterministically
+ * by the gate's pre-check, so spending an authoring run on it is pure waste. Exempt: director
+ * (human prompts outrank autonomous gates, like the budget gate), bugfix (the designated healer
+ * — its tick runs the suite per "leave the project working" and can fix a red main through the
+ * existing pre-merge gate; blocking it would leave only humans able to unblock the fleet), and
+ * plan/readme/steward/qa (markdown-only charter — their diffs are exempt from the build
+ * pre-check via review.exemptPaths, so a red main does not block them). */
+export const BASELINE_BLOCKED_ROLES: ReadonlySet<string> = new Set([
+  "feature",
+  "organize",
+  "coverage",
+  "clean",
+  "dry",
+  "perf",
+  "improve",
+]);
+
 /** Every role id, including the director (which is driven by user prompts, not a find prompt). */
 export function allRoleIds(): string[] {
   return [...ROLES.map((r) => r.id), DIRECTOR_ROLE];

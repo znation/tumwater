@@ -97,6 +97,7 @@ export type TickResult =
   | "error" // pi errored or timed out
   | "aborted" // harness shutdown killed the run mid-tick; partial work discarded
   | "user_aborted" // a user-initiated abort (tumwater abort) killed the run mid-tick; work discarded, loop backed off
+  | "main_red" // baseline check found main's build/test suite red; authoring run skipped, code merges blocked until main is green
   | "skipped"; // nothing to run (e.g. director with an empty inbox);
 
 /** The outcome of one full tick: its result plus what the harness learned from it.

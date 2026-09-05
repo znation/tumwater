@@ -97,6 +97,11 @@ export function loopPhase(
   }
   if (s.role === DIRECTOR_ROLE) return "waiting for prompts"; // exempt from the cap
   if (budgetPaused) return "budget paused";
+  // Main's own suite is known red at this loop's last tick: code-producing loops are blocked
+  // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
+  // because it explains why the loop keeps waking and landing nothing; self-correcting, since
+  // each blocked tick re-records main_red while red and a green wake overwrites lastResult.
+  if (s.lastResult === "main_red") return "main red";
   if (s.nextRunAt > Date.now()) {
     // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
     // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder

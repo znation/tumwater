@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { gitTry } from "./git.js";
 import { truncate } from "./text.js";
 
 const execFileAsync = promisify(execFile);
@@ -13,9 +14,11 @@ const execFileAsync = promisify(execFile);
  * keeps the adversarial review gate itself — because this is a self-contained concern with its
  * own data model (BuildCheck/BuildCheckOutcome), detection algorithm (walk-up to the install),
  * and execution/classification logic: deterministic process verification, distinct from the
- * model-based review. The gate (review.ts) consumes detectBuildCheck + runBuildCheck; nothing
- * else does. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text,
- * shared by clipBuildTail and parseVerdict in review.ts — so that helper has a single home. */
+ * model-based review. The gate (review.ts) consumes detectBuildCheck + runBuildCheck for its
+ * per-merge pre-check; loop.ts's red-main baseline check (checkMainBaseline below) reuses the
+ * same machinery to verify main itself once per SHA before an authoring run is spent on top of
+ * it. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
+ * by clipBuildTail and parseVerdict in review.ts — so that helper has a single home. */
 
 /** Per-reason length cap with ellipsis — bounds one line of machine-generated or reviewer
  * text so it cannot bloat persisted state (shared by clipBuildTail here and parseVerdict in
@@ -169,5 +172,82 @@ export async function runBuildCheck(
     }
     // Spawn failed before anything ran — the npm binary is missing from PATH.
     return { status: "skipped", script: check.script, skipReason: "no-npm" };
+  }
+}
+
+// ── Main baseline (red-main gate) ────────────────────────────────────────────────────────
+// The review gate verifies worktree = main + changes before every merge; this checks MAIN
+// ITSELF — once per SHA, fleet-wide — before an authoring run is spent on top of it. A red
+// main rejects every code diff deterministically at the gate (BUGS.md's nine "build/tests red
+// on main" entries), so while a SHA is known red the harness skips authoring for the
+// code-producing roles instead of burning runs that are guaranteed to fail (PLANS.md, "Red-
+// main baseline check").
+
+/** The fleet-shared verdict of main's own build/test suite at one SHA. */
+export interface MainBaseline {
+  status: "green" | "red";
+  /** The main HEAD this verdict covers. */
+  sha: string;
+  /** Red only: the script that failed. */
+  script?: string;
+  /** Red only: clipped failure tail (clipBuildTail) — its first line goes into the warning
+   * event so an operator sees what broke without opening a transcript. */
+  outputTail?: string[];
+}
+
+/** checkMainBaseline's result. `baseline` is null when nothing blocks authoring: either no
+ * declared build check at all (nothing to verify → nothing to block on, consistent with the
+ * gate skipping its pre-check) or an environmental skip (`skipReason` set — timeout/no-npm),
+ * which the caller warns about and proceeds with, exactly like the gate's pre-check. Skips are
+ * never cached red: a hung script must not wedge authoring for the life of the process. */
+export interface MainBaselineCheck {
+  baseline: MainBaseline | null;
+  /** Set when a detected check could not be run (timeout or no npm on PATH). */
+  skipReason?: "timeout" | "no-npm";
+}
+
+/** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is
+ * cold and one re-check per red SHA happens — cheap and deterministic, mirroring the budget
+ * gate's stateless resume. */
+const baselineCache = new Map<string, MainBaseline>();
+
+/** In-flight dedup: concurrent ticks on the same not-yet-cached SHA (a fresh main move wakes
+ * every blocked role at once) share one check run instead of racing N npm invocations. */
+const baselineInFlight = new Map<string, Promise<MainBaselineCheck>>();
+
+/** Verify main's own build/test suite at `wt`'s HEAD — which must be pristine main (the caller
+ * is the fresh-tick path right after resetWorktreeToMain; a dirty or ahead worktree would
+ * measure the wrong thing). Cache hit returns immediately; on miss runs detectBuildCheck +
+ * runBuildCheck once per SHA (in-flight deduped) and caches green/red. Never throws: git,
+ * detection, and execution failures all resolve to "nothing blocks authoring". */
+export async function checkMainBaseline(wt: string): Promise<MainBaselineCheck> {
+  const sha = await gitTry(wt, "rev-parse", "HEAD");
+  if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
+  const cached = baselineCache.get(sha);
+  if (cached) return { baseline: cached };
+  let pending = baselineInFlight.get(sha);
+  if (!pending) {
+    pending = (async () => {
+      const check = detectBuildCheck(wt);
+      if (!check) return { baseline: null }; // No declared check — nothing to verify, nothing to block on.
+      const outcome = await runBuildCheck(wt, check);
+      if (outcome.status === "skipped") {
+        // Environmental (timeout/no-npm): warn-and-proceed semantics like the gate's pre-check;
+        // never cache red for a skip.
+        return { baseline: null, skipReason: outcome.skipReason };
+      }
+      const baseline: MainBaseline =
+        outcome.status === "passed"
+          ? { status: "green", sha }
+          : { status: "red", sha, script: outcome.script, outputTail: outcome.outputTail };
+      baselineCache.set(sha, baseline);
+      return { baseline };
+    })();
+    baselineInFlight.set(sha, pending);
+  }
+  try {
+    return await pending;
+  } finally {
+    if (baselineInFlight.get(sha) === pending) baselineInFlight.delete(sha);
   }
 }

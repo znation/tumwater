@@ -1885,3 +1885,152 @@ test("a skipped tick's tick_end event carries no usage fields", async () => {
   assert.equal(ends[0]!.tokens, undefined, "no tokens field on a skipped tick");
   assert.equal(ends[0]!.costUsd, undefined, "no costUsd field on a skipped tick");
 });
+
+// --- Red-main baseline check (PLANS.md): while main's own suite is known red, code-producing
+// roles skip authoring entirely instead of burning runs the gate would reject deterministically.
+
+/** Make a repo's main "red": commit a package.json whose test script fails (appending to
+ * `counter` so tests can count how often npm actually ran), plus an untracked node_modules dir
+ * at root — the installed-project signature detectBuildCheck walks up to from the worktree. */
+function makeMainRed(repo: string, counter: string): void {
+  fs.mkdirSync(path.join(repo, "node_modules")); // untracked install marker (gitignored in real projects)
+  fs.writeFileSync(
+    path.join(repo, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: `echo baseline-failure-line; echo run >> ${counter}; exit 1` } }),
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "make main red");
+}
+
+/** A fake pi that approves review verdicts and lands one small change (plus a marker file so
+ * the test can prove an authoring run actually started). */
+function approvingPi(marker: string): () => void {
+  return fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+      `touch '${marker}'`,
+    ].join("\n"),
+  );
+}
+
+test("a blocked role skips authoring while main is red: no pi run, one warning per SHA, cached verdicts", async () => {
+  const repo = await initializedRepo();
+  const counter = path.join(tmpdir(), "npm-runs");
+  makeMainRed(repo, counter);
+  const marker = path.join(tmpdir(), "pi-invoked");
+  const restore = fakePi(`touch '${marker}'`);
+  try {
+    const runner = new LoopRunner(repo, "feature", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "main_red");
+    assert.equal(outcome.summary, "code merges blocked until main is green");
+    assert.ok(!fs.existsSync(marker), "no pi run starts while main is red");
+
+    // A second tick on the same SHA: cached red — still no pi run and npm test did not re-run.
+    const again = await runner.tick();
+    assert.equal(again.result, "main_red");
+    assert.ok(!fs.existsSync(marker));
+    assert.equal(
+      fs.readFileSync(counter, "utf8").trim().split("\n").length,
+      1,
+      "the SHA's check ran once (cache) — repeated skips read it without re-running npm test",
+    );
+
+    // Exactly one harness-level warning for the red SHA: script name + clipped first failure line.
+    const warnings = readEvents(repo).filter((e) => e.type === "warning" && e.loop === "harness");
+    assert.equal(warnings.length, 1);
+    const message = String(warnings[0]?.message ?? "");
+    assert.match(message, /is red \(test: baseline-failure-line\)/);
+    assert.match(message, /code merges blocked until main is green/);
+
+    // The tick_end lines carry the result + summary for the dashboards' last-result column.
+    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    assert.equal(ends.length, 2);
+    assert.equal(String(ends[1]?.result), "main_red");
+    assert.match(String(ends[1]?.summary ?? ""), /code merges blocked/);
+  } finally {
+    restore();
+  }
+});
+
+test("a green main passes the baseline check and authoring proceeds normally", async () => {
+  const repo = await initializedRepo();
+  fs.mkdirSync(path.join(repo, "node_modules"));
+  fs.writeFileSync(
+    path.join(repo, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "echo ok" } }),
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "green main");
+  const marker = path.join(tmpdir(), "pi-invoked");
+  const restore = approvingPi(marker);
+  try {
+    const runner = new LoopRunner(repo, "feature", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed");
+    assert.ok(fs.existsSync(marker), "the authoring run started on a green main");
+  } finally {
+    restore();
+  }
+});
+
+test("an exempt role ticks normally while main is red — its markdown-only diff still lands", async () => {
+  const repo = await initializedRepo();
+  makeMainRed(repo, path.join(tmpdir(), "npm-runs"));
+  const marker = path.join(tmpdir(), "pi-invoked");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: note", { tokens: 7, output: 7, cost: 0.01 })}'`,
+      `echo more >> PLANS.md`,
+      `touch '${marker}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "readme", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(
+      outcome.result,
+      "changed",
+      "markdown-only diffs are exempt from the build pre-check and land even on red main",
+    );
+    assert.ok(fs.existsSync(marker), "the authoring run started for an exempt role");
+  } finally {
+    restore();
+  }
+});
+
+test("after a fix lands on main, the next tick re-checks the new SHA and authoring resumes", async () => {
+  const repo = await initializedRepo();
+  const counter = path.join(tmpdir(), "npm-runs");
+  makeMainRed(repo, counter);
+  const marker = path.join(tmpdir(), "pi-invoked");
+  const restore = approvingPi(marker);
+  try {
+    const runner = new LoopRunner(repo, "feature", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "main_red");
+
+    // The bugfix role (exempt) lands a fix on main — the suite is green at the new SHA.
+    fs.writeFileSync(
+      path.join(repo, "package.json"),
+      JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: `echo fixed >> ${counter}; exit 0` } }),
+    );
+    sh(repo, "git", "add", "-A");
+    sh(repo, "git", "commit", "-m", "fix the suite");
+
+    // The next fresh tick resets to the new main and re-checks it — no waiting out backoff.
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "changed");
+    assert.ok(fs.existsSync(marker), "authoring resumed once main is green");
+    // Grew past tick one's single red run: the baseline check re-ran for the new SHA. (The
+    // review gate's own pre-check of main + changes appends too, so allow more than two.)
+    assert.ok(
+      fs.readFileSync(counter, "utf8").trim().split("\n").length >= 2,
+      "the new SHA was re-checked (one run per SHA)",
+    );
+  } finally {
+    restore();
+  }
+});
