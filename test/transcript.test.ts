@@ -4,24 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/transcript.js";
 import { piLogPath } from "../src/paths.js";
-import { tmpdir } from "./util.js";
-
-const TS = 1787222691956; // a fixed epoch-ms timestamp for deterministic separators
-
-function agentStart(): string {
-  return JSON.stringify({ type: "agent_start" });
-}
-
-function userLine(text: string, timestamp: number = TS): string {
-  return JSON.stringify({
-    type: "message_end",
-    message: { role: "user", content: [{ type: "text", text }], timestamp },
-  });
-}
-
-function assistantLine(content: unknown[]): string {
-  return JSON.stringify({ type: "message_end", message: { role: "assistant", content, stopReason: "stop" } });
-}
+import { FIXED_TS, agentStart, assistantBlocks, tmpdir, userLine } from "./util.js";
 
 /** Local wall-clock rendering of an epoch-ms timestamp (independent of the implementation). */
 function expectedTimestamp(ts: number): string {
@@ -35,7 +18,7 @@ test("formatTranscript renders a run separator and an assistant turn", () => {
     JSON.stringify({ type: "session", version: 3, id: "x" }), // skipped: only agent_start separates runs
     agentStart(),
     userLine("You are the feature loop of tumwater. (multi-KB tick prompt)"),
-    assistantLine([
+    assistantBlocks([
       { type: "thinking", thinking: "Let me start by reading the project files to understand what is here." },
       { type: "text", text: "Reading the key files first." },
       { type: "toolCall", id: "c1", name: "read", arguments: { path: "/repo/PLANS.md" } },
@@ -44,7 +27,7 @@ test("formatTranscript renders a run separator and an assistant turn", () => {
   const entries = formatTranscript(lines);
   assert.equal(entries.length, 1);
   assert.deepEqual(entries[0], [
-    `── run @ ${expectedTimestamp(TS)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
     "· Let me start by reading the project files to understand what is here.",
     "  Reading the key files first.",
     "→ read PLANS.md",
@@ -60,14 +43,14 @@ test("formatTranscript skips deltas, bookkeeping events, and user content", () =
     userLine(prompt),
     JSON.stringify({ type: "message_update", delta: { type: "text_delta", textDelta: prompt } }),
     JSON.stringify({ type: "tool_execution_start", toolName: "read", args: { path: "x.md" } }),
-    assistantLine([{ type: "text", text: "done" }]),
+    assistantBlocks([{ type: "text", text: "done" }]),
     JSON.stringify({ type: "tool_execution_end", toolCallId: "c1" }),
     JSON.stringify({ type: "turn_end" }),
     JSON.stringify({ type: "agent_end" }),
   ];
   const out = formatTranscript(lines).flat();
   assert.ok(!out.some((l) => l.includes("TICK PROMPT")));
-  assert.deepEqual(out, [`── run @ ${expectedTimestamp(TS)} ──`, "  done"]);
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  done"]);
 });
 
 test("formatTranscript skips torn and non-JSON lines without failing", () => {
@@ -77,16 +60,16 @@ test("formatTranscript skips torn and non-JSON lines without failing", () => {
     '{"type":"agent_start"', // torn write
     agentStart(),
     userLine("p"),
-    assistantLine([{ type: "text", text: "ok" }]),
+    assistantBlocks([{ type: "text", text: "ok" }]),
   ]);
-  assert.deepEqual(out.flat(), [`── run @ ${expectedTimestamp(TS)} ──`, "  ok"]);
+  assert.deepEqual(out.flat(), [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  ok"]);
 });
 
 test("formatTranscript abbreviates long thinking and caps text at four lines", () => {
   const lines = [
     agentStart(),
     userLine("p"),
-    assistantLine([
+    assistantBlocks([
       { type: "thinking", thinking: "x".repeat(200) },
       { type: "text", text: ["l1", "l2", "", "l3", "y".repeat(300), "l5"].join("\n") },
     ]),
@@ -102,32 +85,32 @@ test("formatTranscript surfaces auto_retry_start as a warning line", () => {
     agentStart(),
     userLine("p"),
     JSON.stringify({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "Request timed out." }),
-    assistantLine([{ type: "text", text: "recovered" }]),
+    assistantBlocks([{ type: "text", text: "recovered" }]),
   ];
   const entries = formatTranscript(lines);
-  assert.deepEqual(entries[0], [`── run @ ${expectedTimestamp(TS)} ──`, "⚠ retry 1/3: Request timed out."]);
+  assert.deepEqual(entries[0], [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "⚠ retry 1/3: Request timed out."]);
   assert.deepEqual(entries[1], ["  recovered"]);
 });
 
 test("formatTranscript renders an unstamped separator when no user message precedes the turn", () => {
-  const out = formatTranscript([agentStart(), assistantLine([{ type: "text", text: "hi" }])]).flat();
+  const out = formatTranscript([agentStart(), assistantBlocks([{ type: "text", text: "hi" }])]).flat();
   assert.deepEqual(out, ["── run ──", "  hi"]);
 });
 
 test("formatTranscript emits a separator for a trailing run with no turns yet", () => {
   const out = formatTranscript([agentStart(), userLine("p")]).flat();
-  assert.deepEqual(out, [`── run @ ${expectedTimestamp(TS)} ──`]);
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`]);
 });
 
 test("createTranscriptRenderer emits each entry exactly once as lines arrive", () => {
   const r = createTranscriptRenderer();
   assert.deepEqual(r.feed(agentStart()), []); // separator waits for the user message's timestamp
   assert.deepEqual(r.feed(userLine("p")), []); // user content is never rendered
-  assert.deepEqual(r.feed(assistantLine([{ type: "text", text: "one" }])), [
-    `── run @ ${expectedTimestamp(TS)} ──`,
+  assert.deepEqual(r.feed(assistantBlocks([{ type: "text", text: "one" }])), [
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
     "  one",
   ]);
-  assert.deepEqual(r.feed(assistantLine([{ type: "text", text: "two" }])), ["  two"]); // no duplicate separator
+  assert.deepEqual(r.feed(assistantBlocks([{ type: "text", text: "two" }])), ["  two"]); // no duplicate separator
   assert.deepEqual(r.flush(), []);
 });
 
@@ -139,8 +122,8 @@ test("createTranscriptRenderer treats delta noise as pure noise (feed fast-path 
   // consumes a fast-path-skipped line (e.g. deltas) fails here and forces its type into
   // RENDERABLE_TYPES.
   const delta = JSON.stringify({ type: "message_update", delta: { type: "text_delta", textDelta: "x".repeat(200) } });
-  const noise = [agentStart(), delta, userLine("p"), delta, assistantLine([{ type: "text", text: "done" }]), delta];
-  const clean = [agentStart(), userLine("p"), assistantLine([{ type: "text", text: "done" }])];
+  const noise = [agentStart(), delta, userLine("p"), delta, assistantBlocks([{ type: "text", text: "done" }]), delta];
+  const clean = [agentStart(), userLine("p"), assistantBlocks([{ type: "text", text: "done" }])];
 
   const rNoisy = createTranscriptRenderer();
   const noisyOut: string[][] = [];
@@ -162,12 +145,12 @@ test("createTranscriptRenderer still parses non-compact JSON shapes (fast-path f
   const r = createTranscriptRenderer();
   assert.deepEqual(r.feed('{"message":{"role":"user"},"type":"agent_start"}'), []); // reordered keys open the run
   assert.deepEqual(
-    r.feed('{ "type": "message_end", "message": { "role": "user", "timestamp": ' + TS + ', "content": [] } }'),
+    r.feed('{ "type": "message_end", "message": { "role": "user", "timestamp": ' + FIXED_TS + ', "content": [] } }'),
     [], // spaced JSON user message stamps the separator (fast path falls back to parse)
   );
   assert.deepEqual(
     r.feed('{ "type": "message_end", "message": { "role": "assistant", "content": [{ "type": "text", "text": "hi" }] } }'),
-    [`── run @ ${expectedTimestamp(TS)} ──`, "  hi"], // spaced JSON still renders
+    [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  hi"], // spaced JSON still renders
   );
 });
 
@@ -184,10 +167,10 @@ test("formatTranscript ignores structurally valid but malformed events without f
     JSON.stringify({ type: "message_end", message: "oops" }), // non-object message
     JSON.stringify({ type: "message_end", message: { role: "system", content: [] } }), // unknown role
     userLine("p"),
-    assistantLine([{ type: "text", text: "still fine" }]),
+    assistantBlocks([{ type: "text", text: "still fine" }]),
   ];
   const out = formatTranscript(lines).flat();
-  assert.deepEqual(out, [`── run @ ${expectedTimestamp(TS)} ──`, "  still fine"]);
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  still fine"]);
 });
 
 test("formatTranscript renders no turn lines for non-array assistant content", () => {
@@ -199,9 +182,9 @@ test("formatTranscript renders no turn lines for non-array assistant content", (
     agentStart(),
     userLine("p"),
     JSON.stringify({ type: "message_end", message: { role: "assistant", content: "plain string" } }),
-    assistantLine([null, { type: "thinking" }, { type: "text" }, { type: "toolCall", id: "c1" }]),
+    assistantBlocks([null, { type: "thinking" }, { type: "text" }, { type: "toolCall", id: "c1" }]),
   ]).flat();
-  assert.deepEqual(out, [`── run @ ${expectedTimestamp(TS)} ──`, "→ ?"]);
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "→ ?"]);
 });
 
 test("formatTranscript falls back for auto_retry_start with missing or non-numeric fields", () => {
@@ -210,7 +193,7 @@ test("formatTranscript falls back for auto_retry_start with missing or non-numer
     userLine("p"),
     JSON.stringify({ type: "auto_retry_start" }), // no attempt, maxAttempts, or errorMessage
   ]).flat();
-  assert.deepEqual(out, [`── run @ ${expectedTimestamp(TS)} ──`, "⚠ retry ?/?: unknown error"]);
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "⚠ retry ?/?: unknown error"]);
 });
 
 test("readTranscript returns the last N entries oldest-first and [] without a log", () => {
@@ -223,8 +206,8 @@ test("readTranscript returns the last N entries oldest-first and [] without a lo
   const lines: string[] = [];
   for (let i = 1; i <= 3; i++) {
     lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, TS + i * 60_000));
-    lines.push(assistantLine([{ type: "text", text: `turn ${i}` }]));
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
   fs.writeFileSync(file, lines.join("\n") + "\n");
 
@@ -234,9 +217,9 @@ test("readTranscript returns the last N entries oldest-first and [] without a lo
 
   const two = readTranscript(root, "feature", 2);
   assert.deepEqual(two, [
-    `── run @ ${expectedTimestamp(TS + 2 * 60_000)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS + 2 * 60_000)} ──`,
     "  turn 2",
-    `── run @ ${expectedTimestamp(TS + 3 * 60_000)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS + 3 * 60_000)} ──`,
     "  turn 3",
   ]);
 });
@@ -247,38 +230,38 @@ test("readTranscript polls incrementally: appends only, live separator, no dupli
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(
     file,
-    [agentStart(), userLine("prompt 1"), assistantLine([{ type: "text", text: "turn 1" }])].join("\n") + "\n",
+    [agentStart(), userLine("prompt 1"), assistantBlocks([{ type: "text", text: "turn 1" }])].join("\n") + "\n",
   );
 
   // First poll seeds the whole file.
   assert.deepEqual(readTranscript(root, "feature", 50), [
-    `── run @ ${expectedTimestamp(TS)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
     "  turn 1",
   ]);
 
   // A just-started run shows its (stamped) separator before any of its turns land.
-  fs.appendFileSync(file, [agentStart(), userLine("prompt 2", TS + 60_000)].join("\n") + "\n");
+  fs.appendFileSync(file, [agentStart(), userLine("prompt 2", FIXED_TS + 60_000)].join("\n") + "\n");
   assert.deepEqual(readTranscript(root, "feature", 50), [
-    `── run @ ${expectedTimestamp(TS)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
     "  turn 1",
-    `── run @ ${expectedTimestamp(TS + 60_000)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS + 60_000)} ──`,
   ]);
 
   // The separator merges into the first turn's entry when it lands — no duplicate line.
-  fs.appendFileSync(file, assistantLine([{ type: "text", text: "turn 2" }]) + "\n");
+  fs.appendFileSync(file, assistantBlocks([{ type: "text", text: "turn 2" }]) + "\n");
   assert.deepEqual(readTranscript(root, "feature", 50), [
-    `── run @ ${expectedTimestamp(TS)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
     "  turn 1",
-    `── run @ ${expectedTimestamp(TS + 60_000)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS + 60_000)} ──`,
     "  turn 2",
   ]);
 
   // A torn trailing line (no newline yet) is held back until it completes.
   fs.appendFileSync(file, agentStart());
   assert.deepEqual(readTranscript(root, "feature", 50), [
-    `── run @ ${expectedTimestamp(TS)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
     "  turn 1",
-    `── run @ ${expectedTimestamp(TS + 60_000)} ──`,
+    `── run @ ${expectedTimestamp(FIXED_TS + 60_000)} ──`,
     "  turn 2",
   ]);
   fs.appendFileSync(file, "\n");
@@ -291,7 +274,7 @@ test("readTranscript reseeds when rotation replaces the file", () => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(
     file,
-    [agentStart(), userLine("p"), assistantLine([{ type: "text", text: "old turn" }])].join("\n") + "\n",
+    [agentStart(), userLine("p"), assistantBlocks([{ type: "text", text: "old turn" }])].join("\n") + "\n",
   );
   assert.ok(readTranscript(root, "feature").includes("  old turn"));
 
@@ -299,7 +282,7 @@ test("readTranscript reseeds when rotation replaces the file", () => {
   fs.renameSync(file, file + ".1");
   fs.writeFileSync(
     file,
-    [agentStart(), userLine("p2", TS + 60_000), assistantLine([{ type: "text", text: "new turn" }])].join("\n") + "\n",
+    [agentStart(), userLine("p2", FIXED_TS + 60_000), assistantBlocks([{ type: "text", text: "new turn" }])].join("\n") + "\n",
   );
   const out = readTranscript(root, "feature");
   assert.ok(out.includes("  new turn"));
@@ -313,15 +296,15 @@ test("readTranscript keeps only the newest entries past the retention cap", () =
   const lines: string[] = [];
   for (let i = 1; i <= 250; i++) {
     lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, TS + i * 60_000));
-    lines.push(assistantLine([{ type: "text", text: `turn ${i}` }]));
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
   fs.writeFileSync(file, lines.join("\n") + "\n");
 
   // 250 runs exceed the 200-entry retention cap; a request for 50 is still exact.
   const out = readTranscript(root, "feature", 50);
   assert.equal(out.filter((l) => l.startsWith("── run")).length, 50);
-  assert.ok(out.includes(`── run @ ${expectedTimestamp(TS + 250 * 60_000)} ──`)); // newest
+  assert.ok(out.includes(`── run @ ${expectedTimestamp(FIXED_TS + 250 * 60_000)} ──`)); // newest
   assert.ok(out.includes("  turn 201")); // oldest visible: runs 201..250
   assert.ok(!out.includes("  turn 200")); // evicted past the cap
 });

@@ -7,24 +7,7 @@ import { readTranscriptTail } from "../src/transcript-tail.js";
 import { formatTranscript } from "../src/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/tail.js";
-import { tmpdir } from "./util.js";
-
-const TS = 1787222691956; // a fixed epoch-ms timestamp for deterministic separators
-
-function agentStart(): string {
-  return JSON.stringify({ type: "agent_start" });
-}
-
-function userLine(text: string, timestamp: number = TS): string {
-  return JSON.stringify({
-    type: "message_end",
-    message: { role: "user", content: [{ type: "text", text }], timestamp },
-  });
-}
-
-function assistantLine(content: unknown[]): string {
-  return JSON.stringify({ type: "message_end", message: { role: "assistant", content, stopReason: "stop" } });
-}
+import { FIXED_TS, agentStart, assistantBlocks, tmpdir, userLine } from "./util.js";
 
 test("readTranscriptTail matches a full re-read on a small log", () => {
   const root = tmpdir();
@@ -33,8 +16,8 @@ test("readTranscriptTail matches a full re-read on a small log", () => {
   const lines: string[] = [];
   for (let i = 1; i <= 3; i++) {
     lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, TS + i * 60_000));
-    lines.push(assistantLine([{ type: "text", text: `turn ${i}` }]));
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
   fs.writeFileSync(file, lines.join("\n") + "\n");
 
@@ -57,10 +40,10 @@ test("readTranscriptTail matches a full re-read on a multi-MB log and reads only
   const lines: string[] = [];
   for (let i = 1; i <= 400; i++) {
     lines.push(agentStart());
-    lines.push(userLine(`prompt ${i} ` + "x".repeat(200), TS + i * 60_000));
+    lines.push(userLine(`prompt ${i} ` + "x".repeat(200), FIXED_TS + i * 60_000));
     lines.push(JSON.stringify({ type: "message_update", delta: { type: "text_delta", textDelta: "y".repeat(10000) } }));
     lines.push(
-      assistantLine([
+      assistantBlocks([
         { type: "thinking", thinking: `thinking ${i} ` + "z".repeat(100) },
         { type: "text", text: `turn ${i}` },
         { type: "toolCall", id: `c${i}`, name: "read", arguments: { path: `/repo/file-${i}.md` } },
@@ -102,9 +85,9 @@ test("readTranscriptTail re-reads fully when contentless turns undercount candid
   const lines: string[] = [];
   for (let i = 1; i <= 40; i++) {
     lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, TS + i * 60_000));
-    lines.push(assistantLine([{ type: "text", text: `turn ${i}` }]));
-    lines.push(assistantLine([]));
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+    lines.push(assistantBlocks([]));
   }
   fs.writeFileSync(file, lines.join("\n") + "\n");
 
@@ -127,17 +110,17 @@ test("readTranscriptTail skips blank lines exactly like a full re-read", () => {
   const lines: string[] = [
     "", // leading blank
     agentStart(),
-    userLine("prompt 1", TS + 60_000),
-    assistantLine([{ type: "text", text: "turn 1" }]),
+    userLine("prompt 1", FIXED_TS + 60_000),
+    assistantBlocks([{ type: "text", text: "turn 1" }]),
     "",
     "", // consecutive blanks between runs
     agentStart(),
-    userLine("prompt 2", TS + 2 * 60_000),
-    assistantLine([{ type: "text", text: "turn 2" }]),
+    userLine("prompt 2", FIXED_TS + 2 * 60_000),
+    assistantBlocks([{ type: "text", text: "turn 2" }]),
     "",
     agentStart(),
-    userLine("prompt 3", TS + 3 * 60_000),
-    assistantLine([{ type: "text", text: "turn 3" }]),
+    userLine("prompt 3", FIXED_TS + 3 * 60_000),
+    assistantBlocks([{ type: "text", text: "turn 3" }]),
     "", // trailing blank line (the file still ends with a newline)
   ];
   fs.writeFileSync(file, lines.join("\n") + "\n");
@@ -157,7 +140,7 @@ test("readTranscriptTail handles torn tails and newline-less files", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const completeLines = [agentStart(), userLine("p"), assistantLine([{ type: "text", text: "turn" }])];
+  const completeLines = [agentStart(), userLine("p"), assistantBlocks([{ type: "text", text: "turn" }])];
   const complete = completeLines.join("\n") + "\n";
   fs.writeFileSync(file, complete);
 

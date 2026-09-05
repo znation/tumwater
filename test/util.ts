@@ -78,3 +78,24 @@ export function errorLine(errorMessage: string): string {
     message: { role: "assistant", content: [], stopReason: "error", errorMessage },
   });
 }
+
+/** A fixed epoch-ms timestamp for transcript fixtures, so run separators render deterministically. */
+export const FIXED_TS = 1787222691956;
+
+/** A pi JSON line for an agent_start event — the only event that separates runs in a transcript (src/transcript.ts). */
+export function agentStart(): string {
+  return JSON.stringify({ type: "agent_start" });
+}
+
+/** A pi JSON line for a user message_end (the tick prompt). Its content is never rendered, but its timestamp drives the run separator. */
+export function userLine(text: string, timestamp: number = FIXED_TS): string {
+  return JSON.stringify({
+    type: "message_end",
+    message: { role: "user", content: [{ type: "text", text }], timestamp },
+  });
+}
+
+/** A pi JSON line for an assistant message_end with arbitrary content blocks (thinking/text/toolCall) and no usage — the richer fixture transcript rendering tests need, in contrast to assistantLine above. */
+export function assistantBlocks(content: unknown[]): string {
+  return JSON.stringify({ type: "message_end", message: { role: "assistant", content, stopReason: "stop" } });
+}
