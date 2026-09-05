@@ -1,6 +1,6 @@
 import type { LoopState, TumwaterConfig } from "./types.js";
 import { openQuestions } from "./backlog.js";
-import { defaultConfig, enabledRoleIds, loadConfigSafe } from "./config.js";
+import { defaultConfig, enabledRoleIds, loadConfigCached } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { promptPreview, queuedPrompts } from "./inbox.js";
 import { statePath } from "./paths.js";
@@ -40,9 +40,11 @@ export interface StatusSnapshot {
 const lastGoodConfig = new Map<string, TumwaterConfig>();
 
 /** The config to display loop state against: fresh when valid, otherwise the last
- * known-good one (or defaults if this process never saw a valid file). Never throws. */
+ * known-good one (or defaults if this process never saw a valid file). Never throws.
+ * Freshness is stat-keyed (config.loadConfigCached): an unedited tumwater.json costs one
+ * stat per poll instead of a read + parse + validate. */
 function configForStatus(root: string): TumwaterConfig {
-  const { config } = loadConfigSafe(root);
+  const { config } = loadConfigCached(root);
   if (config) {
     lastGoodConfig.set(root, config);
     return config;

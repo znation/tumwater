@@ -6,6 +6,7 @@ import {
   configForRole,
   defaultConfig,
   loadConfig,
+  loadConfigCached,
   loadConfigSafe,
   reviewConfig,
   saveConfig,
@@ -345,4 +346,72 @@ test("saveConfig refuses to persist invalid configs", () => {
   config.maxConcurrent = -1;
   assert.throws(() => saveConfig(dir, config), /maxConcurrent must be an integer of at least 1/);
   assert.ok(!fs.existsSync(path.join(dir, "tumwater.json")), "nothing written on invalid config");
+});
+
+// --- loadConfigCached: the stat-keyed cache behind every poll's config reload ---
+
+test("an unchanged tumwater.json is served from the stat-keyed cache without re-reading", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // populates the cache
+  let reads = 0;
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  try {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
+      reads += 1;
+      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
+    };
+    assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // unchanged — no file I/O at all
+    assert.equal(reads, 0);
+    // Each call still gets its own config: mutating one result must not poison the cache.
+    const cfg = loadConfigCached(dir).config!;
+    cfg.maxConcurrent = 99;
+    assert.ok(cfg.roles.plan, "plan is in the catalog — defaultConfig enables every role");
+    cfg.roles.plan.enabled = false;
+    assert.equal(loadConfigCached(dir).config?.maxConcurrent, defaultConfig().maxConcurrent);
+    assert.equal(loadConfigCached(dir).config?.roles.plan?.enabled, true);
+  } finally {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
+  }
+});
+
+test("a same-size tumwater.json edit is picked up via mtime, not just size", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  assert.equal(loadConfigCached(dir).config?.model, "sonnet");
+  // Replace the model value with different text of the EXACT same length: size alone cannot
+  // detect the change, so mtime must be part of the cache key. utimes forces a distinct mtime
+  // regardless of filesystem timestamp granularity (two fast writes could otherwise share one).
+  const edited = JSON.stringify({ model: "opus-4" });
+  assert.equal(edited.length, JSON.stringify({ model: "sonnet" }).length);
+  fs.writeFileSync(path.join(dir, "tumwater.json"), edited);
+  const t = new Date(Date.now() + 5000);
+  fs.utimesSync(path.join(dir, "tumwater.json"), t, t);
+  assert.equal(loadConfigCached(dir).config?.model, "opus-4");
+});
+
+test("a broken tumwater.json is not cached: every poll retries and a repair recovers", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // healthy baseline is cached
+  fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
+  let reads = 0;
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  try {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
+      reads += 1;
+      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
+    };
+    const broken = loadConfigCached(dir);
+    assert.equal(broken.config, undefined);
+    assert.match(broken.error ?? "", /not valid JSON/);
+    // Still torn on the next poll: retried with a fresh read (nothing was cached), so a
+    // repair is picked up immediately — a cached error would wedge last-known-good forever.
+    assert.match(loadConfigCached(dir).error ?? "", /not valid JSON/);
+    assert.equal(reads, 2);
+  } finally {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
+  }
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "haiku" }));
+  assert.equal(loadConfigCached(dir).config?.model, "haiku"); // repaired — fresh load
 });

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
-import { configForRole, enabledRoleIds, loadConfigSafe } from "./config.js";
+import { configForRole, enabledRoleIds, loadConfigCached } from "./config.js";
 import { budgetPaused, fleetDailyCost } from "./state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
@@ -157,7 +157,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
     while (!signal.aborted) {
       // Live-reload tumwater.json — the single reload point shared by all loops. A broken
       // file keeps the last-known-good config and warns once per distinct error text.
-      const reloaded = loadConfigSafe(root);
+      // Unchanged files are served from a stat-keyed cache (one stat per poll, no read).
+      const reloaded = loadConfigCached(root);
       if (reloaded.config) {
         for (const r of runners) r.config = reloaded.config;
         // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute

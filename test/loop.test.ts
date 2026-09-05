@@ -1408,15 +1408,25 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
 test("a change whose build fails is rejected by the pre-check and its compiler tail rides on the next prompt", async () => {
   const repo = await initializedRepo();
   // Install signature at the repo root: detectBuildCheck walks up from the worktree to it,
-  // and npm resolves the toolchain from there. The build script fails with a compiler-style line.
+  // and npm resolves the toolchain from there. The build script fails with a compiler-style
+  // line only while broken.ts exists — pristine main must stay green so the red-main baseline
+  // gate (which runs before authoring) does not block the tick this test is about.
   fs.mkdirSync(path.join(repo, "node_modules", ".bin"), { recursive: true });
   const tool = path.join(repo, "node_modules", ".bin", "buildcheck-tool");
-  fs.writeFileSync(tool, "#!/bin/sh\necho 'src/bad.ts(3,5): error TS2345: not assignable'\nexit 1\n");
+  fs.writeFileSync(
+    tool,
+    "#!/bin/sh\nif [ -f broken.ts ]; then echo 'src/bad.ts(3,5): error TS2345: not assignable'; exit 1; fi\nexit 0\n",
+  );
   fs.chmodSync(tool, 0o755);
   fs.writeFileSync(
     path.join(repo, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --fail" } }),
   );
+  // Commit package.json (node_modules stays untracked — the install marker): a git worktree
+  // checks out tracked files, and npm re-roots `npm run` at the nearest package.json. With one
+  // in the worktree the script runs there, compiling branch state exactly as dogfood does.
+  sh(repo, "git", "add", "package.json");
+  sh(repo, "git", "commit", "-m", "declare build check");
 
   // The reviewer branch (any run whose prompt asks for a VERDICT) approves — it must never be
   // reached, because the pre-check decides first. Author runs record their full argv so the

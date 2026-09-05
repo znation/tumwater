@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type { TumwaterConfig, RoleConfig } from "./types.js";
 import { allRoleIds } from "./roles.js";
+import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { configPath } from "./paths.js";
 
 /** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick),
@@ -257,6 +258,47 @@ export function loadConfigSafe(root: string): { config?: TumwaterConfig; error?:
     return { config: loadConfig(root) };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Per-poll config cache (stat-cache.cachedByStat): the orchestrator live-reloads tumwater.json
+// every ~2 s and both dashboards poll snapshot() every second, but the file changes only when
+// a user edits it — between edits it sits unchanged for hours. Serve an unchanged file from
+// this stat-keyed cache: one stat syscall per root per poll instead of re-reading, re-parsing,
+// and re-validating on every poll (validation cost grows with config size, so the saving
+// widens as role instructions grow). Any write invalidates via dev/ino/mtime/size — the same
+// freshness check as tail.ts's incremental log readers. Keyed by root so distinct projects in
+// one process never collide; capped inside cachedByStat so many short-lived roots in tests
+// cannot grow it unbounded.
+const configCache = new Map<string, StatKeyedValue<TumwaterConfig>>();
+
+/** Clone a loaded config so each caller owns its data: mutating one result (a role entry's
+ * enabled flag, the piArgs array) must not poison later polls — the same contract as every
+ * other cachedByStat consumer. */
+function cloneConfig(c: TumwaterConfig): TumwaterConfig {
+  return {
+    ...c,
+    piArgs: [...c.piArgs],
+    idleBackoff: { ...c.idleBackoff },
+    review: { ...c.review },
+    roles: Object.fromEntries(Object.entries(c.roles).map(([id, rc]) => [id, { ...rc }])),
+  };
+}
+
+/** loadConfigSafe with a stat-keyed cache for unchanged files (see above): the same return
+ * shape and last-known-good contract at the call sites, but a steady-state poll of an unedited
+ * file costs one stat instead of a read + parse + validate. A successful load is cached; a
+ * broken file is never cached — each poll retries it fresh so a torn live edit or a repair is
+ * picked up on the next cycle, and a missing file still yields defaults without touching the
+ * cache. */
+export function loadConfigCached(root: string): { config?: TumwaterConfig; error?: string } {
+  const file = configPath(root);
+  try {
+    const cfg = cachedByStat(configCache, root, file, () => loadConfig(root), cloneConfig);
+    if (cfg) return { config: cfg };
+    return { config: defaultConfig() }; // Missing — defaults, as loadConfig does.
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }; // Broken — retry next poll.
   }
 }
 
