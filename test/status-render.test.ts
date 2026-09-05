@@ -455,6 +455,37 @@ test("loopPhase shows the review gate instead of pi detail while a tick is under
   assert.match(loopPhase(s, true, root), /^reviewing /);
 });
 
+// duration()'s hours bucket (>= 1h): every elapsed fixture above stays under an hour, so the
+// `XhYm` branch — what operators actually see for long ticks and long silences in the status
+// table, TUI, and GUI — was untested. The review-gate label is the purest read of it (no log
+// tail involved); the stall flag covers its second call site.
+
+test("elapsed labels bucket into hours once a tick passes an hour", () => {
+  const reviewing = (msAgo: number): string => {
+    const s = freshLoopState("feature");
+    s.running = true;
+    s.phase = "review";
+    s.lastTickStartedAt = Date.now() - msAgo;
+    return loopPhase(s, true);
+  };
+
+  // Two and a half hours in: floor to whole hours, minutes rounded — not 150m.
+  assert.match(reviewing((2 * 3600 + 30 * 60) * 1000), /^reviewing 2h30m$/);
+
+  // The bucket boundary: ten seconds under an hour stays in the minutes branch (59m5Xs),
+  // and at exactly an hour the label switches to hours with zero minutes.
+  assert.match(reviewing((3600 - 10) * 1000), /^reviewing 59m(49|50|51)s$/);
+  assert.match(reviewing(3600 * 1000), /^reviewing 1h0m$/);
+});
+
+test("workingDetail's stall flag uses the hours bucket for long silences", () => {
+  const root = tmpdir();
+  const file = writePiLog(root, "clean", [SESSION, assistantLine("hanging", { tokens: 100 })]);
+  // Ninety minutes without pi output: the stall part must read 1h30m, not 90m.
+  fs.utimesSync(file, new Date(Date.now() - 5400_000), new Date(Date.now() - 5400_000));
+  assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 1h30m/);
+});
+
 // Current work item in the table's state cell (renderStatus row level).
 
 test("renderStatus prepends the current work item to a working loop's state cell", () => {
