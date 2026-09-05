@@ -5,29 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Steward curation of PLANS.md's Done history — compress old done plans to one-line epitaphs (planned 2026-09-04)
-
-**Goal.** PLANS.md is ~183KB and `## Done` (~31 entries, newest first) is most of it: every feature tick appends a "Done …" note to its entry, plans accumulate days of refinement notes, and nothing prunes them. The planned section-aware tick reads rule bounds per-tick prefill so role loops stop paying for this history — but on-disk size still grows without bound: the steward must read the file whole (its carve-out in that rule), every worktree reset copies it, and a human cannot find anything in 2100 lines of done plans. The README status plan already proved the pattern ("git history *is* the archive"); this entry extends it to `## Done`: give the steward an explicit compression policy so the section stays small by construction — recent entries verbatim, older ones compressed to one-line epitaphs that keep everything cross-references need (title, dates, landing commit hashes).
-
-**Approach.**
-- src/roles.ts — extend the steward's find text with a Done-section clause. The existing "delete or merge stale/duplicative/superseded PLANS.md entries" move covers Planned-section hygiene and stays as-is; this adds tail compression:
-  - Keep the ten most recent `## Done` entries verbatim (newest first, by position in file).
-  - Compress older entries to one line each: `- <title> (planned YYYY-MM-DD, done YYYY-MM-DD; commit(s) <sha>[, <sha>])` — title and dates from the entry's heading, hashes from its Done note (git log when absent). The one-line form keeps every existing cross-reference resolvable: references cite titles or commit hashes, both preserved.
-  - Never compress an entry carrying a standing `**Refused …**` note — the objection stands until a human or director edits it, and compression would bury it; such entries stay full (they are rare).
-  - Compression is lossy on purpose: pre-compression text stays in git history — no archive file.
-  - "One curation move per tick" still holds: one steward tick compresses one section's overflow (or makes any other planned move) — with ~31 Done entries the first few ticks each shrink the file by tens of KB until the window is reached, then it stays bounded.
-- test/prompt.test.ts — extend the existing steward contract block (`const steward = roleById("steward")`, `oneLine(steward.find)` matching): the ten-entry verbatim window; the one-line epitaph form naming title, dates, and commit hashes; the Refused-note guard; git history as the archive.
-
-**Files touched.** src/roles.ts, test/prompt.test.ts. (PLANS.md itself shrinks on subsequent steward ticks under the new policy — not this plan's implementer.)
-
-**Acceptance criteria.**
-- `npm run build` clean; full suite green.
-- Contract tests assert each clause of the new find text with whitespace-collapsed matching: window size, epitaph form fields, Refused guard.
-- Safe for harness readers by construction: src/backlog.ts's parseEntries only reads `## Planned`/`## Open`, so compressing Done entries cannot change dashboard counts (a test already pins that Done/Fixed never leak in).
-- Observable within a few steward ticks (~6 h clock) after landing — not this plan's implementer: `## Done` holds at most ten full entries, older ones are one-line epitaphs carrying title/dates/hashes, and PLANS.md drops from ~183KB toward the Planned-plus-window size (tens of KB); no Refused-note entry is ever compressed.
-
-**Relationship to other plans.** Sibling: "Steward curation of BUGS.md's Fixed history" — same policy shape, different file and retention fields; independently implementable in either order. Complements the planned section-aware tick reads rule: that rule bounds per-tick prefill (loops read only actionable top sections) and carves the steward out to read files whole; this policy keeps those whole-file reads cheap by bounding on-disk size. The two land independently — curation is valuable before the read rule, and the read rule is valuable without curation.
-
 ### Steward curation of BUGS.md's Fixed history — compress old fixed bugs to one-line records (planned 2026-09-04, refined 2026-09-04)
 
 **Goal.** BUGS.md is ~59KB and `## Fixed` (~31 entries, newest first) is most of it: every bugfix tick appends a full Symptom/Repro/Cause/Fix entry and nothing prunes them — the same unbounded growth as PLANS.md's Done section (sibling plan above), with the same fix pattern proven by the README status contract. Recent fixes stay verbatim because they carry regression-test names and root-cause detail that bugfix loops consult when related bugs surface; older ones compress to one-line records preserving headline, the heading's own dates, and the landing commit where one exists.
@@ -54,6 +31,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 At `73c9e87` all thirty-one `## Fixed` headings were checked: date-clause labels span found/reported/re-recorded × fixed/closed/resolved (only 14 of 31 match the original `(found YYYY-MM-DD, fixed YYYY-MM-DD)` form), and one heading appends a note inside its parentheses — so the template could not be produced verbatim for most entries; the date clause is now copied as-is. For hashes: 24 of 31 entry bodies carry no backticked sha at all (git log is the primary source in practice, not the fallback), and of the seven that do, several cite multiple commits in mixed roles — break commit, fix commit, verification HEAD ("Verified … on main `<sha>`") — so a priority order with an explicit exclusion replaces "hash from its Fix note (git log when absent)"; four entries closed without code change have no landing commit and now omit the field. The shared policy shape is inlined so this entry stands alone for a fresh-session implementer; the sibling's hash clause is flagged, not edited, as carrying the same subtlety.
 
 ## Done
+
+### Steward curation of PLANS.md's Done history — compress old done plans to one-line epitaphs (planned 2026-09-04, done 2026-09-04)
+
+**Goal.** PLANS.md is ~183KB and `## Done` (~31 entries, newest first) is most of it: every feature tick appends a "Done …" note to its entry, plans accumulate days of refinement notes, and nothing prunes them. The planned section-aware tick reads rule bounds per-tick prefill so role loops stop paying for this history — but on-disk size still grows without bound: the steward must read the file whole (its carve-out in that rule), every worktree reset copies it, and a human cannot find anything in 2100 lines of done plans. The README status plan already proved the pattern ("git history *is* the archive"); this entry extends it to `## Done`: give the steward an explicit compression policy so the section stays small by construction — recent entries verbatim, older ones compressed to one-line epitaphs that keep everything cross-references need (title, dates, landing commit hashes).
+
+**Approach.**
+- src/roles.ts — extend the steward's find text with a Done-section clause. The existing "delete or merge stale/duplicative/superseded PLANS.md entries" move covers Planned-section hygiene and stays as-is; this adds tail compression:
+  - Keep the ten most recent `## Done` entries verbatim (newest first, by position in file).
+  - Compress older entries to one line each: `- <title> (planned YYYY-MM-DD, done YYYY-MM-DD; commit(s) <sha>[, <sha>])` — title and dates from the entry's heading, hashes from its Done note (git log when absent). The one-line form keeps every existing cross-reference resolvable: references cite titles or commit hashes, both preserved.
+  - Never compress an entry carrying a standing `**Refused …**` note — the objection stands until a human or director edits it, and compression would bury it; such entries stay full (they are rare).
+  - Compression is lossy on purpose: pre-compression text stays in git history — no archive file.
+  - "One curation move per tick" still holds: one steward tick compresses one section's overflow (or makes any other planned move) — with ~31 Done entries the first few ticks each shrink the file by tens of KB until the window is reached, then it stays bounded.
+- test/prompt.test.ts — extend the existing steward contract block (`const steward = roleById("steward")`, `oneLine(steward.find)` matching): the ten-entry verbatim window; the one-line epitaph form naming title, dates, and commit hashes; the Refused-note guard; git history as the archive.
+
+**Files touched.** src/roles.ts, test/prompt.test.ts. (PLANS.md itself shrinks on subsequent steward ticks under the new policy — not this plan's implementer.)
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- Contract tests assert each clause of the new find text with whitespace-collapsed matching: window size, epitaph form fields, Refused guard.
+- Safe for harness readers by construction: src/backlog.ts's parseEntries only reads `## Planned`/`## Open`, so compressing Done entries cannot change dashboard counts (a test already pins that Done/Fixed never leak in).
+- Observable within a few steward ticks (~6 h clock) after landing — not this plan's implementer: `## Done` holds at most ten full entries, older ones are one-line epitaphs carrying title/dates/hashes, and PLANS.md drops from ~183KB toward the Planned-plus-window size (tens of KB); no Refused-note entry is ever compressed.
+
+**Relationship to other plans.** Sibling: "Steward curation of BUGS.md's Fixed history" — same policy shape, different file and retention fields; independently implementable in either order. Complements the planned section-aware tick reads rule: that rule bounds per-tick prefill (loops read only actionable top sections) and carves the steward out to read files whole; this policy keeps those whole-file reads cheap by bounding on-disk size. The two land independently — curation is valuable before the read rule, and the read rule is valuable without curation.
+
+**Done 2026-09-04 (feature tick) — implemented as planned against main `ac574d4`; nothing remains.**
+Audited first: at `ac574d4` no part had landed — src/roles.ts's steward find text still carried only the original move list with no Done-section clause, and test/prompt.test.ts's steward contract block had no window/epitaph/guard assertions. This tick extended the steward find text with the Done-section curation policy: keep the ten most recent `## Done` entries verbatim (newest first, by position in file); compress older ones to one line each — `- <title> (planned YYYY-MM-DD, done YYYY-MM-DD; commit(s) <sha>[, <sha>])` — title and dates from the entry's heading; never compress an entry carrying a standing `**Refused …**` note (such entries stay full); compression is lossy on purpose with git history as the archive; one curation move per tick still holds. One deliberate deviation from the Approach, applying the correction its sibling plan flagged for this entry: the hash clause no longer says "hashes from its Done note" — audited at `ac574d4`, recent Done notes cite a base reference ("against main `<sha>`"), an explicit landing citation (the "tick N (`<sha>`)" form), or no sha at all, so the original wording would have recorded base references as landing hashes. The find text now sources hashes in priority order: an explicit landing citation in the entry body, else git log on main; never a verification or base reference ("Verified … against main `<sha>`", "at HEAD `<sha>`"); and when no landing commit exists, omit the commit(s) field rather than guess. test/prompt.test.ts gained five contract tests in the steward block (oneLine-based like its neighbors): the ten-entry verbatim window; the one-line epitaph form with title/dates/commit(s); hash sourcing priority with the verification-reference exclusion and omission-when-unresolvable; the Refused-note guard; lossy-on-purpose with git history as the archive. Verified on this tree: build clean, full suite 626/626 (main at `ac574d4` runs 621/621; +5 new tests). The entry's residual acceptance criterion — `## Done` holding at most ten full entries with older ones as one-line epitaphs within a few steward ticks (~6 h clock) — is not this tick's to verify. Files: src/roles.ts, test/prompt.test.ts, PLANS.md.
 
 ### Section-aware tick reads — stop paying for history every tick (planned 2026-09-04, done
 2026-09-04)

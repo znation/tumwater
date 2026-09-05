@@ -564,6 +564,62 @@ test("the steward prompt restricts writes to markdown", () => {
   assert.match(find, /You edit only markdown — never source\./);
 });
 
+// Prompt contract for PLANS.md Done-section curation (PLANS.md, planned 2026-09-04): ## Done
+// is bounded by construction — a ten-entry verbatim window, older entries compressed to
+// one-line epitaphs carrying title, dates, and landing hashes. Every steward tick is a fresh
+// session with no memory of earlier curation moves, so the find text must carry the whole
+// policy in prose; these assertions pin that contract. Same whitespace-collapsed matching as
+// above — the prose is hard-wrapped and formatting ticks reflow it, so assertions match
+// content, not layout.
+
+test("the steward prompt bounds PLANS.md's Done section to a ten-entry verbatim window", () => {
+  const find = oneLine(steward!.find);
+  assert.match(find, /PLANS\.md's ## Done section is curated to stay bounded/);
+  assert.match(
+    find,
+    /keep the ten most recent entries verbatim \(newest first, by position in file\)/,
+  );
+});
+
+test("the steward prompt compresses older Done entries to one-line epitaphs with title, dates, and hashes", () => {
+  const find = oneLine(steward!.find);
+  assert.match(find, /compress older ones to one line each/);
+  // The exact one-line form: title, planned/done dates, landing commit(s).
+  assert.match(
+    find,
+    /`- <title> \(planned YYYY-MM-DD, done YYYY-MM-DD; commit\(s\) <sha>\[, <sha>\]\)`/,
+  );
+  assert.match(find, /title and dates from the entry's heading/);
+});
+
+test("the steward prompt sources epitaph hashes from landing citations or git log, never verification references", () => {
+  const find = oneLine(steward!.find);
+  // Priority: an explicit landing citation in the body, else git log on main.
+  assert.match(find, /an explicit landing citation in the entry body/);
+  assert.match(find, /else git log on main/);
+  // A Done note's "against main <sha>" is a base reference — never the record's hash; when no
+  // landing commit exists, omit the field rather than guess.
+  assert.match(
+    find,
+    /never use a verification or base reference \("Verified … against main `<sha>`", "at HEAD `<sha>`"\)/,
+  );
+  assert.match(find, /omit the commit\(s\) field rather than guess/);
+});
+
+test("the steward prompt never compresses Done entries carrying a Refused note", () => {
+  const find = oneLine(steward!.find);
+  assert.match(find, /Never compress an entry carrying a standing \*\*Refused …\*\* note/);
+  assert.match(find, /such entries stay full \(they are rare\)/);
+});
+
+test("the steward prompt treats Done compression as lossy with git history as the archive", () => {
+  const find = oneLine(steward!.find);
+  assert.match(
+    find,
+    /lossy on purpose: pre-compression text stays in git history — no archive file/,
+  );
+});
+
 test("buildTickPrompt for steward carries the find text plus the shared rules", () => {
   const prompt = buildTickPrompt({ role: steward!, initialPrompt: "" });
   assert.match(prompt, /"steward" loop \(project steward\)/);

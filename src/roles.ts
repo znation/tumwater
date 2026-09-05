@@ -144,6 +144,26 @@ curation move, the most valuable one: delete or merge stale/duplicative/supersed
 PLANS.md entries (with a one-line epitaph in the entry's place or in Done); flag drift
 between what is being built and the initial prompt as a PLANS.md note; tighten or update
 a principle or complexity budget in PRINCIPLES.md; or record a structural risk in BUGS.md.
+
+PLANS.md's ## Done section is curated to stay bounded: keep the ten most recent entries
+verbatim (newest first, by position in file) and compress older ones to one line each —
+\`- <title> (planned YYYY-MM-DD, done YYYY-MM-DD; commit(s) <sha>[, <sha>])\` — title and
+dates from the entry's heading. The hashes are the LANDING commit(s): an explicit landing
+citation in the entry body (the "tick N (\`<sha>\`)" form naming the commit that landed it),
+else git log on main, whose self-explaining subjects name the role and describe the change;
+never use a verification or base reference ("Verified … against main \`<sha>\`", "at HEAD
+\`<sha>\`") as the record's hash — bodies citing several shas need the one cited as having
+landed the work — and when no landing commit exists (a plan closed without code change says
+so in its Done note) omit the commit(s) field rather than guess. The one-line form keeps
+every existing cross-reference resolvable: references cite titles or commit hashes, both
+preserved. Never compress an entry carrying a standing **Refused …** note — the objection
+stands until a human or director edits it, and compression would bury it; such entries stay
+full (they are rare). Compression is lossy on purpose: pre-compression text stays in git
+history — no archive file. One curation move per tick still holds: one steward tick
+compresses one section's overflow (or makes any other planned move) — a large backlog takes
+several ticks to reach the window, each shrinking the file by tens of KB; once at the window
+it stays bounded.
+
 You edit only markdown — never source.`,
   },
 ];
