@@ -164,6 +164,22 @@ compresses one section's overflow (or makes any other planned move) — a large 
 several ticks to reach the window, each shrinking the file by tens of KB; once at the window
 it stays bounded.
 
+BUGS.md's ## Fixed section is curated to stay bounded by the same policy: keep the ten most
+recent entries verbatim (newest first) and compress older ones to one line each —
+\`- <symptom headline> (<the heading's own date clause>; commit <sha>)\`. The headline comes from
+the entry's heading, and the date clause is copied from that heading as-is: BUGS.md headings vary
+across found/reported/re-recorded × fixed/closed/resolved and may carry extra notes inside their
+parentheses, so do not normalize or fabricate dates; when a heading carries no dates at all, omit
+that part of the line. The commit is the entry's LANDING commit — the one that merged the fix to
+main: an explicit landing citation in the entry body (the "tick N (\`<sha>\`)" form naming the fix
+commit itself), else git log on main, whose self-explaining subjects name the role and describe
+the change; never use a verification reference ("Verified … on main \`<sha>\`", "at HEAD \`<sha>\`")
+as the record's hash — bodies citing several shas need the one cited as having landed the fix —
+and when no landing commit exists (an entry closed without code change says so in its
+**Resolution:** note) omit the \`commit\` field rather than guess. Never compress an entry carrying
+a standing **Refused …** note; such entries stay full. The same rules carry over: compression is
+lossy on purpose with git history as the archive, and one curation move per tick still holds.
+
 You edit only markdown — never source.`,
   },
 ];

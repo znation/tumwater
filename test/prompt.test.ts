@@ -620,6 +620,92 @@ test("the steward prompt treats Done compression as lossy with git history as th
   );
 });
 
+// Prompt contract for BUGS.md Fixed-section curation (PLANS.md, planned 2026-09-04): ## Fixed is
+// bounded by construction — a ten-entry verbatim window, older entries compressed to one-line
+// records carrying the symptom headline, the heading's own date clause as-is, and the landing
+// commit where resolvable. Same whitespace-collapsed matching as above — the prose is
+// hard-wrapped and formatting ticks reflow it, so assertions match content, not layout.
+
+test("the steward prompt bounds BUGS.md's Fixed section to a ten-entry verbatim window", () => {
+  const find = oneLine(steward!.find);
+  assert.match(
+    find,
+    /BUGS\.md's ## Fixed section is curated to stay bounded by the same policy/,
+  );
+  // The Done paragraph says "(newest first, by position in file)"; this clause is the Fixed
+  // one — both windows are ten entries.
+  assert.match(
+    find,
+    /keep the ten most recent entries verbatim \(newest first\) and compress older ones to one line each/,
+  );
+});
+
+test("the steward prompt compresses older Fixed entries to one-line records with headline and date clause as-is", () => {
+  const find = oneLine(steward!.find);
+  // The exact one-line form: symptom headline, the heading's own date clause, landing commit.
+  assert.match(
+    find,
+    /`- <symptom headline> \(<the heading's own date clause>; commit <sha>\)`/,
+  );
+  assert.match(find, /The headline comes from the entry's heading/);
+  // The date clause is copied verbatim: BUGS.md headings vary across found/reported/re-recorded
+  // × fixed/closed/resolved and may carry notes inside their parentheses.
+  assert.match(find, /the date clause is copied from that heading as-is/);
+  assert.match(
+    find,
+    /headings vary across found\/reported\/re-recorded × fixed\/closed\/resolved/,
+  );
+  assert.match(find, /do not normalize or fabricate dates/);
+  // A heading without dates drops the date part rather than inventing one.
+  assert.match(
+    find,
+    /when a heading carries no dates at all, omit that part of the line/,
+  );
+});
+
+test("the steward prompt sources Fixed-record commits from landing citations or git log, never verification references", () => {
+  const find = oneLine(steward!.find);
+  assert.match(
+    find,
+    /The commit is the entry's LANDING commit — the one that merged the fix to main/,
+  );
+  // Priority: an explicit landing citation in the body (the "tick N (`sha`)" form naming the
+  // fix commit itself), else git log on main.
+  assert.match(
+    find,
+    /an explicit landing citation in the entry body \(the "tick N \(`<sha>`\)" form naming the fix commit itself\), else git log on main/,
+  );
+  // A verification reference is main's state at check time, not the fix; bodies citing several
+  // shas need the one cited as having landed the fix.
+  assert.match(
+    find,
+    /never use a verification reference \("Verified … on main `<sha>`", "at HEAD `<sha>`"\) as the record's hash/,
+  );
+  assert.match(find, /bodies citing several shas need the one cited as having landed the fix/);
+  // Entries closed without code change have no landing commit — omit rather than guess.
+  assert.match(
+    find,
+    /when no landing commit exists \(an entry closed without code change says so in its \*\*Resolution:\*\* note\) omit the `commit` field rather than guess/,
+  );
+});
+
+test("the steward prompt never compresses Fixed entries carrying a Refused note", () => {
+  const find = oneLine(steward!.find);
+  // The Done paragraph uses an em-dash after "note"; the semicolon form is the Fixed clause.
+  assert.match(
+    find,
+    /Never compress an entry carrying a standing \*\*Refused …\*\* note; such entries stay full/,
+  );
+});
+
+test("the steward prompt carries the shared curation rules over to Fixed compression", () => {
+  const find = oneLine(steward!.find);
+  assert.match(
+    find,
+    /The same rules carry over: compression is lossy on purpose with git history as the archive, and one curation move per tick still holds/,
+  );
+});
+
 test("buildTickPrompt for steward carries the find text plus the shared rules", () => {
   const prompt = buildTickPrompt({ role: steward!, initialPrompt: "" });
   assert.match(prompt, /"steward" loop \(project steward\)/);
