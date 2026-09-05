@@ -7,7 +7,7 @@ import { aheadOfMain, ensureWorktree, resetWorktreeToMain } from "../src/git.js"
 import { readEvents } from "../src/events.js";
 import type { GateResult } from "../src/review.js";
 import type { PiRunResult, TickResult } from "../src/types.js";
-import { makeRepo, sh } from "./util.js";
+import { makeRepo, sh, tmpdir } from "./util.js";
 
 // Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that re-reviews and
 // re-merges commits a previous run left on the branch. The loop e2e tests (test/loop.test.ts)
@@ -162,4 +162,32 @@ test("failed review at the strike cap: the gate discarded it, so nothing is kept
   assert.equal(await recoverLeftover(ctx, wt), false); // re-check finds nothing ahead
   assert.equal(calls.merges.length, 0);
   assert.equal(await aheadOfMain(wt, "main"), 0);
+});
+
+// --- git failure in the ahead checks: both .catch(() => 0) fallbacks ---
+// A broken or missing worktree (crash mid-reset, disk error, pruned dir) makes `git rev-list`
+// fail. recoverLeftover must read that as "no leftover" — never propagate the git error into
+// the tick, and never misread it as "keep for retry", which would strand a broken branch.
+
+test("ahead check failing on an unreadable worktree reads as no leftover: no gate, no merge", async () => {
+  const root = makeRepo();
+  const bogusWt = tmpdir(); // not a git worktree at all — every git command in it throws
+  const { ctx, calls } = fakeCtx(root, { decision: "approved" });
+
+  assert.equal(await recoverLeftover(ctx, bogusWt), false); // caller resets as usual
+  assert.equal(calls.gates, 0, "an unreadable ahead count never reaches the gate");
+  assert.equal(calls.merges.length, 0);
+});
+
+test("ahead re-check failing after a failed review reads as nothing left to keep", async () => {
+  const { root, wt } = await leftoverFixture(); // one commit ahead: first check succeeds
+  // The gate fails under the strike cap — which normally keeps the commit for retry (true) —
+  // but the worktree's git state is unreadable by the time the re-check runs.
+  const { ctx, calls } = fakeCtx(root, async (w) => {
+    fs.rmSync(w, { recursive: true, force: true });
+    return { decision: "failed", detail: "no verdict" };
+  });
+
+  assert.equal(await recoverLeftover(ctx, wt), false); // nothing left to keep; caller resets
+  assert.equal(calls.merges.length, 0);
 });
