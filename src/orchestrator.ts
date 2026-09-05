@@ -8,7 +8,7 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry, readBranchHead } from "./git.js";
 import { logEvent } from "./events.js";
-import { pruneOldFiles, readJsonFile, writeJsonFile } from "./files.js";
+import { pruneOldFiles, readJsonFile, removeQuiet, writeJsonFile } from "./files.js";
 import { inboxSize } from "./inbox.js";
 import { Semaphore } from "./semaphore.js";
 import { abortRequestPath, orchestratorStatePath, resetRequestPath, sessionsRootDir, STATE_DIR } from "./paths.js";
@@ -235,11 +235,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
               roles: affected.map((r) => r.role),
             });
         }
-        try {
-          fs.rmSync(markerFile);
-        } catch {
-          // Best-effort cleanup.
-        }
+        removeQuiet(markerFile);
       }
 
       // Consume per-role abort requests from `tumwater abort --role <id>`: one marker file
@@ -257,11 +253,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
             runner.abortTick();
             logEvent(root, { loop: role, type: "tick_aborted" });
           }
-          try {
-            fs.rmSync(abortRequestPath(root, role));
-          } catch {
-            // Best-effort cleanup.
-          }
+          removeQuiet(abortRequestPath(root, role));
         }
       } catch {
         // .tumwater/ missing — nothing to consume (a fresh repo before the first tick).
@@ -328,10 +320,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   } finally {
     await Promise.allSettled([...inFlight]);
     logEvent(root, { loop: "harness", type: "orchestrator_stop" });
-    try {
-      fs.rmSync(infoFile);
-    } catch {
-      // Best-effort cleanup.
-    }
+    removeQuiet(infoFile);
   }
 }

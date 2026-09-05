@@ -136,6 +136,18 @@ export function writeJsonFile(file: string, value: unknown): void {
   fs.writeFileSync(file, JSON.stringify(value, null, 2));
 }
 
+/** Delete a file, swallowing every error — the one place for cleanup deletes that must never
+ * throw. Marker/info files removed after being consumed may already be gone (a concurrent
+ * process or an earlier pass took them), and a failed removal is not worth failing the poll
+ * over; "already absent" reads as success. */
+export function removeQuiet(file: string): void {
+  try {
+    fs.rmSync(file);
+  } catch {
+    // Already gone (or unremovable) — cleanup must not throw.
+  }
+}
+
 /** Delete regular files under `dir` (recursively) older than `days` days. */
 export function pruneOldFiles(dir: string, days: number): number {
   if (!fs.existsSync(dir)) return 0;
