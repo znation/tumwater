@@ -161,6 +161,32 @@ export class LoopRunner {
     if (userPrompt) enqueuePrompt(this.root, userPrompt);
   }
 
+  /** Finish a tick whose pi run was killed mid-flight — shared by the author-run and review-
+   * gate abort branches, which have identical semantics; only what the kill left behind
+   * differs (half-done edits vs. the fully committed change under review), and
+   * resetWorktreeToMain discards both. A user-initiated abort is a decision, not an
+   * interruption: discard the work AND do NOT requeue a director prompt (the explicit stop IS
+   * the answer to that request; shutdowns still requeue), backing off normally instead of
+   * resuming promptly. Known limitation: if the marker was consumed while this tick sat in its
+   * short git-only commit/merge window (no pi run in flight), the flag takes effect at the next
+   * model-run boundary within the tick — or, for a tick that reaches no further pi run,
+   * completes normally and the abort had no effect; re-issuing is the remedy. */
+  private async finishAbortedTick(userPrompt: string | null, wt: string): Promise<TickOutcome> {
+    if (this.userAborted) {
+      // An explicit abort discards the request itself too: clear the dequeued prompt here —
+      // required on the author-run path (whose early return skips runTick's shared clearing),
+      // a no-op on the review-gate path (already cleared after the author run).
+      this.pendingUserPrompt = null;
+      await resetWorktreeToMain(wt, this.mainBranch);
+      return { result: "user_aborted" };
+    }
+    // Shutdown mid-run: fail closed — a director prompt goes back to the inbox like any other
+    // unfulfilled abort (mid-review the commit stays on the branch for re-review; mid-author-
+    // run its half-done edits are discarded by the next tick's reset).
+    this.requeueUnfulfilledPrompt(userPrompt);
+    return { result: "aborted" };
+  }
+
   /** Land the worktree branch on main (see src/merge.ts for the rebase → ff-merge → conflict-
    * retry flow): delegates with this loop's identity, tick number, and shared pi wiring so a
    * conflict-resolution run folds into this tick's counters like any other pi run. */
@@ -395,28 +421,7 @@ export class LoopRunner {
 
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.
-    if (pi.aborted) {
-      if (this.userAborted) {
-        // A user-initiated abort is a decision, not an interruption: discard the half-done
-        // work — resetWorktreeToMain drops uncommitted edits AND any commit on the branch,
-        // so the next tick's leftover recovery finds nothing — and do NOT requeue a director
-        // prompt (the explicit stop IS the answer to that request; timeouts and cut-offs
-        // still requeue). The result backs off normally instead of resuming promptly. Known
-        // limitation: if the marker was consumed while this tick sat in its short git-only
-        // commit/merge window (no pi run in flight), the flag takes effect at the next
-        // model-run boundary within the tick — or, for a tick that reaches no further pi run,
-        // completes normally and the abort had no effect; re-issuing is the remedy.
-        // An explicit abort discards the request itself too: clear the dequeued prompt here
-        // rather than at tick()'s shared clearing (which this early return skips), so nothing
-        // lingers on the live runner. The review-gate branch needs no such clearing — by then
-        // tick() has already cleared it.
-        this.pendingUserPrompt = null;
-        await resetWorktreeToMain(wt, this.mainBranch);
-        return { result: "user_aborted" };
-      }
-      this.requeueUnfulfilledPrompt(userPrompt);
-      return { result: "aborted" };
-    }
+    if (pi.aborted) return this.finishAbortedTick(userPrompt, wt);
     this.pendingUserPrompt = null;
     if (pi.timedOut) {
       s.lastError = pi.errorMessage ?? "timed out";
@@ -518,20 +523,7 @@ export class LoopRunner {
       highFriction || undefined,
     );
     if (gate.run) this.foldUsage(gate.run);
-    if (gate.aborted) {
-      if (this.userAborted) {
-        // User abort mid-review: same semantics as the author-run branch above, but the work
-        // is fully committed on the branch — resetWorktreeToMain discards that commit too,
-        // so nothing survives for leftover recovery to re-review. No prompt requeue either.
-        await resetWorktreeToMain(wt, this.mainBranch);
-        return { result: "user_aborted" };
-      }
-      // Shutdown mid-review: fail closed — the commit stays on the branch and the next launch
-      // re-reviews it via the combined ahead-of-main diff. Re-queue a director prompt like any
-      // other unfulfilled abort.
-      this.requeueUnfulfilledPrompt(userPrompt);
-      return { result: "aborted" };
-    }
+    if (gate.aborted) return this.finishAbortedTick(userPrompt, wt);
     if (gate.decision === "rejected") {
       // The gate already reset the branch to main; its reasons ride along on this role's next
       // tick prompt via state.lastReview (see tickPrompt).
