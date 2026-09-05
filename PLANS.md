@@ -31,6 +31,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Relationship to other plans.** Complements the done plan "Run the project's own test suite in the deterministic pre-merge gate": that one gates merges (worktree = main + changes); this one gates authoring spend on top of a broken main, reusing its detectBuildCheck/runBuildCheck/clipBuildTail machinery. The budget-paused state cell is the surfacing precedent (plans/daily-cost-budget.md). Independent of the other Planned entry (steward curation of BUGS.md's Fixed history); either can land first.
 
+### Machine-readable fleet state — `tumwater status --json` (planned 2026-09-05)
+
+**Goal.** Every observation surface is human-facing: the `status` table, the TUI, and the GUI. The only JSON surface is the GUI's `/api/status`, which requires starting a server bound to a port — so an unattended fleet has no scriptable one-shot health check that works while the harness is NOT running (cron jobs, alerting on "budget paused" or repeated error results, CI-style verification of open plans/bugs). Add `--json` to `tumwater status`: the same document `/api/status` serves, printed to stdout with no server — a fleet query that reads from disk exactly like the table does.
+
+**Approach.**
+- src/gui.ts — unchanged: `statusPayload(root)` is already exported and is the single definition of fleet state as JSON (running/pid/inbox/inboxPrompts/budget/loops with phase + per-tick metrics/events/plans/bugs/questions). Reuse it verbatim so the CLI flag and the GUI endpoint cannot drift; no new serializer.
+- src/cli.ts — in the `status` case: extend `rejectUnknownArgs("status", args, [])` to accept `{ names: ["--json"] }`; when present, print `JSON.stringify(statusPayload(root), null, 2)` plus a trailing newline instead of calling renderStatus (add statusPayload to the existing gui.js import). Keep `requireReadyRepo` ahead of both paths. Exit code stays 0 on any successful read — this is a query, not a health verdict: scripts interpret fields themselves, and a stopped fleet reads as `"running": false`, which is exactly what a monitor must distinguish from a CLI failure (exit ≠ 0).
+- test/cli.test.ts — the strict-args test currently pins `["status", "--json"]` to fail with "takes no arguments" (~line 463); drop that case from the rejection list. Add: in a ready repo, `status --json` exits 0, stdout parses as JSON, carries the top-level fields above plus per-loop role/phase/ticks/commits/generated/peakCtx/costUsd/todayUsd/lastResult/lastSummary/lastTickEndedAt, and deep-equals `statusPayload(root)` for the same root; bare `status` still renders the table unchanged; a misspelled flag (`--jsonn`) still fails with "unknown argument".
+- README.md — one line in the Usage block: `tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)`.
+
+**Files touched.** src/cli.ts, test/cli.test.ts, README.md.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- In a ready repo, `tumwater status --json` exits 0 and prints valid JSON (parseable by JSON.parse) whose top level carries running/pid/inbox/inboxPrompts/budget/loops/events/plans/bugs/questions — the same document GET /api/status serves for that root (deep-equal after parsing; only indentation differs).
+- Works with or without a running harness: with none, `"running": false` and no pid, while per-loop rows still render from state files (same as the table path).
+- `tumwater status` without the flag renders the existing table byte-for-byte unchanged; unknown flags are still rejected (`status --jsonn` → "unknown argument").
+- No new config keys, no new event types, no changes to gui.ts or status.ts.
+
+**Relationship to other plans.** Complements the done Web GUI plan (2026-08-20): same payload, no server required. Independent of the red-main baseline check — when that lands, its `main_red` result and phase label appear in this output automatically through statusPayload's loops array; no interaction needed.
+
 ## Done
 
 ### Steward curation of BUGS.md's Fixed history — compress old fixed bugs to one-line records (planned 2026-09-04, refined 2026-09-04, done 2026-09-05)
