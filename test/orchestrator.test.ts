@@ -20,7 +20,7 @@ import {
   todayStamp,
   zeroCounters,
 } from "../src/state.js";
-import { abortRequestPath, resetRequestPath, worktreePath } from "../src/paths.js";
+import { abortRequestPath, pausedPath, resetRequestPath, worktreePath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 /** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
@@ -1039,6 +1039,72 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
     await new Promise((r) => setTimeout(r, 1500));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a main move cannot wake a budget-paused fleet");
     assert.ok(!readEvents(repo).some((e) => e.type === "wake"), "no wake logged for the blocked main move");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+// --- Operator pause gate (PLANS.md, fleet-pause plan): the budget gate's sibling with a
+// human-intent trigger — a persistent marker (`tumwater pause` writes it, `resume` removes
+// it) that blocks every NEW role tick for any reason while the director keeps running. The
+// CLI side is pinned in test/cli.test.ts; here the marker's effect on a live fleet. ---
+
+test("a pause marker blocks new role ticks for any reason while the director runs; resume unblocks", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "operator pause e2e test");
+  saveConfig(repo, fastConfig(["clean", "director"]));
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // Baseline: clean's startup tick lands while unpaused.
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "the startup tick to finish",
+    );
+
+    // The operator pauses the running fleet (what `tumwater pause` does: drop the marker).
+    const marker = pausedPath(repo);
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, JSON.stringify({ at: Date.now() }));
+    await waitFor(() => readEvents(repo).some((e) => e.type === "fleet_paused"), "a fleet_paused event");
+
+    // The world changed under a paused fleet: advance main. An ungated loop would wake early…
+    fs.writeFileSync(path.join(repo, "world.txt"), "changed\n");
+    sh(repo, "git", "add", "-A");
+    sh(repo, "git", "commit", "-m", "advance main while paused");
+
+    // …but the gate skips role runners before eligibility is even evaluated: several (fast)
+    // poll cycles pass with no tick and no wake for clean. The marker itself survives — it
+    // is persistent state, not a one-shot request like the abort/reset markers.
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "a user-paused role starts no new ticks");
+    assert.ok(
+      !readEvents(repo).some((e) => e.type === "wake" && e.loop === "clean"),
+      "no wake logged for the blocked main move",
+    );
+    assert.ok(fs.existsSync(marker), "the pause marker is persistent state, not consumed");
+
+    // The director is exempt: a queued human prompt still runs while the fleet is paused.
+    enqueuePrompt(repo, "steer me while the fleet is paused");
+    await waitFor(
+      () => loadLoopState(repo, "director").ticks >= 1 && !loadLoopState(repo, "director").running,
+      "the director to tick while user-paused",
+    );
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "still paused after the director's run");
+
+    // Removing the marker mid-run (what `tumwater resume` does) lifts the pause on the next
+    // poll: one transition event, then the blocked role ticks again without a restart.
+    fs.rmSync(marker);
+    await waitFor(() => readEvents(repo).some((e) => e.type === "fleet_resumed"), "a fleet_resumed event");
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 2 && !loadLoopState(repo, "clean").running,
+      "the paused role to tick again after resume",
+    );
+
+    // Exactly one of each transition for the whole run — no per-poll event spam.
+    assert.equal(readEvents(repo).filter((e) => e.type === "fleet_paused").length, 1);
+    assert.equal(readEvents(repo).filter((e) => e.type === "fleet_resumed").length, 1);
   } finally {
     restore();
     await orch.stop();
