@@ -5,6 +5,38 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Pre-flight environment check — `tumwater doctor` (planned 2026-09-05)
+
+**Goal.** The harness's preconditions are scattered across fail-fast checks that each command re-runs on its own: `requireReadyRepo` in src/cli.ts walks git-binary → repo → tumwater.json → commits and stops at the first failure; `cmdRun` adds pi-on-PATH and orchestrator-alive; `loadConfig` throws with a problem list. A user facing a partially initialized or drifted environment gets one error at a time, and runtime-state problems (a stale merge lock) surface only mid-merge — so there is no single answer to "why can't I run this / why are my ticks failing". The README's *Notes on local model servers* section is a manual debugging guide; `tumwater doctor` codifies its deterministic half as one command: it runs every check, reports each result individually instead of stopping at the first failure, and exits 0/1 so it can be scripted (cron jobs, alerting) — the pre-flight sibling of `status --json`, which is a query of live fleet state while doctor is a verdict on the environment.
+
+**Approach.**
+- src/doctor.ts (new) — one module holding the checklist. Each check is an exported function taking `root` (and, for the binary checks, `pathEnv = process.env.PATH ?? ""`) and returning `{ level: "ok" | "warn" | "fail", detail }`, so tests exercise branches directly without spawning the CLI. A `runDoctor(root)` composes them in order; a renderer prints one line per check plus a header and a verdict line. Checks, all read-only against `.tumwater/` (works with or without a running harness):
+  1. **git binary** — `findOnPath("git", pathEnv)`: ok with resolved path / fail with the existing `GIT_MISSING_MESSAGE`.
+  2. **Repo ready** — reuse the already-exported git.ts predicates in `requireReadyRepo`'s order, reporting the first failure's existing message: not a git repo (`isGitRepo`) → no commits yet (`hasCommits`) → detached HEAD (`currentBranch` null); ok shows the branch name.
+  3. **Initialized + config valid** — tumwater.json present and `loadConfig(root)` does not throw: ok with `<N> roles enabled` (`enabledRoleIds(config).length`) / fail carrying the thrown message verbatim (it already holds validateConfig's full problem list).
+  4. **pi binary** — `findOnPath("pi", pathEnv)`: ok with resolved path / fail with cmdRun's existing install hint.
+  5. **.tumwater writable** — absent: ok "absent — created on first run"; present: write and delete a temp file inside it, ok / fail.
+  6. **Merge lock** (`.tumwater/merge.lock` via `mergeLockDir`) — absent: ok; pid file names a live process (`pidAlive`): ok "held by running loop (pid N)"; dead pid, or no readable pid past the grace window: warn "stale — will be broken on next merge". Read-only: extract lock.ts's three-case classification into a pure helper (e.g. `classifyLock(dir)` returning absent/live/stale) that both `tryBreakStale` and doctor use, so the cases cannot drift; doctor never removes anything.
+  7. **Declared build check** — `detectBuildCheck(root)`: ok "npm <script> in <dir>" / ok-with-note "none declared — the review gate's deterministic pre-check will be skipped" (informational, not a warning: non-JS target projects are expected to have no npm scripts).
+  - Header line carries orchestrator state via `orchestratorAlive` + the info file ("harness running (pid N)" / "not running"). Verdict line: `ready to run` when there is no fail, else `<n> problem(s)`; warnings never affect the exit code. The CLI sets `process.exitCode = 1` on any fail.
+- src/cli.ts — new `doctor` case in the switch: no arguments (`rejectUnknownArgs("doctor", args, [])`), print the report to stdout. One HELP line alongside the others.
+- src/lock.ts — extract the pure stale-classification helper shared with `tryBreakStale` (behavior unchanged; its tests keep passing).
+- test/doctor.test.ts (new) — per-check ok/fail branches using `makeRepo()`/`tmpdir()` from test/util.ts. The binary checks take an explicit `pathEnv`, so "missing" is tested by passing `""` — no PATH mutation, no spawning.
+- README.md — one line in the Usage block (`tumwater doctor   # pre-flight check: git, repo, config, pi, locks (exit 0/1)`). Do not touch the `tumwater:status` markers — that section is the readme loop's to keep current.
+
+**Files touched.** src/doctor.ts (new), src/cli.ts, src/lock.ts, test/doctor.test.ts (new), README.md.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- In a ready repo with no harness running (this one qualifies): `tumwater doctor` exits 0, every check line is ok — including the build-check line naming `npm test` for this repo — and the final line reads `ready to run`.
+- Each failure mode flips exactly its own line to fail and makes the exit code 1: empty `pathEnv` → git and pi lines fail with their existing messages; a temp dir without `.git` → repo line fails ("not a git repository"); a repo without tumwater.json → init line fails; an invalid tumwater.json → init line fails carrying validateConfig's problem list verbatim; a detached-HEAD fixture (`git checkout --detach`) → repo line fails.
+- Lock branches: absent → ok; pid file naming the test process's own (live) pid → ok "held"; a dead pid → warn, exit code stays 0. Doctor leaves the lock directory byte-for-byte untouched (assert content and mtime unchanged after the run).
+- Read-only guarantee: a full doctor run in a ready repo changes nothing under `.tumwater/` (snapshot the directory listing before and after); it works identically with or without a running harness.
+- `doctor --x` is rejected as an unknown argument; running doctor outside a git repo prints fail lines rather than throwing.
+- No new config keys, no new event types, no changes to loop/orchestrator/review behavior. Out of scope by design: no pi version probe, no model-server checks (network-dependent), and never running the project's build/test — that can take minutes and belongs in the review gate / red-main check, not a pre-flight.
+
+**Relationship to other plans.** Complements `tumwater status --json` (done 2026-09-05): same scriptability motivation, different question — doctor verdicts on the environment, `status --json` queries live fleet state. Pairs with the red-main baseline check (done 2026-09-05) by reporting *which* verify script will run without running it. Single entry: all checks share one command's output and exit-code semantics, so they do not decompose into independently shippable plans.
+
 ## Done
 
 ### Machine-readable fleet state — `tumwater status --json` (planned 2026-09-05, done 2026-09-05)
