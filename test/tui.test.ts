@@ -7,7 +7,7 @@ import { logEvent } from "../src/events.js";
 import { submitPrompt } from "../src/inbox.js";
 import { initProject } from "../src/init.js";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { applyKey, backlogLines, renderInputView, runTui } from "../src/tui.js";
+import { applyKey, backlogLines, entryBodyLines, moveEntrySelection, renderInputView, runTui } from "../src/tui.js";
 import { makeRepo } from "./util.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
@@ -123,6 +123,38 @@ test("backlogLines renders (none) under an empty section's subheader", () => {
 
 test("backlogLines with nothing at all is a single self-explanatory line", () => {
   assert.deepEqual(backlogLines([], [], []), ["(no planned features, open bugs, or open questions)"]);
+});
+
+// Entry browsing in the project-status pane (PLANS.md "Read backlog entries in full"): the
+// cursor math and body rendering are pure, so they are pinned here without a TTY.
+
+test("moveEntrySelection opens the first entry on down and the last on up from list mode", () => {
+  assert.equal(moveEntrySelection(3, null, "down"), 0);
+  assert.equal(moveEntrySelection(3, null, "up"), 2);
+});
+
+test("moveEntrySelection wraps at both ends across the flat entry list", () => {
+  // Three entries: plans (indices 0-1) then bugs (index 2). Down from a plan's last index
+  // crosses into the next section; up from the first wraps to the last.
+  assert.equal(moveEntrySelection(3, 1, "down"), 2); // plans → bugs boundary
+  assert.equal(moveEntrySelection(3, 2, "down"), 0); // wraps back to the first plan
+  assert.equal(moveEntrySelection(3, 0, "up"), 2); // wraps from the front to the end
+  assert.equal(moveEntrySelection(3, 2, "up"), 1);
+});
+
+test("moveEntrySelection with no entries stays in list mode", () => {
+  assert.equal(moveEntrySelection(0, null, "down"), null);
+  assert.equal(moveEntrySelection(0, null, "up"), null);
+  assert.equal(moveEntrySelection(0, 5, "down"), null); // a stale selection also clears
+});
+
+test("entryBodyLines clips each line to the width and keeps the head within budget", () => {
+  const body = "a very long first line that will not fit\nsecond line\nthird line";
+  assert.deepEqual(entryBodyLines(body, 2, 10), ["a very lo…", "second li…"]);
+  // Lines that fit are untouched; the budget keeps the HEAD (a plan's goal comes first).
+  assert.deepEqual(entryBodyLines("short\nalso short", 5, 80), ["short", "also short"]);
+  // A bare heading has an empty body: one self-explanatory placeholder line.
+  assert.deepEqual(entryBodyLines("", 3, 100), ["(no details for this entry)"]);
 });
 
 /** A fake-TTY harness around runTui: no real terminal is involved. The isTTY flags are
@@ -315,6 +347,67 @@ test("Ctrl+T cycles events → transcript → project status with real content",
 
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /recent activity/); // wraps back to events
+  } finally {
+    await tui.quit();
+  }
+});
+
+test("project status browses entries in full with up/down and resets on Ctrl+T", async () => {
+  const repo = await makeTuiRepo();
+  // One plan with a real body (the seeded placeholder file has none) so browsing shows more
+  // than the heading, plus one bare bug to cross into the next section.
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    [
+      "# Plans",
+      "",
+      "## Planned",
+      "",
+      "### Add a --json flag (planned 2026-09-05)",
+      "",
+      "**Goal.** Machine-readable status output.",
+      "",
+      "A second body line, kept verbatim.",
+      "",
+      "## Done",
+      "",
+      "_None yet._",
+    ].join("\n") + "\n",
+  );
+  seedEntry(repo, "BUGS.md", "### Crashes on empty input");
+
+  const tui = startTui(repo);
+  try {
+    tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
+    tui.key(undefined, "t", { ctrl: true }); // → project status
+    let frame = tui.lastFrame();
+    assert.match(frame, /project status — Ctrl\+T to cycle/);
+    assert.match(frame, /Add a --json flag/); // list mode shows the heading…
+    assert.doesNotMatch(frame, /Machine-readable status output/); // …but not its body
+
+    tui.key(undefined, "down"); // opens the first entry's full body
+    frame = tui.lastFrame();
+    assert.match(frame, /plan: Add a --json flag \(planned 2026-09-05\) — ↑↓ browse · Ctrl\+T cycle/);
+    assert.match(frame, /Machine-readable status output/);
+    assert.match(frame, /A second body line, kept verbatim/);
+
+    tui.key(undefined, "down"); // crosses into the bugs section (the bare bug)
+    frame = tui.lastFrame();
+    assert.match(frame, /bug: Crashes on empty input — ↑↓ browse · Ctrl\+T cycle/);
+    assert.match(frame, /no details for this entry/); // a bare heading has an empty body
+
+    tui.key(undefined, "up"); // back to the plan
+    assert.match(tui.lastFrame(), /plan: Add a --json flag/);
+    tui.key(undefined, "down"); // wraps from the last entry back to the first
+    assert.match(tui.lastFrame(), /plan: Add a --json flag/);
+
+    tui.key(undefined, "t", { ctrl: true }); // leaves the view and clears the selection…
+    assert.match(tui.lastFrame(), /recent activity/); // …wrapping back to events
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "t", { ctrl: true }); // → project status again
+    frame = tui.lastFrame();
+    assert.match(frame, /project status — Ctrl\+T to cycle/); // list mode restored…
+    assert.doesNotMatch(frame, /Machine-readable status output/); // …body no longer shown
   } finally {
     await tui.quit();
   }

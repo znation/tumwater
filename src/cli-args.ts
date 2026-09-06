@@ -22,6 +22,14 @@ export function parsePositiveInt(raw: string): number | null {
   return Number.isInteger(n) && n >= 1 ? n : null;
 }
 
+/** Parse `raw` as a non-negative integer — zero-based positions (like /api/backlog's index,
+ * where the first entry is 0), unlike parsePositiveInt's counts and 1-based positions, for
+ * which 0 is invalid. Null when it isn't one (NaN, fractional, negative). */
+export function parseNonNegativeInt(raw: string): number | null {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
  * Unvalidated, NaN/0/negative limits make readEvents' `slice(-limit)` dump the whole log
  * (or drop leading lines) instead of showing the requested tail. */

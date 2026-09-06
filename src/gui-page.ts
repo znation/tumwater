@@ -60,17 +60,32 @@ export const GUI_PAGE = `<!doctype html>
     return s;
   };
   let transcriptRole = null; // loop whose transcript panel is open (null = closed)
+  let backlogKey = null; // "file:index" of the open backlog entry (null = closed) — mutually
+                         // exclusive with transcriptRole: both render into #transcript, so only
+                         // one can be open at a time.
   async function refreshTranscript() {
     const panel = document.getElementById("transcript");
-    if (!transcriptRole) { panel.hidden = true; panel.innerHTML = ""; return; }
+    if (!transcriptRole && !backlogKey) { panel.hidden = true; panel.innerHTML = ""; return; }
     try {
-      const r = await fetch("/api/transcript?role=" + encodeURIComponent(transcriptRole) + "&n=50");
-      const d = await r.json();
-      const lines = Array.isArray(d.lines) ? d.lines : [];
-      panel.hidden = false;
-      panel.innerHTML = "<span class='muted'>transcript: " + esc(transcriptRole) +
-        " — click the loop name again to close</span>\\n" +
-        (lines.length ? lines.map(esc).join("\\n") : "(no transcript yet for this loop)");
+      if (transcriptRole) {
+        const r = await fetch("/api/transcript?role=" + encodeURIComponent(transcriptRole) + "&n=50");
+        const d = await r.json();
+        const lines = Array.isArray(d.lines) ? d.lines : [];
+        panel.hidden = false;
+        panel.innerHTML = "<span class='muted'>transcript: " + esc(transcriptRole) +
+          " — click the loop name again to close</span>\\n" +
+          (lines.length ? lines.map(esc).join("\\n") : "(no transcript yet for this loop)");
+      } else {
+        // A backlog entry's full text, fetched on demand (bodies can be multi-KB) and re-fetched
+        // on the same 1s poll while open — the panel's pre-wrap preserves its newlines.
+        const [file, index] = backlogKey.split(":");
+        const r = await fetch("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index));
+        if (!r.ok) throw new Error("bad response");
+        const d = await r.json();
+        panel.hidden = false;
+        panel.innerHTML = "<span class='muted'>" + esc(d.title) +
+          " — click the entry again to close</span>\\n" + (d.body || "(no details for this entry)");
+      }
     } catch { /* keep the previous panel content on a failed poll */ }
   }
   async function refresh() {
@@ -99,12 +114,16 @@ export const GUI_PAGE = `<!doctype html>
           "</td><td class='wide'>" + esc(last) + "</td></tr>";
       }).join("");
       // Project status: planned features, open bugs, and open questions — fresh from
-      // /api/status each poll.
-      const backlogList = (title, items) => "<span class='muted'>" + esc(title + " (" + items.length + ")") + "</span>\\n" +
-        (items.length ? items.map(esc).join("\\n") : "(none)");
+      // /api/status each poll. Each entry line is a link into the detail panel (its full text,
+      // fetched on demand from /api/backlog); queued prompts stay plain — they have no body.
+      const backlogLink = (file, items) => items.map((t, i) =>
+        "<a class='backloglink" + (backlogKey === file + ":" + i ? " active" : "") + "' data-file='" + file +
+        "' data-index='" + i + "'>" + esc(t) + "</a>").join("\\n");
+      const backlogList = (title, items, file) => "<span class='muted'>" + esc(title + " (" + items.length + ")") + "</span>\\n" +
+        (items.length ? (file ? backlogLink(file, items) : items.map(esc).join("\\n")) : "(none)");
       document.getElementById("backlog").innerHTML =
-        backlogList("planned features", d.plans || []) + "\\n\\n" + backlogList("open bugs", d.bugs || []) +
-        "\\n\\n" + backlogList("open questions", d.questions || []) +
+        backlogList("planned features", d.plans || [], "plans") + "\\n\\n" + backlogList("open bugs", d.bugs || [], "bugs") +
+        "\\n\\n" + backlogList("open questions", d.questions || [], "questions") +
         // Queued director prompts in execution order (previews, truncated server-side);
         // (none) while the inbox is empty, like the other sections.
         "\\n\\n" + backlogList("queued prompts", d.inboxPrompts || []);
@@ -121,7 +140,17 @@ export const GUI_PAGE = `<!doctype html>
     const a = ev.target.closest("a.looplink");
     if (!a) return;
     ev.preventDefault();
+    backlogKey = null; // opening/switching a transcript closes any open backlog entry
     transcriptRole = transcriptRole === a.dataset.role ? null : a.dataset.role; // toggle / switch
+    refresh();
+  });
+  document.getElementById("backlog").addEventListener("click", (ev) => {
+    const a = ev.target.closest("a.backloglink");
+    if (!a) return;
+    ev.preventDefault();
+    transcriptRole = null; // opening/switching an entry closes any open transcript
+    const key = a.dataset.file + ":" + a.dataset.index;
+    backlogKey = backlogKey === key ? null : key; // toggle / switch, same rule as loop links
     refresh();
   });
   document.getElementById("promptform").addEventListener("submit", async (ev) => {

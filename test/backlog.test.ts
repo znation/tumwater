@@ -2,7 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { openBugs, openQuestions, parseEntries, plannedPlans } from "../src/backlog.js";
+import {
+  openBugEntries,
+  openQuestions,
+  openQuestionEntries,
+  parseEntries,
+  parseEntryDetails,
+  plannedPlanEntries,
+  plannedPlans,
+} from "../src/backlog.js";
 import { tmpdir } from "./util.js";
 
 const PLANS_MD = `# Plans
@@ -144,6 +152,114 @@ test("openQuestions skips placeholders in a freshly seeded file", () => {
   assert.deepEqual(openQuestions(root), []);
 });
 
+test("parseEntryDetails carries each entry's body between its heading and the next heading", () => {
+  const md = [
+    "# Plans",
+    "",
+    "## Planned",
+    "",
+    "### A plan with a body (planned 2026-09-05)",
+    "",
+    "**Goal.** First line of the goal.",
+    "",
+    "A second paragraph, kept verbatim — **bold**, `code`, everything.",
+    "",
+    "### A bare heading (planned 2026-09-04)",
+    "",
+    "## Done",
+    "",
+    "### An old finished plan (done 2026-08-20)",
+    "",
+    "Done bodies must never leak into the planned list.",
+  ].join("\n");
+  assert.deepEqual(parseEntryDetails(md, "Planned"), [
+    {
+      title: "A plan with a body (planned 2026-09-05)",
+      // Interior blank lines are preserved; leading/trailing blanks around the body are trimmed.
+      body: "**Goal.** First line of the goal.\n\nA second paragraph, kept verbatim — **bold**, `code`, everything.",
+    },
+    { title: "A bare heading (planned 2026-09-04)", body: "" }, // a bare heading has an empty body
+  ]);
+});
+
+test("parseEntryDetails ends the last entry's body at the next ## section and at EOF", () => {
+  const md = [
+    "# Plans",
+    "",
+    "## Planned",
+    "",
+    "### Last in its section (planned 2026-09-05)",
+    "",
+    "Body line one.",
+    "Body line two.",
+    "",
+    "## Done",
+    "",
+    "### Ends at EOF (done 2026-08-20)",
+    "",
+    "Its body runs to the end of file.",
+  ].join("\n");
+  // The Planned entry's body stops at `## Done` — the Done heading and its text never leak in.
+  assert.deepEqual(parseEntryDetails(md, "Planned"), [
+    { title: "Last in its section (planned 2026-09-05)", body: "Body line one.\nBody line two." },
+  ]);
+  // An entry at the end of file ends with EOF, not a heading.
+  assert.deepEqual(parseEntryDetails(md, "Done"), [
+    { title: "Ends at EOF (done 2026-08-20)", body: "Its body runs to the end of file." },
+  ]);
+});
+
+test("parseEntryDetails skips placeholders and prose before the first heading", () => {
+  // The exact template init.ts seeds: both sections hold only the _None yet._ placeholder.
+  const seeded = `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n_None yet._\n`;
+  assert.deepEqual(parseEntryDetails(seeded, "Planned"), []);
+  // Prose between the section heading and the first entry is not any entry's body.
+  const md = `# Plans\n\n## Planned\n
+Intro prose that belongs to no entry.\n\n### First (planned 2026-09-05)\n\nReal body.\n`;
+  assert.deepEqual(parseEntryDetails(md, "Planned"), [{ title: "First (planned 2026-09-05)", body: "Real body." }]);
+});
+
+test("parseEntries keeps returning titles only — the richer parse is its source", () => {
+  assert.deepEqual(parseEntryDetails(PLANS_MD, "Planned").map((e) => e.title), parseEntries(PLANS_MD, "Planned"));
+  // The fixture's first entry has a body; the second is bare — titles are unchanged either way.
+  assert.deepEqual(parseEntries(PLANS_MD, "Planned"), [
+    "Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)",
+    "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)",
+  ]);
+});
+
+test("the entry readers return title + body pairs in file order; missing file yields []", () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
+  assert.deepEqual(plannedPlanEntries(root), [
+    {
+      title: "Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)",
+      body: "**Goal:** The dashboard surfaces project status.\nBody text that must not leak into titles — **bold**, `code`, lists, everything.",
+    },
+    { title: "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)", body: "" },
+  ]);
+  // The titles-only reader and the entry reader agree on order and titles — one parse feeds both.
+  assert.deepEqual(plannedPlanEntries(root).map((e) => e.title), plannedPlans(root));
+
+  fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD);
+  assert.deepEqual(openBugEntries(root)[0], {
+    title: "gen / peak ctx columns should show the current or last run (reported 2026-08-25)",
+    body: "**Symptom:** The columns accumulate across a loop's whole lifetime.",
+  });
+
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), QUESTIONS_MD);
+  assert.deepEqual(openQuestionEntries(root)[1], {
+    title: "Should reset-counters also clear the event log? (asked 2026-08-27 by improve)",
+    body: "",
+  });
+
+  // Missing files yield [] from every entry reader, like their titles-only siblings.
+  const empty = tmpdir();
+  assert.deepEqual(plannedPlanEntries(empty), []);
+  assert.deepEqual(openBugEntries(empty), []);
+  assert.deepEqual(openQuestionEntries(empty), []);
+});
+
 test("an unchanged file is served from the stat-keyed cache without re-reading", () => {
   const root = tmpdir();
   fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
@@ -164,6 +280,35 @@ test("an unchanged file is served from the stat-keyed cache without re-reading",
     const a = plannedPlans(root);
     a.push("mutated by caller");
     assert.equal(plannedPlans(root).length, 2);
+  } finally {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
+  }
+});
+
+test("repeated entry reads of an unchanged file re-parse nothing (stat-keyed cache hit)", () => {
+  // The GUI's /api/backlog endpoint and the TUI's browse both go through these readers; while
+  // a panel is open they are called every second, so an unchanged file must cost one stat per
+  // call — never a re-read or re-parse of markdown that grows without bound.
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
+  assert.equal(plannedPlanEntries(root).length, 2); // populates the cache
+  let reads = 0;
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  try {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
+      reads += 1;
+      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
+    };
+    assert.equal(plannedPlanEntries(root).length, 2);
+    assert.equal(openBugEntries(root).length, 0); // a different file/section key misses once…
+    fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD); // …and the write invalidates it
+    assert.equal(openBugEntries(root).length, 2);
+    assert.equal(reads, 1, "only the new BUGS.md was read; PLANS.md came from cache");
+    // Each call still gets its own objects: mutating one result must not poison the cache.
+    const before = plannedPlanEntries(root)[0]!.body;
+    const a = plannedPlanEntries(root);
+    a[0]!.body = "mutated by caller";
+    assert.equal(plannedPlanEntries(root)[0]!.body, before); // original body restored
   } finally {
     (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
   }

@@ -1,5 +1,10 @@
 import readline from "node:readline";
-import { openBugs, openQuestions, plannedPlans } from "./backlog.js";
+import {
+  type BacklogEntry,
+  openBugEntries,
+  openQuestionEntries,
+  plannedPlanEntries,
+} from "./backlog.js";
 import { readEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
@@ -82,6 +87,30 @@ export function backlogLines(plans: string[], bugs: string[], questions: string[
   return lines;
 }
 
+/** Move the project-status entry selection one step in `dir` across the flat entry list
+ * (plans, then bugs, then questions), wrapping at both ends. A null cursor means "list mode":
+ * the first down opens the first entry and the first up opens the last; with no entries there
+ * is nothing to select (a stale selection clears too). Pure, so it is unit-testable without a
+ * TTY — runTui feeds it the three sections' lengths. */
+export function moveEntrySelection(
+  count: number,
+  selected: number | null,
+  dir: "up" | "down",
+): number | null {
+  if (count <= 0) return null;
+  if (selected === null) return dir === "down" ? 0 : count - 1;
+  return dir === "down" ? (selected + 1) % count : (selected - 1 + count) % count;
+}
+
+/** The body lines of one backlog entry for the TUI pane: each line clipped to `width` and
+ * capped at `budget` lines keeping the HEAD — a plan's goal comes first, like the list view.
+ * An empty body (a bare heading) renders a single self-explanatory placeholder. Pure, so it
+ * is unit-testable without a TTY. */
+export function entryBodyLines(body: string, budget: number, width: number): string[] {
+  if (!body) return ["(no details for this entry)"];
+  return body.split("\n").map((l) => clipToWidth(l, width)).slice(0, Math.max(1, budget));
+}
+
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
  * typed prompts into the inbox. Works alongside (not instead of) `tumwater run`. */
 export async function runTui(root: string): Promise<void> {
@@ -96,6 +125,10 @@ export async function runTui(root: string): Promise<void> {
   // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
   // status (planned features + open bugs + open questions) — Ctrl+T.
   let view = 0;
+  // The project-status pane's entry selection (null = list mode): the flat index of the
+  // entry shown in full — plans first, then bugs, then questions. Cleared on every Ctrl+T,
+  // so cycling back into the view always starts at today's heading list.
+  let selectedEntry: number | null = null;
   let roleIds: string[] = [];
 
   // Every rendered line is clipped to the terminal width (clipToWidth), so one logical
@@ -134,10 +167,39 @@ export async function runTui(root: string): Promise<void> {
       // Project status: planned features, open bugs, and open questions from
       // PLANS.md/BUGS.md/QUESTIONS.md, read fresh each render like events. Keeps the HEAD of
       // the list when it overflows — file order is newest-first, unlike events which keep the tail.
-      header = `${BOLD}${clipToWidth("project status — Ctrl+T to cycle", width)}${RESET}`;
-      body = backlogLines(plannedPlans(root), openBugs(root), openQuestions(root))
-        .map((l) => clipToWidth(l, width))
-        .slice(0, eventBudget);
+      const planEntries = plannedPlanEntries(root);
+      const bugEntries = openBugEntries(root);
+      const questionEntries = openQuestionEntries(root);
+      if (selectedEntry === null) {
+        header = `${BOLD}${clipToWidth("project status — Ctrl+T to cycle", width)}${RESET}`;
+        body = backlogLines(
+          planEntries.map((e) => e.title),
+          bugEntries.map((e) => e.title),
+          questionEntries.map((e) => e.title),
+        )
+          .map((l) => clipToWidth(l, width))
+          .slice(0, eventBudget);
+      } else {
+        // Entry browsing: the selected entry's full body under a header naming its section
+        // and title. A stale selection (an entry removed from the file since the last render)
+        // clamps to the last remaining entry; with no entries at all it falls back to list mode.
+        const flat: Array<{ label: string } & BacklogEntry> = [
+          ...planEntries.map((e) => ({ label: "plan", ...e })),
+          ...bugEntries.map((e) => ({ label: "bug", ...e })),
+          ...questionEntries.map((e) => ({ label: "question", ...e })),
+        ];
+        const sel = flat.length > 0 ? Math.min(selectedEntry, flat.length - 1) : null;
+        if (sel === null) {
+          header = `${BOLD}${clipToWidth("project status — Ctrl+T to cycle", width)}${RESET}`;
+          body = ["(no planned features, open bugs, or open questions)"]
+            .map((l) => clipToWidth(l, width))
+            .slice(0, eventBudget);
+        } else {
+          const e = flat[sel]!;
+          header = `${BOLD}${clipToWidth(`${e.label}: ${e.title} — ↑↓ browse · Ctrl+T cycle`, width)}${RESET}`;
+          body = entryBodyLines(e.body, eventBudget, width);
+        }
+      }
     } else {
       header = `${BOLD}recent activity${RESET}`;
       body = readEvents(root, eventBudget)
@@ -181,6 +243,16 @@ export async function runTui(root: string): Promise<void> {
       }
       if (key.ctrl && key.name === "t") {
         view = (view + 1) % (roleIds.length + 2); // events → each loop's transcript → project status → events
+        selectedEntry = null; // leaving a view drops any entry selection
+        render();
+        return;
+      }
+      if (view === roleIds.length + 1 && (key.name === "up" || key.name === "down")) {
+        // In the project-status pane, up/down browse entries in full instead of editing the
+        // prompt; every other view keeps today's behavior (arrows are ignored by applyKey).
+        const count =
+          plannedPlanEntries(root).length + openBugEntries(root).length + openQuestionEntries(root).length;
+        selectedEntry = moveEntrySelection(count, selectedEntry, key.name);
         render();
         return;
       }

@@ -400,8 +400,9 @@ test("status payload carries open questions, fresh per poll", async () => {
 
 test("the dashboard page renders the open-questions section and header badge from the payload", async () => {
   const { GUI_PAGE } = await import("../src/gui-page.js");
-  // The #backlog panel gets an open questions section alongside plans/bugs…
-  assert.match(GUI_PAGE, /backlogList\("open questions", d\.questions \|\| \[\]\)/);
+  // The #backlog panel gets an open questions section alongside plans/bugs… (its third
+  // argument names the /api/backlog file so each entry line links into the detail panel)
+  assert.match(GUI_PAGE, /backlogList\("open questions", d\.questions \|\| \[\], "questions"\)/);
   // …and the header badge derives its count from that same list, shown only when N > 0.
   assert.match(GUI_PAGE, /const qn = \(d\.questions \|\| \[\]\)\.length/);
   assert.match(GUI_PAGE, /\(qn \? " · questions: " \+ qn : ""\)/);
@@ -436,6 +437,111 @@ test("the dashboard page lists queued prompts in its project status panel", asyn
   const { GUI_PAGE } = await import("../src/gui-page.js");
   // The #backlog panel gets a queued-prompts section alongside plans/bugs/questions.
   assert.match(GUI_PAGE, /backlogList\("queued prompts", d\.inboxPrompts \|\| \[\]\)/);
+});
+
+// Full backlog entries (PLANS.md "Read backlog entries in full from the TUI/GUI dashboards"):
+// /api/backlog serves one entry's title + body on demand, so multi-KB bodies never ride the
+// 1-second /api/status poll — and statusPayload keeps carrying titles only.
+
+test("gui /api/backlog serves an entry's title and body and validates file/index", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "backlog gui test");
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    [
+      "# Plans",
+      "",
+      "## Planned",
+      "",
+      "### First plan (planned 2026-09-05)",
+      "",
+      "**Goal.** The first goal.",
+      "",
+      "A second body line, kept verbatim.",
+      "",
+      "### Second plan (planned 2026-09-04)", // bare heading: empty body
+      "",
+      "## Done",
+      "",
+      "_None yet._",
+    ].join("\n") + "\n",
+  );
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    ["# Bugs", "", "## Open", "", "### One bug (reported 2026-09-05)", "", "**Symptom.** It breaks.", "", "## Fixed", "", "_None yet._"].join("\n") + "\n",
+  );
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    ["# Questions", "", "## Open", "", "### Q1: which database?", "", "**Context:** the storage layer is undecided.", "", "## Answered", "", "_None yet._"].join("\n") + "\n",
+  );
+
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  try {
+    // index 0 of plans: the first entry's title and full body — interior blank lines kept,
+    // leading/trailing blanks trimmed, Done entries never leaking in.
+    let res = await fetch(base + "/api/backlog?file=plans&index=0");
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), {
+      title: "First plan (planned 2026-09-05)",
+      body: "**Goal.** The first goal.\n\nA second body line, kept verbatim.",
+    });
+
+    // index 1: a bare heading has an empty body — and it is the LAST planned entry (the Done
+    // placeholder never counts), so index 2 is already out of range.
+    res = await fetch(base + "/api/backlog?file=plans&index=1");
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { title: "Second plan (planned 2026-09-04)", body: "" });
+
+    // The other files address their own open sections in the same payload order.
+    res = await fetch(base + "/api/backlog?file=bugs&index=0");
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { title: "One bug (reported 2026-09-05)", body: "**Symptom.** It breaks." });
+    res = await fetch(base + "/api/backlog?file=questions&index=0");
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { title: "Q1: which database?", body: "**Context:** the storage layer is undecided." });
+
+    // Validation: unknown/missing file, missing or bad index, and out-of-range → 400 with a
+    // JSON error body (the page's fetch treats any non-2xx as a failed poll).
+    for (const url of [
+      "/api/backlog?file=notes&index=0",
+      "/api/backlog?index=0",
+      "/api/backlog?file=plans",
+      "/api/backlog?file=plans&index=-1",
+      "/api/backlog?file=plans&index=abc",
+      "/api/backlog?file=plans&index=2", // only two planned entries
+    ]) {
+      const r = await fetch(base + url);
+      assert.equal(r.status, 400, url);
+      assert.match(((await r.json()) as { error: string }).error, /\S/, `${url} carries an error message`);
+    }
+
+    // An empty section is out of range at index 0 (seeded placeholders are not entries).
+    fs.writeFileSync(path.join(repo, "BUGS.md"), ["# Bugs", "", "## Open", "", "_None yet._", "", "## Fixed", "", "_None yet._"].join("\n") + "\n");
+    res = await fetch(base + "/api/backlog?file=bugs&index=0");
+    assert.equal(res.status, 400);
+
+    // The status payload is unchanged by this endpoint: titles only, no bodies.
+    const status = (await (await fetch(base + "/api/status")).json()) as { plans: string[] };
+    assert.deepEqual(status.plans, ["First plan (planned 2026-09-05)", "Second plan (planned 2026-09-04)"]);
+  } finally {
+    server.close();
+  }
+});
+
+test("the dashboard page renders backlog entries as links into /api/backlog", async () => {
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+  // Each entry line is an <a> carrying its file and zero-based index…
+  assert.match(GUI_PAGE, /class='backloglink/);
+  assert.match(GUI_PAGE, /data-file='/);
+  assert.match(GUI_PAGE, /data-index='/);
+  // …clicking one fetches the on-demand endpoint into the detail panel (the same #transcript
+  // panel loop transcripts use — mutual exclusion is pinned by the click handlers below).
+  assert.match(GUI_PAGE, /\/api\/backlog\?file=/);
+  assert.match(GUI_PAGE, /a\.backloglink/);
+  assert.match(GUI_PAGE, /backlogKey = backlogKey === key ? null : key/);
 });
 
 // The daily cost budget on the GUI surface (plans/daily-cost-budget.md): /api/status carries

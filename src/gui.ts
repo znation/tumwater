@@ -1,7 +1,15 @@
 import http from "node:http";
 import os from "node:os";
-import { openBugs, openQuestions, plannedPlans } from "./backlog.js";
-import { parsePositiveInt } from "./cli-args.js";
+import {
+  type BacklogEntry,
+  openBugs,
+  openBugEntries,
+  openQuestions,
+  openQuestionEntries,
+  plannedPlans,
+  plannedPlanEntries,
+} from "./backlog.js";
+import { parseNonNegativeInt, parsePositiveInt } from "./cli-args.js";
 import { readEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
@@ -41,6 +49,41 @@ function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, r
     n = parsed;
   }
   sendJson(res, 200, { lines: readTranscript(root, role, n) });
+}
+
+/** Handle GET /api/backlog?file=<plans|bugs|questions>&index=N: one backlog entry's full
+ * text ({title, body}), fetched on demand so multi-KB bodies (long repros, whole plans) never
+ * ride the 1-second /api/status poll. index addresses the Nth entry of that file's open
+ * section in the same order statusPayload lists its titles — PLANS.md ## Planned,
+ * BUGS.md ## Open, QUESTIONS.md ## Open — zero-based. Unknown/missing file, missing or bad
+ * index, and out-of-range index → 400 JSON error via sendJson. */
+function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+  const q = new URL(req.url ?? "", "http://localhost").searchParams;
+  const file = q.get("file");
+  let entries: BacklogEntry[] | null = null;
+  if (file === "plans") entries = plannedPlanEntries(root);
+  else if (file === "bugs") entries = openBugEntries(root);
+  else if (file === "questions") entries = openQuestionEntries(root);
+  if (!entries) {
+    sendJson(res, 400, { error: `unknown or missing file (valid values: plans, bugs, questions)` });
+    return;
+  }
+  const indexRaw = q.get("index");
+  if (indexRaw === null) {
+    sendJson(res, 400, { error: "index required" });
+    return;
+  }
+  const index = parseNonNegativeInt(indexRaw);
+  if (index === null) {
+    sendJson(res, 400, { error: `index must be a non-negative integer (got ${JSON.stringify(indexRaw)})` });
+    return;
+  }
+  const entry = entries[index];
+  if (!entry) {
+    sendJson(res, 400, { error: `index out of range (${entries.length} ${file})` });
+    return;
+  }
+  sendJson(res, 200, { title: entry.title, body: entry.body });
 }
 
 /** JSON payload for GET /api/status. */
@@ -185,6 +228,8 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
         sendJson(res, 200, statusPayload(root));
       } else if (req.method === "GET" && req.url?.startsWith("/api/transcript")) {
         handleTranscript(req, res, root);
+      } else if (req.method === "GET" && req.url?.startsWith("/api/backlog")) {
+        handleBacklog(req, res, root);
       } else if (req.method === "POST" && req.url === "/api/prompt") {
         // Client-side request failures get 4xx with an actionable message — not a 500
         // carrying Node's raw SyntaxError/TypeError, which misreports the fault and hides
