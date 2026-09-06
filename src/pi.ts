@@ -89,15 +89,23 @@ export class PiStreamParser {
 
   feed(chunk: string, onLine?: (line: string) => void): void {
     this.buffer += chunk;
+    // Scan with an offset instead of slicing the remainder off after every line: each old
+    // `slice(nl + 1)` copied everything still unprocessed, so k lines in one chunk cost
+    // O(k·L) string copying (measured ~2x on pi's streaming output — a pipe 'data' event can
+    // carry hundreds of delta lines). One final slice keeps only the trailing partial line,
+    // which by construction holds no newline, so the next feed re-scans exactly what the old
+    // per-line slicing left behind.
+    let start = 0;
     for (;;) {
-      const nl = this.buffer.indexOf("\n");
+      const nl = this.buffer.indexOf("\n", start);
       if (nl < 0) break;
-      const line = this.buffer.slice(0, nl);
-      this.buffer = this.buffer.slice(nl + 1);
+      const line = this.buffer.slice(start, nl);
+      start = nl + 1;
       if (!line.trim()) continue;
       onLine?.(line);
       this.feedLine(line);
     }
+    if (start > 0) this.buffer = this.buffer.slice(start);
   }
 
   private feedLine(line: string): void {
