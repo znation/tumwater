@@ -21,6 +21,7 @@ function writePiLog(root: string, role: string, lines: string[]): string {
 function snapshotWith(
   loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string }>,
   budget: StatusSnapshot["budget"] = null,
+  paused = false,
 ): StatusSnapshot {
   return {
     running: false,
@@ -29,6 +30,7 @@ function snapshotWith(
     questions: 0,
     loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial })),
     budget,
+    paused,
   };
 }
 

@@ -41,6 +41,14 @@ export function abortRequestPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), `abort-${role}.json`);
 }
 
+/** Persistent operator-intent marker for `tumwater pause`: its presence means "the fleet is
+ * paused" until `resume` removes it — unlike the abort/reset markers above, which are one-shot
+ * requests consumed on pickup. Content is `{ at }` (the pause timestamp), read for display
+ * only, never required. */
+export function pausedPath(root: string): string {
+  return path.join(tumwaterDir(root), "paused.json");
+}
+
 export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", "events.jsonl");
 }

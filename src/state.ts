@@ -5,7 +5,7 @@ import { ensureParentDir } from "./files.js";
 import { readJsonFile } from "./json-files.js";
 import { pidAlive } from "./process.js";
 import { formatDate } from "./text.js";
-import { orchestratorStatePath, statePath } from "./paths.js";
+import { orchestratorStatePath, pausedPath, statePath } from "./paths.js";
 
 /** A new LoopState for one role, before its first tick. */
 export function freshLoopState(role: string): LoopState {
@@ -105,6 +105,16 @@ export function budgetReached(budget: { spentUsd: number; capUsd: number } | nul
 export function budgetPaused(states: LoopState[], config: TumwaterConfig, now = Date.now()): boolean {
   const cap = config.maxDailyCostUsd;
   return budgetReached(cap > 0 ? { spentUsd: fleetDailyCost(states, now), capUsd: cap } : null);
+}
+
+/** True while the operator has paused the fleet (`tumwater pause` wrote its marker). The
+ * marker is persistent state, not a one-shot request: presence means paused until `resume`
+ * removes it — pausing before startup starts an already-paused fleet. Never throws (a missing
+ * .tumwater/ reads false). Lives here next to budgetPaused because both the scheduler and every
+ * observer must evaluate it from disk without importing each other's modules — the same "single
+ * definition" rule that put budgetPaused in state.ts. */
+export function isFleetPaused(root: string): boolean {
+  return fs.existsSync(pausedPath(root));
 }
 
 /** Next backoff after a no-change tick: initial on the first, then multiplied, capped. */

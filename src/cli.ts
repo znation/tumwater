@@ -27,7 +27,7 @@ import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { renderDoctor, runDoctor } from "./doctor.js";
-import { ensureParentDir, findOnPath } from "./files.js";
+import { ensureParentDir, findOnPath, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { followFile } from "./tail.js";
 import { snapshot } from "./status.js";
@@ -35,7 +35,7 @@ import { renderStatus } from "./status-render.js";
 import { runTui } from "./tui.js";
 import { lanAddresses, startGui, statusPayload } from "./gui.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { abortRequestPath, eventsLogPath, piLogPath, resetRequestPath } from "./paths.js";
+import { abortRequestPath, eventsLogPath, pausedPath, piLogPath, resetRequestPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
@@ -60,6 +60,8 @@ Usage:
   tumwater prompt --cancel <n>     Remove the Nth queued prompt (as shown by --list)
   tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
   tumwater abort --role <id>             Abort that loop's in-flight tick (work discarded; the loop keeps running)
+  tumwater pause                     Stop role loops starting new ticks (in-flight finish; the director keeps running)
+  tumwater resume                    Lift a fleet pause
   tumwater help | version
 
 The harness runs inside a git repo. Each role loop owns a persistent worktree and branch
@@ -222,6 +224,44 @@ async function cmdAbort(root: string, args: string[]): Promise<void> {
   process.stdout.write(confirmation + "\n");
 }
 
+/** `tumwater pause`: stop every role loop from starting NEW ticks while in-flight ones finish
+ * and the director keeps running (its prompts outrank operator gates, like under the budget
+ * cap). The marker is persistent state, not a one-shot request: its presence means paused
+ * until `resume` removes it — so pausing before startup starts an already-paused fleet.
+ * Unlike abort, no live harness is required; when none runs, say where the pause takes effect
+ * instead of failing. Idempotent: a second pause reports the existing marker as-is. */
+async function cmdPause(root: string): Promise<void> {
+  const marker = pausedPath(root);
+  if (fs.existsSync(marker)) {
+    process.stdout.write("already paused\n");
+    return;
+  }
+  ensureParentDir(marker); // A fresh repo has no .tumwater/ yet.
+  writeJsonFile(marker, { at: Date.now() });
+  const live = orchestratorAlive(root);
+  const when = live ? " within ~2s" : "";
+  const tail = live ? "" : "; no harness is running, so it takes effect on the next `tumwater run`";
+  process.stdout.write(
+    `fleet paused — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${tail}\n`,
+  );
+}
+
+/** `tumwater resume`: lift a fleet pause by removing its marker. Idempotent like pause: with
+ * no marker there is nothing to do. No live harness required — resuming before startup just
+ * means the next `tumwater run` starts unpaused. */
+async function cmdResume(root: string): Promise<void> {
+  const marker = pausedPath(root);
+  if (!fs.existsSync(marker)) {
+    process.stdout.write("not paused\n");
+    return;
+  }
+  removeQuiet(marker);
+  const live = orchestratorAlive(root);
+  const when = live ? " within ~2s" : "";
+  const tail = live ? "" : "; no harness is running, so it takes effect on the next `tumwater run`";
+  process.stdout.write(`fleet resumed — role loops tick again${when}${tail}\n`);
+}
+
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   const root = process.cwd();
@@ -343,6 +383,18 @@ async function main(): Promise<void> {
       rejectUnknownArgs("abort", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
       await requireReadyRepo(root);
       await cmdAbort(root, args);
+      break;
+    }
+    case "pause": {
+      rejectUnknownArgs("pause", args, []);
+      await requireReadyRepo(root);
+      await cmdPause(root);
+      break;
+    }
+    case "resume": {
+      rejectUnknownArgs("resume", args, []);
+      await requireReadyRepo(root);
+      await cmdResume(root);
       break;
     }
     case "version":

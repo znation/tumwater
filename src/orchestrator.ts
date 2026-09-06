@@ -3,7 +3,7 @@ import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
 import { configForRole, enabledRoleIds, loadConfigCached } from "./config.js";
-import { budgetPaused, fleetDailyCost } from "./state.js";
+import { budgetPaused, fleetDailyCost, isFleetPaused } from "./state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { gitTry, readBranchHead } from "./git.js";
@@ -195,6 +195,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
   let prevEnabled = new Set<string>(enabled);
   // The previous poll's budget-paused state, for one-shot pause/resume transition events.
   let prevBudgetPaused = false;
+  // Same bookkeeping for the operator pause (the marker file), so each pause/resume logs
+  // exactly one event instead of once per ~2s poll.
+  let prevUserPaused = false;
   // The cap last applied to the semaphore (live-resized on each reload), so a change logs
   // exactly one event per distinct value — not once per ~2s poll.
   let lastMaxConcurrent = Math.max(1, config.maxConcurrent);
@@ -284,20 +287,35 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
       // config object (the initial one until a reload replaces it), so any runner's copy is
       // the live config.
       const states = runners.map((r) => r.state);
-      const pausedNow = budgetPaused(states, runners[0]?.config ?? config, now);
-      if (pausedNow !== prevBudgetPaused) {
+      const budgetPausedNow = budgetPaused(states, runners[0]?.config ?? config, now);
+      if (budgetPausedNow !== prevBudgetPaused) {
         logEvent(root, {
           loop: "harness",
-          type: pausedNow ? "budget_paused" : "budget_resumed",
+          type: budgetPausedNow ? "budget_paused" : "budget_resumed",
           spentUsd: fleetDailyCost(states, now),
           capUsd: (runners[0]?.config ?? config).maxDailyCostUsd,
         });
-        prevBudgetPaused = pausedNow;
+        prevBudgetPaused = budgetPausedNow;
+      }
+
+      // Operator pause (`tumwater pause`): the budget gate's sibling with a different trigger —
+      // human intent instead of spend. The marker is persistent state (presence means paused
+      // until `resume` removes it), so one existsSync per cycle reads it fresh: pausing before
+      // startup starts an already-paused fleet, and removing the marker mid-run unblocks roles
+      // on their next eligibility without a restart. The director is exempt for the same reason
+      // as under the budget gate — a human typing prompts outranks an operator gate (queued
+      // prompts simply wait in the inbox if full silence is wanted). In-flight ticks finish;
+      // only NEW ticks are blocked, because the gate sits before isEligible.
+      const userPaused = isFleetPaused(root);
+      if (userPaused !== prevUserPaused) {
+        logEvent(root, { loop: "harness", type: userPaused ? "fleet_paused" : "fleet_resumed" });
+        prevUserPaused = userPaused;
       }
 
       const reasons = new Map<LoopRunner, string | undefined>();
       for (const runner of runners) {
-        if (pausedNow && runner.role !== DIRECTOR_ROLE) continue; // budget gate: no new role ticks while paused
+        if ((budgetPausedNow || userPaused) && runner.role !== DIRECTOR_ROLE)
+          continue; // no new role ticks while either gate holds
         const { run, reason } = isEligible(runner, now, mainHead, inboxCount);
         if (run) reasons.set(runner, reason);
       }

@@ -201,6 +201,8 @@ export interface HarnessEvent {
     | "review_failed"
     | "budget_paused" // fleet daily spend reached maxDailyCostUsd; role loops stop starting ticks
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
+    | "fleet_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
+    | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
     | "warning";

@@ -7,6 +7,7 @@ import { statePath } from "./paths.js";
 import {
   fleetDailyCost,
   freshLoopState,
+  isFleetPaused,
   loadLoopState,
   orchestratorAlive,
   readOrchestratorInfo,
@@ -30,6 +31,10 @@ export interface StatusSnapshot {
    * cap, for the `· budget: $X/$Y today` header badge on both dashboards. Null when disabled.
    * Spend lags in-flight ticks by up to one tick boundary — exactly like the cost column. */
   budget: { spentUsd: number; capUsd: number } | null;
+  /** True while the operator has paused the fleet (`tumwater pause` marker present): every
+   * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
+   * because a 2-second-stale pause flag would mislead an operator mid-resume. */
+  paused: boolean;
 }
 
 // The last config each root loaded successfully. snapshot is polled every second by the
@@ -97,5 +102,6 @@ export function snapshot(root: string): StatusSnapshot {
     loops,
     budget:
       cfg.maxDailyCostUsd > 0 ? { spentUsd: fleetDailyCost(loops), capUsd: cfg.maxDailyCostUsd } : null,
+    paused: isFleetPaused(root),
   };
 }

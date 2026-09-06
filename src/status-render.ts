@@ -75,6 +75,9 @@ export function workingDetail(root: string, s: LoopState, live?: LiveProgress | 
  * (elapsed · turn · ctx · tool); without it a working loop shows plain "working".
  * `budgetPaused` marks the fleet's daily cost budget as reached: idle role loops show
  * `budget paused` instead of their sleep/queue state — that is why they are not ticking.
+ * `userPaused` marks an operator pause (`tumwater pause` marker present): idle role loops
+ * show `paused`, checked before the budget gate because user intent is more specific than
+ * spend state — while both hold, "paused" tells the operator what to do (`resume`).
  * `live`, when given, is the frame's precomputed tail (see workingDetail) — it skips the log
  * read; without it an in-flight tick reads on its own. */
 export function loopPhase(
@@ -83,6 +86,7 @@ export function loopPhase(
   root?: string,
   budgetPaused = false,
   live?: LiveProgress | null,
+  userPaused = false,
 ): string {
   if (!orchestratorRunning) return "stopped";
   if (s.running) {
@@ -95,7 +99,8 @@ export function loopPhase(
     // so a running loop keeps its live detail.
     return root ? workingDetail(root, s, live) : "working";
   }
-  if (s.role === DIRECTOR_ROLE) return "waiting for prompts"; // exempt from the cap
+  if (s.role === DIRECTOR_ROLE) return "waiting for prompts"; // exempt from both gates
+  if (userPaused) return "paused";
   if (budgetPaused) return "budget paused";
   // Main's own suite is known red at this loop's last tick: code-producing loops are blocked
   // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
@@ -146,8 +151,9 @@ function stateCell(
   orchestratorRunning: boolean,
   budgetPaused = false,
   live?: LiveProgress | null,
+  userPaused = false,
 ): string {
-  const phase = loopPhase(s, orchestratorRunning, root, budgetPaused, live);
+  const phase = loopPhase(s, orchestratorRunning, root, budgetPaused, live, userPaused);
   // While under review the log tail's "current work" is the reviewer's own output, not the
   // author's task — show the bare gate label.
   if (!s.running || s.phase === "review") return phase;
@@ -210,8 +216,10 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // on it.
   const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last result"];
   // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
-  // reached the cap, every idle role loop shows `budget paused` in its state cell.
+  // reached the cap, every idle role loop shows `budget paused` in its state cell. The
+  // operator pause is fleet-wide too (`tumwater pause` marker present) and outranks it.
   const budgetPausedNow = budgetReached(snap.budget);
+  const userPausedNow = snap.paused;
   // One live tail read per running loop per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
   // its own, up to three stats + reads per loop per second.
@@ -221,7 +229,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   });
   const rows = withMetrics.map(({ s, m, live }) => [
     s.role,
-    stateCell(root, s, snap.running, budgetPausedNow, live),
+    stateCell(root, s, snap.running, budgetPausedNow, live, userPausedNow),
     String(s.ticks),
     String(s.commits),
     compactTokens(m.generated),

@@ -76,6 +76,11 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} budget paused — ${budgetPhrase(e)} daily cost reached`;
     case "budget_resumed":
       return `${time} ${loop} budget resumed (${budgetPhrase(e)} today)`;
+    case "fleet_paused":
+      // Routine state change, like counters_reset — no warning prefix.
+      return `${time} ${loop} fleet paused — role loops stop starting new ticks (director keeps running)`;
+    case "fleet_resumed":
+      return `${time} ${loop} fleet resumed — role loops tick again`;
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
       return `${time} ${loop} maxConcurrent changed: ${e.from} → ${e.to}`;
