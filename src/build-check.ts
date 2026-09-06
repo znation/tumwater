@@ -15,9 +15,9 @@ const execFileAsync = promisify(execFile);
  * own data model (BuildCheck/BuildCheckOutcome), detection algorithm (walk-up to the install),
  * and execution/classification logic: deterministic process verification, distinct from the
  * model-based review. The gate (review.ts) consumes detectBuildCheck + runBuildCheck for its
- * per-merge pre-check; loop.ts's red-main baseline check (checkMainBaseline below) reuses the
- * same machinery to verify main itself once per SHA before an authoring run is spent on top of
- * it. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
+ * per-merge pre-check; main-red.ts's red-main baseline gate (checkMainBaseline below) reuses
+ * the same machinery to verify main itself once per SHA before an authoring run is spent on
+ * top of it. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
  * by clipBuildTail and parseVerdict in review.ts — so that helper has a single home. */
 
 /** Per-reason length cap with ellipsis — bounds one line of machine-generated or reviewer

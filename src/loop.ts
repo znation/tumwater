@@ -1,6 +1,5 @@
 import type { TumwaterConfig, LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
-import { BASELINE_BLOCKED_ROLES, DIRECTOR_ROLE, roleById } from "./roles.js";
-import { BUILD_CHECK_TIMEOUT_MS, checkMainBaseline } from "./build-check.js";
+import { DIRECTOR_ROLE, roleById } from "./roles.js";
 import {
   abortSync,
   commitAll,
@@ -33,17 +32,12 @@ import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { applyTickOutcome, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
 import { recoverLeftover } from "./leftover.js";
+import { mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
 import { piLogPath, sessionDir } from "./paths.js";
-import { errorMessage, shortSha } from "./text.js";
-
-/** The last main SHA for which this process logged a red-main warning (the baseline check):
- * one harness-level warning per newly-discovered red SHA, not one per blocked role's tick —
- * module-level so every runner in the fleet shares it. A restart re-logs once: the cache is
- * cold then too, and an operator restarting into a still-red main should see why nothing lands. */
-let lastMainRedSha: string | null = null;
+import { errorMessage } from "./text.js";
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
@@ -428,36 +422,13 @@ export class LoopRunner {
         await git(wt, "clean", "-fd");
       } else {
         await resetWorktreeToMain(wt, this.mainBranch);
-        // Red-main baseline check (PLANS.md): the worktree is pristine main right now — verify
-        // main's own suite before spending an authoring run on top of it. Only roles whose diff
-        // can carry code changes are blocked; resume and leftover-recovery ticks skip this by
-        // construction (their worktree is not pristine main, and recovery routes through the
-        // gate, which fails closed against red main).
-        if (BASELINE_BLOCKED_ROLES.has(this.role)) {
-          const baseline = await checkMainBaseline(wt);
-          if (baseline.skipReason) {
-            logEvent(this.root, {
-              loop: this.role,
-              type: "warning",
-              message:
-                baseline.skipReason === "no-npm"
-                  ? "no npm on PATH; skipping main baseline check"
-                  : `main baseline check timed out after ${BUILD_CHECK_TIMEOUT_MS / 1000}s; proceeding with authoring unverified`,
-            });
-          } else if (baseline.baseline?.status === "red") {
-            const red = baseline.baseline;
-            if (lastMainRedSha !== red.sha) {
-              lastMainRedSha = red.sha;
-              const firstLine = red.outputTail?.[0];
-              logEvent(this.root, {
-                loop: "harness",
-                type: "warning",
-                message: `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — code merges blocked until main is green`,
-              });
-            }
-            return { result: "main_red", summary: "code merges blocked until main is green" };
-          }
-        }
+        // Red-main baseline gate (src/main-red.ts): the worktree is pristine main right now —
+        // verify main's own suite before spending an authoring run on top of it. Only roles
+        // whose diff can carry code changes are blocked; resume and leftover-recovery ticks
+        // skip this by construction (their worktree is not pristine main, and recovery routes
+        // through the gate, which fails closed against red main).
+        const blocked = await mainRedGate(this.root, this.role, wt);
+        if (blocked) return blocked;
       }
     }
 
