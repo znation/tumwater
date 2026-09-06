@@ -9,6 +9,16 @@ _None yet._
 
 ## Fixed
 
+### Build broken on main: feature tick 105 dropped `openBugs` from test/backlog.test.ts's imports, and two of its new assertions could never pass (found by coverage loop 2026-09-06, fixed 2026-09-06)
+
+**Symptom:** Since feature tick 105 (`2c85ea4`), `npm run build` fails with TS2304 "Cannot find name 'openBugs'" in test/backlog.test.ts (lines 99, 103). Because the build pre-check runs before any test, it masked two further defects that surfaced only once compilation recovered: gui.test.ts's "the dashboard page renders backlog entries as links into /api/backlog" and tui.test.ts's "project status browses entries in full with up/down and resets on Ctrl+T".
+
+**Repro:** `npm test` on any commit from `2c85ea4` onward: tsc fails before a single test runs. After restoring the import, `node --test dist/test/gui.test.js dist/test/tui.test.js` shows exactly those two failures — gui with "did not match /backlogKey = backlogKey === key ? null : key/", tui with "did not match /plan: Add a --json flag/" while the frame shows the bug entry open.
+
+**Cause:** Feature tick 105 landed the "read backlog entries in full" feature (src/backlog.ts, gui-page.ts, gui.ts, tui.ts) and its tests in one commit but rewrote test/backlog.test.ts's import list without `openBugs`, which two pre-existing tests still call. The red build meant none of the new tests ever ran: (a) gui.test.ts asserts `/backlogKey = backlogKey === key ? null : key/` — the unescaped `?` is a quantifier on the preceding space, so the pattern can never match the page's literal ternary; (b) tui.test.ts presses up from index 1 back to index 0, then expects down to "wrap from the last entry back to the first" — but from index 0, down correctly advances to index 1 (the bug), so the assertion fails and no true wrap is ever exercised.
+
+**Fix:** Test-only: restored `openBugs` to test/backlog.test.ts's imports; escaped the question mark in gui.test.ts's regex (`\?`); reworked tui.test.ts's sequence to cross into the bugs section (the last entry) before pressing down, so the final assertion exercises a true wrap (plan → bug → plan). Verified: build clean, full suite 700/700. Files: test/backlog.test.ts, test/gui.test.ts, test/tui.test.ts.
+
 ### Non-ASCII text in pi output garbled when a multi-byte character straddles a stdout chunk boundary (found by bugfix loop 2026-09-03, fixed 2026-09-03)
 
 **Symptom:** In long runs, non-ASCII characters in model text — accented letters, CJK, emoji — occasionally appear as U+FFFD replacement characters in commit subjects, SUMMARY lines, transcript rendering (`tumwater logs --transcript`), and the raw pi log. It happens at random on some runs only, so it reads like a model glitch rather than a harness defect.

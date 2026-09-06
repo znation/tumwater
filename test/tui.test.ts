@@ -396,11 +396,11 @@ test("project status browses entries in full with up/down and resets on Ctrl+T",
     assert.match(frame, /bug: Crashes on empty input — ↑↓ browse · Ctrl\+T cycle/);
     assert.match(frame, /no details for this entry/); // a bare heading has an empty body
 
-    tui.key(undefined, "up"); // back to the plan (the FIRST entry — no wrap yet)
+    tui.key(undefined, "up"); // back to the plan (index 0 — the FIRST entry)
     assert.match(tui.lastFrame(), /plan: Add a --json flag/);
-    tui.key(undefined, "down"); // forward again to the bug — the LAST entry…
+    tui.key(undefined, "down"); // crosses into the bugs section again — index 1 is the LAST entry…
     assert.match(tui.lastFrame(), /bug: Crashes on empty input/);
-    tui.key(undefined, "down"); // …so this one wraps back to the first
+    tui.key(undefined, "down"); // …so this one wraps from the last back to the first
     assert.match(tui.lastFrame(), /plan: Add a --json flag/);
 
     tui.key(undefined, "t", { ctrl: true }); // leaves the view and clears the selection…

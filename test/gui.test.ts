@@ -541,8 +541,8 @@ test("the dashboard page renders backlog entries as links into /api/backlog", as
   // panel loop transcripts use — mutual exclusion is pinned by the click handlers below).
   assert.match(GUI_PAGE, /\/api\/backlog\?file=/);
   assert.match(GUI_PAGE, /a\.backloglink/);
-  // The `?` must stay escaped: unescaped it is a quantifier on the preceding space and
-  // the pattern can never match the page's literal "key ? null" text.
+  // The `?` must stay escaped: unescaped it is a quantifier on the preceding space and can
+  // never match the page's literal ternary (`key ? null`) text.
   assert.match(GUI_PAGE, /backlogKey = backlogKey === key \? null : key/);
 });
 
