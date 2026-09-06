@@ -7,6 +7,7 @@ import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git
 import { classifyLock } from "./lock.js";
 import { STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./state.js";
+import { errorMessage } from "./text.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -64,7 +65,7 @@ export function checkInit(root: string): CheckOutcome {
     const config = loadConfig(root);
     return { level: "ok", detail: `${enabledRoleIds(config).length} roles enabled` };
   } catch (err) {
-    return { level: "fail", detail: err instanceof Error ? err.message : String(err) };
+    return { level: "fail", detail: errorMessage(err) };
   }
 }
 
@@ -90,7 +91,7 @@ export function checkStateDir(root: string): CheckOutcome {
     fs.rmSync(probe);
     return { level: "ok", detail: "writable" };
   } catch (err) {
-    return { level: "fail", detail: `not writable: ${err instanceof Error ? err.message : String(err)}` };
+    return { level: "fail", detail: `not writable: ${errorMessage(err)}` };
   }
 }
 

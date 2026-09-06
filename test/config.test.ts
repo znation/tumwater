@@ -13,6 +13,7 @@ import {
   validateConfig,
 } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
+import { errorMessage } from "../src/text.js";
 import { tmpdir } from "./util.js";
 
 test("defaultConfig enables every role including director", () => {
@@ -179,7 +180,7 @@ function validationError(raw: unknown): string {
   try {
     validateConfig(raw);
   } catch (err) {
-    return err instanceof Error ? err.message : String(err);
+    return errorMessage(err);
   }
   throw new Error("validateConfig did not throw");
 }
