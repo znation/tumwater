@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { allRoleIds } from "./roles.js";
+import { errorMessage } from "./text.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
  * layer calls these before running a command, so a bad flag fails fast with an actionable
@@ -128,7 +129,7 @@ export function parseInitArgs(args: string[]): string {
       return fs.readFileSync(file, "utf8");
     } catch (err) {
       // A raw ENOENT/EISDIR names the path but not its role; say this was the --file prompt.
-      fail(`cannot read prompt file ${JSON.stringify(file)}: ${err instanceof Error ? err.message : String(err)}`);
+      fail(`cannot read prompt file ${JSON.stringify(file)}: ${errorMessage(err)}`);
     }
   }
   return args.join(" ");

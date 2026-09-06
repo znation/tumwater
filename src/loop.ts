@@ -36,7 +36,7 @@ import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
 import { piLogPath, sessionDir } from "./paths.js";
-import { shortSha } from "./text.js";
+import { errorMessage, shortSha } from "./text.js";
 
 /** The last main SHA for which this process logged a red-main warning (the baseline check):
  * one harness-level warning per newly-discovered red SHA, not one per blocked role's tick —
@@ -338,7 +338,7 @@ export class LoopRunner {
       outcome = await this.runTick();
     } catch (err) {
       outcome = { result: "error" };
-      s.lastError = err instanceof Error ? err.message : String(err);
+      s.lastError = errorMessage(err);
     }
 
     // Read main's current head while this tick is still reserved (running=true): the

@@ -12,6 +12,7 @@ import { dailyCost, budgetReached } from "./state.js";
 import { snapshot } from "./status.js";
 import { displayTokenMetrics, loopPhase } from "./status-render.js";
 import { readTranscript } from "./transcript.js";
+import { errorMessage } from "./text.js";
 
 /** Send a JSON response with the given status code and body. Every /api endpoint answers
  * this way (errors included), so the content-type header lives in exactly one place. */
@@ -189,7 +190,7 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
         try {
           body = await readBody(req);
         } catch (err) {
-          sendJson(res, 413, { error: err instanceof Error ? err.message : String(err) }); // body too large
+          sendJson(res, 413, { error: errorMessage(err) }); // body too large
           return;
         }
         let parsed: unknown;
@@ -211,7 +212,7 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
         res.end("not found");
       }
     } catch (err) {
-      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      sendJson(res, 500, { error: errorMessage(err) });
     }
   });
   return new Promise((resolve, reject) => {

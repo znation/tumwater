@@ -13,6 +13,14 @@ export function collapseWhitespace(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/** The human-facing message of whatever was thrown: its `.message` when it is an Error,
+ * `String(err)` otherwise (a thrown string or other value). Every catch site that surfaces a
+ * failure as text renders unknown throws through this one coercion instead of repeating the
+ * instanceof check per consumer. */
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** True when `code` is a UTF-16 high (leading) surrogate — the first code unit of an astral
  * character's two-unit encoding (emoji and other non-BMP characters). */
 function isHighSurrogate(code: number): boolean {

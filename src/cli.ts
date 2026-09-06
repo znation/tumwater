@@ -36,6 +36,7 @@ import { runTui } from "./tui.js";
 import { lanAddresses, startGui, statusPayload } from "./gui.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { abortRequestPath, eventsLogPath, piLogPath, resetRequestPath } from "./paths.js";
+import { errorMessage } from "./text.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
 
@@ -318,7 +319,7 @@ async function main(): Promise<void> {
         try {
           outcome = cancelPrompt(root, parsed.position);
         } catch (err) {
-          fail(err instanceof Error ? err.message : String(err));
+          fail(errorMessage(err));
         }
         if (outcome.status === "gone") {
           // A concurrent dequeue is a normal race, not an error: report it and exit clean.
@@ -365,5 +366,5 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  fail(err instanceof Error ? err.message : String(err));
+  fail(errorMessage(err));
 });

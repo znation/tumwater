@@ -3,6 +3,7 @@ import type { TumwaterConfig, RoleConfig } from "./types.js";
 import { allRoleIds } from "./roles.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { configPath } from "./paths.js";
+import { errorMessage } from "./text.js";
 
 /** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick),
  * with defaults for concurrency, timeouts, log size, retention, thrash detection, idle
@@ -232,7 +233,7 @@ export function loadConfig(root: string): TumwaterConfig {
   try {
     raw = JSON.parse(fs.readFileSync(file, "utf8"));
   } catch (err) {
-    throw new Error(`tumwater.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`tumwater.json is not valid JSON: ${errorMessage(err)}`);
   }
   validateConfig(raw);
   const cfg = raw as Partial<TumwaterConfig>;
@@ -257,7 +258,7 @@ export function loadConfigSafe(root: string): { config?: TumwaterConfig; error?:
   try {
     return { config: loadConfig(root) };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -298,7 +299,7 @@ export function loadConfigCached(root: string): { config?: TumwaterConfig; error
     if (cfg) return { config: cfg };
     return { config: defaultConfig() }; // Missing — defaults, as loadConfig does.
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) }; // Broken — retry next poll.
+    return { error: errorMessage(err) }; // Broken — retry next poll.
   }
 }
 
