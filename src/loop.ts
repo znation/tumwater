@@ -8,6 +8,7 @@ import {
   git,
   gitTry,
   isDirty,
+  readBranchHead,
   resetWorktreeToMain,
 } from "./git.js";
 import { logEvent } from "./events.js";
@@ -345,7 +346,13 @@ export class LoopRunner {
     // applyTickOutcome below clears running, and a poll landing between that clear and a later
     // head update would see a stale lastMainHead and wake the loop again on the very move
     // that triggered this tick — a duplicate wake event plus an extra tick for one world change.
-    s.lastMainHead = (await gitTry(this.root, "rev-parse", this.mainBranch)) ?? s.lastMainHead;
+    // The ref file is read first (microsecond-scale, like the orchestrator's per-poll watch):
+    // this runs once per tick per role, and spawning git rev-parse costs ~10ms every time; the
+    // spawn remains as fallback for whatever the file read cannot resolve.
+    s.lastMainHead =
+      readBranchHead(this.root, this.mainBranch) ??
+      (await gitTry(this.root, "rev-parse", this.mainBranch)) ??
+      s.lastMainHead;
     // Record the outcome on state and schedule the next run (see src/state.ts for the
     // per-result policy: prompt retry, backoff, bounded cut-off resumes).
     applyTickOutcome(s, cfg, this.role, outcome);
