@@ -208,12 +208,27 @@ interface MainBaselineCheck {
 
 /** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is
  * cold and one re-check per red SHA happens — cheap and deterministic, mirroring the budget
- * gate's stateless resume. */
+ * gate's stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
+ * noteGreenBaseline seeding a green verdict the review gate observed directly on that tree. */
 const baselineCache = new Map<string, MainBaseline>();
 
 /** In-flight dedup: concurrent ticks on the same not-yet-cached SHA (a fresh main move wakes
  * every blocked role at once) share one check run instead of racing N npm invocations. */
 const baselineInFlight = new Map<string, Promise<MainBaselineCheck>>();
+
+/** Record a green baseline verdict for `sha` WITHOUT running anything: the review gate's own
+ * pre-check just ran this project's declared check against exactly this tree (the branch HEAD
+ * about to be merged) and it passed. Seeding here means that after the merge lands — main now
+ * points at this very SHA — the next fresh tick's checkMainBaseline is a cache hit instead of
+ * re-running the full suite on an already-verified tree: for tumwater itself that saves one
+ * redundant `npm test` (~1 min) per merged code tick, plus every other role waking on "main
+ * moved" stalling behind that in-flight run. Safe because git trees are immutable — a SHA's
+ * content cannot change under a cached verdict, the same staleness semantics checkMainBaseline
+ * already has for its own entries. Only a directly observed pass may seed this; skips and
+ * failures leave the baseline unknown (the caller decides). */
+export function noteGreenBaseline(sha: string): void {
+  baselineCache.set(sha, { status: "green", sha });
+}
 
 /** Verify main's own build/test suite at `wt`'s HEAD — which must be pristine main (the caller
  * is the fresh-tick path right after resetWorktreeToMain; a dirty or ahead worktree would

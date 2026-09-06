@@ -8,7 +8,13 @@ import { buildReviewPrompt, readPrinciples } from "./prompt.js";
 import { verdictLines } from "./reply-contract.js";
 import { saveLoopState } from "./state.js";
 import { shortSha } from "./text.js";
-import { BUILD_CHECK_TIMEOUT_MS, clipReason, detectBuildCheck, runBuildCheck } from "./build-check.js";
+import {
+  BUILD_CHECK_TIMEOUT_MS,
+  clipReason,
+  detectBuildCheck,
+  noteGreenBaseline,
+  runBuildCheck,
+} from "./build-check.js";
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
  * a warning: a misconfigured reviewer model must not be able to wedge a loop into re-reviewing
@@ -205,6 +211,12 @@ export async function reviewAheadOfMain(
             ? `no npm on PATH; skipping build check`
             : `build check timed out after ${timeoutMs / 1000}s; proceeding to model review`,
       });
+    } else {
+      // Passed: this exact tree just went green under the project's own declared check. Seed
+      // the red-main baseline cache with that verdict (noteGreenBaseline) so that after the
+      // merge lands — main now points at this very SHA — every role's next fresh tick is a
+      // cache hit instead of one redundant full-suite re-run on an already-verified tree.
+      noteGreenBaseline(head);
     }
   }
 

@@ -9,7 +9,7 @@ import {
   reviewAheadOfMain,
   REVIEW_FAILURE_LIMIT,
 } from "../src/review.js";
-import { clipBuildTail, detectBuildCheck, runBuildCheck } from "../src/build-check.js";
+import { checkMainBaseline, clipBuildTail, detectBuildCheck, runBuildCheck } from "../src/build-check.js";
 import { aheadOfMain, ensureWorktree, headOf } from "../src/git.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/state.js";
@@ -624,6 +624,39 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
     assert.ok(fs.existsSync(marker), "the reviewer still ran after the warning");
     const warning = readEvents(root).find((e) => e.type === "warning");
     assert.match(String(warning?.message), /build check timed out after 0\.4s; proceeding to model review/);
+  } finally {
+    restore();
+  }
+});
+
+// The gate's green pre-check seeds the red-main baseline cache (noteGreenBaseline): once the
+// merge lands, main points at exactly this SHA and every role's next fresh tick must be a cache
+// hit — no second full-suite run on an already-verified tree.
+test("gate's green pre-check seeds the baseline cache: after the merge, checkMainBaseline re-runs nothing for this SHA", async () => {
+  const counter = path.join(tmpdir(), "runs"); // each suite run appends one line
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --ok",
+    `#!/bin/sh\necho ok >> ${counter}\n`,
+  );
+  const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "approved"); // pre-check passed AND the reviewer approved
+
+    // The merge lands: main now points at exactly this HEAD (what ffMergeToMain does when the
+    // primary checkout is on main). update-ref rather than a real merge: the fixture's root
+    // manifest is untracked, so git would refuse to overwrite it — an artifact of the scratch
+    // layout that cannot happen in a real project where package.json is tracked (and the merge
+    // mechanics themselves are covered by merge.test.ts). The next fresh tick's red-main
+    // baseline check must be a cache hit — the gate already ran the suite on this very tree.
+    sh(root, "git", "update-ref", "refs/heads/main", `tumwater/${ROLE}`);
+    const head = await headOf(wt, "HEAD");
+    const baseline = await checkMainBaseline(wt);
+    assert.equal(baseline.baseline?.status, "green");
+    assert.equal(baseline.baseline?.sha, head);
+    const runs = fs.existsSync(counter) ? fs.readFileSync(counter, "utf8").trim().split("\n").length : 0;
+    assert.equal(runs, 1, "the gate's run is the ONLY suite run for this SHA — no redundant re-check after the merge");
   } finally {
     restore();
   }

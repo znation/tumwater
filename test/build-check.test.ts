@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkMainBaseline, clipBuildTail, detectBuildCheck, runBuildCheck } from "../src/build-check.js";
+import {
+  checkMainBaseline,
+  clipBuildTail,
+  detectBuildCheck,
+  noteGreenBaseline,
+  runBuildCheck,
+} from "../src/build-check.js";
 import { sh, tmpdir } from "./util.js";
 
 // Unit coverage for the deterministic build pre-check (src/build-check.ts): detection by
@@ -333,4 +339,18 @@ test("checkMainBaseline dedups concurrent checks of one new SHA into a single ru
   assert.equal(a.baseline?.status, "red");
   assert.equal(b.baseline?.status, "red");
   assert.equal(runsOf(counter), 1, "one npm run for concurrent callers of the same SHA");
+});
+
+// --- noteGreenBaseline: the review gate's green pre-check seeds this cache so a merged tree is
+// never re-verified by checkMainBaseline (the gate already ran the suite on exactly this SHA).
+
+test("noteGreenBaseline records a directly-observed green verdict: checkMainBaseline returns it without running the suite", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root, wt } = await baselineFixture(`echo run >> ${counter}; echo ok`);
+  // The gate's pre-check just verified this exact tree (branch HEAD == main here) and passed:
+  // record that verdict the way reviewAheadOfMain does after a green runBuildCheck.
+  noteGreenBaseline(sh(root, "git", "rev-parse", "HEAD"));
+  const result = await checkMainBaseline(wt);
+  assert.equal(result.baseline?.status, "green");
+  assert.ok(!fs.existsSync(counter), "the suite never ran — the gate's verdict is trusted for this SHA");
 });
