@@ -184,7 +184,7 @@ export async function runBuildCheck(
 // main baseline check").
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA. */
-export interface MainBaseline {
+interface MainBaseline {
   status: "green" | "red";
   /** The main HEAD this verdict covers. */
   sha: string;
@@ -200,7 +200,7 @@ export interface MainBaseline {
  * gate skipping its pre-check) or an environmental skip (`skipReason` set — timeout/no-npm),
  * which the caller warns about and proceeds with, exactly like the gate's pre-check. Skips are
  * never cached red: a hung script must not wedge authoring for the life of the process. */
-export interface MainBaselineCheck {
+interface MainBaselineCheck {
   baseline: MainBaseline | null;
   /** Set when a detected check could not be run (timeout or no npm on PATH). */
   skipReason?: "timeout" | "no-npm";
