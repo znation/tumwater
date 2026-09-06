@@ -26,6 +26,7 @@ import {
 import { readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
+import { renderDoctor, runDoctor } from "./doctor.js";
 import { ensureParentDir, findOnPath } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { followFile } from "./tail.js";
@@ -49,6 +50,7 @@ Usage:
                                    the director)
   tumwater status [--json]         One-shot status table (--json prints machine-readable
                                    fleet state — same payload as the GUI's /api/status)
+  tumwater doctor                  Pre-flight check: git, repo, config, pi, locks (exit 0/1)
   tumwater logs [-f] [-n N]        Show (and follow) harness events
   tumwater logs --role <id> [-f] [-n N]
                                    Show (and follow) that loop's pi transcript
@@ -279,6 +281,15 @@ async function main(): Promise<void> {
         );
       }
       break;
+    case "doctor": {
+      // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
+      // so it must run outside a git repo and print fail lines rather than throwing.
+      rejectUnknownArgs("doctor", args, []);
+      const report = await runDoctor(root);
+      process.stdout.write(renderDoctor(report) + "\n");
+      if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
+      break;
+    }
     case "logs":
       rejectUnknownArgs("logs", args, [
         { names: ["-f", "--follow"] },

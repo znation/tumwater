@@ -18,26 +18,31 @@ function rmLockDir(dir: string): void {
   }
 }
 
-/** Break a lock we cannot acquire when its holder is gone. Three cases:
- * - the dir is old enough — break regardless of holder state (covers a reused live pid);
- * - its pid file names a dead process — break;
+/** The three states a merge lock can be in from the perspective of an acquirer that cannot
+ * get it. "absent": no dir — nothing to wait for or break. "live": held by a process we must
+ * not steal (a live pid, or a fresh no-pid dir whose creator may still be between mkdir and
+ * the pid write). "stale": safe to break. */
+export type LockState = "absent" | "live" | "stale";
+
+/** Classify a lock dir without touching it — the single definition of when a held lock is
+ * safe to break, shared by tryBreakStale (which acts on the verdict) and doctor (which only
+ * reports it), so the cases cannot drift. Three stale cases:
+ * - the dir is old enough — stale regardless of holder state (covers a reused live pid);
+ * - its pid file names a dead process — stale;
  * - no readable pid exists at all: the holder died between mkdir and writing it (or
- *   mid-write). Break once past NO_PID_GRACE_MS. Without this case such an orphan could
- *   never be broken — not even by age, because the pid read threw before the age check ran
- *   in the old structure — and every merge would time out forever until a human deleted
- *   the dir by hand. */
-function tryBreakStale(dir: string): void {
+ *   mid-write). Stale once past NO_PID_GRACE_MS, live within it. Without this case such an
+ *   orphan could never be broken — not even by age, because the pid read threw before the
+ *   age check ran in the old structure — and every merge would time out forever until a
+ *   human deleted the dir by hand. */
+export function classifyLock(dir: string): LockState {
   let stat: fs.Stats;
   try {
     stat = fs.statSync(dir);
   } catch {
-    return; // Lock vanished; the next acquire attempt sorts it out.
+    return "absent"; // No lock dir — nothing held, nothing stale.
   }
   const ageMs = Date.now() - stat.mtimeMs;
-  if (ageMs > STALE_MS) {
-    rmLockDir(dir);
-    return;
-  }
+  if (ageMs > STALE_MS) return "stale";
   let pid: number | null = null;
   try {
     const parsed = parseInt(fs.readFileSync(path.join(dir, "pid"), "utf8"), 10);
@@ -45,11 +50,12 @@ function tryBreakStale(dir: string): void {
   } catch {
     // No readable pid file — handled below via the grace.
   }
-  if (pid === null) {
-    if (ageMs > NO_PID_GRACE_MS) rmLockDir(dir); // Orphaned: creator died before writing its pid.
-  } else if (!pidAlive(pid)) {
-    rmLockDir(dir);
-  }
+  if (pid === null) return ageMs > NO_PID_GRACE_MS ? "stale" : "live"; // Orphaned vs mid-creation.
+  return pidAlive(pid) ? "live" : "stale";
+}
+
+function tryBreakStale(dir: string): void {
+  if (classifyLock(dir) === "stale") rmLockDir(dir);
 }
 
 /** mkdir-based mutex shared by all loops (and processes) of one project. */
