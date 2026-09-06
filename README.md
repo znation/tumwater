@@ -53,12 +53,13 @@ Open items:
 - Planned (PLANS.md): read backlog entries in full from the TUI/GUI dashboards — arrow-key
   browsing in the TUI's project-status pane, click-through into the GUI's detail panel
   (planned 2026-09-05).
-- Fleet pause via `tumwater pause` / `resume` has landed on main (feature tick 103), but its
-  PLANS.md entry is still under Planned, awaiting the move to Done.
+- Fleet pause (`tumwater pause` / `resume`) has landed on main (feature tick 103); its PLANS.md
+  entry was refined 2026-09-06 into a test-only tail — four residual tests across cli,
+  status-render, gui, and orchestrator.
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`f8702e4`): build clean, suite 677/677, verified 2026-09-06.
+Current main (`a4d304f`): build clean, suite 687/687, verified 2026-09-06.
 <!-- tumwater:status:end -->
 
 ## How it works
