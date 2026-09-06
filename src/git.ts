@@ -17,10 +17,16 @@ export const COMMIT_IDENT = [
 class GitError extends Error {
   constructor(
     public args: string[],
+    /** The failure's cause text: git's stderr when it printed any, otherwise the underlying
+     * spawn error's message — a binary that cannot be started prints no stderr at all. */
     public stderr: string,
-    public code: number | undefined,
+    /** git's exit code (a number) — or a spawn errno like "ENOENT" (a string) when the
+     * binary itself could not be started, which is what execFile puts in `err.code` then. */
+    public code: number | string | undefined,
   ) {
-    super(`git ${args.join(" ")} failed (${code}): ${stderr.trim()}`);
+    super(
+      `git ${args.join(" ")} failed${code !== undefined ? ` (${code})` : ""}${stderr ? `: ${stderr}` : ""}`,
+    );
   }
 }
 
@@ -31,7 +37,8 @@ class GitError extends Error {
 export const GIT_MISSING_MESSAGE =
   "git not found on PATH — install git first, or add its bin directory to your PATH";
 
-/** Run git in `cwd`, throwing GitError on nonzero exit. Returns trimmed stdout. */
+/** Run git in `cwd`, throwing GitError on a nonzero exit or when the binary cannot be
+ * started at all (the error then names the spawn failure, since git prints no stderr). */
 export async function git(cwd: string, ...args: string[]): Promise<string> {
   return runGit(cwd, args);
 }
@@ -52,8 +59,17 @@ export async function runGit(
     });
     return stdout.trimEnd();
   } catch (err) {
-    const e = err as { stderr?: string; code?: number };
-    throw new GitError(args, e.stderr ?? String(err), e.code);
+    // execFile sets a numeric exit code on nonzero exits but a string errno ("ENOENT") when
+    // the binary cannot be spawned at all — both reach here, so code is number | string.
+    const e = err as { stderr?: string; code?: number | string };
+    // git prints no stderr in two cases: a spawn failure (then the underlying message names
+    // it — "spawn git ENOENT") and a silent nonzero exit (`git diff --quiet`), where the exit
+    // code alone is the story. Fall back to the underlying message only for the first, so a
+    // GitError always says why when there is a why to say instead of ending in ": " —
+    // `e.stderr ?? …` would not help: on spawn failure stderr is an empty string, and
+    // `"" ?? x` keeps the empty string.
+    const detail = e.stderr?.trim() || (typeof e.code === "string" && err instanceof Error ? err.message : "");
+    throw new GitError(args, detail, e.code);
   }
 }
 

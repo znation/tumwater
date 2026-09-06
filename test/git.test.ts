@@ -18,6 +18,7 @@ import {
   isGitRepo,
   readBranchHead,
   resetWorktreeToMain,
+  runGit,
   unquotePorcelainPath,
 } from "../src/git.js";
 // The landing-flow git helpers live in merge.ts (their only production consumer) — moved
@@ -683,4 +684,45 @@ test("readBranchHead returns null for missing refs, bad content, and non-repos",
   const wt = tmpdir();
   fs.writeFileSync(path.join(wt, ".git"), `gitdir: ${path.join(repo, ".git", "worktrees", "x")}\n`);
   assert.equal(readBranchHead(wt, "main"), null);
+});
+
+// --- runGit's error contract: a GitError must always say why when there is a why to say ---
+// These messages surface verbatim as a loop's lastError on the dashboards (loop.ts records
+// errorMessage(err) for any tick failure), so an unexplained "failed (ENOENT): " tail is what
+// an operator actually reads.
+
+test("runGit names the spawn failure when git cannot be started (empty stderr)", async () => {
+  const repo = makeRepo();
+  // A PATH holding no git: execFile then fails with code "ENOENT" and an EMPTY stderr —
+  // pre-fix, `e.stderr ?? String(err)` kept the empty string and the message ended in ": ".
+  const oldPath = process.env.PATH;
+  process.env.PATH = tmpdir("no-git-");
+  try {
+    await assert.rejects(
+      runGit(repo, ["status"]),
+      (err: unknown) =>
+        err instanceof Error &&
+        err.message === `git status failed (ENOENT): spawn git ENOENT`,
+    );
+  } finally {
+    process.env.PATH = oldPath;
+  }
+});
+
+test("runGit reports a silent nonzero exit by its code alone, with no dangling colon", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "seed.txt"), "edited\n"); // unstaged change → diff --quiet exits 1 silently
+  await assert.rejects(
+    runGit(repo, ["diff", "--quiet"]),
+    (err: unknown) => err instanceof Error && err.message === `git diff --quiet failed (1)`,
+  );
+});
+
+test("runGit keeps git's stderr on a noisy nonzero exit (format unchanged)", async () => {
+  const repo = makeRepo();
+  await assert.rejects(
+    runGit(repo, ["rev-parse", "--verify", "no-such-ref"]),
+    (err: unknown) =>
+      err instanceof Error && /^git rev-parse --verify no-such-ref failed \(128\): fatal: /.test(err.message),
+  );
 });
