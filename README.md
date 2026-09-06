@@ -50,16 +50,19 @@ until main is green again (director, bugfix, and the markdown-only roles keep ti
 land the fix).
 
 Open items:
-- Planned (PLANS.md): read backlog entries in full from the TUI/GUI dashboards — arrow-key
-  browsing in the TUI's project-status pane, click-through into the GUI's detail panel
-  (planned 2026-09-05).
+- Backlog reading has landed (feature tick 105): the TUI's project-status pane browses entries
+  in full with ↑↓ (wrapping across plans, bugs, and questions; Ctrl+T back to the list), and the
+  GUI's backlog lines open each entry's full text in the detail panel via `/api/backlog`. Its
+  PLANS.md entry still sits under Planned: its 2026-09-06 refinement was audited against
+  pre-feature main and pins a different interaction model (↑↓ scroll, ←→ entries, Esc), so it
+  needs a re-audit before it can close.
 - Fleet pause (`tumwater pause` / `resume`) has landed on main (feature tick 103); its PLANS.md
   entry was refined 2026-09-06 into a test-only tail — four residual tests across cli,
   status-render, gui, and orchestrator.
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`a4d304f`): build clean, suite 687/687, verified 2026-09-06.
+Current main (`f6ad136`): build clean, suite 700/700, verified 2026-09-06.
 <!-- tumwater:status:end -->
 
 ## How it works
