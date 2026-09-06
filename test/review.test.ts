@@ -49,6 +49,15 @@ test("parseVerdict falls back to prose lines when no list items follow the verdi
   assert.deepEqual(v, { verdict: "approve", reasons: ["All good.", "No issues found."] });
 });
 
+test("parseVerdict accepts a bare VERDICT line with no reasons (empty list, not null)", () => {
+  // A minimal reviewer reply is still a parseable verdict — fail-closed applies only when
+  // there is NO verdict line at all. The empty reasons list flows to the gate's "no reasons
+  // given" detail fallback and the next tick's "(no reasons recorded)" note, so it must not
+  // be null (a null here would count as a failed review and burn a strike).
+  assert.deepEqual(parseVerdict("VERDICT: reject"), { verdict: "reject", reasons: [] });
+  assert.deepEqual(parseVerdict("VERDICT: approve"), { verdict: "approve", reasons: [] });
+});
+
 test("parseVerdict lets the LAST VERDICT line win", () => {
   const v = parseVerdict(
     "VERDICT: reject\n1. first pass had problems\nAfter re-reading:\nVERDICT: approve\n1. actually fine",
@@ -204,6 +213,30 @@ test("gate rejects a bad diff: branch reset to main, reasons recorded", async ()
     assert.deepEqual(state.lastReview?.reasons, ["breaks the build", "no regression test"]);
     assert.equal(state.unreviewFailures, 0); // a parseable verdict is a successful review
     assert.equal(state.lastApprovedHead, undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("gate handles a bare VERDICT: reject with no reasons: fallback detail, empty list recorded", async () => {
+  // A reviewer that declines without stating why is still a parseable verdict (not a failed
+  // review): the rejection lands exactly like any other, and the missing first reason degrades
+  // to the "no reasons given" fallback instead of an undefined lastSummary.
+  const { root, wt, head } = await gateFixture();
+  const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: reject")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "rejected");
+    assert.equal(result.detail, "no reasons given"); // fallback: no first reason to feed lastSummary
+    assert.equal(await aheadOfMain(wt, "main"), 0); // the commit is discarded like any reject
+    assert.equal(state.lastReview?.verdict, "reject");
+    assert.deepEqual(state.lastReview?.reasons, []);
+    assert.equal(state.lastReview?.head, head);
+    assert.equal(state.unreviewFailures, 0); // a parseable verdict is a successful review
+    const rejected = readEvents(root).filter((e) => e.type === "review_rejected");
+    assert.equal(rejected.length, 1);
+    assert.deepEqual(rejected[0]?.reasons, []); // the event's fallback renders "no reasons given"
   } finally {
     restore();
   }
