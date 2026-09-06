@@ -53,16 +53,20 @@ Open items:
 - Backlog reading has landed (feature tick 105): the TUI's project-status pane browses entries
   in full with ↑↓ (wrapping across plans, bugs, and questions; Ctrl+T back to the list), and the
   GUI's backlog lines open each entry's full text in the detail panel via `/api/backlog`. Its
-  PLANS.md entry still sits under Planned: its 2026-09-06 refinement was audited against
-  pre-feature main and pins a different interaction model (↑↓ scroll, ←→ entries, Esc), so it
-  needs a re-audit before it can close.
-- Fleet pause (`tumwater pause` / `resume`) has landed on main (feature tick 103); its PLANS.md
-  entry was refined 2026-09-06 into a test-only tail — four residual tests across cli,
-  status-render, gui, and orchestrator.
+  PLANS.md entry was re-audited against post-feature main (`9e634ae`) and is down to a single
+  residual: within-body scroll for long entries — the TUI shows only the head of a body, so an
+  entry longer than the pane (~17 lines on a 40-row terminal) cannot be read in full there (the
+  GUI's detail panel is unaffected). The shipped interaction model (↑↓ entries, Ctrl+T back to
+  list; no ←→/Esc) was accepted as-is by that re-audit.
+- Fleet pause (`tumwater pause` / `resume`) has landed on main (feature tick 103), and its
+  test-only tail landed at feature tick 106 (`b76fab1`): cli idempotency/messaging/arg-rejection,
+  status-render precedence over budget-paused and main-red, the GUI payload flag, and the two
+  orchestrator sub-cases (start-already-paused; in-flight completion). Only bookkeeping remains:
+  moving its PLANS.md entry to Done.
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`f6ad136`): build clean, suite 700/700, verified 2026-09-06.
+Current main (`b76fab1`): build clean, suite 709/709, verified 2026-09-06.
 <!-- tumwater:status:end -->
 
 ## How it works
