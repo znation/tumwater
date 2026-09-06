@@ -51,12 +51,15 @@ Open items:
 - Planned (PLANS.md): fleet pause via `tumwater pause` / `resume` — a persistent operator-intent
   gate that blocks new role ticks while in-flight ones finish and the director keeps running
   (planned 2026-09-05).
+- Planned (PLANS.md): read backlog entries in full from the TUI/GUI dashboards — arrow-key
+  browsing in the TUI's project-status pane, click-through into the GUI's detail panel
+  (planned 2026-09-05).
 - `tumwater doctor` has landed on main, but its PLANS.md entry is still under Planned, awaiting
   the move to Done.
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`be36b71`): build clean, suite 675/675, verified 2026-09-05.
+Current main (`40b63f5`): build clean, suite 677/677, verified 2026-09-06.
 <!-- tumwater:status:end -->
 
 ## How it works
