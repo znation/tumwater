@@ -39,8 +39,10 @@ locally and keep all project state within the git repo.
 v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
 `status` (`--json`), `doctor` (pre-flight check of git, repo, config, pi, and locks — read-only,
 exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` /
-`prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`, and `abort --role <id>`
-(kills one loop's in-flight tick; work discarded, the loop keeps running). All twelve roles —
+`prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`, `abort --role <id>`
+(kills one loop's in-flight tick; work discarded, the loop keeps running), and `pause` /
+`resume` (operator-intent fleet gate: role loops stop starting new ticks while in-flight ones
+finish; the director keeps running). All twelve roles —
 feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve,
 steward (~6 h clock) — plus the director are enabled by default. While main's build/test suite is
 red, code-producing roles skip their authoring run and show a `main red` state in both dashboards
@@ -48,18 +50,15 @@ until main is green again (director, bugfix, and the markdown-only roles keep ti
 land the fix).
 
 Open items:
-- Planned (PLANS.md): fleet pause via `tumwater pause` / `resume` — a persistent operator-intent
-  gate that blocks new role ticks while in-flight ones finish and the director keeps running
-  (planned 2026-09-05).
 - Planned (PLANS.md): read backlog entries in full from the TUI/GUI dashboards — arrow-key
   browsing in the TUI's project-status pane, click-through into the GUI's detail panel
   (planned 2026-09-05).
-- `tumwater doctor` has landed on main, but its PLANS.md entry is still under Planned, awaiting
-  the move to Done.
+- Fleet pause via `tumwater pause` / `resume` has landed on main (feature tick 103), but its
+  PLANS.md entry is still under Planned, awaiting the move to Done.
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`40b63f5`): build clean, suite 677/677, verified 2026-09-06.
+Current main (`f8702e4`): build clean, suite 677/677, verified 2026-09-06.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -89,8 +88,10 @@ The fleet's autonomous spend is capped by `maxDailyCostUsd` (default $50; set 0 
 While the day's total cost has reached the cap, role loops stop starting new ticks — scheduled,
 main-moved wakes, or startup — until local midnight or a live edit raises/disables the cap;
 in-flight ticks finish and the director stays exempt (its spend still counts toward the cap).
-Each transition lands as one `budget_paused`/`budget_resumed` event, visible in `tumwater logs`,
-the TUI activity pane, and the GUI feed.
+The operator-intent sibling is `tumwater pause` / `resume`: a persistent marker that blocks new
+role ticks (same wake reasons, same director exemption) until lifted. Each gate transition lands
+as one `budget_paused`/`budget_resumed` or `fleet_paused`/`fleet_resumed` event, visible in
+`tumwater logs`, the TUI activity pane, and the GUI feed.
 
 Every tick prompt also carries the project's `PRINCIPLES.md` — its design principles, the codified
 answer to "what would a senior engineer on this team always do" — so all loops share one standard of
@@ -133,6 +134,8 @@ tumwater prompt --cancel <n>       # remove the Nth queued prompt (as shown by -
 tumwater reset-counters            # zero ticks/commits/tokens/cost (a running fleet picks it up within ~2s)
 tumwater reset-counters --role feature   # …or just one loop
 tumwater abort --role feature      # kill that loop's in-flight tick now (work discarded; the loop keeps running)
+tumwater pause                     # stop role loops starting new ticks (in-flight finish; the director keeps running)
+tumwater resume                    # lift a fleet pause
 ```
 
 `reset-counters` starts a fresh observation window (e.g. "cost since today") without touching
