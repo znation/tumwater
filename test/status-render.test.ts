@@ -642,3 +642,80 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
   // The header badge shows the reached budget on the same render.
   assert.match(reached.split("\n")[0] ?? "", /· budget: \$50\.00\/\$50 today$/);
 });
+
+// The operator pause (PLANS.md, fleet-pause plan): while the `tumwater pause` marker exists,
+// every idle role loop's state cell reads `paused` — after the director exemption and ahead
+// of budget paused / main red, because user intent is the most specific reason: it tells the
+// operator what to do (`resume`).
+
+test("loopPhase reads paused for idle role loops while the fleet is user-paused", () => {
+  const s = freshLoopState("feature");
+  // Not paused (the flag defaults off): ordinary phase labels are untouched.
+  assert.equal(loopPhase(s, true), "queued");
+  // Paused: an idle role loop shows why it isn't ticking — ahead of its sleep/queue state.
+  assert.equal(loopPhase(s, true, undefined, false, undefined, true), "paused");
+
+  // A sleeping loop is paused too (the marker holds it past nextRunAt).
+  const sleeping = freshLoopState("clean");
+  sleeping.nextRunAt = Date.now() + 3_600_000;
+  assert.equal(loopPhase(sleeping, true), "sleeping (for 1h)");
+  assert.equal(loopPhase(sleeping, true, undefined, false, undefined, true), "paused");
+
+  // The director is exempt from the operator pause: its phase never changes.
+  const d = freshLoopState("director");
+  assert.equal(loopPhase(d, true, undefined, false, undefined, true), "waiting for prompts");
+
+  // In-flight ticks finish even while paused — only NEW ticks are blocked, so a running loop
+  // keeps its live detail instead of reading `paused`.
+  const running = freshLoopState("feature");
+  running.running = true;
+  assert.equal(loopPhase(running, true, undefined, false, undefined, true), "working");
+
+  // A stopped orchestrator still reads stopped (nothing is ticking at all).
+  assert.equal(loopPhase(s, false, undefined, false, undefined, true), "stopped");
+});
+
+test("loopPhase prefers paused over budget paused and main red", () => {
+  const s = freshLoopState("feature");
+  // All three hold: the user pause wins — while both gates block, `paused` names the fix.
+  s.lastResult = "main_red";
+  assert.equal(loopPhase(s, true, undefined, true, undefined, true), "paused");
+
+  // User-paused + main-red without budget reads paused too.
+  const red = freshLoopState("feature");
+  red.lastResult = "main_red";
+  assert.equal(loopPhase(red, true, undefined, false, undefined, true), "paused");
+
+  // Without the user pause the other labels keep their own precedence (budget before main red).
+  assert.equal(loopPhase(s, true, undefined, true), "budget paused");
+});
+
+test("renderStatus shows paused in idle role loops' state cells ahead of budget paused and main red", () => {
+  const root = tmpdir();
+  // No pause: ordinary labels.
+  const unpaused = renderStatus(
+    root,
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }]), running: true },
+  );
+  assert.match(unpaused, /feature\s+queued/);
+  assert.doesNotMatch(unpaused, /\bpaused\b/);
+
+  // Marker present with the cap also reached and main red: idle role loops read `paused`
+  // ahead of both; the director keeps its own phase. (The last-result column still carries
+  // the raw main_red string — only the state cell is overridden.)
+  const paused = renderStatus(
+    root,
+    {
+      ...snapshotWith(
+        [{ role: "feature", lastResult: "main_red" }, { role: "director" }],
+        { spentUsd: 50, capUsd: 50 },
+        true,
+      ),
+      running: true,
+    },
+  );
+  assert.match(paused, /feature\s+paused/);
+  assert.doesNotMatch(paused, /budget paused/);
+  assert.doesNotMatch(paused, /main red/);
+  assert.match(paused, /director\s+waiting for prompts/);
+});

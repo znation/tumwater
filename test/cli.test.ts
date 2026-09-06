@@ -13,7 +13,7 @@ import { defaultConfig, loadConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
-import { abortRequestPath, inboxDir, orchestratorStatePath, piLogPath, resetRequestPath } from "../src/paths.js";
+import { abortRequestPath, inboxDir, orchestratorStatePath, pausedPath, piLogPath, resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
@@ -687,6 +687,89 @@ test("abort's confirmation names the discarded prompt only for the director", as
   assert.equal(f.code, 0);
   assert.match(f.stdout, /abort requested for feature — a running fleet applies it within ~2s/);
   assert.ok(!f.stdout.includes("discarded"), `no director clause for non-director roles:\n${f.stdout}`);
+
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
+// --- pause / resume: the operator-intent fleet gate via a persistent marker file ---
+// Unlike abort, these commands are meaningful with NO harness running (pausing before
+// startup starts an already-paused fleet), so there is no live-harness refusal — only the
+// wording changes. The marker's effect on a live fleet is pinned in
+// test/orchestrator.test.ts; here we pin what the CLI itself does: idempotency, messaging,
+// and the marker it writes/removes.
+
+test("pause and resume are idempotent with no harness running", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli pause resume");
+  const marker = pausedPath(repo);
+
+  // No orchestrator info at all: the commands still succeed — pausing before startup is
+  // meaningful (the fleet then starts already paused), so they say where it takes effect.
+  let r = await cli(repo, "pause");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /fleet paused/);
+  assert.match(r.stdout, /no harness is running/);
+  assert.match(r.stdout, /next `tumwater run`/);
+  const first = fs.readFileSync(marker, "utf8");
+  const m = JSON.parse(first) as { at: number };
+  assert.ok(m.at > 0, "the marker carries the pause timestamp");
+
+  // Second pause: already paused, and the existing marker is left byte-for-byte untouched.
+  r = await cli(repo, "pause");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "already paused");
+  assert.equal(fs.readFileSync(marker, "utf8"), first, "no rewrite on repeat pause");
+
+  // Resume removes the marker and confirms; a second resume reports not paused.
+  r = await cli(repo, "resume");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /fleet resumed/);
+  assert.match(r.stdout, /no harness is running/);
+  assert.ok(!fs.existsSync(marker), "the marker is removed");
+
+  r = await cli(repo, "resume");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "not paused");
+});
+
+test("pause and resume reject stray arguments without touching the marker", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli pause args");
+
+  // Like every other no-flag command, both reject any argument instead of ignoring it.
+  let r = await cli(repo, "pause", "--x");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /takes no arguments/);
+  r = await cli(repo, "resume", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /takes no arguments/);
+
+  // The rejections happened before any marker work.
+  assert.ok(!fs.existsSync(pausedPath(repo)), "no marker on failure");
+});
+
+test("pause and resume name the live effect when a harness is running", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli pause live");
+
+  // Record this test process as the running orchestrator (it is alive).
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(
+    orchestratorStatePath(repo),
+    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }),
+  );
+
+  const p = await cli(repo, "pause");
+  assert.equal(p.code, 0);
+  assert.match(p.stdout, /fleet paused/);
+  assert.match(p.stdout, /within ~2s/);
+  assert.doesNotMatch(p.stdout, /no harness is running/);
+
+  const r = await cli(repo, "resume");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /fleet resumed/);
+  assert.match(r.stdout, /within ~2s/);
+  assert.doesNotMatch(r.stdout, /no harness is running/);
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });

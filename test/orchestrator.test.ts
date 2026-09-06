@@ -1111,6 +1111,101 @@ test("a pause marker blocks new role ticks for any reason while the director run
   }
 });
 
+// The persistence bullet of the same plan: pausing while stopped, then starting. The marker
+// is the only state involved — a fleet that starts already paused stays blocked until resume,
+// with no restart and no loop-state or config changes.
+test("starting already paused keeps role ticks blocked until resume — no restart needed", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "operator pause at startup test");
+  saveConfig(repo, fastConfig(["clean", "director"]));
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+
+  // The operator paused before starting the fleet (the marker is persistent state): startup
+  // itself must not start any role tick.
+  const marker = pausedPath(repo);
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  fs.writeFileSync(marker, JSON.stringify({ at: Date.now() }));
+
+  // A queued director prompt runs even on an already-paused fleet — the exemption holds from
+  // the first poll, not just mid-run.
+  enqueuePrompt(repo, "steer me before the fleet starts");
+
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => loadLoopState(repo, "director").ticks >= 1 && !loadLoopState(repo, "director").running,
+      "the director to tick while the fleet starts paused",
+    );
+
+    // Several fast poll cycles pass with zero role ticks — startup is a wake reason like any
+    // other, and the gate sits before eligibility. The marker survives: persistent state.
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(loadLoopState(repo, "clean").ticks, 0, "an already-paused role starts no ticks");
+    assert.ok(fs.existsSync(marker), "the marker survives startup — not consumed");
+
+    // Resume without a restart: the blocked role ticks on its next eligibility.
+    fs.rmSync(marker);
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "the paused role to tick after resume",
+    );
+
+    // One transition event per direction for the whole run — including the startup read.
+    assert.equal(readEvents(repo).filter((e) => e.type === "fleet_paused").length, 1);
+    assert.equal(readEvents(repo).filter((e) => e.type === "fleet_resumed").length, 1);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+// The in-flight bullet of the same plan: a tick already running when the marker drops is not
+// killed — it finishes and lands its outcome even though no new one starts.
+test("an in-flight tick finishes and lands while the fleet is paused", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "operator pause in-flight test");
+  saveConfig(repo, fastConfig(["clean"]));
+  // A slow fake pi that makes a real change: it stays in flight long enough for the marker to
+  // drop mid-run. The review gate approves with zero usage so the tick's outcome is clean.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `sleep 2`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // Wait for the tick to be in flight (running is persisted before pi starts)…
+    await waitFor(
+      () => loadLoopState(repo, "clean").running === true,
+      "the tick to be in flight",
+    );
+
+    // …and pause mid-run. The gate blocks only NEW ticks — it never kills an in-flight one.
+    const marker = pausedPath(repo);
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, JSON.stringify({ at: Date.now() }));
+
+    // The in-flight tick finishes and lands its change to main…
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "the in-flight tick to finish",
+    );
+    const s = loadLoopState(repo, "clean");
+    assert.equal(s.lastResult, "changed", "the outcome lands despite the pause");
+    assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change merged to main");
+
+    // …and no new tick starts while the marker holds.
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while paused");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
 // --- abort requests (PLANS.md, abort plan): the marker-file plumbing that reaches LoopRunner's
 // user-abort branch — consumption, kill, event, and the silent no-op shapes. The loop-level
 // semantics themselves are pinned in test/loop.test.ts; the CLI side in test/cli.test.ts. ---

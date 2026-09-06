@@ -8,7 +8,7 @@ import { loadConfig, saveConfig } from "../src/config.js";
 import { lanAddresses, statusPayload, startGui } from "../src/gui.js";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
-import { orchestratorStatePath, piLogPath } from "../src/paths.js";
+import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState, todayStamp } from "../src/state.js";
 import { assistantLine, makeRepo } from "./util.js";
 
@@ -619,6 +619,59 @@ test("a paused fleet's idle role loops read budget paused in the phase payload",
   saveLoopState(repo, under);
   payload = statusPayload(repo) as typeof payload;
   assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "budget paused");
+});
+
+// The operator pause on the GUI surface (PLANS.md, fleet-pause plan): /api/status — and
+// therefore `status --json`, same payload — carries `paused` while the marker exists, and a
+// paused fleet's idle role loops read `paused` in their phase payload ahead of budget paused.
+
+test("the status payload carries the operator pause flag; its phase outranks budget paused", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui fleet pause test");
+  // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
+  const infoFile = orchestratorStatePath(repo);
+  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
+  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }));
+
+  // No marker: not paused.
+  let payload = statusPayload(repo) as {
+    paused: boolean;
+    loops: Array<{ role: string; phase: string }>;
+  };
+  assert.equal(payload.paused, false);
+  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "paused");
+
+  // Drop the marker (what `tumwater pause` does) with spend at the cap: the flag flips and
+  // the idle loop's phase reads `paused`, ahead of budget paused.
+  const cfg = loadConfig(repo);
+  cfg.maxDailyCostUsd = 10;
+  saveConfig(repo, cfg);
+  const s = freshLoopState("clean");
+  s.dayStamp = todayStamp();
+  s.dayCostUsd = 12.5; // >= cap → budget paused too
+  saveLoopState(repo, s);
+  const marker = pausedPath(repo);
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  fs.writeFileSync(marker, JSON.stringify({ at: Date.now() }));
+
+  payload = statusPayload(repo) as typeof payload;
+  assert.equal(payload.paused, true, "the flag rides the payload top level");
+  assert.equal(
+    payload.loops.find((l) => l.role === "clean")?.phase,
+    "paused",
+    "user pause outranks budget paused in the phase payload",
+  );
+  // The director is exempt — its phase keeps its own label.
+  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "waiting for prompts");
+
+  // Removing the marker (what `tumwater resume` does) reverts both: flag false, and with the
+  // spend still at the cap the loop falls back to budget paused.
+  fs.rmSync(marker);
+  payload = statusPayload(repo) as typeof payload;
+  assert.equal(payload.paused, false);
+  assert.equal(payload.loops.find((l) => l.role === "clean")?.phase, "budget paused");
+
+  fs.rmSync(infoFile, { force: true });
 });
 
 test("gui rejects oversized prompt bodies with 413 instead of buffering them unboundedly", async () => {
