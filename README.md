@@ -46,12 +46,12 @@ skip their authoring run and show a `main red` state in both dashboards until ma
 (director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix).
 
 Open items:
-- Planned (PLANS.md): none — the last plan (`tumwater status --json`, machine-readable fleet
-  state with no server) landed on main `e46b811` and moved to Done.
+- Planned (PLANS.md): `tumwater doctor` — a pre-flight environment check that reports every
+  precondition individually and exits 0/1 so it can be scripted (planned 2026-09-05).
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`9cb698d`): build clean, suite 655/655, verified 2026-09-05.
+Current main (`6da7b89`): build clean, suite 662/662, verified 2026-09-05.
 <!-- tumwater:status:end -->
 
 ## How it works
