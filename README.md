@@ -37,21 +37,26 @@ locally and keep all project state within the git repo.
 
 <!-- tumwater:status:start -->
 v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
-`status` (`--json`), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` / `prompt --list` /
-`prompt --cancel <n>`, `reset-counters [--role <id>]`, and `abort --role <id>` (kills one loop's
-in-flight tick; work discarded, the loop keeps running). All twelve roles — feature, bugfix, plan,
-readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve, steward (~6 h clock) — plus
-the director are enabled by default. While main's build/test suite is red, code-producing roles
-skip their authoring run and show a `main red` state in both dashboards until main is green again
-(director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix).
+`status` (`--json`), `doctor` (pre-flight check of git, repo, config, pi, and locks — read-only,
+exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` /
+`prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`, and `abort --role <id>`
+(kills one loop's in-flight tick; work discarded, the loop keeps running). All twelve roles —
+feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve,
+steward (~6 h clock) — plus the director are enabled by default. While main's build/test suite is
+red, code-producing roles skip their authoring run and show a `main red` state in both dashboards
+until main is green again (director, bugfix, and the markdown-only roles keep ticking — bugfix can
+land the fix).
 
 Open items:
-- Planned (PLANS.md): `tumwater doctor` — a pre-flight environment check that reports every
-  precondition individually and exits 0/1 so it can be scripted (planned 2026-09-05).
+- Planned (PLANS.md): fleet pause via `tumwater pause` / `resume` — a persistent operator-intent
+  gate that blocks new role ticks while in-flight ones finish and the director keeps running
+  (planned 2026-09-05).
+- `tumwater doctor` has landed on main, but its PLANS.md entry is still under Planned, awaiting
+  the move to Done.
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`6da7b89`): build clean, suite 662/662, verified 2026-09-05.
+Current main (`be36b71`): build clean, suite 675/675, verified 2026-09-05.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -116,6 +121,7 @@ tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N
 tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
 tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)
+tumwater doctor       # pre-flight check: git, repo, config, pi, locks (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
 tumwater prompt "prefer no third-party deps"
