@@ -111,6 +111,57 @@ export function dueForPrune(lastPruneAt: number | null, now: number, retentionDa
   return now - lastPruneAt >= 24 * 3600 * 1000;
 }
 
+/** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI already
+ * zeroed the state files; this also zeroes the affected runners' in-memory copies (which then
+ * re-save), or their next tick's save would resurrect the pre-reset values. A corrupt marker
+ * resets every runner (a superset — the operation is idempotent). */
+function consumeResetRequest(root: string, runners: LoopRunner[]): void {
+  const markerFile = resetRequestPath(root);
+  if (!fs.existsSync(markerFile)) return;
+  let requested: string[] | null = null;
+  const marker = readJsonFile<{ roles?: unknown }>(markerFile);
+  if (marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string"))
+    requested = marker.roles as string[];
+  // Corrupt or missing marker: fall through and reset every runner below.
+  const affected = requested ? runners.filter((r) => requested.includes(r.role)) : [...runners];
+  for (const r of affected) r.resetCounters();
+  if (affected.length > 0) {
+    const [only] = affected;
+    // One role → filed under that loop; several → one harness-level event listing them.
+    if (affected.length === 1 && only) logEvent(root, { loop: only.role, type: "counters_reset" });
+    else
+      logEvent(root, {
+        loop: "harness",
+        type: "counters_reset",
+        roles: affected.map((r) => r.role),
+      });
+  }
+  removeQuiet(markerFile);
+}
+
+/** Consume per-role abort requests from `tumwater abort --role <id>`: one marker file per
+ * role (no parsing needed), so a request for an idle OR disabled loop is still cleaned up. A
+ * running tick gets killed and logs exactly one event; anything else is a silent no-op — the
+ * marker's presence IS the request, removing it acknowledges. */
+function consumeAbortRequests(root: string, runners: LoopRunner[]): void {
+  try {
+    const markers = fs.readdirSync(path.join(root, STATE_DIR));
+    for (const name of markers) {
+      const m = /^abort-(.+)\.json$/.exec(name);
+      if (!m) continue;
+      const role = m[1]!;
+      const runner = runners.find((r) => r.role === role);
+      if (runner?.state.running) {
+        runner.abortTick();
+        logEvent(root, { loop: role, type: "tick_aborted" });
+      }
+      removeQuiet(abortRequestPath(root, role));
+    }
+  } catch {
+    // .tumwater/ missing — nothing to consume (a fresh repo before the first tick).
+  }
+}
+
 /** Run all enabled loops until the signal aborts. */
 export async function runOrchestrator(opts: RunOptions): Promise<void> {
   const { root, config, mainBranch, signal } = opts;
@@ -213,53 +264,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
         lastRetention = retention;
       }
 
-      // Consume a reset request from `tumwater reset-counters`: the CLI already zeroed the
-      // state files; here we also zero the affected runners' in-memory copies and re-save,
-      // or their next tick's save would resurrect the pre-reset values. A corrupt marker
-      // resets every runner (a superset — the operation is idempotent).
-      const markerFile = resetRequestPath(root);
-      if (fs.existsSync(markerFile)) {
-        let requested: string[] | null = null;
-        const marker = readJsonFile<{ roles?: unknown }>(markerFile);
-        if (marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string"))
-          requested = marker.roles as string[];
-        // Corrupt or missing marker: fall through and reset every runner below.
-        const affected = requested ? runners.filter((r) => requested.includes(r.role)) : [...runners];
-        for (const r of affected) r.resetCounters();
-        if (affected.length > 0) {
-          const [only] = affected;
-          // One role → filed under that loop; several → one harness-level event listing them.
-          if (affected.length === 1 && only) logEvent(root, { loop: only.role, type: "counters_reset" });
-          else
-            logEvent(root, {
-              loop: "harness",
-              type: "counters_reset",
-              roles: affected.map((r) => r.role),
-            });
-        }
-        removeQuiet(markerFile);
-      }
-
-      // Consume per-role abort requests from `tumwater abort --role <id>`: one marker file
-      // per role (no parsing needed), so a request for an idle OR disabled loop is still
-      // cleaned up. A running tick gets killed and logs exactly one event; anything else is
-      // a silent no-op — the marker's presence IS the request, removing it acknowledges.
-      try {
-        const markers = fs.readdirSync(path.join(root, STATE_DIR));
-        for (const name of markers) {
-          const m = /^abort-(.+)\.json$/.exec(name);
-          if (!m) continue;
-          const role = m[1]!;
-          const runner = runners.find((r) => r.role === role);
-          if (runner?.state.running) {
-            runner.abortTick();
-            logEvent(root, { loop: role, type: "tick_aborted" });
-          }
-          removeQuiet(abortRequestPath(root, role));
-        }
-      } catch {
-        // .tumwater/ missing — nothing to consume (a fresh repo before the first tick).
-      }
+      // Consume CLI request markers: a reset-counters request and per-role abort requests.
+      consumeResetRequest(root, runners);
+      consumeAbortRequests(root, runners);
 
       // Reading the ref file is microsecond-scale; spawning `git rev-parse` costs ~10ms and
       // this runs every poll. The spawn fallback covers what file reads cannot (a worktree-
