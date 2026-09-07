@@ -77,14 +77,16 @@ export const GUI_PAGE = `<!doctype html>
           (lines.length ? lines.map(esc).join("\\n") : "(no transcript yet for this loop)");
       } else {
         // A backlog entry's full text, fetched on demand (bodies can be multi-KB) and re-fetched
-        // on the same 1s poll while open — the panel's pre-wrap preserves its newlines.
+        // on the same 1s poll while open — the panel's pre-wrap preserves its newlines. The body
+        // is model-written markdown: escape it before innerHTML like every other dynamic value,
+        // or HTML in a plan/bug entry would execute in the dashboard (XSS).
         const [file, index] = backlogKey.split(":");
         const r = await fetch("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index));
         if (!r.ok) throw new Error("bad response");
         const d = await r.json();
         panel.hidden = false;
         panel.innerHTML = "<span class='muted'>" + esc(d.title) +
-          " — click the entry again to close</span>\\n" + (d.body || "(no details for this entry)");
+          " — click the entry again to close</span>\\n" + (esc(d.body) || "(no details for this entry)");
       }
     } catch { /* keep the previous panel content on a failed poll */ }
   }

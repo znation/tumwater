@@ -546,6 +546,51 @@ test("the dashboard page renders backlog entries as links into /api/backlog", as
   assert.match(GUI_PAGE, /backlogKey = backlogKey === key \? null : key/);
 });
 
+test("the dashboard page escapes backlog entry bodies before innerHTML", async () => {
+  // Regression: the detail panel used to splice d.body — model-written markdown from
+  // PLANS/BUGS/QUESTIONS.md, edited by loops — straight into innerHTML while every other
+  // dynamic value on the page (the same entry's title included) went through esc(). HTML in a
+  // plan/bug/question entry would then execute in the operator's browser; with
+  // --all-interfaces the dashboard is reachable network-wide without auth.
+  const { GUI_PAGE } = await import("../src/gui-page.js");
+
+  // The detail panel line routes d.body through esc (esc("") is "", so empty bodies still
+  // fall back to the placeholder).
+  assert.match(
+    GUI_PAGE,
+    /" — click the entry again to close<\/span>\\n" \+ \(esc\(d\.body\) \|\| "\(no details for this entry\)"\)/,
+  );
+
+  // Exercise the page's own esc: one pass neutralizes tags and ampersands alike. The body
+  // capture anchors at the statement's terminating semicolon (end of line), not the first `;`
+  // — the replacement map contains one inside its "&amp;" string literal.
+  const m = GUI_PAGE.match(/const esc = \((\w+)\) => (.+);$/m);
+  assert.ok(m, "esc definition found in the page");
+  const esc = new Function(m[1]!, `return (${m[2]});`) as (s: string) => string;
+  assert.equal(esc("<img src=x onerror=alert(1)>"), "&lt;img src=x onerror=alert(1)&gt;", "tags are neutralized");
+  assert.equal(esc("a & b < c > d"), "a &amp; b &lt; c &gt; d", "ampersands and angle brackets escape");
+
+  // The server contract is unchanged: /api/backlog still serves the raw markdown body —
+  // escaping is the page's job, like every other field it renders.
+  const repo = makeRepo();
+  await initProject(repo, "backlog esc test");
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    ["# Bugs", "", "## Open", "", "### A bug with HTML in its body (reported 2026-09-06)", "", "<img src=x onerror=alert(1)>", "", "## Fixed", "", "_None yet._"].join("\n") + "\n",
+  );
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  try {
+    const res = await fetch(`http://127.0.0.1:${addr.port}/api/backlog?file=bugs&index=0`);
+    assert.equal(res.status, 200);
+    const d = (await res.json()) as { title: string; body: string };
+    assert.equal(d.body, "<img src=x onerror=alert(1)>", "the API serves the raw markdown body");
+  } finally {
+    server.close();
+  }
+});
+
 // The daily cost budget on the GUI surface (plans/daily-cost-budget.md): /api/status carries
 // `budget` while enabled and null when disabled, the page derives its header badge from it,
 // and a paused fleet's idle role loops read `budget paused` in their phase payload.

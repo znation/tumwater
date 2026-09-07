@@ -9,6 +9,16 @@ _None yet._
 
 ## Fixed
 
+### GUI dashboard executes HTML in backlog entry bodies — unescaped innerHTML injection (found by bugfix loop 2026-09-06, fixed 2026-09-06)
+
+**Symptom:** The dashboard's backlog detail panel (`tumwater gui` → click any planned feature / open bug / open question) spliced the entry's body straight into `innerHTML` without escaping, while every other dynamic value on the page — including the same entry's title two lines above — went through the page's `esc()`. A plan/bug/question entry containing HTML (a repro with `<img src=x onerror=…>`, a stray `<script>` tag) was parsed and executed in the operator's browser instead of rendering as text. With `--all-interfaces` the dashboard is reachable from the whole network without authentication, so this was a live XSS surface, not just a local oddity.
+
+**Repro:** Write an entry under BUGS.md's ## Open whose body contains `<img src=x onerror=alert(1)>`, run `tumwater gui`, and click the entry: pre-fix the tag executes instead of rendering as text. Deterministic unit repro — test/gui.test.ts "the dashboard page escapes backlog entry bodies before innerHTML" (added with this fix) pins both halves: the served page routes d.body through esc, and /api/backlog still serves the raw body (escaping is the page's job).
+
+**Cause:** src/gui-page.ts's refreshTranscript() built the detail panel as `panel.innerHTML = "<span class='muted'>" + esc(d.title) + " …</span>\n" + (d.body || "(no details for this entry)")` — d.title escaped, d.body not. The body is model-written markdown from PLANS/BUGS/QUESTIONS.md (loops edit those files constantly), i.e. untrusted content by the same standard as transcript lines and event text, both of which are escaped (`lines.map(esc)`, `d.events.map(esc)`). Found by latent-bug sweep; no open bug had been recorded.
+
+**Fix:** One line in src/gui-page.ts: `(esc(d.body) || "(no details for this entry)")` — esc("") is "", so empty bodies still fall back to the placeholder. Server unchanged: /api/backlog keeps serving raw markdown (the TUI renders it as plain terminal text, and other clients may want it unescaped). The regression test fails against pre-fix code on its page-structure assertion. Verified: build clean, full suite green. Files: src/gui-page.ts, test/gui.test.ts.
+
 ### Build broken on main: feature tick 105 dropped `openBugs` from test/backlog.test.ts's imports, and two of its new assertions could never pass (found by coverage loop 2026-09-06, fixed 2026-09-06)
 
 **Symptom:** Since feature tick 105 (`2c85ea4`), `npm run build` fails with TS2304 "Cannot find name 'openBugs'" in test/backlog.test.ts (lines 99, 103). Because the build pre-check runs before any test, it masked two further defects that surfaced only once compilation recovered: gui.test.ts's "the dashboard page renders backlog entries as links into /api/backlog" and tui.test.ts's "project status browses entries in full with up/down and resets on Ctrl+T".
