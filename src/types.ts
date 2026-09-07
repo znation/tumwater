@@ -255,6 +255,12 @@ export interface PiRunResult {
    * Studio's "Engine protocol predict stream timed out", e.g. after OS sleep). A transient
    * failure of the world, not of the session: one fresh retry usually succeeds. */
   transientServerTimeout: boolean;
+  /** True when pi itself crashed on malformed JSON — its stderr ends in a JSON.parse failure
+   * ("Unterminated string in JSON at position N", "Expected ',' or '}' …") — which in observed
+   * runs came from a torn model-server chunk, never from the session. Like the predict-stream
+   * timeout it is a transient failure of the world: the session is intact on disk and one
+   * `--continue` retry picks the run up where it stopped instead of losing hours of work. */
+  transientPiCrash: boolean;
   /** The run's last assistant message carried no text and no tool call (thinking-only or
    * empty). A compliant finish always ends with a text block, so this signals a generation
    * cut off mid-stream — typically pi clamping max output tokens to the sliver left under

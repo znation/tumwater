@@ -34,6 +34,13 @@ const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded
  * Module-private: only PiStreamParser.feedLine below matches against it. */
 const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
 
+/** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in
+ * the first 18 days died this way (one of them 2 h 39 m of director work on a fresh steering
+ * prompt), each traced to a torn chunk from the model server rather than to the session. Matched
+ * against the child's stderr at exit; exported for tests. */
+export const TRANSIENT_PI_CRASH =
+  /Unexpected end of JSON input|is not valid JSON|(Unterminated string|Unexpected non-whitespace|Expected ('|")|Bad (control|escaped) character)[^\n]* in JSON/;
+
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";
@@ -316,6 +323,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       aborted,
       contextExceeded: parser.contextExceeded,
       transientServerTimeout: parser.transientServerTimeout,
+      transientPiCrash: false,
       finalMessageContentless: parser.finalMessageContentless,
       compacted: parser.compacted,
       ...overrides,
@@ -334,9 +342,14 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         quietKilled ||
         parser.stopReason === "error" ||
         (code !== 0 && !parser.finalText.trim());
+      // A nonzero exit whose stderr ends in a JSON.parse failure is pi dying on a torn server
+      // chunk: transient, retryable with --continue (the loop decides). Never set for a run the
+      // harness itself killed — those have their own cause.
+      const crashed = !aborted && !timedOut && !quietKilled && code !== 0 && TRANSIENT_PI_CRASH.test(stderr);
       finish(
         resultFromParser({
           ok: !failed,
+          transientPiCrash: crashed,
           errorMessage: aborted
             ? "aborted by harness shutdown"
             : quietKilled

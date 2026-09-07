@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { PiStreamParser, piArgs, runPi } from "../src/pi.js";
+import { PiStreamParser, TRANSIENT_PI_CRASH, piArgs, runPi } from "../src/pi.js";
 import { REFUSED_SENTINEL } from "../src/reply-contract.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
@@ -431,4 +431,33 @@ test("a missing pi binary fails the tick with an error", async () => {
   } finally {
     process.env.PATH = oldPath;
   }
+});
+
+// pi crashing on malformed JSON (a torn model-server chunk): five ticks in the first 18 days died
+// with "Unterminated string in JSON at position N" as their only error, one of them 2 h 39 m of
+// director work. The session survives on disk, so the harness treats it as transient (loop.ts
+// retries once with --continue) — flagged from pi's stderr at exit, and only for exits the
+// harness itself did not cause.
+test("runPi flags a JSON.parse crash on pi's stderr as a transient pi crash", async () => {
+  const r = await runFakePi(
+    `echo 'SyntaxError: Unterminated string in JSON at position 2781 (line 1 column 2782)' >&2\nexit 1`,
+  );
+  assert.equal(r.ok, false);
+  assert.equal(r.transientPiCrash, true);
+  assert.match(r.errorMessage ?? "", /Unterminated string in JSON/);
+});
+
+test("runPi does not flag ordinary crashes or harness kills as transient pi crashes", async () => {
+  const crashed = await runFakePi(`echo 'TypeError: cannot read properties of undefined' >&2\nexit 1`);
+  assert.equal(crashed.transientPiCrash, false, "an unrelated crash is not transient");
+  // The pattern itself is what the loop relies on: pin the phrasings Node's JSON.parse produces.
+  for (const line of [
+    "Unterminated string in JSON at position 9088 (line 1 column 9089)",
+    "Expected ',' or '}' after property value in JSON at position 12",
+    "Unexpected end of JSON input",
+    "Unexpected token 'x', \"xyz\" is not valid JSON",
+  ]) {
+    assert.ok(TRANSIENT_PI_CRASH.test(line), line);
+  }
+  assert.equal(TRANSIENT_PI_CRASH.test("Error: spawn ENOENT"), false);
 });

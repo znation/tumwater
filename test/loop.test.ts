@@ -2229,3 +2229,39 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
     restore();
   }
 });
+
+test("a pi crash on malformed JSON is retried once by continuing the session (regression)", async () => {
+  const repo = await initializedRepo();
+  const marker = path.join(tmpdir(), "phase");
+  const argsFile = path.join(tmpdir(), "argv.log");
+  // Attempt 1: pi dies mid-run the way five ticks did in the first 18 days — a JSON.parse
+  // failure on a torn model-server chunk, nothing on stdout worth keeping. Attempt 2 (the
+  // harness retry, detected by the phase file) continues the same session and finishes.
+  const restore = fakePi(
+    [
+      TOUCH_SESSION,
+      `flags=""; for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done; echo "run:$flags" >> "${argsFile}"`,
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  echo 'SyntaxError: Unterminated string in JSON at position 2781 (line 1 column 2782)' >&2`,
+      `  exit 1`,
+      `else`,
+      `  printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
+    assert.ok(!runner.state.lastError, `no error recorded: ${runner.state.lastError}`);
+    const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
+    assert.equal(runs.length, 2);
+    assert.ok(!runs[0]!.includes("--continue"), "the first attempt was the fresh tick run");
+    assert.ok(runs[1]!.includes("--continue"), "the retry continued the crashed run's session");
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(warnings.some((w) => /pi crashed on malformed JSON .*Unterminated string.* — resuming the session once/.test(w)), JSON.stringify(warnings));
+  } finally {
+    restore();
+  }
+});

@@ -257,12 +257,16 @@ export class LoopRunner {
       signal: this.runSignal(),
     };
     const pi = await runPi(opts);
-    if (!pi.aborted && !pi.timedOut && pi.transientServerTimeout && !pi.ok) {
+    // Two transient failures of the world (not of the session) earn exactly one bounded retry
+    // that continues the same session: the model server timing out an idle predict stream, and
+    // pi itself crashing on a torn server chunk (a JSON.parse failure on its stderr).
+    if (!pi.aborted && !pi.timedOut && (pi.transientServerTimeout || pi.transientPiCrash) && !pi.ok) {
       logEvent(this.root, {
         loop: this.role,
         type: "warning",
-        message:
-          "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
+        message: pi.transientPiCrash
+          ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"}) — resuming the session once`
+          : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
       });
       // Within-tick continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
