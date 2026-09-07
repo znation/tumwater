@@ -50,13 +50,15 @@ until main is green again (director, bugfix, and the markdown-only roles keep ti
 land the fix).
 
 Open items:
-- Backlog reading: its last residual — within-body scroll for long entries in the TUI (PgUp/PgDn,
-  clamped at both ends, hint shown only while a body overflows) — has landed (feature tick 107,
-  `1a5fff9`); only bookkeeping remains: moving its PLANS.md entry to Done.
+- Planned: label review-gate runs in loop transcripts (review runs render as `── review @ <ts> ──`
+  in all three transcript surfaces; planned 2026-09-07).
+- Planned: user-defined loops — the director adds/removes/rearranges extra role loops via
+  tumwater.json's `customLoops`; they act like built-ins and are marked on both dashboards (planned
+  2026-09-07).
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`6fe4dfe`): build clean, suite 718/718, verified 2026-09-07.
+Current main (`2176690`): build clean, suite 718/718, verified 2026-09-07.
 <!-- tumwater:status:end -->
 
 ## How it works
