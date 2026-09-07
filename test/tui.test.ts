@@ -482,6 +482,139 @@ test("project status browses entries in full with up/down and resets on Ctrl+T",
   }
 });
 
+/** The "body line NN" numbers currently shown in the pane (ANSI codes ignored). */
+function visibleBodyLines(frame: string): number[] {
+  const out: number[] = [];
+  for (const m of frame.matchAll(/body line (\d{2})/g)) out.push(Number(m[1]));
+  return out;
+}
+
+test("PgDn/PgUp page the selected entry's body, clamped at both ends", async () => {
+  const repo = await makeTuiRepo();
+  // One plan whose 80-line body overflows any pane budget this fake TTY can produce
+  // (rows=40 → budget ≤ ~33), so paging has real room in both directions.
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    [
+      "# Plans",
+      "",
+      "## Planned",
+      "",
+      "### Long body plan (planned 2026-09-05)",
+      "",
+      ...Array.from({ length: 80 }, (_, i) => `body line ${String(i + 1).padStart(2, "0")}`),
+      "",
+      "## Done",
+      "",
+      "_None yet._",
+    ].join("\n") + "\n",
+  );
+
+  const tui = startTui(repo);
+  try {
+    tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
+    tui.key(undefined, "t", { ctrl: true }); // → project status
+    tui.key(undefined, "down"); // open the plan's full body
+
+    let frame = tui.lastFrame();
+    assert.match(frame, /plan: Long body plan \(planned 2026-09-05\) — ↑↓ browse · PgUp\/PgDn scroll · Ctrl\+T cycle/);
+    // The head window shows the first budget-many lines.
+    let win = visibleBodyLines(frame);
+    assert.ok(win.length >= 3, `pane shows a real window: ${win.length} lines`);
+    assert.deepEqual(win, Array.from({ length: win.length }, (_, i) => i + 1));
+
+    // One PgDn advances exactly one page (the window is far from the tail at this size).
+    tui.key(undefined, "pagedown");
+    frame = tui.lastFrame();
+    win = visibleBodyLines(frame);
+    const b = win.length;
+    assert.deepEqual(win, Array.from({ length: b }, (_, i) => i + b + 1)); // lines B+1..2B
+
+    // Repeated PgDn clamps at the tail: the last line is visible and further presses are no-ops.
+    for (let i = 0; i < 30; i++) tui.key(undefined, "pagedown");
+    frame = tui.lastFrame();
+    win = visibleBodyLines(frame);
+    assert.equal(win[win.length - 1], 80, "tail line visible at the clamp");
+    const tailFrame = frame;
+    tui.key(undefined, "pagedown");
+    assert.equal(tui.lastFrame(), tailFrame, "PgDn past the tail is a no-op");
+
+    // PgUp mirrors back to the head and clamps there.
+    for (let i = 0; i < 30; i++) tui.key(undefined, "pageup");
+    frame = tui.lastFrame();
+    win = visibleBodyLines(frame);
+    assert.equal(win[0], 1, "head line visible again at the top clamp");
+    const headFrame = frame;
+    tui.key(undefined, "pageup");
+    assert.equal(tui.lastFrame(), headFrame, "PgUp past the head is a no-op");
+  } finally {
+    await tui.quit();
+  }
+});
+
+test("PgUp/PgDn are ignored in project-status list mode (no entry selected)", async () => {
+  const repo = await makeTuiRepo();
+  seedEntry(repo, "PLANS.md", "### Add a --json flag"); // something to show in the list
+
+  const tui = startTui(repo);
+  try {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "t", { ctrl: true }); // → project status (list mode)
+    assert.match(tui.lastFrame(), /plans \(1\):/);
+
+    const listFrame = tui.lastFrame();
+    tui.key(undefined, "pagedown");
+    assert.equal(tui.lastFrame(), listFrame, "PgDn with no selection re-renders the same list");
+    tui.key(undefined, "pageup");
+    assert.equal(tui.lastFrame(), listFrame, "…and so does PgUp");
+  } finally {
+    await tui.quit();
+  }
+});
+
+test("a stale entry selection falls back to the empty list when entries disappear", async () => {
+  const repo = await makeTuiRepo();
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    [
+      "# Plans",
+      "",
+      "## Planned",
+      "",
+      "### Add a --json flag (planned 2026-09-05)",
+      "",
+      "**Goal.** Machine-readable status output.",
+      "",
+      "## Done",
+      "",
+      "_None yet._",
+    ].join("\n") + "\n",
+  );
+
+  const tui = startTui(repo);
+  try {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "t", { ctrl: true }); // → project status
+    tui.key(undefined, "down"); // open the plan's body (selection now active)
+    assert.match(tui.lastFrame(), /Machine-readable status output/);
+
+    // The entry is removed from PLANS.md while selected (a loop landed an edit).
+    fs.writeFileSync(
+      path.join(repo, "PLANS.md"),
+      ["# Plans", "", "## Planned", "", "_None yet._", "", "## Done", "", "_None yet._"].join("\n") + "\n",
+    );
+
+    // A keypress in the stale state: PgDn takes the no-entries path of the page handler…
+    tui.key(undefined, "pagedown");
+    const frame = tui.lastFrame();
+    assert.match(frame, /project status — Ctrl\+T to cycle/); // list-mode header restored
+    assert.match(frame, /\(no planned features, open bugs, or open questions\)/);
+    assert.doesNotMatch(frame, /Machine-readable status output/); // …and the body is gone
+  } finally {
+    await tui.quit();
+  }
+});
+
 test("open questions add a nudge line above the activity pane", async () => {
   const repo = await makeTuiRepo();
   const tui = startTui(repo);
