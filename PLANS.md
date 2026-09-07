@@ -5,6 +5,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Label review-gate runs in loop transcripts (planned 2026-09-07)
+
+**Goal.** Each role's raw pi log (`logs/<role>.jsonl`) interleaves author ticks and review-gate runs into one append-only file — the reviewer deliberately shares the role's log (src/review.ts passes `rawLogFile: piLogPath(root, role)`) so its transcript sits next to the work it judges. But every run renders as an identical separator in all three transcript surfaces (`tumwater logs --role`, the TUI transcript pane, the GUI detail panel): `── run @ <timestamp> ──` (src/transcript.ts). When a tick is rejected or fails review, an operator reading the transcript cannot tell which runs were the reviewer without correlating timestamps against the event feed. Label review-gate runs in every transcript surface: author runs keep today's bare separator byte-for-byte; review runs render as `── review @ <timestamp> ──`.
+
+**Approach.**
+- src/pi.ts — add an optional `label?: string` to PiRunOptions. In runPi, after the raw log stream is opened (post-rotation) and before spawning pi, write one marker line when a label is given: compact JSON `{"type":"tumwater_run","label":"<label>"}` + newline. The marker precedes that run's first pi event in file order, so every consumer sees it before the run's `agent_start`. No label → no write; author-run logs stay byte-identical to today.
+- src/review.ts — pass `label: "review"` at its single runPi call site (covers both tick-path and leftover-recovery reviews, which share that call). Author runs in loop.ts pass nothing.
+- src/transcript.ts — add `"tumwater_run"` to RENDERABLE_TYPES; the renderer gains one piece of cross-line state per the file's documented contract: a pending label set by a marker line (no entry emitted) and captured into run state at `agent_start`, so the separator renders as `── review @ <ts> ──` when labeled — including the bare in-flight form `── review ──` that `pendingSeparator()` already reports for turn-less runs — and exactly as today otherwise. The pending label is consumed (cleared) at every agent_start unconditionally, so a failed reviewer spawn can mislabel at most the immediately following author separator and never leaks state beyond one run. Update the file-header comment documenting this boundary contract with readTranscriptTail.
+- src/transcript-tail.ts — extend readTranscriptTail's stopping boundary: a `tumwater_run` marker line with ≥ limit entry-candidates after it is now also a valid window start (the renderer's pending label lives between the marker and its agent_start, so a window starting at an agent_start would drop that run's label). Update the file-header comment that documents this contract.
+- test/pi.test.ts — runPi with a label writes exactly one marker line as the raw log's first line (before any pi output); without a label the raw log is byte-identical to today's shape.
+- test/transcript.test.ts — a marker before agent_start labels that run's separator; no marker → bare separator unchanged; a labeled turn-less run reports its labeled bare separator via pendingSeparator and flushes it at the next boundary; alternating author/review runs label only the review ones; a stale pending label (marker with no following agent_start, then an unlabeled run) is consumed without leaking past one run.
+- test/transcript-tail.test.ts — a window whose boundary is a marker line includes the label on its first run and renders identically to a full re-read; logs with no markers render exactly as today (existing tests pass unmodified).
+- README.md — one sentence where transcripts are described: review-gate runs are labeled in loop transcripts. Do not touch the `tumwater:status` markers.
+
+**Files touched.** src/pi.ts, src/review.ts, src/transcript.ts, src/transcript-tail.ts, test/pi.test.ts, test/transcript.test.ts, test/transcript-tail.test.ts, README.md. No changes to loop.ts, leftover.ts, tui.ts, gui.ts, or gui-page.ts — the label flows through the shared renderer into all three surfaces with no per-surface work; progress.ts needs none either (its PROGRESS_TYPES pre-filter skips the marker without parsing) and PiStreamParser never sees it (it only folds pi's stdout).
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- After a review-gate run, that role's raw log contains exactly one `{"type":"tumwater_run","label":"review"}` line immediately before the reviewer's first pi event; author ticks add no marker lines (byte-identical logs for runs without labels).
+- All three surfaces render review runs as `── review @ <timestamp> ──` and author runs exactly as today; an in-flight review run shows its labeled bare separator while it has no turns yet. readTranscriptTail's one-shot output stays byte-identical to formatTranscript(whole file).slice(-limit) for logs with and without markers.
+- No behavior change anywhere else: no new config keys, no event-log entries, no changes to gate logic or loop outcomes — this is display-only.
+
+**Relationship to other plans.** Independent of everything currently planned; deepens the observability line of the done "Show open bugs and planned features in the TUI/GUI" (transcripts are that plan's sibling surface). Single entry: marker injection and rendering are one feature — either half alone is invisible.
+
 ### User-defined loops — user-directed add/remove/rearrange of extra role loops via the director (planned 2026-09-07)
 
 **Goal.** Today the fleet's loop set is fixed: the twelve catalog roles plus the director, all hardcoded in src/roles.ts and switchable only by hand-editing tumwater.json outside the harness. Let the user steer that set from the director prompt box (TUI or `tumwater prompt`): ask for a new loop **by name with a given role/task** and it is added to the fleet, acting exactly like the other loops — persistent worktree + branch, tick lifecycle, review gate, merge to main, backoff, budget/pause gates — while being **identified as user-defined** in its own prompt and on every dashboard. The same channel removes a user-defined loop or rearranges their order. Built-in roles stay untouched: the user manages only their own loops.
@@ -57,7 +81,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Relationship to other plans.** Single entry: the config plumbing, the director control surface, and the dashboard identification are one feature — none has user-visible value until all three land, so they do not decompose. Independent of the backlog-reading residual (disjoint files except README prose) and of everything in Done; either can land first.
 
-### Read backlog entries in full from the TUI/GUI dashboards (planned 2026-09-05, refined 2026-09-06, re-audited 2026-09-06)
+## Done
+
+### Read backlog entries in full from the TUI/GUI dashboards (planned 2026-09-05, refined 2026-09-06, re-audited 2026-09-06, done 2026-09-07)
 
 **Goal.** Both dashboards show project status as heading lines only: the TUI's project-status pane and the GUI's backlog pane render `plannedPlans`/`openBugs`/`openQuestions`, which return just the `### ` headings of PLANS.md / BUGS.md / QUESTIONS.md. An operator watching the fleet can see that a plan or bug exists but not what it says — reading an entry means leaving the terminal/browser and opening the markdown file. The initial prompt's observability promise ("background loops are observable by gui/tui/log") covers loop state well (phase, live detail, transcripts), but the backlog — what the fleet intends to do next — is visible only as titles. Make every entry readable in place: arrow-key browsing in the TUI's project-status pane, click-through into the GUI's existing detail panel.
 
@@ -117,7 +143,9 @@ Acceptance criteria (residual; every other bullet on this entry is audit-verifie
 
 Completion: full suite green with build clean, then move this entry to Done with a note citing the landing commit. No changes outside src/tui.ts + test/tui.test.ts are expected — if any residual turns out to require one, re-audit first; that would mean this note missed something.
 
-## Done
+**Done 2026-09-07 (plan loop) — audited against main `fea0522` on this tree (build clean, suite 717/717) and moved from Planned; every acceptance bullet landed. The last residual — TUI within-body scroll for long entries — landed at feature tick 107 (`1a5fff9`) exactly as the re-audit scoped it: src/tui.ts + test/tui.test.ts only.**
+
+Verified point for point against this entry's residual scope: `entryBodyWindow(body, offset, budget, width)` returns both the per-line-clipped window and the body's total line count (empty body → the existing placeholder); `stepEntryScroll` steps ±eventBudget clamped to `[0, max(0, totalLines − budget)]`; PgDn/PgUp are active only in project-status entry mode — no-op in list mode and every other view; `entryScroll` resets on every ↑↓ entry change and on Ctrl+T leaving the view; the header gains ` · PgUp/PgDn scroll` after `↑↓ browse` only while the body overflows (`total > budget`) — short entries keep the exact header test/tui.test.ts already pins. The window/step arithmetic is unit-pinned (head/middle/tail, clamp at both ends and past either end, no-op when the body fits) and entry-mode rendering/reset is e2e-pinned through the fake-TTY harness; one seam is not pinned — the PgUp/PgDn keypress dispatch itself has no e2e case (a coverage candidate).
 
 ### Fleet pause — `tumwater pause` / `tumwater resume` (planned 2026-09-05, refined 2026-09-06, done 2026-09-06)
 
