@@ -31,8 +31,12 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   const config = defaultConfig();
   assert.equal(configForRole(config, "steward").minTickIntervalSeconds, 21600);
   assert.equal(configForRole(config, "qa").minTickIntervalSeconds, 7200);
+  // The bookkeeping roles: readme batches landings into one sync per half hour, plan re-audits
+  // at most hourly — in dogfood the two were 30% of all commits at the global 20 s clock.
+  assert.equal(configForRole(config, "readme").minTickIntervalSeconds, 1800);
+  assert.equal(configForRole(config, "plan").minTickIntervalSeconds, 3600);
   for (const id of allRoleIds()) {
-    if (id === "steward" || id === "qa") continue;
+    if (id === "steward" || id === "qa" || id === "readme" || id === "plan") continue;
     // Every other role falls back to the global interval.
     assert.equal(
       configForRole(config, id).minTickIntervalSeconds,

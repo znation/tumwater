@@ -5,9 +5,9 @@ import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { configPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 
-/** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick),
- * with defaults for concurrency, timeouts, log size, retention, thrash detection, idle
- * backoff, and review settings. */
+/** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick, qa on
+ * ~2 h, readme on 30 min, plan on 1 h), with defaults for concurrency, timeouts, log size,
+ * retention, thrash detection, idle backoff, self-redeploy, and review settings. */
 export function defaultConfig(): TumwaterConfig {
   const roles: Record<string, RoleConfig> = {};
   for (const id of allRoleIds()) roles[id] = { enabled: true };
@@ -17,6 +17,14 @@ export function defaultConfig(): TumwaterConfig {
   roles.steward = { enabled: true, minTickIntervalSeconds: 21600 };
   // QA exercises the product like a user on a ~2 h clock: user flows change slower than code.
   roles.qa = { enabled: true, minTickIntervalSeconds: 7200 };
+  // The bookkeeping roles run on slower clocks too. In dogfood readme (95 commits, 82 of them
+  // status syncs) and plan (80, 44 of them refine/re-audit notes) were 30% of every commit and
+  // 20% of every tick: readme woke on every merge to restamp one line, and plan re-audited plans
+  // nobody had touched. A 30 min readme clock batches a burst of landings into one sync; a 1 h
+  // plan clock leaves the slots to the loops that ship. Both still wake early when main moves —
+  // the clock only bounds how often.
+  roles.readme = { enabled: true, minTickIntervalSeconds: 1800 };
+  roles.plan = { enabled: true, minTickIntervalSeconds: 3600 };
   return {
     piArgs: [],
     maxConcurrent: 6,

@@ -161,11 +161,12 @@ transcript. Use it only on networks where that is acceptable.
 
 Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
 `qa`, `improve`, `steward`, `director`. Enable/disable them, pick pi's provider/model/thinking
-level, set a per-role tick interval (the steward runs on a ~6 h clock and qa on a ~2 h clock,
-both by default), and tune backoff in
+level, set a per-role tick interval (by default the steward runs on a ~6 h clock, qa on ~2 h,
+readme on 30 min and plan on 1 h — the bookkeeping roles batch a burst of landings into one sync
+instead of restamping after every merge), and tune backoff in
 `tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
 within ~2s — every setting applies live: enabling/disabling roles, per-role provider/model/
-thinking/instructions, tick intervals, backoff, the `maxConcurrent` cap, and
+thinking/instructions, tick intervals, backoff, the `maxConcurrent` cap, `autoRestart`, and
 `sessionRetentionDays` (a mid-run edit re-prunes immediately).
 
 Spend is capped by `maxDailyCostUsd` in tumwater.json (default 50; set 0 to disable): once the
