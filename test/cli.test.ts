@@ -933,6 +933,79 @@ test("logs --role prints the rendered pi transcript and -n limits entries", asyn
   assert.ok(r.stdout.includes("  second run done"), r.stdout);
 });
 
+// --- doctor: pre-flight check through the real CLI entry point ---
+// runDoctor/renderDoctor and each individual check are pinned in-process in
+// test/doctor.test.ts; what is missing here is main()'s wiring — that doctor runs WITHOUT a
+// readiness gate (it must report why the environment isn't ready, not refuse like status),
+// renders the full report to stdout, rejects unknown arguments, and honors the exit-code
+// contract that makes it scriptable: 0 when no check fails, 1 otherwise. Warnings never fail.
+
+test("doctor runs outside a git repo — reports every problem instead of gating", async () => {
+  // A bare directory with a PATH holding only git (no pi): every check's outcome is
+  // deterministic, and the command must not refuse to run like status does. Without the
+  // missing-gate regression this would print "not a git repository" to stderr and exit 1
+  // without ever showing the other checks.
+  const binDir = tmpdir();
+  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+
+  const r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["doctor"]);
+  assert.equal(r.code, 1, `expected exit 1 with failing checks:\n${r.stdout}\n${r.stderr}`);
+  // The full report is printed — one line per check in fixed order, not the first error.
+  assert.match(r.stdout, /tumwater doctor — harness not running/);
+  assert.match(r.stdout, /ok\s+git binary/);
+  assert.match(r.stdout, /fail\s+repo\s+not a git repository/);
+  assert.match(r.stdout, /fail\s+init\s+not initialized/);
+  assert.match(r.stdout, /fail\s+pi binary\s+pi not found on PATH/);
+  assert.match(r.stdout, /ok\s+state dir/);
+  assert.match(r.stdout, /ok\s+merge lock/);
+  assert.match(r.stdout, /ok\s+build check/);
+  // The verdict counts the fails (repo + init + pi) and nothing else.
+  assert.match(r.stdout, /3 problems/);
+});
+
+test("doctor exits 0 on a ready repo; a stale merge lock warns without failing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli doctor test");
+
+  // A stale merge lock (dead pid) is a warning: it self-heals on the next merge, so it must
+  // not flip the exit code — scripts key off 0/1 for real problems only.
+  const lockDir = path.join(repo, ".tumwater", "merge.lock");
+  fs.mkdirSync(lockDir, { recursive: true });
+  fs.writeFileSync(path.join(lockDir, "pid"), String(2_000_000_000)); // beyond any pid space
+
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "doctor");
+    assert.equal(r.code, 0, `expected exit 0 on a ready repo:\n${r.stdout}\n${r.stderr}`);
+    assert.match(r.stdout, /tumwater doctor — harness not running/);
+    for (const line of [
+      /ok\s+git binary/,
+      /ok\s+repo\s+on branch main/,
+      /ok\s+init/,
+      /ok\s+pi binary/,
+      /ok\s+state dir/,
+      /warn\s+merge lock\s+stale — will be broken on next merge/,
+      /ok\s+build check/,
+    ]) {
+      assert.match(r.stdout, line);
+    }
+    assert.match(r.stdout, /ready to run/);
+  } finally {
+    restore();
+  }
+});
+
+test("doctor rejects unknown arguments", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli doctor args");
+
+  // Like every other no-flag command, doctor takes no arguments at all.
+  const r = await cli(repo, "doctor", "--verbose");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /takes no arguments/);
+});
+
 // --- long-running commands (run, logs -f): spawned with a live handle so the test can
 // observe startup output, exercise the follow behavior, and always reap the child. ---
 
