@@ -6,7 +6,7 @@ import { configForRole, enabledRoleIds, loadConfigCached } from "./config.js";
 import { budgetPaused, fleetDailyCost, isFleetPaused } from "./state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
-import { gitTry, readBranchHead } from "./git.js";
+import { branchHead } from "./git.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
@@ -271,10 +271,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
       consumeResetRequest(root, runners);
       consumeAbortRequests(root, runners);
 
-      // Reading the ref file is microsecond-scale; spawning `git rev-parse` costs ~10ms and
-      // this runs every poll. The spawn fallback covers what file reads cannot (a worktree-
-      // pointer .git, anything unusual).
-      const mainHead = readBranchHead(root, mainBranch) ?? (await gitTry(root, "rev-parse", mainBranch)) ?? "";
+      // branchHead reads the ref files first (microsecond-scale; this runs every poll) and
+      // spawns `git rev-parse` only when they cannot resolve it. "" means main does not exist
+      // yet — isEligible treats an empty head as "no wake".
+      const mainHead = (await branchHead(root, mainBranch)) ?? "";
       const inboxCount = inboxSize(root);
       const now = Date.now();
 
