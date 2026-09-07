@@ -200,9 +200,10 @@ export interface HarnessEvent {
     | "tick_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
     | "resume"
     | "review_start"
-    | "review_verdict"
-    | "review_rejected"
+    | "review_verdict" // approved; carries durationMs of the reviewer run
+    | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
     | "review_failed"
+    | "build_check" // the project's declared check ran: scope gate|baseline, status, script, durationMs
     | "budget_paused" // fleet daily spend reached maxDailyCostUsd; role loops stop starting ticks
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
     | "fleet_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt

@@ -117,11 +117,17 @@ export async function reviewAheadOfMain(
   // tick prompt), reset the failure count (a verdict about this HEAD is a successful review
   // either way), discard the branch by resetting it to main, and log review_rejected.
   // Callers attach `run` when a pi run was consumed.
-  const reject = async (reasons: string[]): Promise<GateResult> => {
+  const reject = async (reasons: string[], durationMs?: number): Promise<GateResult> => {
     state.lastReview = { verdict: "reject", reasons, head, at: Date.now() };
     state.unreviewFailures = 0;
     await resetWorktreeToMain(wt, mainBranch);
-    logEvent(root, { loop: role, type: "review_rejected", head, reasons });
+    logEvent(root, {
+      loop: role,
+      type: "review_rejected",
+      head,
+      reasons,
+      ...(durationMs === undefined ? {} : { durationMs }),
+    });
     return { decision: "rejected", detail: reasons[0] ?? "no reasons given" };
   };
 
@@ -138,7 +144,19 @@ export async function reviewAheadOfMain(
   const check = detectBuildCheck(wt);
   if (check) {
     const timeoutMs = ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS;
+    const checkStartedAt = Date.now();
     const outcome = await runBuildCheck(wt, check, timeoutMs);
+    // Every pre-check run is an event with its cost: the gate is where the fleet's compute
+    // goes after the authoring run, and "how long does npm test take per merge" must be
+    // answerable from the feed, not by timing it by hand.
+    logEvent(root, {
+      loop: role,
+      type: "build_check",
+      scope: "gate",
+      status: outcome.status,
+      script: check.script,
+      durationMs: Date.now() - checkStartedAt,
+    });
     if (outcome.status === "failed") {
       // Machine-generated reasons: the header joined to the first output line (so the
       // compiler error sits right after it in the injected next-tick note), then the rest of
@@ -179,6 +197,9 @@ export async function reviewAheadOfMain(
   saveLoopState(root, state);
 
   const diff = await aheadOfMainDiff(wt, mainBranch);
+  // The reviewer run's wall time rides on its verdict event: a reviewer that takes an hour per
+  // merge on local hardware is a fleet-level cost an operator must be able to see.
+  const reviewStartedAt = Date.now();
   // The author's claimed WHY/RISK/VERIFIED ride along when present — checking those claims
   // against the actual diff is exactly the adversarial angle (recovery re-reviews pass none:
   // the original run is gone).
@@ -210,7 +231,7 @@ export async function reviewAheadOfMain(
     const sameHead = prev?.verdict === "failed" && prev.head === head;
     state.unreviewFailures = (sameHead ? (state.unreviewFailures ?? 0) : 0) + 1;
     state.lastReview = { verdict: "failed", reasons: [message], head, at: Date.now() };
-    logEvent(root, { loop: role, type: "review_failed", head, message });
+    logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     if ((state.unreviewFailures ?? 0) >= REVIEW_FAILURE_LIMIT) {
       await resetWorktreeToMain(wt, mainBranch);
       state.unreviewFailures = 0; // The HEAD is gone; nothing left to count against.
@@ -224,7 +245,7 @@ export async function reviewAheadOfMain(
   }
 
   if (verdict.verdict === "reject") {
-    const rejected = await reject(verdict.reasons);
+    const rejected = await reject(verdict.reasons, Date.now() - reviewStartedAt);
     return { ...rejected, run: pi };
   }
 
@@ -234,6 +255,12 @@ export async function reviewAheadOfMain(
   state.lastReview = { verdict: "approve", reasons: verdict.reasons, head, at: Date.now() };
   state.unreviewFailures = 0;
   await git(wt, "reset", "--hard", "HEAD");
-  logEvent(root, { loop: role, type: "review_verdict", head, reason: verdict.reasons[0] });
+  logEvent(root, {
+    loop: role,
+    type: "review_verdict",
+    head,
+    reason: verdict.reasons[0],
+    durationMs: Date.now() - reviewStartedAt,
+  });
   return { decision: "approved", run: pi };
 }

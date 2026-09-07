@@ -1997,6 +1997,15 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
       "the SHA's check ran once (cache) — repeated skips read it without re-running npm test",
     );
 
+    // The one baseline run is priced in the feed under the role that paid for it; the cached
+    // second skip logs nothing.
+    const checks = readEvents(repo).filter((e) => e.type === "build_check");
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0]!.scope, "baseline");
+    assert.equal(checks[0]!.status, "failed");
+    assert.equal(checks[0]!.loop, "feature");
+    assert.ok(Number(checks[0]!.durationMs) >= 0);
+
     // Exactly one harness-level warning for the red SHA: script name + clipped first failure line.
     const warnings = readEvents(repo).filter((e) => e.type === "warning" && e.loop === "harness");
     assert.equal(warnings.length, 1);
@@ -2030,6 +2039,9 @@ test("a green main passes the baseline check and authoring proceeds normally", a
     const outcome = await runner.tick();
     assert.equal(outcome.result, "changed");
     assert.ok(fs.existsSync(marker), "the authoring run started on a green main");
+    // Two priced check runs: main's baseline before authoring, the gate's pre-check before merge.
+    const scopes = readEvents(repo).filter((e) => e.type === "build_check").map((e) => `${e.scope}:${e.status}`);
+    assert.deepEqual(scopes, ["baseline:passed", "gate:passed"]);
   } finally {
     restore();
   }

@@ -337,6 +337,17 @@ test("gate pre-check compiles the worktree against the root install — a health
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
     assert.equal(result.decision, "approved"); // pre-fix: "rejected" by the build check
     assert.ok(fs.existsSync(marker)); // …with no reviewer run; now it reaches pi
+    // Both halves of the gate price themselves in the feed: the deterministic pre-check as a
+    // build_check event (scope gate), the reviewer run's wall time on its verdict event.
+    const events = readEvents(root);
+    const checks = events.filter((e) => e.type === "build_check");
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0]!.scope, "gate");
+    assert.equal(checks[0]!.status, "passed");
+    assert.equal(checks[0]!.script, "build");
+    assert.ok(Number(checks[0]!.durationMs) >= 0);
+    const verdict = events.find((e) => e.type === "review_verdict");
+    assert.ok(verdict && Number.isFinite(Number(verdict.durationMs)), "the approval carries the reviewer's duration");
   } finally {
     restore();
   }

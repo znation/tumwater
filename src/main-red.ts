@@ -28,7 +28,19 @@ let lastMainRedSha: string | null = null;
  * execution failures all resolve to "nothing blocks authoring" inside checkMainBaseline. */
 export async function mainRedGate(root: string, role: string, wt: string): Promise<TickOutcome | null> {
   if (!BASELINE_BLOCKED_ROLES.has(role)) return null;
-  const baseline = await checkMainBaseline(wt);
+  // The one run per SHA (cache misses only) is logged under the role that paid for it, with its
+  // duration — the gate's build_check sibling, so both halves of the fleet's deterministic
+  // verification are priced in the feed.
+  const baseline = await checkMainBaseline(wt, ({ outcome, durationMs }) =>
+    logEvent(root, {
+      loop: role,
+      type: "build_check",
+      scope: "baseline",
+      status: outcome.status,
+      script: outcome.script,
+      durationMs,
+    }),
+  );
   if (baseline.skipReason) {
     logEvent(root, {
       loop: role,

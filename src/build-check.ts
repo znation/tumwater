@@ -111,7 +111,7 @@ export const BUILD_CHECK_TIMEOUT_MS = 300_000;
  * output tail as machine-generated reasons (no pi run consumed). "skipped": environmental
  * (timeout, or no npm on PATH) — warn and still proceed to the model review; deliberately NOT
  * fail-closed so a hung build script cannot wedge every code tick into the 3-strike discard. */
-interface BuildCheckOutcome {
+export interface BuildCheckOutcome {
   status: "passed" | "failed" | "skipped";
   /** The script that was run (or attempted). */
   script: string;
@@ -242,7 +242,12 @@ export function knownBaseline(sha: string): MainBaseline | null {
  * measure the wrong thing). Cache hit returns immediately; on miss runs detectBuildCheck +
  * runBuildCheck once per SHA (in-flight deduped) and caches green/red. Never throws: git,
  * detection, and execution failures all resolve to "nothing blocks authoring". */
-export async function checkMainBaseline(wt: string): Promise<MainBaselineCheck> {
+export async function checkMainBaseline(
+  wt: string,
+  /** Called once per actual script run (never for cache hits or deduped waiters) with what ran
+   * and how long it took — the caller's hook for a build_check event. */
+  onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
+): Promise<MainBaselineCheck> {
   const sha = await gitTry(wt, "rev-parse", "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
   const cached = baselineCache.get(sha);
@@ -252,7 +257,9 @@ export async function checkMainBaseline(wt: string): Promise<MainBaselineCheck> 
     pending = (async () => {
       const check = detectBuildCheck(wt);
       if (!check) return { baseline: null }; // No declared check — nothing to verify, nothing to block on.
+      const startedAt = Date.now();
       const outcome = await runBuildCheck(wt, check);
+      onRun?.({ outcome, durationMs: Date.now() - startedAt });
       if (outcome.status === "skipped") {
         // Environmental (timeout/no-npm): warn-and-proceed semantics like the gate's pre-check;
         // never cache red for a skip.

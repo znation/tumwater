@@ -8,6 +8,14 @@ function budgetPhrase(e: HarnessEvent): string {
   return `${usd(Number(e.spentUsd ?? 0))} of ${usd(Number(e.capUsd ?? 0))}`;
 }
 
+/** ` (in 57s)` / ` (in 12m)` for events that carry a durationMs; "" when absent (events written
+ * by builds that predate the field render as before). Seconds under two minutes, minutes above. */
+function elapsed(ms: unknown): string {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n < 0 || ms === undefined || ms === null) return "";
+  return n < 120_000 ? ` (in ${Math.round(n / 1000)}s)` : ` (in ${Math.round(n / 60_000)}m)`;
+}
+
 /** Human one-liner for an event, shared by `logs`, `run` output, the TUI activity pane, and the
  * GUI event feed. Presentation only: depends on the event shape (types.ts), not on events.ts's
  * log I/O — so display surfaces never import formatting from the logging module. */
@@ -63,13 +71,17 @@ export function formatEvent(e: HarnessEvent): string {
     case "review_start":
       return `${time} ${loop} reviewing ${shortSha(e.head)} before merge`;
     case "review_verdict":
-      return `${time} ${loop} review approved ${shortSha(e.head)}${e.reason ? ` — ${e.reason}` : ""}`;
+      return `${time} ${loop} review approved ${shortSha(e.head)}${e.reason ? ` — ${e.reason}` : ""}${elapsed(e.durationMs)}`;
     case "review_rejected": {
       const reasons = Array.isArray(e.reasons) ? (e.reasons as string[]) : [];
-      return `${time} ${loop} review rejected ${shortSha(e.head)} — ${reasons[0] ?? "no reasons given"}`;
+      return `${time} ${loop} review rejected ${shortSha(e.head)} — ${reasons[0] ?? "no reasons given"}${elapsed(e.durationMs)}`;
     }
     case "review_failed":
-      return `${time} ${loop} review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)`;
+      return `${time} ${loop} review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)${elapsed(e.durationMs)}`;
+    case "build_check":
+      // The deterministic check's cost, per run: scope names which gate paid (the pre-merge
+      // gate, or the red-main baseline check of main itself).
+      return `${time} ${loop} build check (${e.scope}): npm ${e.script} ${e.status}${elapsed(e.durationMs)}`;
     case "budget_paused":
       // Routine state change, like counters_reset — no warning prefix.
       return `${time} ${loop} budget paused — ${budgetPhrase(e)} daily cost reached`;

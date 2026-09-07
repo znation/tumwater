@@ -405,3 +405,18 @@ test("formatEvent tells a cut-off resume from a restart resume", () => {
   // Events written by builds that predate the cause field render the restart wording.
   assert.equal(formatEvent({ ts: 0, loop: "improve", type: "resume" } as never), restart);
 });
+
+
+test("formatEvent prices the gates: build_check lines and review durations", () => {
+  const gate = formatEvent({ ts: 0, loop: "feature", type: "build_check", scope: "gate", status: "passed", script: "test", durationMs: 57_000 } as never);
+  assert.match(gate, /build check \(gate\): npm test passed \(in 57s\)/);
+  const baseline = formatEvent({ ts: 0, loop: "clean", type: "build_check", scope: "baseline", status: "failed", script: "test", durationMs: 130_000 } as never);
+  assert.match(baseline, /build check \(baseline\): npm test failed \(in 2m\)/);
+  const approved = formatEvent({ ts: 0, loop: "feature", type: "review_verdict", head: "a".repeat(40), reason: "ok", durationMs: 5 * 60_000 } as never);
+  assert.match(approved, /review approved aaaaaaaa — ok \(in 5m\)$/);
+  // Events from builds that predate durationMs render exactly as before.
+  const legacy = formatEvent({ ts: 0, loop: "feature", type: "review_verdict", head: "a".repeat(40), reason: "ok" } as never);
+  assert.match(legacy, /review approved aaaaaaaa — ok$/);
+  const rejected = formatEvent({ ts: 0, loop: "feature", type: "review_rejected", head: "a".repeat(40), reasons: ["dup"], durationMs: 61_000 } as never);
+  assert.match(rejected, /review rejected aaaaaaaa — dup \(in 61s\)$/);
+});
