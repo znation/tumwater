@@ -4,7 +4,7 @@ import type { LoopState } from "./types.js";
 import type { StatusSnapshot } from "./status.js";
 import { dailyCost, fleetDailyCost, budgetReached } from "./state.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
-import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2 } from "./text.js";
+import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, usd } from "./text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
  * cycle position, time/token formatters, and the width-aware table shared by
@@ -207,7 +207,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   lines.push(
     `tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
       snap.questions ? ` · questions: ${snap.questions}` : ""
-    }${snap.budget ? ` · budget: $${snap.budget.spentUsd.toFixed(2)}/${usdCap(snap.budget.capUsd)} today` : ""}`,
+    }${snap.budget ? ` · budget: ${usd(snap.budget.spentUsd)}/${usdCap(snap.budget.capUsd)} today` : ""}`,
   );
   lines.push("");
   // `today` is the loop's daily budget window (dailyCost): $0.00 while its stamp is stale
@@ -234,8 +234,8 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     String(s.commits),
     compactTokens(m.generated),
     compactTokens(m.peakCtx),
-    `$${s.totalCostUsd.toFixed(2)}`,
-    `$${dailyCost(s).toFixed(2)}`,
+    usd(s.totalCostUsd),
+    usd(dailyCost(s)),
     lastTickCell(s.lastTickEndedAt),
     s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
   ]);
@@ -246,10 +246,10 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     "",
     compactTokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
     compactTokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
-    `$${snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0).toFixed(2)}`,
+    usd(snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0)),
     // The fleet's today-spend — by construction equal to the header badge's spend while
     // enabled (snapshot derives both from the same loops), so table and badge cannot drift.
-    `$${fleetDailyCost(snap.loops).toFixed(2)}`,
+    usd(fleetDailyCost(snap.loops)),
     "",
     "",
   ];

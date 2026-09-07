@@ -71,6 +71,16 @@ export function shortSha(sha: unknown): string {
   return String(sha).slice(0, 8);
 }
 
+/** A USD amount with its dollar sign and exactly two decimals ($12.34) — the single home of
+ * the cents-pinned money format shared by the event feed's budget/usage lines (event-format.ts)
+ * and the status table's cost/today cells plus totals row (status-render.ts), so the decimal
+ * width cannot drift per consumer. The cap variant that drops whole-dollar `.00` is a different
+ * format with its own home (`usdCap` in status-render.ts); the GUI renders both from its own JS
+ * copies in gui-page.ts — a separate runtime that cannot import TypeScript. */
+export function usd(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
  * display in the harness renders through (transcript run separators, the status table's last-
  * tick cell, the daily-budget day stamp), so zero-padding cannot drift per consumer. */

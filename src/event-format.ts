@@ -1,12 +1,11 @@
-import { compactTokens, shortSha } from "./text.js";
+import { compactTokens, shortSha, usd } from "./text.js";
 import type { HarnessEvent } from "./types.js";
 
 /** The `$<spent> of $<cap>` fragment both budget transition events share: the fields arrive
- * loosely typed on HarnessEvent, so each is coerced and pinned to two decimals in one place. */
+ * loosely typed on HarnessEvent, so each is coerced and rendered through the shared cents-
+ * pinned money format (usd) in one place. */
 function budgetPhrase(e: HarnessEvent): string {
-  const spent = Number(e.spentUsd ?? 0).toFixed(2);
-  const cap = Number(e.capUsd ?? 0).toFixed(2);
-  return `$${spent} of $${cap}`;
+  return `${usd(Number(e.spentUsd ?? 0))} of ${usd(Number(e.capUsd ?? 0))}`;
 }
 
 /** Human one-liner for an event, shared by `logs`, `run` output, the TUI activity pane, and the
@@ -32,7 +31,7 @@ export function formatEvent(e: HarnessEvent): string {
       const costUsd = Number(e.costUsd ?? 0);
       const usage =
         (tokens > 0 ? ` · ${compactTokens(tokens)} tok` : "") +
-        (costUsd > 0 ? ` · $${costUsd.toFixed(2)}` : "");
+        (costUsd > 0 ? ` · ${usd(costUsd)}` : "");
       return `${time} ${loop} tick #${e.tick} ${e.result}${extra}${usage}`;
     }
     case "merged":
