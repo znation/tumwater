@@ -10,6 +10,7 @@ import {
   buildRejectedReviewNote,
   buildResumePrompt,
   buildReviewPrompt,
+  buildSummaryRequestPrompt,
   buildTickPrompt,
   readPrinciples,
 } from "../src/prompt.js";
@@ -799,4 +800,15 @@ test("buildCutOffNote counts the failed runs and offers nothing-to-do as the hon
   assert.match(one, /grep first, read in ranges, cap\s+command output/);
   assert.ok(one.includes(NOTHING_TO_DO));
   assert.match(buildCutOffNote(3), /^Your previous 3 runs as this loop/);
+});
+
+
+test("buildSummaryRequestPrompt asks for exactly the closing block and nothing else", () => {
+  // The follow-up for a changed tick whose reply lacked SUMMARY (src/loop.ts requestSummary):
+  // it must name every label the commit-message parser reads and forbid further tool use.
+  const p = buildSummaryRequestPrompt();
+  assert.match(p, /did not include the required closing block/);
+  assert.match(p, /no tool calls, no other text/);
+  for (const label of ["SUMMARY:", "WHY:", "RISK:", "VERIFIED:"]) assert.ok(p.includes(label), label);
+  assert.doesNotMatch(p, /VERDICT/, "must never read as a reviewer run");
 });

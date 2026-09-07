@@ -368,16 +368,64 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
   }
 });
 
-test("worktree changes commit even when pi forgets the summary line", async () => {
+// A shell fragment for fake-pi scripts: create a session file in the --session-dir pi was given,
+// so the harness's resume/continue guard (hasResumableSession) sees a session to continue.
+const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
+
+test("worktree changes commit even when pi forgets the summary line: the subject names the changed files", async () => {
   const repo = await initializedRepo();
+  // Neither the run nor the follow-up turn produces a SUMMARY: the subject is derived from
+  // what changed instead of the bare "dry tick 1" (73 such commits in the first 670).
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done\nprintf '%s\n' '${assistantLine("did it, no summary")}'\necho x > x.txt`,
+    [
+      TOUCH_SESSION,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("did it, no summary")}'`,
+      `echo x > x.txt`,
+    ].join("\n"),
   );
   try {
     const runner = new LoopRunner(repo, "dry", defaultConfig(), "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "changed");
-    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(dry\): dry tick 1/);
+    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /^tumwater\(dry\): Update x\.txt$/);
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(warnings.some((w) => /reply had no SUMMARY line — follow-up gave none; subject derived from the changed files: "Update x\.txt"/.test(w)), JSON.stringify(warnings));
+  } finally {
+    restore();
+  }
+});
+
+test("a missing SUMMARY is recovered with one follow-up turn in the tick's own session", async () => {
+  const repo = await initializedRepo();
+  const argsFile = path.join(tmpdir(), "argv.log");
+  // The authoring run edits and ends without the block (a cut-off final message, say); the
+  // follow-up — recognizable by its prompt — answers with the full block. Every run records
+  // whether it continued a session.
+  const restore = fakePi(
+    [
+      TOUCH_SESSION,
+      `flags=""; for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done; echo "run:$flags" >> "${argsFile}"`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `for a in "$@"; do case "$a" in *"did not include the required closing block"*)`,
+      `  printf '%s\n' '${assistantLine("SUMMARY: Add the x marker file\nWHY: the harness needed a fixture\nRISK: none\nVERIFIED: none")}'`,
+      `  exit 0;; esac; done`,
+      `echo x > x.txt`,
+      `printf '%s\n' '${thinkingOnlyLine("almost done", { output: 5 })}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "dry", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "changed");
+    const message = sh(repo, "git", "log", "-1", "--format=%B");
+    assert.match(message, /^tumwater\(dry\): Add the x marker file\n/);
+    assert.match(message, /WHY: the harness needed a fixture/);
+    const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
+    // Author run (fresh), follow-up (--continue), reviewer (fresh): the follow-up is the only
+    // continuation, so the model sees its own work rather than a cold prompt.
+    assert.equal(runs.filter((r) => r.includes("--continue")).length, 1, JSON.stringify(runs));
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(warnings.some((w) => /recovered it with a follow-up turn/.test(w)), JSON.stringify(warnings));
   } finally {
     restore();
   }

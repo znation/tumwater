@@ -20,6 +20,17 @@ export function extractSummary(finalText: string): string | null {
   return summary === null ? null : truncate(summary, COMMIT_SUMMARY_MAX);
 }
 
+/** The subject for a changed tick whose reply — and whose follow-up request — carried no SUMMARY
+ * line: named from what actually changed, so the log still says what the commit touched instead
+ * of only which loop made it. Up to three repo-relative paths (worktree order), then a count;
+ * capped like a real summary. Falls back to the bare "<role> tick N" only when nothing is known. */
+export function fallbackSummary(files: string[], role: string, tick: number): string {
+  if (files.length === 0) return `${role} tick ${tick}`;
+  const shown = files.slice(0, 3).join(", ");
+  const rest = files.length > 3 ? ` and ${files.length - 3} more` : "";
+  return truncate(`Update ${shown}${rest}`, COMMIT_SUMMARY_MAX);
+}
+
 /** Cap on each commit-body field, so a verbose model cannot bloat every commit. */
 const COMMIT_BODY_FIELD_MAX = 200;
 

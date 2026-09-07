@@ -3,6 +3,7 @@ import { DIRECTOR_ROLE, roleById } from "./roles.js";
 import {
   abortSync,
   branchHead,
+  changedFiles,
   commitAll,
   ensureWorktree,
   git,
@@ -16,6 +17,7 @@ import {
   commitTrailer,
   extractCommitBody,
   extractSummary,
+  fallbackSummary,
   formatCommitBody,
 } from "./commit-message.js";
 import {
@@ -23,6 +25,7 @@ import {
   buildDirectorPrompt,
   buildRejectedReviewNote,
   buildResumePrompt,
+  buildSummaryRequestPrompt,
   buildTickPrompt,
   readPrinciples,
 } from "./prompt.js";
@@ -272,6 +275,39 @@ export class LoopRunner {
     return pi;
   }
 
+  /** Hard caps on the SUMMARY follow-up turn: it should take one short reply on a warm session,
+   * so it never gets the authoring run's hours-long budget. */
+  private static readonly SUMMARY_REQUEST_TIMEOUT_S = 900;
+  private static readonly SUMMARY_REQUEST_QUIET_S = 300;
+
+  /** Ask the tick's own pi session (--continue) for the missing SUMMARY block: one tightly
+   * bounded turn, folded into the tick's usage like every other run. Null when there is no
+   * session to continue (pi never wrote one) — the caller then derives a subject itself. The
+   * run is returned even when it failed so the caller can honor a shutdown abort. */
+  private async requestSummary(wt: string): Promise<PiRunResult | null> {
+    if (!hasResumableSession(sessionDir(this.root, this.role))) return null;
+    const cfg = configForRole(this.config, this.role);
+    const run = await runPi({
+      cwd: wt,
+      prompt: buildSummaryRequestPrompt(),
+      config: {
+        ...cfg,
+        tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, LoopRunner.SUMMARY_REQUEST_TIMEOUT_S),
+        quietTimeoutSeconds:
+          cfg.quietTimeoutSeconds > 0
+            ? Math.min(cfg.quietTimeoutSeconds, LoopRunner.SUMMARY_REQUEST_QUIET_S)
+            : LoopRunner.SUMMARY_REQUEST_QUIET_S,
+      },
+      sessionDir: sessionDir(this.root, this.role),
+      sessionName: `tumwater-${this.role}-${this.state.ticks}-summary`,
+      continueSession: true,
+      rawLogFile: piLogPath(this.root, this.role),
+      signal: this.runSignal(),
+    });
+    this.foldUsage(run);
+    return run;
+  }
+
   /** Run the adversarial review gate over everything ahead of main in `wt` (see
    * src/review.ts for exemption, verdict parsing, and failure policy). `commitBody` is the
    * author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff.
@@ -498,10 +534,30 @@ export class LoopRunner {
       return { result: "no_change", cutOff: diagnosis.cutOff || undefined };
     }
 
-    const summary = extractSummary(pi.finalText) ?? `${this.role} tick ${s.ticks}`;
-    // The commit body is the author's own explanation (WHY/RISK/VERIFIED, capped per field);
-    // null or partial when the reply was non-compliant — subject + trailer still stand.
-    const body = extractCommitBody(pi.finalText);
+    // The commit subject and body come from the reply's closing block. A run that changed files
+    // without one — a cut-off final message, or plain non-compliance — gets one bounded follow-up
+    // turn in its own session to produce it (the session still holds everything the run did);
+    // only if that too yields nothing is the subject derived from the changed paths.
+    let summary = extractSummary(pi.finalText);
+    let body = extractCommitBody(pi.finalText);
+    if (summary === null) {
+      const followUp = await this.requestSummary(wt);
+      if (followUp?.aborted) return this.finishAbortedTick(userPrompt, wt);
+      if (followUp) {
+        summary = extractSummary(followUp.finalText);
+        body = body ?? extractCommitBody(followUp.finalText);
+      }
+      if (summary === null) summary = fallbackSummary(await changedFiles(wt), this.role, s.ticks);
+      logEvent(this.root, {
+        loop: this.role,
+        type: "warning",
+        message:
+          `reply had no SUMMARY line — ` +
+          (followUp && extractSummary(followUp.finalText) !== null
+            ? "recovered it with a follow-up turn"
+            : `follow-up gave none; subject derived from the changed files: "${summary}"`),
+      });
+    }
 
     // Friction as a signal (plans/refusal-and-thrash.md): a changed tick that burned more than
     // thrashTurns turns or thrashMinutes of wall clock is flagged high-friction — difficulty

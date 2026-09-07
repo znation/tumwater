@@ -205,6 +205,21 @@ ${CONTEXT_BUDGET_RULE}
 ${SUMMARY_RULE}`;
 }
 
+/** The one-turn follow-up sent into a tick's OWN session (--continue) when the run changed files
+ * but its reply carried no SUMMARY line — 73 of the first 670 commits landed as "<role> tick N"
+ * because of that, most of them the largest diffs in the repo. The session still holds everything
+ * the run did, so one short reply recovers the subject and body the commit deserves; the caller
+ * bounds the run tightly and falls back to a diff-derived subject if this too yields nothing. */
+export function buildSummaryRequestPrompt(): string {
+  return `Your run changed files in the worktree, but your final reply
+did not include the required closing block, so the harness cannot describe the commit it is about
+to make. Reply now with ONLY that block — no tool calls, no other text, one line each:
+  SUMMARY: <imperative one-line description of the change, at most 72 characters>
+  WHY: <why the change was made — one or two sentences>
+  RISK: <what could break and where to look if it does>
+  VERIFIED: <what you actually ran and observed — write none when nothing was run>`;
+}
+
 /** The note injected into a role's next FRESH tick prompt after its previous run(s) were cut
  * off at the context ceiling without landing anything (the loop gave up resuming — see
  * state.ts's CUT_OFF_RESUME_LIMIT — or a cut-off director prompt is re-running). The only
