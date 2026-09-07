@@ -7,7 +7,15 @@ import { logEvent } from "../src/events.js";
 import { submitPrompt } from "../src/inbox.js";
 import { initProject } from "../src/init.js";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { applyKey, backlogLines, entryBodyLines, moveEntrySelection, renderInputView, runTui } from "../src/tui.js";
+import {
+  applyKey,
+  backlogLines,
+  entryBodyWindow,
+  moveEntrySelection,
+  renderInputView,
+  runTui,
+  stepEntryScroll,
+} from "../src/tui.js";
 import { makeRepo } from "./util.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
@@ -148,13 +156,51 @@ test("moveEntrySelection with no entries stays in list mode", () => {
   assert.equal(moveEntrySelection(0, 5, "down"), null); // a stale selection also clears
 });
 
-test("entryBodyLines clips each line to the width and keeps the head within budget", () => {
+test("entryBodyWindow at offset zero clips each line and keeps the head within budget", () => {
   const body = "a very long first line that will not fit\nsecond line\nthird line";
-  assert.deepEqual(entryBodyLines(body, 2, 10), ["a very lo…", "second li…"]);
-  // Lines that fit are untouched; the budget keeps the HEAD (a plan's goal comes first).
-  assert.deepEqual(entryBodyLines("short\nalso short", 5, 80), ["short", "also short"]);
-  // A bare heading has an empty body: one self-explanatory placeholder line.
-  assert.deepEqual(entryBodyLines("", 3, 100), ["(no details for this entry)"]);
+  assert.deepEqual(entryBodyWindow(body, 0, 2, 10), { lines: ["a very lo…", "second li…"], total: 3 });
+  // Lines that fit are untouched; the head window is unchanged from today's entryBodyLines.
+  assert.deepEqual(entryBodyWindow("short\nalso short", 0, 5, 80), { lines: ["short", "also short"], total: 2 });
+  // A bare heading has an empty body: one self-explanatory placeholder line, zero total
+  // (so the scroll affordance never appears for it).
+  assert.deepEqual(entryBodyWindow("", 0, 3, 100), { lines: ["(no details for this entry)"], total: 0 });
+});
+
+test("entryBodyWindow pages through the middle and tail of a long body", () => {
+  const body = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n");
+  // Middle window: lines 3-5 (offset 2, budget 3).
+  assert.deepEqual(entryBodyWindow(body, 2, 3, 80), { lines: ["line 3", "line 4", "line 5"], total: 10 });
+  // Tail window: the last three lines.
+  assert.deepEqual(entryBodyWindow(body, 7, 3, 80), { lines: ["line 8", "line 9", "line 10"], total: 10 });
+});
+
+test("entryBodyWindow clamps an offset past either end (a resize or budget shrink cannot strand it)", () => {
+  const body = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n");
+  // An offset far beyond the tail clamps to the last possible window.
+  assert.deepEqual(entryBodyWindow(body, 99, 3, 80), { lines: ["line 8", "line 9", "line 10"], total: 10 });
+  // A negative offset clamps to the head.
+  assert.deepEqual(entryBodyWindow(body, -5, 3, 80), { lines: ["line 1", "line 2", "line 3"], total: 10 });
+});
+
+test("stepEntryScroll pages down to the tail and back up to the head, clamped at both ends", () => {
+  // Ten lines, budget three → maxOffset 7. From the head each PgDn advances one page…
+  assert.equal(stepEntryScroll(0, 10, 3, "down"), 3);
+  assert.equal(stepEntryScroll(3, 10, 3, "down"), 6);
+  // …until it clamps at the tail (offset 7 shows lines 8-10) and stays put.
+  assert.equal(stepEntryScroll(6, 10, 3, "down"), 7);
+  assert.equal(stepEntryScroll(7, 10, 3, "down"), 7);
+  // PgUp mirrors: back up one page per press, clamped at the head.
+  assert.equal(stepEntryScroll(7, 10, 3, "up"), 4);
+  assert.equal(stepEntryScroll(4, 10, 3, "up"), 1);
+  assert.equal(stepEntryScroll(1, 10, 3, "up"), 0);
+  assert.equal(stepEntryScroll(0, 10, 3, "up"), 0);
+});
+
+test("stepEntryScroll is a no-op when the body fits its budget", () => {
+  // A single window: every step lands on (and stays at) the head.
+  assert.equal(stepEntryScroll(0, 3, 5, "down"), 0);
+  assert.equal(stepEntryScroll(2, 3, 5, "up"), 0); // even a stale offset resets to the head
+  assert.equal(stepEntryScroll(9, 0, 4, "down"), 0); // an empty body has no window at all
 });
 
 /** A fake-TTY harness around runTui: no real terminal is involved. The isTTY flags are

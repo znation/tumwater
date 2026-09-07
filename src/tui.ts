@@ -102,13 +102,42 @@ export function moveEntrySelection(
   return dir === "down" ? (selected + 1) % count : (selected - 1 + count) % count;
 }
 
-/** The body lines of one backlog entry for the TUI pane: each line clipped to `width` and
- * capped at `budget` lines keeping the HEAD — a plan's goal comes first, like the list view.
- * An empty body (a bare heading) renders a single self-explanatory placeholder. Pure, so it
- * is unit-testable without a TTY. */
-export function entryBodyLines(body: string, budget: number, width: number): string[] {
-  if (!body) return ["(no details for this entry)"];
-  return body.split("\n").map((l) => clipToWidth(l, width)).slice(0, Math.max(1, budget));
+/** The visible window of one backlog entry's body for the TUI pane: lines `offset` through
+ * `offset + budget`, each clipped to `width`. At offset 0 this is today's head-keeping view —
+ * a plan's goal comes first, like the list view. The offset is clamped at render time so a
+ * terminal resize or a queued-prompt budget shrink cannot strand the window past either end.
+ * Returns the clipped lines plus the body's total line count (so the caller can decide the
+ * scroll affordance without re-splitting). An empty body (a bare heading) renders a single
+ * self-explanatory placeholder and reports zero lines. Pure, so it is unit-testable without
+ * a TTY. */
+export function entryBodyWindow(
+  body: string,
+  offset: number,
+  budget: number,
+  width: number,
+): { lines: string[]; total: number } {
+  if (!body) return { lines: ["(no details for this entry)"], total: 0 };
+  const all = body.split("\n");
+  const start = Math.max(0, Math.min(offset, Math.max(0, all.length - budget)));
+  return {
+    lines: all.slice(start, start + Math.max(1, budget)).map((l) => clipToWidth(l, width)),
+    total: all.length,
+  };
+}
+
+/** Step the within-body scroll offset one page in `dir` (PgDn = "down", PgUp = "up"),
+ * clamped to `[0, max(0, totalLines − budget)]`. A body that fits its budget has a single
+ * window — every step is a no-op at the head. Pure, so it is unit-testable without a TTY. */
+export function stepEntryScroll(
+  offset: number,
+  totalLines: number,
+  budget: number,
+  dir: "up" | "down",
+): number {
+  const maxOffset = Math.max(0, totalLines - budget);
+  if (maxOffset === 0) return 0;
+  const next = dir === "down" ? offset + budget : offset - budget;
+  return Math.max(0, Math.min(maxOffset, next));
 }
 
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
@@ -129,7 +158,22 @@ export async function runTui(root: string): Promise<void> {
   // entry shown in full — plans first, then bugs, then questions. Cleared on every Ctrl+T,
   // so cycling back into the view always starts at today's heading list.
   let selectedEntry: number | null = null;
+  // The within-body scroll offset (line index of the window head, 0 = head) for the selected
+  // entry's body — PgDn/PgUp in project-status entry mode. Reset whenever the selection
+  // changes or clears, so every newly opened entry starts at its head.
+  let entryScroll = 0;
+  // The activity pane's current line budget, refreshed by every render so keypress handlers
+  // can page within it without re-deriving the height math.
+  let eventBudget = 0;
   let roleIds: string[] = [];
+
+  // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
+  // shared by render and the keypress handlers so stale-selection clamping cannot drift.
+  const flatEntries = (): Array<{ label: string } & BacklogEntry> => [
+    ...plannedPlanEntries(root).map((e) => ({ label: "plan", ...e })),
+    ...openBugEntries(root).map((e) => ({ label: "bug", ...e })),
+    ...openQuestionEntries(root).map((e) => ({ label: "question", ...e })),
+  ];
 
   // Every rendered line is clipped to the terminal width (clipToWidth), so one logical
   // line is always one visual line and the height budget below is exact — nothing wraps,
@@ -150,7 +194,7 @@ export async function runTui(root: string): Promise<void> {
     // activity pane: what will run next, in execution order. Each line consumes exactly
     // one line of the budget, like the questions nudge above it.
     const queued = snap.inboxPrompts;
-    const eventBudget = Math.max(3, rows - statusLines - 6 - (hasQuestions ? 1 : 0) - queued.length);
+    eventBudget = Math.max(3, rows - statusLines - 6 - (hasQuestions ? 1 : 0) - queued.length);
     // The pane occupies the same slot as recent activity: one header line plus at most
     // eventBudget clipped lines, so the height-budget math is unchanged either way.
     let header: string;
@@ -183,11 +227,7 @@ export async function runTui(root: string): Promise<void> {
         // Entry browsing: the selected entry's full body under a header naming its section
         // and title. A stale selection (an entry removed from the file since the last render)
         // clamps to the last remaining entry; with no entries at all it falls back to list mode.
-        const flat: Array<{ label: string } & BacklogEntry> = [
-          ...planEntries.map((e) => ({ label: "plan", ...e })),
-          ...bugEntries.map((e) => ({ label: "bug", ...e })),
-          ...questionEntries.map((e) => ({ label: "question", ...e })),
-        ];
+        const flat = flatEntries();
         const sel = flat.length > 0 ? Math.min(selectedEntry, flat.length - 1) : null;
         if (sel === null) {
           header = `${BOLD}${clipToWidth("project status — Ctrl+T to cycle", width)}${RESET}`;
@@ -196,8 +236,12 @@ export async function runTui(root: string): Promise<void> {
             .slice(0, eventBudget);
         } else {
           const e = flat[sel]!;
-          header = `${BOLD}${clipToWidth(`${e.label}: ${e.title} — ↑↓ browse · Ctrl+T cycle`, width)}${RESET}`;
-          body = entryBodyLines(e.body, eventBudget, width);
+          const win = entryBodyWindow(e.body, entryScroll, eventBudget, width);
+          // The scroll affordance appears only while the body overflows the pane — short
+          // entries keep today's exact header.
+          const browse = win.total > eventBudget ? "↑↓ browse · PgUp/PgDn scroll" : "↑↓ browse";
+          header = `${BOLD}${clipToWidth(`${e.label}: ${e.title} — ${browse} · Ctrl+T cycle`, width)}${RESET}`;
+          body = win.lines;
         }
       }
     } else {
@@ -243,16 +287,35 @@ export async function runTui(root: string): Promise<void> {
       }
       if (key.ctrl && key.name === "t") {
         view = (view + 1) % (roleIds.length + 2); // events → each loop's transcript → project status → events
-        selectedEntry = null; // leaving a view drops any entry selection
+        selectedEntry = null; // leaving a view drops any entry selection…
+        entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
         render();
         return;
       }
       if (view === roleIds.length + 1 && (key.name === "up" || key.name === "down")) {
         // In the project-status pane, up/down browse entries in full instead of editing the
         // prompt; every other view keeps today's behavior (arrows are ignored by applyKey).
-        const count =
-          plannedPlanEntries(root).length + openBugEntries(root).length + openQuestionEntries(root).length;
+        const count = flatEntries().length;
         selectedEntry = moveEntrySelection(count, selectedEntry, key.name);
+        entryScroll = 0; // a newly opened entry starts at its body's head
+        render();
+        return;
+      }
+      if (view === roleIds.length + 1 && (key.name === "pageup" || key.name === "pagedown")) {
+        // Within-body scroll in project-status ENTRY mode: PgDn/PgUp page the selected entry's
+        // body, clamped at both ends. No-op in list mode and for bodies that fit — every other
+        // view ignores these keys as today (applyKey drops them).
+        if (selectedEntry !== null) {
+          const flat = flatEntries();
+          const sel = flat.length > 0 ? Math.min(selectedEntry, flat.length - 1) : null;
+          const body = sel === null ? "" : flat[sel]!.body;
+          entryScroll = stepEntryScroll(
+            entryScroll,
+            body ? body.split("\n").length : 0,
+            eventBudget,
+            key.name === "pagedown" ? "down" : "up",
+          );
+        }
         render();
         return;
       }
