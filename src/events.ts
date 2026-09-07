@@ -18,8 +18,9 @@ export function subscribeEvents(listener: EventListener): () => void {
 const EVENTS_MAX_BYTES = 16 * 1024 * 1024;
 
 /** An event to log. `logEvent` stamps `ts`; event-specific extra fields (tick, summary, …)
- * are allowed via the index signature. */
-interface HarnessEventInput {
+ * are allowed via the index signature. Exported for modules that hand events to an injected
+ * logger instead of calling logEvent directly (redeploy.ts). */
+export interface HarnessEventInput {
   loop: string;
   type: HarnessEvent["type"];
   [key: string]: unknown;

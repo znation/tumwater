@@ -96,6 +96,9 @@ export function statusPayload(root: string): object {
   return {
     running: snap.running,
     pid: snap.pid,
+    // The running harness's build stamp and staleness (src/build-info.ts); null when no
+    // harness runs or its dist carries no stamp. The page derives its header badge from it.
+    build: snap.build,
     inbox: snap.inbox,
     // Previews of the queued director prompts in execution order (truncated server-side —
     // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.

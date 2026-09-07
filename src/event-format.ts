@@ -42,7 +42,7 @@ export function formatEvent(e: HarnessEvent): string {
     case "wake":
       return `${time} ${loop} woke (${e.reason})`;
     case "orchestrator_start":
-      return `${time} ${loop} orchestrator started (pid ${e.pid})`;
+      return `${time} ${loop} orchestrator started (pid ${e.pid}${e.build ? `, build ${shortSha(e.build)}` : ""})`;
     case "orchestrator_stop":
       return `${time} ${loop} orchestrator stopped`;
     case "prompt_enqueued":
@@ -88,6 +88,16 @@ export function formatEvent(e: HarnessEvent): string {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
       return `${time} ${loop} sessionRetentionDays changed: ${e.from} → ${e.to}`;
     }
+    case "build_stale":
+      // Self-hosting fleets only (src/redeploy.ts): the code main describes is not the code
+      // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.
+      return `${time} ${loop} build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${e.aheadCommits} commit(s) ahead in src/`;
+    case "restart_pending":
+      return `${time} ${loop} restart pending — main ${shortSha(e.head)} is green; compiling and draining in-flight ticks (no new ticks start)`;
+    case "restart":
+      return `${time} ${loop} restarting onto build ${shortSha(e.to)} (drained ${Math.round(Number(e.drainedMs ?? 0) / 60_000)}m${
+        Number(e.abortedTicks ?? 0) > 0 ? `, ${e.abortedTicks} tick(s) will resume on the new build` : ""
+      })`;
     case "resume":
       return `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
     case "warning":

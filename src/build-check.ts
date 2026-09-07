@@ -230,6 +230,13 @@ export function noteGreenBaseline(sha: string): void {
   baselineCache.set(sha, { status: "green", sha });
 }
 
+/** The cached verdict for `sha`, or null when this process has none — redeploy.ts consults it
+ * before deciding whether main needs a fresh check: the review gate seeds a green entry for every
+ * SHA it merged (noteGreenBaseline), so the common case never re-runs the suite. */
+export function knownBaseline(sha: string): MainBaseline | null {
+  return baselineCache.get(sha) ?? null;
+}
+
 /** Verify main's own build/test suite at `wt`'s HEAD — which must be pristine main (the caller
  * is the fresh-tick path right after resetWorktreeToMain; a dirty or ahead worktree would
  * measure the wrong thing). Cache hit returns immediately; on miss runs detectBuildCheck +

@@ -32,6 +32,9 @@ export function defaultConfig(): TumwaterConfig {
     thrashTurns: 40,
     thrashMinutes: 60,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },
+    // A self-hosting fleet redeploys itself onto a green main (src/redeploy.ts): the alternative
+    // — a process that never reloads its own code — ran ten days stale in dogfood.
+    autoRestart: true,
     review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
     roles,
   };
@@ -75,6 +78,7 @@ const TOP_LEVEL_KEYS = [
   "thrashTurns",
   "thrashMinutes",
   "idleBackoff",
+  "autoRestart",
   "review",
   "roles",
 ];
@@ -152,6 +156,9 @@ export function validateConfig(raw: unknown): void {
   checkNumber(r, "", "maxDailyCostUsd", (n) => n >= 0, "a number of 0 or more (0 disables)");
   checkNumber(r, "", "thrashTurns", (n) => n >= 0, "a number of 0 or more");
   checkNumber(r, "", "thrashMinutes", (n) => n >= 0, "a number of 0 or more");
+
+  if ("autoRestart" in r && typeof r.autoRestart !== "boolean")
+    problems.push(`autoRestart must be true or false (got ${show(r.autoRestart)})`);
 
   if ("idleBackoff" in r) {
     const b = r.idleBackoff;

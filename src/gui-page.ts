@@ -95,8 +95,15 @@ export const GUI_PAGE = `<!doctype html>
       const r = await fetch("/api/status");
       const d = await r.json();
       const qn = (d.questions || []).length;
+      // The build badge mirrors status-render's buildBadge: which commit the running harness
+      // was compiled from and, when main's src has moved past it, how far (a stale fleet runs
+      // code main no longer describes).
+      const build = d.build
+        ? ", build " + String(d.build.sha).slice(0, 8) +
+          (d.build.stale ? " — STALE: main +" + (d.build.aheadCommits || 0) + " commit(s) since" : "")
+        : "";
       document.getElementById("header").textContent =
-        (d.running ? "running (pid " + d.pid + ")" : "orchestrator not running") +
+        (d.running ? "running (pid " + d.pid + build + ")" : "orchestrator not running") +
         (d.inbox ? " · inbox: " + d.inbox : "") +
         (qn ? " · questions: " + qn : "") +
         // The daily cost budget badge mirrors the TUI's header line; standing information

@@ -23,9 +23,11 @@ import {
   queuedPrompts,
   submitPrompt,
 } from "./inbox.js";
-import { readEvents, subscribeEvents } from "./events.js";
+import { logEvent, readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
+import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
+import { spawnRunChild, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { renderDoctor, runDoctor } from "./doctor.js";
 import { ensureParentDir, findOnPath, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
@@ -104,6 +106,10 @@ async function cmdRun(root: string): Promise<void> {
     fail("pi not found on PATH — install it (https://github.com/badlogic/pi-mono) or add its bin directory to your PATH");
   }
   if (orchestratorAlive(root)) fail("an orchestrator is already running for this repo");
+  if (!process.env[SUPERVISED_ENV]) {
+    await superviseRunCommand();
+    return;
+  }
   const config = loadConfig(root);
   const mainBranch = await resolveMainBranch(root);
   const controller = new AbortController();
@@ -117,15 +123,49 @@ async function cmdRun(root: string): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   const enabled = enabledRoleIds(config);
-  process.stdout.write(`tumwater running on branch ${mainBranch} — Ctrl+C to stop\n`);
+  const redeploy = await createRedeployer(root, (e) => logEvent(root, e));
+  const build = redeploy ? ` · build ${redeploy.build.sha.slice(0, 8)}` : "";
+  process.stdout.write(`tumwater running on branch ${mainBranch}${build} — Ctrl+C to stop\n`);
   process.stdout.write(`loops: ${enabled.join(", ")}\n`);
   process.stdout.write("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n\n");
   const unsubscribe = subscribeEvents((e) => process.stdout.write(formatEvent(e) + "\n"));
+  let exit;
   try {
-    await runOrchestrator({ root, config, mainBranch, signal: controller.signal });
+    exit = await runOrchestrator({ root, config, mainBranch, signal: controller.signal, redeploy });
   } finally {
     unsubscribe();
   }
+  // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
+  // which respawns this same script — now the new code — as the next generation.
+  if (exit.restart) process.exit(RESTART_EXIT_CODE);
+}
+
+/** The supervisor half of `tumwater run` (src/supervisor.ts): spawn the orchestrator as a child
+ * generation and respawn it whenever it exits RESTART_EXIT_CODE after redeploying itself. Ctrl+C
+ * reaches the child directly from the terminal, so only SIGTERM is forwarded; the supervisor's
+ * own exit code is whatever the last generation's was. */
+async function superviseRunCommand(): Promise<void> {
+  const controller = new AbortController();
+  let stopping = false;
+  process.on("SIGINT", () => {
+    stopping = true; // The child got the same SIGINT from the terminal and stops on its own.
+  });
+  process.on("SIGTERM", () => {
+    stopping = true;
+    controller.abort(); // Not delivered to the child by the kernel — forward it.
+  });
+  const code = await superviseRun(
+    {
+      spawnChild: spawnRunChild,
+      stopping: () => stopping,
+      onRespawn: (generation) =>
+        process.stdout.write(`\nrestarting on the new build (generation ${generation})\n\n`),
+      onCrashLoop: () =>
+        process.stderr.write("tumwater: the harness restarted itself too many times in a minute — giving up\n"),
+    },
+    controller.signal,
+  );
+  process.exit(code);
 }
 
 async function cmdLogs(root: string, args: string[]): Promise<void> {

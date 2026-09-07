@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import type { TumwaterConfig, LoopState, TickOutcome } from "./types.js";
+import type { BuildStatus } from "./build-info.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { ensureParentDir } from "./files.js";
 import { readJsonFile } from "./json-files.js";
@@ -204,6 +205,10 @@ export interface OrchestratorInfo {
   pid: number;
   startedAt: number;
   roles: string[];
+  /** The running build's stamp and staleness (src/build-info.ts); absent when dist/ carries no
+   * stamp. Written at start and refreshed by the orchestrator whenever main moves, so observers
+   * read one file instead of running git themselves. */
+  build?: BuildStatus;
 }
 
 /** Read the running orchestrator's info file; null when it is missing or unreadable.

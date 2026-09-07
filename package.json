@@ -11,7 +11,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && node scripts/stamp-build.mjs",
     "test": "npm run build && node --test 'dist/test/*.test.js'",
     "tumwater": "node dist/src/cli.js"
   },

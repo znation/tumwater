@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { enabledRoleIds, loadConfig } from "./config.js";
 import { detectBuildCheck } from "./build-check.js";
+import { type BuildInfo, buildStaleness, isSelfHosted, readBuildInfo } from "./build-info.js";
+import { STALE_INPUTS_LABEL } from "./redeploy.js";
 import { findOnPath } from "./files.js";
-import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
+import { GIT_MISSING_MESSAGE, currentBranch, gitTry, hasCommits, isGitRepo } from "./git.js";
 import { classifyLock } from "./lock.js";
 import { STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./state.js";
@@ -135,6 +137,37 @@ export function checkBuildCheck(root: string): CheckOutcome {
   return { level: "ok", detail: where ? `npm ${check.script} in ${where}` : `npm ${check.script}` };
 }
 
+/** Build provenance — is the harness about to run (this process's dist/) the code main
+ * describes? Only meaningful when this project IS the harness (isSelfHosted); elsewhere the
+ * stamp is reported as-is. A stale build is a warning, not a failure: the fleet runs, just not
+ * the newest code, and auto-restart (or a rebuild + restart) resolves it. `info` and `head`
+ * are injectable so tests can exercise every branch without compiling anything. */
+export async function checkBuild(
+  root: string,
+  info: BuildInfo | null = readBuildInfo(),
+  head: string | null | undefined = undefined,
+): Promise<CheckOutcome> {
+  if (!info) return { level: "ok", detail: "no build stamp — dist/ compiled without `npm run build`" };
+  const sha = info.sha.slice(0, 8);
+  if (!(await isSelfHosted(root, info)))
+    return { level: "ok", detail: `dist/ from ${sha} (this project is not the harness itself)` };
+  const mainHead = head === undefined ? await currentHead(root) : head;
+  if (!mainHead) return { level: "ok", detail: `dist/ from ${sha}` };
+  const stale = await buildStaleness(root, info.sha, mainHead);
+  if (!stale) return { level: "ok", detail: `dist/ from ${sha}` };
+  if (stale.stale)
+    return {
+      level: "warn",
+      detail: `dist/ from ${sha} is stale — main has ${stale.aheadCommits} later commit(s) touching ${STALE_INPUTS_LABEL}; run \`npm run build\` and restart \`tumwater run\` (auto-restart does this for a running fleet)`,
+    };
+  return { level: "ok", detail: `dist/ from ${sha}, matches main` };
+}
+
+/** The primary checkout's HEAD sha, or null when it cannot be resolved (no repo). */
+async function currentHead(root: string): Promise<string | null> {
+  return gitTry(root, "rev-parse", "HEAD");
+}
+
 /** Run every check in order and compose the report. Read-only against .tumwater/ by
  * construction — no check removes or repairs anything (the state-dir probe writes a temp file
  * and deletes it again) — so doctor works identically with or without a running harness. */
@@ -142,7 +175,7 @@ export async function runDoctor(root: string, pathEnv: string = process.env.PATH
   const info = readOrchestratorInfo(root);
   const header =
     orchestratorAlive(root, info) && info
-      ? `tumwater doctor — harness running (pid ${info.pid})`
+      ? `tumwater doctor — harness running (pid ${info.pid}${info.build ? `, build ${info.build.sha.slice(0, 8)}${info.build.stale ? " — STALE" : ""}` : ""})`
       : "tumwater doctor — harness not running";
   const checks: DoctorReport["checks"] = [
     { name: "git binary", ...checkGitBinary(pathEnv) },
@@ -152,6 +185,7 @@ export async function runDoctor(root: string, pathEnv: string = process.env.PATH
     { name: "state dir", ...checkStateDir(root) },
     { name: "merge lock", ...checkMergeLock(root) },
     { name: "build check", ...checkBuildCheck(root) },
+    { name: "build", ...(await checkBuild(root)) },
   ];
   const problems = checks.filter((c) => c.level === "fail").length;
   return { header, checks, verdict: problems === 0 ? "ready to run" : `${problems} problem${problems > 1 ? "s" : ""}` };

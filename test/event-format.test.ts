@@ -369,3 +369,30 @@ test("formatEvent renders a user_aborted tick_end with its result verbatim", () 
     `partial spend must still show on the aborted end line: ${withUsage}`,
   );
 });
+
+test("formatEvent renders the self-redeploy events and the build stamp on orchestrator_start", () => {
+  // Build provenance (src/build-info.ts, src/redeploy.ts): a stale build is the one fact about
+  // the fleet nothing inside it can otherwise see, so its events must name both commits.
+  const start = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_start", pid: 7, build: "abcdef1234567890" } as never);
+  assert.match(start, /orchestrator started \(pid 7, build abcdef12\)/);
+  const bare = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_start", pid: 7 } as never);
+  assert.match(bare, /orchestrator started \(pid 7\)$/, "no stamp: the pre-stamp line, byte for byte");
+
+  const stale = formatEvent({
+    ts: 0, loop: "harness", type: "build_stale", build: "a".repeat(40), head: "b".repeat(40), aheadCommits: 12,
+  } as never);
+  assert.match(stale, /build aaaaaaaa is stale — main bbbbbbbb is 12 commit\(s\) ahead in src\//);
+  assert.doesNotMatch(stale, /warning/, "staleness is a state, not a warning");
+
+  const pending = formatEvent({ ts: 0, loop: "harness", type: "restart_pending", head: "b".repeat(40) } as never);
+  assert.match(pending, /restart pending — main bbbbbbbb is green; compiling and draining/);
+
+  const restart = formatEvent({
+    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), drainedMs: 5 * 60_000, abortedTicks: 2,
+  } as never);
+  assert.match(restart, /restarting onto build bbbbbbbb \(drained 5m, 2 tick\(s\) will resume on the new build\)/);
+  const clean = formatEvent({
+    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), drainedMs: 0, abortedTicks: 0,
+  } as never);
+  assert.match(clean, /\(drained 0m\)$/, "nothing aborted: no resume clause");
+});

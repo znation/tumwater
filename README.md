@@ -37,7 +37,7 @@ locally and keep all project state within the git repo.
 
 <!-- tumwater:status:start -->
 v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
-`status` (`--json`), `doctor` (pre-flight check of git, repo, config, pi, and locks — read-only,
+`status` (`--json`), `doctor` (pre-flight check of git, repo, config, pi, locks, and build — read-only,
 exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` /
 `prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`, `abort --role <id>`
 (kills one loop's in-flight tick; work discarded, the loop keeps running), and `pause` /
@@ -105,6 +105,19 @@ where the work is already committed and the next launch recovers and re-reviews 
 tick instead of resuming the author session. The director is the exception: its interrupted
 user prompt goes back into the inbox and runs fresh.
 
+`npm run build` stamps `dist/build-info.json` with the commit it compiled, and the orchestrator
+records that stamp in its start event and in `.tumwater/state/orchestrator.json`. When the project
+being built IS tumwater (dogfood), the harness compares the stamp against main whenever main
+moves: a `build_stale` event fires the first time main's `src/`, `package.json`, or
+`tsconfig.json` differ from the running code, both dashboards show `STALE: main +N` in the
+header, and `tumwater doctor` warns. With `autoRestart` (default true) the fleet then redeploys
+itself: it verifies main is green (the review gate's pre-check verdict, or one run of the suite in
+a detached `_main` worktree), compiles main into `.tumwater/build/<sha>` with the project's own
+tsc, stops starting new ticks while in-flight ones finish (up to 30 minutes, then they are aborted
+resumably), swaps the compiled tree into `dist/`, and exits so the `tumwater run` supervisor — the
+process you started, which runs the orchestrator as a child — respawns it on the new code. A red
+main or a failed compile leaves the old build running with one warning until main moves again.
+
 The director loop is special: it executes prompts you type into the TUI (or `tumwater prompt`),
 queued in a file-based inbox. It always has priority — a queued prompt starts immediately,
 outside the `maxConcurrent` limit and ahead of every role loop, and queued prompts run back to
@@ -125,7 +138,7 @@ tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N
 tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
 tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)
-tumwater doctor       # pre-flight check: git, repo, config, pi, locks (read-only; exit 0/1)
+tumwater doctor       # pre-flight check: git, repo, config, pi, locks, build (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
 tumwater prompt "prefer no third-party deps"

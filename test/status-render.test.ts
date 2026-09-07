@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { clipToWidth, lastTickCell, loopPhase, renderStatus, workingDetail } from "../src/status-render.js";
+import { clipToWidth, lastTickCell, loopPhase, renderStatus, workingDetail, buildBadge } from "../src/status-render.js";
 import type { StatusSnapshot } from "../src/status.js";
 import { fleetDailyCost, freshLoopState, todayStamp } from "../src/state.js";
 import { piLogPath } from "../src/paths.js";
@@ -31,6 +31,7 @@ function snapshotWith(
     loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial })),
     budget,
     paused,
+    build: null,
   };
 }
 
@@ -718,4 +719,16 @@ test("renderStatus shows paused in idle role loops' state cells ahead of budget 
   assert.doesNotMatch(paused, /budget paused/);
   assert.doesNotMatch(paused, /main red/);
   assert.match(paused, /director\s+waiting for prompts/);
+});
+
+test("the header names the running build and flags a stale one", () => {
+  // Build provenance (src/build-info.ts): the dashboards are where an operator learns the fleet
+  // is running code main no longer describes — the badge must carry the commit and the gap.
+  const fresh = { ...snapshotWith([{ role: "clean" }]), running: true, pid: 4242, build: { sha: "a".repeat(40), builtAt: 1, stale: false, aheadCommits: 0, checkedHead: "b".repeat(40) } };
+  assert.match(renderStatus("/tmp/x", fresh).split("\n")[0]!, /running \(pid 4242, build aaaaaaaa\)/);
+  const stale = { ...fresh, build: { ...fresh.build, stale: true, aheadCommits: 7 } };
+  assert.match(renderStatus("/tmp/x", stale).split("\n")[0]!, /build aaaaaaaa — STALE: main \+7 commit\(s\) since\)/);
+  const unstamped = { ...fresh, build: null };
+  assert.match(renderStatus("/tmp/x", unstamped).split("\n")[0]!, /running \(pid 4242\)/, "no stamp: the pre-stamp header");
+  assert.equal(buildBadge(null), "");
 });

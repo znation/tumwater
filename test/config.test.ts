@@ -416,3 +416,15 @@ test("a broken tumwater.json is not cached: every poll retries and a repair reco
   fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "haiku" }));
   assert.equal(loadConfigCached(dir).config?.model, "haiku"); // repaired — fresh load
 });
+
+
+test("autoRestart defaults on and is validated as a boolean", () => {
+  // Self-redeploy (src/redeploy.ts) is the opinionated default for a self-hosting fleet: the
+  // alternative — a process that never reloads its own code — ran ten days stale in dogfood.
+  assert.equal(defaultConfig().autoRestart, true);
+  assert.throws(
+    () => validateConfig({ autoRestart: "yes" }),
+    /autoRestart must be true or false \(got "yes"\)/,
+  );
+  assert.doesNotThrow(() => validateConfig({ autoRestart: false }));
+});

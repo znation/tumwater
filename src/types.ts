@@ -81,6 +81,10 @@ export interface TumwaterConfig {
   /** Friction threshold in wall-clock minutes, same semantics as thrashTurns. */
   thrashMinutes: number;
   idleBackoff: BackoffConfig;
+  /** Self-redeploy for a self-hosting fleet (src/redeploy.ts): when main's build inputs move past
+   * the running build and main is green, rebuild, drain, and restart onto the new code (default
+   * true). Off, the dashboards still flag the build as stale but nothing restarts. */
+  autoRestart: boolean;
   /** Adversarial pre-merge review gate (see src/review.ts). */
   review: ReviewConfig;
   roles: Record<string, RoleConfig>;
@@ -205,6 +209,9 @@ export interface HarnessEvent {
     | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
+    | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy.ts)
+    | "restart_pending" // main is green and compiling; no new ticks start until the restart lands
+    | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it
     | "warning";
   [key: string]: unknown;
 }

@@ -284,6 +284,28 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   return wt;
 }
 
+/** Ensure a detached worktree at `dir` checked out at `ref` (a branch name or sha), creating or
+ * repairing it like ensureWorktree does for role worktrees, then hard-reset and cleaned so it
+ * holds exactly `ref`'s tree. Used by redeploy.ts as the pristine copy of main it verifies and
+ * compiles — the primary checkout may be dirty or on another branch, a role worktree is never
+ * pristine while its loop works. */
+export async function ensureDetachedWorktree(root: string, dir: string, ref: string): Promise<string> {
+  if (fs.existsSync(dir) && (await gitTry(dir, "rev-parse", "--git-dir")) !== null) {
+    await abortSync(dir);
+    await git(dir, "checkout", "--detach", ref);
+    await git(dir, "reset", "--hard", ref);
+    await git(dir, "clean", "-fd");
+    return dir;
+  }
+  await gitTry(root, "worktree", "prune");
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    await gitTry(root, "worktree", "prune");
+  }
+  await git(root, "worktree", "add", "--detach", dir, ref);
+  return dir;
+}
+
 /** True when no merge and no rebase is in progress in `wt`, checked from the state files
  * git itself leaves behind — MERGE_HEAD for a merge, rebase-merge/ or rebase-apply/ for a
  * rebase — instead of spawning two aborts that can only fail. Returns false ("run the

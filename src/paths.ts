@@ -81,3 +81,21 @@ export function inboxDir(root: string): string {
 export function mergeLockDir(root: string): string {
   return path.join(tumwaterDir(root), "merge.lock");
 }
+
+/** Detached worktree pinned at main's head for the self-redeploy path (redeploy.ts): the green
+ * check and the compile both read exactly the tree main names, never the primary checkout. Named
+ * with a leading underscore like the reviewer session dir so it can never collide with a role. */
+export function mirrorWorktreePath(root: string): string {
+  return path.join(tumwaterDir(root), "worktrees", "_main");
+}
+
+/** Where redeploy stages compiled builds before swapping one into dist/ — under .tumwater/ so a
+ * build in progress never dirties the primary checkout (dist/ is gitignored, a sibling would not be). */
+export function stagingRootDir(root: string): string {
+  return path.join(tumwaterDir(root), "build");
+}
+
+/** One head's staged build (see stagingRootDir). */
+export function stagingDir(root: string, sha: string): string {
+  return path.join(stagingRootDir(root), sha);
+}

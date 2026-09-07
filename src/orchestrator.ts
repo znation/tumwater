@@ -13,6 +13,7 @@ import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { inboxSize } from "./inbox.js";
 import { Semaphore } from "./semaphore.js";
 import { abortRequestPath, orchestratorStatePath, resetRequestPath, sessionsRootDir, STATE_DIR } from "./paths.js";
+import type { Redeployer } from "./redeploy.js";
 
 const POLL_MS = 2000;
 
@@ -46,6 +47,15 @@ interface RunOptions {
   /** Poll interval in ms (default POLL_MS). Tests pass a short value so multi-cycle behavior
    * resolves quickly; production callers omit it and keep the real cadence. */
   pollMs?: number;
+  /** Self-redeploy policy (src/redeploy.ts) for a self-hosting fleet; null/absent when the
+   * running dist carries no build stamp. Consulted every poll with main's head. */
+  redeploy?: Redeployer | null;
+}
+
+/** How runOrchestrator ended: `restart` means dist/ now holds a newer build and the caller should
+ * exit RESTART_EXIT_CODE so the supervisor respawns onto it; otherwise the stop signal fired. */
+export interface OrchestratorExit {
+  restart: boolean;
 }
 
 /** Should this loop tick now? Exported for tests. */
@@ -162,20 +172,36 @@ function consumeAbortRequests(root: string, runners: LoopRunner[]): void {
   }
 }
 
-/** Run all enabled loops until the signal aborts. */
-export async function runOrchestrator(opts: RunOptions): Promise<void> {
-  const { root, config, mainBranch, signal } = opts;
+/** Run all enabled loops until the signal aborts — or until a pending self-redeploy has drained
+ * the fleet and swapped the new build into dist/ (then `restart` is true). */
+export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExit> {
+  const { root, config, mainBranch, signal: externalSignal } = opts;
   const pollMs = opts.pollMs ?? POLL_MS;
   const enabled = enabledRoleIds(config);
   if (enabled.length === 0) throw new Error("no roles enabled in tumwater.json");
+
+  // Runners and sleeps watch a combined signal: the caller's (Ctrl+C/SIGTERM) plus an internal
+  // one the redeploy path fires when a drain runs out of patience — in-flight ticks then end as
+  // `aborted` (resumable on the new build), exactly like a shutdown.
+  const internalStop = new AbortController();
+  const signal = AbortSignal.any([externalSignal, internalStop.signal]);
+  const redeploy = opts.redeploy ?? null;
+  let restart = false;
 
   let runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
 
   const infoFile = orchestratorStatePath(root);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
+  if (redeploy) info.build = redeploy.status();
   writeJsonFile(infoFile, info);
-  logEvent(root, { loop: "harness", type: "orchestrator_start", pid: process.pid, roles: enabled });
+  logEvent(root, {
+    loop: "harness",
+    type: "orchestrator_start",
+    pid: process.pid,
+    roles: enabled,
+    ...(redeploy ? { build: redeploy.build.sha } : {}),
+  });
 
   // 0 disables pruning — the same convention as quietTimeoutSeconds. (With a positive N,
   // pruneOldFiles deletes everything older than N days; JSON has no "keep forever" value, so
@@ -312,8 +338,30 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
         prevUserPaused = userPaused;
       }
 
+      // Self-redeploy (src/redeploy.ts): with main's head in hand, let the policy observe it.
+      // `hold` starts no new ticks at all — director included; a restart lands within minutes
+      // and its prompt waits in the inbox — while the green check/compile/drain run in the
+      // background. `restart` means dist/ already holds the new build: stop scheduling, abort
+      // whatever the drain gave up waiting for (it resumes on the new build), and return.
+      let holdForRestart = false;
+      if (redeploy) {
+        const action = await redeploy.poll(mainHead, inFlight.size, (runners[0]?.config ?? config).autoRestart, now);
+        const build = redeploy.status();
+        if (JSON.stringify(build) !== JSON.stringify(info.build)) {
+          info.build = build;
+          writeJsonFile(infoFile, info);
+        }
+        if (action === "restart") {
+          restart = true;
+          if (inFlight.size > 0) internalStop.abort();
+          break;
+        }
+        holdForRestart = action === "hold";
+      }
+
       const reasons = new Map<LoopRunner, string | undefined>();
       for (const runner of runners) {
+        if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
         if ((budgetPausedNow || userPaused) && runner.role !== DIRECTOR_ROLE)
           continue; // no new role ticks while either gate holds
         const { run, reason } = isEligible(runner, now, mainHead, inboxCount);
@@ -349,4 +397,5 @@ export async function runOrchestrator(opts: RunOptions): Promise<void> {
     logEvent(root, { loop: "harness", type: "orchestrator_stop" });
     removeQuiet(infoFile);
   }
+  return { restart };
 }

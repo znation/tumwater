@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  checkBuild,
   checkBuildCheck,
   checkGitBinary,
   checkInit,
@@ -197,7 +198,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["git binary", "repo", "init", "pi binary", "state dir", "merge lock", "build check"],
+    ["git binary", "repo", "init", "pi binary", "state dir", "merge lock", "build check", "build"],
   );
   for (const c of report.checks) assert.equal(c.level, "ok", `${c.name}: ${c.detail}`);
   assert.equal(report.verdict, "ready to run");
@@ -252,4 +253,47 @@ test("renderDoctor prints one padded line per check between the header and the v
       "1 problem",
     ].join("\n"),
   );
+});
+
+// Build provenance check (src/build-info.ts): does dist/ hold the code main describes? The
+// stamp and head are injected so every branch runs without compiling anything.
+test("checkBuild reports an unstamped dist, a foreign harness, a matching build, and a stale one", async () => {
+  const repo = makeRepo();
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const here = { sha: head, builtAt: 1, root: path.resolve(repo) };
+
+  const unstamped = await checkBuild(repo, null);
+  assert.equal(unstamped.level, "ok");
+  assert.match(unstamped.detail, /no build stamp/);
+
+  // A tumwater installed elsewhere and pointed at this project: its build is never stale here.
+  const foreign = await checkBuild(repo, { ...here, root: "/somewhere/else" });
+  assert.equal(foreign.level, "ok");
+  assert.match(foreign.detail, /not the harness itself/);
+
+  const fresh = await checkBuild(repo, here, head);
+  assert.equal(fresh.level, "ok");
+  assert.match(fresh.detail, /matches main/);
+
+  // Two commits later, one touching src/: stale — a warning (the fleet runs, just old code), never a fail.
+  fs.writeFileSync(path.join(repo, "README.md"), "docs\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-q", "-m", "docs");
+  fs.mkdirSync(path.join(repo, "src"));
+  fs.writeFileSync(path.join(repo, "src/x.ts"), "export {};\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-q", "-m", "src");
+  const stale = await checkBuild(repo, here); // head resolved from the repo itself
+  assert.equal(stale.level, "warn");
+  assert.match(stale.detail, /is stale — main has 2 later commit\(s\) touching src, package\.json, tsconfig\.json/);
+  assert.match(stale.detail, /npm run build/);
+});
+
+test("runDoctor includes the build check and never fails the exit on a stale build", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "tumwater.json"), "{}");
+  const report = await runDoctor(repo, fakeBins("git", "pi"));
+  const build = report.checks.find((c) => c.name === "build");
+  assert.ok(build, "the build check is part of the report");
+  assert.notEqual(build.level, "fail");
 });

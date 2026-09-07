@@ -1,4 +1,5 @@
 import type { LoopState, TumwaterConfig } from "./types.js";
+import type { BuildStatus } from "./build-info.js";
 import { openQuestions } from "./backlog.js";
 import { defaultConfig, enabledRoleIds, loadConfigCached } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
@@ -35,6 +36,11 @@ export interface StatusSnapshot {
    * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
    * because a 2-second-stale pause flag would mislead an operator mid-resume. */
   paused: boolean;
+  /** The running harness's build (src/build-info.ts) as the orchestrator published it: the stamp
+   * plus whether main's build inputs have moved past it. Null when no harness is running or its
+   * dist carries no stamp. Both dashboards render it in the header — a stale build is the one
+   * fact about the fleet that nothing inside the fleet can otherwise see. */
+  build: BuildStatus | null;
 }
 
 // The last config each root loaded successfully. snapshot is polled every second by the
@@ -93,9 +99,11 @@ export function snapshot(root: string): StatusSnapshot {
   // each file once): the count is the prompts' length, so a prompt enqueued or dequeued
   // mid-snapshot can never make the header badge disagree with its numbered previews.
   const inboxPrompts = queuedPrompts(root).map(promptPreview);
+  const running = orchestratorAlive(root, info);
   return {
-    running: orchestratorAlive(root, info),
+    running,
     pid: info?.pid,
+    build: running && info?.build ? info.build : null,
     inbox: inboxPrompts.length,
     inboxPrompts,
     questions: openQuestions(root).length,

@@ -9,7 +9,7 @@ import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import type { TumwaterConfig } from "../src/types.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
-import { readEvents } from "../src/events.js";
+import { logEvent, readEvents } from "../src/events.js";
 import {
   freshLoopState,
   loadLoopState,
@@ -21,6 +21,7 @@ import {
   zeroCounters,
 } from "../src/state.js";
 import { abortRequestPath, pausedPath, resetRequestPath, worktreePath } from "../src/paths.js";
+import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 /** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
@@ -514,7 +515,7 @@ function fastConfig(roles: string[], model?: string): TumwaterConfig {
 function startLiveOrchestrator(
   repo: string,
   pollMs?: number,
-): { done: Promise<void>; stop: () => Promise<void> } {
+): { done: Promise<unknown>; stop: () => Promise<void> } {
   const controller = new AbortController();
   const done = runOrchestrator({
     root: repo,
@@ -1275,5 +1276,159 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
   } finally {
     restore();
     await orch.stop();
+  }
+});
+
+// --- Self-redeploy (src/redeploy.ts) wired into the scheduler ---
+
+/** A Redeployer whose effects are scripted: main is always stale and green, the compile succeeds
+ * at once, and the swap only records itself — so the orchestrator's half of the contract (hold,
+ * drain, abort, exit) is what these tests pin. */
+function scriptedRedeployer(
+  repo: string,
+  opts: { drainMaxMs?: number; compileOk?: boolean; stale?: () => boolean } = {},
+) {
+  const swaps: string[] = [];
+  const deps: RedeployDeps = {
+    staleness: async () => ({ stale: opts.stale ? opts.stale() : true, aheadCommits: 4 }),
+    mainGreen: async () => true,
+    compile: async () => ({ ok: opts.compileOk ?? true, detail: opts.compileOk === false ? "tsc exited 2" : "" }),
+    swap: (h) => {
+      swaps.push(h);
+    },
+  };
+  // Events go to the repo's log exactly as cmdRun wires them, so the assertions below read the
+  // same events.jsonl an operator would.
+  const redeployer = new Redeployer(
+    { sha: "0".repeat(40), builtAt: 1, root: "/proj" },
+    true,
+    deps,
+    (e) => logEvent(repo, e),
+    opts.drainMaxMs,
+  );
+  return { redeployer, swaps };
+}
+
+test("a stale self-hosted build drains the fleet, swaps, and returns restart", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "self-redeploy test");
+  saveConfig(repo, fastConfig(["clean"]));
+  const restore = fakePi(`printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const { redeployer, swaps } = scriptedRedeployer(repo);
+  // A prompt for the director sits in the inbox: while a restart is pending nothing new starts
+  // — director included — so it must still be queued when the process hands over.
+  enqueuePrompt(repo, "hello director");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const exit = await runOrchestrator({
+      root: repo,
+      config: loadConfig(repo),
+      mainBranch: "main",
+      signal: controller.signal,
+      pollMs: FAST_POLL_MS,
+      redeploy: redeployer,
+    });
+    assert.deepEqual(exit, { restart: true });
+    const head = sh(repo, "git", "rev-parse", "HEAD");
+    assert.deepEqual(swaps, [head], "the compiled head was swapped into dist");
+    const types = readEvents(repo).map((e) => e.type);
+    assert.ok(types.indexOf("build_stale") < types.indexOf("restart_pending"), "stale, then pending");
+    assert.ok(types.indexOf("restart_pending") < types.indexOf("restart"), "pending, then restart");
+    assert.ok(types.indexOf("restart") < types.indexOf("orchestrator_stop"), "the stop follows the restart");
+    assert.equal(fs.readdirSync(path.join(repo, ".tumwater/inbox")).length, 1, "the held director prompt survives for the next generation");
+    assert.equal(readOrchestratorInfo(repo), null, "the info file is removed like any other stop");
+  } finally {
+    clearTimeout(timeout);
+    restore();
+  }
+});
+
+test("the orchestrator publishes the build's staleness in orchestrator.json while it runs", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "build status test");
+  saveConfig(repo, fastConfig(["clean"]));
+  const cfg = loadConfig(repo);
+  cfg.autoRestart = false; // observe only: no drain, no restart
+  saveConfig(repo, cfg);
+  const restore = fakePi(`printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const { redeployer } = scriptedRedeployer(repo);
+  const controller = new AbortController();
+  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal, pollMs: FAST_POLL_MS, redeploy: redeployer });
+  try {
+    await waitFor(() => readOrchestratorInfo(repo)?.build?.stale === true, "stale build published");
+    const info = readOrchestratorInfo(repo)!;
+    assert.equal(info.build?.sha, "0".repeat(40));
+    assert.equal(info.build?.aheadCommits, 4);
+    assert.equal(readEvents(repo).filter((e) => e.type === "restart_pending").length, 0, "autoRestart off: never drains");
+    const start = readEvents(repo).find((e) => e.type === "orchestrator_start")!;
+    assert.equal(start.build, "0".repeat(40), "the start event names the build");
+  } finally {
+    controller.abort();
+    await done.catch(() => undefined);
+    restore();
+  }
+});
+
+test("a drain past its cap aborts the in-flight tick resumably and still restarts", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "drain cap test");
+  saveConfig(repo, fastConfig(["clean"]));
+  // The tick never finishes on its own: only the drain cap (or a stop) can end it.
+  const partial = path.join(worktreePath(repo, "clean"), "partial.txt");
+  const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  // Staleness is re-evaluated only when main moves (a per-head verdict), so: let the first tick
+  // start against a fresh build, then move main — the recomputation finds the build stale with
+  // that tick in flight, which is exactly the situation the drain cap exists for.
+  const { redeployer, swaps } = scriptedRedeployer(repo, { drainMaxMs: 500, stale: () => fs.existsSync(partial) });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const run = runOrchestrator({
+      root: repo,
+      config: loadConfig(repo),
+      mainBranch: "main",
+      signal: controller.signal,
+      pollMs: FAST_POLL_MS,
+      redeploy: redeployer,
+    });
+    await waitFor(() => fs.existsSync(partial), "the tick to start");
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running tick");
+    const exit = await run;
+    assert.deepEqual(exit, { restart: true });
+    assert.equal(swaps.length, 1);
+    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    assert.equal(ends.length, 1);
+    assert.equal(ends[0]!.result, "aborted", "the drain cap aborted the tick like a shutdown would");
+    assert.equal(loadLoopState(repo, "clean").resumePending, true, "…so it resumes on the new build");
+    const restart = readEvents(repo).find((e) => e.type === "restart")!;
+    assert.equal(restart.abortedTicks, 1);
+  } finally {
+    clearTimeout(timeout);
+    restore();
+  }
+});
+
+test("a failed compile leaves the fleet running the old build", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "compile failure test");
+  saveConfig(repo, fastConfig(["clean"]));
+  const restore = fakePi(`printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const { redeployer, swaps } = scriptedRedeployer(repo, { compileOk: false });
+  const controller = new AbortController();
+  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal, pollMs: FAST_POLL_MS, redeploy: redeployer });
+  try {
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "warning" && /rebuild of .* failed/.test(String(e.message))),
+      "compile-failure warning",
+    );
+    // Still running: ticks keep coming after the failure was recorded.
+    const before = readEvents(repo).filter((e) => e.type === "tick_start").length;
+    await waitFor(() => readEvents(repo).filter((e) => e.type === "tick_start").length > before, "ticks resume after the hold lifts");
+    assert.deepEqual(swaps, []);
+  } finally {
+    controller.abort();
+    await done.catch(() => undefined);
+    restore();
   }
 });

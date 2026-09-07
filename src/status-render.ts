@@ -4,7 +4,7 @@ import type { LoopState } from "./types.js";
 import type { StatusSnapshot } from "./status.js";
 import { dailyCost, fleetDailyCost, budgetReached } from "./state.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
-import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, usd } from "./text.js";
+import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd } from "./text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
  * cycle position, time/token formatters, and the width-aware table shared by
@@ -194,12 +194,22 @@ const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
 ];
 const COLUMN_GAP = 2;
 
+/** The header's build fragment: which commit the running harness was compiled from and, when
+ * main's build inputs have moved past it, how far — the fleet is then executing code main no
+ * longer describes (auto-restart lands the new build; off, restart `tumwater run` by hand).
+ * Empty when the dist carries no stamp. Shared by the TUI/status header here and the GUI's. */
+export function buildBadge(build: StatusSnapshot["build"]): string {
+  if (!build) return "";
+  const stale = build.stale ? ` — STALE: main +${build.aheadCommits ?? 0} commit(s) since` : "";
+  return `, build ${shortSha(build.sha)}${stale}`;
+}
+
 /** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is
  * given, wide cells are clipped so no line exceeds it (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
   const name = path.basename(path.resolve(root));
   const lines: string[] = [];
-  const header = snap.running ? `running (pid ${snap.pid})` : "not running — start with `tumwater run`";
+  const header = snap.running ? `running (pid ${snap.pid}${buildBadge(snap.build)})` : "not running — start with `tumwater run`";
   // The questions badge (like the inbox one) appears only when something needs an answer.
   // The budget badge is standing information for a money-spending system, so it shows at all
   // levels while enabled (absent when disabled); on narrow terminals the header's existing
