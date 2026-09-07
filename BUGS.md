@@ -9,6 +9,36 @@ _None yet._
 
 ## Fixed
 
+### Harness never picks up its own new build: the fleet ran a 2026-08-27 build for ten days while 350 commits landed (found by human log analysis 2026-09-07, fixed 2026-09-07)
+
+**Symptom:** `tumwater run` loads dist/ once and never reloads it. From 2026-08-27 17:28 to 2026-09-07 00:04 the live orchestrator (pid 69563, started from `ba793ac`) kept running while main gained 350 commits — the review gate on the normal path, its build pre-check, the red-main gate, the daily budget, commit bodies, the qa and steward roles, pause/resume, doctor, status --json — none of which executed until a manual restart. Nothing in the fleet could see it: the roles list in the Aug 27 orchestrator_start event, the absence of every newer tick result and event type, state files without the budget fields, zero commit bodies after Aug 27, and qa/steward at tick 1 on Sep 7 were the only traces. Two entries below reasoned about why the pre-check "must have been skipped"; it was not running.
+
+**Repro:** land a src/ change on main while `tumwater run` is up; observe that dist/ and the process are unchanged and that no dashboard, event, or `doctor` line says so.
+
+**Cause:** no build provenance (dist/ carried no record of the commit it came from) and no redeploy path — a self-hosting harness with no way to notice or act on its own new code.
+
+**Fix:** `npm run build` stamps `dist/build-info.json`; the orchestrator publishes the stamp and its staleness (vs main's src/, package.json, tsconfig.json) in orchestrator.json, its start event, a `build_stale` event, both dashboards' headers, `status --json`, and a `doctor` check. With `autoRestart` (default true) a self-hosted fleet verifies main is green, compiles it into `.tumwater/build/<sha>`, drains in-flight ticks (30 min cap, then aborted resumably), swaps dist/, and exits 75 for the new `tumwater run` supervisor to respawn it. Commit `debe885`. Files: src/build-info.ts, src/redeploy.ts, src/supervisor.ts, scripts/stamp-build.mjs, src/orchestrator.ts, src/cli.ts, src/doctor.ts, src/status*.ts, src/gui*.ts.
+
+### pi crashing on malformed JSON abandoned the session: five ticks lost, one of them 2 h 39 m of director work (found by human log analysis 2026-09-07, fixed 2026-09-07)
+
+**Symptom:** tick_end errors "Unterminated string in JSON at position N (line 1 column N+1)" (organize #88 on 2026-09-02, perf #88 on 09-05, director #70 on 09-06) and "Expected ',' or '}' after property value in JSON" (08-25, 08-28), each ending a tick as a plain error with backoff; director tick 70 had spent 2 h 39 m on the newest steering prompt, which then re-ran from scratch.
+
+**Cause:** the messages are pi's own stderr — pi dying on a torn model-server chunk — not harness parsing (every harness JSON.parse is guarded). The session file survives such a crash intact, but the harness treated it like any failure and started the next tick fresh.
+
+**Fix:** runPi flags a nonzero exit whose stderr ends in a JSON.parse failure as `transientPiCrash` (never for exits the harness itself caused); the loop gives it the same single `--continue` retry the predict-stream timeout gets, with one warning naming the crash. Commit `94f15ef`. Files: src/pi.ts, src/loop.ts, src/types.ts.
+
+### Cut-off resumes were bridged as "the harness was restarted" and the cut-off streak froze at the resume limit (found by human log analysis 2026-09-07, fixed 2026-09-07)
+
+**Symptom:** 308 of 733 autonomous-era ticks ended cut off at the context ceiling (179 model-hours landing nothing). A resumed cut-off session was told a restart had interrupted it and to verify a half-finished tool call; a fresh tick after the loop gave up resuming carried no memory that the last attempts were too big for the window; and `cutOffStreak` stopped counting at 3, so dashboards and prompts could not say how long a loop had been starving (improve: 36 consecutive cut-offs, Sep 1–6).
+
+**Fix:** every run carries a context-budget rule; the resume bridge names the real cause and asks for the smallest finish without re-reading; a fresh tick after cut-offs carries a note counting them and offering nothing-to-do; the `resume` event carries its cause; the streak counts every consecutive cut-off. Commit `fa3c59c`. Files: src/prompt.ts, src/loop.ts, src/state.ts, src/event-format.ts.
+
+### Changed ticks whose reply lacked SUMMARY landed as "<role> tick N" — 73 commits, 32 of them feature (found by human log analysis 2026-09-07, fixed 2026-09-07)
+
+**Symptom:** a run that changed files but ended without the closing block (often a final message cut off at the ceiling) committed with the bare placeholder subject, so the largest diffs in the repo had no description in `git log`.
+
+**Fix:** one bounded follow-up turn in the tick's own session (`--continue`, 15 min / 5 min quiet caps) asks for exactly the SUMMARY/WHY/RISK/VERIFIED block; failing that the subject is derived from the changed paths ("Update src/loop.ts, test/loop.test.ts and 2 more"). Commit `61cf063`. Files: src/loop.ts, src/prompt.ts, src/commit-message.ts.
+
 ### GUI dashboard executes HTML in backlog entry bodies — unescaped innerHTML injection (found by bugfix loop 2026-09-06, fixed 2026-09-06)
 
 **Symptom:** The dashboard's backlog detail panel (`tumwater gui` → click any planned feature / open bug / open question) spliced the entry's body straight into `innerHTML` without escaping, while every other dynamic value on the page — including the same entry's title two lines above — went through the page's `esc()`. A plan/bug/question entry containing HTML (a repro with `<img src=x onerror=…>`, a stray `<script>` tag) was parsed and executed in the operator's browser instead of rendering as text. With `--all-interfaces` the dashboard is reachable from the whole network without authentication, so this was a live XSS surface, not just a local oddity.

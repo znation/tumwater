@@ -73,7 +73,9 @@ one loop per enabled role. Every loop tick:
    ticks start with a small, cheap prefill and stay far from the model's context window. Durable
    knowledge lives in the repo itself (README/PLANS/BUGS/QUESTIONS, read at the start of every tick), not
    in model context.
-3. If pi changed files: commits, then runs an adversarial review gate over the full ahead-of-main
+3. If pi changed files: commits (a reply without the SUMMARY block gets one follow-up turn in
+   the same session to produce it; failing that the subject names the changed files), then runs
+   an adversarial review gate over the full ahead-of-main
    diff — first a deterministic build pre-check (the project's declared verify script: `npm test`
    when declared, else typecheck/build; failure rejects without spending a model run), then a
    fresh-session reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject` (md-only
