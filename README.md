@@ -56,7 +56,7 @@ Open items:
 - Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
   new projects).
 
-Current main (`99ed159`): build clean, suite 717/717, verified 2026-09-06.
+Current main (`6fe4dfe`): build clean, suite 718/718, verified 2026-09-07.
 <!-- tumwater:status:end -->
 
 ## How it works
