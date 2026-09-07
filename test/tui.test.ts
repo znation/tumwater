@@ -53,6 +53,27 @@ test("applyKey backspace deletes before the cursor; delete after it", () => {
   assert.deepEqual(applyKey("hello", 5, undefined, key("delete")), { text: "hello", cursor: 5 });
 });
 
+test("applyKey backspace/delete remove a whole astral character, never a lone surrogate", () => {
+  // 😀 (U+1F600) is two UTF-16 code units; typing it lands the cursor right after both.
+  const emoji = "\u{1f600}";
+  assert.equal(emoji.length, 2);
+  // Backspace just after a typed emoji removes BOTH units (the pre-fix behavior left a lone
+  // high surrogate that terminals render as a U+FFFD box).
+  let state = applyKey("", 0, emoji, {});
+  assert.deepEqual(state, { text: emoji, cursor: 2 });
+  state = applyKey(state.text, state.cursor, undefined, key("backspace"));
+  assert.deepEqual(state, { text: "", cursor: 0 });
+  // Backspace mid-text removes the whole pair, keeping the neighbours intact.
+  state = applyKey("a\u{1f600}b", 3, undefined, key("backspace"));
+  assert.deepEqual(state, { text: "ab", cursor: 1 });
+  // Forward-delete at the start of a pair removes BOTH units (cursor stays put).
+  state = applyKey("a\u{1f600}b", 1, undefined, key("delete"));
+  assert.deepEqual(state, { text: "ab", cursor: 1 });
+  // A BMP character is still removed one unit at a time (no regression).
+  state = applyKey("a\u00e9b", 2, undefined, key("backspace"));
+  assert.deepEqual(state, { text: "ab", cursor: 1 });
+});
+
 test("a typo is fixable without retyping the rest of the prompt", () => {
   // Typed "dar k mode" (stray space); meant "dark mode". Move back over it and delete.
   let state = { text: "dar k mode", cursor: 10 };

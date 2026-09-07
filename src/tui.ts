@@ -10,6 +10,7 @@ import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "./inbox.js";
 import { snapshot } from "./status.js";
 import { clipToWidth, renderStatus } from "./status-render.js";
+import { cutSplitsSurrogatePair } from "./text.js";
 import { readTranscript } from "./transcript.js";
 
 const CLEAR = "\x1b[2J\x1b[H";
@@ -30,7 +31,10 @@ interface KeyLike {
  * delivers for IME-composed input, which advance the cursor by their full length; backspace
  * deletes before it, delete after it, and left/right move it. Control/meta combinations are
  * ignored. Returns the new state; an out-of-range cursor is clamped instead of corrupting
- * the edit. */
+ * the edit. Backspace/delete remove a whole character: when the unit they would cut is one
+ * half of a surrogate pair (an astral character such as emoji), both units go together so no
+ * lone surrogate — which terminals render as garbage — is ever left behind (the same
+ * surrogate-safe rule truncate in text.ts applies to display clipping). */
 export function applyKey(
   text: string,
   cursor: number,
@@ -45,9 +49,17 @@ export function applyKey(
       return { text, cursor: Math.min(text.length, c + 1) };
     case "backspace":
       if (c === 0) return { text, cursor: 0 };
+      // The character before the cursor is a surrogate pair [c-2, c-1]: delete both units.
+      if (cutSplitsSurrogatePair(text, c - 1)) {
+        return { text: text.slice(0, c - 2) + text.slice(c), cursor: c - 2 };
+      }
       return { text: text.slice(0, c - 1) + text.slice(c), cursor: c - 1 };
     case "delete":
       if (c >= text.length) return { text, cursor: c };
+      // The character at the cursor is a surrogate pair [c, c+1]: delete both units.
+      if (cutSplitsSurrogatePair(text, c + 1)) {
+        return { text: text.slice(0, c) + text.slice(c + 2), cursor: c };
+      }
       return { text: text.slice(0, c) + text.slice(c + 1), cursor: c };
   }
   if (str && !key.ctrl && !key.meta && str >= " ") {
