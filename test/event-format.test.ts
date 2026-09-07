@@ -396,3 +396,12 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   } as never);
   assert.match(clean, /\(drained 0m\)$/, "nothing aborted: no resume clause");
 });
+
+test("formatEvent tells a cut-off resume from a restart resume", () => {
+  const cut = formatEvent({ ts: 0, loop: "improve", type: "resume", cause: "cut-off" } as never);
+  assert.match(cut, /resuming the run cut off at the context ceiling/);
+  const restart = formatEvent({ ts: 0, loop: "improve", type: "resume", cause: "restart" } as never);
+  assert.match(restart, /resuming the tick a shutdown interrupted/);
+  // Events written by builds that predate the cause field render the restart wording.
+  assert.equal(formatEvent({ ts: 0, loop: "improve", type: "resume" } as never), restart);
+});

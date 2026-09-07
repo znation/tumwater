@@ -2104,3 +2104,80 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
     process.env.PATH = oldPath;
   }
 });
+
+// Context-ceiling memory across ticks (src/prompt.ts buildCutOffNote / buildResumePrompt's
+// cut-off cause): a cut-off resume must be told what actually happened, and a fresh tick after
+// the loop gave up resuming must be told its last attempts were too big for the window.
+test("a cut-off resume is bridged as a cut-off, and the fresh tick after the limit carries the note", async () => {
+  const repo = await initializedRepo();
+  const promptsFile = path.join(tmpdir(), "prompts.log");
+  const restore = fakePi(
+    [
+      `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+      `printf '%s\n' '${thinkingOnlyLine("cut off again", { output: 16 })}'`,
+    ].join("\n"),
+  );
+  try {
+    fs.mkdirSync(sessionDir(repo, "perf"), { recursive: true });
+    fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
+    const runner = new LoopRunner(repo, "perf", defaultConfig(), "main");
+    // Tick 1 fresh; ticks 2–4 resume (CUT_OFF_RESUME_LIMIT resumes); tick 5 is fresh again.
+    for (let i = 1; i <= 5; i++) assert.equal((await runner.tick()).result, "no_change");
+    const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
+    assert.equal(runs.length, 5);
+    assert.doesNotMatch(runs[0]!, /ran out of context/, "the first, fresh tick carries no cut-off text");
+    // The resumes continue the compacted session: the bridge names the real cause, not a restart.
+    for (const resumed of runs.slice(1, 4)) {
+      assert.match(resumed, /--continue/);
+      assert.match(resumed, /ran out of context before it could finish/);
+      assert.doesNotMatch(resumed, /The harness was restarted/);
+    }
+    // Tick 5 is fresh (past the limit): the only memory of four failed attempts is the note,
+    // and it counts every cut-off — the streak keeps counting past the resume limit.
+    assert.doesNotMatch(runs[4]!, /--continue/);
+    assert.match(runs[4]!, /Your previous 4 runs as this loop ran out of context before landing anything/);
+    assert.match(runs[4]!, /Your task this run:/, "…on an otherwise normal tick prompt");
+    assert.equal(runner.state.cutOffStreak, 5);
+    const resumes = readEvents(repo).filter((e) => e.type === "resume");
+    assert.equal(resumes.length, 3);
+    assert.ok(resumes.every((e) => e.cause === "cut-off"), "resume events name the cut-off cause");
+  } finally {
+    restore();
+  }
+});
+
+test("a shutdown resume is bridged as a restart with no cut-off note", async () => {
+  const repo = await initializedRepo();
+  const promptsFile = path.join(tmpdir(), "prompts.log");
+  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  const controller = new AbortController();
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main", controller.signal);
+    const first = runner.tick();
+    await waitForFile(path.join(repo, ".tumwater/worktrees/clean/partial.txt"));
+    controller.abort();
+    assert.equal((await first).result, "aborted");
+    restore();
+    // The fake pi writes no session file; the resume guard needs one to continue.
+    fs.mkdirSync(sessionDir(repo, "clean"), { recursive: true });
+    fs.writeFileSync(path.join(sessionDir(repo, "clean"), "s.jsonl"), "{}\n");
+    // The resumed run finds the interrupted edit in place and decides against it: a clean
+    // nothing-to-do finish, so the tick lands nothing and never reaches the review gate.
+    restore = fakePi(
+      [
+        `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+        `rm -f partial.txt`,
+        `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      ].join("\n"),
+    );
+    const resumed = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    assert.equal((await resumed.tick()).result, "no_change");
+    const run = fs.readFileSync(promptsFile, "utf8");
+    assert.match(run, /The harness was restarted while you/);
+    assert.doesNotMatch(run, /ran out of context/);
+    const [resume] = readEvents(repo).filter((e) => e.type === "resume");
+    assert.equal(resume?.cause, "restart");
+  } finally {
+    restore();
+  }
+});

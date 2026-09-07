@@ -24,6 +24,16 @@ const SUMMARY_RULE = `- If you did make changes, end your reply with a block in 
   RISK: <what could break and where to look if it does>
   VERIFIED: <what you actually ran and observed (e.g. "npm test, 182 pass") — write none when nothing was run>`;
 
+/** The context-budget rule every run carries. A run ends the moment its window fills — on local
+ * models that was half of all ticks in the autonomous fortnight (308 of 733, 179 model-hours
+ * landing nothing), almost all of it tool output from reading the codebase wholesale. Stated once
+ * so the tick rules, the resume bridge, and the cut-off note cannot drift. */
+const CONTEXT_BUDGET_RULE = `- Your context window is finite and the run ends the moment it fills — an unfinished run lands
+  nothing. Work economically: locate with grep before reading; read files in ranges (offset/limit,
+  \`sed -n\`) rather than whole; never dump large files or long command output — pipe through
+  \`head\`/\`tail\`; do not re-read what you already saw. Prefer a task you can finish well within
+  the window over a sweeping one.`;
+
 const COMMON_RULES = `
 Rules for this run:
 - First read README.md in full to understand the project, plus QUESTIONS.md when present.
@@ -33,6 +43,7 @@ Rules for this run:
   Fixed ones. Consult older history via git log or a targeted read only when a specific entry is
   needed. The steward role is the exception: it curates those files and must see them whole.
 - Do exactly ONE focused task, then stop. Small, complete, and correct beats big and half-done.
+${CONTEXT_BUDGET_RULE}
 - Leave the project working: if it has a build or test command, run it and fix what you broke.
 - Never create, amend, or revert git commits, branches, or merges — the harness handles all git
   operations. Reading git history is fine.
@@ -161,21 +172,49 @@ work yourself:
   return parts.join("\n\n");
 }
 
-/** The follow-up prompt for resuming a tick that a harness shutdown interrupted. It is sent
- * into the SAME pi session as the interrupted run — which already carries the full original
- * prompt, all rules, and the work so far — so it only needs to bridge the gap. */
-export function buildResumePrompt(roleId: string): string {
-  return `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
+/** Why a tick is being resumed: a harness restart interrupted it, or it ran out of context (the
+ * harness resumes the compacted session — see LoopState.cutOffStreak). */
+export type ResumeCause = "restart" | "cut-off";
+
+/** The follow-up prompt for resuming an interrupted tick. It is sent into the SAME pi session as
+ * the interrupted run — which already carries the full original prompt, all rules, and the work
+ * so far — so it only needs to bridge the gap. The bridge names the real cause: a run cut off at
+ * the context ceiling needs to finish with the smallest change and read almost nothing more, not
+ * to verify a half-finished tool call. */
+export function buildResumePrompt(roleId: string, cause: ResumeCause = "restart"): string {
+  const opening =
+    cause === "cut-off"
+      ? `Your previous run as the "${roleId}" loop ran out of context before it could finish, so the
+harness compacted the session and is continuing it now. Your worktree is exactly as you left it;
+what you did so far is summarized above. Do NOT re-read the codebase: trust the summary and
+re-check only what you must, in ranges. Finish the SAME task with the smallest change that
+completes it. If it cannot be finished within a fraction of the window, scope it down to what is
+already complete and coherent, leave the project working, and stop.`
+      : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
 is exactly as you left it, and this session carries everything you did so far. A tool call that
 was executing when the restart hit may not have finished — verify its effect before relying on it.
 
 Continue the SAME task you were working on and finish it. If the work so far turns out to be
-unusable, redo it — but stay on this task rather than picking a new one. All the original rules
+unusable, redo it — but stay on this task rather than picking a new one.`;
+  return `${opening} All the original rules
 still apply, in particular:
 - Do exactly ONE focused task, then stop.
+${CONTEXT_BUDGET_RULE}
 - Never create, amend, or revert git commits — the harness handles all git operations.
 - If you end up making no changes, reply with the single line ${NOTHING_TO_DO}.
 ${SUMMARY_RULE}`;
+}
+
+/** The note injected into a role's next FRESH tick prompt after its previous run(s) were cut
+ * off at the context ceiling without landing anything (the loop gave up resuming — see
+ * state.ts's CUT_OFF_RESUME_LIMIT — or a cut-off director prompt is re-running). The only
+ * cross-tick memory that the last attempt was too big for the window. */
+export function buildCutOffNote(streak: number): string {
+  const runs = streak === 1 ? "run" : `${streak} runs`;
+  return `Your previous ${runs} as this loop ran out of context before landing anything. Pick a
+smaller, more targeted task this time and budget your reading: grep first, read in ranges, cap
+command output. If the smallest useful task still needs most of the codebase in view, reply
+${NOTHING_TO_DO} instead of starting it.`;
 }
 
 /** The prompt for resolving merge conflicts left in a loop's worktree. */

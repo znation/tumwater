@@ -315,14 +315,15 @@ test("applyTickOutcome: cut-off ticks resume the compacted session until the str
     assert.equal(s.backoffSeconds, 0, "a cut-off is not idleness");
     assert.ok(s.nextRunAt <= Date.now() + 21_000);
   }
-  // At the limit: give up on the task — normal backoff, no resume; the streak is NOT reset
-  // (only a non-cut-off tick clears it), so the next cut-off also backs off.
+  // Past the limit: give up on the task — normal backoff, no resume. The streak keeps counting
+  // (only a non-cut-off tick clears it): the next fresh tick's prompt names how many attempts
+  // the window has eaten (buildCutOffNote), and the next cut-off also backs off.
   const s = freshLoopState("feature");
   s.cutOffStreak = 3;
   applyTickOutcome(s, cfg, "feature", { result: "no_change", cutOff: true });
   assert.equal(s.resumePending, undefined);
   assert.equal(s.backoffSeconds, 30); // initial backoff
-  assert.equal(s.cutOffStreak, 3);
+  assert.equal(s.cutOffStreak, 4);
 });
 
 test("applyTickOutcome: other outcomes grow the idle backoff and clear the cut-off streak", () => {

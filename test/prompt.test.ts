@@ -5,11 +5,12 @@ import path from "node:path";
 import {
   PRINCIPLES_MAX_CHARS,
   buildConflictPrompt,
+  buildCutOffNote,
   buildDirectorPrompt,
   buildRejectedReviewNote,
   buildResumePrompt,
-  buildTickPrompt,
   buildReviewPrompt,
+  buildTickPrompt,
   readPrinciples,
 } from "../src/prompt.js";
 import { parseVerdict } from "../src/review.js";
@@ -761,4 +762,41 @@ test("buildTickPrompt for readme carries the find text plus the shared rules", (
   const prompt = buildTickPrompt({ role: readme!, initialPrompt: "" });
   assert.match(prompt, /"readme" loop \(README maintainer\)/);
   assert.ok(prompt.includes(readme!.find.trim()), "the full find text is embedded");
+});
+
+// Context-ceiling handling (src/prompt.ts): half of all autonomous-era ticks ended cut off at
+// the window, almost all of it tool output from reading wholesale. The budget rule rides on
+// every run; the resume bridge names the real cause; a fresh tick after cut-offs carries a note.
+
+test("every run carries the context-budget rule", () => {
+  const tick = buildTickPrompt({ role: ROLES[0]!, initialPrompt: "x" });
+  assert.match(tick, /context window is finite/);
+  assert.match(tick, /locate with grep before reading; read files in ranges/);
+  assert.match(buildDirectorPrompt("do x", "x"), /context window is finite/);
+  assert.match(buildResumePrompt("clean"), /context window is finite/);
+});
+
+test("buildResumePrompt names a context-ceiling cut-off and asks for the smallest finish", () => {
+  const p = buildResumePrompt("clean", "cut-off");
+  assert.match(p, /"clean"/);
+  assert.match(p, /ran out of context before it could finish/);
+  assert.match(p, /compacted the session/);
+  assert.match(p, /Do NOT re-read the codebase/);
+  assert.match(p, /smallest change that\s+completes it/);
+  assert.match(p, /scope it down to what is\s+already complete/);
+  assert.doesNotMatch(p, /restarted/, "a cut-off is not a restart — the bridge must not claim one");
+  // The harness contract is restated on both bridges.
+  assert.match(p, /ONE focused task/);
+  assert.match(p, /Never create, amend, or revert git commits/);
+  assert.ok(p.includes(NOTHING_TO_DO));
+  assert.ok(p.includes("SUMMARY: <imperative one-line description of the change, at most 72 characters>"));
+  assert.equal(buildResumePrompt("clean"), buildResumePrompt("clean", "restart"), "restart is the default cause");
+});
+
+test("buildCutOffNote counts the failed runs and offers nothing-to-do as the honest exit", () => {
+  const one = buildCutOffNote(1);
+  assert.match(one, /^Your previous run as this loop ran out of context before landing anything/);
+  assert.match(one, /grep first, read in ranges, cap\s+command output/);
+  assert.ok(one.includes(NOTHING_TO_DO));
+  assert.match(buildCutOffNote(3), /^Your previous 3 runs as this loop/);
 });

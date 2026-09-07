@@ -125,10 +125,10 @@ export function nextBackoffSeconds(current: number, config: TumwaterConfig): num
   return Math.min(current * factor, maxSeconds);
 }
 
-/** Consecutive context-ceiling cut-offs after which a loop stops resuming the task and
- * falls back to a fresh tick: a task that outruns the ceiling on every attempt (even from
- * a freshly compacted context) is too big to converge, and each cycle costs an hour-plus
- * of model time on local hardware. */
+/** Resumes granted to one context-ceiling cut-off streak before the loop stops resuming the
+ * task and falls back to a fresh tick: a task that outruns the ceiling on every attempt (even
+ * from a freshly compacted context) is too big to converge, and each cycle costs an hour-plus
+ * of model time on local hardware. The streak itself keeps counting (LoopState.cutOffStreak). */
 const CUT_OFF_RESUME_LIMIT = 3;
 
 /** Record a finished tick on the loop's state and schedule its next run from the outcome.
@@ -145,6 +145,10 @@ export function applyTickOutcome(
   outcome: TickOutcome,
 ): void {
   s.running = false;
+  // The cut-off streak counts EVERY consecutive tick truncated at the context ceiling, past the
+  // resume limit too: the next fresh tick's prompt names how many attempts the window has eaten
+  // (buildCutOffNote), so the count must not freeze at the limit. Any other outcome resets it.
+  s.cutOffStreak = outcome.cutOff ? (s.cutOffStreak ?? 0) + 1 : 0;
   // The review gate persists phase="review" around its run so a dashboard mid-review shows
   // "reviewing". A completed tick clears it so the label never lingers — except an aborted
   // one: there the interruption hit mid-review, and the next launch must recover (and
@@ -181,21 +185,19 @@ export function applyTickOutcome(
     // `result !== "aborted"` check above.
     s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg);
     s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
-  } else if (outcome.cutOff && role !== DIRECTOR_ROLE && (s.cutOffStreak ?? 0) < CUT_OFF_RESUME_LIMIT) {
+  } else if (outcome.cutOff && role !== DIRECTOR_ROLE && s.cutOffStreak <= CUT_OFF_RESUME_LIMIT) {
     // Truncated at the context ceiling, not idle: the hour(s) of work survive in the
     // session pi just compacted, so resume it promptly instead of idle-backing-off.
     // Each resume restarts from the compacted (small) context, so repeated cut-offs on
     // one task still converge — but a task that outruns the ceiling every single time
-    // would cycle forever, so after CUT_OFF_RESUME_LIMIT consecutive cut-offs the loop
-    // gives up on it and falls back to a fresh tick with normal backoff.
-    s.cutOffStreak = (s.cutOffStreak ?? 0) + 1;
+    // would cycle forever, so after CUT_OFF_RESUME_LIMIT resumes the loop gives up on it
+    // and falls back to a fresh tick with normal backoff (its prompt carrying the streak).
     s.resumePending = true;
     s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
   } else {
     s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg);
     s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
   }
-  if (!outcome.cutOff) s.cutOffStreak = 0;
 }
 
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving

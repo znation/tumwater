@@ -19,6 +19,7 @@ import {
   formatCommitBody,
 } from "./commit-message.js";
 import {
+  buildCutOffNote,
   buildDirectorPrompt,
   buildRejectedReviewNote,
   buildResumePrompt,
@@ -150,6 +151,12 @@ export class LoopRunner {
     // prompt until the role's next reviewed change replaces them.
     if (this.state.lastReview?.verdict === "reject") {
       prompt += `\n\n${buildRejectedReviewNote(this.state.lastReview.reasons)}`;
+    }
+    // A fresh tick after the previous run(s) were cut off at the context ceiling (the loop
+    // stopped resuming, or never resumed — the director re-runs its prompt fresh): the only
+    // memory that the last attempt was too big for the window is this note.
+    if ((this.state.cutOffStreak ?? 0) > 0) {
+      prompt += `\n\n${buildCutOffNote(this.state.cutOffStreak ?? 0)}`;
     }
     return prompt;
   }
@@ -384,7 +391,10 @@ export class LoopRunner {
     // path's reset below.
     const resuming = resumableSession && s.phase !== "review";
 
-    const prompt = resuming ? buildResumePrompt(this.role) : this.tickPrompt();
+    // Why the resume: a cut-off streak means the last run ran out of context and pi compacted
+    // the session (the bridge then asks for the smallest finish); otherwise a shutdown/crash.
+    const resumeCause = (s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart";
+    const prompt = resuming ? buildResumePrompt(this.role, resumeCause) : this.tickPrompt();
     if (prompt === null) return { result: "skipped" };
     // The raw user prompt a director tick is executing (null for role loops), so an
     // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
@@ -394,7 +404,7 @@ export class LoopRunner {
     if (resuming) {
       // Keep the interrupted run's uncommitted edits; clear only stray merge/rebase state.
       await abortSync(wt);
-      logEvent(this.root, { loop: this.role, type: "resume" });
+      logEvent(this.root, { loop: this.role, type: "resume", cause: resumeCause });
     } else {
       // Salvage commits a previous run's merge never landed (src/leftover.ts): they route
       // through the same review gate as fresh ticks, with this loop's shared wiring.

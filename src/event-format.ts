@@ -99,7 +99,11 @@ export function formatEvent(e: HarnessEvent): string {
         Number(e.abortedTicks ?? 0) > 0 ? `, ${e.abortedTicks} tick(s) will resume on the new build` : ""
       })`;
     case "resume":
-      return `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
+      // Two causes share the resume machinery; the line names the real one so an operator
+      // reading the feed can tell a restart from a loop fighting the context ceiling.
+      return e.cause === "cut-off"
+        ? `${time} ${loop} resuming the run cut off at the context ceiling (compacted pi session, same worktree)`
+        : `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
     case "warning":
       return `${time} ${loop} warning: ${e.message}`;
     default:
