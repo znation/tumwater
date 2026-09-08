@@ -174,6 +174,131 @@ Test bullet update (replacing the transcript-tail item): a labeled run whose bou
 
 **Relationship to other plans.** Independent of everything currently planned (budget editing, transcript labels, user-defined loops): it reads the same raw-log tail those entries do not touch and adds one column plus one payload field. Single entry: the TUI and GUI halves share one sample ring, one rate helper, and one payload field — either half alone leaves the other surface blind.
 
+### Merge queue 1/5 — landing takes a worktree and a ref (planned 2026-09-08, requested by user)
+
+**Goal.** Give merge.ts's landing flow the seam the rest of the merge queue needs: it must be able to land *any* ref from *any* worktree, not only `tumwater/<role>` from that role's worktree. Pure refactor — no behavior change, no new files. Architecture and invariants: plans/merge-queue.md. Follow-on: `Merge queue 2/5`.
+
+**Design (decided, with rationale).** `mergeToMain`/`tryMerge` already take the worktree as a parameter and work on a detached HEAD (rebase and `reset --hard` do not care), so the only place that hard-codes role identity is `ffMergeToMain`, which derives `branchName(ctx.role)` itself. Make the ref an explicit input instead of a derivation: `ffMainTo(root, ref, mainBranch)` where `ref` is anything `git rev-parse` accepts (branch name today, a sha from 2/5 onward). Both of its arms already accept a sha — `git merge --ff-only <sha>` when the primary checkout is on main, and `git push . <sha>:<main>` when it is not. `MergeContext` gains a `ref` field carrying what to land so the landing code never re-derives identity; loop.ts passes `branchName(this.role)`, which is exactly what runs today.
+
+**Approach.**
+- src/merge.ts — rename `ffMergeToMain` → `ffMainTo(root, ref, mainBranch)`, dropping the `branchName` import and the `role` parameter; `MergeContext` gains `ref: string`; `tryMerge` passes `ctx.ref`. Update the module doc comment: landing is worktree- and ref-parameterized, and `role` on the context is now identity for events/sessions only.
+- src/loop.ts — the one `mergeToMain` call site supplies `ref: branchName(this.role)`.
+- test/merge.test.ts — retarget the `ffMergeToMain` tests to `ffMainTo`; add two cases pinning the new capability: landing a bare sha from a detached worktree succeeds with both a main-checked-out and a not-on-main primary checkout.
+
+**Files touched.** src/merge.ts, src/loop.ts, test/merge.test.ts.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- No observable change: the same events (`merged`, `question_posted`), the same `TickResult` values, the same commit shapes as before this plan.
+- `ffMainTo` lands a bare sha from a detached worktree in both primary-checkout cases, pinned by tests.
+- `grep -rn "ffMergeToMain" src test` returns nothing.
+
+### Merge queue 2/5 — land in a per-role detached worktree (planned 2026-09-08, requested by user)
+
+**Goal.** Stop reviewing and rebasing inside the role's own worktree. A tick commits, pins the commit, resets its worktree to main, and then hands the sha to a new harness-owned lander that does the review-and-land in `.tumwater/worktrees/_land-<role>`. Still synchronous inside the tick — the throughput win comes in 3/5 — but after this the role's branch and worktree are free the moment its commit exists, which is the precondition for everything after. Depends on `Merge queue 1/5`; architecture and invariants: plans/merge-queue.md. Follow-on: `Merge queue 3/5`.
+
+**Design (decided, with rationale).**
+- **One lander worktree per role, not one shared.** Two roles can be mid-tick at once (`maxConcurrent`), and today their review runs deliberately overlap (the gate runs outside the merge lock). A single shared `_land` worktree would force them to serialize — a concurrency regression while landing is still synchronous — so the path is per-role and needs no new lock. Reuses the existing `ensureDetachedWorktree` (redeploy.ts's `_main` mirror helper) verbatim; the leading underscore is the existing reserved-name convention, so `_land-<role>` can never collide with a role worktree. The build pre-check finds node_modules by its existing walk-up to the root.
+- **The commit is pinned by a ref before the role's branch moves.** `refs/tumwater/landing/<role>` is written at the new commit's sha immediately after `commitAll`, so the subsequent `reset --hard main` on the role branch cannot orphan it (invariant 4). The ref is deleted on every terminal outcome — landed, rejected, or discarded past the strike cap — and deliberately *kept* on `review_error` and `merge_conflict`, which is what the next tick recovers.
+- **Leftover recovery keys off the ref, not the branch's ahead-count.** leftover.ts today asks "does this role's branch have commits ahead of main?"; with the branch reset every tick the answer is always no, so the question becomes "does `refs/tumwater/landing/<role>` exist and is it not yet contained in main?" — and recovery re-lands that sha through the lander, keeping the same review gate, the same `-recovery` session suffix, and the same strike cap. This preserves invariant 1 on the crash path: a shutdown between commit and landing loses nothing and smuggles nothing in unreviewed.
+- **The lander returns the same `TickResult` values the tick returns today**, so state.ts, the dashboards, and the event feed need no change in this plan.
+
+**Approach.**
+- src/paths.ts — `landWorktreePath(root, role)` → `.tumwater/worktrees/_land-<role>`; `landingRefName(role)` → `refs/tumwater/landing/<role>`.
+- src/git.ts — `setRef(root, ref, sha)`, `deleteRef(root, ref)`, `refSha(root, ref)` (null when absent), `isMergedInto(root, sha, branch)` (`git merge-base --is-ancestor`).
+- src/lander.ts (new) — `LandRequest { role, sha, tick, summary, body?, highFriction?, sessionSuffix? }` and `landChange(ctx, req): Promise<TickResult>`: ensure the detached worktree at `req.sha`, run `reviewAheadOfMain` there, map its `GateResult` exactly as loop.ts does today (`aborted` → caller's abort handling, `rejected`, `failed` → `review_error`), then `mergeToMain` with `ref: req.sha`. Module doc: this is harness code, never a role — the only model run it starts is the reviewer and merge.ts's conflict resolver.
+- src/loop.ts — after `commitAll`: `setRef` the landing ref, `resetWorktreeToMain(wt, main)`, call `landChange`, then `deleteRef` on the terminal outcomes. The inline `reviewGate` + `merge` pair in `runTick` collapses into that one call; `reviewGate`'s wiring moves into the lander context.
+- src/leftover.ts — recover from the landing ref via `landChange` with `sessionSuffix: "-recovery"`; drop the ahead-of-main entry condition and the branch-keeping return value (the branch is always clean main now — the caller no longer has a "left for retry" case to honor).
+- test/lander.test.ts (new) — approve → landed and ref deleted; reject → nothing on main, role branch clean at main, ref deleted, reasons in `state.lastReview`; verdict-less failure → ref kept for recovery; conflict → one resolution run, then landed.
+- test/loop.test.ts, test/leftover.test.ts, test/git.test.ts, test/paths.test.ts — update for the new flow; pin that a rejected tick leaves the role's worktree clean at main and that a landing ref surviving a simulated crash is re-landed through the gate on the next tick.
+
+**Files touched.** src/paths.ts, src/git.ts, src/lander.ts (new), src/loop.ts, src/leftover.ts, test/lander.test.ts (new), test/loop.test.ts, test/leftover.test.ts, test/git.test.ts, test/paths.test.ts.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- Every `TickResult`, event, and commit shape is unchanged from before this plan; a full live tick of every enabled role still lands the same way.
+- Immediately after a tick's `commitAll` the role's worktree is clean at main, whatever the landing outcome — pinned by tests, and true for rejections in particular.
+- No review or rebase happens in a role worktree any more: `_land-<role>` is the only place the gate and the rebase run.
+- A landing ref left behind by an interrupted landing is re-reviewed and re-landed on the next tick, and is discarded with a warning past `REVIEW_FAILURE_LIMIT`.
+
+### Merge queue 3/5 — asynchronous landing via a durable land queue (planned 2026-09-08, requested by user)
+
+**Goal.** Free the author slot at commit time. A tick ends the moment its commit is pinned and enqueued; the orchestrator drains the queue with the lander on its own budget, outside the author semaphore. This is the plan that pays: with `maxConcurrent: 2`, a role under review no longer blocks a second role from authoring at all. Depends on `Merge queue 2/5`; architecture and invariants: plans/merge-queue.md. Follow-ons: `Merge queue 4/5` (surfacing), `Merge queue 5/5` (coalescing).
+
+**Design (decided, with rationale).**
+- **Durable file queue, inbox.ts idiom.** `.tumwater/land-queue/<ts>-<seq>-<pid>.json`, one entry per file: `{ role, sha, tick, summary, body?, highFriction?, enqueuedAt, attempts }`. Filenames order the queue across processes; a crash loses nothing and `tumwater status` can read it without the scheduler. Same reasons the director's inbox is a directory of files.
+- **New `TickResult` value `"queued"`**, scheduled in `applyTickOutcome` exactly like `"changed"` (backoff reset, next run at `minTickInterval`) *minus* the commit count — `commits` increments when the change actually lands, so the counter keeps meaning "landed on main".
+- **One in-flight landing per role, enforced in `isEligible`** (invariant 3): a role with a queued or landing entry returns `{ run: false }`. This is what keeps `state.lastReview`'s rejection reasons ahead of the author's next prompt and stops a role stacking two commits. The director obeys the same rule — its prompt is not finished until it lands — so there is one rule, not two.
+- **The lander runs outside the author semaphore, one landing at a time.** A single in-process landing slot (not a new semaphore capacity knob): the orchestrator starts the head entry when no landing is in flight and does not await it in the poll loop. Author slots and the landing slot are independent, which is the entire point.
+- **Write-back into the authoring role's `LoopState`.** The lander already mutates `lastReview`/`lastApprovedHead`/`unreviewFailures` through the gate; on completion the orchestrator folds the landing's usage into that role's counters (invariant 5), increments `commits` on success, refreshes `lastResult`/`lastSummary` with the landing outcome, saves, and logs. The runner objects are in-process, so this is a method on `LoopRunner` (`applyLandingOutcome`) mutating the existing state object in place — the same in-place discipline `resetCounters` documents, for the same reason.
+- **Three new events, `land_queued` / `landed` / `land_failed`**, carrying role, sha, result, and the landing's `durationMs` and usage. `merged` still fires from merge.ts, so nothing that reads the feed for landings today breaks.
+- **Recovery on start.** Entries left by a killed process are drained on the next start like any other entry (invariant 7); leftover.ts's ref-based recovery from 2/5 remains the belt-and-braces path for a crash between commit and enqueue.
+
+**Approach.**
+- src/land-queue.ts (new) — `enqueueLanding`, `queuedLandings`, `headLanding`, `dropLanding`, `bumpAttempts`, `landingFor(role)`, `queueDepth`; the per-poll stat cache idiom from inbox.ts so a 1 s dashboard poll does not re-read every file.
+- src/types.ts — `"queued"` in `TickResult`; `land_queued`/`landed`/`land_failed` in `HarnessEvent["type"]`; a `LandingEntry` interface.
+- src/loop.ts — after `commitAll` + `setRef` + reset: `enqueueLanding`, log `land_queued`, return `{ result: "queued", summary, commit }`. `landChange` is no longer called from the tick.
+- src/orchestrator.ts — per poll: if no landing is in flight and the queue is non-empty, start `landChange` on the head entry with the authoring runner's state and pi wiring; on completion apply the outcome, log `landed`/`land_failed`, drop the entry (or keep it under the strike cap). `isEligible` gains the in-flight interlock.
+- src/state.ts — `"queued"` handling in `applyTickOutcome` as designed; `LoopRunner.applyLandingOutcome` beside `resetCounters` in loop.ts.
+- src/events.ts — `formatEvent` cases for the three new types.
+- test/land-queue.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts, test/state.test.ts, test/event-format.test.ts — queue round-trip and ordering; a queued role is ineligible until its landing completes; a landing that approves increments `commits` and folds usage into the authoring role; one that rejects records reasons that appear in that role's next tick prompt; a queue entry surviving a restart is drained; landing runs while another role authors.
+
+**Files touched.** src/land-queue.ts (new), src/types.ts, src/loop.ts, src/orchestrator.ts, src/state.ts, src/events.ts, test/land-queue.test.ts (new), test/orchestrator.test.ts, test/loop.test.ts, test/state.test.ts, test/event-format.test.ts.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- A tick that changed files ends in `"queued"` within seconds of its commit, holding no author slot through review or the build check; the change appears on main after the landing completes.
+- While one role's change is landing, another role authors — pinned by a test that asserts an author slot is available during a landing.
+- A role with a queued or in-flight landing never starts a tick.
+- A rejection's reasons reach the authoring role's next tick prompt, exactly as today.
+- `commits` counts landed changes only; the fleet's daily cost still attributes reviewer and conflict-resolution spend to the authoring role.
+- Killing the harness mid-landing and restarting lands (or re-reviews) the same change with no unreviewed commit on main.
+
+### Merge queue 4/5 — surface the land queue on status and both dashboards (planned 2026-09-08, requested by user)
+
+**Goal.** Make queued and in-flight landings visible: after 3/5 a productive tick reports `"queued"` and its change lands seconds-to-minutes later, so an operator needs to see the depth of the queue and which change is landing right now. Depends on `Merge queue 3/5`; architecture: plans/merge-queue.md.
+
+**Design (decided, with rationale).** One payload field, three renderers — the pattern the budget badge and the inbox count already follow. `snapshot()` gains `landQueue: { depth, inFlight?: { role, sha, summary, startedAt } }`, unconditionally (depth 0 when empty), so `status --json` consumers see one stable shape. The per-loop cell reuses the existing `phase` mechanism rather than inventing a second status channel: the role whose change is landing shows `landing <elapsed>` the way a reviewing role shows `reviewing <elapsed>` today, and a role that is merely queued shows its `queued` `lastResult` for free.
+
+**Approach.**
+- src/status.ts — the `landQueue` field, read from land-queue.ts plus the orchestrator's in-flight record.
+- src/ui/status-render.ts — header badge `· landing: N queued` (omitted at depth 0 with no in-flight landing); `landing` label for the in-flight role's cell.
+- src/ui/gui-page.ts — the same badge and label in the header and loop table.
+- src/state.ts / src/loop.ts — set `phase = "landing"` around a landing and clear it after, beside the existing `"review"` phase.
+- test/status.test.ts, test/status-render.test.ts, test/gui.test.ts, test/tui.test.ts — the badge at depth 0 / depth N, the `landing` label, and `status --json`'s new field.
+
+**Files touched.** src/status.ts, src/ui/status-render.ts, src/ui/gui-page.ts, src/state.ts, src/loop.ts, test/status.test.ts, test/status-render.test.ts, test/gui.test.ts, test/tui.test.ts.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- `tumwater status --json` carries `landQueue` with `depth` always present; both dashboards show the queue depth badge when anything is queued or landing, and nothing when the queue is idle.
+- The role whose change is landing reads `landing <elapsed>` in both dashboards; a queued role reads its `queued` result.
+
+### Merge queue 5/5 — coalesce the build check across queued landings (planned 2026-09-08, requested by user)
+
+**Goal.** Stop paying one full `npm test` per landing when several are queued. Rebase the queued changes into one stack, run the declared check once over the stack, and land them all when it is green — falling back to one-at-a-time when it is red, so a failure is still attributed to exactly one change. Depends on `Merge queue 3/5`; architecture and invariants: plans/merge-queue.md.
+
+**Design (decided, with rationale).**
+- **Coalescing is only ever cross-role** (invariant 3 caps a role at one in-flight change), so a stack is N changes from N distinct roles — exactly the case the queue was built for.
+- **The model reviewer is never coalesced, only the deterministic check.** Each change still gets its own reviewer run over its own `main...<sha>` diff: an adversarial review of a stack would blur which change a criticism applies to, and the reviewer's per-change verdict is what `state.lastReview` feeds back to one author. What is shared is the expensive, deterministic half.
+- **Red means bisect-by-fallback, not blame-the-batch.** A red stack re-runs the check per change in queue order and lands the green prefix; the first red change takes the normal rejection path and the rest return to the queue. Bounded and exact: at most N+1 check runs in the worst case, one in the common case.
+- **Cap the stack** (`landBatchMax`, default 3 — the fleet's realistic concurrent-role count) so the worst case stays bounded and a busy queue cannot build an arbitrarily long stack.
+
+**Approach.**
+- src/lander.ts — `landBatch(ctx, requests)`: reviewer runs per change first (any rejection drops that change from the stack), then rebase the approved changes in order into one lander worktree, one `runBuildCheck` over the stack, ff-merge on green; on red, per-change fallback as designed.
+- src/build-check.ts — expose the per-run entry point the batch path needs without the per-sha cache assuming a single commit.
+- src/orchestrator.ts — take up to `landBatchMax` head entries when more than one is queued.
+- src/config.ts, src/types.ts — `landBatchMax` with its default and validation.
+- test/lander.test.ts, test/build-check.test.ts, test/config.test.ts — a green stack lands every change with one check run; a red stack lands the green prefix, rejects the first red change, and requeues the rest; the cap is honored; `build_check` events price each run.
+
+**Files touched.** src/lander.ts, src/build-check.ts, src/orchestrator.ts, src/config.ts, src/types.ts, test/lander.test.ts, test/build-check.test.ts, test/config.test.ts.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- Three queued changes land with one `build_check` event when the stack is green, and each still has its own reviewer run and verdict.
+- A stack whose second change breaks the suite lands the first, rejects the second with its reasons recorded, and requeues the third — main is never left red by the batch path.
+- `landBatchMax` bounds the stack; setting it to 1 reproduces 3/5's behavior exactly.
+
 ## Done
 
 ### Read backlog entries in full from the TUI/GUI dashboards (planned 2026-09-05, refined 2026-09-06, re-audited 2026-09-06, done 2026-09-07)
