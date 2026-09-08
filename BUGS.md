@@ -5,7 +5,25 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### README promises `tumwater init` seeds a git repo, but it refuses to run outside an existing one (found by qa loop 2026-09-08)
+
+**Symptom:** A first-time user following the "How it works" section — "`tumwater init \"<prompt>\"` seeds a git repo with README.md … and commits them" — runs `tumwater init` in a fresh, empty project directory (the primary use case: the project does not exist yet, so no git repo exists to `cd` into) and gets an error instead of a seeded repo. The Usage block's comment `# any git repo` hints at the requirement, but it contradicts "seeds a git repo" — for a brand-new project there is no existing repo.
+
+**Repro:**
+```
+mkdir /tmp/x && cd /tmp/x          # empty dir, not a git repository
+tumwater init "Build a tiny markdown-to-html converter CLI in Python."
+# → tumwater: /private/tmp/x is not a git repository (run `git init` first)
+git init
+tumwater init "Build a tiny markdown-to-html converter CLI in Python."
+# → created README.md, PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, tumwater.json, .gitignore (committed)
+```
+
+**Expected:** per "How it works", `tumwater init` seeds a git repo — running it in an empty directory should work.
+
+**Actual:** src/init.ts:87 throws unless the cwd is already a git repository; the user must run `git init` themselves first. The error message does guide them, so it is recoverable, but the docs promise behavior the product does not deliver.
+
+**Suspected cause:** init was written to assume an existing repo while the README wording ("seeds a git repo … and commits them") overstates what it does. Either `init` should run `git init` itself when the cwd is not a repo (matching the docs), or "How it works" should say it seeds files into an *existing* repo and that `git init` comes first.
 
 ## Fixed
 
