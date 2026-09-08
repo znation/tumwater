@@ -49,7 +49,7 @@ interface BuildCheck {
  * harness sees — a tumwater worktree sits three levels under the install
  * (`<repo>/.tumwater/worktrees/<role>`) — while stopping a stray temp directory from wandering
  * into an unrelated project further up. Shared by both walk-ups below. */
-export const WALK_UP_LEVELS = 5;
+const WALK_UP_LEVELS = 5;
 
 /** True when `dir` holds both a package.json and a node_modules/ directory — the structural
  * signature of an installed JS project root. */

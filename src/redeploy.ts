@@ -46,10 +46,10 @@ export const RESTART_EXIT_CODE = 75;
  * the new build). Median ticks run ~35 min on local hardware; a half-hour drain lets most of
  * them finish while bounding how long the fleet keeps executing stale code. Measured across the
  * whole unbroken hold, not per head — see Redeployer.drainSince. */
-export const RESTART_DRAIN_MAX_MS = 30 * 60_000;
+const RESTART_DRAIN_MAX_MS = 30 * 60_000;
 
 /** Hard cap on one compile of the harness; tsc on this codebase takes well under a minute. */
-export const COMPILE_TIMEOUT_MS = 5 * 60_000;
+const COMPILE_TIMEOUT_MS = 5 * 60_000;
 
 /** What the orchestrator should do this poll: `hold` starts no new ticks (a restart is pending),
  * `restart` means dist/ now holds the new build — stop and exit RESTART_EXIT_CODE. */
