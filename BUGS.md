@@ -5,6 +5,21 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### `npm test` fails in worktrees without a local install: the redeploy compileStaged test needs node_modules/typescript (found by readme loop 2026-09-08)
+
+**Symptom:** On main `cc9a506`, the declared verify command (`npm test`) fails 1/786 in any checkout that has never run `npm install` — i.e. every tumwater loop worktree (node_modules is gitignored and the harness does not install per-worktree; build-check.ts's walk-up design assumes exactly this). The failing test is "compileStaged compiles the mirror worktree with the project's tsc and stamps the result" in test/redeploy.test.ts: it expects `{ ok: true }` but gets `typescript is not installed under node_modules — cannot rebuild`. With a local install (`npm ci`) the same suite is 786/786 green, so only bare worktrees fail.
+
+**Repro:**
+```
+git worktree add /tmp/bare main   # fresh checkout; do NOT run npm install
+cd /tmp/bare && npm test          # → 1 fail: redeploy.test.ts compileStaged (785/786)
+npm ci && npm test                # → 786/786 green
+```
+
+**Suspected cause:** the "Real effects" section of test/redeploy.test.ts (added with the build-stamp/redeploy work, commit `9499cf5`) symlinks `<repo>/node_modules/typescript` into a temp project's node_modules and expects it to resolve; in a bare worktree that path does not exist, so the symlink dangles and compileStaged fails closed. The harness runs exactly this suite in bare worktrees: both the main-red baseline gate (checkMainBaseline) and the review-gate pre-check run `npm test` inside the loop's own worktree — so at `cc9a506` most loops judge main RED (confirmed by a failed `scope:"baseline"` build_check event from the coverage loop on 2026-09-08), code-producing roles skip their authoring runs there, and autoRestart's `_main` suite verification fails in its bare detached worktree.
+
+**Fix approach:** resolve typescript the way npm does — walk up from the repo root to the nearest `node_modules/typescript` (mirroring detectBuildCheck's walk-up) instead of assuming a local install, or pass an explicit tsc path into compileStaged. Keep the "fails closed without typescript" negative test green.
+
 ### Budget badge shows `$0.00/$50` on free/local LLM fleets instead of n/a (reported by user 2026-09-08)
 
 **Symptom:** When the fleet runs a model that costs nothing — a local server (e.g. LM Studio via `openai-responses`) or any model with no price set in pi's models.json — both dashboards still show the daily budget badge as `· budget: $0.00/$50 today`, implying spend is being tracked against a cap that can never be reached. The user wants it to read n/a instead of `$0.00/$50`.

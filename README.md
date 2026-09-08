@@ -50,15 +50,21 @@ until main is green again (director, bugfix, and the markdown-only roles keep ti
 land the fix).
 
 Open items:
+- Planned: make the daily cost budget editable from the TUI/GUI (TUI Ctrl+B; GUI badge
+  click-to-edit; one shared setter + `POST /api/budget`; planned 2026-09-07).
 - Planned: label review-gate runs in loop transcripts (review runs render as `── review @ <ts> ──`
   in all three transcript surfaces; planned 2026-09-07).
 - Planned: user-defined loops — the director adds/removes/rearranges extra role loops via
   tumwater.json's `customLoops`; they act like built-ins and are marked on both dashboards (planned
   2026-09-07).
-- Open bugs: none. Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for
-  new projects).
+- Open bug: `npm test` fails 1/786 in worktrees without a local install — the redeploy
+  compileStaged test needs node_modules/typescript, so most loops judge main red (BUGS.md).
+- Open bug: budget badge shows `$0.00/$50` instead of n/a on free/local LLM fleets.
+- Open bug: `init` refuses to run outside an existing git repo despite "seeds a git repo".
+- Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`0104efb`): build clean, suite 718/718, verified 2026-09-07.
+Current main (`cc9a506`): build clean, suite 786/786 with a local install — 785/786 in bare
+worktrees (the redeploy bug above), verified 2026-09-08.
 <!-- tumwater:status:end -->
 
 ## How it works
