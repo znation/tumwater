@@ -76,22 +76,34 @@ export function removeQuiet(file: string): void {
   }
 }
 
-/** Delete regular files under `dir` (recursively) older than `days` days. */
+/** Delete regular files under `dir` (recursively) older than `days` days. Walks with a plain
+ * per-directory readdir instead of {recursive: true} + entry.parentPath, so it stays within the
+ * Node >= 20 floor declared in package.json — parentPath landed only in v20.12, and on earlier
+ * releases path.join(undefined, name) threw here, crashing the orchestrator's session cleanup.
+ * Symlinks are skipped (lstat semantics: a symlink is neither file nor directory), matching the
+ * old recursive-readdir behavior of not following them. */
 export function pruneOldFiles(dir: string, days: number): number {
   if (!fs.existsSync(dir)) return 0;
   const cutoff = Date.now() - days * 24 * 3600 * 1000;
   let pruned = 0;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true, recursive: true })) {
-    if (!entry.isFile()) continue;
-    const file = path.join(entry.parentPath, entry.name);
-    try {
-      if (fs.statSync(file).mtimeMs < cutoff) {
-        fs.rmSync(file);
-        pruned += 1;
+  const walk = (d: string): void => {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const file = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        walk(file); // recurse; symlinks to dirs report isDirectory() false and are skipped
+        continue;
       }
-    } catch {
-      // Vanished mid-scan; skip.
+      if (!entry.isFile()) continue; // skip symlinks and other special entries
+      try {
+        if (fs.statSync(file).mtimeMs < cutoff) {
+          fs.rmSync(file);
+          pruned += 1;
+        }
+      } catch {
+        // Vanished mid-scan; skip.
+      }
     }
-  }
+  };
+  walk(dir);
   return pruned;
 }

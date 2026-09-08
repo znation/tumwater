@@ -26,9 +26,15 @@ test("pruneOldFiles removes only files older than the retention window", () => {
   const newFile = path.join(dir, "role", "new.jsonl");
   fs.writeFileSync(oldFile, "old");
   fs.writeFileSync(newFile, "new");
+  // A second old file two levels down: the walk must recurse past every directory level.
+  const deepDir = path.join(dir, "role", "nested");
+  fs.mkdirSync(deepDir, { recursive: true });
+  const deepOldFile = path.join(deepDir, "deep.jsonl");
+  fs.writeFileSync(deepOldFile, "old");
   const tenDaysAgo = new Date(Date.now() - 10 * 24 * 3600 * 1000);
   fs.utimesSync(oldFile, tenDaysAgo, tenDaysAgo);
-  assert.equal(pruneOldFiles(dir, 7), 1);
+  fs.utimesSync(deepOldFile, tenDaysAgo, tenDaysAgo);
+  assert.equal(pruneOldFiles(dir, 7), 2);
   assert.ok(!fs.existsSync(oldFile));
   assert.ok(fs.existsSync(newFile));
   assert.equal(pruneOldFiles(path.join(dir, "nope"), 7), 0);
