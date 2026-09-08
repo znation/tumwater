@@ -141,6 +141,39 @@ Test bullet update (replacing the transcript-tail item): a labeled run whose bou
 
 **Relationship to other plans.** Single entry: the config plumbing, the director control surface, and the dashboard identification are one feature — none has user-visible value until all three land, so they do not decompose. Independent of the backlog-reading residual (disjoint files except README prose) and of everything in Done; either can land first.
 
+### Show per-loop token generation rate (5-minute moving average) in the TUI/GUI (planned 2026-09-08, requested by user)
+
+**Goal.** Both dashboards show each loop's cumulative `gen` tokens but not how fast the model is generating for that loop right now — an operator watching a long tick cannot tell whether the fleet is at full speed or crawling (slow local server under load, KV thrashing, a wedged engine). Add one column per loop to both dashboards: output tokens generated over the trailing 5 minutes divided by the window's elapsed time — a moving average that smooths turn granularity and tool-call gaps. Shown for loops with an in-flight tick; `-` otherwise.
+
+**Design (decided, with rationale).**
+- **Source: assistant `message_end` events in each loop's raw pi log.** Usage arrives only at turn granularity — streaming deltas (`message_update`) carry no usage and progress.ts already ignores them. The existing live-progress tail (src/ui/progress.ts) incrementally parses exactly these lines for `outputTokens`, so the rate rides that mechanism: no new state file, no loop/orchestrator change, display-only.
+- **Sample ring inside LiveProgress.** Each assistant message_end with `usage.output > 0` appends `{ t, tokens }`, where `t` is the line's own `message.timestamp` (epoch ms — transcript.ts already relies on that field for run separators) falling back to parse time when absent. Samples older than the window are pruned at each append. The ring survives `session` resets: `freshProgress` omits the field, so the session case's `Object.assign` leaves it untouched — a 5-minute window legitimately spans tick boundaries (back-to-back ticks, review runs), and tail seeding rebuilds the ring from per-line timestamps.
+- **Rate = tokens in [now−300 s, now] ÷ min(300 s, now − oldest sample's t).** Dividing by the full 5 minutes would under-report a young window (a tick that started one minute ago at 100 t/s would read ~20); dividing by elapsed time since the first in-window sample converges to the true rate immediately and becomes exactly the 5-minute moving average once samples span the whole window. No samples in the window → null → `-`.
+- **Shown only for running loops** (`s.running`, set at tick start, cleared at end): matches "each running loop", keeps idle loops' tail-read pattern unchanged (progress.ts deliberately does not combine an idle loop's log tail with persisted counters), and no stale rate lingers on a sleeping loop. Review-gate runs count toward their loop's rate — they are that loop's generation.
+- **One window constant, no knob.** `TOKEN_RATE_WINDOW_MS = 5 * 60_000` in progress.ts (opinionated default; "let's say 5 minutes" was a suggestion, not a requirement).
+
+**Approach.**
+- src/ui/progress.ts — LiveProgress gains an internal `samples: Array<{ t: number; tokens: number }>` (documented as tail state, not display data); feedLine appends + prunes on assistant message_end with `usage.output > 0` (`t = typeof message.timestamp === "number" ? message.timestamp : Date.now()`); freshProgress omits samples so session resets preserve the ring and seeding starts empty; export pure `tokenRate(samples, now): number | null` implementing the formula above beside `TOKEN_RATE_WINDOW_MS`.
+- src/ui/status-render.ts — displayTokenMetrics returns `{ generated, peakCtx, tokenRate }`: rate = `s.running ? tokenRate(p?.samples ?? [], Date.now()) : null` (same running-gating as the existing counter combination); renderStatus adds a `t/s` column between `gen` and `peak ctx`, cell via one small formatter — one decimal under 10 (`8.3`), integer at/above 10 (`42`), `-` for null; renumber FLEXIBLE_COLUMNS indices (the file documents "renumber when columns change"); totals row leaves the new cell blank, like ticks/commits.
+- src/ui/gui.ts — /api/status loop rows gain `tokenRate: m.tokenRate ?? null` (number|null; JSON-safe) beside generated/peakCtx. `status --json` inherits it for free (same statusPayload).
+- src/ui/gui-page.ts — thead gains `<th>t/s</th>` after gen; the row cell formats client-side with the same rule as status-render's formatter (the page already duplicates fmtTokens/fmtUsdCap from the payload — established pattern).
+- test/progress.test.ts — feedLine appends a sample stamped with the line's own timestamp; `usage.output` 0 or missing usage adds nothing; samples older than the window are pruned at append; a session event preserves the ring (cross-tick window); tokenRate: empty → null, one young sample divides by elapsed time, full-window samples divide by 300 s, mixed ages.
+- test/status-render.test.ts — table carries the t/s column in position; a running loop with a seeded log shows the formatted rate; an idle loop shows `-`; narrow-width clipping still holds after renumbering FLEXIBLE_COLUMNS.
+- test/gui.test.ts — /api/status rows carry tokenRate as a number for a running loop with recent samples and null otherwise.
+- README.md — one sentence where the dashboards are described (How it works): both show each in-flight tick's token generation rate, smoothed over 5 minutes. Leave the `tumwater:status` section to the readme role.
+
+**Files touched.** src/ui/progress.ts, src/ui/status-render.ts, src/ui/gui.ts, src/ui/gui-page.ts, test/progress.test.ts, test/status-render.test.ts, test/gui.test.ts, README.md. No changes to loop.ts, orchestrator.ts, state.ts, types.ts (LoopState unchanged), or event types — display-only, derived from the raw logs that already exist.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- TUI and `tumwater status` show a new `t/s` column between gen and peak ctx: a loop with an in-flight tick and assistant output inside the trailing 5 minutes shows its moving-average rate (one decimal under 10, integer at/above); every other loop shows `-`.
+- The GUI loop table shows the same value; /api/status carries per-loop `tokenRate` (number|null) and `status --json` inherits it.
+- Rate math: sum of `usage.output` over assistant message_end lines whose timestamp falls in [now−300 s, now], divided by min(300 s, elapsed since the oldest such sample); null when no samples; a loop that just finished its tick immediately shows `-` (no stale rate on idle loops).
+- The window spans tick boundaries: back-to-back ticks within 5 minutes contribute to one combined rate; samples older than 5 minutes are pruned and never displayed.
+- No new state files, config keys, or event types; a loop's persisted LoopState is byte-identical before/after (display-only).
+
+**Relationship to other plans.** Independent of everything currently planned (budget editing, transcript labels, user-defined loops): it reads the same raw-log tail those entries do not touch and adds one column plus one payload field. Single entry: the TUI and GUI halves share one sample ring, one rate helper, and one payload field — either half alone leaves the other surface blind.
+
 ## Done
 
 ### Read backlog entries in full from the TUI/GUI dashboards (planned 2026-09-05, refined 2026-09-06, re-audited 2026-09-06, done 2026-09-07)
