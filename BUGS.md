@@ -5,6 +5,23 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### Auto-restart aborts an in-flight director tick after the 30-minute drain: the director should be exempt and waited for (reported by user 2026-09-08)
+
+**Symptom:** When a self-redeploy is pending (stale build, main green, compile done), the harness holds new ticks and waits up to `RESTART_DRAIN_MAX_MS` (30 min) for in-flight ticks to finish — then swaps dist/ and aborts whatever is still running. The drain counts ALL in-flight ticks alike, so a director tick carrying an explicit user prompt that outlives the window is aborted mid-task even though it was requested by a human. Median ticks run ~35 min on local hardware (the stated rationale for the 30-minute cap), so long director prompts routinely hit this.
+
+**Repro:**
+1. Dogfood setup with `autoRestart` true; make main move past the running build's stamp while a director prompt is executing (or unit-test `Redeployer.poll` + the orchestrator restart path directly).
+2. Let the drain window elapse (`drainSince` + 30 min) with the director tick still in flight.
+3. The orchestrator swaps dist/ and calls `internalStop.abort()`; the director's pi run ends as `aborted` (resumable on the new build, but the user's prompt is interrupted mid-task).
+
+**Expected:** role ticks keep today's behavior — drained, then aborted resumably after the 30-minute window. A director tick in flight when the window expires extends the hold indefinitely: no swap and no abort until it finishes; only then does the restart land (aborting any remaining role ticks). The per-tick watchdogs (`quietTimeoutSeconds`, `tickTimeoutSeconds`) already bound a hung director run, so an unbounded wait cannot hang the fleet beyond what one tick can already do.
+
+**Suspected cause:**
+- src/redeploy.ts:49 — `RESTART_DRAIN_MAX_MS = 30 * 60_000`; line ~213 in `poll()`: `if (inFlight > 0 && now - this.drainSince < this.drainMaxMs) return "hold";` decides on a single aggregate count with no notion of which loops are still running, then swaps unconditionally.
+- src/orchestrator.ts:216 — `inFlight` is one `Set<Promise<void>>` for every runner's task (director tasks added at ~line 389 like any other); on the `restart` action (~lines 348–357) it does `if (inFlight.size > 0) internalStop.abort()`, aborting everything including the director.
+
+**Fix direction:** track in-flight director ticks separately from role ticks in the orchestrator (e.g. a counter or flag updated where tasks are added/removed for `DIRECTOR_ROLE`) and pass both to `Redeployer.poll` — change its `inFlight: number` parameter accordingly (e.g. `{ roleInFlight, directorInFlight }`). In `poll`: hold while `directorInFlight > 0` with no time cap; otherwise apply the existing window logic against role ticks only. On `restart`, abort only if role ticks remain (the director is guaranteed finished by then). Update the comment at src/redeploy.ts:45–48, the `drainedMs`/`abortedTicks` semantics in the `restart` event (a director-extended hold will report >30 min drained — that is correct and informative), and the README's "How it works" sentence about the 30-minute drain to state the director exemption. Tests: test/redeploy.test.ts (poll holds past the window while a director tick is in flight; swaps once it clears) and test/orchestrator.test.ts if it exercises the restart/abort path.
+
 ### Budget badge shows `$0.00/$50` on free/local LLM fleets instead of n/a (reported by user 2026-09-08)
 
 **Symptom:** When the fleet runs a model that costs nothing — a local server (e.g. LM Studio via `openai-responses`) or any model with no price set in pi's models.json — both dashboards still show the daily budget badge as `· budget: $0.00/$50 today`, implying spend is being tracked against a cap that can never be reached. The user wants it to read n/a instead of `$0.00/$50`.
