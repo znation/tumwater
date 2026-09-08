@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { statOrNull } from "./files.js";
+import { statOrNull } from "../files.js";
 import { formatTranscript, type TranscriptEntry } from "./transcript.js";
 import { readCompleteLines } from "./tail.js";
 

@@ -12,8 +12,8 @@ import {
   rejectUnknownArgs,
 } from "./cli-args.js";
 import { loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from "./state.js";
-import { createTranscriptRenderer } from "./transcript.js";
-import { readTranscriptTail } from "./transcript-tail.js";
+import { createTranscriptRenderer } from "./ui/transcript.js";
+import { readTranscriptTail } from "./ui/transcript-tail.js";
 import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
 import { initProject } from "./init.js";
 import {
@@ -24,18 +24,18 @@ import {
   submitPrompt,
 } from "./inbox.js";
 import { logEvent, readEvents, subscribeEvents } from "./events.js";
-import { formatEvent } from "./event-format.js";
+import { formatEvent } from "./ui/event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
 import { spawnRunChild, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { renderDoctor, runDoctor } from "./doctor.js";
 import { ensureParentDir, findOnPath, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
-import { followFile } from "./tail.js";
+import { followFile } from "./ui/tail.js";
 import { snapshot } from "./status.js";
-import { renderStatus } from "./status-render.js";
-import { runTui } from "./tui.js";
-import { lanAddresses, startGui, statusPayload } from "./gui.js";
+import { renderStatus } from "./ui/status-render.js";
+import { runTui } from "./ui/tui.js";
+import { lanAddresses, startGui, statusPayload } from "./ui/gui.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { abortRequestPath, eventsLogPath, pausedPath, piLogPath, resetRequestPath } from "./paths.js";
 import { errorMessage } from "./text.js";

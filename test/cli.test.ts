@@ -6,7 +6,7 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { statusPayload } from "../src/gui.js";
+import { statusPayload } from "../src/ui/gui.js";
 import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig, loadConfig } from "../src/config.js";

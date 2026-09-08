@@ -1,10 +1,10 @@
 import path from "node:path";
-import { DIRECTOR_ROLE } from "./roles.js";
-import type { LoopState } from "./types.js";
-import type { StatusSnapshot } from "./status.js";
-import { dailyCost, fleetDailyCost, budgetReached } from "./state.js";
+import { DIRECTOR_ROLE } from "../roles.js";
+import type { LoopState } from "../types.js";
+import type { StatusSnapshot } from "../status.js";
+import { dailyCost, fleetDailyCost, budgetReached } from "../state.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
-import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd } from "./text.js";
+import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd } from "../text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
  * cycle position, time/token formatters, and the width-aware table shared by

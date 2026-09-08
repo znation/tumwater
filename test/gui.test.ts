@@ -5,7 +5,7 @@ import type os from "node:os";
 import net from "node:net";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { lanAddresses, statusPayload, startGui } from "../src/gui.js";
+import { lanAddresses, statusPayload, startGui } from "../src/ui/gui.js";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
@@ -195,7 +195,7 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
   // Regression: the page is authored inside a TS template literal, where a bare \n becomes a
   // REAL newline in the served page — splitting the page's own string literals and killing the
   // whole script with a syntax error ("Unexpected EOF"). Parse every <script> body for real.
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   const scripts = [...GUI_PAGE.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
   assert.ok(scripts.length >= 1, "page has an inline script");
   for (const body of scripts) {
@@ -263,12 +263,12 @@ test("status payload carries the current work item for running loops only", asyn
 });
 
 test("the dashboard page has a current column after state", async () => {
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   assert.match(GUI_PAGE, /<th>state<\/th><th>current<\/th>/);
 });
 
 test("the dashboard page has a last tick column between cost and last result", async () => {
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   // The per-loop today-spend column (PLANS.md "Per-loop today spend") landed between cost and
   // last tick, so the header order now pins all four cells at once.
   assert.match(GUI_PAGE, /<th>cost<\/th><th>today<\/th><th>last tick<\/th><th>last result<\/th>/);
@@ -306,7 +306,7 @@ test("status payload carries todayUsd per loop from its daily window", async () 
 });
 
 test("the dashboard page renders the today cell from the payload's todayUsd", async () => {
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   // The header cell sits between cost and last tick (pinned by the regex above)...
   assert.match(GUI_PAGE, /<th>cost<\/th><th>today<\/th><th>last tick<\/th>/);
   // ...and the cell renders client-side from todayUsd, beside its existing cost formatting.
@@ -339,7 +339,7 @@ test("status payload carries planned plans and open bugs, fresh per poll", async
 });
 
 test("the dashboard page has a project status panel", async () => {
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   assert.match(GUI_PAGE, /<div id="backlog"><\/div>/);
   // The panel renders from the payload's plans/bugs fields.
   assert.match(GUI_PAGE, /d\.plans \|\| \[\]/);
@@ -399,7 +399,7 @@ test("status payload carries open questions, fresh per poll", async () => {
 });
 
 test("the dashboard page renders the open-questions section and header badge from the payload", async () => {
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   // The #backlog panel gets an open questions section alongside plans/bugs… (its third
   // argument names the /api/backlog file so each entry line links into the detail panel)
   assert.match(GUI_PAGE, /backlogList\("open questions", d\.questions \|\| \[\], "questions"\)/);
@@ -434,7 +434,7 @@ test("status payload carries queued prompt previews, fresh per poll", async () =
 });
 
 test("the dashboard page lists queued prompts in its project status panel", async () => {
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   // The #backlog panel gets a queued-prompts section alongside plans/bugs/questions.
   assert.match(GUI_PAGE, /backlogList\("queued prompts", d\.inboxPrompts \|\| \[\]\)/);
 });
@@ -532,7 +532,7 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
 });
 
 test("the dashboard page renders backlog entries as links into /api/backlog", async () => {
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   // Each entry line is an <a> carrying its file and zero-based index…
   assert.match(GUI_PAGE, /class='backloglink/);
   assert.match(GUI_PAGE, /data-file='/);
@@ -552,7 +552,7 @@ test("the dashboard page escapes backlog entry bodies before innerHTML", async (
   // dynamic value on the page (the same entry's title included) went through esc(). HTML in a
   // plan/bug/question entry would then execute in the operator's browser; with
   // --all-interfaces the dashboard is reachable network-wide without auth.
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
 
   // The detail panel line routes d.body through esc (esc("") is "", so empty bodies still
   // fall back to the placeholder).
@@ -618,7 +618,7 @@ test("status payload carries the daily budget while enabled and null when disabl
 });
 
 test("the dashboard page derives its header badge from the payload's budget", async () => {
-  const { GUI_PAGE } = await import("../src/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   // Standing while enabled (payload sends an object), absent when disabled (null).
   assert.match(
     GUI_PAGE,

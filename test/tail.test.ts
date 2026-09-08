@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { followFile, readCompleteLines, withTail, type TailState } from "../src/tail.js";
+import { followFile, readCompleteLines, withTail, type TailState } from "../src/ui/tail.js";
 import { tmpdir } from "./util.js";
 
 /** Poll until `pred` holds or the timeout elapses; returns whether it held. */

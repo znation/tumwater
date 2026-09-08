@@ -8,19 +8,19 @@ import {
   openQuestionEntries,
   plannedPlans,
   plannedPlanEntries,
-} from "./backlog.js";
-import { parseNonNegativeInt, parsePositiveInt } from "./cli-args.js";
-import { readEvents } from "./events.js";
+} from "../backlog.js";
+import { parseNonNegativeInt, parsePositiveInt } from "../cli-args.js";
+import { readEvents } from "../events.js";
 import { formatEvent } from "./event-format.js";
-import { submitPrompt } from "./inbox.js";
+import { submitPrompt } from "../inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
-import { allRoleIds } from "./roles.js";
+import { allRoleIds } from "../roles.js";
 import { readLiveProgress } from "./progress.js";
-import { dailyCost, budgetReached } from "./state.js";
-import { snapshot } from "./status.js";
+import { dailyCost, budgetReached } from "../state.js";
+import { snapshot } from "../status.js";
 import { displayTokenMetrics, loopPhase } from "./status-render.js";
 import { readTranscript } from "./transcript.js";
-import { errorMessage } from "./text.js";
+import { errorMessage } from "../text.js";
 
 /** Send a JSON response with the given status code and body. Every /api endpoint answers
  * this way (errors included), so the content-type header lives in exactly one place. */

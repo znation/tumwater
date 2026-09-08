@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import { statOrNull } from "./files.js";
-import { piLogPath } from "./paths.js";
+import { statOrNull } from "../files.js";
+import { piLogPath } from "../paths.js";
 
 /** Incremental consumption of append-only logs (the harness's JSONL event and pi logs):
  * complete-line window reads, per-file tail state that folds only appended bytes on each

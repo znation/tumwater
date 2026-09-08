@@ -1,5 +1,5 @@
-import { compactTokens, shortSha, usd } from "./text.js";
-import type { HarnessEvent } from "./types.js";
+import { compactTokens, shortSha, usd } from "../text.js";
+import type { HarnessEvent } from "../types.js";
 
 /** The `$<spent> of $<cap>` fragment both budget transition events share: the fields arrive
  * loosely typed on HarnessEvent, so each is coerced and rendered through the shared cents-

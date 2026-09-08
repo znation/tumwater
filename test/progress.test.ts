@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { parseProgress, readLiveProgress } from "../src/progress.js";
+import { parseProgress, readLiveProgress } from "../src/ui/progress.js";
 import { piLogPath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
 

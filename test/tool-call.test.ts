@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { describeToolCall } from "../src/tool-call.js";
+import { describeToolCall } from "../src/ui/tool-call.js";
 
 test("describeToolCall summarizes common arg shapes tersely", () => {
   assert.equal(describeToolCall("read", { path: "/a/b/loop.ts" }), "read loop.ts");

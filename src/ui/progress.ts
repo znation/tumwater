@@ -1,5 +1,5 @@
-import { parsePiEventLine } from "./pi-event-line.js";
-import { collapseWhitespace, truncate } from "./text.js";
+import { parsePiEventLine } from "../pi-event-line.js";
+import { collapseWhitespace, truncate } from "../text.js";
 import { describeToolCall } from "./tool-call.js";
 import { statRoleLog, TailState, withTail } from "./tail.js";
 

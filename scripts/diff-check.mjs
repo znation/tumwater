@@ -39,10 +39,10 @@ function makeFixture() {
 
 const baseline = await import("/tmp/tw-baseline/dist/src/status.js");
 const current = await import("../dist/src/status.js");
-const baseRender = (await import("/tmp/tw-baseline/dist/src/status-render.js")).renderStatus;
-const curRender = (await import("../dist/src/status-render.js")).renderStatus;
-const baseGui = await import("/tmp/tw-baseline/dist/src/gui.js");
-const curGui = await import("../dist/src/gui.js");
+const baseRender = (await import("/tmp/tw-baseline/dist/src/ui/status-render.js")).renderStatus;
+const curRender = (await import("../dist/src/ui/status-render.js")).renderStatus;
+const baseGui = await import("/tmp/tw-baseline/dist/src/ui/gui.js");
+const curGui = await import("../dist/src/ui/gui.js");
 
 let failures = 0;
 for (const width of [undefined, 120, 60]) {

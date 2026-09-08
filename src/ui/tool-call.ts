@@ -1,5 +1,5 @@
 import path from "node:path";
-import { collapseWhitespace, truncate } from "./text.js";
+import { collapseWhitespace, truncate } from "../text.js";
 
 /** Human one-liner for a pi tool call, shared by live progress data collection
  * (LiveProgress.lastTool) and transcript rendering. Presentation only: depends on nothing but

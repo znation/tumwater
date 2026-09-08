@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatEvent } from "../src/event-format.js";
+import { formatEvent } from "../src/ui/event-format.js";
 
 test("formatEvent renders each type as one line", () => {
   const cases = [

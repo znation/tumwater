@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { readTranscriptTail } from "../src/transcript-tail.js";
+import { readTranscriptTail } from "../src/ui/transcript-tail.js";
 // Oracle: the tail reader must match a full re-read rendered by transcript.ts.
-import { formatTranscript } from "../src/transcript.js";
+import { formatTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
-import { readCompleteLines } from "../src/tail.js";
+import { readCompleteLines } from "../src/ui/tail.js";
 import { FIXED_TS, agentStart, assistantBlocks, tmpdir, userLine } from "./util.js";
 
 test("readTranscriptTail matches a full re-read on a small log", () => {

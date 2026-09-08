@@ -15,7 +15,7 @@ import {
   renderInputView,
   runTui,
   stepEntryScroll,
-} from "../src/tui.js";
+} from "../src/ui/tui.js";
 import { makeRepo } from "./util.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
