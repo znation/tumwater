@@ -9,6 +9,18 @@ import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/ui/tail.js";
 import { FIXED_TS, agentStart, assistantBlocks, tmpdir, userLine } from "./util.js";
 
+/** Local wall-clock rendering of an epoch-ms timestamp (independent of the implementation). */
+function expectedTimestamp(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/** A harness-written run-label marker line (src/pi.ts writes it for labeled runs). */
+function reviewMarker(): string {
+  return JSON.stringify({ type: "tumwater_run", label: "review" });
+}
+
 test("readTranscriptTail matches a full re-read on a small log", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
@@ -166,4 +178,118 @@ test("readTranscriptTail returns null for missing or empty logs", () => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, "");
   assert.equal(readTranscriptTail(file, 50), null);
+});
+
+// Run labels: a labeled run's marker line sits just before its agent_start, so the backward
+// scan arms on a qualifying agent_start and keeps walking older lines for at most one more run:
+// a marker becomes the boundary (the window carries the label), while an older agent_start or
+// EOF means the run was unlabeled and the window stops at the arming agent_start exactly as
+// before. The oracle is always a full re-read — tail ≡ formatTranscript(whole file).slice(-limit).
+
+test("readTranscriptTail includes a marker line when it labels the boundary run", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Every run is labeled; with limit 1 the walk arms on the newest agent_start and must keep
+  // walking to its marker — the window starts at M even though A is what armed the stop.
+  const lines: string[] = [];
+  for (let i = 1; i <= 5; i++) {
+    lines.push(reviewMarker());
+    lines.push(agentStart());
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  const size = fs.statSync(file).size;
+  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  for (const limit of [1, 2, 50]) {
+    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
+  }
+  const tail = readTranscriptTail(file, 1);
+  assert.ok(tail);
+  assert.equal(
+    tail.entries[0]?.[0],
+    `── review @ ${expectedTimestamp(FIXED_TS + 5 * 60_000)} ──`,
+    "the boundary run's separator carries its label",
+  );
+});
+
+test("readTranscriptTail matches a full re-read with interleaved labels at every limit", () => {
+  // Alternating author/review runs — the real shape of a role's shared log. As the window
+  // slides, boundaries land on markers and agent_starts alike; the oracle must hold throughout.
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const lines: string[] = [];
+  for (let i = 1; i <= 40; i++) {
+    if (i % 2 === 0) lines.push(reviewMarker());
+    lines.push(agentStart());
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  const size = fs.statSync(file).size;
+  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  for (const limit of [1, 2, 3, 7, 50]) {
+    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
+  }
+});
+
+test("readTranscriptTail matches a full re-read with a stale marker, mislabel included", () => {
+  // A failed reviewer spawn leaves a marker whose own agent_start never came: the next run's
+  // separator picks it up. The invariant is tail ≡ full re-read — not "labels are always correct".
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const lines: string[] = [];
+  for (let i = 1; i <= 5; i++) {
+    if (i === 3) lines.push(reviewMarker()); // stale — its reviewer died before emitting anything
+    lines.push(agentStart());
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  const size = fs.statSync(file).size;
+  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  assert.ok(
+    full.flat().includes(`── review @ ${expectedTimestamp(FIXED_TS + 3 * 60_000)} ──`),
+    "sanity: the stale marker mislabels run 3 in a full re-read",
+  );
+  for (const limit of [1, 2, 50]) {
+    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
+  }
+});
+
+test("readTranscriptTail excludes a labeled run older than the window boundary", () => {
+  // Only the OLDEST run is labeled: for small limits its marker sits outside [boundary..EOF]
+  // and contributes nothing, while the whole-file window still carries its label.
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const lines: string[] = [];
+  for (let i = 1; i <= 6; i++) {
+    if (i === 1) lines.push(reviewMarker());
+    lines.push(agentStart());
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  const size = fs.statSync(file).size;
+  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  for (const limit of [1, 2, 50]) {
+    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
+  }
+  const one = readTranscriptTail(file, 1);
+  assert.ok(one);
+  assert.ok(!one.entries.flat().some((l) => l.includes("review")), "the older labeled run contributes nothing");
+  const all = readTranscriptTail(file, 50);
+  assert.ok(all);
+  assert.ok(
+    all.entries.flat().includes(`── review @ ${expectedTimestamp(FIXED_TS + 60_000)} ──`),
+    "the whole-file window still carries the label",
+  );
 });

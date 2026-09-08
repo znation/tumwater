@@ -415,6 +415,76 @@ test("a context-exceeded error fails the tick with the real cause", async () => 
   }
 });
 
+// Run labels: a labeled run (the review gate) writes one marker line to the shared raw log
+// before any of pi's output, so every transcript surface can render `── review @ <ts> ──` for
+// it. Unlabeled author runs write no marker — their logs stay byte-identical.
+
+test("runPi with a label writes exactly one marker line as the raw log's first line", async () => {
+  const dir = tmpdir();
+  const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve", { tokens: 5 })}'`);
+  try {
+    await runPi({
+      cwd: dir,
+      prompt: "p",
+      config: defaultConfig(),
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+      label: "review",
+    });
+    const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
+    assert.equal(
+      content,
+      `{"type":"tumwater_run","label":"review"}\n${assistantLine("VERDICT: approve", { tokens: 5 })}\n`,
+      "the marker precedes every pi output line and appears exactly once",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("runPi without a label leaves the raw log byte-identical to today's shape", async () => {
+  const dir = tmpdir();
+  const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
+  try {
+    await runPi({
+      cwd: dir,
+      prompt: "p",
+      config: defaultConfig(),
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+    });
+    const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
+    assert.equal(content, `${assistantLine("done", { tokens: 5 })}\n`, "no marker line for unlabeled runs");
+  } finally {
+    restore();
+  }
+});
+
+test("a failed labeled run still flushes its marker (the stale-marker case)", async () => {
+  // A reviewer spawn that dies before emitting anything leaves the marker alone in the log.
+  // The renderer consumes it at the next agent_start, so it can mislabel at most the following
+  // separator and never leaks past one run — pinned here at the source.
+  const dir = tmpdir();
+  const restore = fakePi("exit 1");
+  try {
+    await runPi({
+      cwd: dir,
+      prompt: "p",
+      config: defaultConfig(),
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+      label: "review",
+    });
+    const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
+    assert.equal(content, `{"type":"tumwater_run","label":"review"}\n`);
+  } finally {
+    restore();
+  }
+});
+
 test("a missing pi binary fails the tick with an error", async () => {
   const repo = makeRepo();
   await initProject(repo, "spawn failure test");

@@ -177,6 +177,11 @@ interface PiRunOptions {
   /** Raw pi JSON event lines are appended here for observability. */
   rawLogFile: string;
   signal?: AbortSignal;
+  /** Label this run in the role's transcript (the review gate passes "review"): one compact
+   * marker line is written to the raw log before any of pi's output, so every transcript
+   * surface renders a labeled separator for it. No label → no write — author-run logs stay
+   * byte-identical to today's shape. */
+  label?: string;
 }
 
 /** Build the pi argv for one tick. Exported for tests. */
@@ -225,6 +230,12 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     ensureParentDir(opts.rawLogFile);
     rotateIfLarge(opts.rawLogFile, opts.config.logMaxBytes);
     const rawLog = fs.createWriteStream(opts.rawLogFile, { flags: "a" });
+    if (opts.label) {
+      // The marker precedes this run's first pi event in file order — written to the same
+      // stream stdout lines flow through, before spawn, so ordering is exact by construction;
+      // on a failed spawn finish() still ends the stream and flushes it.
+      rawLog.write(JSON.stringify({ type: "tumwater_run", label: opts.label }) + "\n");
+    }
     const parser = new PiStreamParser();
     // Decode stdout incrementally instead of per chunk: a raw Buffer.toString("utf8")
     // replaces any multi-byte character whose bytes straddle two 'data' events with U+FFFD,

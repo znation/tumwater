@@ -67,10 +67,11 @@ function renderAssistantMessage(content: unknown): string[] {
 
 /** The event types createTranscriptRenderer's feed() acts on — everything else (streaming
  * deltas, tool/turn bookkeeping) renders nothing. `message_end` covers both roles: assistant
- * turns render and user messages stamp the run separator. Also used by feed()'s pre-filter to
- * skip JSON.parse for pi lines whose type is verifiably not one of these; a new renderable case
- * in the switch must be added here too or it will never reach the renderer. */
-const RENDERABLE_TYPES = new Set(["agent_start", "message_end", "auto_retry_start"]);
+ * turns render and user messages stamp the run separator; `tumwater_run` is a harness-written
+ * marker that labels the next run's separator without rendering anything itself. Also used by
+ * feed()'s pre-filter to skip JSON.parse for pi lines whose type is verifiably not one of these;
+ * a new renderable case in the switch must be added here too or it will never reach the renderer. */
+const RENDERABLE_TYPES = new Set(["agent_start", "message_end", "auto_retry_start", "tumwater_run"]);
 
 interface TranscriptRenderer {
   /** Feed one raw JSONL line; returns the rendered lines of any entry this line completes
@@ -87,20 +88,28 @@ interface TranscriptRenderer {
 
 /** Incremental renderer over pi's streaming JSONL log. Only complete, renderable events ever
  * produce output: `agent_start` (a run separator, stamped from the first user message's
- * epoch-ms timestamp), assistant `message_end` turns, and `auto_retry_start` warnings.
- * Streaming deltas (`message_update`), tool-execution/turn bookkeeping, and user messages —
- * in particular the multi-KB tick prompt sent each run — are never rendered; feed() skips
- * even parsing them via a fast path over pi's compact `type`-first JSON shape.
+ * epoch-ms timestamp), assistant `message_end` turns, and `auto_retry_start` warnings. A
+ * harness-written `tumwater_run` marker renders nothing itself — it sets a pending label that
+ * the next agent_start captures into its separator (`── review @ <ts> ──`). Streaming deltas
+ * (`message_update`), tool-execution/turn bookkeeping, and user messages — in particular the
+ * multi-KB tick prompt sent each run — are never rendered; feed() skips even parsing them via a
+ * fast path over pi's compact `type`-first JSON shape.
  *
- * The pending run separator is this renderer's ONLY cross-line state: readTranscriptTail
- * (transcript-tail.ts) relies on agent_start resetting it, so that a window starting at an
- * agent_start renders identically to a full re-read. Adding another piece of cross-line state
- * here would silently break that one-shot reader — extend its stop boundary too. */
+ * The renderer's cross-line state is the pending run separator plus that pending label: both
+ * are reset/captured by agent_start, so readTranscriptTail (transcript-tail.ts) starts windows
+ * at an agent_start — or at the marker line preceding it when one labels that run — and renders
+ * identically to a full re-read. Adding another piece of cross-line state here would silently
+ * break that one-shot reader — extend its stop boundary too. */
 export function createTranscriptRenderer(): TranscriptRenderer {
   let runOpen = false; // agent_start seen for this run, separator not yet emitted
   let runTime: string | null = null;
+  let runLabel: string | null = null; // label captured from the marker preceding this run's agent_start
+  let pendingLabel: string | null = null; // set by a tumwater_run marker, consumed at the next agent_start
 
-  const separatorLine = (): string => (runTime ? `── run @ ${runTime} ──` : "── run ──");
+  const separatorLine = (): string => {
+    const name = runLabel ?? "run";
+    return runTime ? `── ${name} @ ${runTime} ──` : `── ${name} ──`;
+  };
   const emitSeparator = (): string[] => {
     if (!runOpen) return [];
     runOpen = false;
@@ -115,6 +124,8 @@ export function createTranscriptRenderer(): TranscriptRenderer {
         case "agent_start":
           runOpen = true;
           runTime = null;
+          runLabel = pendingLabel; // captured, then consumed unconditionally — a stale marker
+          pendingLabel = null; // (no agent_start of its own) can mislabel at most this one separator
           return []; // separator is stamped from the first user message, then emitted lazily
         case "message_end": {
           const message = event.message as
@@ -136,6 +147,11 @@ export function createTranscriptRenderer(): TranscriptRenderer {
           const maxAttempts = typeof event.maxAttempts === "number" ? event.maxAttempts : "?";
           const error = truncate(collapseWhitespace(String(event.errorMessage ?? "unknown error")), 120);
           return [...emitSeparator(), `⚠ retry ${attempt}/${maxAttempts}: ${error}`];
+        }
+        case "tumwater_run": {
+          const label = event.label;
+          if (typeof label === "string" && label) pendingLabel = label;
+          return []; // labels the next run's separator; renders nothing of its own
         }
         default:
           return []; // message_update deltas, tool_execution_*, turn_*, agent_end, session, …

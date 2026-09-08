@@ -11,10 +11,12 @@ import { readCompleteLines } from "./tail.js";
  * its own data model (TranscriptWindow) and I/O strategy: a backward chunk scan over raw bytes.
  * Its only touch of transcript.ts is formatTranscript, which it calls on the collected lines.
  *
- * The stopping boundary depends on the renderer's state machine: agent_start resets its ONLY
- * cross-line state (the pending run separator), so a window starting at an agent_start renders
- * identically to a full re-read. If createTranscriptRenderer gains another piece of cross-line
- * state, this scan must stop earlier — keep the two in sync. */
+ * The stopping boundary depends on the renderer's state machine: agent_start resets/captures
+ * its cross-line state (the pending run separator and the pending label set by a tumwater_run
+ * marker), so a window starting at an agent_start — or at the marker line preceding it, which
+ * this scan arms for after finding a qualifying agent_start — renders identically to a full
+ * re-read. If createTranscriptRenderer gains another piece of cross-line state, this scan must
+ * stop earlier — keep the two in sync. */
 
 /** Chunk size for readTranscriptTail's backward scan: large enough that one chunk holds most
  * of what a one-shot display needs, small enough to keep each syscall cheap. */
@@ -45,10 +47,15 @@ interface TranscriptWindow {
  * `limit` transcript entries without reading (or parsing) the whole file — which grows to
  * logMaxBytes (~16MB+) between rotations. Scans backwards from EOF in chunks, collecting
  * complete lines until it passes an agent_start with at least `limit` entry-candidate lines
- * after it: agent_start resets the renderer's only cross-line state (the pending run
- * separator), so everything from that line on renders identically to a full re-read. When no
- * such boundary exists (small log, or fewer than `limit` entries total) the scan reaches EOF
- * and the window is the whole file — still exact, never more I/O than today's read. Returns
+ * after it: agent_start resets/captures the renderer's cross-line state (the pending run
+ * separator and the pending label), so everything from that line on renders identically to a
+ * full re-read. A labeled run's marker line sits just before its agent_start, between it and
+ * the previous run — so after arming on a qualifying agent_start the scan keeps walking older
+ * lines for at most one more run: a tumwater_run marker becomes the boundary (window [marker ..
+ * EOF] carries the label), while an older agent_start or EOF means the run was unlabeled and
+ * the window stops at the arming agent_start exactly as before. When no such boundary exists
+ * (small log, or fewer than `limit` entries total) the scan reaches EOF and the window is the
+ * whole file — still exact, never more I/O than today's read plus one run of lines. Returns
  * null when the file is missing or empty.
  *
  * All line-boundary work happens on raw bytes: a newline (0x0A) can never occur inside a
@@ -68,6 +75,8 @@ export function readTranscriptTail(file: string, limit: number): TranscriptWindo
   let candidates = 0; // Entry-candidate lines seen so far, counting from EOF.
   let end = 0; // Offset just past the last complete newline; 0 when the file has none.
   let stoppedAtBoundary = false;
+  let armed = false; // A qualifying agent_start was recorded; walking older lines for its marker line.
+  let boundaryIndex = -1; // Index in `lines` of the arming agent_start (valid while armed).
   try {
     for (;;) {
       const len = Math.min(TAIL_SCAN_CHUNK, pos);
@@ -115,10 +124,25 @@ export function readTranscriptTail(file: string, limit: number): TranscriptWindo
           continue;
         }
         lines.push(raw);
-        if (isEntryCandidate(raw)) candidates += 1;
-        else if (raw.includes('"agent_start"') && candidates >= limit) {
-          stoppedAtBoundary = true; // Window [this line .. EOF] renders identically to a full re-read.
-          break;
+        if (armed) {
+          // Walking for the marker line preceding the arming agent_start; every line pushed
+          // here sits inside [marker .. EOF] when a marker lands, so keep it.
+          if (raw.includes('"tumwater_run"')) {
+            armed = false; // Boundary found — the post-loop EOF-while-armed fallback must not fire.
+            stoppedAtBoundary = true; // Window [this marker .. EOF] renders identically to a full re-read.
+            break;
+          }
+          if (raw.includes('"agent_start"')) {
+            lines.splice(boundaryIndex + 1); // No marker before the next older run: unlabeled — stop at A.
+            armed = false;
+            stoppedAtBoundary = true;
+            break;
+          }
+        } else if (isEntryCandidate(raw)) {
+          candidates += 1;
+        } else if (raw.includes('"agent_start"') && candidates >= limit) {
+          armed = true; // Keep walking for the marker line preceding this agent_start.
+          boundaryIndex = lines.length - 1;
         }
         lineEnd = lineStart - 1;
       }
@@ -127,6 +151,12 @@ export function readTranscriptTail(file: string, limit: number): TranscriptWindo
     }
   } finally {
     fs.closeSync(fd);
+  }
+
+  if (armed) {
+    // Reached EOF while still arming: no marker precedes the run — unlabeled, stop at its agent_start.
+    lines.splice(boundaryIndex + 1);
+    stoppedAtBoundary = true;
   }
 
   let entries = formatTranscript(lines.reverse()); // Oldest first.

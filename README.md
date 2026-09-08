@@ -178,6 +178,10 @@ tumwater resume                    # lift a fleet pause
 `reset-counters` starts a fresh observation window (e.g. "cost since today") without touching
 scheduling, backoff, or pi session continuity — loops keep sleeping and waking exactly as before.
 
+Review-gate runs are labeled in loop transcripts: each role's raw log interleaves author ticks
+and reviewer runs, and review runs render as `── review @ <timestamp> ──` in `tumwater logs
+--role`, the TUI transcript pane, and the GUI detail panel.
+
 `gui --all-interfaces` binds every network interface (IPv4 and IPv6) instead of localhost, and
 prints the LAN URLs it is reachable at. The dashboard has **no authentication**, and its prompt
 box feeds the director — anyone who can reach the port can steer the fleet and read every

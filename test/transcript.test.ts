@@ -308,3 +308,84 @@ test("readTranscript keeps only the newest entries past the retention cap", () =
   assert.ok(out.includes("  turn 201")); // oldest visible: runs 201..250
   assert.ok(!out.includes("  turn 200")); // evicted past the cap
 });
+
+// Run labels: a harness-written tumwater_run marker before an agent_start labels that run's
+// separator (`── review @ <ts> ──`). The renderer consumes the pending label at every
+// agent_start, so a stale marker (a failed reviewer spawn) can mislabel at most the
+// immediately following separator and never leaks past one run.
+
+test("formatTranscript renders a labeled separator for a marked run", () => {
+  const lines = [
+    JSON.stringify({ type: "tumwater_run", label: "review" }),
+    agentStart(),
+    userLine("p"),
+    assistantBlocks([{ type: "text", text: "verdict" }]),
+  ];
+  assert.deepEqual(formatTranscript(lines).flat(), [
+    `── review @ ${expectedTimestamp(FIXED_TS)} ──`,
+    "  verdict",
+  ]);
+});
+
+test("formatTranscript leaves unlabeled runs byte-identical (no marker)", () => {
+  const lines = [agentStart(), userLine("p"), assistantBlocks([{ type: "text", text: "hi" }])];
+  assert.deepEqual(formatTranscript(lines).flat(), [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  hi"]);
+});
+
+test("a labeled turn-less run reports its labeled bare separator and flushes it at the next boundary", () => {
+  const r = createTranscriptRenderer();
+  assert.deepEqual(r.feed(JSON.stringify({ type: "tumwater_run", label: "review" })), []); // marker renders nothing
+  assert.deepEqual(r.feed(agentStart()), []);
+  assert.deepEqual(r.pendingSeparator(), ["── review ──"], "labeled bare form while turn-less");
+  assert.deepEqual(r.flush(), ["── review ──"]);
+  assert.deepEqual(r.pendingSeparator(), [], "flush consumes the separator");
+});
+
+test("alternating author/review runs label only the marked ones", () => {
+  const lines = [
+    agentStart(),
+    userLine("prompt 1"),
+    assistantBlocks([{ type: "text", text: "author turn" }]),
+    JSON.stringify({ type: "tumwater_run", label: "review" }),
+    agentStart(),
+    userLine("prompt 2", FIXED_TS + 60_000),
+    assistantBlocks([{ type: "text", text: "review verdict" }]),
+  ];
+  assert.deepEqual(formatTranscript(lines).flat(), [
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
+    "  author turn",
+    `── review @ ${expectedTimestamp(FIXED_TS + 60_000)} ──`,
+    "  review verdict",
+  ]);
+});
+
+test("a stale marker is consumed at the next agent_start without leaking past one run", () => {
+  // A failed reviewer spawn leaves its marker with no agent_start of its own: the following
+  // (author) separator picks it up — mislabeled, but exactly one separator — and the run after
+  // that renders bare again.
+  const lines = [
+    JSON.stringify({ type: "tumwater_run", label: "review" }),
+    agentStart(),
+    userLine("prompt 1"),
+    assistantBlocks([{ type: "text", text: "turn 1" }]),
+    agentStart(),
+    userLine("prompt 2", FIXED_TS + 60_000),
+    assistantBlocks([{ type: "text", text: "turn 2" }]),
+  ];
+  assert.deepEqual(formatTranscript(lines).flat(), [
+    `── review @ ${expectedTimestamp(FIXED_TS)} ──`, // stale marker consumed here (bounded mislabel)
+    "  turn 1",
+    `── run @ ${expectedTimestamp(FIXED_TS + 60_000)} ──`, // no leak past one run
+    "  turn 2",
+  ]);
+});
+
+test("a malformed marker line renders nothing and labels nothing", () => {
+  const lines = [
+    JSON.stringify({ type: "tumwater_run" }), // no label field
+    agentStart(),
+    userLine("p"),
+    assistantBlocks([{ type: "text", text: "hi" }]),
+  ];
+  assert.deepEqual(formatTranscript(lines).flat(), [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  hi"]);
+});
