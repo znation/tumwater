@@ -99,6 +99,18 @@ Every tick prompt also carries the project's `PRINCIPLES.md` — its design prin
 answer to "what would a senior engineer on this team always do" — so all loops share one standard of
 taste. Only the director and steward roles edit that file; every other loop treats it as read-only.
 
+The prompts are written for the fleet's real model — a mid-sized local model (a ~27B Qwen-class
+model with thinking on) behind a large but finite window: rules are grouped, with numeric budgets
+(choose the task within ~15 tool calls; check a file's size before reading it whole; read anything
+over ~300 lines in ranges; the reply ends with plain text, never an announced next step). Roles with
+no backlog to point at (`organize`, `clean`, `dry`, `perf`, `improve`) carry a shortlist-and-decide
+search procedure — cheap signals such as recent churn, size outliers, and targeted grep, with their
+own recent commits as the memory of what they already did — instead of surveying the codebase file
+by file, which is what filled the window on half of all ticks before. Plans are sized to one
+implementation run so the feature loop can land them whole, and the reviewer works through a
+five-point checklist and is told when the gate's deterministic pre-check already passed, so it
+spends its run on what a green suite cannot show rather than re-running it.
+
 Stopping the harness (Ctrl+C) mid-tick loses nothing: the interrupted loop's pi session and its
 worktree's uncommitted edits stay in place, and on the next `tumwater run` that loop resumes the
 same session (`--continue`) with a short bridge prompt and finishes the task it was on. A crash

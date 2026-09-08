@@ -17,7 +17,7 @@ import {
 import { parseVerdict } from "../src/review.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
-import { DECOMPOSITION_GUIDANCE, ROLES, roleById } from "../src/roles.js";
+import { DECOMPOSITION_GUIDANCE, PLAN_SIZING, ROLES, roleById, searchGuidance } from "../src/roles.js";
 import { tmpdir } from "./util.js";
 
 test("readInitialPrompt extracts the managed block", () => {
@@ -772,7 +772,7 @@ test("buildTickPrompt for readme carries the find text plus the shared rules", (
 test("every run carries the context-budget rule", () => {
   const tick = buildTickPrompt({ role: ROLES[0]!, initialPrompt: "x" });
   assert.match(tick, /context window is finite/);
-  assert.match(tick, /locate with grep before reading; read files in ranges/);
+  assert.match(tick, /check size before reading \(`wc -l`\) and read\s+files over ~300 lines in ranges/);
   assert.match(buildDirectorPrompt("do x", "x"), /context window is finite/);
   assert.match(buildResumePrompt("clean"), /context window is finite/);
 });
@@ -811,4 +811,179 @@ test("buildSummaryRequestPrompt asks for exactly the closing block and nothing e
   assert.match(p, /no tool calls, no other text/);
   for (const label of ["SUMMARY:", "WHY:", "RISK:", "VERIFIED:"]) assert.ok(p.includes(label), label);
   assert.doesNotMatch(p, /VERDICT/, "must never read as a reviewer run");
+});
+
+// Prompt contract for the local-model retune (2026-09-08, Qwen-class ~27B behind a ~258k window):
+// the fleet's transcripts showed roles with no backlog reading the codebase file by file (30+
+// whole-file reads, ~300 KB of tool output per tick, 277 whole-file reads against 6 ranged ones)
+// and landing nothing. The rules now carry numeric budgets and literal commands, the search roles
+// carry a shared candidate-hunt procedure, plans are sized to one run, and the reviewer gets a
+// checklist plus the harness's own pre-check verdict. These assertions pin that contract. Same
+// whitespace-collapsed matching as above.
+
+test("every role prompt states the reading budget in numbers: size check, ranges over ~300 lines, no re-reads", () => {
+  const role = roleById("feature");
+  assert.ok(role);
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  assert.match(prompt, /check size before reading \(`wc -l`\)/);
+  assert.match(prompt, /read files over ~300 lines in ranges/);
+  assert.match(prompt, /re-read only a region you edited/);
+  // The rule names the cost so the model can budget, and never uses the loop tests' cut-off marker.
+  assert.match(prompt, /costs ~5k tokens/);
+  assert.doesNotMatch(prompt, /ran out of context/);
+});
+
+test("every role prompt sets a decision deadline and a task-size ceiling", () => {
+  const role = roleById("clean");
+  assert.ok(role);
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  assert.match(prompt, /Choose the task within your first ~15 tool calls/);
+  assert.match(prompt, /more than roughly 60 tool calls, or most of the codebase in view, is too big for one run/);
+});
+
+test("every role prompt skips the baseline suite run and verifies after the change", () => {
+  const role = roleById("dry");
+  assert.ok(role);
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  assert.match(prompt, /do not run the build or test suite just to establish a baseline/);
+  assert.match(prompt, /run it after your change and fix what you broke/);
+  assert.match(prompt, /Pipe its output through `tail`/);
+});
+
+test("every role prompt ends with the reply contract: plain text last, no announced next step, no repeated reads", () => {
+  const role = roleById("improve");
+  assert.ok(role);
+  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  const flat = oneLine(prompt);
+  assert.match(flat, /Your last message is plain text: never a tool call, and never an announcement of what you would do next/);
+  assert.match(flat, /If a tool result only repeats what you already have, do not call it again/);
+  // The closing contract is the LAST thing in the prompt — a small model attends to the tail.
+  const endSection = prompt.indexOf("How to end your reply");
+  assert.ok(endSection > 0, "the ending section exists");
+  assert.ok(prompt.indexOf(NOTHING_TO_DO, endSection) > endSection, "sentinel sits in the ending section");
+  assert.ok(prompt.indexOf("SUMMARY:", endSection) > endSection, "SUMMARY block sits in the ending section");
+  assert.ok(prompt.trimEnd().endsWith("write none when nothing was run>"), "the SUMMARY block closes the prompt");
+});
+
+test("the backlog-free roles carry the shared search guidance with a role-specific git log filter", () => {
+  for (const id of ["organize", "clean", "dry", "perf", "improve"]) {
+    const role = roleById(id);
+    assert.ok(role, `role ${id} exists`);
+    assert.ok(role.find.includes(searchGuidance(id)), `${id} embeds searchGuidance(${id})`);
+    assert.ok(role.find.includes(`--grep="tumwater(${id})"`), `${id} names its own commit subjects`);
+  }
+  // The guidance itself: cheap signals, a shortlist cap, a whole-file size cap, a decision deadline.
+  const g = oneLine(searchGuidance("clean"));
+  assert.match(g, /do not read the codebase file by file/);
+  assert.match(g, /`git log --stat -15`/);
+  assert.match(g, /Shortlist at most five candidate files/);
+  assert.match(g, /open a file whole only when it is under ~300 lines/);
+  assert.match(g, /Decide within ~15 tool calls/);
+  assert.match(g, /there is nothing to do — searching longer rarely changes the answer/);
+  // Roles with a backlog to point at do not need it.
+  for (const id of ["feature", "bugfix", "plan", "readme", "qa", "steward"]) {
+    assert.ok(!roleById(id)!.find.includes("How to search:"), `${id} has no search guidance`);
+  }
+});
+
+test("the coverage role locates gaps from evidence, not by reading every module", () => {
+  const find = oneLine(roleById("coverage")!.find);
+  assert.match(find, /Locate it from evidence rather than by reading every module/);
+  assert.match(find, /compare the source module list against the test files/);
+  assert.match(find, /run the test runner's coverage report when it has one/);
+  assert.match(find, /then read only that file and its existing tests/);
+});
+
+test("the feature role maps PLANS.md by heading, matches the reviewer's plan check, and splits oversized plans", () => {
+  const find = oneLine(roleById("feature")!.find);
+  assert.match(find, /`grep -n '\^##' PLANS\.md` gives every heading with its line number/);
+  assert.match(find, /read only the chosen entry's line range and the code it names/);
+  assert.match(find, /The reviewer checks your diff against the entry's files-touched list and acceptance criteria/);
+  assert.match(find, /A plan too large to finish in this run is split before implementing/);
+  assert.match(find, /then implement one of them completely/);
+});
+
+test("the bugfix role bounds its latent-bug hunt and demands a reproduction", () => {
+  const find = oneLine(roleById("bugfix")!.find);
+  assert.match(find, /hunt briefly for one latent bug — at most ~10 tool calls, not a tour of the codebase/);
+  assert.match(find, /read the regions changed most recently \(`git log --stat -10` on main\)/);
+  assert.match(find, /Confirm a candidate is real — a failing test or a scratch reproduction — before fixing it/);
+  assert.match(find, /if nothing concrete surfaces within that budget, there is nothing to do/);
+});
+
+test("the plan role and the director size plans to one implementation run via the shared constant", () => {
+  assert.ok(roleById("plan")!.find.includes(PLAN_SIZING), "plan role embeds PLAN_SIZING");
+  assert.ok(buildDirectorPrompt("add dark mode", "a project").includes(PLAN_SIZING), "director embeds PLAN_SIZING");
+  const sizing = oneLine(PLAN_SIZING);
+  assert.match(sizing, /Size every plan to ONE implementation run by a mid-sized model working alone/);
+  assert.match(sizing, /at most a few hundred lines of change including tests/);
+  assert.match(sizing, /split into independently landable sub-plans/);
+  // The plan role also grounds plans in the code and checks for duplicates first.
+  const find = oneLine(roleById("plan")!.find);
+  assert.match(find, /confirm with grep that the capability does not already exist/);
+  assert.match(find, /name the actual files and functions it touches, having looked at them in ranges/);
+});
+
+test("the director investigates only enough to route", () => {
+  const prompt = oneLine(buildDirectorPrompt("the tui flickers", "a project"));
+  assert.match(prompt, /Investigate only as much as routing precisely needs/);
+  assert.match(prompt, /never a survey of the codebase, and never the implementation itself/);
+});
+
+test("the readme role syncs from the git delta since its stamp", () => {
+  const find = oneLine(roleById("readme")!.find);
+  assert.match(find, /`git log --oneline <stamped sha>\.\.main` names everything that landed since the last sync/);
+  assert.match(find, /read only what those commits touched/);
+});
+
+test("the steward maps the backlog files by heading and reads bodies only by range", () => {
+  const find = oneLine(roleById("steward")!.find);
+  assert.match(find, /You may see PLANS\.md and BUGS\.md whole, but do it cheaply/);
+  assert.match(find, /map each file first with `grep -n '\^##' FILE`/);
+  assert.match(find, /read Done\/Fixed entries by line range only where your move needs their bodies/);
+  assert.match(find, /no body read required/);
+});
+
+test("buildReviewPrompt carries the reviewer checklist and a reading budget", () => {
+  const prompt = oneLine(buildReviewPrompt("diff body"));
+  assert.match(prompt, /read only what the diff touches: the changed functions, their callers, and the tests that cover them/);
+  assert.match(prompt, /Check, in this order: 1\. Does the diff do exactly what the summary and WHY claim/);
+  assert.match(prompt, /2\. Are the VERIFIED claims consistent with the diff/);
+  assert.match(prompt, /3\. Do new or changed tests exercise the new behavior — would they fail without the change\?/);
+  assert.match(prompt, /4\. For a planned feature or recorded bug, does the change deliver what its PLANS\.md\/BUGS\.md entry promises/);
+  assert.match(prompt, /5\. Does anything violate a principle above/);
+  assert.match(prompt, /Reject only for concrete, verifiable defects you can name/);
+  // A scratch copy under temp is allowed (reviewers measure there); the worktree stays untouched.
+  assert.match(prompt, /a scratch copy under the system temp directory is fine/);
+  assert.match(prompt, /Do not edit any file in the worktree/);
+});
+
+test("buildReviewPrompt names the harness's green pre-check when given, and omits the section otherwise", () => {
+  const withCheck = buildReviewPrompt("diff", undefined, undefined, undefined, undefined, "`npm run test` passed");
+  assert.match(
+    withCheck,
+    /The harness already ran the project's own check on this exact tree and it passed:\n`npm run test` passed\./,
+  );
+  assert.match(oneLine(withCheck), /Do not spend your run re-running it/);
+  const without = buildReviewPrompt("diff");
+  assert.ok(!without.includes("The harness already ran"), "no pre-check section without a verdict");
+  // The verdict-form contract survives the extra section: still exactly the two advertised forms.
+  const advertised = [...oneLine(withCheck).matchAll(/VERDICT:\s*(\w+)/g)].map((m) => m[1]);
+  assert.deepEqual(advertised, ["approve", "reject"]);
+});
+
+test("the cut-off resume bridge carries a numeric re-reading budget and the plain-text ending rule", () => {
+  const p = oneLine(buildResumePrompt("feature", "cut-off"));
+  assert.match(p, /at most ~10 tool calls of re-reading, and never the same file twice/);
+  assert.match(p, /Your last message is plain text — never a tool call or an announcement of a next step/);
+  // The restart bridge shares the ending rule but never the cut-off text.
+  const restart = oneLine(buildResumePrompt("feature"));
+  assert.match(restart, /Your last message is plain text/);
+  assert.doesNotMatch(restart, /ran out of context/);
+});
+
+test("buildConflictPrompt bounds reading to the conflicted files", () => {
+  const p = oneLine(buildConflictPrompt("dry", ["src/a.ts"]));
+  assert.match(p, /Read only the conflicted files and what they directly reference/);
+  assert.match(p, /`grep -n '<<<<<<<' FILE`/);
 });

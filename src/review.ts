@@ -142,6 +142,9 @@ export async function reviewAheadOfMain(
   // "reviewing": a deterministic rejection never shows as reviewing on the dashboards. Both
   // gate callers (the tick path and leftover.ts's recoverLeftover) get it for free.
   const check = detectBuildCheck(wt);
+  // Named in the reviewer's prompt when the pre-check ran green: the model reviewer then spends
+  // its run on what a passing suite cannot show instead of re-running `npm test` itself.
+  let verifiedByHarness: string | undefined;
   if (check) {
     const timeoutMs = ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS;
     const checkStartedAt = Date.now();
@@ -186,6 +189,7 @@ export async function reviewAheadOfMain(
       // merge lands — main now points at this very SHA — every role's next fresh tick is a
       // cache hit instead of one redundant full-suite re-run on an already-verified tree.
       noteGreenBaseline(head);
+      verifiedByHarness = `\`npm run ${check.script}\` (the project's declared check) passed`;
     }
   }
 
@@ -205,7 +209,7 @@ export async function reviewAheadOfMain(
   // the original run is gone).
   const pi = await runPi({
     cwd: wt,
-    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction),
+    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction, verifiedByHarness),
     config: reviewConfig(config),
     // Fresh session every time (no --continue): the reviewer must not inherit the author's
     // context. Unique name per run — a fixed name would let pi resume an old review's

@@ -625,3 +625,40 @@ test("gate's green pre-check seeds the baseline cache: after the merge, checkMai
     restore();
   }
 });
+
+// The reviewer's prompt names the harness's own green pre-check so the model reviewer does not
+// spend its run re-running `npm test` — and stays silent about it when no check ran (no declared
+// script, or a skipped run), so the reviewer is never told a suite passed that never executed.
+test("a green pre-check is named in the reviewer's prompt; no check means no such claim", async () => {
+  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", "test");
+  const prompts = path.join(tmpdir(), "prompts.log");
+  // The fake pi records its argv (the prompt is the last argument) before answering.
+  const restore = fakePi(
+    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${prompts}"\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`,
+  );
+  try {
+    const result = await reviewAheadOfMain(gateCtx(root, wt), freshLoopState(ROLE));
+    assert.equal(result.decision, "approved");
+    const run = fs.readFileSync(prompts, "utf8");
+    assert.match(run, /The harness already ran the project's own check on this exact tree and it passed:/);
+    assert.match(run, /`npm run test` \(the project's declared check\) passed/);
+  } finally {
+    restore();
+  }
+
+  // A worktree with no declared check script: the pre-check never runs, so the prompt must not
+  // claim a passing suite.
+  const bare = await gateFixture();
+  const barePrompts = path.join(tmpdir(), "prompts.log");
+  const restoreBare = fakePi(
+    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${barePrompts}"\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`,
+  );
+  try {
+    const result = await reviewAheadOfMain(gateCtx(bare.root, bare.wt), freshLoopState(ROLE));
+    assert.equal(result.decision, "approved");
+    const run = fs.readFileSync(barePrompts, "utf8");
+    assert.ok(!run.includes("The harness already ran"), "no pre-check claim when nothing ran");
+  } finally {
+    restoreBare();
+  }
+});
