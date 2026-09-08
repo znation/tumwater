@@ -24,6 +24,20 @@ function rmLockDir(dir: string): void {
  * the pid write). "stale": safe to break. */
 export type LockState = "absent" | "live" | "stale";
 
+/** Read the lock's pid file: the holder's pid, or null when it is missing, unreadable, or
+ * not a finite integer. The one reader of withLock's pid-file convention (the `pid` filename
+ * and its plain-decimal content), shared by classifyLock here and doctor's merge-lock check —
+ * so what counts as a readable pid cannot drift between the breaker that acts on it and the
+ * reporter that displays it. */
+export function readLockPid(dir: string): number | null {
+  try {
+    const parsed = parseInt(fs.readFileSync(path.join(dir, "pid"), "utf8"), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null; // No readable pid file.
+  }
+}
+
 /** Classify a lock dir without touching it — the single definition of when a held lock is
  * safe to break, shared by tryBreakStale (which acts on the verdict) and doctor (which only
  * reports it), so the cases cannot drift. Three stale cases:
@@ -43,13 +57,7 @@ export function classifyLock(dir: string): LockState {
   }
   const ageMs = Date.now() - stat.mtimeMs;
   if (ageMs > STALE_MS) return "stale";
-  let pid: number | null = null;
-  try {
-    const parsed = parseInt(fs.readFileSync(path.join(dir, "pid"), "utf8"), 10);
-    if (Number.isFinite(parsed)) pid = parsed;
-  } catch {
-    // No readable pid file — handled below via the grace.
-  }
+  const pid = readLockPid(dir);
   if (pid === null) return ageMs > NO_PID_GRACE_MS ? "stale" : "live"; // Orphaned vs mid-creation.
   return pidAlive(pid) ? "live" : "stale";
 }

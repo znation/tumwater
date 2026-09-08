@@ -6,7 +6,7 @@ import { type BuildInfo, buildStaleness, isSelfHosted, readBuildInfo } from "./b
 import { STALE_INPUTS_LABEL } from "./redeploy.js";
 import { findOnPath } from "./files.js";
 import { GIT_MISSING_MESSAGE, currentBranch, gitTry, hasCommits, isGitRepo } from "./git.js";
-import { classifyLock } from "./lock.js";
+import { classifyLock, readLockPid } from "./lock.js";
 import { STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./state.js";
 import { errorMessage } from "./text.js";
@@ -94,16 +94,6 @@ export function checkStateDir(root: string): CheckOutcome {
     return { level: "ok", detail: "writable" };
   } catch (err) {
     return { level: "fail", detail: `not writable: ${errorMessage(err)}` };
-  }
-}
-
-/** Read the lock's pid file; null when missing or unreadable. */
-function readLockPid(dir: string): number | null {
-  try {
-    const parsed = parseInt(fs.readFileSync(path.join(dir, "pid"), "utf8"), 10);
-    return Number.isFinite(parsed) ? parsed : null;
-  } catch {
-    return null;
   }
 }
 
