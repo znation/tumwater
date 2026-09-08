@@ -134,8 +134,8 @@ header, and `tumwater doctor` warns. With `autoRestart` (default true) the fleet
 itself: it verifies main is green (the review gate's pre-check verdict, or one run of the suite in
 a detached `_main` worktree), compiles main into `.tumwater/build/<sha>` with the project's own
 tsc — borrowed from the nearest ancestor install, since no worktree has one of its own — stops
-starting new ticks while in-flight ones finish (up to 30 minutes, then they are aborted
-resumably), swaps the compiled tree into `dist/`, and exits so the `tumwater run` supervisor — the
+starting new ticks while in-flight ones finish (up to 30 minutes, counted across the whole hold
+even when main moves again meanwhile, after which they are aborted resumably), swaps the compiled tree into `dist/`, and exits so the `tumwater run` supervisor — the
 process you started, which runs the orchestrator as a child — respawns it on the new code. A green
 verdict is reused fleet-wide; a red one is re-run in the mirror first, because a suite can fail
 for reasons that belong to a worktree rather than to the tree. A red main or a failed compile

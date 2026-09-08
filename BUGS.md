@@ -49,6 +49,16 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 
 ## Fixed
 
+### Auto-restart's drain clock restarted on every main move: a 30-minute cap held the fleet for 38 (found by human 2026-09-08, fixed 2026-09-08)
+
+**Symptom:** the restart that landed at 13:29 on 2026-09-08 reported `drainedMs` of 30m02s, but the fleet had actually been held — no new ticks on any loop — since ~12:51, 38 minutes. The hold began for head `9656e1a`; at 12:59 the director merged `9a1847e`, superseding it, and the drain deadline started over from that moment (`restart_pending` for the new head at 13:00:02, swap exactly 30 minutes later). The 11 in-flight ticks the drain was waiting on were the same 11 throughout.
+
+**Repro:** deterministic — `poll` a stale head to start a drain, let the green check and compile settle, then poll a NEW head partway through the window: the deadline is measured from the new head instead of from the first hold. Pinned by "a main move during the drain does not restart the clock" in test/redeploy.test.ts.
+
+**Cause:** `pendingSince` was stamped in poll's "start a new pending restart" branch, so it measured the current head's turn at the restart rather than the fleet's unbroken hold. A main move calls `clearPending()`, which drops the pending head, and the next poll re-stamped the clock. Not unbounded starvation — nothing new starts during a hold, so main can only move as many more times as there were ticks already in flight — but each move handed those same ticks another full window, and the reported `drainedMs` understated the real hold.
+
+**Fix:** `pendingSince` became `drainSince`, set only when the fleet was not already being held (`if (!this.drainSince)`) and cleared by a new `endDrain()` on every path out of `poll` that is not a `hold` — a block, a cleared staleness, `autoRestart` off. A superseded head hands its drain over to the new one; a drain that actually ended starts the next clock from scratch. `drainedMs` now reports the true hold. Files: src/redeploy.ts.
+
 ### Auto-restart deadlocked on a self-referential test: `npm test` fails in every worktree without a local install (found by readme loop 2026-09-08, diagnosed by human 2026-09-08, fixed 2026-09-08)
 
 **Symptom:** The live fleet (pid 151, build `668c39e9`) sat 10 commits behind main for over two hours. It had noticed — `build_stale` and `restart_pending` at 10:05 for head `3c8c29b` — and then refused every head that followed: seven `main <sha> is red — holding the restart until main is green` warnings, one per head through `95d0c10`. Meanwhile new ticks kept starting, because a blocked restart correctly stops holding the fleet. Main was not red: `npm test` was 786/786 green in any checkout that had run `npm install`, and 785/786 in one that had not. The failing test was "compileStaged compiles the mirror worktree with the project's tsc and stamps the result" (test/redeploy.test.ts), which expected `{ ok: true }` and got `typescript is not installed under node_modules — cannot rebuild`.

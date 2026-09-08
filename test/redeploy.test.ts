@@ -164,6 +164,52 @@ test("the drain cap aborts in-flight ticks: restart anyway, counting them", asyn
   assert.equal(events.at(-1)!.drainedMs, 1110);
 });
 
+test("a main move during the drain does not restart the clock: the same ticks get one window", async () => {
+  // A busy self-hosting fleet merges while it drains — the 2026-09-08 restart superseded its
+  // pending head once and then held for 38 minutes under a 30-minute cap (BUGS.md). Nothing new
+  // starts during a hold, so the ticks the drain waits on are the ones it began with; a new head
+  // inherits the window rather than opening its own.
+  const f = fakeDeps();
+  const { r, events } = harness(f.deps, true, 1000);
+  let now = 100_000;
+  assert.equal(await r.poll(HEAD_B, 3, true, now), "hold", "the drain starts here");
+  f.green(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, 3, true, (now += 400)), "hold");
+  f.compiled(true);
+  await settle();
+  // 800 ms in, main moves: the pending restart is superseded, the drain is not.
+  assert.equal(await r.poll(HEAD_C, 3, true, (now += 400)), "hold");
+  assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C]);
+  f.green(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, 3, true, (now += 100)), "hold", "the new head still needs its own compile");
+  f.compiled(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, 3, true, (now += 200)), "restart", "past the original deadline, not a fresh one");
+  assert.deepEqual(f.calls.swap, [HEAD_C], "and it is the new head's build that goes in");
+  assert.equal(events.at(-1)!.drainedMs, 1100, "reported from the first hold, not the last head");
+});
+
+test("a blocked restart ends the drain: the next one gets its clock back", async () => {
+  const f = fakeDeps();
+  const { r } = harness(f.deps, true, 1000);
+  let now = 100_000;
+  assert.equal(await r.poll(HEAD_B, 3, true, now), "hold");
+  f.green(false);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, 3, true, (now += 400)), "none", "red: the fleet schedules again");
+  // Main moves long after the old cap would have expired; the new drain still gets its window.
+  assert.equal(await r.poll(HEAD_C, 3, true, (now += 5000)), "hold");
+  f.green(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, 3, true, (now += 10)), "hold");
+  f.compiled(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, 3, true, (now += 10)), "hold", "inside the NEW window, not the abandoned one");
+  assert.equal(await r.poll(HEAD_C, 3, true, (now += 1000)), "restart");
+});
+
 test("a red main blocks the restart for that head with one warning; a moved main retries", async () => {
   const f = fakeDeps();
   const { r, events, types } = harness(f.deps);

@@ -44,7 +44,8 @@ export const RESTART_EXIT_CODE = 75;
 
 /** How long a pending restart waits for in-flight ticks before aborting them (they resume on
  * the new build). Median ticks run ~35 min on local hardware; a half-hour drain lets most of
- * them finish while bounding how long the fleet keeps executing stale code. */
+ * them finish while bounding how long the fleet keeps executing stale code. Measured across the
+ * whole unbroken hold, not per head — see Redeployer.drainSince. */
 export const RESTART_DRAIN_MAX_MS = 30 * 60_000;
 
 /** Hard cap on one compile of the harness; tsc on this codebase takes well under a minute. */
@@ -101,9 +102,16 @@ type RedeployEvent = HarnessEventInput;
 export class Redeployer {
   private lastHead: string | null = null;
   private staleness: BuildStaleness | null = null;
-  /** The head a restart is pending for, with when the drain started. */
+  /** The head a restart is pending for. */
   private pendingHead: string | null = null;
-  private pendingSince = 0;
+  /** When the fleet's current unbroken hold began — 0 when it is not being held. The drain
+   * deadline is measured from here and NOT from when the current head became pending: a busy
+   * self-hosting fleet merges while it drains, and giving each new head its own full window
+   * handed the same in-flight ticks another 30 minutes every time main moved. On 2026-09-08 that
+   * held the fleet for 38 minutes under a 30-minute cap and reported the last 30 (BUGS.md).
+   * Nothing new starts during a hold, so the ticks a drain waits on can only be the ones it
+   * began with — one window is all they are owed. */
+  private drainSince = 0;
   private green: Tracked<boolean> | null = null;
   private compiled: Tracked<{ ok: boolean; detail: string }> | null = null;
   /** A head whose restart was blocked (red main, compile failure, swap error): no retry until
@@ -144,7 +152,7 @@ export class Redeployer {
   /** Decide this poll's action. `autoRestart` is the live config flag: off keeps the staleness
    * verdict (dashboards still show it) but never drains or restarts. */
   async poll(mainHead: string, inFlight: number, autoRestart: boolean, now = Date.now()): Promise<RedeployAction> {
-    if (!this.selfHosted || !mainHead) return "none";
+    if (!this.selfHosted || !mainHead) return this.endDrain();
     if (mainHead !== this.lastHead) {
       const wasStale = this.staleness?.stale ?? false;
       this.lastHead = mainHead;
@@ -163,11 +171,13 @@ export class Redeployer {
       // (if running) finishes into its own staging dir and is simply never swapped in.
       if (this.pendingHead !== null && this.pendingHead !== mainHead) this.clearPending();
     }
-    if (!this.staleness?.stale || !autoRestart || this.blockedHead === mainHead) return "none";
+    if (!this.staleness?.stale || !autoRestart || this.blockedHead === mainHead) return this.endDrain();
 
     if (this.pendingHead === null) {
       this.pendingHead = mainHead;
-      this.pendingSince = now;
+      // Only when the fleet was not already being held: a superseded head hands its drain over
+      // to the new one rather than starting a fresh window (see drainSince).
+      if (!this.drainSince) this.drainSince = now;
       this.green = track(this.deps.mainGreen(mainHead));
       this.compiled = null;
       return "hold";
@@ -176,7 +186,7 @@ export class Redeployer {
     if (this.green.result !== true) {
       const reason = `main ${shortSha(mainHead)} is red`;
       this.block(mainHead, reason, `${reason} — holding the restart until main is green`);
-      return "none";
+      return this.endDrain();
     }
     if (!this.compiled) {
       this.compiled = track(this.deps.compile(mainHead));
@@ -198,25 +208,33 @@ export class Redeployer {
         reason,
         `${reason} — staying on build ${shortSha(this.build.sha)}: ${c?.detail ?? this.compiled.error ?? "compile threw"}`,
       );
-      return "none";
+      return this.endDrain();
     }
-    if (inFlight > 0 && now - this.pendingSince < this.drainMaxMs) return "hold";
+    if (inFlight > 0 && now - this.drainSince < this.drainMaxMs) return "hold";
     try {
       this.deps.swap(mainHead);
     } catch (err) {
       const reason = "swapping the new build into place failed";
       this.block(mainHead, reason, `${reason}: ${err instanceof Error ? err.message : String(err)}`);
-      return "none";
+      return this.endDrain();
     }
     this.log({
       loop: "harness",
       type: "restart",
       from: this.build.sha,
       to: mainHead,
-      drainedMs: now - this.pendingSince,
+      drainedMs: now - this.drainSince,
       abortedTicks: inFlight,
     });
     return "restart";
+  }
+
+  /** Nothing is being waited for any more — the fleet schedules normally again, so whatever
+   * drain was running is over and the next one starts its clock from scratch. Every path out of
+   * poll that is not a `hold` goes through here. */
+  private endDrain(): "none" {
+    this.drainSince = 0;
+    return "none";
   }
 
   private clearPending(): void {
