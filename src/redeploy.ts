@@ -14,7 +14,7 @@ import {
   readBuildInfo,
   stampBuild,
 } from "./build-info.js";
-import { checkMainBaseline, clipBuildTail, knownBaseline } from "./build-check.js";
+import { type BuildCheckOutcome, checkMainBaseline, clipBuildTail, resolveFromNodeModules } from "./build-check.js";
 import { ensureDir } from "./files.js";
 import { ensureDetachedWorktree } from "./git.js";
 import { mirrorWorktreePath, stagingDir, stagingRootDir } from "./paths.js";
@@ -31,9 +31,12 @@ const execFileAsync = promisify(execFile);
  * background and are consulted on later polls, so a slow `npm test` never stalls scheduling.
  *
  * Nothing here is fail-open: a red main, a failed compile, or a swap error blocks the restart for
- * that head (one warning event) and the fleet keeps running the old build — the dashboards show
- * it as stale — until main moves again. Every tick a restart interrupts resumes on the new build
- * through the same resume machinery a Ctrl+C uses, so a restart loses no work. */
+ * that head and the fleet keeps running the old build until main moves again. A block says so
+ * out loud — one warning event, and the reason in BuildStatus.restartBlocked, which the
+ * dashboards and doctor render — because a stale build that is about to be replaced and one
+ * that never will be look identical otherwise (BUGS.md, 2026-09-08). Every tick a restart
+ * interrupts resumes on the new build through the same resume machinery a Ctrl+C uses, so a
+ * restart loses no work. */
 
 /** The exit code a supervised `tumwater run` child uses to say "rebuilt; respawn me" — EX_TEMPFAIL,
  * distinct from success (0), fail() (1) and a forced Ctrl+C (130). */
@@ -106,6 +109,8 @@ export class Redeployer {
   /** A head whose restart was blocked (red main, compile failure, swap error): no retry until
    * main moves — the warning was logged once. */
   private blockedHead: string | null = null;
+  /** Why, in a few words, for status() to publish alongside the staleness verdict. */
+  private blockedReason: string | null = null;
 
   constructor(
     readonly build: BuildInfo,
@@ -126,6 +131,12 @@ export class Redeployer {
       s.stale = this.staleness.stale;
       s.aheadCommits = this.staleness.aheadCommits;
       s.checkedHead = this.lastHead;
+      // Why a stale build is still the one running. Staleness alone cannot say: a restart that
+      // is minutes away and one that was refused hours ago look identical, and on 2026-09-08
+      // that gap is what let a blocked restart sit unnoticed while the fleet ticked on stale
+      // code (BUGS.md). Mutually exclusive by construction — block() clears the pending head.
+      if (this.pendingHead === this.lastHead) s.restartPending = true;
+      else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
     }
     return s;
   }
@@ -163,7 +174,8 @@ export class Redeployer {
     }
     if (!this.green?.done) return "hold";
     if (this.green.result !== true) {
-      this.block(mainHead, `main ${shortSha(mainHead)} is red — holding the restart until main is green`);
+      const reason = `main ${shortSha(mainHead)} is red`;
+      this.block(mainHead, reason, `${reason} — holding the restart until main is green`);
       return "none";
     }
     if (!this.compiled) {
@@ -180,9 +192,11 @@ export class Redeployer {
     if (!this.compiled.done) return "hold";
     const c = this.compiled.result;
     if (!c?.ok) {
+      const reason = `rebuild of ${shortSha(mainHead)} failed`;
       this.block(
         mainHead,
-        `rebuild of ${shortSha(mainHead)} failed — staying on build ${shortSha(this.build.sha)}: ${c?.detail ?? this.compiled.error ?? "compile threw"}`,
+        reason,
+        `${reason} — staying on build ${shortSha(this.build.sha)}: ${c?.detail ?? this.compiled.error ?? "compile threw"}`,
       );
       return "none";
     }
@@ -190,7 +204,8 @@ export class Redeployer {
     try {
       this.deps.swap(mainHead);
     } catch (err) {
-      this.block(mainHead, `swapping the new build into place failed: ${err instanceof Error ? err.message : String(err)}`);
+      const reason = "swapping the new build into place failed";
+      this.block(mainHead, reason, `${reason}: ${err instanceof Error ? err.message : String(err)}`);
       return "none";
     }
     this.log({
@@ -210,8 +225,11 @@ export class Redeployer {
     this.compiled = null;
   }
 
-  private block(head: string, message: string): void {
+  /** Refuse the restart for `head` until main moves: `reason` is the short form status()
+   * publishes, `message` the full sentence the one warning event carries. */
+  private block(head: string, reason: string, message: string): void {
     this.blockedHead = head;
+    this.blockedReason = reason;
     this.clearPending();
     this.log({ loop: "harness", type: "warning", message });
   }
@@ -221,15 +239,19 @@ export class Redeployer {
  * the project's own tsc, then stamp it. The mirror is the compile source (not the primary
  * checkout, which may be dirty or on another branch): it holds exactly the tree main names. tsc
  * needs no node_modules of its own there — like npm's script PATH walk, its @types lookup climbs
- * ancestor node_modules, and the mirror lives under <root>/.tumwater/. Never throws. */
+ * ancestor node_modules, and the mirror lives under <root>/.tumwater/. The compiler itself is
+ * found the same way (resolveFromNodeModules): a checkout that never ran `npm install` — every
+ * tumwater worktree — still has the install of an ancestor to borrow, and demanding a local one
+ * is what left the fleet unable to rebuild itself on 2026-09-08 (BUGS.md). Never throws. */
 export async function compileStaged(
   root: string,
   mirrorWt: string,
   mainHead: string,
   timeoutMs = COMPILE_TIMEOUT_MS,
 ): Promise<{ ok: boolean; detail: string }> {
-  const tsc = path.join(root, "node_modules", "typescript", "bin", "tsc");
-  if (!fs.existsSync(tsc)) return { ok: false, detail: "typescript is not installed under node_modules — cannot rebuild" };
+  const tsc = resolveFromNodeModules(root, path.join("typescript", "bin", "tsc"));
+  if (!tsc)
+    return { ok: false, detail: `typescript is not installed under node_modules at or above ${root} — cannot rebuild` };
   const staged = stagingDir(root, mainHead);
   fs.rmSync(staged, { recursive: true, force: true });
   ensureDir(staged);
@@ -273,14 +295,23 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
   }
 }
 
-/** Is main green at `mainHead`? The review gate's pre-check seeds a verdict for every merged
- * SHA (noteGreenBaseline), so the common case is a cache hit; otherwise run the project's
- * declared check once in the mirror worktree (a human commit to main, or a fresh process). No
- * declared check or an environmental skip reads as green — the gates' warn-and-proceed policy. */
-export async function mainIsGreen(root: string, mirrorWt: string, mainHead: string): Promise<boolean> {
-  const known = knownBaseline(mainHead);
-  if (known) return known.status === "green";
-  const check = await checkMainBaseline(mirrorWt);
+/** Is main green at the mirror worktree's HEAD? The review gate's pre-check seeds a green
+ * verdict for every merged SHA (noteGreenBaseline), so the common case is a cache hit;
+ * otherwise the project's declared check runs once in the mirror. No declared check or an
+ * environmental skip reads as green — the gates' warn-and-proceed policy.
+ *
+ * A cached RED, though, is re-verified here (checkMainBaseline's `reverifyRed`) instead of
+ * being taken as given. A red verdict can belong to the worktree that produced it rather than
+ * to the tree, and this gate is the one place where believing a wrong red is expensive: it
+ * strands the whole fleet on a stale build with no retry until main moves. One extra suite run
+ * per red head buys that, and a green from it promotes the SHA for every other gate too. */
+export async function mainIsGreen(
+  mirrorWt: string,
+  /** Hook for the build_check event — this run is a minute of the fleet's time and belongs in
+   * the feed like the role loops' own baseline checks. */
+  onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
+): Promise<boolean> {
+  const check = await checkMainBaseline(mirrorWt, onRun, true);
   return check.baseline ? check.baseline.status === "green" : true;
 }
 
@@ -299,7 +330,10 @@ export async function createRedeployer(
   const mirror = async (mainHead: string) => ensureDetachedWorktree(root, mirrorWorktreePath(root), mainHead);
   const deps: RedeployDeps = {
     staleness: (mainHead) => buildStaleness(root, build.sha, mainHead),
-    mainGreen: async (mainHead) => mainIsGreen(root, await mirror(mainHead), mainHead),
+    mainGreen: async (mainHead) =>
+      mainIsGreen(await mirror(mainHead), ({ outcome, durationMs }) =>
+        log({ loop: "harness", type: "build_check", scope: "baseline", status: outcome.status, script: outcome.script, durationMs }),
+      ),
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
     swap: (mainHead) => swapDist(root, dist, mainHead),
   };

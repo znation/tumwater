@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import type { HarnessEventInput } from "../src/events.js";
 import type { BuildStaleness } from "../src/build-info.js";
 import { readBuildInfo } from "../src/build-info.js";
-import { noteGreenBaseline } from "../src/build-check.js";
+import { checkMainBaseline } from "../src/build-check.js";
 import {
   compileStaged,
   mainIsGreen,
@@ -68,6 +69,33 @@ function harness(deps: RedeployDeps, selfHosted = true, drainMaxMs?: number) {
 /** Let the tracked background promises settle (one macrotask is enough). */
 const settle = () => new Promise((r) => setTimeout(r, 5));
 
+/** This repo's typescript package, resolved the way node itself resolves it — climbing ancestor
+ * node_modules from the running test file. Hard-coding `<this checkout>/node_modules/typescript`
+ * instead is what broke the fleet on 2026-09-08: no tumwater worktree has an install of its own
+ * (node_modules is gitignored), so the symlink dangled, the compile test below failed in every
+ * loop worktree, main read red fleet-wide, and the harness could not restart itself (BUGS.md). */
+function typescriptDir(): string {
+  return path.dirname(createRequire(import.meta.url).resolve("typescript/package.json"));
+}
+
+/** A tiny self-contained TS project committed to `root`'s main; returns its head. */
+function tinyTsProject(root: string, body = "export const answer: number = 42;\n"): string {
+  fs.writeFileSync(
+    path.join(root, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", outDir: "dist", rootDir: ".", strict: true, types: [] }, include: ["src/**/*.ts"] }),
+  );
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src/a.ts"), body);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "tiny project");
+  return sh(root, "git", "rev-parse", "HEAD");
+}
+
+/** How many times a fixture's check script ran (its appends to `counter`). */
+function runsOf(counter: string): number {
+  return fs.existsSync(counter) ? fs.readFileSync(counter, "utf8").trim().split("\n").length : 0;
+}
+
 test("a non-self-hosted harness never acts, whatever main does", async () => {
   const f = fakeDeps();
   const { r, events } = harness(f.deps, false);
@@ -99,6 +127,8 @@ test("the happy path: hold through the green check and compile, then restart whe
   const { r, events, types } = harness(f.deps);
   assert.equal(await r.poll(HEAD_B, 2, true), "hold", "the drain starts while the green check runs");
   assert.deepEqual(f.calls.green, [HEAD_B]);
+  assert.equal(r.status().restartPending, true, "a stale build with a restart under way says so");
+  assert.equal(r.status().restartBlocked, undefined);
   assert.equal(await r.poll(HEAD_B, 2, true), "hold");
   f.green(true);
   await settle();
@@ -145,8 +175,14 @@ test("a red main blocks the restart for that head with one warning; a moved main
   assert.match(String(events[1]!.message), /is red — holding the restart/);
   assert.equal(await r.poll(HEAD_B, 0, true), "none", "blocked: no second green check for the same head");
   assert.deepEqual(f.calls.green, [HEAD_B]);
+  // Published, not just warned about once: nothing will change until main moves, and a bare
+  // `stale: true` cannot be told apart from a restart that is seconds away (BUGS.md).
+  assert.equal(r.status().restartBlocked, "main bbbbbbbb is red");
+  assert.equal(r.status().restartPending, undefined, "blocked and pending are mutually exclusive");
   // Main moves (a fix landed): the new head gets its own green check.
   assert.equal(await r.poll(HEAD_C, 0, true), "hold");
+  assert.equal(r.status().restartBlocked, undefined, "the new head starts clean");
+  assert.equal(r.status().restartPending, true);
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C]);
   assert.deepEqual(types(), ["build_stale", "warning"], "still stale relative to the same build: no second build_stale");
 });
@@ -163,6 +199,7 @@ test("a failed compile keeps the old build running and warns once", async () => 
   assert.equal(await r.poll(HEAD_B, 0, true), "none");
   assert.deepEqual(types(), ["build_stale", "restart_pending", "warning"]);
   assert.match(String(events.at(-1)!.message), /rebuild of bbbbbbbb failed — staying on build aaaaaaaa: tsc exited 2/);
+  assert.equal(r.status().restartBlocked, "rebuild of bbbbbbbb failed");
   assert.deepEqual(f.calls.swap, []);
   assert.equal(await r.poll(HEAD_B, 0, true), "none", "and stays blocked for this head");
 });
@@ -182,6 +219,7 @@ test("a swap failure is reported and blocks like a compile failure", async () =>
   await settle();
   assert.equal(await r.poll(HEAD_B, 0, true), "none");
   assert.match(String(events.at(-1)!.message), /swapping the new build into place failed: EACCES/);
+  assert.equal(r.status().restartBlocked, "swapping the new build into place failed");
 });
 
 test("main moving during a pending restart supersedes it: the new head is evaluated afresh", async () => {
@@ -225,20 +263,9 @@ test("swapDist replaces dist with the staged build, restores on failure, and cle
 test("compileStaged compiles the mirror worktree with the project's tsc and stamps the result", async () => {
   // A tiny self-contained TS project whose node_modules borrows this repo's typescript.
   const root = makeRepo();
-  fs.writeFileSync(
-    path.join(root, "tsconfig.json"),
-    JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", outDir: "dist", rootDir: ".", strict: true, types: [] }, include: ["src/**/*.ts"] }),
-  );
-  fs.mkdirSync(path.join(root, "src"));
-  fs.writeFileSync(path.join(root, "src/a.ts"), "export const answer: number = 42;\n");
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-q", "-m", "tiny project");
-  const head = sh(root, "git", "rev-parse", "HEAD");
+  const head = tinyTsProject(root);
   fs.mkdirSync(path.join(root, "node_modules"));
-  fs.symlinkSync(
-    path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/typescript"),
-    path.join(root, "node_modules/typescript"),
-  );
+  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
   const result = await compileStaged(root, mirror, head);
   assert.deepEqual(result, { ok: true, detail: "" });
@@ -257,21 +284,74 @@ test("compileStaged compiles the mirror worktree with the project's tsc and stam
   assert.match(failed.detail, /tsc exited 2.*TS2322/);
 });
 
-test("compileStaged without typescript installed fails closed with a clear reason", async () => {
+test("compileStaged borrows an ancestor's typescript: a project with no install of its own still rebuilds", async () => {
+  // The shape of every tumwater worktree — no node_modules of its own, an installed root above
+  // it — and the case that must not fail closed: demanding a local install here is what left
+  // the fleet unable to compile its own new build (BUGS.md).
+  const outer = tmpdir();
+  fs.mkdirSync(path.join(outer, "node_modules"));
+  fs.symlinkSync(typescriptDir(), path.join(outer, "node_modules/typescript"));
+  const root = makeRepo(path.join(outer, "nested", "project"));
+  const head = tinyTsProject(root);
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+  assert.deepEqual(await compileStaged(root, mirror, head), { ok: true, detail: "" });
+  assert.ok(fs.existsSync(path.join(stagingDir(root, head), "src/a.js")));
+});
+
+test("compileStaged without typescript installed anywhere above the project fails closed with a clear reason", async () => {
   const root = makeRepo();
   const result = await compileStaged(root, root, "d".repeat(40));
   assert.equal(result.ok, false);
   assert.match(result.detail, /typescript is not installed/);
 });
 
-test("mainIsGreen: a seeded verdict is used as-is; no declared check reads as green", async () => {
+test("mainIsGreen: no declared check reads as green", async () => {
   const root = makeRepo();
   const head = sh(root, "git", "rev-parse", "HEAD");
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
   // No package.json anywhere up the tree of this temp repo: nothing to verify, nothing to block on.
-  assert.equal(await mainIsGreen(root, mirror, head), true);
-  noteGreenBaseline("e".repeat(40));
-  assert.equal(await mainIsGreen(root, mirror, "e".repeat(40)), true, "cache hit: no check spawned");
+  assert.equal(await mainIsGreen(mirror), true);
+});
+
+test("mainIsGreen re-verifies another worktree's red in the mirror, and its green promotes the SHA fleet-wide", async () => {
+  // The 2026-09-08 failure in miniature: one worktree's ENVIRONMENT, not the tree, decides the
+  // verdict — here a `marker` file standing in for the missing node_modules. A red from such a
+  // worktree must not be what blocks the harness's own restart (BUGS.md).
+  const counter = path.join(tmpdir(), "runs");
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({
+      name: "proj",
+      version: "1.0.0",
+      scripts: { test: `echo run >> ${counter}; node -e "process.exit(require('fs').existsSync('marker') ? 0 : 1)"` },
+    }),
+  );
+  fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "project");
+  const head = sh(root, "git", "rev-parse", "HEAD");
+
+  // A role worktree without the marker judges main red and caches that verdict.
+  const role = path.join(root, ".tumwater", "worktrees", "role");
+  fs.mkdirSync(path.dirname(role), { recursive: true });
+  sh(root, "git", "worktree", "add", "-q", "--detach", role, head);
+  assert.equal((await checkMainBaseline(role)).baseline?.status, "red");
+
+  // The redeploy gate's mirror, where the same tree passes: it re-runs instead of inheriting.
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+  fs.writeFileSync(path.join(mirror, "marker"), "");
+  assert.equal(await mainIsGreen(mirror), true, "the red is re-verified here, not believed");
+  assert.equal(runsOf(counter), 2);
+
+  assert.equal(await mainIsGreen(mirror), true);
+  assert.equal(runsOf(counter), 2, "a cached green short-circuits — re-verification is for reds only");
+  assert.equal(
+    (await checkMainBaseline(role)).baseline?.status,
+    "green",
+    "and the green promotes the SHA for every other gate, unblocking the role loops too",
+  );
+  assert.equal(runsOf(counter), 2, "the promotion re-runs nothing");
 });
 
 test("ensureDetachedWorktree pins the mirror at a ref and re-points an existing one", async () => {

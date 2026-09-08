@@ -11,9 +11,10 @@ export function sh(cwd: string, cmd: string, ...args: string[]): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8" }).trimEnd();
 }
 
-/** Create a temp git repo on branch `main` with one commit. */
-export function makeRepo(): string {
-  const dir = tmpdir();
+/** Create a git repo on branch `main` with one commit — in a fresh temp dir by default, or at
+ * `dir` when the test needs a particular location (e.g. nested under an installed root). */
+export function makeRepo(dir = tmpdir()): string {
+  fs.mkdirSync(dir, { recursive: true });
   sh(dir, "git", "init", "-b", "main");
   sh(dir, "git", "config", "user.name", "test");
   sh(dir, "git", "config", "user.email", "test@example.com");

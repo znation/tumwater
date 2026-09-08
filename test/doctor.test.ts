@@ -287,6 +287,16 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   assert.equal(stale.level, "warn");
   assert.match(stale.detail, /is stale — main has 2 later commit\(s\) touching src, package\.json, tsconfig\.json/);
   assert.match(stale.detail, /npm run build/);
+
+  // With a fleet up, doctor reports what auto-restart is actually doing rather than the advice
+  // that it will handle this — a refused restart never retries until main moves (BUGS.md).
+  const running = { sha: head, builtAt: 1, stale: true, aheadCommits: 2, checkedHead: head };
+  const pending = await checkBuild(repo, here, undefined, { ...running, restartPending: true });
+  assert.match(pending.detail, /auto-restart is under way/);
+  assert.doesNotMatch(pending.detail, /npm run build/);
+  const blocked = await checkBuild(repo, here, undefined, { ...running, restartBlocked: "main deadbeef is red" });
+  assert.equal(blocked.level, "warn");
+  assert.match(blocked.detail, /auto-restart is BLOCKED \(main deadbeef is red\) and will not retry until main moves/);
 });
 
 test("runDoctor includes the build check and never fails the exit on a stale build", async () => {

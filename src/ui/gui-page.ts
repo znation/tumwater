@@ -97,10 +97,13 @@ export const GUI_PAGE = `<!doctype html>
       const qn = (d.questions || []).length;
       // The build badge mirrors status-render's buildBadge: which commit the running harness
       // was compiled from and, when main's src has moved past it, how far (a stale fleet runs
-      // code main no longer describes).
+      // code main no longer describes) — plus what auto-restart is doing about it, since a
+      // blocked restart never resolves on its own.
       const build = d.build
         ? ", build " + String(d.build.sha).slice(0, 8) +
-          (d.build.stale ? " — STALE: main +" + (d.build.aheadCommits || 0) + " commit(s) since" : "")
+          (d.build.stale ? " — STALE: main +" + (d.build.aheadCommits || 0) + " commit(s) since" : "") +
+          (d.build.restartBlocked ? "; restart BLOCKED: " + d.build.restartBlocked
+            : d.build.restartPending ? "; restart pending" : "")
         : "";
       document.getElementById("header").textContent =
         (d.running ? "running (pid " + d.pid + build + ")" : "orchestrator not running") +

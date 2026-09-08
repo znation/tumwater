@@ -82,6 +82,14 @@ export interface BuildStatus {
   aheadCommits?: number;
   /** The main head the staleness verdict was computed for. */
   checkedHead?: string;
+  /** True while a self-redeploy onto `checkedHead` is under way — verifying main, compiling, or
+   * draining in-flight ticks (redeploy.ts). The stale build is about to be replaced. */
+  restartPending?: boolean;
+  /** Why the self-redeploy onto `checkedHead` was REFUSED — a red main, a failed compile, a
+   * failed swap. Set instead of `restartPending`, and the important half: the fleet then keeps
+   * running the stale build with no retry until main moves, which a bare `stale: true` cannot
+   * distinguish from a restart that is seconds away. */
+  restartBlocked?: string;
 }
 
 /** How far the running build is behind `mainHead`. */

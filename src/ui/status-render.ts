@@ -197,11 +197,19 @@ const COLUMN_GAP = 2;
 /** The header's build fragment: which commit the running harness was compiled from and, when
  * main's build inputs have moved past it, how far — the fleet is then executing code main no
  * longer describes (auto-restart lands the new build; off, restart `tumwater run` by hand).
- * Empty when the dist carries no stamp. Shared by the TUI/status header here and the GUI's. */
+ * A stale build also says what auto-restart is doing about it: `restart pending` resolves
+ * itself, `restart BLOCKED` never will until main moves, and telling them apart at a glance is
+ * the whole point (see BuildStatus.restartBlocked). Empty when the dist carries no stamp.
+ * Shared by the TUI/status header here and the GUI's. */
 export function buildBadge(build: StatusSnapshot["build"]): string {
   if (!build) return "";
   const stale = build.stale ? ` — STALE: main +${build.aheadCommits ?? 0} commit(s) since` : "";
-  return `, build ${shortSha(build.sha)}${stale}`;
+  const restart = build.restartBlocked
+    ? `; restart BLOCKED: ${build.restartBlocked}`
+    : build.restartPending
+      ? "; restart pending"
+      : "";
+  return `, build ${shortSha(build.sha)}${stale}${restart}`;
 }
 
 /** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is

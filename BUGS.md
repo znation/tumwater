@@ -5,21 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### `npm test` fails in worktrees without a local install: the redeploy compileStaged test needs node_modules/typescript (found by readme loop 2026-09-08)
-
-**Symptom:** On main `cc9a506`, the declared verify command (`npm test`) fails 1/786 in any checkout that has never run `npm install` — i.e. every tumwater loop worktree (node_modules is gitignored and the harness does not install per-worktree; build-check.ts's walk-up design assumes exactly this). The failing test is "compileStaged compiles the mirror worktree with the project's tsc and stamps the result" in test/redeploy.test.ts: it expects `{ ok: true }` but gets `typescript is not installed under node_modules — cannot rebuild`. With a local install (`npm ci`) the same suite is 786/786 green, so only bare worktrees fail.
-
-**Repro:**
-```
-git worktree add /tmp/bare main   # fresh checkout; do NOT run npm install
-cd /tmp/bare && npm test          # → 1 fail: redeploy.test.ts compileStaged (785/786)
-npm ci && npm test                # → 786/786 green
-```
-
-**Suspected cause:** the "Real effects" section of test/redeploy.test.ts (added with the build-stamp/redeploy work, commit `9499cf5`) symlinks `<repo>/node_modules/typescript` into a temp project's node_modules and expects it to resolve; in a bare worktree that path does not exist, so the symlink dangles and compileStaged fails closed. The harness runs exactly this suite in bare worktrees: both the main-red baseline gate (checkMainBaseline) and the review-gate pre-check run `npm test` inside the loop's own worktree — so at `cc9a506` most loops judge main RED (confirmed by a failed `scope:"baseline"` build_check event from the coverage loop on 2026-09-08), code-producing roles skip their authoring runs there, and autoRestart's `_main` suite verification fails in its bare detached worktree.
-
-**Fix approach:** resolve typescript the way npm does — walk up from the repo root to the nearest `node_modules/typescript` (mirroring detectBuildCheck's walk-up) instead of assuming a local install, or pass an explicit tsc path into compileStaged. Keep the "fails closed without typescript" negative test green.
-
 ### Budget badge shows `$0.00/$50` on free/local LLM fleets instead of n/a (reported by user 2026-09-08)
 
 **Symptom:** When the fleet runs a model that costs nothing — a local server (e.g. LM Studio via `openai-responses`) or any model with no price set in pi's models.json — both dashboards still show the daily budget badge as `· budget: $0.00/$50 today`, implying spend is being tracked against a cap that can never be reached. The user wants it to read n/a instead of `$0.00/$50`.
@@ -63,6 +48,24 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 **Suspected cause:** init was written to assume an existing repo while the README wording ("seeds a git repo … and commits them") overstates what it does. Either `init` should run `git init` itself when the cwd is not a repo (matching the docs), or "How it works" should say it seeds files into an *existing* repo and that `git init` comes first.
 
 ## Fixed
+
+### Auto-restart deadlocked on a self-referential test: `npm test` fails in every worktree without a local install (found by readme loop 2026-09-08, diagnosed by human 2026-09-08, fixed 2026-09-08)
+
+**Symptom:** The live fleet (pid 151, build `668c39e9`) sat 10 commits behind main for over two hours. It had noticed — `build_stale` and `restart_pending` at 10:05 for head `3c8c29b` — and then refused every head that followed: seven `main <sha> is red — holding the restart until main is green` warnings, one per head through `95d0c10`. Meanwhile new ticks kept starting, because a blocked restart correctly stops holding the fleet. Main was not red: `npm test` was 786/786 green in any checkout that had run `npm install`, and 785/786 in one that had not. The failing test was "compileStaged compiles the mirror worktree with the project's tsc and stamps the result" (test/redeploy.test.ts), which expected `{ ok: true }` and got `typescript is not installed under node_modules — cannot rebuild`.
+
+**Repro:**
+```
+git worktree add /tmp/bare main   # fresh checkout; do NOT run npm install
+cd /tmp/bare && npm test          # → 1 fail: redeploy.test.ts compileStaged (785/786)
+npm ci && npm test                # → 786/786 green
+```
+
+**Cause:** two independent faults that compounded into a deadlock.
+
+1. `compileStaged` looked for the compiler at `<root>/node_modules/typescript/bin/tsc` — a *local* install — while everything else in the harness (npm's run-script PATH walk, `detectBuildCheck`) climbs ancestors. Its test therefore had to symlink `<checkout>/node_modules/typescript` into a temp project, which dangles in every tumwater worktree (node_modules is gitignored, so it exists only where someone ran npm install). The redeploy gate runs `npm test` in the detached `_main` mirror, which never has one: main read red at every head, forever. The fleet could not restart itself onto the very commit that would fix this.
+2. The baseline verdict cache (build-check.ts) was keyed by SHA alone, though the verdict depended on which worktree ran the check. At 11:07 the coverage loop — also install-less — cached a red for `6c91c25`, and 58 ms later the redeploy gate consumed that cached red without running anything. One worktree's broken environment became the fleet's verdict.
+
+**Fix:** `resolveFromNodeModules` (build-check.ts) walks up from the project root the way npm and `detectBuildCheck` do, and `compileStaged` finds tsc through it; the test resolves this repo's typescript through node's own resolution instead of a hard-coded path, and a new test pins the ancestor-install case. A green verdict is now authoritative fleet-wide while a red is provisional: `checkMainBaseline`'s `reverifyRed` re-runs a cached red in the caller's own worktree, and a pass promotes the SHA for everyone (unblocking the role loops too). The redeploy gate is the one caller that pays for it — believing a wrong red there strands the whole fleet — and its suite run now appears in the feed as a `build_check` event. `BuildStatus` gained `restartPending`/`restartBlocked`, so orchestrator.json, `status --json`, both dashboards (`restart BLOCKED: <reason>`) and `doctor` distinguish a restart that is seconds away from one that will never happen. Files: src/build-check.ts, src/redeploy.ts, src/build-info.ts, src/ui/status-render.ts, src/ui/gui-page.ts, src/doctor.ts.
 
 ### Harness never picks up its own new build: the fleet ran a 2026-08-27 build for ten days while 350 commits landed (found by human log analysis 2026-09-07, fixed 2026-09-07)
 

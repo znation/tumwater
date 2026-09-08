@@ -45,6 +45,12 @@ interface BuildCheck {
   script: string;
 }
 
+/** How many ancestors a walk-up may climb before giving up. Five covers every layout the
+ * harness sees — a tumwater worktree sits three levels under the install
+ * (`<repo>/.tumwater/worktrees/<role>`) — while stopping a stray temp directory from wandering
+ * into an unrelated project further up. Shared by both walk-ups below. */
+export const WALK_UP_LEVELS = 5;
+
 /** True when `dir` holds both a package.json and a node_modules/ directory — the structural
  * signature of an installed JS project root. */
 function hasInstall(dir: string): boolean {
@@ -88,10 +94,31 @@ function buildCheckFrom(dir: string): BuildCheck | null {
  * script, there is no check (an unrelated ancestor further up must never be used). Returns
  * null when no ancestor qualifies or the file is missing/unreadable/malformed — detection
  * never throws into the gate. */
-export function detectBuildCheck(startDir: string, maxLevels = 5): BuildCheck | null {
+export function detectBuildCheck(startDir: string, maxLevels = WALK_UP_LEVELS): BuildCheck | null {
   let dir = startDir;
   for (let level = 0; level <= maxLevels; level++) {
     if (hasInstall(dir)) return buildCheckFrom(dir);
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // Filesystem root reached.
+    dir = parent;
+  }
+  return null;
+}
+
+/** Resolve `node_modules/<rel>` by walking UP from `startDir` — the same climb detectBuildCheck
+ * makes, and the same one npm's run-script PATH walk makes: a tumwater worktree has no install
+ * of its own (node_modules is gitignored, so it exists only where someone ran npm install), and
+ * neither does a project nested under an installed root. Returns the first existing path, or
+ * null when no ancestor within `maxLevels` has it. Assuming a local install instead is what
+ * broke the fleet's own redeploy on 2026-09-08: compileStaged looked only at
+ * `<root>/node_modules/typescript`, so its test could not pass in a bare worktree, the failing
+ * suite made main read red, and the blocked restart stranded the fleet on a stale build
+ * (BUGS.md). Never throws. */
+export function resolveFromNodeModules(startDir: string, rel: string, maxLevels = WALK_UP_LEVELS): string | null {
+  let dir = startDir;
+  for (let level = 0; level <= maxLevels; level++) {
+    const candidate = path.join(dir, "node_modules", rel);
+    if (fs.existsSync(candidate)) return candidate;
     const parent = path.dirname(dir);
     if (parent === dir) break; // Filesystem root reached.
     dir = parent;
@@ -209,11 +236,23 @@ interface MainBaselineCheck {
 /** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is
  * cold and one re-check per red SHA happens — cheap and deterministic, mirroring the budget
  * gate's stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
- * noteGreenBaseline seeding a green verdict the review gate observed directly on that tree. */
+ * noteGreenBaseline seeding a green verdict the review gate observed directly on that tree.
+ *
+ * The two verdicts are not equally trustworthy, and the cache is written accordingly. A GREEN
+ * is authoritative wherever it was observed — the suite ran on this immutable tree and passed —
+ * so it is never re-run and never overwritten. A RED is only provisional evidence about the
+ * tree: the same SHA can fail in one worktree and pass in another when the failure is really
+ * about the environment the check ran in (a worktree with no install, a half-written
+ * node_modules). On 2026-09-08 exactly that happened — a role worktree's environmental red
+ * became the fleet-wide verdict that blocked the harness's own restart (BUGS.md) — so a caller
+ * whose false block is expensive may re-verify a red in its own worktree (`reverifyRed`), and a
+ * green from that run promotes the SHA for everyone. */
 const baselineCache = new Map<string, MainBaseline>();
 
 /** In-flight dedup: concurrent ticks on the same not-yet-cached SHA (a fresh main move wakes
- * every blocked role at once) share one check run instead of racing N npm invocations. */
+ * every blocked role at once) share one check run instead of racing N npm invocations. Keyed by
+ * SHA for ordinary checks; a re-verification adds its worktree, because joining another
+ * worktree's run would observe the wrong environment — the one thing it exists to re-test. */
 const baselineInFlight = new Map<string, Promise<MainBaselineCheck>>();
 
 /** Record a green baseline verdict for `sha` WITHOUT running anything: the review gate's own
@@ -230,13 +269,6 @@ export function noteGreenBaseline(sha: string): void {
   baselineCache.set(sha, { status: "green", sha });
 }
 
-/** The cached verdict for `sha`, or null when this process has none — redeploy.ts consults it
- * before deciding whether main needs a fresh check: the review gate seeds a green entry for every
- * SHA it merged (noteGreenBaseline), so the common case never re-runs the suite. */
-export function knownBaseline(sha: string): MainBaseline | null {
-  return baselineCache.get(sha) ?? null;
-}
-
 /** Verify main's own build/test suite at `wt`'s HEAD — which must be pristine main (the caller
  * is the fresh-tick path right after resetWorktreeToMain; a dirty or ahead worktree would
  * measure the wrong thing). Cache hit returns immediately; on miss runs detectBuildCheck +
@@ -247,12 +279,19 @@ export async function checkMainBaseline(
   /** Called once per actual script run (never for cache hits or deduped waiters) with what ran
    * and how long it took — the caller's hook for a build_check event. */
   onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
+  /** Ignore a cached RED verdict and run the suite here instead (a cached green still short-
+   * circuits — see baselineCache). For the caller whose false block is expensive enough to pay
+   * one extra run: the redeploy gate, where trusting another worktree's environmental red
+   * strands the whole fleet on a stale build until main moves. A green from the re-run promotes
+   * the SHA fleet-wide, which unblocks the role loops too. */
+  reverifyRed = false,
 ): Promise<MainBaselineCheck> {
   const sha = await gitTry(wt, "rev-parse", "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
   const cached = baselineCache.get(sha);
-  if (cached) return { baseline: cached };
-  let pending = baselineInFlight.get(sha);
+  if (cached && !(reverifyRed && cached.status === "red")) return { baseline: cached };
+  const key = reverifyRed ? `${sha}\u0000${wt}` : sha;
+  let pending = baselineInFlight.get(key);
   if (!pending) {
     pending = (async () => {
       const check = detectBuildCheck(wt);
@@ -269,14 +308,16 @@ export async function checkMainBaseline(
         outcome.status === "passed"
           ? { status: "green", sha }
           : { status: "red", sha, script: outcome.script, outputTail: outcome.outputTail };
-      baselineCache.set(sha, baseline);
+      // A green always lands (promoting a provisional red); a red never overwrites a green —
+      // a concurrent run may have promoted this SHA while this one was still going.
+      if (baselineCache.get(sha)?.status !== "green") baselineCache.set(sha, baseline);
       return { baseline };
     })();
-    baselineInFlight.set(sha, pending);
+    baselineInFlight.set(key, pending);
   }
   try {
     return await pending;
   } finally {
-    if (baselineInFlight.get(sha) === pending) baselineInFlight.delete(sha);
+    if (baselineInFlight.get(key) === pending) baselineInFlight.delete(key);
   }
 }

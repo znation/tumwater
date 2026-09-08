@@ -728,6 +728,13 @@ test("the header names the running build and flags a stale one", () => {
   assert.match(renderStatus("/tmp/x", fresh).split("\n")[0]!, /running \(pid 4242, build aaaaaaaa\)/);
   const stale = { ...fresh, build: { ...fresh.build, stale: true, aheadCommits: 7 } };
   assert.match(renderStatus("/tmp/x", stale).split("\n")[0]!, /build aaaaaaaa — STALE: main \+7 commit\(s\) since\)/);
+  // A stale build also says what auto-restart made of it: pending resolves itself, BLOCKED
+  // never will until main moves, and only the second one needs an operator (BUGS.md).
+  const pending = { ...stale.build, restartPending: true };
+  assert.match(buildBadge(pending), /STALE: main \+7 commit\(s\) since; restart pending$/);
+  const blocked = { ...stale.build, restartBlocked: "main cccccccc is red" };
+  assert.match(buildBadge(blocked), /since; restart BLOCKED: main cccccccc is red$/);
+  assert.equal(buildBadge(stale.build), ", build aaaaaaaa — STALE: main +7 commit(s) since", "silent when neither");
   const unstamped = { ...fresh, build: null };
   assert.match(renderStatus("/tmp/x", unstamped).split("\n")[0]!, /running \(pid 4242\)/, "no stamp: the pre-stamp header");
   assert.equal(buildBadge(null), "");

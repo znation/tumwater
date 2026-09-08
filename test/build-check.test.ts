@@ -7,6 +7,7 @@ import {
   clipBuildTail,
   detectBuildCheck,
   noteGreenBaseline,
+  resolveFromNodeModules,
   runBuildCheck,
 } from "../src/build-check.js";
 import { sh, tmpdir } from "./util.js";
@@ -205,6 +206,23 @@ test("clipBuildTail clips each surviving line to the reason cap with an ellipsis
   assert.equal(tail[2], "short", "lines that fit are unchanged");
 });
 
+// --- resolveFromNodeModules: the same walk-up detectBuildCheck makes, for a dependency the
+// harness must locate itself (redeploy's tsc) rather than let npm's PATH walk find.
+
+test("resolveFromNodeModules climbs to an ancestor's install and gives up past the level cap", () => {
+  const base = tmpdir("walkup-");
+  fs.mkdirSync(path.join(base, "node_modules", "typescript", "bin"), { recursive: true });
+  const tsc = path.join(base, "node_modules", "typescript", "bin", "tsc");
+  fs.writeFileSync(tsc, "#!/usr/bin/env node\n");
+  const nested = path.join(base, "a", "b", "c");
+  fs.mkdirSync(nested, { recursive: true });
+
+  assert.equal(resolveFromNodeModules(base, path.join("typescript", "bin", "tsc")), tsc, "found at the start dir");
+  assert.equal(resolveFromNodeModules(nested, path.join("typescript", "bin", "tsc")), tsc, "and three levels down");
+  assert.equal(resolveFromNodeModules(nested, path.join("typescript", "bin", "tsc"), 2), null, "cap reached first");
+  assert.equal(resolveFromNodeModules(nested, "nonesuch"), null, "nothing to find");
+});
+
 // --- checkMainBaseline: the red-main gate's one-shot, fleet-shared verification of main's own
 // suite (PLANS.md "Red-main baseline check"). Unlike the fixtures above — plain directories,
 // enough for detection and execution in isolation — these need a REAL git repo with a worktree
@@ -339,6 +357,37 @@ test("checkMainBaseline dedups concurrent checks of one new SHA into a single ru
   assert.equal(a.baseline?.status, "red");
   assert.equal(b.baseline?.status, "red");
   assert.equal(runsOf(counter), 1, "one npm run for concurrent callers of the same SHA");
+});
+
+test("a red is provisional: reverifyRed re-runs it in the caller's own worktree and a pass promotes the SHA", async () => {
+  // The 2026-09-08 shape: one worktree's environment, not the tree, produced the red — here a
+  // `marker` file standing in for the missing node_modules — and it became the fleet's verdict.
+  const counter = path.join(tmpdir(), "runs");
+  const { root, wt } = await baselineFixture(
+    `echo run >> ${counter}; node -e "process.exit(require('fs').existsSync('marker') ? 0 : 1)"`,
+  );
+  assert.equal((await checkMainBaseline(wt)).baseline?.status, "red");
+  assert.equal((await checkMainBaseline(wt)).baseline?.status, "red", "and it is cached for ordinary callers");
+  assert.equal(runsOf(counter), 1);
+
+  // A second worktree of the same SHA where the check passes.
+  const other = path.join(root, ".tumwater", "worktrees", "other");
+  sh(root, "git", "worktree", "add", "-q", "--detach", other, "main");
+  fs.writeFileSync(path.join(other, "marker"), "");
+  assert.equal((await checkMainBaseline(other)).baseline?.status, "red", "without the flag it inherits the red");
+  assert.equal(runsOf(counter), 1, "…and runs nothing");
+
+  const reverified = await checkMainBaseline(other, undefined, true);
+  assert.equal(reverified.baseline?.status, "green");
+  assert.equal(runsOf(counter), 2, "the re-verification ran the suite here");
+  assert.equal(
+    (await checkMainBaseline(wt)).baseline?.status,
+    "green",
+    "green is authoritative: it promotes the SHA even for the worktree that reported red",
+  );
+  assert.equal(runsOf(counter), 2);
+  assert.equal((await checkMainBaseline(wt, undefined, true)).baseline?.status, "green", "a green is never re-run");
+  assert.equal(runsOf(counter), 2);
 });
 
 // --- noteGreenBaseline: the review gate's green pre-check seeds this cache so a merged tree is

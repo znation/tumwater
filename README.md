@@ -133,10 +133,15 @@ moves: a `build_stale` event fires the first time main's `src/`, `package.json`,
 header, and `tumwater doctor` warns. With `autoRestart` (default true) the fleet then redeploys
 itself: it verifies main is green (the review gate's pre-check verdict, or one run of the suite in
 a detached `_main` worktree), compiles main into `.tumwater/build/<sha>` with the project's own
-tsc, stops starting new ticks while in-flight ones finish (up to 30 minutes, then they are aborted
+tsc — borrowed from the nearest ancestor install, since no worktree has one of its own — stops
+starting new ticks while in-flight ones finish (up to 30 minutes, then they are aborted
 resumably), swaps the compiled tree into `dist/`, and exits so the `tumwater run` supervisor — the
-process you started, which runs the orchestrator as a child — respawns it on the new code. A red
-main or a failed compile leaves the old build running with one warning until main moves again.
+process you started, which runs the orchestrator as a child — respawns it on the new code. A green
+verdict is reused fleet-wide; a red one is re-run in the mirror first, because a suite can fail
+for reasons that belong to a worktree rather than to the tree. A red main or a failed compile
+leaves the old build running until main moves again — a warning event, and `restart BLOCKED:
+<reason>` in both dashboard headers and `tumwater doctor`, so a restart that will never happen
+does not look like one that is seconds away.
 
 The director loop is special: it executes prompts you type into the TUI (or `tumwater prompt`),
 queued in a file-based inbox. It always has priority — a queued prompt starts immediately,
