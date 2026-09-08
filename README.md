@@ -57,14 +57,13 @@ Open items:
 - Planned: user-defined loops — the director adds/removes/rearranges extra role loops via
   tumwater.json's `customLoops`; they act like built-ins and are marked on both dashboards (planned
   2026-09-07).
-- Open bug: `npm test` fails 1/786 in worktrees without a local install — the redeploy
-  compileStaged test needs node_modules/typescript, so most loops judge main red (BUGS.md).
+- Planned: per-loop token generation rate column in the TUI/GUI — a 5-minute moving average shown
+  for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Open bug: budget badge shows `$0.00/$50` instead of n/a on free/local LLM fleets.
 - Open bug: `init` refuses to run outside an existing git repo despite "seeds a git repo".
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`cc9a506`): build clean, suite 786/786 with a local install — 785/786 in bare
-worktrees (the redeploy bug above), verified 2026-09-08.
+Current main (`1269332`): build clean, suite 792/792, verified 2026-09-08.
 <!-- tumwater:status:end -->
 
 ## How it works
