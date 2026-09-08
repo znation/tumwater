@@ -3,7 +3,7 @@
 An opinionated autonomous development harness built on [pi](https://github.com/badlogic/pi-mono).
 You write the initial prompt; a fleet of role-driven loops builds the project with immense effort.
 
-![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, the event feed, and the director prompt box](docs/gui.png)
+![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, the shared backlog of planned features and open bugs, the event feed, and the director prompt box](docs/gui.png)
 
 ## Initial prompt
 
