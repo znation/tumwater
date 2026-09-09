@@ -11,8 +11,6 @@ import { buildBadge, displayTokenMetrics, loopPhase } from "./status-render.js";
  * never drift apart. Assembled here — not in gui.ts — because it is shared data collection for
  * observers, not part of serving HTTP: snapshot() supplies the core state, and the per-loop
  * phase/metrics fields come from the same status-render helpers the TUI table uses. */
-
-/** JSON payload for GET /api/status (and `tumwater status --json`). */
 export function statusPayload(root: string): object {
   const snap = snapshot(root);
   // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
