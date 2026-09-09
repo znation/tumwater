@@ -118,12 +118,30 @@ export function cancelPrompt(root: string, position: number): CancelOutcome {
   return { status: "cancelled", text };
 }
 
-/** Remove and return the oldest queued prompt, or null when empty. */
+/** Remove and return the oldest queued prompt, or null when empty — including when a
+ * concurrent `tumwater prompt --cancel` removes it between listing and reading (or between
+ * reading and removal): the module's race policy is that a vanished file is skipped rather
+ * than throwing, so the director sees an empty inbox and skips its tick instead of failing
+ * with a raw ENOENT. When the removal itself hits ENOENT the cancel won after our read —
+ * the prompt was cancelled, so it must not be executed: null (skip), never the text we
+ * already read. Non-ENOENT errors (e.g. EACCES) are rethrown — they are not a race with a
+ * cancel. */
 export function dequeuePrompt(root: string): string | null {
   const [oldest] = queuedFiles(root);
   if (!oldest) return null;
-  const text = fs.readFileSync(oldest, "utf8");
-  fs.rmSync(oldest);
+  let text: string;
+  try {
+    text = fs.readFileSync(oldest, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; // Cancelled mid-listing.
+    throw err;
+  }
+  try {
+    fs.rmSync(oldest);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; // A concurrent cancel won the race — do not run a cancelled prompt.
+    throw err;
+  }
   return text;
 }
 
