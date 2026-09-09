@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { PiStreamParser, TRANSIENT_PI_CRASH, piArgs, runPi } from "../src/pi.js";
@@ -482,6 +483,89 @@ test("a failed labeled run still flushes its marker (the stale-marker case)", as
     assert.equal(content, `{"type":"tumwater_run","label":"review"}\n`);
   } finally {
     restore();
+  }
+});
+
+// Flush-before-resolve: raw-log writes complete on libuv's threadpool, so runPi must not
+// settle until the log has actually hit disk — a tick that dies right after settling (an
+// abort during a restart drain, a supervisor swap) would otherwise lose its last lines, and
+// under load readers see an empty or marker-only file. Pinned with a stalled stream: it
+// buffers everything and lands it one macrotask after end(), so resolve-before-flush code
+// reads back an incomplete log on the very turn runPi settles.
+test("runPi resolves only after the raw log has flushed (stalled-stream regression)", async () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "raw.jsonl");
+  const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
+  const realCreateWriteStream = fs.createWriteStream;
+  let pending = "";
+  const stalled = Object.assign(new EventEmitter(), {
+    write: (data: string) => {
+      pending += data;
+      return true;
+    },
+    end: (cb?: () => void) => {
+      // The threadpool "completes" the queued writes one macrotask after end().
+      setImmediate(() => {
+        fs.appendFileSync(file, pending);
+        cb?.();
+      });
+    },
+  });
+  (fs as unknown as { createWriteStream: unknown }).createWriteStream = () => stalled;
+  try {
+    await runPi({
+      cwd: dir,
+      prompt: "p",
+      config: defaultConfig(),
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: file,
+    });
+    const content = fs.readFileSync(file, "utf8");
+    assert.equal(
+      content,
+      `${assistantLine("done", { tokens: 5 })}\n`,
+      "the raw log is complete on the turn runPi resolves — nothing may still be in flight",
+    );
+  } finally {
+    restore();
+    (fs as unknown as { createWriteStream: unknown }).createWriteStream = realCreateWriteStream;
+  }
+});
+
+test("a broken raw log degrades to a lost log, never a stuck tick", async () => {
+  // The stream dies instead of finishing ('error' fires, 'finish' never does): runPi must
+  // still settle with the run's real result rather than hang the loop.
+  const dir = tmpdir();
+  const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
+  const realCreateWriteStream = fs.createWriteStream;
+  const brokenEvents = new EventEmitter();
+  const broken = Object.assign(brokenEvents, {
+    write: (_data: string) => true,
+    end: () => {
+      setImmediate(() => brokenEvents.emit("error", new Error("ENOSPC: no space left on device")));
+    },
+  });
+  (fs as unknown as { createWriteStream: unknown }).createWriteStream = () => broken;
+  try {
+    const result = await Promise.race([
+      runPi({
+        cwd: dir,
+        prompt: "p",
+        config: defaultConfig(),
+        sessionDir: path.join(dir, "sessions"),
+        sessionName: "t",
+        rawLogFile: path.join(dir, "raw.jsonl"),
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("runPi hung on a broken raw log")), 5000),
+      ),
+    ]);
+    assert.equal(result.ok, true, "the run itself succeeded; only its log is lost");
+    assert.equal(result.finalText, "done");
+  } finally {
+    restore();
+    (fs as unknown as { createWriteStream: unknown }).createWriteStream = realCreateWriteStream;
   }
 });
 

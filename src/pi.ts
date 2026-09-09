@@ -230,6 +230,13 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     ensureParentDir(opts.rawLogFile);
     rotateIfLarge(opts.rawLogFile, opts.config.logMaxBytes);
     const rawLog = fs.createWriteStream(opts.rawLogFile, { flags: "a" });
+    // A broken raw log (EACCES, ENOSPC) must not crash the process on an unhandled 'error'
+    // nor hang the tick: mark it so finish() resolves without waiting for a 'finish' that
+    // will never come — a lost transcript is acceptable, a stuck loop is not.
+    let rawLogBroken = false;
+    rawLog.on("error", () => {
+      rawLogBroken = true;
+    });
     if (opts.label) {
       // The marker precedes this run's first pi event in file order — written to the same
       // stream stdout lines flow through, before spawn, so ordering is exact by construction;
@@ -309,8 +316,22 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       clearTimeout(timeout);
       if (quietCheck) clearInterval(quietCheck);
       opts.signal?.removeEventListener("abort", onAbort);
-      rawLog.end();
-      resolve(result);
+      // Resolve only once the raw log has flushed: writes complete on libuv's threadpool, so
+      // resolving before 'finish' can leave the tail of <role>.pi.jsonl unwritten — a tick
+      // that dies right after runPi settles (an abort during a restart drain, a supervisor
+      // swap) loses its last lines, and under load readers see an empty or marker-only file.
+      // end()'s callback fires on 'finish'; if the stream errors instead it never does, so
+      // settle from 'error' too — a broken raw log degrades to a lost log, never a stuck tick.
+      let resolved = false;
+      const settle = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve(result);
+        }
+      };
+      rawLog.on("error", settle);
+      if (rawLogBroken) settle();
+      else rawLog.end(settle);
     };
 
     // Every PiRunResult is built here from what the parser has seen plus how the run ended,

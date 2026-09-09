@@ -5,40 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### `runPi` resolves before its raw log flushes: a load-sensitive race that flakes the suite and can truncate a transcript (found by human analysis 2026-09-08)
-
-**Symptom:** On 2026-09-08 at 19:42 the dry loop's post-merge baseline check declared main `e014175d` red — "code merges blocked until main is green" — and dry, improve and clean all ended their ticks `main_red` within the same second. One second later the redeploy gate's own run of the *same SHA* passed and promoted it green fleet-wide, so nothing stayed blocked. Main was never broken: a clean `npm test` on `e014175` is 822/822. The single failure was test/pi.test.ts:422 ("runPi with a label writes exactly one marker line as the raw log's first line"), at its `assert.equal(content, …)` — reported as dist/test/pi.test.js:372.
-
-**Repro:** deterministic under libuv threadpool contention; the assertion reads back an empty or marker-only file.
-
-```
-UV_THREADPOOL_SIZE=1 node -e '
-const fs=require("fs"),os=require("os"),path=require("path"),{spawn}=require("child_process");
-const dir=fs.mkdtempSync(path.join(os.tmpdir(),"race-")), big=path.join(dir,"big.bin");
-fs.writeFileSync(big,Buffer.alloc(4*1024*1024));
-let on=true; const flood=()=>{if(on)fs.readFile(big,()=>flood())}; for(let i=0;i<64;i++)flood();
-let ok=0,bad=0,n=0;
-const one=()=>new Promise(r=>{const f=path.join(dir,`raw${n++}.jsonl`);
-  const w=fs.createWriteStream(f,{flags:"a"}); w.write("MARKER\n");
-  const c=spawn("/bin/sh",["-c","printf %s\\\\n LINE"]);
-  c.stdout.on("data",d=>w.write(d.toString()));
-  c.on("close",()=>{w.end(); r(fs.readFileSync(f,"utf8"))});});
-(async()=>{for(let i=0;i<200;i++){(await one())==="MARKER\nLINE\n"?ok++:bad++;}
-  on=false; console.log({ok,bad});})();'
-```
-
-Verbatim run of the above: `{ ok: 9, bad: 191 }`. The same loop without the threadpool contention is 300/300 ok, which is why this has never flaked before.
-
-**Cause:** src/pi.ts:306 — `finish()` calls `rawLog.end()` (line 312) and `resolve(result)` (line 313) in the same turn and never awaits the stream's `finish`/`close`. `rawLog` is an `fs.createWriteStream` (line 232) whose writes complete on the libuv threadpool, so when `runPi`'s promise settles the lines fed from `child.on("close")` (the `decoder.end()` flush) may still be unwritten. The test does `readFileSync` immediately after `await runPi(...)`. On an idle machine the flush always wins the race; under load it does not.
-
-What loaded the machine on 2026-09-08 was two full `npm test` suites on the same commit at once — dry's red-main baseline check in `.tumwater/worktrees/dry` and the redeploy gate's green check in `_main`. They never dedup: the gate always passes `reverifyRed = true`, which keys `baselineInFlight` by sha+worktree rather than sha (src/build-check.ts, `checkMainBaseline`), by design. Both runs took ~70 s against the usual 59–64 s. Three LM Studio inference streams were also live.
-
-**Impact beyond the flake:** the unflushed tail is real data loss, not only a test artifact. A tick whose process exits or is killed shortly after `runPi` resolves — an abort during a restart drain, a supervisor swap — can lose the last line(s) of `<role>.pi.jsonl`, which is what `tumwater logs` and both dashboards read.
-
-**Fix direction:** have `finish` await the flush before resolving — `rawLog.end(() => resolve(result))` is the minimal form, since `end`'s callback fires on `finish`. Keep the `settled` guard as the re-entry lock, and make sure a stream `error` (EACCES, ENOSPC) still resolves rather than hanging the tick: attach an `error` handler that resolves once with the same result, so a broken raw log degrades to a lost log and never to a stuck loop. The spawn-error path already routes through `finish`, so it is covered. Test: in test/pi.test.ts, assert the raw log is complete on the turn `runPi` resolves — a `writeFileSync`-free check that fails on today's code when the stream is stalled (a fake stream, or the contention harness above scaled down).
-
-**Files:** src/pi.ts; regression test in test/pi.test.ts.
-
 ### The review gate checks the pre-rebase tree, so the bytes that land on main were never run through a check (found by human analysis 2026-09-08)
 
 **Symptom:** dry tick 130's gate build check passed at 19:31:45 on head `8ce7ecaf` (tree `18f9917`), whose base was `9a1847e`. The change landed 9 m 16 s later as `e014175` (tree `f89fecb`), rebased over the **14** commits that reached main while it was under review. The tree the gate verified is not the tree that became main. Concretely: `7730bb1` — one of those 14 — is the commit that added test/pi.test.ts's label-marker test, so `git show 8ce7ecaf:test/pi.test.ts | grep -c 'writes exactly one marker line'` returns `0`. The suite the gate ran did not contain the test that then failed against main (see the entry above).
@@ -132,6 +98,38 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 **Suspected cause:** init was written to assume an existing repo while the README wording ("seeds a git repo … and commits them") overstates what it does. Either `init` should run `git init` itself when the cwd is not a repo (matching the docs), or "How it works" should say it seeds files into an *existing* repo and that `git init` comes first.
 
 ## Fixed
+
+### `runPi` resolves before its raw log flushes: a load-sensitive race that flakes the suite and can truncate a transcript (found by human analysis 2026-09-08, fixed 2026-09-09)
+
+**Symptom:** On 2026-09-08 at 19:42 the dry loop's post-merge baseline check declared main `e014175d` red — "code merges blocked until main is green" — and dry, improve and clean all ended their ticks `main_red` within the same second. One second later the redeploy gate's own run of the *same SHA* passed and promoted it green fleet-wide, so nothing stayed blocked. Main was never broken: a clean `npm test` on `e014175` is 822/822. The single failure was test/pi.test.ts:422 ("runPi with a label writes exactly one marker line as the raw log's first line"), at its `assert.equal(content, …)` — reported as dist/test/pi.test.js:372.
+
+**Repro:** deterministic under libuv threadpool contention; the assertion reads back an empty or marker-only file.
+
+```
+UV_THREADPOOL_SIZE=1 node -e '
+const fs=require("fs"),os=require("os"),path=require("path"),{spawn}=require("child_process");
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),"race-")), big=path.join(dir,"big.bin");
+fs.writeFileSync(big,Buffer.alloc(4*1024*1024));
+let on=true; const flood=()=>{if(on)fs.readFile(big,()=>flood())}; for(let i=0;i<64;i++)flood();
+let ok=0,bad=0,n=0;
+const one=()=>new Promise(r=>{const f=path.join(dir,`raw${n++}.jsonl`);
+  const w=fs.createWriteStream(f,{flags:"a"}); w.write("MARKER\n");
+  const c=spawn("/bin/sh",["-c","printf %s\\\\n LINE"]);
+  c.stdout.on("data",d=>w.write(d.toString()));
+  c.on("close",()=>{w.end(); r(fs.readFileSync(f,"utf8"))});});
+(async()=>{for(let i=0;i<200;i++){(await one())==="MARKER\nLINE\n"?ok++:bad++;}
+  on=false; console.log({ok,bad});})();'
+```
+
+Verbatim run of the above: `{ ok: 9, bad: 191 }`. The same loop without the threadpool contention is 300/300 ok, which is why this has never flaked before.
+
+**Cause:** src/pi.ts:306 — `finish()` calls `rawLog.end()` (line 312) and `resolve(result)` (line 313) in the same turn and never awaits the stream's `finish`/`close`. `rawLog` is an `fs.createWriteStream` (line 232) whose writes complete on the libuv threadpool, so when `runPi`'s promise settles the lines fed from `child.on("close")` (the `decoder.end()` flush) may still be unwritten. The test does `readFileSync` immediately after `await runPi(...)`. On an idle machine the flush always wins the race; under load it does not.
+
+What loaded the machine on 2026-09-08 was two full `npm test` suites on the same commit at once — dry's red-main baseline check in `.tumwater/worktrees/dry` and the redeploy gate's green check in `_main`. They never dedup: the gate always passes `reverifyRed = true`, which keys `baselineInFlight` by sha+worktree rather than sha (src/build-check.ts, `checkMainBaseline`), by design. Both runs took ~70 s against the usual 59–64 s. Three LM Studio inference streams were also live.
+
+**Impact beyond the flake:** the unflushed tail is real data loss, not only a test artifact. A tick whose process exits or is killed shortly after `runPi` resolves — an abort during a restart drain, a supervisor swap — can lose the last line(s) of `<role>.pi.jsonl`, which is what `tumwater logs` and both dashboards read.
+
+**Fix:** `finish` now settles only after the raw log has flushed: `rawLog.end(settle)` resolves on 'finish', and an idempotent settle is also wired to the stream's 'error' so a broken log (EACCES, ENOSPC) degrades to a lost transcript instead of hanging the tick; a persistent error handler at creation marks the stream broken so an early failure neither crashes the process nor waits on a 'finish' that will never come. The `settled` guard remains the re-entry lock and the spawn-error path is covered since it routes through `finish`. Regression tests in test/pi.test.ts pin both halves with fake streams: a stalled stream that lands its buffered writes one macrotask after end() — resolve-before-flush code reads back an empty log on the turn runPi settles (verified failing against the pre-fix build) — and a broken stream whose 'error' fires instead of 'finish', where runPi still settles with the run's real result. Files: src/pi.ts, test/pi.test.ts.
 
 ### Auto-restart's drain clock restarted on every main move: a 30-minute cap held the fleet for 38 (found by human 2026-09-08, fixed 2026-09-08)
 
