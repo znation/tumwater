@@ -50,6 +50,8 @@ until main is green again (director, bugfix, and the markdown-only roles keep ti
 land the fix).
 
 Open items:
+- Planned: sort the GUI loop table by state category (active before inactive), then last tick
+  most-recent-first — client-side only, `status --json`/TUI order unchanged (planned 2026-09-09).
 - Planned: need-based loop prioritization — defer idle maintenance ticks and order work roles
   first (planned 2026-09-08).
 - Planned: make the daily cost budget editable from the TUI/GUI (TUI Ctrl+B; GUI badge
@@ -69,7 +71,7 @@ Open items:
   through a check.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`77f4837`): build clean, suite 830/830, verified 2026-09-09.
+Current main (`6325296`): build clean, suite 834/834, verified 2026-09-09.
 <!-- tumwater:status:end -->
 
 ## How it works
