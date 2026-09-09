@@ -54,9 +54,9 @@ Open items:
   first (planned 2026-09-08).
 - Planned: make the daily cost budget editable from the TUI/GUI (TUI Ctrl+B; GUI badge
   click-to-edit; one shared setter + `POST /api/budget`; planned 2026-09-07).
-- Planned: user-defined loops — the director adds/removes/rearranges extra role loops via
-  tumwater.json's `customLoops`; they act like built-ins and are marked on both dashboards (planned
-  2026-09-07).
+- Planned: user-defined loops — sub-plans 1/3–3/3 tracked in PLANS.md; first is `customLoops`
+  config plumbing, then the director control surface and dashboard markers (planned 2026-09-07,
+  split 2026-09-08).
 - Planned: per-loop token generation rate column in the TUI/GUI — a 5-minute moving average shown
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
@@ -68,9 +68,13 @@ Open items:
   review prompt).
 - Open bug: auto-restart aborts an in-flight director tick after the 30-minute drain; the director
   should be exempt and waited for.
+- Open bug: `runPi` resolves before its raw log flushes — a load-sensitive race that flakes the
+  suite and can truncate a transcript.
+- Open bug: review gate checks the pre-rebase tree, so the bytes that land on main were never run
+  through a check.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`0a75737`): build clean, suite 822/822, verified 2026-09-08.
+Current main (`09c5a20`): build clean, suite 828/828, verified 2026-09-09.
 <!-- tumwater:status:end -->
 
 ## How it works
