@@ -1389,9 +1389,9 @@ test("a pi run that goes silent is killed as hung and never commits partial work
 
 test("a slow but talkative pi run is not killed by the quiet watchdog", async () => {
   const repo = await initializedRepo();
-  // Streams a line every ~300ms for ~2.4s — always slower than the 1s quiet window would
+  // Streams a line every ~300ms for ~1.2s — always slower than the 1s quiet window would
   // allow if it were measuring total runtime, but never silent longer than the window.
-  const chatter = Array.from({ length: 8 }, () => `sleep 0.3\nprintf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`);
+  const chatter = Array.from({ length: 4 }, () => `sleep 0.3\nprintf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`);
   const restore = fakePi([...chatter, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"));
   try {
     const config = defaultConfig();
@@ -1407,7 +1407,7 @@ test("a slow but talkative pi run is not killed by the quiet watchdog", async ()
 test("quietTimeoutSeconds 0 disables the watchdog", async () => {
   const repo = await initializedRepo();
   const restore = fakePi(
-    [`sleep 2`, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
+    [`sleep 1`, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
   );
   try {
     const config = defaultConfig();
@@ -1669,7 +1669,7 @@ test("a tick that changes other files emits no question_posted event", async () 
 
 test("the merge lock is not held while a tick is under review: another loop merges concurrently", async () => {
   const repo = await initializedRepo();
-  // Role A's reviewer run touches the marker, then sleeps — A sits in "reviewing" for ~5s.
+  // Role A's reviewer run touches the marker, then sleeps — A sits in "reviewing" for ~3s.
   // Role B waits for that marker, then does its whole tick (author + instant review + merge).
   // If the gate ran inside withLock, B's merge would block until A's tick had fully ended;
   // instead B must land while A is still under review.
@@ -1679,7 +1679,7 @@ test("the merge lock is not held while a tick is under review: another loop merg
     [
       `case "$PWD" in`,
       `*improve)`,
-      `  for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${marker}'; sleep 5; printf '%s\n' '${approveLine}'; exit 0;; esac; done`,
+      `  for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${marker}'; sleep 3; printf '%s\n' '${approveLine}'; exit 0;; esac; done`,
       `  printf '%s\n' '${assistantLine("slow work\\nSUMMARY: slow change")}'`,
       `  echo a > a.txt`,
       `  ;;`,

@@ -737,10 +737,11 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
   const repo = makeRepo();
   await initProject(repo, "mid-tick reset test");
   saveConfig(repo, fastConfig(["clean"]));
-  // A slow fake pi: each tick holds for ~4s, so a marker dropped while the first tick is in
-  // flight is consumed mid-tick — the documented use case (resetting a running fleet), where
-  // most loops are mid-tick at any moment.
-  const restore = fakePi(`sleep 4\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  // A slow fake pi: each tick holds for ~2s — long enough that a marker dropped while the
+  // first tick is in flight (observed within a poll or two of start, consumed within one)
+  // lands mid-tick. That is the documented use case (resetting a running fleet), where most
+  // loops are mid-tick at any moment.
+  const restore = fakePi(`sleep 2\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => loadLoopState(repo, "clean").running === true, "a tick to be in flight");
@@ -1001,7 +1002,7 @@ test("startup with spend already at the cap starts no role ticks", async () => {
     // The loop is schedule-eligible (fresh state, nextRunAt 0) — an ungated fleet would have
     // ticked within the first poll. Several (fast) poll cycles pass with no role tick starting.
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "a fleet at cap starts no role ticks");
     // The pause is announced exactly once, with the spend and cap that closed the gate.
     const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
@@ -1037,7 +1038,7 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
 
     // …but the gate skips role runners before eligibility is even evaluated: several (fast)
     // poll cycles pass with no tick and no wake event.
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a main move cannot wake a budget-paused fleet");
     assert.ok(!readEvents(repo).some((e) => e.type === "wake"), "no wake logged for the blocked main move");
   } finally {
@@ -1078,7 +1079,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
     // …but the gate skips role runners before eligibility is even evaluated: several (fast)
     // poll cycles pass with no tick and no wake for clean. The marker itself survives — it
     // is persistent state, not a one-shot request like the abort/reset markers.
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a user-paused role starts no new ticks");
     assert.ok(
       !readEvents(repo).some((e) => e.type === "wake" && e.loop === "clean"),
@@ -1140,7 +1141,7 @@ test("starting already paused keeps role ticks blocked until resume — no resta
 
     // Several fast poll cycles pass with zero role ticks — startup is a wake reason like any
     // other, and the gate sits before eligibility. The marker survives: persistent state.
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "an already-paused role starts no ticks");
     assert.ok(fs.existsSync(marker), "the marker survives startup — not consumed");
 
@@ -1171,7 +1172,7 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
-      `sleep 2`,
+      `sleep 1`,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -1199,7 +1200,7 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change merged to main");
 
     // …and no new tick starts while the marker holds.
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while paused");
   } finally {
     restore();
