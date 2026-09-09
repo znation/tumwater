@@ -50,20 +50,27 @@ until main is green again (director, bugfix, and the markdown-only roles keep ti
 land the fix).
 
 Open items:
+- Planned: need-based loop prioritization — defer idle maintenance ticks and order work roles
+  first (planned 2026-09-08).
 - Planned: make the daily cost budget editable from the TUI/GUI (TUI Ctrl+B; GUI badge
   click-to-edit; one shared setter + `POST /api/budget`; planned 2026-09-07).
-- Planned: label review-gate runs in loop transcripts (review runs render as `── review @ <ts> ──`
-  in all three transcript surfaces; planned 2026-09-07).
 - Planned: user-defined loops — the director adds/removes/rearranges extra role loops via
   tumwater.json's `customLoops`; they act like built-ins and are marked on both dashboards (planned
   2026-09-07).
 - Planned: per-loop token generation rate column in the TUI/GUI — a 5-minute moving average shown
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
+- Planned: harness-level merge queue — five landable sub-plans (1/5–5/5) tracked in PLANS.md;
+  first is landing taking a worktree and a ref (planned 2026-09-08).
 - Open bug: budget badge shows `$0.00/$50` instead of n/a on free/local LLM fleets.
 - Open bug: `init` refuses to run outside an existing git repo despite "seeds a git repo".
+- Open bug: review gate rejects a change for contradicting an already-recorded bug/plan instead
+  of letting the newer user instruction win (the "latest instruction wins" principle is not in the
+  review prompt).
+- Open bug: auto-restart aborts an in-flight director tick after the 30-minute drain; the director
+  should be exempt and waited for.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`1269332`): build clean, suite 792/792, verified 2026-09-08.
+Current main (`20b621b`): build clean, suite 811/811, verified 2026-09-08.
 <!-- tumwater:status:end -->
 
 ## How it works
