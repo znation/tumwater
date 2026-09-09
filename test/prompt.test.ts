@@ -951,6 +951,10 @@ test("buildReviewPrompt carries the reviewer checklist and a reading budget", ()
   assert.match(prompt, /2\. Are the VERIFIED claims consistent with the diff/);
   assert.match(prompt, /3\. Do new or changed tests exercise the new behavior — would they fail without the change\?/);
   assert.match(prompt, /4\. For a planned feature or recorded bug, does the change deliver what its PLANS\.md\/BUGS\.md entry promises/);
+  // A newer user instruction supersedes an older recorded entry ("latest instruction wins"): the
+  // reviewer judges against the newer purpose and only rejects stale entries or incoherent work.
+  assert.match(prompt, /judge it against that newer purpose — contradicting an older recorded fix direction is not itself a defect/);
+  assert.match(prompt, /leaves the existing entry stale and contradictory \(updating the entry in place is the author's duty\)/);
   assert.match(prompt, /5\. Does anything violate a principle above/);
   assert.match(prompt, /Reject only for concrete, verifiable defects you can name/);
   // A scratch copy under temp is allowed (reviewers measure there); the worktree stays untouched.

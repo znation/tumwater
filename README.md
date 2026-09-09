@@ -63,9 +63,6 @@ Open items:
   next is landing in a per-role detached worktree (planned 2026-09-08).
 - Open bug: budget badge shows `$0.00/$50` instead of n/a on free/local LLM fleets.
 - Open bug: `init` refuses to run outside an existing git repo despite "seeds a git repo".
-- Open bug: review gate rejects a change for contradicting an already-recorded bug/plan instead
-  of letting the newer user instruction win (the "latest instruction wins" principle is not in the
-  review prompt).
 - Open bug: auto-restart aborts an in-flight director tick after the 30-minute drain; the director
   should be exempt and waited for.
 - Open bug: review gate checks the pre-rebase tree, so the bytes that land on main were never run

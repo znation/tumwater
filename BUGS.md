@@ -19,23 +19,6 @@ Second-order defect from the same assumption: src/review.ts:191 seeds `noteGreen
 
 **Files:** src/merge.ts, src/review.ts; tests in test/merge.test.ts.
 
-### Review gate rejects a change for contradicting an already-recorded bug/plan instead of letting the newer user instruction win (reported by user 2026-09-08)
-
-**Symptom:** Director tick #79 was rejected in review on 2026-09-08 with "The change responds to a user report already recorded as an open BUGS.md entry". The change responded to a *newer* user prompt about the same topic as an existing open bug (the restart-drain entry, commit f62c4d4) and took a different approach than that entry's fix direction. Per the user: a new prompt always overrides an old one — work must not be rejected for contradicting prior recorded work or changing the design; it should be synthesized with the existing open bugs/features/docs (updating the existing entry in place rather than creating a duplicate or rejecting).
-
-**Repro:**
-1. Record a bug/plan entry with a fix direction (e.g. BUGS.md's restart-drain entry, f62c4d4).
-2. Land a change responding to a newer user prompt on the same topic that takes a different approach than the recorded fix direction.
-3. The review gate rejects it: checklist item 4 ("does the change deliver what its PLANS.md/BUGS.md entry promises") is read as "must match the recorded fix direction", and nothing in the review prompt gives a newer user instruction precedence over an older record.
-
-**Expected:** A change responding to a newer user request than the one that produced a recorded entry may land when it is coherent and complete for its stated purpose; the reviewer checks that the author updated the existing entry so no stale contradiction remains — not that the change matches the old fix direction. Contradicting prior work or changing the design is not, by itself, a defect.
-
-**Suspected cause:**
-- src/prompt.ts:357 — `buildReviewPrompt`'s checklist item 4 ("does the change deliver what its PLANS.md/BUGS.md entry promises (files touched, acceptance criteria), and is the entry updated to match?") has no precedence rule between a newer user instruction and an older recorded entry; the reviewer generalizes it into "the change must match the recorded fix direction".
-- No other part of the review prompt mentions supersession or synthesizing with existing entries.
-
-**Fix direction:** In `buildReviewPrompt` (src/prompt.ts), amend item 4 and/or add one explicit rule: a PLANS.md/BUGS.md entry records intent at recording time; when a change responds to a newer user instruction on the same topic, judge it against that newer purpose — reject only if the change is incoherent, incomplete for its stated purpose, or leaves the existing entry stale and contradictory (the author's duty is to update the entry in place). Update test/prompt.test.ts:953, which pins item 4's current text.
-
 ### Auto-restart aborts an in-flight director tick after the 30-minute drain: the director should be exempt and waited for (reported by user 2026-09-08)
 
 **Symptom:** When a self-redeploy is pending (stale build, main green, compile done), the harness holds new ticks and waits up to `RESTART_DRAIN_MAX_MS` (30 min) for in-flight ticks to finish — then swaps dist/ and aborts whatever is still running. The drain counts ALL in-flight ticks alike, so a director tick carrying an explicit user prompt that outlives the window is aborted mid-task even though it was requested by a human. Median ticks run ~35 min on local hardware (the stated rationale for the 30-minute cap), so long director prompts routinely hit this.
@@ -98,6 +81,21 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 **Suspected cause:** init was written to assume an existing repo while the README wording ("seeds a git repo … and commits them") overstates what it does. Either `init` should run `git init` itself when the cwd is not a repo (matching the docs), or "How it works" should say it seeds files into an *existing* repo and that `git init` comes first.
 
 ## Fixed
+
+### Review gate rejects a change for contradicting an already-recorded bug/plan instead of letting the newer user instruction win (reported by user 2026-09-08, fixed 2026-09-09)
+
+**Symptom:** Director tick #79 was rejected in review on 2026-09-08 with "The change responds to a user report already recorded as an open BUGS.md entry". The change responded to a *newer* user prompt about the same topic as an existing open bug (the restart-drain entry, commit f62c4d4) and took a different approach than that entry's fix direction. Per the user: a new prompt always overrides an old one — work must not be rejected for contradicting prior recorded work or changing the design; it should be synthesized with the existing open bugs/features/docs (updating the existing entry in place rather than creating a duplicate or rejecting).
+
+**Repro:**
+1. Record a bug/plan entry with a fix direction (e.g. BUGS.md's restart-drain entry, f62c4d4).
+2. Land a change responding to a newer user prompt on the same topic that takes a different approach than the recorded fix direction.
+3. The review gate rejects it: checklist item 4 ("does the change deliver what its PLANS.md/BUGS.md entry promises") is read as "must match the recorded fix direction", and nothing in the review prompt gives a newer user instruction precedence over an older record.
+
+**Expected:** A change responding to a newer user request than the one that produced a recorded entry may land when it is coherent and complete for its stated purpose; the reviewer checks that the author updated the existing entry so no stale contradiction remains — not that the change matches the old fix direction. Contradicting prior work or changing the design is not, by itself, a defect.
+
+**Cause:** `buildReviewPrompt`'s checklist item 4 had no precedence rule between a newer user instruction and an older recorded entry; the reviewer generalized it into "the change must match the recorded fix direction". The "latest instruction wins" principle was in the prompt (via PRINCIPLES.md) but nothing tied it to the checklist.
+
+**Fix:** item 4 now states that an entry records intent at recording time and that a change responding to a newer user instruction on the same topic is judged against that newer purpose — contradicting an older recorded fix direction is not itself a defect; reject only if the change is incoherent or incomplete for its stated purpose, or leaves the existing entry stale and contradictory (updating it in place is the author's duty). test/prompt.test.ts pins the new rule. Files: src/prompt.ts, test/prompt.test.ts.
 
 ### `runPi` resolves before its raw log flushes: a load-sensitive race that flakes the suite and can truncate a transcript (found by human analysis 2026-09-08, fixed 2026-09-09)
 

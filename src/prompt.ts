@@ -355,7 +355,12 @@ Check, in this order:
    can disprove is a rejection.
 3. Do new or changed tests exercise the new behavior — would they fail without the change?
 4. For a planned feature or recorded bug, does the change deliver what its PLANS.md/BUGS.md
-   entry promises (files touched, acceptance criteria), and is the entry updated to match?
+   entry promises (files touched, acceptance criteria), and is the entry updated to match? An
+   entry records intent at recording time; when the change responds to a newer user instruction
+   on the same topic, judge it against that newer purpose — contradicting an older recorded fix
+   direction is not itself a defect. Reject only if the change is incoherent or incomplete for
+   its stated purpose, or leaves the existing entry stale and contradictory (updating the entry
+   in place is the author's duty).
 5. Does anything violate a principle above, or grow complexity the WHY does not justify?
 Reject only for concrete, verifiable defects you can name; when the change is correct, complete
 for its stated purpose, and within the principles, taste alone is not a rejection.
