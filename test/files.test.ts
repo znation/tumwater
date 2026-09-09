@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { findOnPath, pruneOldFiles, rotateIfLarge, statOrNull } from "../src/files.js";
+import { findOnPath, pruneOldFiles, removeQuiet, rotateIfLarge, statOrNull } from "../src/files.js";
 import { tmpdir } from "./util.js";
 
 test("rotateIfLarge rotates once over the cap and replaces the previous rotation", () => {
@@ -72,5 +72,60 @@ test("statOrNull treats a missing file as no data, not an error", () => {
 
   fs.writeFileSync(file, JSON.stringify({ ticks: 3 }));
   assert.ok(statOrNull(file)!.isFile());
+});
+
+test("removeQuiet swallows every failure — an escape would crash the poll that calls it", () => {
+  const dir = tmpdir();
+
+  // A path already gone (a concurrent pass or an earlier cycle took it) reads as success.
+  assert.doesNotThrow(() => removeQuiet(path.join(dir, "never-existed")));
+
+  // rmSync without recursive throws EISDIR on a directory; whatever the errno, the helper's
+  // contract is to stay quiet and leave the target for the next pass (orchestrator marker
+  // removal runs every poll cycle).
+  const sub = path.join(dir, "subdir");
+  fs.mkdirSync(sub);
+  assert.doesNotThrow(() => removeQuiet(sub));
+  assert.ok(fs.existsSync(sub), "the unremovable target is left in place");
+
+  // A plain file is still removed — swallowing errors must not swallow the delete.
+  const marker = path.join(dir, "marker");
+  fs.writeFileSync(marker, "x");
+  removeQuiet(marker);
+  assert.ok(!fs.existsSync(marker));
+});
+
+test("pruneOldFiles skips files it cannot delete instead of crashing the session cleanup", () => {
+  // A read-only directory makes rmSync fail with EACCES; the walk must skip that file,
+  // still prune what it can, and count only what was actually removed. Under root the
+  // permission is bypassed — then the file IS pruned, which also satisfies "no crash".
+  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const dir = tmpdir();
+  const lockedDir = path.join(dir, "locked");
+  fs.mkdirSync(lockedDir);
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 3600 * 1000);
+  const lockedOld = path.join(lockedDir, "old.jsonl");
+  fs.writeFileSync(lockedOld, "old");
+  fs.utimesSync(lockedOld, tenDaysAgo, tenDaysAgo);
+  const freeOld = path.join(dir, "free.jsonl");
+  fs.writeFileSync(freeOld, "old");
+  fs.utimesSync(freeOld, tenDaysAgo, tenDaysAgo);
+
+  try {
+    if (!asRoot) fs.chmodSync(lockedDir, 0o555); // readable and searchable, not writable
+    let pruned = -1;
+    assert.doesNotThrow(() => {
+      pruned = pruneOldFiles(dir, 7);
+    });
+    assert.ok(!fs.existsSync(freeOld), "the removable file is still pruned");
+    if (asRoot) {
+      assert.equal(pruned, 2);
+    } else {
+      assert.equal(pruned, 1, "only the removable file counts");
+      assert.ok(fs.existsSync(lockedOld), "the unremovable file stays for the next pass");
+    }
+  } finally {
+    fs.chmodSync(lockedDir, 0o755); // restore so temp-dir cleanup can remove it
+  }
 });
 
