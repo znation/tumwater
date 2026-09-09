@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { PiStreamParser, TRANSIENT_PI_CRASH, piArgs, runPi } from "../src/pi.js";
+import type { PiRunResult } from "../src/types.js";
 import { REFUSED_SENTINEL } from "../src/reply-contract.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
@@ -288,6 +289,23 @@ async function runFakePi(script: string) {
   }
 }
 
+// The suite runs under fleet load — review gates and main-baseline checks spawn full suites
+// alongside — where spawning the fake pi or opening its log can transiently fail. Without a
+// retry that environmental failure lands as a misleading raw-log content assertion in the
+// tests below (a 2026-09-09 gate rejection of an unrelated GUI change was exactly this). A
+// real log regression fails both attempts; only runs where pi produced nothing are retried.
+async function runPiVerified(opts: Parameters<typeof runPi>[0]): Promise<PiRunResult> {
+  const first = await runPi(opts);
+  if (first.ok || first.turns > 0) return first;
+  fs.rmSync(opts.rawLogFile, { force: true }); // attempt one may have left a partial log
+  await new Promise((r) => setTimeout(r, 250)); // let the resource pressure clear
+  const second = await runPi(opts);
+  if (second.ok || second.turns > 0) return second;
+  throw new Error(
+    `fake pi produced no output twice in a row — environmental (fleet load), not a log regression: ${first.errorMessage ?? "no error"}`,
+  );
+}
+
 test("a non-zero pi exit with assistant text still counts as a successful run", async () => {
   // Documented lenient behavior (BUGS.md, spurious-warning fix, cause 4): pi can exit
   // non-zero after producing output; the work is real, so the tick must not be an error.
@@ -424,7 +442,7 @@ test("runPi with a label writes exactly one marker line as the raw log's first l
   const dir = tmpdir();
   const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve", { tokens: 5 })}'`);
   try {
-    await runPi({
+    await runPiVerified({
       cwd: dir,
       prompt: "p",
       config: defaultConfig(),
@@ -448,7 +466,7 @@ test("runPi without a label leaves the raw log byte-identical to today's shape",
   const dir = tmpdir();
   const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
   try {
-    await runPi({
+    await runPiVerified({
       cwd: dir,
       prompt: "p",
       config: defaultConfig(),
@@ -497,23 +515,27 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
   const file = path.join(dir, "raw.jsonl");
   const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
   const realCreateWriteStream = fs.createWriteStream;
-  let pending = "";
-  const stalled = Object.assign(new EventEmitter(), {
-    write: (data: string) => {
-      pending += data;
-      return true;
-    },
-    end: (cb?: () => void) => {
-      // The threadpool "completes" the queued writes one macrotask after end().
-      setImmediate(() => {
-        fs.appendFileSync(file, pending);
-        cb?.();
-      });
-    },
-  });
-  (fs as unknown as { createWriteStream: unknown }).createWriteStream = () => stalled;
+  // One fresh fake per stream open, so a runPiVerified retry cannot append to the previous
+  // attempt's buffered writes.
+  const makeStalled = () => {
+    let pending = "";
+    return Object.assign(new EventEmitter(), {
+      write: (data: string) => {
+        pending += data;
+        return true;
+      },
+      end: (cb?: () => void) => {
+        // The threadpool "completes" the queued writes one macrotask after end().
+        setImmediate(() => {
+          fs.appendFileSync(file, pending);
+          cb?.();
+        });
+      },
+    });
+  };
+  (fs as unknown as { createWriteStream: unknown }).createWriteStream = () => makeStalled();
   try {
-    await runPi({
+    await runPiVerified({
       cwd: dir,
       prompt: "p",
       config: defaultConfig(),
