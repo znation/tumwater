@@ -255,26 +255,36 @@ export async function commitPathsAndDiscardRest(
   return headOf(wt, "HEAD");
 }
 
+/** True when `dir` exists and is still a usable git worktree — its .git pointer file present
+ * and resolvable via rev-parse. The shared usability probe of both ensure* functions below;
+ * a directory that fails it (pointer lost, or admin-side registration under <root>/.git/
+ * worktrees/ pruned by outside git maintenance) is rebuilt from scratch instead of failing
+ * every tick. */
+async function isUsableWorktree(dir: string): Promise<boolean> {
+  return fs.existsSync(dir) && (await gitTry(dir, "rev-parse", "--git-dir")) !== null;
+}
+
+/** Clear the way for `worktree add` at `dir`: prune stale registrations first (a registration
+ * whose directory was deleted still blocks the add), then remove a leftover unusable directory
+ * and prune again so no registration points at it. The removed content is harness scratch only
+ * — role worktrees are reset to main on every fresh tick, and branch commits survive in
+ * refs/heads either way. */
+async function clearStaleWorktree(root: string, dir: string): Promise<void> {
+  await gitTry(root, "worktree", "prune");
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    await gitTry(root, "worktree", "prune"); // drop any registration left pointing at it
+  }
+}
+
 /** Ensure a persistent worktree + branch exists for a role. Returns the worktree path.
- * Self-heals when the directory exists but is no longer a usable worktree (its .git pointer
- * file lost, or its admin-side registration under <root>/.git/worktrees/ pruned by outside
- * git maintenance): it removes and re-adds the directory instead of failing every tick. */
+ * Self-heals when the directory exists but is no longer a usable worktree: it removes and
+ * re-adds the directory instead of failing every tick (see clearStaleWorktree). */
 export async function ensureWorktree(root: string, role: string, mainBranch: string): Promise<string> {
   const wt = worktreePath(root, role);
   const branch = branchName(role);
-  if (fs.existsSync(wt) && (await gitTry(wt, "rev-parse", "--git-dir")) !== null) {
-    return wt;
-  }
-  // A stale registration (dir deleted, worktree still known) blocks `worktree add`.
-  await gitTry(root, "worktree", "prune");
-  if (fs.existsSync(wt)) {
-    // The directory exists but is not a usable worktree. Left alone, `worktree add` would
-    // fail on it every tick forever and wedge the role. It holds only harness scratch — a
-    // fresh tick resets it to main anyway — so remove and re-add; the branch's commits
-    // survive in refs/heads either way.
-    fs.rmSync(wt, { recursive: true, force: true });
-    await gitTry(root, "worktree", "prune"); // drop any registration left pointing at it
-  }
+  if (await isUsableWorktree(wt)) return wt;
+  await clearStaleWorktree(root, wt);
   const branchExists = (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
   if (branchExists) {
     await git(root, "worktree", "add", wt, branch);
@@ -290,18 +300,14 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
  * compiles — the primary checkout may be dirty or on another branch, a role worktree is never
  * pristine while its loop works. */
 export async function ensureDetachedWorktree(root: string, dir: string, ref: string): Promise<string> {
-  if (fs.existsSync(dir) && (await gitTry(dir, "rev-parse", "--git-dir")) !== null) {
+  if (await isUsableWorktree(dir)) {
     await abortSync(dir);
     await git(dir, "checkout", "--detach", ref);
     await git(dir, "reset", "--hard", ref);
     await git(dir, "clean", "-fd");
     return dir;
   }
-  await gitTry(root, "worktree", "prune");
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-    await gitTry(root, "worktree", "prune");
-  }
+  await clearStaleWorktree(root, dir);
   await git(root, "worktree", "add", "--detach", dir, ref);
   return dir;
 }
