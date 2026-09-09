@@ -1410,6 +1410,47 @@ test("a drain past its cap aborts the in-flight tick resumably and still restart
   }
 });
 
+test("an in-flight director tick is waited for, not aborted, when the drain window elapses", async () => {
+  // The 2026-09-08 incident end to end: a human prompt outlives the drain cap. Role ticks are
+  // aborted resumably at the cap; the director's tick must run to completion — no swap and no
+  // abort until it finishes (BUGS.md).
+  const repo = makeRepo();
+  await initProject(repo, "director drain test");
+  saveConfig(repo, fastConfig(["director"]));
+  // The prompt's run outlives the window: it marks itself started (so staleness can flip while
+  // it is in flight), then sleeps past the cap before answering.
+  const marker = path.join(worktreePath(repo, "director"), "started.txt");
+  const restore = fakePi(`touch started.txt\nsleep 2\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const { redeployer, swaps } = scriptedRedeployer(repo, { drainMaxMs: 500, stale: () => fs.existsSync(marker) });
+  enqueuePrompt(repo, "a long human prompt");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const run = runOrchestrator({
+      root: repo,
+      config: loadConfig(repo),
+      mainBranch: "main",
+      signal: controller.signal,
+      pollMs: FAST_POLL_MS,
+      redeploy: redeployer,
+    });
+    await waitFor(() => fs.existsSync(marker), "the director tick to start");
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running prompt");
+    const exit = await run;
+    assert.deepEqual(exit, { restart: true });
+    assert.equal(swaps.length, 1);
+    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    assert.equal(ends.length, 1);
+    assert.notEqual(ends[0]!.result, "aborted", "the director tick finished on its own — the hold waited it out");
+    const restart = readEvents(repo).find((e) => e.type === "restart")!;
+    assert.ok(Number(restart.drainedMs) > 500, `the hold ran past the drain window (${String(restart.drainedMs)}ms)`);
+    assert.equal(restart.abortedTicks, 0);
+  } finally {
+    clearTimeout(timeout);
+    restore();
+  }
+});
+
 test("a failed compile leaves the fleet running the old build", async () => {
   const repo = makeRepo();
   await initProject(repo, "compile failure test");

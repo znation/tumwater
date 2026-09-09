@@ -181,8 +181,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   if (enabled.length === 0) throw new Error("no roles enabled in tumwater.json");
 
   // Runners and sleeps watch a combined signal: the caller's (Ctrl+C/SIGTERM) plus an internal
-  // one the redeploy path fires when a drain runs out of patience — in-flight ticks then end as
-  // `aborted` (resumable on the new build), exactly like a shutdown.
+  // one the redeploy path fires when its drain of ROLE ticks runs out of patience — those
+  // in-flight role ticks then end as `aborted` (resumable on the new build), exactly like a
+  // shutdown. A director tick is never aborted this way: poll holds for it without a cap, so by
+  // the time `restart` lands only role ticks can remain.
   const internalStop = new AbortController();
   const signal = AbortSignal.any([externalSignal, internalStop.signal]);
   const redeploy = opts.redeploy ?? null;
@@ -213,7 +215,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     }
   }
 
-  const inFlight = new Set<Promise<void>>();
+  // In-flight tasks, split by who requested them: the redeploy drain caps role ticks at its
+  // window but waits for a director tick without one — an explicit human prompt outranks the
+  // self-redeploy (BUGS.md 2026-09-08).
+  const roleInFlight = new Set<Promise<void>>();
+  const directorInFlight = new Set<Promise<void>>();
   // Live-reload bookkeeping: the last config error already warned about (a broken file must
   // warn once per distinct text, not every poll), and the previous cycle's enabled set (for
   // one-shot enable/disable transition warnings).
@@ -342,10 +348,17 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // `hold` starts no new ticks at all — director included; a restart lands within minutes
       // and its prompt waits in the inbox — while the green check/compile/drain run in the
       // background. `restart` means dist/ already holds the new build: stop scheduling, abort
-      // whatever the drain gave up waiting for (it resumes on the new build), and return.
+      // whatever role ticks the drain gave up waiting for (they resume on the new build), and
+      // return. A director tick can never be in flight here — poll only returns `restart` once
+      // it has finished.
       let holdForRestart = false;
       if (redeploy) {
-        const action = await redeploy.poll(mainHead, inFlight.size, (runners[0]?.config ?? config).autoRestart, now);
+        const action = await redeploy.poll(
+          mainHead,
+          { roleInFlight: roleInFlight.size, directorInFlight: directorInFlight.size },
+          (runners[0]?.config ?? config).autoRestart,
+          now,
+        );
         const build = redeploy.status();
         if (JSON.stringify(build) !== JSON.stringify(info.build)) {
           info.build = build;
@@ -353,7 +366,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         }
         if (action === "restart") {
           restart = true;
-          if (inFlight.size > 0) internalStop.abort();
+          if (roleInFlight.size > 0) internalStop.abort(); // the director is guaranteed finished by then
           break;
         }
         holdForRestart = action === "hold";
@@ -386,14 +399,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             if (usesSlot) semaphore.release();
           }
         })();
-        inFlight.add(task);
-        void task.finally(() => inFlight.delete(task));
+        const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
+        bucket.add(task);
+        void task.finally(() => bucket.delete(task));
       }
 
       await sleepInterruptible(pollMs, signal);
     }
   } finally {
-    await Promise.allSettled([...inFlight]);
+    await Promise.allSettled([...roleInFlight, ...directorInFlight]);
     logEvent(root, { loop: "harness", type: "orchestrator_stop" });
     removeQuiet(infoFile);
   }

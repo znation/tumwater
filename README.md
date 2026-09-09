@@ -65,8 +65,6 @@ Open items:
   next is landing in a per-role detached worktree (planned 2026-09-08).
 - Open bug: budget badge shows `$0.00/$50` instead of n/a on free/local LLM fleets.
 - Open bug: `init` refuses to run outside an existing git repo despite "seeds a git repo".
-- Open bug: auto-restart aborts an in-flight director tick after the 30-minute drain; the director
-  should be exempt and waited for.
 - Open bug: review gate checks the pre-rebase tree, so the bytes that land on main were never run
   through a check.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
@@ -141,8 +139,9 @@ header, and `tumwater doctor` warns. With `autoRestart` (default true) the fleet
 itself: it verifies main is green (the review gate's pre-check verdict, or one run of the suite in
 a detached `_main` worktree), compiles main into `.tumwater/build/<sha>` with the project's own
 tsc — borrowed from the nearest ancestor install, since no worktree has one of its own — stops
-starting new ticks while in-flight ones finish (up to 30 minutes, counted across the whole hold
-even when main moves again meanwhile, after which they are aborted resumably), swaps the compiled tree into `dist/`, and exits so the `tumwater run` supervisor — the
+starting new ticks while in-flight ones finish (role ticks up to 30 minutes, counted across the
+whole hold even when main moves again meanwhile, after which they are aborted resuably; an in-flight
+director tick is waited for without a cap — a human prompt outranks the redeploy), swaps the compiled tree into `dist/`, and exits so the `tumwater run` supervisor — the
 process you started, which runs the orchestrator as a child — respawns it on the new code. A green
 verdict is reused fleet-wide; a red one is re-run in the mirror first, because a suite can fail
 for reasons that belong to a worktree rather than to the tree. A red main or a failed compile

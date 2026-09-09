@@ -42,10 +42,11 @@ const execFileAsync = promisify(execFile);
  * distinct from success (0), fail() (1) and a forced Ctrl+C (130). */
 export const RESTART_EXIT_CODE = 75;
 
-/** How long a pending restart waits for in-flight ticks before aborting them (they resume on
- * the new build). Median ticks run ~35 min on local hardware; a half-hour drain lets most of
+/** How long a pending restart waits for in-flight ROLE ticks before aborting them (they resume
+ * on the new build). Median ticks run ~35 min on local hardware; a half-hour drain lets most of
  * them finish while bounding how long the fleet keeps executing stale code. Measured across the
- * whole unbroken hold, not per head — see Redeployer.drainSince. */
+ * whole unbroken hold, not per head — see Redeployer.drainSince. Director ticks are exempt:
+ * an in-flight human prompt extends the hold without any cap (see poll). */
 const RESTART_DRAIN_MAX_MS = 30 * 60_000;
 
 /** Hard cap on one compile of the harness; tsc on this codebase takes well under a minute. */
@@ -54,6 +55,13 @@ const COMPILE_TIMEOUT_MS = 5 * 60_000;
 /** What the orchestrator should do this poll: `hold` starts no new ticks (a restart is pending),
  * `restart` means dist/ now holds the new build — stop and exit RESTART_EXIT_CODE. */
 export type RedeployAction = "none" | "hold" | "restart";
+
+/** How many ticks are running, split by who requested them: role ticks get one drain window,
+ * a director tick (an explicit human prompt) holds the restart open without any cap. */
+export interface InFlightCounts {
+  roleInFlight: number;
+  directorInFlight: number;
+}
 
 export type { BuildStatus } from "./build-info.js";
 
@@ -97,8 +105,8 @@ function track<T>(promise: Promise<T>): Tracked<T> {
 type RedeployEvent = HarnessEventInput;
 
 /** The redeploy state machine — one per orchestrator process. `poll` is called every scheduler
- * cycle with main's current head and the number of in-flight ticks and returns what to do; it
- * never throws and never awaits anything slower than a git query. */
+ * cycle with main's current head and how many role/director ticks are in flight, and returns what
+ * to do; it never throws and never awaits anything slower than a git query. */
 export class Redeployer {
   private lastHead: string | null = null;
   private staleness: BuildStaleness | null = null;
@@ -151,7 +159,12 @@ export class Redeployer {
 
   /** Decide this poll's action. `autoRestart` is the live config flag: off keeps the staleness
    * verdict (dashboards still show it) but never drains or restarts. */
-  async poll(mainHead: string, inFlight: number, autoRestart: boolean, now = Date.now()): Promise<RedeployAction> {
+  async poll(
+    mainHead: string,
+    inFlight: InFlightCounts,
+    autoRestart: boolean,
+    now = Date.now(),
+  ): Promise<RedeployAction> {
     if (!this.selfHosted || !mainHead) return this.endDrain();
     if (mainHead !== this.lastHead) {
       const wasStale = this.staleness?.stale ?? false;
@@ -210,7 +223,12 @@ export class Redeployer {
       );
       return this.endDrain();
     }
-    if (inFlight > 0 && now - this.drainSince < this.drainMaxMs) return "hold";
+    // The drain rule, split by who requested the work (BUGS.md 2026-09-08): a director tick is
+    // an explicit human prompt and outranks the redeploy — while one is in flight the hold has no
+    // time cap: no swap and no abort until it finishes. The per-tick watchdogs already bound how
+    // long one run can take, so this cannot hang the fleet beyond what a single tick can do.
+    if (inFlight.directorInFlight > 0) return "hold";
+    if (inFlight.roleInFlight > 0 && now - this.drainSince < this.drainMaxMs) return "hold";
     try {
       this.deps.swap(mainHead);
     } catch (err) {
@@ -218,13 +236,16 @@ export class Redeployer {
       this.block(mainHead, reason, `${reason}: ${errorMessage(err)}`);
       return this.endDrain();
     }
+    // The director is guaranteed finished by here (poll only reaches the swap with
+    // directorInFlight === 0), so what gets aborted — and counted — are role ticks only. A
+    // director-extended hold reports drainedMs past the window: correct and informative.
     this.log({
       loop: "harness",
       type: "restart",
       from: this.build.sha,
       to: mainHead,
       drainedMs: now - this.drainSince,
-      abortedTicks: inFlight,
+      abortedTicks: inFlight.roleInFlight,
     });
     return "restart";
   }

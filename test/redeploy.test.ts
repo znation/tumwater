@@ -99,7 +99,7 @@ function runsOf(counter: string): number {
 test("a non-self-hosted harness never acts, whatever main does", async () => {
   const f = fakeDeps();
   const { r, events } = harness(f.deps, false);
-  assert.equal(await r.poll(HEAD_B, 0, true), "none");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
   assert.deepEqual(events, []);
   assert.deepEqual(r.status(), { sha: BUILD.sha, builtAt: 1 }, "no staleness verdict is ever computed");
 });
@@ -107,7 +107,7 @@ test("a non-self-hosted harness never acts, whatever main does", async () => {
 test("a fresh build reports not stale and takes no action", async () => {
   const f = fakeDeps({ stale: { stale: false, aheadCommits: 2 } });
   const { r, events } = harness(f.deps);
-  assert.equal(await r.poll(HEAD_B, 0, true), "none");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
   assert.deepEqual(events, []);
   assert.deepEqual(r.status(), { sha: BUILD.sha, builtAt: 1, stale: false, aheadCommits: 2, checkedHead: HEAD_B });
 });
@@ -115,8 +115,8 @@ test("a fresh build reports not stale and takes no action", async () => {
 test("stale + autoRestart off: one build_stale event, staleness published, no restart", async () => {
   const f = fakeDeps();
   const { r, types } = harness(f.deps);
-  assert.equal(await r.poll(HEAD_B, 0, false), "none");
-  assert.equal(await r.poll(HEAD_B, 0, false), "none", "the verdict is cached per head");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, false), "none");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, false), "none", "the verdict is cached per head");
   assert.deepEqual(types(), ["build_stale"], "one event per newly stale head, not one per poll");
   assert.equal(r.status().stale, true);
   assert.deepEqual(f.calls.green, [], "no green check without autoRestart");
@@ -125,21 +125,21 @@ test("stale + autoRestart off: one build_stale event, staleness published, no re
 test("the happy path: hold through the green check and compile, then restart when idle", async () => {
   const f = fakeDeps();
   const { r, events, types } = harness(f.deps);
-  assert.equal(await r.poll(HEAD_B, 2, true), "hold", "the drain starts while the green check runs");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 2, directorInFlight: 0 }, true), "hold", "the drain starts while the green check runs");
   assert.deepEqual(f.calls.green, [HEAD_B]);
   assert.equal(r.status().restartPending, true, "a stale build with a restart under way says so");
   assert.equal(r.status().restartBlocked, undefined);
-  assert.equal(await r.poll(HEAD_B, 2, true), "hold");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 2, directorInFlight: 0 }, true), "hold");
   f.green(true);
   await settle();
-  assert.equal(await r.poll(HEAD_B, 2, true), "hold", "green: the compile starts");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 2, directorInFlight: 0 }, true), "hold", "green: the compile starts");
   assert.deepEqual(f.calls.compile, [HEAD_B]);
   assert.deepEqual(types(), ["build_stale", "restart_pending"]);
   f.compiled(true);
   await settle();
-  assert.equal(await r.poll(HEAD_B, 2, true), "hold", "compiled but ticks still in flight");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 2, directorInFlight: 0 }, true), "hold", "compiled but ticks still in flight");
   assert.deepEqual(f.calls.swap, []);
-  assert.equal(await r.poll(HEAD_B, 0, true), "restart", "idle: swap and go");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "restart", "idle: swap and go");
   assert.deepEqual(f.calls.swap, [HEAD_B]);
   const restart = events.at(-1)!;
   assert.equal(restart.type, "restart");
@@ -152,16 +152,46 @@ test("the drain cap aborts in-flight ticks: restart anyway, counting them", asyn
   const f = fakeDeps();
   const { r, events } = harness(f.deps, true, 1000);
   let now = 100_000;
-  assert.equal(await r.poll(HEAD_B, 3, true, now), "hold");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, now), "hold");
   f.green(true);
   await settle();
-  assert.equal(await r.poll(HEAD_B, 3, true, (now += 10)), "hold");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 10)), "hold");
   f.compiled(true);
   await settle();
-  assert.equal(await r.poll(HEAD_B, 3, true, (now += 500)), "hold", "inside the drain window");
-  assert.equal(await r.poll(HEAD_B, 3, true, (now += 600)), "restart", "past it: the caller aborts them");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 500)), "hold", "inside the drain window");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 600)), "restart", "past it: the caller aborts them");
   assert.equal(events.at(-1)!.abortedTicks, 3);
   assert.equal(events.at(-1)!.drainedMs, 1110);
+});
+
+test("a director tick in flight holds past the drain window without a cap; the swap lands once it clears", async () => {
+  // The 2026-09-08 incident: median ticks run ~35 min, so a long director prompt routinely
+  // outlived the 30-minute drain and was aborted mid-task. A human prompt outranks the redeploy:
+  // no swap and no abort until it finishes (BUGS.md).
+  const f = fakeDeps();
+  const { r, events } = harness(f.deps, true, 1000);
+  let now = 100_000;
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 1 }, true, now), "hold");
+  f.green(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 1 }, true, (now += 50)), "hold");
+  f.compiled(true);
+  await settle();
+  // Far past the window with the prompt still running — a role tick would have been aborted here.
+  assert.equal(
+    await r.poll(HEAD_B, { roleInFlight: 1, directorInFlight: 1 }, true, (now += 5000)),
+    "hold",
+    "the director extends the hold without a cap",
+  );
+  // The prompt finishes; one role tick is still running but its window is long gone — it lands now.
+  assert.equal(
+    await r.poll(HEAD_B, { roleInFlight: 1, directorInFlight: 0 }, true, (now += 10)),
+    "restart",
+    "only then does the restart land",
+  );
+  const ev = events.at(-1)!;
+  assert.equal(ev.abortedTicks, 1, "the remaining role tick is counted; the finished director is not");
+  assert.ok(Number(ev.drainedMs) > 5000, `a director-extended hold reports its true length (${String(ev.drainedMs)}ms)`);
 });
 
 test("a main move during the drain does not restart the clock: the same ticks get one window", async () => {
@@ -172,21 +202,21 @@ test("a main move during the drain does not restart the clock: the same ticks ge
   const f = fakeDeps();
   const { r, events } = harness(f.deps, true, 1000);
   let now = 100_000;
-  assert.equal(await r.poll(HEAD_B, 3, true, now), "hold", "the drain starts here");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, now), "hold", "the drain starts here");
   f.green(true);
   await settle();
-  assert.equal(await r.poll(HEAD_B, 3, true, (now += 400)), "hold");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 400)), "hold");
   f.compiled(true);
   await settle();
   // 800 ms in, main moves: the pending restart is superseded, the drain is not.
-  assert.equal(await r.poll(HEAD_C, 3, true, (now += 400)), "hold");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 400)), "hold");
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C]);
   f.green(true);
   await settle();
-  assert.equal(await r.poll(HEAD_C, 3, true, (now += 100)), "hold", "the new head still needs its own compile");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 100)), "hold", "the new head still needs its own compile");
   f.compiled(true);
   await settle();
-  assert.equal(await r.poll(HEAD_C, 3, true, (now += 200)), "restart", "past the original deadline, not a fresh one");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 200)), "restart", "past the original deadline, not a fresh one");
   assert.deepEqual(f.calls.swap, [HEAD_C], "and it is the new head's build that goes in");
   assert.equal(events.at(-1)!.drainedMs, 1100, "reported from the first hold, not the last head");
 });
@@ -195,38 +225,38 @@ test("a blocked restart ends the drain: the next one gets its clock back", async
   const f = fakeDeps();
   const { r } = harness(f.deps, true, 1000);
   let now = 100_000;
-  assert.equal(await r.poll(HEAD_B, 3, true, now), "hold");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, now), "hold");
   f.green(false);
   await settle();
-  assert.equal(await r.poll(HEAD_B, 3, true, (now += 400)), "none", "red: the fleet schedules again");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 400)), "none", "red: the fleet schedules again");
   // Main moves long after the old cap would have expired; the new drain still gets its window.
-  assert.equal(await r.poll(HEAD_C, 3, true, (now += 5000)), "hold");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 5000)), "hold");
   f.green(true);
   await settle();
-  assert.equal(await r.poll(HEAD_C, 3, true, (now += 10)), "hold");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 10)), "hold");
   f.compiled(true);
   await settle();
-  assert.equal(await r.poll(HEAD_C, 3, true, (now += 10)), "hold", "inside the NEW window, not the abandoned one");
-  assert.equal(await r.poll(HEAD_C, 3, true, (now += 1000)), "restart");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 10)), "hold", "inside the NEW window, not the abandoned one");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 1000)), "restart");
 });
 
 test("a red main blocks the restart for that head with one warning; a moved main retries", async () => {
   const f = fakeDeps();
   const { r, events, types } = harness(f.deps);
-  assert.equal(await r.poll(HEAD_B, 0, true), "hold");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
   f.green(false);
   await settle();
-  assert.equal(await r.poll(HEAD_B, 0, true), "none");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
   assert.deepEqual(types(), ["build_stale", "warning"]);
   assert.match(String(events[1]!.message), /is red — holding the restart/);
-  assert.equal(await r.poll(HEAD_B, 0, true), "none", "blocked: no second green check for the same head");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none", "blocked: no second green check for the same head");
   assert.deepEqual(f.calls.green, [HEAD_B]);
   // Published, not just warned about once: nothing will change until main moves, and a bare
   // `stale: true` cannot be told apart from a restart that is seconds away (BUGS.md).
   assert.equal(r.status().restartBlocked, "main bbbbbbbb is red");
   assert.equal(r.status().restartPending, undefined, "blocked and pending are mutually exclusive");
   // Main moves (a fix landed): the new head gets its own green check.
-  assert.equal(await r.poll(HEAD_C, 0, true), "hold");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
   assert.equal(r.status().restartBlocked, undefined, "the new head starts clean");
   assert.equal(r.status().restartPending, true);
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C]);
@@ -236,18 +266,18 @@ test("a red main blocks the restart for that head with one warning; a moved main
 test("a failed compile keeps the old build running and warns once", async () => {
   const f = fakeDeps();
   const { r, events, types } = harness(f.deps);
-  await r.poll(HEAD_B, 0, true);
+  await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true);
   f.green(true);
   await settle();
-  await r.poll(HEAD_B, 0, true);
+  await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true);
   f.compiled(false, "tsc exited 2: src/x.ts(1,1): error TS1005");
   await settle();
-  assert.equal(await r.poll(HEAD_B, 0, true), "none");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
   assert.deepEqual(types(), ["build_stale", "restart_pending", "warning"]);
   assert.match(String(events.at(-1)!.message), /rebuild of bbbbbbbb failed — staying on build aaaaaaaa: tsc exited 2/);
   assert.equal(r.status().restartBlocked, "rebuild of bbbbbbbb failed");
   assert.deepEqual(f.calls.swap, []);
-  assert.equal(await r.poll(HEAD_B, 0, true), "none", "and stays blocked for this head");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none", "and stays blocked for this head");
 });
 
 test("a swap failure is reported and blocks like a compile failure", async () => {
@@ -257,13 +287,13 @@ test("a swap failure is reported and blocks like a compile failure", async () =>
     },
   });
   const { r, events } = harness(f.deps);
-  await r.poll(HEAD_B, 0, true);
+  await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true);
   f.green(true);
   await settle();
-  await r.poll(HEAD_B, 0, true);
+  await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true);
   f.compiled(true);
   await settle();
-  assert.equal(await r.poll(HEAD_B, 0, true), "none");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
   assert.match(String(events.at(-1)!.message), /swapping the new build into place failed: EACCES/);
   assert.equal(r.status().restartBlocked, "swapping the new build into place failed");
 });
@@ -271,16 +301,16 @@ test("a swap failure is reported and blocks like a compile failure", async () =>
 test("main moving during a pending restart supersedes it: the new head is evaluated afresh", async () => {
   const f = fakeDeps();
   const { r } = harness(f.deps);
-  await r.poll(HEAD_B, 0, true);
+  await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true);
   f.green(true);
   await settle();
-  await r.poll(HEAD_B, 0, true); // compiling HEAD_B
+  await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true); // compiling HEAD_B
   assert.deepEqual(f.calls.compile, [HEAD_B]);
-  assert.equal(await r.poll(HEAD_C, 0, true), "hold", "new head: a new green check, not a swap of the old compile");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 0, directorInFlight: 0 }, true), "hold", "new head: a new green check, not a swap of the old compile");
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C]);
   f.compiled(true); // HEAD_B's compile finishing late changes nothing
   await settle();
-  assert.equal(await r.poll(HEAD_C, 0, true), "hold");
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
   assert.deepEqual(f.calls.swap, [], "the superseded build is never swapped in");
 });
 
