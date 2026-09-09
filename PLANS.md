@@ -169,25 +169,6 @@ Corrections:
 
 **Relationship to other plans.** Independent of everything currently planned (budget editing, transcript labels, user-defined loops): it reads the same raw-log tail those entries do not touch and adds one column plus one payload field. Single entry: the TUI and GUI halves share one sample ring, one rate helper, and one payload field — either half alone leaves the other surface blind.
 
-### Merge queue 1/5 — landing takes a worktree and a ref (planned 2026-09-08, requested by user)
-
-**Goal.** Give merge.ts's landing flow the seam the rest of the merge queue needs: it must be able to land *any* ref from *any* worktree, not only `tumwater/<role>` from that role's worktree. Pure refactor — no behavior change, no new files. Architecture and invariants: plans/merge-queue.md. Follow-on: `Merge queue 2/5`.
-
-**Design (decided, with rationale).** `mergeToMain`/`tryMerge` already take the worktree as a parameter and work on a detached HEAD (rebase and `reset --hard` do not care), so the only place that hard-codes role identity is `ffMergeToMain`, which derives `branchName(ctx.role)` itself. Make the ref an explicit input instead of a derivation: `ffMainTo(root, ref, mainBranch)` where `ref` is anything `git rev-parse` accepts (branch name today, a sha from 2/5 onward). Both of its arms already accept a sha — `git merge --ff-only <sha>` when the primary checkout is on main, and `git push . <sha>:<main>` when it is not. `MergeContext` gains a `ref` field carrying what to land so the landing code never re-derives identity; loop.ts passes `branchName(this.role)`, which is exactly what runs today.
-
-**Approach.**
-- src/merge.ts — rename `ffMergeToMain` → `ffMainTo(root, ref, mainBranch)`, dropping the `branchName` import and the `role` parameter; `MergeContext` gains `ref: string`; `tryMerge` passes `ctx.ref`. Update the module doc comment: landing is worktree- and ref-parameterized, and `role` on the context is now identity for events/sessions only.
-- src/loop.ts — the one `mergeToMain` call site supplies `ref: branchName(this.role)`.
-- test/merge.test.ts — retarget the `ffMergeToMain` tests to `ffMainTo`; add two cases pinning the new capability: landing a bare sha from a detached worktree succeeds with both a main-checked-out and a not-on-main primary checkout.
-
-**Files touched.** src/merge.ts, src/loop.ts, test/merge.test.ts.
-
-**Acceptance criteria.**
-- `npm run build` clean; full suite green.
-- No observable change: the same events (`merged`, `question_posted`), the same `TickResult` values, the same commit shapes as before this plan.
-- `ffMainTo` lands a bare sha from a detached worktree in both primary-checkout cases, pinned by tests.
-- `grep -rn "ffMergeToMain" src test` returns nothing.
-
 ### Merge queue 2/5 — land in a per-role detached worktree (planned 2026-09-08, requested by user)
 
 **Goal.** Stop reviewing and rebasing inside the role's own worktree. A tick commits, pins the commit, resets its worktree to main, and then hands the sha to a new harness-owned lander that does the review-and-land in `.tumwater/worktrees/_land-<role>`. Still synchronous inside the tick — the throughput win comes in 3/5 — but after this the role's branch and worktree are free the moment its commit exists, which is the precondition for everything after. Depends on `Merge queue 1/5`; architecture and invariants: plans/merge-queue.md. Follow-on: `Merge queue 3/5`.
@@ -295,6 +276,25 @@ Corrections:
 - `landBatchMax` bounds the stack; setting it to 1 reproduces 3/5's behavior exactly.
 
 ## Done
+
+### Merge queue 1/5 — landing takes a worktree and a ref (planned 2026-09-08, requested by user, done 2026-09-08)
+
+**Goal.** Give merge.ts's landing flow the seam the rest of the merge queue needs: it must be able to land *any* ref from *any* worktree, not only `tumwater/<role>` from that role's worktree. Pure refactor — no behavior change, no new files. Architecture and invariants: plans/merge-queue.md. Follow-on: `Merge queue 2/5`.
+
+**Design (decided, with rationale).** `mergeToMain`/`tryMerge` already take the worktree as a parameter and work on a detached HEAD (rebase and `reset --hard` do not care), so the only place that hard-codes role identity is `ffMergeToMain`, which derives `branchName(ctx.role)` itself. Make the ref an explicit input instead of a derivation: `ffMainTo(root, ref, mainBranch)` where `ref` is anything `git rev-parse` accepts (branch name today, a sha from 2/5 onward). Both of its arms already accept a sha — `git merge --ff-only <sha>` when the primary checkout is on main, and `git push . <sha>:<main>` when it is not. `MergeContext` gains a `ref` field carrying what to land so the landing code never re-derives identity; loop.ts passes `branchName(this.role)`, which is exactly what runs today.
+
+**Approach.**
+- src/merge.ts — rename `ffMergeToMain` → `ffMainTo(root, ref, mainBranch)`, dropping the `branchName` import and the `role` parameter; `MergeContext` gains `ref: string`; `tryMerge` passes `ctx.ref`. Update the module doc comment: landing is worktree- and ref-parameterized, and `role` on the context is now identity for events/sessions only.
+- src/loop.ts — the one `mergeToMain` call site supplies `ref: branchName(this.role)`.
+- test/merge.test.ts — retarget the `ffMergeToMain` tests to `ffMainTo`; add two cases pinning the new capability: landing a bare sha from a detached worktree succeeds with both a main-checked-out and a not-on-main primary checkout.
+
+**Files touched.** src/merge.ts, src/loop.ts, test/merge.test.ts. (Landed as written; the grep acceptance criterion additionally forced retargeting of four `ffMergeToMain` call sites plus its import in test/git.test.ts — which the entry's list missed — and two stale name mentions in comments in test/loop.test.ts and test/review.test.ts.)
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- No observable change: the same events (`merged`, `question_posted`), the same `TickResult` values, the same commit shapes as before this plan.
+- `ffMainTo` lands a bare sha from a detached worktree in both primary-checkout cases, pinned by tests.
+- `grep -rn "ffMergeToMain" src test` returns nothing.
 
 ### Label review-gate runs in loop transcripts (planned 2026-09-07, refined 2026-09-07, done 2026-09-08)
 

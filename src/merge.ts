@@ -14,23 +14,30 @@ import {
 } from "./git.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";
-import { branchName, mergeLockDir } from "./paths.js";
+import { mergeLockDir } from "./paths.js";
 import type { PiRunResult, TickResult } from "./types.js";
 
-/** Landing a tick's worktree branch on main: rebase onto main (keeping history linear),
- * fast-forward, and — when the rebase conflicts — one pi-driven resolution attempt before
- * giving up. Split out of loop.ts — which keeps the tick lifecycle around it — because this is
- * a self-contained concern with its own flow (lock → rebase → ff-merge → conflict retry) and
- * its own git surface; the only things it borrows from the loop are identity (root/role/branch),
+/** Landing a change on main: rebase onto main (keeping history linear), fast-forward, and —
+ * when the rebase conflicts — one pi-driven resolution attempt before giving up. The landing is
+ * worktree- and ref-parameterized — `MergeContext.ref` names what to land instead of deriving it
+ * from the role, so loop.ts passes its own worktree and branch exactly as before, and later plans
+ * (merge queue 2/5) pass a pinned sha from a lander worktree. Split out of loop.ts — which keeps
+ * the tick lifecycle around it — because this is a self-contained concern with its own flow
+ * (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it borrows
+ * from the loop are identity (root/ref/mainBranch), `role` for events and session naming only,
  * the current tick number for session naming, and the loop's shared pi wiring so a
  * conflict-resolution run folds into the same tick counters as an authoring run. */
 
-/** What mergeToMain needs from its owning loop: identity, the tick number that names the
- * conflict-resolution session, and the loop's shared pi runner (role config, session dir, raw
- * log, transient-timeout retry) with usage folded into the tick counters — every pi run of a
- * tick lands there exactly once. */
+/** What mergeToMain needs from its owning loop: identity (root, the ref to land, main branch),
+ * the role for events and session naming only — the landing code never re-derives it into a
+ * branch — plus the tick number that names the conflict-resolution session, and the loop's shared
+ * pi runner (role config, session dir, raw log, transient-timeout retry) with usage folded into
+ * the tick counters — every pi run of a tick lands there exactly once. */
 export interface MergeContext {
   root: string;
+  /** The ref to land on main: anything `git rev-parse` accepts (the role's branch today; a bare
+   * sha from merge queue 2/5 onward). */
+  ref: string;
   role: string;
   mainBranch: string;
   /** The current tick number (names the conflict-resolution pi session). */
@@ -61,7 +68,7 @@ async function tryMerge(ctx: MergeContext, wt: string, summary: string): Promise
     // reaches the post-ff code, so nothing double-emits.
     const before = openQuestions(ctx.root);
     if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return "merge_conflict";
-    if (!(await ffMergeToMain(ctx.root, ctx.role, ctx.mainBranch))) return "merge_blocked";
+    if (!(await ffMainTo(ctx.root, ctx.ref, ctx.mainBranch))) return "merge_blocked";
     const commit = await headOf(ctx.root, ctx.mainBranch);
     logEvent(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
     for (const question of openQuestions(ctx.root)) {
@@ -187,14 +194,15 @@ export async function continueRebase(wt: string): Promise<string> {
   return headOf(wt, "HEAD");
 }
 
-/** Fast-forward main to the role branch, without touching any remote.
- * Uses a working-tree merge when the primary checkout is on main (so its files update),
- * otherwise a local ref push. Returns true on success. */
-export async function ffMergeToMain(root: string, role: string, mainBranch: string): Promise<boolean> {
-  const branch = branchName(role);
+/** Fast-forward main to `ref`, without touching any remote. `ref` is anything `git rev-parse`
+ * accepts — a branch name today, a bare sha from merge queue 2/5 onward; both arms already accept
+ * either form (`merge --ff-only <sha>` and `push . <sha>:<main>`). Uses a working-tree merge when
+ * the primary checkout is on main (so its files update), otherwise a local ref push. Returns true
+ * on success. */
+export async function ffMainTo(root: string, ref: string, mainBranch: string): Promise<boolean> {
   const primaryBranch = await currentBranch(root);
   if (primaryBranch === mainBranch) {
-    return (await gitTry(root, "merge", "--ff-only", branch)) !== null;
+    return (await gitTry(root, "merge", "--ff-only", ref)) !== null;
   }
-  return (await gitTry(root, "push", ".", `${branch}:${mainBranch}`)) !== null;
+  return (await gitTry(root, "push", ".", `${ref}:${mainBranch}`)) !== null;
 }

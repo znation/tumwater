@@ -608,7 +608,7 @@ test("gate's green pre-check seeds the baseline cache: after the merge, checkMai
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
     assert.equal(result.decision, "approved"); // pre-check passed AND the reviewer approved
 
-    // The merge lands: main now points at exactly this HEAD (what ffMergeToMain does when the
+    // The merge lands: main now points at exactly this HEAD (what ffMainTo does when the
     // primary checkout is on main). update-ref rather than a real merge: the fixture's root
     // manifest is untracked, so git would refuse to overwrite it — an artifact of the scratch
     // layout that cannot happen in a real project where package.json is tracked (and the merge

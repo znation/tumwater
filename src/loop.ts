@@ -39,7 +39,7 @@ import { mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
-import { piLogPath, sessionDir } from "./paths.js";
+import { branchName, piLogPath, sessionDir } from "./paths.js";
 import { errorMessage } from "./text.js";
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
@@ -200,12 +200,14 @@ export class LoopRunner {
   }
 
   /** Land the worktree branch on main (see src/merge.ts for the rebase → ff-merge → conflict-
-   * retry flow): delegates with this loop's identity, tick number, and shared pi wiring so a
-   * conflict-resolution run folds into this tick's counters like any other pi run. */
+   * retry flow): delegates with this loop's identity, its own branch as the ref to land, tick
+   * number, and shared pi wiring so a conflict-resolution run folds into this tick's counters
+   * like any other pi run. */
   private async merge(wt: string, summary: string): Promise<TickResult> {
     return mergeToMain(
       {
         root: this.root,
+        ref: branchName(this.role),
         role: this.role,
         mainBranch: this.mainBranch,
         tick: this.state.ticks,

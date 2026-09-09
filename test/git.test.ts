@@ -26,7 +26,7 @@ import {
 import {
   conflictedFiles,
   continueRebase,
-  ffMergeToMain,
+  ffMainTo,
   hasConflictMarkers,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
@@ -99,7 +99,7 @@ test("ensureWorktree recovers when the worktree's .git pointer file is lost", as
   assert.ok(fs.existsSync(path.join(again, "seed.txt")));
 });
 
-test("commitAll stages everything and ffMergeToMain lands it while root is on main", async () => {
+test("commitAll stages everything and ffMainTo lands it while root is on main", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "improve", "main");
   fs.writeFileSync(path.join(wt, "new.txt"), "hi\n");
@@ -109,19 +109,19 @@ test("commitAll stages everything and ffMergeToMain lands it while root is on ma
   assert.equal(await aheadOfMain(wt, "main"), 1);
 
   assert.ok(await rebaseOntoMain(wt, "main"));
-  assert.ok(await ffMergeToMain(repo, "improve", "main"));
+  assert.ok(await ffMainTo(repo, branchName("improve"), "main"));
   assert.equal(await headOf(repo, "main"), commit);
   // The primary checkout's working tree got the file too.
   assert.ok(fs.existsSync(path.join(repo, "new.txt")));
 });
 
-test("ffMergeToMain works via ref push when root is on another branch", async () => {
+test("ffMainTo works via ref push when root is on another branch", async () => {
   const repo = makeRepo();
   sh(repo, "git", "checkout", "-b", "scratch");
   const wt = await ensureWorktree(repo, "improve", "main");
   fs.writeFileSync(path.join(wt, "other.txt"), "x\n");
   const commit = await commitAll(wt, "tumwater(improve): add other.txt");
-  assert.ok(await ffMergeToMain(repo, "improve", "main"));
+  assert.ok(await ffMainTo(repo, branchName("improve"), "main"));
   assert.equal(await headOf(repo, "main"), commit);
 });
 
@@ -136,7 +136,7 @@ test("rebaseOntoMain resolves divergence and aborts cleanly on conflict", async 
   fs.writeFileSync(path.join(wt, "branch-only.txt"), "b\n");
   await commitAll(wt, "branch work");
   assert.ok(await rebaseOntoMain(wt, "main"));
-  assert.ok(await ffMergeToMain(repo, "clean", "main"));
+  assert.ok(await ffMainTo(repo, branchName("clean"), "main"));
 
   // Conflicting divergence aborts and leaves the worktree usable.
   fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
@@ -203,7 +203,7 @@ test("continueRebase concludes a resolved conflict on top of main", async () => 
   assert.match(sh(wt, "git", "log", "-1", "--format=%s"), /branch seed edit/);
   // The rebased commit is a plain (non-merge) commit.
   assert.equal(sh(wt, "git", "log", "-1", "--format=%P").split(" ").length, 1);
-  assert.ok(await ffMergeToMain(repo, "clean", "main"));
+  assert.ok(await ffMainTo(repo, branchName("clean"), "main"));
   assert.equal(await headOf(repo, "main"), head);
 });
 

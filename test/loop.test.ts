@@ -892,7 +892,7 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
   const repo = await initializedRepo();
   // The user has uncommitted edits to seed.txt in the PRIMARY checkout (on main). The tick's
   // branch changes the same file, so `git merge --ff-only` must refuse to overwrite the local
-  // edit — the one way ffMergeToMain fails after a clean rebase. A broken failure path here
+  // edit — the one way ffMainTo fails after a clean rebase. A broken failure path here
   // would either clobber the user's work or report "changed" for work that never landed.
   const restore = fakePi(
     [

@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { mergeToMain, type MergeContext } from "../src/merge.js";
+import { ffMainTo, mergeToMain, type MergeContext } from "../src/merge.js";
+import { branchName } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { aheadOfMain, ensureWorktree } from "../src/git.js";
 import { readEvents } from "../src/events.js";
@@ -38,7 +39,8 @@ interface PiCall {
 }
 
 /** A MergeContext for role "improve" on tick 7 whose runPi records every call and then
- * defers to `resolve` (or returns a plain ok result when none is given). */
+ * defers to `resolve` (or returns a plain ok result when none is given). The ref is the role's
+ * own branch — exactly what loop.ts passes. */
 function makeCtx(
   root: string,
   resolve?: (wt: string, prompt: string, session: string) => Promise<PiRunResult>,
@@ -47,6 +49,7 @@ function makeCtx(
   return {
     ctx: {
       root,
+      ref: branchName("improve"),
       role: "improve",
       mainBranch: "main",
       tick: 7,
@@ -223,7 +226,7 @@ test("the landing-flow git helpers are exported from merge.js (regression)", asy
     "rebaseOntoMainLeaveConflicts",
     "hasConflictMarkers",
     "continueRebase",
-    "ffMergeToMain",
+    "ffMainTo",
   ] as const) {
     assert.equal(typeof merge[name], "function", `merge.js exports ${name}`);
   }
@@ -234,8 +237,38 @@ test("the landing-flow git helpers are exported from merge.js (regression)", asy
   fs.writeFileSync(path.join(root, "seed.txt"), "main advanced\n");
   commitIn(root, "main edit");
   assert.equal(await merge.rebaseOntoMain(wt, "main"), true);
-  assert.equal(await merge.ffMergeToMain(root, "improve", "main"), true);
+  assert.equal(await merge.ffMainTo(root, branchName("improve"), "main"), true);
   assert.equal(sh(root, "git", "rev-parse", "main"), sh(wt, "git", "rev-parse", "HEAD"));
+});
+
+/** A detached worktree (no branch) with one commit ahead of main; returns its head sha.
+ * The seam merge queue 2/5 builds on: landing takes a ref from any worktree. */
+function detachedAheadOfMain(repo: string): string {
+  const wt = path.join(repo, ".detached");
+  sh(repo, "git", "worktree", "add", "-d", wt);
+  fs.writeFileSync(path.join(wt, "new.txt"), "hi\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "detached work");
+  return sh(wt, "git", "rev-parse", "HEAD");
+}
+
+test("ffMainTo lands a bare sha from a detached worktree while root is on main", async () => {
+  const repo = makeRepo();
+  const sha = detachedAheadOfMain(repo);
+
+  assert.ok(await ffMainTo(repo, sha, "main"));
+  assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
+  // The working-tree merge updated the primary checkout's files too.
+  assert.ok(fs.existsSync(path.join(repo, "new.txt")));
+});
+
+test("ffMainTo lands a bare sha via ref push when root is on another branch", async () => {
+  const repo = makeRepo();
+  sh(repo, "git", "checkout", "-b", "scratch");
+  const sha = detachedAheadOfMain(repo);
+
+  assert.ok(await ffMainTo(repo, sha, "main"));
+  assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
 });
 
 test("a merged diff that posts new Open questions emits one question_posted per entry", async () => {
