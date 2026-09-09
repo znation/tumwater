@@ -68,13 +68,11 @@ Open items:
   review prompt).
 - Open bug: auto-restart aborts an in-flight director tick after the 30-minute drain; the director
   should be exempt and waited for.
-- Open bug: `runPi` resolves before its raw log flushes — a load-sensitive race that flakes the
-  suite and can truncate a transcript.
 - Open bug: review gate checks the pre-rebase tree, so the bytes that land on main were never run
   through a check.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`cd23eea`): build clean, suite 828/828, verified 2026-09-09.
+Current main (`77f4837`): build clean, suite 830/830, verified 2026-09-09.
 <!-- tumwater:status:end -->
 
 ## How it works
