@@ -74,7 +74,7 @@ Open items:
   through a check.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`09c5a20`): build clean, suite 828/828, verified 2026-09-09.
+Current main (`cd23eea`): build clean, suite 828/828, verified 2026-09-09.
 <!-- tumwater:status:end -->
 
 ## How it works
