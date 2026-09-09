@@ -5,6 +5,23 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### Review gate rejects a change for contradicting an already-recorded bug/plan instead of letting the newer user instruction win (reported by user 2026-09-08)
+
+**Symptom:** Director tick #79 was rejected in review on 2026-09-08 with "The change responds to a user report already recorded as an open BUGS.md entry". The change responded to a *newer* user prompt about the same topic as an existing open bug (the restart-drain entry, commit f62c4d4) and took a different approach than that entry's fix direction. Per the user: a new prompt always overrides an old one — work must not be rejected for contradicting prior recorded work or changing the design; it should be synthesized with the existing open bugs/features/docs (updating the existing entry in place rather than creating a duplicate or rejecting).
+
+**Repro:**
+1. Record a bug/plan entry with a fix direction (e.g. BUGS.md's restart-drain entry, f62c4d4).
+2. Land a change responding to a newer user prompt on the same topic that takes a different approach than the recorded fix direction.
+3. The review gate rejects it: checklist item 4 ("does the change deliver what its PLANS.md/BUGS.md entry promises") is read as "must match the recorded fix direction", and nothing in the review prompt gives a newer user instruction precedence over an older record.
+
+**Expected:** A change responding to a newer user request than the one that produced a recorded entry may land when it is coherent and complete for its stated purpose; the reviewer checks that the author updated the existing entry so no stale contradiction remains — not that the change matches the old fix direction. Contradicting prior work or changing the design is not, by itself, a defect.
+
+**Suspected cause:**
+- src/prompt.ts:357 — `buildReviewPrompt`'s checklist item 4 ("does the change deliver what its PLANS.md/BUGS.md entry promises (files touched, acceptance criteria), and is the entry updated to match?") has no precedence rule between a newer user instruction and an older recorded entry; the reviewer generalizes it into "the change must match the recorded fix direction".
+- No other part of the review prompt mentions supersession or synthesizing with existing entries.
+
+**Fix direction:** In `buildReviewPrompt` (src/prompt.ts), amend item 4 and/or add one explicit rule: a PLANS.md/BUGS.md entry records intent at recording time; when a change responds to a newer user instruction on the same topic, judge it against that newer purpose — reject only if the change is incoherent, incomplete for its stated purpose, or leaves the existing entry stale and contradictory (the author's duty is to update the entry in place). Update test/prompt.test.ts:953, which pins item 4's current text.
+
 ### Auto-restart aborts an in-flight director tick after the 30-minute drain: the director should be exempt and waited for (reported by user 2026-09-08)
 
 **Symptom:** When a self-redeploy is pending (stale build, main green, compile done), the harness holds new ticks and waits up to `RESTART_DRAIN_MAX_MS` (30 min) for in-flight ticks to finish — then swaps dist/ and aborts whatever is still running. The drain counts ALL in-flight ticks alike, so a director tick carrying an explicit user prompt that outlives the window is aborted mid-task even though it was requested by a human. Median ticks run ~35 min on local hardware (the stated rationale for the 30-minute cap), so long director prompts routinely hit this.
@@ -21,6 +38,8 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - src/orchestrator.ts:216 — `inFlight` is one `Set<Promise<void>>` for every runner's task (director tasks added at ~line 389 like any other); on the `restart` action (~lines 348–357) it does `if (inFlight.size > 0) internalStop.abort()`, aborting everything including the director.
 
 **Fix direction:** track in-flight director ticks separately from role ticks in the orchestrator (e.g. a counter or flag updated where tasks are added/removed for `DIRECTOR_ROLE`) and pass both to `Redeployer.poll` — change its `inFlight: number` parameter accordingly (e.g. `{ roleInFlight, directorInFlight }`). In `poll`: hold while `directorInFlight > 0` with no time cap; otherwise apply the existing window logic against role ticks only. On `restart`, abort only if role ticks remain (the director is guaranteed finished by then). Update the comment at src/redeploy.ts:45–48, the `drainedMs`/`abortedTicks` semantics in the `restart` event (a director-extended hold will report >30 min drained — that is correct and informative), and the README's "How it works" sentence about the 30-minute drain to state the director exemption. Tests: test/redeploy.test.ts (poll holds past the window while a director tick is in flight; swaps once it clears) and test/orchestrator.test.ts if it exercises the restart/abort path.
+
+**Note (2026-09-08):** An alternative approach — changing `RESTART_DRAIN_MAX_MS`'s default cap instead of exempting director ticks — was attempted by director tick #79 and rejected in review; it never landed on main, so this entry's description still matches current behavior. The fix direction above stands as the recorded way forward (see also the new open entry on why that rejection itself is a defect).
 
 ### Budget badge shows `$0.00/$50` on free/local LLM fleets instead of n/a (reported by user 2026-09-08)
 

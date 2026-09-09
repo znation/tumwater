@@ -13,3 +13,6 @@ what to do, not what to avoid.
 - Opinionated defaults over configuration: ship one sensible way of doing things before adding a
   knob.
 - Small, complete, and correct beats big and half-done: one focused change per tick.
+- Latest instruction wins: a newer user request supersedes older recorded bugs, plans, and docs —
+  synthesize it with the existing entries and update them in place so the record reflects current
+  intent.
