@@ -18,7 +18,7 @@ import { type BuildCheckOutcome, checkMainBaseline, clipBuildTail, resolveFromNo
 import { ensureDir } from "./files.js";
 import { ensureDetachedWorktree } from "./git.js";
 import { mirrorWorktreePath, stagingDir, stagingRootDir } from "./paths.js";
-import { shortSha } from "./text.js";
+import { errorMessage, shortSha } from "./text.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -86,7 +86,7 @@ function track<T>(promise: Promise<T>): Tracked<T> {
       t.done = true;
     },
     (err: unknown) => {
-      t.error = err instanceof Error ? err.message : String(err);
+      t.error = errorMessage(err);
       t.done = true;
     },
   );
@@ -215,7 +215,7 @@ export class Redeployer {
       this.deps.swap(mainHead);
     } catch (err) {
       const reason = "swapping the new build into place failed";
-      this.block(mainHead, reason, `${reason}: ${err instanceof Error ? err.message : String(err)}`);
+      this.block(mainHead, reason, `${reason}: ${errorMessage(err)}`);
       return this.endDrain();
     }
     this.log({
