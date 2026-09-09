@@ -251,8 +251,23 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
           sendJson(res, 400, { error: 'body must be a JSON object like {"text": "..."}' });
           return;
         }
-        const text = typeof parsed === "object" && parsed !== null ? (parsed as { text?: unknown }).text : undefined;
-        if (typeof text !== "string" || !text.trim()) {
+        // Valid JSON that is not an object ("just a string", [1], null) gets the same fix as
+        // malformed JSON — "text required" would point at a field of a body that has none.
+        // Arrays are objects in JS, so they need their own clause.
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          sendJson(res, 400, { error: 'body must be a JSON object like {"text": "..."}' });
+          return;
+        }
+        const text = (parsed as { text?: unknown }).text;
+        if (typeof text !== "string") {
+          sendJson(
+            res,
+            400,
+            { error: `text must be a string${text === undefined ? "" : ` (got ${JSON.stringify(text)})`}` },
+          );
+          return;
+        }
+        if (!text.trim()) {
           sendJson(res, 400, { error: "text required" });
           return;
         }

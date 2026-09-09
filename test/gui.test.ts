@@ -135,7 +135,14 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
     for (const body of ["null", "[1]", '"just a string"']) {
       const res = await fetch(base + "/api/prompt", { method: "POST", body });
       assert.equal(res.status, 400, body);
+      // Valid JSON that is not an object names the fix (send the object shape) — not
+      // "text required", which would point at a field of a body that has none.
+      assert.match(((await res.json()) as { error: string }).error, /JSON object/);
     }
+    // A present-but-wrong-typed text names the offending value.
+    const nonStringText = await fetch(base + "/api/prompt", { method: "POST", body: '{"text": 42}' });
+    assert.equal(nonStringText.status, 400);
+    assert.match(((await nonStringText.json()) as { error: string }).error, /must be a string \(got 42\)/);
     assert.equal(inboxSize(repo), 1, "rejected bodies queue nothing");
 
     assert.equal((await fetch(base + "/nope")).status, 404);
