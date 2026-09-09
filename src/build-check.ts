@@ -83,6 +83,22 @@ function buildCheckFrom(dir: string): BuildCheck | null {
   return null;
 }
 
+/** Walk UP from `startDir` — at most `maxLevels` ancestors, starting with `startDir`
+ * itself — calling `visit` on each directory and returning the first non-null result; null
+ * when no level qualifies or the filesystem root is reached. The shared climb of both
+ * walk-ups in this file (and the one npm's run-script PATH walk makes). */
+function walkUp<T>(startDir: string, maxLevels: number, visit: (dir: string) => T | null): T | null {
+  let dir = startDir;
+  for (let level = 0; level <= maxLevels; level++) {
+    const found = visit(dir);
+    if (found !== null) return found;
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // Filesystem root reached.
+    dir = parent;
+  }
+  return null;
+}
+
 /** Find the project's deterministic build check by walking UP from `startDir` — at most
  * `maxLevels` ancestors (default 5) — to the nearest directory containing BOTH a package.json
  * and a node_modules/ directory, then preferring scripts.test over scripts.typecheck and
@@ -95,14 +111,8 @@ function buildCheckFrom(dir: string): BuildCheck | null {
  * null when no ancestor qualifies or the file is missing/unreadable/malformed — detection
  * never throws into the gate. */
 export function detectBuildCheck(startDir: string, maxLevels = WALK_UP_LEVELS): BuildCheck | null {
-  let dir = startDir;
-  for (let level = 0; level <= maxLevels; level++) {
-    if (hasInstall(dir)) return buildCheckFrom(dir);
-    const parent = path.dirname(dir);
-    if (parent === dir) break; // Filesystem root reached.
-    dir = parent;
-  }
-  return null;
+  const root = walkUp(startDir, maxLevels, (dir) => (hasInstall(dir) ? dir : null));
+  return root === null ? null : buildCheckFrom(root);
 }
 
 /** Resolve `node_modules/<rel>` by walking UP from `startDir` — the same climb detectBuildCheck
@@ -115,15 +125,10 @@ export function detectBuildCheck(startDir: string, maxLevels = WALK_UP_LEVELS): 
  * suite made main read red, and the blocked restart stranded the fleet on a stale build
  * (BUGS.md). Never throws. */
 export function resolveFromNodeModules(startDir: string, rel: string, maxLevels = WALK_UP_LEVELS): string | null {
-  let dir = startDir;
-  for (let level = 0; level <= maxLevels; level++) {
+  return walkUp(startDir, maxLevels, (dir) => {
     const candidate = path.join(dir, "node_modules", rel);
-    if (fs.existsSync(candidate)) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break; // Filesystem root reached.
-    dir = parent;
-  }
-  return null;
+    return fs.existsSync(candidate) ? candidate : null;
+  });
 }
 
 // ── Execution ─────────────────────────────────────────────────────────────────────────────
