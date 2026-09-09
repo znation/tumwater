@@ -6,7 +6,7 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { statusPayload } from "../src/ui/gui.js";
+import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
@@ -512,7 +512,8 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   assert.equal(feature!.costUsd, 1.5);
 
   // Deep-equal against the same root's payload in this process — one definition of fleet
-  // state as JSON (gui.statusPayload) feeds both surfaces, so they cannot drift. Both sides
+  // state as JSON (status-payload.statusPayload) feeds both surfaces, so they cannot drift.
+  // Both sides
   // go through a JSON round-trip: that is exactly what the endpoint and the flag emit.
   assert.deepEqual(doc, JSON.parse(JSON.stringify(statusPayload(repo))));
 

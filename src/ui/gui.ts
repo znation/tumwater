@@ -2,23 +2,15 @@ import http from "node:http";
 import os from "node:os";
 import {
   type BacklogEntry,
-  openBugs,
   openBugEntries,
-  openQuestions,
   openQuestionEntries,
-  plannedPlans,
   plannedPlanEntries,
 } from "../backlog.js";
 import { parseNonNegativeInt, parsePositiveInt } from "../cli-args.js";
-import { readEvents } from "../events.js";
-import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "../inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
-import { readLiveProgress } from "./progress.js";
-import { dailyCost, budgetReached } from "../state.js";
-import { snapshot } from "../status.js";
-import { displayTokenMetrics, loopPhase } from "./status-render.js";
+import { statusPayload } from "./status-payload.js";
 import { readTranscript } from "./transcript.js";
 import { errorMessage } from "../text.js";
 
@@ -84,62 +76,6 @@ function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root
     return;
   }
   sendJson(res, 200, { title: entry.title, body: entry.body });
-}
-
-/** JSON payload for GET /api/status. */
-export function statusPayload(root: string): object {
-  const snap = snapshot(root);
-  // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
-  // reached the cap, every idle role loop's phase reads `budget paused` — one flag covers
-  // both dashboards through loopPhase.
-  const budgetPausedNow = budgetReached(snap.budget);
-  return {
-    running: snap.running,
-    pid: snap.pid,
-    // The running harness's build stamp and staleness (src/build-info.ts); null when no
-    // harness runs or its dist carries no stamp. The page derives its header badge from it.
-    build: snap.build,
-    inbox: snap.inbox,
-    // Previews of the queued director prompts in execution order (truncated server-side —
-    // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.
-    inboxPrompts: snap.inboxPrompts,
-    // The daily cost budget while enabled — the page derives its `· budget: $X/$Y today`
-    // header badge from this (absent when disabled).
-    budget: snap.budget ?? null,
-    // Operator pause (`tumwater pause` marker present): every idle role loop's phase reads
-    // `paused` ahead of budget/main-red — one flag covers both dashboards through loopPhase.
-    paused: snap.paused,
-    loops: snap.loops.map((s) => {
-      // One live tail read per running loop per poll (was up to three — see renderStatus).
-      const live = s.running ? readLiveProgress(root, s.role) : null;
-      const m = displayTokenMetrics(root, s, live);
-      return {
-        role: s.role,
-        phase: loopPhase(s, snap.running, root, budgetPausedNow, live, snap.paused),
-        // What a working loop is doing right now (first assistant text of the in-flight run).
-        // Null when idle — never show a stale item from a finished tick.
-        currentWork: live?.currentWork ?? null,
-        ticks: s.ticks,
-        commits: s.commits,
-        generated: m.generated,
-        peakCtx: m.peakCtx,
-        costUsd: s.totalCostUsd,
-        // The loop's spend for the local day (the daily budget window): 0 while its stamp
-        // is stale or missing — same helper and semantics as the TUI's `today` column.
-        todayUsd: dailyCost(s),
-        lastResult: s.lastResult ?? null,
-        lastSummary: s.lastSummary ?? null,
-        lastTickEndedAt: s.lastTickEndedAt ?? null,
-      };
-    }),
-    events: readEvents(root, 40).map((e) => formatEvent(e)),
-    // Project status (planned features + open bugs + open questions), fresh per poll like
-    // events — loops edit these files constantly, so there is no cache to go stale. The page
-    // derives the header badge count from this list's length.
-    plans: plannedPlans(root),
-    bugs: openBugs(root),
-    questions: openQuestions(root),
-  };
 }
 
 /** Max request body for /api/prompt, in wire bytes. Over it the promise rejects
