@@ -5,6 +5,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Sort the GUI loop table by state category, then last tick (planned 2026-09-09, requested by user)
+
+**Goal.** The GUI's loop table renders rows in payload order (role registration order), so loops with work in flight get buried among sleeping and queued ones. Order the rows: first by state category — active loops (working/reviewing) before inactive ones (queued, sleeping, paused, budget paused, main red, stopped, waiting for prompts) — then within each category by last tick, most recent first. The user's words: "sort the loop table in the GUI first by state category (active - including working/reviewing, vs. inactive, including queued, sleeping, etc.), then by last tick (most recent first)."
+
+**Design (decided, with rationale).**
+- **Sort client-side inside the page script — not server-side.** `statusPayload` is shared: `/api/status`, `tumwater status --json`, and the TUI all consume the same loop order. Sorting inside GUI_PAGE's inline script leaves the JSON contract and every other surface untouched; this request scopes to the GUI table only.
+- **Active = phase starts with "working" or "reviewing".** `loopPhase` (src/ui/status-render.ts) returns exactly two in-flight labels — `working …` (possibly expanded by workingDetail into elapsed/turn/ctx/tool detail) and `reviewing …` — everything else is idle: `stopped`, `waiting for prompts`, `paused`, `budget paused`, `main red`, `sleeping (for X)`, `queued`. The page already uses the same prefix test to color rows (`l.phase.startsWith("working")`), so the category rule reuses an established invariant.
+- **Secondary key = `lastTickEndedAt` descending** — exactly the field the "last tick" column displays via `fmtLastTick`, so within a group the rows read in that column's order. Null (never completed a tick) sorts last within its category, treated as older than any timestamp; ties break on role name ascending so output is deterministic regardless of payload order.
+
+**Approach.**
+- src/ui/gui-page.ts — inside the page's inline script: add one top-level pure function `sortLoops(loops)` returning a new array ordered by (category asc, lastTickEndedAt desc with nulls last, role asc) per the design — comparator keys: `(l.phase.startsWith("working") || l.phase.startsWith("reviewing")) ? 0 : 1`, then `(b.lastTickEndedAt ?? 0) - (a.lastTickEndedAt ?? 0)`, then `a.role.localeCompare(b.role)`; wrap it in `// loop-sort:start` / `// loop-sort:end` marker comments so the test can extract exactly that source. `refresh()` renders `sortLoops(d.loops).map(...)` instead of `d.loops.map(...)`. Keep it a standalone named function with no DOM references.
+- test/gui.test.ts — new behavioral test: extract the marked source from GUI_PAGE, eval it via `new Function(src + "\nreturn sortLoops;")()`, and assert on fixture loops: active before inactive; within each category descending lastTickEndedAt; null after any timestamp in its category; equal timestamps → role name ascending.
+
+**Files touched.** src/ui/gui-page.ts, test/gui.test.ts. No payload, TUI, or status-render changes.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- GUI loop table: every working/reviewing row sits above every other row; within each group rows are ordered by last tick most-recent-first; loops that never completed a tick sit at the bottom of their group; identical payloads always render in the same order (role-name tiebreak).
+- `tumwater status --json` and the TUI table order are unchanged.
+
+**Relationship to other plans.** Independent: display-only reordering inside one template string — no payload field, state file, or shared helper changes. The planned token-rate column adds a `<th>`/cell but not ordering; either can land first.
+
 ### Prioritize loops by need — defer unneeded maintenance ticks and order work roles first (planned 2026-09-08, requested by user)
 
 **Goal.** Today every enabled loop ticks on its own clock regardless of whether there is anything for it to react to: after a quiet stretch in which no feature or bugfix landed, the maintenance roles (readme, organize, coverage, clean, dry, perf, qa, improve, steward) keep burning model runs re-deriving "nothing to do", and when `maxConcurrent` slots are contended they can claim them ahead of loops that actually ship work. Make scheduling need-aware with two mechanisms: (1) a maintenance role's due tick is **deferred** while no feature/bugfix/human commit has landed on main since its last tick AND its own last tick did nothing; (2) slot allocation in `fairOrder` orders the work roles (**feature, bugfix, plan**) ahead of every maintenance role. The user's words: "if no feature or bugfix work has landed since the last tick, and the last tick had nothing to do, the readme, organize, coverage, clean, dry, perf, qa, improve, and steward roles probably don't need to run at all; we could instead prioritize the feature, bugfix, and plan roles."
