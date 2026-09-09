@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { clipToWidth, lastTickCell, loopPhase, renderStatus, workingDetail, buildBadge } from "../src/ui/status-render.js";
-import type { StatusSnapshot } from "../src/status.js";
+import type { StatusSnapshot } from "../src/ui/status.js";
 import { fleetDailyCost, freshLoopState, todayStamp } from "../src/state.js";
 import { piLogPath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";

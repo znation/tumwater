@@ -3,7 +3,7 @@ import { readEvents } from "../events.js";
 import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { budgetReached, dailyCost } from "../state.js";
-import { snapshot } from "../status.js";
+import { snapshot } from "./status.js";
 import { displayTokenMetrics, loopPhase } from "./status-render.js";
 
 /** The one fleet-state document both observer surfaces serve: `GET /api/status` (gui.ts) and

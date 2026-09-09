@@ -37,22 +37,23 @@ function makeFixture() {
   return root;
 }
 
-const baseline = await import("/tmp/tw-baseline/dist/src/status.js");
-const current = await import("../dist/src/status.js");
+const baseline = await import("/tmp/tw-baseline/dist/src/ui/status.js");
+const current = await import("../dist/src/ui/status.js");
 const baseRender = (await import("/tmp/tw-baseline/dist/src/ui/status-render.js")).renderStatus;
 const curRender = (await import("../dist/src/ui/status-render.js")).renderStatus;
-const baseGui = await import("/tmp/tw-baseline/dist/src/ui/gui.js");
-const curGui = await import("../dist/src/ui/gui.js");
+const basePayload = (await import("/tmp/tw-baseline/dist/src/ui/status-payload.js")).statusPayload;
+const curPayload = (await import("../dist/src/ui/status-payload.js")).statusPayload;
 
 let failures = 0;
 for (const width of [undefined, 120, 60]) {
+  // One shared fixture: both builds render the same directory so tempdir names and
+  // millisecond timestamps cannot differ between the two sides.
   const a = makeFixture();
-  const b = makeFixture();
   // Warm both (first frame seeds tail state), then compare steady frames.
   baseRender(a, baseline.snapshot(a), width);
-  curRender(b, current.snapshot(b), width);
+  curRender(a, current.snapshot(a), width);
   const outA = baseRender(a, baseline.snapshot(a), width);
-  const outB = curRender(b, current.snapshot(b), width);
+  const outB = curRender(a, current.snapshot(a), width);
   if (outA !== outB) {
     failures++;
     console.log(`TUI MISMATCH at width=${width}`);
@@ -65,8 +66,8 @@ for (const width of [undefined, 120, 60]) {
     console.log(`TUI width=${width}: identical`);
   }
 
-  const pa = JSON.parse(JSON.stringify(baseGui.statusPayload(a)));
-  const pb = JSON.parse(JSON.stringify(curGui.statusPayload(b)));
+  const pa = JSON.parse(JSON.stringify(basePayload(a)));
+  const pb = JSON.parse(JSON.stringify(curPayload(a)));
   if (JSON.stringify(pa) !== JSON.stringify(pb)) {
     failures++;
     console.log("GUI MISMATCH");
@@ -83,7 +84,6 @@ for (const width of [undefined, 120, 60]) {
     console.log("GUI payload: identical");
   }
   fs.rmSync(a, { recursive: true, force: true });
-  fs.rmSync(b, { recursive: true, force: true });
 }
 console.log(failures === 0 ? "DIFF-CHECK PASS" : `DIFF-CHECK FAIL (${failures})`);
 process.exit(failures === 0 ? 0 : 1);

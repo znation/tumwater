@@ -8,7 +8,7 @@ import {
 import { readEvents } from "../events.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "../inbox.js";
-import { snapshot } from "../status.js";
+import { snapshot } from "./status.js";
 import { clipToWidth, renderStatus } from "./status-render.js";
 import { cutSplitsSurrogatePair } from "../text.js";
 import { readTranscript } from "./transcript.js";

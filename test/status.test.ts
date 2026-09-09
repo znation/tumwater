@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { dequeuePrompt, submitPrompt } from "../src/inbox.js";
 import { allRoleIds } from "../src/roles.js";
-import { snapshot } from "../src/status.js";
+import { snapshot } from "../src/ui/status.js";
 import { loopPhase, renderStatus } from "../src/ui/status-render.js";
 import { freshLoopState, recordDailyCost, saveLoopState } from "../src/state.js";
 import { initProject } from "../src/init.js";

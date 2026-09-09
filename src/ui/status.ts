@@ -1,10 +1,10 @@
-import type { LoopState, TumwaterConfig } from "./types.js";
-import type { BuildStatus } from "./build-info.js";
-import { openQuestions } from "./backlog.js";
-import { defaultConfig, enabledRoleIds, loadConfigCached } from "./config.js";
-import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { promptPreview, queuedPrompts } from "./inbox.js";
-import { statePath } from "./paths.js";
+import type { LoopState, TumwaterConfig } from "../types.js";
+import type { BuildStatus } from "../build-info.js";
+import { openQuestions } from "../backlog.js";
+import { defaultConfig, enabledRoleIds, loadConfigCached } from "../config.js";
+import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { promptPreview, queuedPrompts } from "../inbox.js";
+import { statePath } from "../paths.js";
 import {
   fleetDailyCost,
   freshLoopState,
@@ -12,7 +12,7 @@ import {
   loadLoopState,
   orchestratorAlive,
   readOrchestratorInfo,
-} from "./state.js";
+} from "../state.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts. */

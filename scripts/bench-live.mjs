@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const { snapshot } = await import("../dist/src/status.js");
+const { snapshot } = await import("../dist/src/ui/status.js");
 const { renderStatus } = await import("../dist/src/ui/status-render.js");
 
 const ROLES = ["feature", "bugfix", "plan", "readme", "organize", "coverage", "clean", "dry", "perf", "qa", "improve", "steward", "director"];
