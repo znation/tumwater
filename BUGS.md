@@ -5,6 +5,54 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### `runPi` resolves before its raw log flushes: a load-sensitive race that flakes the suite and can truncate a transcript (found by human analysis 2026-09-08)
+
+**Symptom:** On 2026-09-08 at 19:42 the dry loop's post-merge baseline check declared main `e014175d` red — "code merges blocked until main is green" — and dry, improve and clean all ended their ticks `main_red` within the same second. One second later the redeploy gate's own run of the *same SHA* passed and promoted it green fleet-wide, so nothing stayed blocked. Main was never broken: a clean `npm test` on `e014175` is 822/822. The single failure was test/pi.test.ts:422 ("runPi with a label writes exactly one marker line as the raw log's first line"), at its `assert.equal(content, …)` — reported as dist/test/pi.test.js:372.
+
+**Repro:** deterministic under libuv threadpool contention; the assertion reads back an empty or marker-only file.
+
+```
+UV_THREADPOOL_SIZE=1 node -e '
+const fs=require("fs"),os=require("os"),path=require("path"),{spawn}=require("child_process");
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),"race-")), big=path.join(dir,"big.bin");
+fs.writeFileSync(big,Buffer.alloc(4*1024*1024));
+let on=true; const flood=()=>{if(on)fs.readFile(big,()=>flood())}; for(let i=0;i<64;i++)flood();
+let ok=0,bad=0,n=0;
+const one=()=>new Promise(r=>{const f=path.join(dir,`raw${n++}.jsonl`);
+  const w=fs.createWriteStream(f,{flags:"a"}); w.write("MARKER\n");
+  const c=spawn("/bin/sh",["-c","printf %s\\\\n LINE"]);
+  c.stdout.on("data",d=>w.write(d.toString()));
+  c.on("close",()=>{w.end(); r(fs.readFileSync(f,"utf8"))});});
+(async()=>{for(let i=0;i<200;i++){(await one())==="MARKER\nLINE\n"?ok++:bad++;}
+  on=false; console.log({ok,bad});})();'
+```
+
+Verbatim run of the above: `{ ok: 9, bad: 191 }`. The same loop without the threadpool contention is 300/300 ok, which is why this has never flaked before.
+
+**Cause:** src/pi.ts:306 — `finish()` calls `rawLog.end()` (line 312) and `resolve(result)` (line 313) in the same turn and never awaits the stream's `finish`/`close`. `rawLog` is an `fs.createWriteStream` (line 232) whose writes complete on the libuv threadpool, so when `runPi`'s promise settles the lines fed from `child.on("close")` (the `decoder.end()` flush) may still be unwritten. The test does `readFileSync` immediately after `await runPi(...)`. On an idle machine the flush always wins the race; under load it does not.
+
+What loaded the machine on 2026-09-08 was two full `npm test` suites on the same commit at once — dry's red-main baseline check in `.tumwater/worktrees/dry` and the redeploy gate's green check in `_main`. They never dedup: the gate always passes `reverifyRed = true`, which keys `baselineInFlight` by sha+worktree rather than sha (src/build-check.ts, `checkMainBaseline`), by design. Both runs took ~70 s against the usual 59–64 s. Three LM Studio inference streams were also live.
+
+**Impact beyond the flake:** the unflushed tail is real data loss, not only a test artifact. A tick whose process exits or is killed shortly after `runPi` resolves — an abort during a restart drain, a supervisor swap — can lose the last line(s) of `<role>.pi.jsonl`, which is what `tumwater logs` and both dashboards read.
+
+**Fix direction:** have `finish` await the flush before resolving — `rawLog.end(() => resolve(result))` is the minimal form, since `end`'s callback fires on `finish`. Keep the `settled` guard as the re-entry lock, and make sure a stream `error` (EACCES, ENOSPC) still resolves rather than hanging the tick: attach an `error` handler that resolves once with the same result, so a broken raw log degrades to a lost log and never to a stuck loop. The spawn-error path already routes through `finish`, so it is covered. Test: in test/pi.test.ts, assert the raw log is complete on the turn `runPi` resolves — a `writeFileSync`-free check that fails on today's code when the stream is stalled (a fake stream, or the contention harness above scaled down).
+
+**Files:** src/pi.ts; regression test in test/pi.test.ts.
+
+### The review gate checks the pre-rebase tree, so the bytes that land on main were never run through a check (found by human analysis 2026-09-08)
+
+**Symptom:** dry tick 130's gate build check passed at 19:31:45 on head `8ce7ecaf` (tree `18f9917`), whose base was `9a1847e`. The change landed 9 m 16 s later as `e014175` (tree `f89fecb`), rebased over the **14** commits that reached main while it was under review. The tree the gate verified is not the tree that became main. Concretely: `7730bb1` — one of those 14 — is the commit that added test/pi.test.ts's label-marker test, so `git show 8ce7ecaf:test/pi.test.ts | grep -c 'writes exactly one marker line'` returns `0`. The suite the gate ran did not contain the test that then failed against main (see the entry above).
+
+**Repro:** deterministic — start a tick, let another role land on main while it is under review, then compare `git rev-parse <reviewed head>^{tree}` with the tree of the resulting main commit. The window is wide in practice: review runs 7–13 minutes on local hardware, and main moved four times in the hour before this incident.
+
+**Cause:** ordering. src/review.ts runs the deterministic pre-check (`scope: "gate"`, line 158) and then the model review against the branch head as it stands. Only afterwards does src/merge.ts:56 `mergeToMain` take the merge lock and rebase (`rebaseOntoMain`, line 70) before fast-forwarding (`ffMainTo`, line 71). Nothing re-verifies the rebased result, and a textual rebase succeeding says nothing about whether the two changes are semantically compatible. This is the structural hole behind BUGS.md's recurring "tests red on main" class: the gate is an oracle on a tree that is already historical by the time it answers.
+
+Second-order defect from the same assumption: src/review.ts:191 seeds `noteGreenBaseline(head)` with the *pre-rebase* head, on the stated premise that "after the merge lands — main now points at this very SHA" (comment at lines 188–190). Whenever a rebase happened that SHA is never main, so the seeding silently misses and the next fresh tick pays a full redundant suite run — which is exactly the run that flaked in the entry above.
+
+**Fix direction:** re-run the declared check inside the merge lock, after `rebaseOntoMain` and before `ffMainTo`, where the rebased head is by construction the exact tree that would become main; a failure returns `merge_blocked` (or a rejection carrying the tail onto the next prompt) instead of landing. Skip the re-run when the rebase was a no-op — reviewed head == rebased head, the common case — so only a tick whose main moved under it pays. Seed `noteGreenBaseline` with the rebased head and correct the comment's premise. Note the tension worth resolving first: a second full suite held inside the merge lock serializes landings, which is precisely what "Merge queue 5/5 — coalesce the build check across queued landings" (PLANS.md) exists to fix — sequencing this after the merge queue, or implementing it as the queue's coalesced check, is likely the cheaper order.
+
+**Files:** src/merge.ts, src/review.ts; tests in test/merge.test.ts.
+
 ### Review gate rejects a change for contradicting an already-recorded bug/plan instead of letting the newer user instruction win (reported by user 2026-09-08)
 
 **Symptom:** Director tick #79 was rejected in review on 2026-09-08 with "The change responds to a user report already recorded as an open BUGS.md entry". The change responded to a *newer* user prompt about the same topic as an existing open bug (the restart-drain entry, commit f62c4d4) and took a different approach than that entry's fix direction. Per the user: a new prompt always overrides an old one — work must not be rejected for contradicting prior recorded work or changing the design; it should be synthesized with the existing open bugs/features/docs (updating the existing entry in place rather than creating a duplicate or rejecting).
