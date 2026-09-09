@@ -59,8 +59,8 @@ Open items:
   2026-09-07).
 - Planned: per-loop token generation rate column in the TUI/GUI — a 5-minute moving average shown
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
-- Planned: harness-level merge queue — five landable sub-plans (1/5–5/5) tracked in PLANS.md;
-  first is landing taking a worktree and a ref (planned 2026-09-08).
+- Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
+  next is landing in a per-role detached worktree (planned 2026-09-08).
 - Open bug: budget badge shows `$0.00/$50` instead of n/a on free/local LLM fleets.
 - Open bug: `init` refuses to run outside an existing git repo despite "seeds a git repo".
 - Open bug: review gate rejects a change for contradicting an already-recorded bug/plan instead
@@ -70,7 +70,7 @@ Open items:
   should be exempt and waited for.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`20b621b`): build clean, suite 811/811, verified 2026-09-08.
+Current main (`0a75737`): build clean, suite 822/822, verified 2026-09-08.
 <!-- tumwater:status:end -->
 
 ## How it works
