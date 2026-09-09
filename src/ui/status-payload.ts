@@ -4,7 +4,7 @@ import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { budgetReached, dailyCost } from "../state.js";
 import { snapshot } from "./status.js";
-import { displayTokenMetrics, loopPhase } from "./status-render.js";
+import { buildBadge, displayTokenMetrics, loopPhase } from "./status-render.js";
 
 /** The one fleet-state document both observer surfaces serve: `GET /api/status` (gui.ts) and
  * `tumwater status --json` (cli.ts) print the same payload, so the dashboard and the CLI can
@@ -23,8 +23,13 @@ export function statusPayload(root: string): object {
     running: snap.running,
     pid: snap.pid,
     // The running harness's build stamp and staleness (src/build-info.ts); null when no
-    // harness runs or its dist carries no stamp. The page derives its header badge from it.
+    // harness runs or its dist carries no stamp — machine-readable for `status --json`.
     build: snap.build,
+    // The header's build badge pre-formatted through status-render's buildBadge — the same
+    // string the TUI/status table renders. Sent display-ready (like phase and events) because
+    // the page is browser JS that cannot import TypeScript, and this multi-branch text must
+    // not be re-derived client-side where it could drift from the TUI header.
+    buildBadge: buildBadge(snap.build),
     inbox: snap.inbox,
     // Previews of the queued director prompts in execution order (truncated server-side —
     // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.

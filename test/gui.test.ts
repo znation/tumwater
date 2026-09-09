@@ -674,6 +674,42 @@ test("a paused fleet's idle role loops read budget paused in the phase payload",
   assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "budget paused");
 });
 
+// The build badge on the GUI surface: /api/status carries it pre-formatted through
+// status-render's buildBadge — the same string the TUI header renders — so the page cannot
+// re-derive (and drift from) the multi-branch text client-side.
+
+test("status payload carries the build badge pre-formatted by buildBadge", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui build badge test");
+  // No harness running: no stamp, empty badge (the page renders nothing for it).
+  let payload = statusPayload(repo) as { build: unknown; buildBadge: string };
+  assert.equal(payload.build, null);
+  assert.equal(payload.buildBadge, "", "no running harness: empty badge");
+
+  // A live orchestrator (this process) publishing a stale stamp with a blocked restart:
+  // the payload's badge is exactly what status-render's buildBadge renders for that BuildStatus.
+  const { buildBadge } = await import("../src/ui/status-render.js");
+  const stamp = {
+    sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 7,
+    checkedHead: "b".repeat(40), restartBlocked: "main cccccccc is red",
+  };
+  const infoFile = orchestratorStatePath(repo);
+  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
+  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"], build: stamp }));
+  payload = statusPayload(repo) as typeof payload;
+  assert.equal(payload.buildBadge, buildBadge(stamp), "one home for the badge text");
+  assert.match(payload.buildBadge, /build aaaaaaaa — STALE: main \+7 commit\(s\) since; restart BLOCKED: main cccccccc is red$/);
+});
+
+test("the dashboard header takes its build badge pre-formatted from the payload", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  assert.match(GUI_PAGE, /d\.buildBadge \|\| ""/);
+  // The old client-side reconstruction (sha slice + STALE/restart fragments) is gone — the
+  // badge text has exactly one home: status-render's buildBadge.
+  assert.doesNotMatch(GUI_PAGE, /STALE: main \+/);
+  assert.doesNotMatch(GUI_PAGE, /restart BLOCKED/);
+});
+
 // The operator pause on the GUI surface (PLANS.md, fleet-pause plan): /api/status — and
 // therefore `status --json`, same payload — carries `paused` while the marker exists, and a
 // paused fleet's idle role loops read `paused` in their phase payload ahead of budget paused.

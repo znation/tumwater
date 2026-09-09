@@ -95,18 +95,10 @@ export const GUI_PAGE = `<!doctype html>
       const r = await fetch("/api/status");
       const d = await r.json();
       const qn = (d.questions || []).length;
-      // The build badge mirrors status-render's buildBadge: which commit the running harness
-      // was compiled from and, when main's src has moved past it, how far (a stale fleet runs
-      // code main no longer describes) — plus what auto-restart is doing about it, since a
-      // blocked restart never resolves on its own.
-      const build = d.build
-        ? ", build " + String(d.build.sha).slice(0, 8) +
-          (d.build.stale ? " — STALE: main +" + (d.build.aheadCommits || 0) + " commit(s) since" : "") +
-          (d.build.restartBlocked ? "; restart BLOCKED: " + d.build.restartBlocked
-            : d.build.restartPending ? "; restart pending" : "")
-        : "";
+      // The build badge arrives pre-formatted from the payload — status-render's buildBadge,
+      // the same string the TUI/status header renders, so the two surfaces cannot drift.
       document.getElementById("header").textContent =
-        (d.running ? "running (pid " + d.pid + build + ")" : "orchestrator not running") +
+        (d.running ? "running (pid " + d.pid + (d.buildBadge || "") + ")" : "orchestrator not running") +
         (d.inbox ? " · inbox: " + d.inbox : "") +
         (qn ? " · questions: " + qn : "") +
         // The daily cost budget badge mirrors the TUI's header line; standing information
