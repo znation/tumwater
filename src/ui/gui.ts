@@ -152,6 +152,20 @@ export function lanAddresses(
   return out;
 }
 
+/** The request target's path component (query string stripped), or null when `req.url` is
+ * not a parseable URL — such requests fall through to 404 instead of throwing into the
+ * handler's 500 catch. Routing compares this exact pathname, never the raw target: a
+ * startsWith on req.url answered ANY path prefixing a route (e.g. /api/transcripts?role=…
+ * returned 200 transcript data), and an equality check on the raw target would miss query
+ * strings on exact routes (/api/status?x → 404). */
+function requestPathname(req: http.IncomingMessage): string | null {
+  try {
+    return new URL(req.url ?? "", "http://localhost").pathname;
+  } catch {
+    return null; // Unparseable target — not a route.
+  }
+}
+
 /** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
  * binds the unspecified address (every interface, IPv4 and IPv6), making the dashboard —
  * including the director prompt box, which anyone reaching it can use to steer the fleet —
@@ -160,16 +174,17 @@ export function lanAddresses(
 export function startGui(root: string, port: number, allInterfaces = false): Promise<http.Server> {
   const server = http.createServer(async (req, res) => {
     try {
-      if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
+      const pathname = requestPathname(req);
+      if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(GUI_PAGE);
-      } else if (req.method === "GET" && req.url === "/api/status") {
+      } else if (req.method === "GET" && pathname === "/api/status") {
         sendJson(res, 200, statusPayload(root));
-      } else if (req.method === "GET" && req.url?.startsWith("/api/transcript")) {
+      } else if (req.method === "GET" && pathname === "/api/transcript") {
         handleTranscript(req, res, root);
-      } else if (req.method === "GET" && req.url?.startsWith("/api/backlog")) {
+      } else if (req.method === "GET" && pathname === "/api/backlog") {
         handleBacklog(req, res, root);
-      } else if (req.method === "POST" && req.url === "/api/prompt") {
+      } else if (req.method === "POST" && pathname === "/api/prompt") {
         // Client-side request failures get 4xx with an actionable message — not a 500
         // carrying Node's raw SyntaxError/TypeError, which misreports the fault and hides
         // the fix (send {"text": "..."}).

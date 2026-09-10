@@ -194,6 +194,13 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
       const res = await fetch(base + url);
       assert.equal(res.status, 400, url);
     }
+
+    // Routing is by exact path: a path merely prefixing /api/transcript is not that route —
+    // the old startsWith on the raw URL answered these with 200 transcript data.
+    for (const url of ["/api/transcripts?role=feature", "/api/transcriptx"]) {
+      const res = await fetch(base + url);
+      assert.equal(res.status, 404, url);
+    }
   } finally {
     server.close();
   }
@@ -524,6 +531,12 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
       const r = await fetch(base + url);
       assert.equal(r.status, 400, url);
       assert.match(((await r.json()) as { error: string }).error, /\S/, `${url} carries an error message`);
+    }
+
+    // Routing is by exact path: a path merely prefixing /api/backlog is not that route.
+    for (const url of ["/api/backlogs?file=plans&index=0", "/api/backlogx"]) {
+      const r = await fetch(base + url);
+      assert.equal(r.status, 404, url);
     }
 
     // An empty section is out of range at index 0 (seeded placeholders are not entries).
