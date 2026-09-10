@@ -63,13 +63,12 @@ Open items:
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
   next is landing in a per-role detached worktree (planned 2026-09-08).
-- Open bug: budget badge shows `$0.00/$50` instead of n/a on free/local LLM fleets.
 - Open bug: `init` refuses to run outside an existing git repo despite "seeds a git repo".
 - Open bug: review gate checks the pre-rebase tree, so the bytes that land on main were never run
   through a check.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`1eee520`): build clean, suite 836/836, verified 2026-09-09.
+Current main (`43f74af`): build clean, suite 844/844, verified 2026-09-09.
 <!-- tumwater:status:end -->
 
 ## How it works
