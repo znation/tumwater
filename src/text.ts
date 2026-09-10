@@ -75,8 +75,9 @@ export function shortSha(sha: unknown): string {
  * the cents-pinned money format shared by the event feed's budget/usage lines (event-format.ts)
  * and the status table's cost/today cells plus totals row (status-render.ts), so the decimal
  * width cannot drift per consumer. The cap variant that drops whole-dollar `.00` is a different
- * format with its own home (`usdCap` in status-render.ts); the GUI renders both from its own JS
- * copies in gui-page.ts — a separate runtime that cannot import TypeScript. */
+ * format with its own home (`usdCap` in status-render.ts, used by `budgetBadge`); the GUI's row
+ * cells still format money from their own inline JS (a separate runtime that cannot import
+ * TypeScript), while header badges like `budgetBadge` arrive preformatted. */
 export function usd(n: number): string {
   return `$${n.toFixed(2)}`;
 }

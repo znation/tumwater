@@ -46,9 +46,6 @@ export const GUI_PAGE = `<!doctype html>
 <script>
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   const fmtTokens = (n) => (n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
-  // Budget cap, same rule as the TUI's usdCap: whole dollars stay bare ($50), fractional
-  // ones keep their cents ($12.34) — so both dashboards read identically for one config.
-  const fmtUsdCap = (n) => n.toFixed(2).replace(/\\.00$/, "");
   // Absolute local time of the last tick end, same format rules as the TUI's last-tick
   // cell: zero-padded HH:MM:SS, prefixed MM-DD once older than a day; "-" when never ticked.
   const fmtLastTick = (ts) => {
@@ -101,10 +98,10 @@ export const GUI_PAGE = `<!doctype html>
         (d.running ? "running (pid " + d.pid + (d.buildBadge || "") + ")" : "orchestrator not running") +
         (d.inbox ? " · inbox: " + d.inbox : "") +
         (qn ? " · questions: " + qn : "") +
-        // The daily cost budget badge mirrors the TUI's header line; standing information
-        // while enabled, absent when disabled (payload sends null). A fleet whose models are
-        // all free reads n/a — spend can never accumulate against the cap.
-        (d.budget ? (d.budget.free ? " · budget: n/a today" : " · budget: $" + d.budget.spentUsd.toFixed(2) + "/$" + fmtUsdCap(d.budget.capUsd) + " today") : "");
+        // The daily cost budget badge arrives preformatted from the payload — status-render's
+        // budgetBadge, the same string the TUI/status header renders (n/a for an all-free
+        // fleet; empty when disabled), so the two surfaces cannot drift.
+        (d.budgetBadge || "");
       document.getElementById("loops").innerHTML = d.loops.map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { clipToWidth, lastTickCell, loopPhase, renderStatus, workingDetail, buildBadge } from "../src/ui/status-render.js";
+import { budgetBadge, buildBadge, clipToWidth, lastTickCell, loopPhase, renderStatus, workingDetail } from "../src/ui/status-render.js";
 import type { StatusSnapshot } from "../src/ui/status.js";
 import { fleetDailyCost, freshLoopState, todayStamp } from "../src/state.js";
 import { piLogPath } from "../src/paths.js";
@@ -755,4 +755,14 @@ test("the header names the running build and flags a stale one", () => {
   const unstamped = { ...fresh, build: null };
   assert.match(renderStatus("/tmp/x", unstamped).split("\n")[0]!, /running \(pid 4242\)/, "no stamp: the pre-stamp header");
   assert.equal(buildBadge(null), "");
+});
+
+test("budgetBadge renders the three-case daily-cost rule", () => {
+  // One home for the badge string (renderStatus's header and the payload's preformatted
+  // `budgetBadge` field): empty when disabled, n/a for an all-free fleet, $X/$Y otherwise —
+  // whole-dollar caps stay bare ($50), fractional ones keep their cents ($12.34).
+  assert.equal(budgetBadge(null), "", "disabled: no badge");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, free: true }), " · budget: n/a today", "all-free fleet reads n/a");
+  assert.equal(budgetBadge({ spentUsd: 12.34, capUsd: 50, free: false }), " · budget: $12.34/$50 today", "whole-dollar cap stays bare");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, free: false }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
 });

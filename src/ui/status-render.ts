@@ -212,6 +212,17 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
   return `, build ${shortSha(build.sha)}${stale}${restart}`;
 }
 
+/** The header's daily-cost-budget fragment: `· budget: $X.XX/$Y today` while enabled with
+ * priced models, `· budget: n/a today` for a fleet whose models are all free (spend can never
+ * accumulate against the cap), and empty when disabled. One home for the three-case rule —
+ * renderStatus renders it in the TUI/status header and status-payload.ts ships its output
+ * preformatted as `budgetBadge`, so the GUI page cannot drift from this string. */
+export function budgetBadge(budget: StatusSnapshot["budget"]): string {
+  if (!budget) return "";
+  const spend = budget.free ? "n/a" : `${usd(budget.spentUsd)}/${usdCap(budget.capUsd)}`;
+  return ` · budget: ${spend} today`;
+}
+
 /** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is
  * given, wide cells are clipped so no line exceeds it (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
@@ -226,11 +237,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   lines.push(
     `tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
       snap.questions ? ` · questions: ${snap.questions}` : ""
-    }${
-      snap.budget
-        ? ` · budget: ${snap.budget.free ? "n/a" : `${usd(snap.budget.spentUsd)}/${usdCap(snap.budget.capUsd)}`} today`
-        : ""
-    }`,
+    }${budgetBadge(snap.budget)}`,
   );
   lines.push("");
   // `today` is the loop's daily budget window (dailyCost): $0.00 while its stamp is stale

@@ -613,15 +613,17 @@ test("the dashboard page escapes backlog entry bodies before innerHTML", async (
 });
 
 // The daily cost budget on the GUI surface (plans/daily-cost-budget.md): /api/status carries
-// `budget` while enabled and null when disabled, the page derives its header badge from it,
-// and a paused fleet's idle role loops read `budget paused` in their phase payload.
+// raw `budget` while enabled and null when disabled plus the preformatted `budgetBadge` the
+// page renders as its header badge, and a paused fleet's idle role loops read `budget paused`
+// in their phase payload.
 
 test("status payload carries the daily budget while enabled and null when disabled", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget test"); // defaultConfig: maxDailyCostUsd 50 (enabled)
-  let payload = statusPayload(repo) as { budget: { spentUsd: number; capUsd: number; free: boolean } | null };
+  let payload = statusPayload(repo) as { budget: { spentUsd: number; capUsd: number; free: boolean } | null; budgetBadge: string };
   // No provider/model configured (pi's own default) — the fleet cannot be verified as free.
   assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, free: false }, "enabled by default with no spend yet");
+  assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the TUI header string");
 
   // Today's spend is summed from the loops' persisted daily windows (a stale stamp reads $0).
   const s = freshLoopState("clean");
@@ -630,6 +632,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   saveLoopState(repo, s);
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.budget?.spentUsd, 12.34, "today's spend shows in the badge data");
+  assert.equal(payload.budgetBadge, " · budget: $12.34/$50 today", "today's spend shows in the badge text");
 
   // 0 disables: the badge data disappears entirely (the page renders no badge for null).
   const cfg = loadConfig(repo);
@@ -637,26 +640,16 @@ test("status payload carries the daily budget while enabled and null when disabl
   saveConfig(repo, cfg);
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.budget, null, "cap 0 disables the budget");
+  assert.equal(payload.budgetBadge, "", "disabled: no badge at all");
 });
 
-test("the dashboard page derives its header badge from the payload's budget", async () => {
+test("the dashboard page renders the preformatted budget badge from the payload", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // Standing while enabled (payload sends an object), absent when disabled (null). An
-  // all-free fleet (local LLMs) reads n/a — spend can never accumulate against the cap.
-  assert.match(
-    GUI_PAGE,
-    /d\.budget\.free \? " · budget: n\/a today" : " · budget: \$" \+ d\.budget\.spentUsd\.toFixed\(2\) \+ "\/\$" \+ fmtUsdCap\(d\.budget\.capUsd\) \+ " today"/,
-  );
-  // The cap uses the same whole-dollars-bare rule as the TUI's usdCap ($50, not $50.00), so
-  // both dashboards read identically for one config.
-  assert.match(GUI_PAGE, /const fmtUsdCap = \(n\) => n\.toFixed\(2\)\.replace\(\/\\\.00\$\/, ""\);/);
-  // Exercise the rule itself, not just its presence: pull the helper out of the page and run
-  // it — whole dollars stay bare, fractional caps keep their cents.
-  const m = GUI_PAGE.match(/const fmtUsdCap = \((\w+)\) => ([^;]+);/);
-  assert.ok(m, "fmtUsdCap definition found in the page");
-  const fmtUsdCap = new Function(m[1]!, `return (${m[2]});`) as (n: number) => string;
-  assert.equal(fmtUsdCap(50), "50", "whole dollars stay bare");
-  assert.equal(fmtUsdCap(12.34), "12.34", "fractional caps keep their cents");
+  // The badge arrives display-ready (status-render's budgetBadge — standing while enabled,
+  // n/a for an all-free fleet, empty when disabled), so the page just appends it: one string
+  // with a single home, no client-side money formatting left to drift from the TUI header.
+  assert.match(GUI_PAGE, /\(d\.budgetBadge \|\| ""\)/);
+  assert.doesNotMatch(GUI_PAGE, /fmtUsdCap/, "the old client-side cap mirror is gone");
 });
 
 test("a paused fleet's idle role loops read budget paused in the phase payload", async () => {

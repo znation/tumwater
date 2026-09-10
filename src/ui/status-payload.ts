@@ -4,7 +4,7 @@ import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { budgetReached, dailyCost } from "../state.js";
 import { snapshot } from "./status.js";
-import { buildBadge, displayTokenMetrics, loopPhase } from "./status-render.js";
+import { buildBadge, budgetBadge, displayTokenMetrics, loopPhase } from "./status-render.js";
 
 /** The one fleet-state document both observer surfaces serve: `GET /api/status` (gui.ts) and
  * `tumwater status --json` (cli.ts) print the same payload, so the dashboard and the CLI can
@@ -28,12 +28,16 @@ export function statusPayload(root: string): object {
     // the page is browser JS that cannot import TypeScript, and this multi-branch text must
     // not be re-derived client-side where it could drift from the TUI header.
     buildBadge: buildBadge(snap.build),
+    // The header's daily-cost-budget badge preformatted through status-render's budgetBadge —
+    // the same string the TUI/status table renders (n/a for an all-free fleet; empty when
+    // disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
+    budgetBadge: budgetBadge(snap.budget),
     inbox: snap.inbox,
     // Previews of the queued director prompts in execution order (truncated server-side —
     // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.
     inboxPrompts: snap.inboxPrompts,
-    // The daily cost budget while enabled — the page derives its `· budget: $X/$Y today`
-    // header badge from this (absent when disabled).
+    // The raw daily-cost-budget data while enabled (null when disabled) — machine-readable
+    // for `status --json`; the display-ready header badge is the preformatted `budgetBadge`.
     budget: snap.budget ?? null,
     // Operator pause (`tumwater pause` marker present): every idle role loop's phase reads
     // `paused` ahead of budget/main-red — one flag covers both dashboards through loopPhase.
