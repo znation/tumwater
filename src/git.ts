@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { branchName, worktreePath } from "./paths.js";
 
 const execFileAsync = promisify(execFile);
 
