@@ -5,6 +5,102 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Usage report core + `tumwater report` CLI subcommand — report 1/3 (planned 2026-09-10, requested by user)
+
+**Goal.** A shared module that aggregates fleet usage over time from the harness event log and the backlog history files, plus a Markdown renderer; shipped as a `tumwater report [--days N]` CLI subcommand printing the Markdown report to stdout. This is the command-line half of the user's request ("an equivalent Markdown-based report for the command line") and the data foundation for the GUI tab (2/3) and TUI pane (3/3).
+
+**Design (decided, with rationale).**
+- **Sources = events.jsonl + two markdown files.** `tick_end` events carry `{ ts, loop, tick, result, summary, tokens?, costUsd? }` (src/loop.ts ~line 405; `tokens` is the run's output tokens, same value as the status table's "gen" column) and `merged` events carry `{ ts, loop, commit, summary }` (src/merge.ts:73). Output tokens per day = sum of `tick_end.tokens`; loops-of-each-type per day = count of `tick_end` grouped by `loop` (role id — works for custom loops too); commits per day = count of `merged`. Cost per day (sum of `costUsd`) is the "etc." bonus column; it reads 0.00 on free/local fleets, which is correct.
+- **Window = exactly N local calendar days ending today** (default 14), zero-filled, oldest→newest. Day key = "YYYY-MM-DD" from the event ts's *local* date parts; a ts belongs to its local day.
+- **Bounded I/O:** events.jsonl is append-only and chronological — read it backwards in chunks (the same tail-scan pattern as `readEvents`' TAIL_CHUNK_BYTES loop in src/events.ts) until lines pass the window start, so cost scales with window size, not log size (the file rotates at 16 MB).
+- **Features/bugs addressed:** entry dates from PLANS.md's `## Done` and BUGS.md's `## Fixed` sections. Both full headings (`### … (… done YYYY-MM-DD)`) and steward-compressed epitaphs (`- … (… fixed YYYY-MM-DD; commit …)`) carry the date. An entry starts at a `### ` heading or `- ` bullet line and ends at the next such line; its *metadata* is matched for dates — never its body, so a body's "**Done 2026-…**" recap line cannot double-count. Metadata = the start line plus continuation lines up to and including the first line ending in `)` (capped at 3 lines), which also handles wrapped headings like the one at today's PLANS.md:734. Date patterns: PLANS `/done (\d{4}-\d{2}-\d{2})/`, BUGS `/\b(?:fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/` (all three variants occur in the Fixed history). Entries without a parseable date are skipped; missing file = zeros, not an error.
+- **Markdown shape is pinned** — `renderReportMarkdown` is a pure function of ReportData:
+
+```
+# tumwater usage report
+
+Window: 2026-08-28 → 2026-09-10 (14 days) · source: events.jsonl (rotated at 16 MB)
+
+**Totals:** 1.2M output tokens · 342 ticks · 156 commits · $12.34 · 7 features done · 5 bugs fixed
+
+| day | tokens out | ticks | commits | cost |
+| --- | ---: | ---: | ---: | ---: |
+| 08-28 | 84.2k ▇▇▇▇▇▇▇▇▇▇▇▇ | 21 | 9 | $0.86 |
+(one row per day, oldest first; the bar is up to 20 █ scaled to the window's max tokensOut — width = round(20·v/max), min 1 when v > 0, no bars at all when every day is zero)
+
+**Ticks by role:** feature — 120 · bugfix — 45 · … (window totals, count desc then name asc; "-" when there were no ticks)
+```
+
+Token formatting: <1000 as-is, else one decimal + k/M suffix. Cost always `$X.XX`.
+
+**Approach.**
+- src/report.ts (new): `export interface ReportDay { date: string; tokensOut: number; ticksByRole: Record<string, number>; commits: number; costUsd: number; featuresDone: number; bugsFixed: number }`; `export interface ReportData { days: number; from: string; to: string; series: ReportDay[]; totals: { tokensOut: number; ticks: number; commits: number; costUsd: number; featuresDone: number; bugsFixed: number } }`; synchronous `collectReport(root, days): ReportData` (fs reads, same style as events.ts/backlog.ts) and pure `renderReportMarkdown(data): string`, per the design above.
+- src/cli.ts: new `case "report"` beside "status": `rejectUnknownArgs("report", args, [{ names: ["--days"] }])`; parse `--days` as a positive integer (default 14; non-positive or non-numeric → usage error like the other flag parsers); print `renderReportMarkdown(collectReport(root, days))`, exit 0 even with no events. Add one line to HELP after the `tumwater status [--json]` block: `tumwater report [--days N]   Markdown usage report — tokens/ticks/commits per day (default 14 days)`.
+- README.md Usage block: the same one-liner, so the command is documented when it ships.
+
+**Files touched.** src/report.ts (new), src/cli.ts, test/report.test.ts (new), README.md.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- collectReport tests (temp-dir fixtures): synthetic events.jsonl spanning ≥3 local days — tick_end with/without tokens/costUsd across several roles, merged events, malformed lines ignored, a zero-day gap zero-filled; assert series length === days, oldest→newest order, per-day buckets and totals. PLANS.md/BUGS.md fixtures: full heading + compressed bullet + closed/resolved variants + out-of-window dates + one wrapped `###` heading (date on the second line) → correct featuresDone/bugsFixed per day and in totals; missing files → zeros.
+- renderReportMarkdown tests: pinned header/totals/table shape via line-based assertions, bar scaling (max day = 20 █, all-zero window = no bars), role-line ordering with the name tiebreak.
+- `tumwater report` prints the Markdown to stdout and exits 0 on a real repo; `--days 1` covers today only; `--days 0` / garbage → usage error.
+
+**Relationship to other plans.** First of three sub-plans for the user's "report tab + report subcommand" request (2026-09-10). Report 2/3 (GUI tab) and 3/3 (TUI pane) both consume `collectReport`/`renderReportMarkdown` from this module and can land in either order once it does.
+
+### GUI "report" tab with SVG dashboard — report 2/3 (planned 2026-09-10, requested by user)
+
+**Goal.** A second view of the web dashboard — a **report** tab beside the fleet view — rendering the same usage data as a nice-looking graphed dashboard: summary stats plus three bar charts (output tokens per day, ticks per day by role stacked, commits per day).
+
+**Design (decided, with rationale).**
+- **Tabs = two top-level views inside GUI_PAGE**, not a new page or route. A nav row under the h1 with two links `fleet` | `report`, reusing the existing `a.active` styling; the fleet view is today's page unchanged (loop table, transcript/backlog panels, feed); the report view is a hidden container shown when active. Default on load = fleet.
+- **Data via new endpoint `GET /api/report?days=N`** → JSON of ReportData from `collectReport` (src/report.ts). days defaults to 14 and clamps to 1..90 (bad/missing params clamp, never error — the page must not break on a typo). The endpoint reads files directly, so it works whether or not the fleet is running. The page fetches it when the report tab is activated and re-fetches on each activation; no per-second polling while open (usage data moves at tick granularity, unlike /api/status).
+- **Charts = hand-rolled inline SVG** (zero runtime dependencies): one pure function per chart in the page script taking ReportData and returning an SVG string. Fixed 14-day window for v1 — no range selector (one sensible way before adding a knob).
+  - "Output tokens per day": single-series bars, y-scale = window max.
+  - "Ticks per day by role": stacked bars, one color per role from a small fixed palette indexed by the sorted role list (same order as the Markdown report's role line), legend row under the chart.
+  - "Commits per day": single-series bars.
+  - All three: x-axis date labels thinned to ≤7 ticks, exact values in `<title>` tooltips on every bar/segment, zero days render an empty slot so axes stay aligned.
+- **Summary row** above the charts: six stat blocks — output tokens, ticks, commits, cost ($X.XX), features done, bugs fixed — from `data.totals`.
+- Role names are dynamic strings (custom loops): escape them in labels/legends/tooltips like every other dynamic value (the XSS rule test/gui.test.ts pins).
+
+**Approach.**
+- src/ui/gui.ts: new route branch beside /api/status (~line 181): parse `days` from the query string, clamp to 1..90 (default 14), respond `JSON.stringify(collectReport(root, days))`.
+- src/ui/gui-page.ts: nav row + hidden `#report` container in the HTML; CSS for tabs/stat blocks/charts matching the existing dark theme; page script: tab state variable + click handler (toggle active class, show/hide views, fetch on activation), a `fetchReport()` that renders summary + three SVGs into #report, and pure chart-builder functions wrapped in `// report-chart:start` / `// report-chart:end` marker comments so tests can extract and eval them exactly like the sortLoops test does.
+- test/gui.test.ts: (a) /api/report returns collectReport's JSON for a fixture root with synthetic events; missing/garbage days → default 14, out-of-range clamped; (b) GUI_PAGE contains the tab nav + #report container (string assertions in the existing style); (c) extract the marked chart-builder source and assert on a fixture ReportData: one bar per day, max bar maps to window max, stacked segments per role, labels thinned to ≤7.
+
+**Files touched.** src/ui/gui.ts, src/ui/gui-page.ts, test/gui.test.ts. Depends on report 1/3 (src/report.ts). Independent of report 3/3.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- Dashboard loads with the fleet view default and unchanged; clicking **report** fetches /api/report?days=14 and renders the summary row + three charts; re-clicking refetches; no per-second polling of the report endpoint while open (fetch on activation only).
+- Charts: 14 bars per chart, tooltips carry exact values, role legend matches stack order, zero days leave aligned empty slots.
+- /api/report JSON equals collectReport's output for the same root/days; bad params clamp rather than error.
+
+**Relationship to other plans.** Second of three sub-plans (user request 2026-09-10); needs report 1/3's src/report.ts; independent of report 3/3 (TUI pane) — either can land first once 1/3 does.
+
+### TUI "usage report" pane in the Ctrl+T cycle — report 3/3 (planned 2026-09-10, requested by user)
+
+**Goal.** The interactive command-line half of the request: a new **usage report** pane in the TUI's activity-pane Ctrl+T cycle showing the same Markdown report `tumwater report` prints.
+
+**Design (decided, with rationale).**
+- **Extend the existing view cycle; no new key.** tui.ts's activity pane cycles `view`: 0 = recent events, 1..roleIds.length = one transcript per loop, roleIds.length+1 = project status (src/ui/tui.ts ~line 167). Add view state roleIds.length+2 = usage report after project status; the existing clamp (`view = Math.min(view, roleIds.length + 1)`) becomes `roleIds.length + 2`.
+- **Body = `renderReportMarkdown(collectReport(root, 14))`** rendered as plain text in the same pane area transcript/status use (markdown shown raw — consistent with how backlog entry bodies display). Header: "usage report — Ctrl+T to cycle" via clipToWidth like its siblings.
+- **Compute once per activation, not per frame:** cache the Markdown string in a closure variable set when the view enters the report state (and on every re-entry); the 1-second render loop only prints the cached lines within the pane's line budget — collectReport tail-scans events.jsonl and must not run every second.
+- Fixed 14-day window, same as the CLI default; no TUI flag (opinionated default).
+
+**Approach.**
+- src/ui/tui.ts: add the report view state per the design — cycle advance/wrap in the Ctrl+T handler, clamp update, a render branch printing the cached report lines (clipped to width like every other line), cache invalidation on keypress into the pane.
+- test/tui.test.ts: extend the existing TUI tests — fixture root with a small synthetic events.jsonl; assert the cycle reaches the usage-report view after project status and wraps back to 0, its header string renders, and its body contains the report's "Totals:" line for the fixture data.
+
+**Files touched.** src/ui/tui.ts, test/tui.test.ts. Depends on report 1/3 (src/report.ts). Independent of report 2/3.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- Ctrl+T cycles events → transcripts… → project status → usage report → events; the report pane shows the same Markdown `tumwater report` prints for the same root and window (header + Totals line asserted in tests).
+- No per-frame collectReport call: the render loop uses the cached string, set only on view entry.
+
+**Relationship to other plans.** Third of three sub-plans (user request 2026-09-10); needs report 1/3; independent of report 2/3.
+
 ### Sort the GUI loop table by state category, then last tick (planned 2026-09-09, requested by user)
 
 **Goal.** The GUI's loop table renders rows in payload order (role registration order), so loops with work in flight get buried among sleeping and queued ones. Order the rows: first by state category — active loops (working/reviewing) before inactive ones (queued, sleeping, paused, budget paused, main red, stopped, waiting for prompts) — then within each category by last tick, most recent first. The user's words: "sort the loop table in the GUI first by state category (active - including working/reviewing, vs. inactive, including queued, sleeping, etc.), then by last tick (most recent first)."
