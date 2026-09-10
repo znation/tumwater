@@ -9,7 +9,7 @@ import { snapshot } from "../src/ui/status.js";
 import { loopPhase, renderStatus } from "../src/ui/status-render.js";
 import { freshLoopState, recordDailyCost, saveLoopState } from "../src/state.js";
 import { initProject } from "../src/init.js";
-import { makeRepo } from "./util.js";
+import { makeRepo, tmpdir } from "./util.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();
@@ -148,7 +148,9 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   saveLoopState(repo, dry);
 
   let snap = snapshot(repo);
-  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50 });
+  // No provider/model is configured (pi's own default), so the fleet cannot be verified as
+  // free — the dollar badge stays.
+  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, free: false });
 
   // Disabling the cap (0) drops the badge data entirely — renderStatus shows no budget line.
   const cfg = loadConfig(repo);
@@ -156,6 +158,42 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   saveConfig(repo, cfg);
   snap = snapshot(repo);
   assert.equal(snap.budget, null);
+});
+
+// The free-fleet case (BUGS.md: budget badge on local LLM fleets): when every model the
+// fleet could use resolves to an unpriced or zero-cost entry in pi's models.json, spend can
+// never accumulate against the cap and the badge data carries `free` so both dashboards read n/a.
+test("snapshot marks the budget free when every fleet model is unpriced", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "free fleet test");
+
+  // A models.json with one unpriced local model and one paid API model.
+  const dir = tmpdir("status-free-");
+  fs.mkdirSync(dir, { recursive: true });
+  const modelsFile = path.join(dir, "models.json");
+  fs.writeFileSync(
+    modelsFile,
+    JSON.stringify({
+      providers: {
+        "lm-studio": { models: [{ id: "qwen3.8-27b" }] }, // no cost field — free
+        paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
+      },
+    }),
+  );
+
+  const cfg = loadConfig(repo);
+  cfg.provider = "lm-studio"; // every role and the reviewer fall back to this pair
+  cfg.model = "qwen3.8-27b";
+  saveConfig(repo, cfg);
+  let snap = snapshot(repo, modelsFile);
+  assert.equal(snap.budget?.free, true, "all-free fleet reads n/a");
+
+  // One role on a paid model flips it back to the dollar badge.
+  cfg.roles.clean!.provider = "paid";
+  cfg.roles.clean!.model = "gpt-x";
+  saveConfig(repo, cfg);
+  snap = snapshot(repo, modelsFile);
+  assert.equal(snap.budget?.free, false, "one paid model keeps the dollar figure");
 });
 
 test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {

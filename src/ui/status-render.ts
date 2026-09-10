@@ -221,11 +221,16 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // The questions badge (like the inbox one) appears only when something needs an answer.
   // The budget badge is standing information for a money-spending system, so it shows at all
   // levels while enabled (absent when disabled); on narrow terminals the header's existing
-  // last-resort whole-line clipping applies.
+  // last-resort whole-line clipping applies. A fleet whose models are all free reads n/a —
+  // spend can never accumulate against the cap, so a dollar figure would mislead.
   lines.push(
     `tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
       snap.questions ? ` · questions: ${snap.questions}` : ""
-    }${snap.budget ? ` · budget: ${usd(snap.budget.spentUsd)}/${usdCap(snap.budget.capUsd)} today` : ""}`,
+    }${
+      snap.budget
+        ? ` · budget: ${snap.budget.free ? "n/a" : `${usd(snap.budget.spentUsd)}/${usdCap(snap.budget.capUsd)}`} today`
+        : ""
+    }`,
   );
   lines.push("");
   // `today` is the loop's daily budget window (dailyCost): $0.00 while its stamp is stale

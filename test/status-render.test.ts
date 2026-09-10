@@ -315,7 +315,7 @@ test("the totals row's today cell sums the loops' daily windows like the header 
   c.dayStamp = todayStamp(Date.now() - 86_400_000);
   c.dayCostUsd = 9.99;
   // ...and the badge carries the same sum (status.ts derives both from the loops).
-  const snap = snapshotWith([a, b, c], { spentUsd: fleetDailyCost([a, b, c]), capUsd: 50 });
+  const snap = snapshotWith([a, b, c], { spentUsd: fleetDailyCost([a, b, c]), capUsd: 50, free: false });
   const lines = renderStatus(tmpdir(), snap).split("\n");
   const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length);
   const cellAt = (row: string, i: number): string => {
@@ -545,20 +545,37 @@ test("work items survive narrow-terminal clipping at the head of the state cell"
 test("the status header carries a budget badge while enabled and none when disabled", () => {
   const enabled = renderStatus(
     tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50 }),
+    snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50, free: false }),
   ).split("\n")[0] ?? "";
   assert.match(enabled, /· budget: \$12\.34\/\$50 today$/);
 
   // Fractional caps keep their cents; whole-dollar spent values stay two-decimal like the cost column.
   const fractional = renderStatus(
     tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 12.34 }),
+    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 12.34, free: false }),
   ).split("\n")[0] ?? "";
   assert.match(fractional, /· budget: \$0\.00\/\$12\.34 today$/);
 
   // Disabled (cap 0 → snapshot sends null): no badge at all.
   const disabled = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
   assert.doesNotMatch(disabled, /budget/);
+});
+
+// A fleet whose models are all free (local LLMs) can never accumulate spend against the cap,
+// so the badge reads n/a instead of a dollar figure that would never move.
+test("the status header budget badge reads n/a for an all-free fleet", () => {
+  const free = renderStatus(
+    tmpdir(),
+    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: true }),
+  ).split("\n")[0] ?? "";
+  assert.match(free, /· budget: n\/a today$/);
+
+  // The dollar form is untouched for a fleet that can spend (byte-identical to before).
+  const paid = renderStatus(
+    tmpdir(),
+    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: false }),
+  ).split("\n")[0] ?? "";
+  assert.match(paid, /· budget: \$0\.00\/\$50 today$/);
 });
 
 test("loopPhase reads budget paused for idle role loops while the cap is reached", () => {
@@ -627,7 +644,7 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
   // Spend below the cap: ordinary labels.
   const under = renderStatus(
     root,
-    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 10, capUsd: 50 }), running: true },
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 10, capUsd: 50, free: false }), running: true },
   );
   assert.match(under, /feature\s+queued/);
   assert.doesNotMatch(under, /budget paused/);
@@ -635,7 +652,7 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
   // Spend at the cap: idle role loops read `budget paused`; the director keeps its own phase.
   const reached = renderStatus(
     root,
-    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 50, capUsd: 50 }), running: true },
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 50, capUsd: 50, free: false }), running: true },
   );
   assert.match(reached, /feature\s+budget paused/);
   assert.match(reached, /director\s+waiting for prompts/);
@@ -709,7 +726,7 @@ test("renderStatus shows paused in idle role loops' state cells ahead of budget 
     {
       ...snapshotWith(
         [{ role: "feature", lastResult: "main_red" }, { role: "director" }],
-        { spentUsd: 50, capUsd: 50 },
+        { spentUsd: 50, capUsd: 50, free: false },
         true,
       ),
       running: true,

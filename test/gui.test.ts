@@ -606,8 +606,9 @@ test("the dashboard page escapes backlog entry bodies before innerHTML", async (
 test("status payload carries the daily budget while enabled and null when disabled", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget test"); // defaultConfig: maxDailyCostUsd 50 (enabled)
-  let payload = statusPayload(repo) as { budget: { spentUsd: number; capUsd: number } | null };
-  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50 }, "enabled by default with no spend yet");
+  let payload = statusPayload(repo) as { budget: { spentUsd: number; capUsd: number; free: boolean } | null };
+  // No provider/model configured (pi's own default) — the fleet cannot be verified as free.
+  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, free: false }, "enabled by default with no spend yet");
 
   // Today's spend is summed from the loops' persisted daily windows (a stale stamp reads $0).
   const s = freshLoopState("clean");
@@ -627,10 +628,11 @@ test("status payload carries the daily budget while enabled and null when disabl
 
 test("the dashboard page derives its header badge from the payload's budget", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // Standing while enabled (payload sends an object), absent when disabled (null).
+  // Standing while enabled (payload sends an object), absent when disabled (null). An
+  // all-free fleet (local LLMs) reads n/a — spend can never accumulate against the cap.
   assert.match(
     GUI_PAGE,
-    /d\.budget \? " · budget: \$" \+ d\.budget\.spentUsd\.toFixed\(2\) \+ "\/\$" \+ fmtUsdCap\(d\.budget\.capUsd\) \+ " today"/,
+    /d\.budget\.free \? " · budget: n\/a today" : " · budget: \$" \+ d\.budget\.spentUsd\.toFixed\(2\) \+ "\/\$" \+ fmtUsdCap\(d\.budget\.capUsd\) \+ " today"/,
   );
   // The cap uses the same whole-dollars-bare rule as the TUI's usdCap ($50, not $50.00), so
   // both dashboards read identically for one config.

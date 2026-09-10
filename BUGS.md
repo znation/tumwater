@@ -19,28 +19,6 @@ Second-order defect from the same assumption: src/review.ts:191 seeds `noteGreen
 
 **Files:** src/merge.ts, src/review.ts; tests in test/merge.test.ts.
 
-### Budget badge shows `$0.00/$50` on free/local LLM fleets instead of n/a (reported by user 2026-09-08)
-
-**Symptom:** When the fleet runs a model that costs nothing — a local server (e.g. LM Studio via `openai-responses`) or any model with no price set in pi's models.json — both dashboards still show the daily budget badge as `· budget: $0.00/$50 today`, implying spend is being tracked against a cap that can never be reached. The user wants it to read n/a instead of `$0.00/$50`.
-
-**Repro:**
-1. Point tumwater.json at a free model (e.g. `provider: lm-studio`, `model: qwen3.8-27b` — no `cost` field in `~/.pi/agent/models.json`).
-2. Run the fleet until at least one tick completes; open the TUI or GUI.
-3. The header shows `· budget: $0.00/$50 today` (default cap) even though spend can never accumulate.
-
-**Expected:** when every model the fleet could use is free, the badge reads n/a instead of a dollar figure.
-
-**Suspected cause:** cost comes from pi's per-message usage (`msg.usage?.cost?.total`, src/pi.ts:159), which is 0 for unpriced models; nothing downstream knows the model is free. `snapshot()` (src/status.ts, ~line 110) emits `{ spentUsd, capUsd }` whenever `maxDailyCostUsd > 0`, and both renderers format it as `$X/$Y`:
-- TUI + `tumwater status`: header line in src/ui/status-render.ts (`renderStatus`, ~line 220)
-- GUI: src/ui/gui-page.ts (~lines 109–111), formatted client-side from the /api/status payload
-
-**Detection approach (recommended):** resolve each enabled role's effective provider/model — `configForRole` in src/config.ts, plus `reviewConfig` when review is enabled — and look them up in pi's model definitions at `~/.pi/agent/models.json` (`providers.<p>.models[]`; free = no `cost` field or all-zero cost). If every resolvable model the fleet could use is free → budget n/a. Safe fallback: a provider/model not found there (e.g. pi's built-in paid providers) counts as NOT free, keeping `$X/$Y`. Expose the result on StatusSnapshot (e.g. `budget.free`) so TUI, GUI, and `status --json` all render from one source of truth — note the GUI formats client-side, so the payload must carry it. An alternative heuristic (observed usage: tokens > 0 with cumulative cost === 0) lags until the first tick and needs a persistent flag to survive midnight rollover / reset-counters; prefer the config-based check.
-
-**Scope notes:**
-- The budget *gate* is unaffected: $0 spend never reaches the cap (already acknowledged in src/config.ts, ~line 38). No change to `budgetReached` or pause behavior.
-- Only the header badge changes; per-loop `cost`/`today` columns stay as-is ($0.00 remains accurate there).
-- Cross-reference: the planned "Make the daily cost budget editable from the TUI/GUI" (PLANS.md) rewrites this same badge code — keep the enabled-case text byte-identical so that plan's acceptance criteria still hold, or coordinate ordering with it.
-
 ### README promises `tumwater init` seeds a git repo, but it refuses to run outside an existing one (found by qa loop 2026-09-08)
 
 **Symptom:** A first-time user following the "How it works" section — "`tumwater init \"<prompt>\"` seeds a git repo with README.md … and commits them" — runs `tumwater init` in a fresh, empty project directory (the primary use case: the project does not exist yet, so no git repo exists to `cd` into) and gets an error instead of a seeded repo. The Usage block's comment `# any git repo` hints at the requirement, but it contradicts "seeds a git repo" — for a brand-new project there is no existing repo.
@@ -62,6 +40,21 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 **Suspected cause:** init was written to assume an existing repo while the README wording ("seeds a git repo … and commits them") overstates what it does. Either `init` should run `git init` itself when the cwd is not a repo (matching the docs), or "How it works" should say it seeds files into an *existing* repo and that `git init` comes first.
 
 ## Fixed
+
+### Budget badge shows `$0.00/$50` on free/local LLM fleets instead of n/a (reported by user 2026-09-08, fixed 2026-09-09)
+
+**Symptom:** When the fleet runs a model that costs nothing — a local server (e.g. LM Studio via `openai-responses`) or any model with no price set in pi's models.json — both dashboards still show the daily budget badge as `· budget: $0.00/$50 today`, implying spend is being tracked against a cap that can never be reached. The user wants it to read n/a instead of `$0.00/$50`.
+
+**Repro:**
+1. Point tumwater.json at a free model (e.g. `provider: lm-studio`, `model: qwen3.8-27b` — no `cost` field in `~/.pi/agent/models.json`).
+2. Run the fleet until at least one tick completes; open the TUI or GUI.
+3. The header shows `· budget: $0.00/$50 today` (default cap) even though spend can never accumulate.
+
+**Expected:** when every model the fleet could use is free, the badge reads n/a instead of a dollar figure.
+
+**Cause:** cost comes from pi's per-message usage (`msg.usage?.cost?.total`, src/pi.ts:159), which is 0 for unpriced models; nothing downstream knows the model is free. `snapshot()` (src/ui/status.ts) emitted `{ spentUsd, capUsd }` whenever `maxDailyCostUsd > 0`, and both renderers formatted it as `$X/$Y` — TUI + `tumwater status` in src/ui/status-render.ts (`renderStatus`) and the GUI client-side from the /api/status payload (src/ui/gui-page.ts).
+
+**Fix:** new src/pi-models.ts resolves every model the fleet could use — each enabled role's effective provider/model via `configForRole` (the director included, it is a catalog role) plus `reviewConfig` while review is on — against pi's definitions at `~/.pi/agent/models.json`: free = no `cost` field or all-zero cost; any unresolvable pair (omitted values = pi's own default, missing/malformed file, unknown provider or model id) counts as NOT free, so the badge never reads n/a while spend it tracks could still reach the cap. `StatusSnapshot.budget` now carries `free`, and both dashboards render `· budget: n/a today` when it is set — the dollar branch stays byte-identical, keeping the planned editable-budget entry's acceptance criteria intact (PLANS.md). The budget gate is untouched ($0 spend never reaches the cap), as are the per-loop cost/today columns. Tests: test/pi-models.test.ts (new) plus snapshot/render/payload coverage in test/status.test.ts, test/status-render.test.ts, and test/gui.test.ts.
 
 ### Auto-restart aborts an in-flight director tick after the 30-minute drain: the director should be exempt and waited for (reported by user 2026-09-08, fixed 2026-09-09)
 

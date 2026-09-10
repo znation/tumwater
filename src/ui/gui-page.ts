@@ -102,8 +102,9 @@ export const GUI_PAGE = `<!doctype html>
         (d.inbox ? " · inbox: " + d.inbox : "") +
         (qn ? " · questions: " + qn : "") +
         // The daily cost budget badge mirrors the TUI's header line; standing information
-        // while enabled, absent when disabled (payload sends null).
-        (d.budget ? " · budget: $" + d.budget.spentUsd.toFixed(2) + "/$" + fmtUsdCap(d.budget.capUsd) + " today" : "");
+        // while enabled, absent when disabled (payload sends null). A fleet whose models are
+        // all free reads n/a — spend can never accumulate against the cap.
+        (d.budget ? (d.budget.free ? " · budget: n/a today" : " · budget: $" + d.budget.spentUsd.toFixed(2) + "/$" + fmtUsdCap(d.budget.capUsd) + " today") : "");
       document.getElementById("loops").innerHTML = d.loops.map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";

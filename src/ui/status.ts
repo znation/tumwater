@@ -2,6 +2,7 @@ import type { LoopState, TumwaterConfig } from "../types.js";
 import type { BuildStatus } from "../build-info.js";
 import { openQuestions } from "../backlog.js";
 import { defaultConfig, enabledRoleIds, loadConfigCached } from "../config.js";
+import { fleetModelsFree, piModelsPath } from "../pi-models.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { promptPreview, queuedPrompts } from "../inbox.js";
 import { statePath } from "../paths.js";
@@ -30,8 +31,11 @@ export interface StatusSnapshot {
   loops: LoopState[];
   /** The daily cost budget while enabled (`maxDailyCostUsd` > 0): today's fleet spend vs the
    * cap, for the `· budget: $X/$Y today` header badge on both dashboards. Null when disabled.
-   * Spend lags in-flight ticks by up to one tick boundary — exactly like the cost column. */
-  budget: { spentUsd: number; capUsd: number } | null;
+   * Spend lags in-flight ticks by up to one tick boundary — exactly like the cost column.
+   * `free` is true when every model the fleet could use resolves to an unpriced or zero-cost
+   * entry in pi's models.json (src/pi-models.ts): spend can never accumulate against the cap,
+   * so both dashboards read `· budget: n/a today` instead of a dollar figure. */
+  budget: { spentUsd: number; capUsd: number; free: boolean } | null;
   /** True while the operator has paused the fleet (`tumwater pause` marker present): every
    * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
    * because a 2-second-stale pause flag would mislead an operator mid-resume. */
@@ -88,7 +92,9 @@ function loopStateForPoll(root: string, role: string): LoopState {
   );
 }
 
-export function snapshot(root: string): StatusSnapshot {
+/** One fresh fleet snapshot for observers. `modelsPath` overrides pi's model definitions
+ * location (default ~/.pi/agent/models.json) — a test seam, like doctor's pathEnv. */
+export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnapshot {
   const cfg = configForStatus(root);
   const roles = enabledRoleIds(cfg);
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
@@ -109,7 +115,13 @@ export function snapshot(root: string): StatusSnapshot {
     questions: openQuestions(root).length,
     loops,
     budget:
-      cfg.maxDailyCostUsd > 0 ? { spentUsd: fleetDailyCost(loops), capUsd: cfg.maxDailyCostUsd } : null,
+      cfg.maxDailyCostUsd > 0
+        ? {
+            spentUsd: fleetDailyCost(loops),
+            capUsd: cfg.maxDailyCostUsd,
+            free: fleetModelsFree(cfg, modelsPath),
+          }
+        : null,
     paused: isFleetPaused(root),
   };
 }
