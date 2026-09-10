@@ -1150,6 +1150,56 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
   }
 });
 
+// Ctrl+C from a terminal reaches BOTH processes (same foreground group), so the supervisor's
+// SIGINT handler only marks stopping — it must not forward or abort, or a plain `kill -INT`
+// of the supervisor would tear down a fleet whose orchestrator never saw the signal. Teardown
+// stays SIGTERM-only; this pins that split end to end (the SIGTERM half above covers the rest).
+test("run survives a SIGINT aimed at the supervisor alone and still stops on SIGTERM", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run sigint");
+
+  // One enabled role keeps the startup burst small; a no-op pi ends every tick as no_change.
+  const cfg = defaultConfig();
+  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+
+  const restore = fakePi("exit 0");
+  const s = spawnCli(repo, ["run"]);
+  try {
+    await s.waitFor(
+      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
+      "the run banner and orchestrator event",
+    );
+
+    // SIGINT to the supervisor alone: it marks stopping but must not touch the child.
+    s.child.kill("SIGINT");
+    await new Promise((r) => setTimeout(r, 3000)); // past a poll cycle; a forwarding regression would be done by now
+    assert.equal(s.child.exitCode, null, "the supervisor must keep running after a SIGINT aimed at it alone");
+    assert.ok(
+      fs.existsSync(orchestratorStatePath(repo)),
+      `SIGINT to the supervisor must not tear down the fleet; output so far:\n${s.out()}`,
+    );
+    const info = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")) as { pid: number };
+    let alive = true;
+    try {
+      process.kill(info.pid, 0);
+    } catch {
+      alive = false; // ESRCH: the orchestrator died — it never received a signal.
+    }
+    assert.ok(alive, `orchestrator pid ${info.pid} died after a supervisor-only SIGINT`);
+
+    // SIGTERM still tears everything down cleanly (forwarded to the child).
+    s.child.kill("SIGTERM");
+    const code = await exitCode(s.child);
+    assert.equal(code, 0, `expected clean exit after SIGTERM; output so far:\n${s.out()}`);
+    assert.match(s.out(), /stopping — waiting for in-flight ticks/);
+    assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
+  } finally {
+    s.kill();
+    restore();
+  }
+});
+
 // --- logs -f: the follow half of both log commands is only reachable with a live child ---
 
 test("logs -f prints the current window and follows newly appended events", async () => {
