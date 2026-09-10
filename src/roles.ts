@@ -262,7 +262,7 @@ You edit only markdown — never source.`,
 /** Work-tier roles (need-based prioritization, PLANS.md "Prioritize loops by need"): they
  * ship work — feature and bugfix land code on main, plan feeds them — so their due ticks are
  * never deferred and slot allocation always orders them ahead of maintenance. */
-export const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
+const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
 
 /** Maintenance-tier roles (need-based prioritization): exactly the nine built-ins whose due
  * ticks are deferrable while no feature/bugfix/director/human commit has landed on main since
