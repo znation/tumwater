@@ -289,7 +289,8 @@ npm test               # build + unit tests (node:test)
 ```
 
 Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `orchestrator.ts` the scheduler,
-`pi.ts` the pi subprocess integration, `git.ts` the git/worktree helpers, `merge.ts` the
+`pi.ts` the pi subprocess integration, `git.ts` the git plumbing, `worktree.ts` the persistent
+worktree lifecycle, `merge.ts` the
 rebase/fast-forward/conflict-resolution landing flow), `src/ui/` the observer/presentation layer
 (TUI, GUI dashboard, status table and transcript rendering — imported only by each other and
 `cli.ts`), `test/` unit tests.

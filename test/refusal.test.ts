@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { handleRefusal, type RefusalContext } from "../src/refusal.js";
 import { initProject } from "../src/init.js";
-import { ensureWorktree } from "../src/git.js";
+import { ensureWorktree } from "../src/worktree.js";
 import { freshLoopState } from "../src/state.js";
 import type { LoopState, PiRunResult, TickResult } from "../src/types.js";
 import { makeRepo, sh } from "./util.js";

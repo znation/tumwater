@@ -16,7 +16,7 @@ import {
 } from "./build-info.js";
 import { type BuildCheckOutcome, checkMainBaseline, clipBuildTail, resolveFromNodeModules } from "./build-check.js";
 import { ensureDir } from "./files.js";
-import { ensureDetachedWorktree } from "./git.js";
+import { ensureDetachedWorktree } from "./worktree.js";
 import { mirrorWorktreePath, stagingDir, stagingRootDir } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
 

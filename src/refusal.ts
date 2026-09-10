@@ -1,4 +1,5 @@
-import { changedFiles, commitPathsAndDiscardRest, resetWorktreeToMain } from "./git.js";
+import { changedFiles, commitPathsAndDiscardRest } from "./git.js";
+import { resetWorktreeToMain } from "./worktree.js";
 import { buildCommitMessage, commitTrailer } from "./commit-message.js";
 import type { LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
 

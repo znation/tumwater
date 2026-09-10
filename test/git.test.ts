@@ -4,23 +4,25 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  abortSync,
   aheadOfMain,
   aheadOfMainDiff,
   changedFiles,
   commitAll,
   commitPathsAndDiscardRest,
   currentBranch,
-  ensureWorktree,
   hasCommits,
   headOf,
   isDirty,
   isGitRepo,
   readBranchHead,
-  resetWorktreeToMain,
   runGit,
   unquotePorcelainPath,
 } from "../src/git.js";
+import {
+  abortSync,
+  ensureWorktree,
+  resetWorktreeToMain,
+} from "../src/worktree.js";
 // The landing-flow git helpers live in merge.ts (their only production consumer) — moved
 // there by the bugfix for the half-finished organize tick 78 move that broke main's build.
 import {

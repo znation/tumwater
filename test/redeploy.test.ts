@@ -15,7 +15,7 @@ import {
   RESTART_EXIT_CODE,
   swapDist,
 } from "../src/redeploy.js";
-import { ensureDetachedWorktree } from "../src/git.js";
+import { ensureDetachedWorktree } from "../src/worktree.js";
 import { mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 

@@ -1,7 +1,8 @@
 import type { LoopState, PiRunResult, TumwaterConfig } from "./types.js";
 import { reviewConfig } from "./config.js";
 import { logEvent } from "./events.js";
-import { aheadOfMainDiff, aheadOfMainFiles, git, headOf, resetWorktreeToMain } from "./git.js";
+import { aheadOfMainDiff, aheadOfMainFiles, git, headOf } from "./git.js";
+import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
 import { runPi } from "./pi.js";
 import { buildReviewPrompt, readPrinciples } from "./prompt.js";

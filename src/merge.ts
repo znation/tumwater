@@ -3,7 +3,6 @@ import path from "node:path";
 import { openQuestions } from "./backlog.js";
 import { logEvent } from "./events.js";
 import {
-  abortSync,
   COMMIT_IDENT,
   currentBranch,
   git,
@@ -12,6 +11,7 @@ import {
   runGit,
   unquotePorcelainPath,
 } from "./git.js";
+import { abortSync } from "./worktree.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";
 import { mergeLockDir } from "./paths.js";
