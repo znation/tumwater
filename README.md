@@ -52,8 +52,6 @@ land the fix).
 Open items:
 - Planned: sort the GUI loop table by state category (active before inactive), then last tick
   most-recent-first — client-side only, `status --json`/TUI order unchanged (planned 2026-09-09).
-- Planned: need-based loop prioritization — defer idle maintenance ticks and order work roles
-  first (planned 2026-09-08).
 - Planned: make the daily cost budget editable from the TUI/GUI (TUI Ctrl+B; GUI badge
   click-to-edit; one shared setter + `POST /api/budget`; planned 2026-09-07).
 - Planned: user-defined loops — sub-plans 1/3–3/3 tracked in PLANS.md; first is `customLoops`
@@ -63,12 +61,11 @@ Open items:
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
   next is landing in a per-role detached worktree (planned 2026-09-08).
-- Open bug: `init` refuses to run outside an existing git repo despite "seeds a git repo".
 - Open bug: review gate checks the pre-rebase tree, so the bytes that land on main were never run
   through a check.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`b61189c`): build clean, suite 846/846, verified 2026-09-10.
+Current main (`70c018d`): build clean, suite 853/853, verified 2026-09-10.
 <!-- tumwater:status:end -->
 
 ## How it works
