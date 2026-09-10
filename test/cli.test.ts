@@ -14,6 +14,7 @@ import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { abortRequestPath, inboxDir, orchestratorStatePath, pausedPath, piLogPath, resetRequestPath } from "../src/paths.js";
+import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
@@ -29,8 +30,12 @@ interface CliResult {
 /** Run the CLI with an explicit env override (merged over process.env). The timeout
  * bounds tests that would otherwise hang if a command regresses to not exiting. */
 function cliWithEnv(cwd: string, env: NodeJS.ProcessEnv, args: string[]): Promise<CliResult> {
+  const merged = { ...process.env, ...env };
+  // Hermeticity: the supervised marker leaks from any tumwater orchestrator into pi's (and
+  // this test process') environment; without stripping it, `run` skips its supervisor half.
+  delete merged[SUPERVISED_ENV];
   return new Promise((resolve) => {
-    execFile(process.execPath, [CLI, ...args], { cwd, env: { ...process.env, ...env }, timeout: 20_000 }, (err, stdout, stderr) => {
+    execFile(process.execPath, [CLI, ...args], { cwd, env: merged, timeout: 20_000 }, (err, stdout, stderr) => {
       resolve({ code: err ? Number(err.code ?? 1) : 0, stdout, stderr });
     });
   });
@@ -1018,7 +1023,9 @@ interface SpawnedCli {
 }
 
 function spawnCli(cwd: string, args: string[]): { child: ChildProcess } & SpawnedCli {
-  const child = spawn(process.execPath, [CLI, ...args], { cwd, env: process.env });
+  const env = { ...process.env };
+  delete env[SUPERVISED_ENV]; // same hermeticity as cliWithEnv: `run` must take the supervisor path
+  const child = spawn(process.execPath, [CLI, ...args], { cwd, env });
   let buffer = "";
   child.stdout?.on("data", (d) => (buffer += d));
   return {
@@ -1114,11 +1121,21 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
   const restore = fakePi("exit 0");
   const s = spawnCli(repo, ["run"]);
   try {
-    await s.waitFor((out) => out.includes("tumwater running on branch main"), "the run banner");
+    await s.waitFor(
+      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
+      "the run banner and orchestrator event",
+    );
     assert.match(s.out(), /loops: clean/);
 
-    // SIGTERM triggers the graceful stop path (not a kill): it announces, aborts the
-    // orchestrator, and lets in-flight ticks finish before exiting 0.
+    // The top-level process is the supervisor (src/supervisor.ts), not the orchestrator:
+    // the event stream names the orchestrator's own pid, which must be a different process.
+    const m = s.out().match(/orchestrator started \(pid (\d+)/);
+    assert.ok(m, `expected an "orchestrator started (pid …)" event:\n${s.out()}`);
+    assert.notEqual(Number(m[1]), s.child.pid, "the orchestrator must run as the supervisor's child");
+
+    // SIGTERM reaches only the supervisor from a plain kill; it forwards it to the child,
+    // which takes the graceful stop path (announce, abort in-flight ticks), and the
+    // supervisor exits with the child's code.
     s.child.kill("SIGTERM");
     const code = await exitCode(s.child);
     assert.equal(code, 0, `expected clean exit after SIGTERM; output so far:\n${s.out()}`);
