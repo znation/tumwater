@@ -14,20 +14,24 @@ export function fail(message: string): never {
 }
 
 /** Parse `raw` as a positive integer — the one definition of what counts as a valid count or
- * position across every input surface (CLI flags and the GUI's query params). Null when it
- * isn't one (NaN, fractional, zero, negative); each caller keeps its own missing-value check
- * and failure mode (fail vs HTTP 400), and bounded variants like --port add their upper limit. */
+ * position across every input surface (CLI flags and the GUI's query params). Only plain
+ * decimal digit strings qualify: Number() would silently coerce hex ("0x10" → 16), scientific
+ * ("1e3" → 1000), signed, and whitespace-padded forms, none of which a user typing a count or
+ * position meant. Null when it isn't one (non-decimal, fractional, zero); each caller keeps its
+ * own missing-value check and failure mode (fail vs HTTP 400), and bounded variants like --port
+ * add their upper limit. */
 export function parsePositiveInt(raw: string): number | null {
+  if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or padding.
   const n = Number(raw);
-  return Number.isInteger(n) && n >= 1 ? n : null;
+  return n >= 1 ? n : null;
 }
 
 /** Parse `raw` as a non-negative integer — zero-based positions (like /api/backlog's index,
  * where the first entry is 0), unlike parsePositiveInt's counts and 1-based positions, for
- * which 0 is invalid. Null when it isn't one (NaN, fractional, negative). */
+ * which 0 is invalid. Same plain-decimal rule: hex/scientific/signed/padded spellings are null. */
 export function parseNonNegativeInt(raw: string): number | null {
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= 0 ? n : null;
+  if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or padding.
+  return Number(raw);
 }
 
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.

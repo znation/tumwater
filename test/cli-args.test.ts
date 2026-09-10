@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   parseCountFlag,
+  parseNonNegativeInt,
+  parsePositiveInt,
   parsePortFlag,
   parseRoleFlag,
   rejectUnknownArgs,
@@ -67,6 +69,24 @@ function expectOk<T>(fn: () => T): T {
   return out.value;
 }
 
+// --- parsePositiveInt / parseNonNegativeInt (the shared numeric core) ---
+
+test("parsePositiveInt accepts plain decimal only — hex, scientific, signed, and padded forms are null", () => {
+  assert.equal(parsePositiveInt("1"), 1);
+  assert.equal(parsePositiveInt("65535"), 65535);
+  for (const raw of ["0x10", "1e3", "+5", "-5", " 5", "5 ", "", "abc", "2.5", "0"]) {
+    assert.equal(parsePositiveInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
+  }
+});
+
+test("parseNonNegativeInt accepts plain decimal only and allows zero", () => {
+  assert.equal(parseNonNegativeInt("0"), 0);
+  assert.equal(parseNonNegativeInt("42"), 42);
+  for (const raw of ["0x10", "1e3", "+5", "-5", "-0", " 5", "", "abc"]) {
+    assert.equal(parseNonNegativeInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
+  }
+});
+
 // --- parseCountFlag ---
 
 test("parseCountFlag accepts positive integers and rejects everything else", () => {
@@ -80,7 +100,7 @@ test("parseCountFlag accepts positive integers and rejects everything else", () 
 
   // Unvalidated, NaN/0/negative limits make readEvents' slice(-limit) dump the whole log
   // (or drop leading lines). Each bad spelling is named in the error.
-  for (const raw of ["abc", "0", "-5", "2.5", ""]) {
+  for (const raw of ["abc", "0", "-5", "2.5", "", "0x10", "1e3"]) {
     const r = expectFail(() => parseCountFlag("-n", raw));
     assert.equal(r.code, 1);
     assert.match(r.stderr, /-n needs a positive integer \(got .+\)/);
@@ -98,7 +118,7 @@ test("parsePortFlag accepts the full valid range and rejects out-of-range values
   const missing = expectFail(() => parsePortFlag(undefined));
   assert.match(missing.stderr, /--port needs a value/);
 
-  for (const raw of ["0", "-1", "65536", "abc"]) {
+  for (const raw of ["0", "-1", "65536", "abc", "0x1F90"]) {
     const r = expectFail(() => parsePortFlag(raw));
     assert.equal(r.code, 1);
     assert.match(r.stderr, /--port must be an integer between 1 and 65535 \(got .+\)/);
