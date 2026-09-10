@@ -16,6 +16,7 @@ import {
   isGitRepo,
   readBranchHead,
   runGit,
+  subjectsBetween,
   unquotePorcelainPath,
 } from "../src/git.js";
 import {
@@ -726,5 +727,32 @@ test("runGit keeps git's stderr on a noisy nonzero exit (format unchanged)", asy
     runGit(repo, ["rev-parse", "--verify", "no-such-ref"]),
     (err: unknown) =>
       err instanceof Error && /^git rev-parse --verify no-such-ref failed \(128\): fatal: /.test(err.message),
+  );
+});
+
+test("subjectsBetween lists main's subjects since a head, newest first; null for an unknown base", async () => {
+  const repo = makeRepo(); // one seed commit on main
+  const base = await headOf(repo, "main");
+  fs.writeFileSync(path.join(repo, "a.txt"), "1\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "tumwater(feature): a");
+  fs.writeFileSync(path.join(repo, "b.txt"), "2\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "tumwater(readme): b");
+  fs.writeFileSync(path.join(repo, "c.txt"), "3\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "human commit c");
+  assert.deepEqual(await subjectsBetween(repo, base, "main"), [
+    "human commit c",
+    "tumwater(readme): b",
+    "tumwater(feature): a",
+  ]);
+  // Nothing landed since the tip → empty, not null.
+  const tip = await headOf(repo, "main");
+  assert.deepEqual(await subjectsBetween(repo, tip, "main"), []);
+  // An unresolvable base yields null so callers fall back conservatively.
+  assert.equal(
+    await subjectsBetween(repo, "0000000000000000000000000000000000000000", "main"),
+    null,
   );
 });

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { dueForPrune, fairOrder, isEligible, runOrchestrator } from "../src/orchestrator.js";
+import { deferTick, dueForPrune, fairOrder, isEligible, runOrchestrator, workLanded } from "../src/orchestrator.js";
 import { ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
@@ -11,6 +11,7 @@ import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import {
+  freshLoopState,
   loadLoopState,
   nextBackoffSeconds,
   orchestratorAlive,
@@ -149,9 +150,10 @@ test("fairOrder puts the director first even when it ticked most recently", () =
   const feature = runner("feature");
   feature.state.lastTickEndedAt = 1;
   const fresh = runner("clean");
+  // The work tier (feature) now outranks maintenance (clean) whatever their recency.
   assert.deepEqual(
-    fairOrder([feature, fresh, director]).map((r) => r.role),
-    ["director", "clean", "feature"],
+    fairOrder([fresh, feature, director]).map((r) => r.role),
+    ["director", "feature", "clean"],
   );
 });
 
@@ -163,18 +165,70 @@ test("role catalog puts shipping work before hygiene", () => {
   }
 });
 
-test("fairOrder alternates loops: least-recently-ticked first, catalog order for fresh ties", () => {
-  const recent = runner("feature");
-  recent.state.lastTickEndedAt = 2000;
-  const stale = runner("dry");
-  stale.state.lastTickEndedAt = 1000;
-  const freshA = runner("bugfix");
-  const freshB = runner("clean");
-  const ordered = fairOrder([recent, freshA, stale, freshB]);
+test("fairOrder orders the work tier ahead of maintenance; LRU (catalog order for fresh ties) within a tier", () => {
+  const staleFeature = runner("feature");
+  staleFeature.state.lastTickEndedAt = 1000; // A stale-ticked feature still outranks…
+  const freshOrganize = runner("organize"); // …a never-ticked maintenance role.
+  const recentClean = runner("clean");
+  recentClean.state.lastTickEndedAt = 2000;
+  const olderDry = runner("dry");
+  olderDry.state.lastTickEndedAt = 1500; // Within-tier LRU: dry before clean.
+  const freshImprove = runner("improve"); // Fresh tie with organize: input order decides.
   assert.deepEqual(
-    ordered.map((r) => r.role),
-    ["bugfix", "clean", "dry", "feature"],
+    fairOrder([staleFeature, recentClean, freshOrganize, olderDry, freshImprove]).map((r) => r.role),
+    ["feature", "organize", "improve", "dry", "clean"],
   );
+});
+
+// --- Need-based prioritization (workLanded / deferTick) ---
+
+test("workLanded: feature/bugfix/director and human subjects count; other roles do not", () => {
+  assert.equal(workLanded(["tumwater(feature): land a plan"]), true);
+  assert.equal(workLanded(["tumwater(bugfix): fix the crash"]), true);
+  // A director commit is user-directed work: after a pure-director burst the maintenance
+  // roles must resync, so it counts like feature/bugfix.
+  assert.equal(workLanded(["tumwater(director): implement the request"]), true);
+  // Markdown/hygiene landings are not work for a maintenance role to react to.
+  assert.equal(
+    workLanded([
+      "tumwater(plan): write a plan",
+      "tumwater(readme): sync status",
+      "tumwater(steward): curate PLANS.md",
+      "tumwater(organize): move module",
+    ]),
+    false,
+  );
+  // A human commit (no tumwater( prefix) is work: the world changed in a way the fleet
+  // cannot generate itself.
+  assert.equal(workLanded(["fix the flaky test by hand"]), true);
+  assert.equal(
+    workLanded(["tumwater(readme): sync", "tumwater(bugfix): fix it"]),
+    true,
+  );
+  assert.equal(workLanded([]), false); // nothing landed since
+});
+
+test("deferTick: only a deferrable no_change role that has seen main and got no work defers", () => {
+  const base = freshLoopState("organize");
+  base.lastResult = "no_change";
+  base.lastMainHead = "abc123";
+  assert.equal(deferTick(base, "organize", false), true);
+
+  // Each condition flipped → no deferral.
+  const workLandedSinceLast = { ...base };
+  assert.equal(deferTick(workLandedSinceLast, "organize", true), false); // work landed
+  const changed = { ...base, lastResult: "changed" as const };
+  assert.equal(deferTick(changed, "organize", false), false);
+  for (const result of ["rejected", "error", "refused", "merge_conflict"] as const) {
+    assert.equal(deferTick({ ...base, lastResult: result }, "organize", false), false);
+  }
+  const unseen = { ...base, lastMainHead: "" };
+  assert.equal(deferTick(unseen, "organize", false), false); // never ticked → first tick runs
+
+  // Work-tier roles and unknown/custom roles never defer, even with no_change + no work.
+  for (const role of ["feature", "bugfix", "plan", "director", "my-custom-loop"]) {
+    assert.equal(deferTick(base, role, false), false);
+  }
 });
 
 test("backoff grows by the factor and caps at max", () => {
@@ -327,6 +381,53 @@ test("a main move and a queued prompt each log exactly one wake event with their
         ["director", "inbox"],
       ],
     );
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a no_change maintenance role defers due ticks until work lands on main", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "deferral test");
+  // organize ticks fast (no min gap, 1s backoff) and declares nothing-to-do every run — so
+  // after its startup tick it keeps coming due with lastResult no_change: only deferral can
+  // keep it quiet while non-work commits land.
+  saveConfig(repo, fastConfig(["organize"]));
+  const argsFile = path.join(tmpdir(), "pi-args.txt");
+  const restore = recordingFakePi(argsFile);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => loadLoopState(repo, "organize").ticks >= 1 && !loadLoopState(repo, "organize").running,
+      "the startup tick to finish",
+    );
+
+    // A non-work landing (a readme commit) moves main but must not wake the deferred role.
+    fs.writeFileSync(path.join(repo, "readme-note.txt"), "x\n");
+    sh(repo, "git", "add", "-A");
+    sh(repo, "git", "commit", "-m", "tumwater(readme): x");
+
+    // Several poll cycles pass with the interval long since due — still exactly one run.
+    await new Promise((r) => setTimeout(r, 1000));
+    assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
+    assert.equal(loadLoopState(repo, "organize").ticks, 1);
+
+    // Work lands: the deferred tick starts within one poll and finishes. (This is also the
+    // verdict-cache flip case: the earlier false verdict over this range must not be cached.)
+    fs.writeFileSync(path.join(repo, "feature-note.txt"), "y\n");
+    sh(repo, "git", "add", "-A");
+    sh(repo, "git", "commit", "-m", "tumwater(feature): y");
+    await waitFor(
+      () => loadLoopState(repo, "organize").ticks >= 2 && !loadLoopState(repo, "organize").running,
+      "the woken tick to finish",
+    );
+
+    // Exactly one deferral episode so far: one event on the transition in, none while merely
+    // not-due and none on exit. (The woken tick's own no_change outcome starts a fresh
+    // episode only after its 1s backoff — outside this assertion window.)
+    const deferred = readEvents(repo).filter((e) => e.type === "tick_deferred");
+    assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
   } finally {
     restore();
     await orch.stop();
@@ -541,10 +642,26 @@ function startLiveOrchestrator(
   };
 }
 
+/** Land a commit on main that counts as "work" for need-based prioritization, so deferrable
+ * maintenance roles wake and re-tick. Tests that pin scheduling-adjacent behavior (config
+ * reloads, resets, gates) use it to keep their maintenance roles ticking — the deferral rule
+ * itself is pinned in its own test above. */
+function landWork(repo: string): void {
+  fs.writeFileSync(
+    path.join(repo, `work-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`),
+    "work\n",
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "tumwater(feature): test work landing");
+}
+
 test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-known-good", async () => {
   const repo = makeRepo();
   await initProject(repo, "live reload test");
-  saveConfig(repo, fastConfig(["clean"], "good-model"));
+  // bugfix (a work-tier role) on purpose: it is never deferred by need-based prioritization,
+  // so this config-reload pin stays decoupled from scheduling timing — deferral itself is
+  // pinned in its own test below.
+  saveConfig(repo, fastConfig(["bugfix"], "good-model"));
   const argsFile = path.join(tmpdir(), "argv.log");
   fs.rmSync(argsFile, { force: true }); // A previous run's lines must not leak into this one.
   const restore = recordingFakePi(argsFile);
@@ -567,7 +684,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
     );
 
     // A mid-run edit applies within a poll cycle — no restart.
-    saveConfig(repo, fastConfig(["clean"], "reloaded-model"));
+    saveConfig(repo, fastConfig(["bugfix"], "reloaded-model"));
     await waitFor(() => runs().at(-1)?.includes("model=reloaded-model") === true, "pi run with the edited model");
 
     // A broken file keeps the last-known-good config and warns exactly once.
@@ -584,7 +701,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
     assert.equal(warnings().length, 1, "one warning for the broken file");
 
     // Fixing the file recovers: the new value applies and no further warnings appear.
-    saveConfig(repo, fastConfig(["clean"], "fixed-model"));
+    saveConfig(repo, fastConfig(["bugfix"], "fixed-model"));
     await waitFor(() => runs().at(-1)?.includes("model=fixed-model") === true, "pi run with the fixed model");
     assert.equal(warnings().length, 1, "no new warnings once the file is fixed");
   } finally {
@@ -698,7 +815,13 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // Let a couple of ticks accumulate counters in the runner's memory.
+    // Let a couple of ticks accumulate counters in the runner's memory. clean is deferrable
+    // (need-based prioritization), so the second tick needs a work landing to wake it.
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "the first tick to finish",
+    );
+    landWork(repo);
     await waitFor(
       () => loadLoopState(repo, "clean").ticks >= 2 && !loadLoopState(repo, "clean").running,
       "two finished ticks",
@@ -721,7 +844,9 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     );
 
     // The reset survives tick boundaries: the next completed tick counts from zero — a stale
-    // in-memory copy would have saved ticks >= 3 here instead.
+    // in-memory copy would have saved ticks >= 3 here instead. A work landing wakes the
+    // deferred role for that post-reset tick.
+    landWork(repo);
     await waitFor(
       () => loadLoopState(repo, "clean").ticks === 1 && !loadLoopState(repo, "clean").running,
       "a post-reset tick to finish",

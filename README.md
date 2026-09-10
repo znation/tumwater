@@ -96,6 +96,12 @@ one loop per enabled role. Every loop tick:
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
+Scheduling is need-aware: a maintenance role's due tick (scheduled or main-moved) is deferred —
+one `tick_deferred` event per episode in logs, TUI, and GUI — while its last tick did nothing
+and no feature/bugfix/director/human commit has landed on main since; it starts within one poll
+of such work landing. Slot allocation orders the work roles (feature, bugfix, plan) ahead of
+every maintenance role, least-recently-ticked first within a tier.
+
 The fleet's autonomous spend is capped by `maxDailyCostUsd` (default $50; set 0 to disable).
 While the day's total cost has reached the cap, role loops stop starting new ticks — scheduled,
 main-moved wakes, or startup — until local midnight or a live edit raises/disables the cap;

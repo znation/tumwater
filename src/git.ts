@@ -254,6 +254,20 @@ export async function commitPathsAndDiscardRest(
   return headOf(wt, "HEAD");
 }
 
+/** Commit subjects landed on `mainBranch` since `sinceHead`, newest first — the range is
+ * exclusive of its base, so a head that is an ancestor of main yields exactly what moved past
+ * it (empty when nothing has). Null when the range cannot be resolved (unknown head, not a
+ * repo), so callers fall back conservatively. */
+export async function subjectsBetween(
+  root: string,
+  sinceHead: string,
+  mainBranch: string,
+): Promise<string[] | null> {
+  const out = await gitTry(root, "log", "--format=%s", `${sinceHead}..${mainBranch}`);
+  if (out === null) return null;
+  return out.split("\n").filter(Boolean);
+}
+
 /** Commits ahead of main on the worktree's branch. */
 export async function aheadOfMain(wt: string, mainBranch: string): Promise<number> {
   const out = await git(wt, "rev-list", "--count", `${mainBranch}..HEAD`);

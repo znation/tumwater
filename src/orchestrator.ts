@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { TumwaterConfig } from "./types.js";
+import type { LoopState, TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
 import { configForRole, enabledRoleIds, loadConfigCached } from "./config.js";
 import { budgetPaused, fleetDailyCost, isFleetPaused } from "./state.js";
-import { DIRECTOR_ROLE } from "./roles.js";
+import { DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { LoopRunner } from "./loop.js";
-import { branchHead } from "./git.js";
+import { branchHead, subjectsBetween } from "./git.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
@@ -101,16 +101,49 @@ export function isEligible(
 }
 
 /** Fair scheduling order for one poll's eligible loops: the director always leads (it runs
- * the user's prompts), then least-recently-ticked first, so loops alternate instead of the
- * same ones re-claiming freed slots. Never-run loops tie at zero and the stable sort keeps
- * them in role-catalog (priority) order. */
+ * the user's prompts), then the work tier (feature/bugfix/plan) before maintenance — a stale-
+ * ticked feature takes a slot over a fresh-ticked steward, because shipping work is what the
+ * fleet exists to do — and within a tier least-recently-ticked first, so loops alternate
+ * instead of the same ones re-claiming freed slots. Never-run loops tie at zero and the stable
+ * sort keeps them in role-catalog (priority) order. */
 export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
   return [...runners].sort((a, b) => {
     if ((a.role === DIRECTOR_ROLE) !== (b.role === DIRECTOR_ROLE)) {
       return a.role === DIRECTOR_ROLE ? -1 : 1;
     }
+    const tier = roleTier(a.role) - roleTier(b.role);
+    if (tier !== 0) return tier;
     return (a.state.lastTickEndedAt ?? 0) - (b.state.lastTickEndedAt ?? 0);
   });
+}
+
+/** Did work land on main since a head? (Need-based prioritization, PLANS.md "Prioritize loops
+ * by need".) A commit counts when its subject starts with `tumwater(feature):`,
+ * `tumwater(bugfix):`, or `tumwater(director):` — the harness stamps that prefix itself
+ * (buildCommitMessage), so attribution needs no new metadata; a director commit is user-directed
+ * work, and after a pure-director burst the maintenance roles must resync. Or the subject
+ * carries no `tumwater(` prefix at all: a human commit, where the world changed in a way the
+ * fleet cannot generate itself. Every other role's landing is markdown or hygiene; waking
+ * maintenance roles on it is exactly the cascade deferral removes.
+ */
+export function workLanded(subjects: string[]): boolean {
+  return subjects.some(
+    (subject) => /^tumwater\((feature|bugfix|director)\):/.test(subject) || !/^tumwater\(/.test(subject),
+  );
+}
+
+/** Should a due maintenance tick be deferred? (Need-based prioritization.) All four must hold:
+ * the role is one of the nine deferrable built-ins — work roles and unknown/custom never defer,
+ * the harness cannot judge what an arbitrary custom role needs; its last tick did nothing;
+ * it has seen main before (a never-ticked role always runs its first tick); and no feature/
+ * bugfix/director/human commit landed since that head. Only `no_change` defers: every other
+ * outcome carries pending business (retry an error, address recorded review-rejection reasons,
+ * recover a merge failure) that must not stall until unrelated work lands.
+ */
+export function deferTick(s: LoopState, role: string, workLandedSinceLast: boolean): boolean {
+  return (
+    DEFERRABLE_ROLES.has(role) && s.lastResult === "no_change" && s.lastMainHead !== "" && !workLandedSinceLast
+  );
 }
 
 /** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
@@ -238,6 +271,29 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // an unchanged fleet prunes at most once per day (dueForPrune).
   let lastRetention = config.sessionRetentionDays;
   let lastPruneAt: number | null = config.sessionRetentionDays > 0 ? Date.now() : null;
+
+  // Need-based deferral (PLANS.md "Prioritize loops by need"): TRUE work-landed verdicts are
+  // cached per base head — a true verdict is monotone under fast-forward-only main movement, so
+  // it never needs re-evaluation; falses re-check each poll at one local `git log` per due
+  // deferred role (main advancing can flip them). Bounded, so a long-running fleet cannot grow
+  // the set unbounded.
+  const workLandedHeads = new Set<string>();
+  async function workLandedSince(sinceHead: string): Promise<boolean> {
+    if (workLandedHeads.has(sinceHead)) return true;
+    const subjects = await subjectsBetween(root, sinceHead, mainBranch);
+    // A range that cannot be evaluated is treated as work landed — conservative: run the tick.
+    const verdict = subjects === null ? true : workLanded(subjects);
+    if (verdict) {
+      if (workLandedHeads.size >= 200) workLandedHeads.clear();
+      workLandedHeads.add(sinceHead);
+    }
+    return verdict;
+  }
+  // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
+  // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode
+  // logs exactly once — on the transition in, never while merely not-due and never on exit.
+  // In-memory only: a restart mid-episode can re-log at most one event.
+  const deferredDue = new Map<string, boolean>();
 
   try {
     while (!signal.aborted) {
@@ -378,7 +434,34 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         if ((budgetPausedNow || userPaused) && runner.role !== DIRECTOR_ROLE)
           continue; // no new role ticks while either gate holds
         const { run, reason } = isEligible(runner, now, mainHead, inboxCount);
-        if (run) reasons.set(runner, reason);
+        if (!run) {
+          // Not due this poll: any deferral episode has ended (or never started). No event —
+          // the tick's own events cover it.
+          if (deferredDue.get(runner.role)) deferredDue.set(runner.role, false);
+          continue;
+        }
+        // Need-based deferral: a due maintenance tick (scheduled or main-moved wake) whose last
+        // tick did nothing and has no new work to react to stays deferred — nextRunAt is left
+        // untouched, so it re-checks every poll until qualifying work lands. Resume wakes
+        // precede this check in isEligible, the director's "inbox" reason skips it, and work
+        // roles are not in DEFERRABLE_ROLES. Sitting before reasons.set also keeps a deferred
+        // role out of the wake-event pass below.
+        if (reason === "scheduled" || reason === "main moved") {
+          const s = runner.state;
+          // The git range is only consulted when the other three conditions already hold — a
+          // never-ticked role or a tick with pending business runs without paying for it.
+          const landed = s.lastMainHead !== "" ? await workLandedSince(s.lastMainHead) : true;
+          const deferredNow = deferTick(s, runner.role, landed);
+          if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
+            if (deferredNow)
+              logEvent(root, { loop: runner.role, type: "tick_deferred" });
+            deferredDue.set(runner.role, deferredNow);
+          }
+          if (deferredNow) continue;
+        } else if (deferredDue.get(runner.role)) {
+          deferredDue.set(runner.role, false); // an inbox/resume run ends the episode
+        }
+        reasons.set(runner, reason);
       }
       for (const runner of fairOrder([...reasons.keys()])) {
         if (signal.aborted) continue;

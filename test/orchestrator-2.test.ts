@@ -91,6 +91,19 @@ function seedCounters(repo: string, ...roles: string[]): void {
   }
 }
 
+/** Land a commit on main that counts as "work" for need-based prioritization, so deferrable
+ * maintenance roles wake and re-tick. Tests that pin scheduling-adjacent behavior (config
+ * reloads, resets, gates) use it to keep their maintenance roles ticking — the deferral rule
+ * itself is pinned in its own test in orchestrator.test.ts. */
+function landWork(repo: string): void {
+  fs.writeFileSync(
+    path.join(repo, `work-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`),
+    "work\n",
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "tumwater(feature): test work landing");
+}
+
 test("a multi-role reset request zeroes every listed runner and logs one harness-level event", async () => {
   const repo = makeRepo();
   await initProject(repo, "multi role reset test");
@@ -187,7 +200,10 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     );
     const dryTicks = loadLoopState(repo, "dry").ticks;
     // The enabled role's next tick proves the fleet is still alive and ticking — the disabled
-    // role had that same window and must not have used it.
+    // role had that same window and must not have used it. clean is deferrable (need-based
+    // prioritization), so a work landing supplies its wake; the re-enabled dry below wakes on
+    // the same commit.
+    landWork(repo);
     await waitFor(() => loadLoopState(repo, "clean").ticks > cleanTicks, "an enabled role to tick again");
     assert.equal(loadLoopState(repo, "dry").ticks, dryTicks, "disabled role stops ticking");
     assert.ok(messages().some((m) => m.includes("role dry disabled — stopping ticks")), "disable transition logged");
@@ -261,6 +277,9 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     assert.equal(resumed.length, 1, "one transition event per resume");
     assert.equal(resumed[0]?.loop, "harness");
     assert.equal(resumed[0]?.capUsd, 100);
+    // clean is deferrable and no work has landed since its first tick — a work commit supplies
+    // the wake for the post-resume tick.
+    landWork(repo);
     await waitFor(
       () => loadLoopState(repo, "clean").ticks >= 2 && !loadLoopState(repo, "clean").running,
       "the paused role to tick again after the cap raise",
@@ -760,7 +779,16 @@ test("a failed compile leaves the fleet running the old build", async () => {
       () => readEvents(repo).some((e) => e.type === "warning" && /rebuild of .* failed/.test(String(e.message))),
       "compile-failure warning",
     );
-    // Still running: ticks keep coming after the failure was recorded.
+    // Still running: ticks keep coming after the failure was recorded. clean is deferrable
+    // (need-based prioritization) and main has not moved since its startup tick — a work
+    // landing supplies the wake for the post-failure tick. The in-flight startup tick must
+    // finish first: its end-of-tick head refresh would swallow a concurrent landing into
+    // lastMainHead, leaving deferral nothing to react to.
+    await waitFor(
+      () => !loadLoopState(repo, "clean").running && loadLoopState(repo, "clean").lastMainHead !== "",
+      "the startup tick to finish",
+    );
+    landWork(repo);
     const before = readEvents(repo).filter((e) => e.type === "tick_start").length;
     await waitFor(() => readEvents(repo).filter((e) => e.type === "tick_start").length > before, "ticks resume after the hold lifts");
     assert.deepEqual(swaps, []);

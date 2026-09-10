@@ -259,6 +259,35 @@ You edit only markdown — never source.`,
   },
 ];
 
+/** Work-tier roles (need-based prioritization, PLANS.md "Prioritize loops by need"): they
+ * ship work — feature and bugfix land code on main, plan feeds them — so their due ticks are
+ * never deferred and slot allocation always orders them ahead of maintenance. */
+export const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
+
+/** Maintenance-tier roles (need-based prioritization): exactly the nine built-ins whose due
+ * ticks are deferrable while no feature/bugfix/director/human commit has landed on main since
+ * their last tick and that tick did nothing. Unknown/custom roles are deliberately NOT in this
+ * set — the harness cannot judge what an arbitrary custom role needs, so they never defer (they
+ * still sort into tier 1 for fairOrder via roleTier). */
+export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
+  "readme",
+  "organize",
+  "coverage",
+  "clean",
+  "dry",
+  "perf",
+  "qa",
+  "improve",
+  "steward",
+]);
+
+/** Scheduling tier for fairOrder's slot allocation (need-based prioritization): 0 for work
+ * roles, 1 for everything else. The director is excluded by callers — it leads unconditionally,
+ * ahead of both tiers. */
+export function roleTier(role: string): number {
+  return WORK_ROLES.has(role) ? 0 : 1;
+}
+
 /** The roles blocked from starting an authoring run while main's own build/test suite is known
  * red (the red-main baseline check, PLANS.md "Red-main baseline check"): every role whose diff
  * can carry non-exempt (code) changes — on a red main such a diff is rejected deterministically

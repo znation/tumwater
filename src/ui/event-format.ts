@@ -49,6 +49,10 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} question posted: ${e.question}`;
     case "wake":
       return `${time} ${loop} woke (${e.reason})`;
+    case "tick_deferred":
+      // Routine state change (need-based prioritization), like counters_reset — no warning
+      // prefix. One per deferral episode; the tick's own events cover the episode's end.
+      return `${time} ${loop} deferred — no work landed since last tick`;
     case "orchestrator_start":
       return `${time} ${loop} orchestrator started (pid ${e.pid}${e.build ? `, build ${shortSha(e.build)}` : ""})`;
     case "orchestrator_stop":
