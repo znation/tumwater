@@ -180,16 +180,7 @@ npm ci && npm test                # → 786/786 green
 
 **Fix:** one bounded follow-up turn in the tick's own session (`--continue`, 15 min / 5 min quiet caps) asks for exactly the SUMMARY/WHY/RISK/VERIFIED block; failing that the subject is derived from the changed paths ("Update src/loop.ts, test/loop.test.ts and 2 more"). Commit `61cf063`. Files: src/loop.ts, src/prompt.ts, src/commit-message.ts.
 
-### GUI dashboard executes HTML in backlog entry bodies — unescaped innerHTML injection (found by bugfix loop 2026-09-06, fixed 2026-09-06)
-
-**Symptom:** The dashboard's backlog detail panel (`tumwater gui` → click any planned feature / open bug / open question) spliced the entry's body straight into `innerHTML` without escaping, while every other dynamic value on the page — including the same entry's title two lines above — went through the page's `esc()`. A plan/bug/question entry containing HTML (a repro with `<img src=x onerror=…>`, a stray `<script>` tag) was parsed and executed in the operator's browser instead of rendering as text. With `--all-interfaces` the dashboard is reachable from the whole network without authentication, so this was a live XSS surface, not just a local oddity.
-
-**Repro:** Write an entry under BUGS.md's ## Open whose body contains `<img src=x onerror=alert(1)>`, run `tumwater gui`, and click the entry: pre-fix the tag executes instead of rendering as text. Deterministic unit repro — test/gui.test.ts "the dashboard page escapes backlog entry bodies before innerHTML" (added with this fix) pins both halves: the served page routes d.body through esc, and /api/backlog still serves the raw body (escaping is the page's job).
-
-**Cause:** src/gui-page.ts's refreshTranscript() built the detail panel as `panel.innerHTML = "<span class='muted'>" + esc(d.title) + " …</span>\n" + (d.body || "(no details for this entry)")` — d.title escaped, d.body not. The body is model-written markdown from PLANS/BUGS/QUESTIONS.md (loops edit those files constantly), i.e. untrusted content by the same standard as transcript lines and event text, both of which are escaped (`lines.map(esc)`, `d.events.map(esc)`). Found by latent-bug sweep; no open bug had been recorded.
-
-**Fix:** One line in src/gui-page.ts: `(esc(d.body) || "(no details for this entry)")` — esc("") is "", so empty bodies still fall back to the placeholder. Server unchanged: /api/backlog keeps serving raw markdown (the TUI renders it as plain terminal text, and other clients may want it unescaped). The regression test fails against pre-fix code on its page-structure assertion. Verified: build clean, full suite green. Files: src/gui-page.ts, test/gui.test.ts.
-
+- GUI dashboard executes HTML in backlog entry bodies — unescaped innerHTML injection (found by bugfix loop 2026-09-06, fixed 2026-09-06; commit 6fe4dfe)
 - Build broken on main: feature tick 105 dropped `openBugs` from test/backlog.test.ts's imports, and two of its new assertions could never pass (found by coverage loop 2026-09-06, fixed 2026-09-06; commit f6ad136)
 - Non-ASCII text in pi output garbled when a multi-byte character straddles a stdout chunk boundary (found by bugfix loop 2026-09-03, fixed 2026-09-03; commit 07b7a7e)
 - Tests red on main: feature tick 83's `today` column broke two layout assertions (found by readme loop 2026-09-03, fixed 2026-09-03; commit 02a8661)
