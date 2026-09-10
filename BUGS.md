@@ -19,7 +19,9 @@ Second-order defect from the same assumption: src/review.ts:191 seeds `noteGreen
 
 **Files:** src/merge.ts, src/review.ts; tests in test/merge.test.ts.
 
-### README promises `tumwater init` seeds a git repo, but it refuses to run outside an existing one (found by qa loop 2026-09-08)
+## Fixed
+
+### README promises `tumwater init` seeds a git repo, but it refuses to run outside an existing one (found by qa loop 2026-09-08, fixed 2026-09-10)
 
 **Symptom:** A first-time user following the "How it works" section — "`tumwater init \"<prompt>\"` seeds a git repo with README.md … and commits them" — runs `tumwater init` in a fresh, empty project directory (the primary use case: the project does not exist yet, so no git repo exists to `cd` into) and gets an error instead of a seeded repo. The Usage block's comment `# any git repo` hints at the requirement, but it contradicts "seeds a git repo" — for a brand-new project there is no existing repo.
 
@@ -35,11 +37,11 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 
 **Expected:** per "How it works", `tumwater init` seeds a git repo — running it in an empty directory should work.
 
-**Actual:** src/init.ts:87 throws unless the cwd is already a git repository; the user must run `git init` themselves first. The error message does guide them, so it is recoverable, but the docs promise behavior the product does not deliver.
+**Actual:** src/init.ts:87 threw unless the cwd was already a git repository; the user had to run `git init` themselves first. The error message did guide them, so it was recoverable, but the docs promised behavior the product did not deliver.
 
-**Suspected cause:** init was written to assume an existing repo while the README wording ("seeds a git repo … and commits them") overstates what it does. Either `init` should run `git init` itself when the cwd is not a repo (matching the docs), or "How it works" should say it seeds files into an *existing* repo and that `git init` comes first.
+**Cause:** init was written to assume an existing repo while the README wording ("seeds a git repo … and commits them") overstates what it does.
 
-## Fixed
+**Fix:** took the first option — `initProject` now runs `git init -b main` when the cwd is not yet a repository (src/init.ts), so the "seeds a git repo" promise holds for brand-new projects; `-b main` matches every doc reference and what `tumwater run` reports. The pure validations (prompt, README markers) moved ahead of that side effect, so an invalid prompt leaves no half-seeded repo behind. The CLI prints `initialized a new git repository on branch main`, and the Usage comment now reads "existing or new project dir". Tests: test/init.test.ts (seeding + validate-before-side-effect) and test/cli.test.ts (end-to-end in an empty directory).
 
 ### Budget badge shows `$0.00/$50` on free/local LLM fleets instead of n/a (reported by user 2026-09-08, fixed 2026-09-09)
 

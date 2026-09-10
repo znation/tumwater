@@ -160,7 +160,7 @@ in tracked markdown and `tumwater.json`.
 ```
 npm install && npm run build
 
-cd your-project        # any git repo
+cd your-project        # existing or new project dir
 tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 tumwater run          # terminal 1: the loops (Ctrl+C to stop)
 tumwater tui          # terminal 2: dashboard + main prompt

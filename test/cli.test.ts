@@ -105,6 +105,15 @@ test("init creates the harness files and is idempotent", async () => {
   assert.match(r.stdout, /already initialized; nothing to do/);
 });
 
+test("init seeds a git repo in an empty directory (BUGS.md 2026-09-08)", async () => {
+  const dir = tmpdir();
+  const r = await cli(dir, "init", "Build a tiny markdown-to-html converter CLI.");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /initialized a new git repository on branch main/);
+  assert.match(r.stdout, /created README\.md/);
+  assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "main");
+});
+
 test("init --file reads the prompt from a file and rejects a missing path", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "prompt.md"), "Build a thing.\nWith care.\n");

@@ -96,6 +96,9 @@ async function cmdInit(root: string, args: string[]): Promise<void> {
     process.stdout.write("already initialized; nothing to do\n");
     return;
   }
+  if (result.repoInitialized) {
+    process.stdout.write(`initialized a new git repository on branch main\n`);
+  }
   process.stdout.write(`created ${result.created.join(", ")}${result.committed ? " (committed)" : ""}\n`);
   process.stdout.write("next: `tumwater run` in one terminal, `tumwater tui` in another\n");
 }

@@ -75,17 +75,20 @@ function ensureGitignore(root: string): boolean {
 interface InitResult {
   created: string[];
   committed: boolean;
+  /** True when the cwd was not a git repository and init created one. */
+  repoInitialized: boolean;
 }
 
 /** Initialize a repo for tumwater: README (with prompt + status), PLANS, BUGS, QUESTIONS,
- * PRINCIPLES, tumwater.json, .gitignore — then commit whatever was created. */
+ * PRINCIPLES, tumwater.json, .gitignore — then commit whatever was created. When the cwd is
+ * not a git repository yet, one is seeded first (`git init -b main`), matching the README's
+ * "seeds a git repo" promise for brand-new projects. */
 export async function initProject(root: string, initialPrompt: string): Promise<InitResult> {
   // Fail fast on a missing binary before the probe below can misread it as "not a git
   // repository" — the same preflight every other command gets in cli.ts.
   if (!findOnPath("git")) throw new Error(GIT_MISSING_MESSAGE);
-  if (!(await isGitRepo(root))) {
-    throw new Error(`${root} is not a git repository (run \`git init\` first)`);
-  }
+  // Validate everything that is pure validation before any side effect, so a bad prompt or
+  // README never leaves a half-seeded repo behind.
   if (!initialPrompt.trim()) {
     throw new Error("an initial prompt is required: tumwater init <prompt | --file prompt.md>");
   }
@@ -97,6 +100,14 @@ export async function initProject(root: string, initialPrompt: string): Promise<
     throw new Error(
       `README.md already exists without an initial prompt between the tumwater:prompt markers, so your prompt would be lost — add it to README.md between ${PROMPT_START} and ${PROMPT_END} (or delete README.md so init creates one), then re-run \`tumwater init\``,
     );
+  }
+
+  let repoInitialized = false;
+  if (!(await isGitRepo(root))) {
+    // `-b main` matches every doc reference and what `tumwater run` will report; a fresh
+    // repo has no history for an init.defaultBranch preference to protect.
+    await git(root, "init", "-b", "main");
+    repoInitialized = true;
   }
 
   const created: string[] = [];
@@ -129,5 +140,5 @@ export async function initProject(root: string, initialPrompt: string): Promise<
       committed = true;
     }
   }
-  return { created, committed };
+  return { created, committed, repoInitialized };
 }

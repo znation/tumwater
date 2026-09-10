@@ -87,9 +87,25 @@ test("initProject accepts an existing README that already carries the prompt", a
   assert.equal(readInitialPrompt(repo), "my prompt");
 });
 
-test("initProject rejects non-repos and empty prompts", async () => {
-  await assert.rejects(() => initProject(tmpdir(), "x"), /not a git repository/);
+test("initProject rejects empty prompts", async () => {
   await assert.rejects(() => initProject(makeRepo(), "   "), /initial prompt is required/);
+});
+
+test("initProject seeds a git repo when the cwd is not one yet (BUGS.md 2026-09-08)", async () => {
+  const dir = tmpdir();
+  const result = await initProject(dir, "Fresh project.");
+  assert.ok(result.repoInitialized);
+  assert.ok(result.committed);
+  // The seeded repo is on main with exactly the harness commit, and the prompt round-trips.
+  assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "main");
+  assert.equal(sh(dir, "git", "log", "--oneline").split("\n").length, 1);
+  assert.equal(readInitialPrompt(dir), "Fresh project.");
+});
+
+test("initProject validates before seeding: a bad prompt leaves no repo behind", async () => {
+  const dir = tmpdir();
+  await assert.rejects(() => initProject(dir, "   "), /initial prompt is required/);
+  assert.ok(!fs.existsSync(path.join(dir, ".git")));
 });
 
 test("initProject leaves user's unrelated dirty files uncommitted", async () => {
