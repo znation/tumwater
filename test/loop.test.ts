@@ -1,11 +1,10 @@
-import { execFileSync } from "node:child_process";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
-import { defaultConfig, validateConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";

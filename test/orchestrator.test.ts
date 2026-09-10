@@ -9,19 +9,16 @@ import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import type { TumwaterConfig } from "../src/types.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
-import { logEvent, readEvents } from "../src/events.js";
+import { readEvents } from "../src/events.js";
 import {
-  freshLoopState,
   loadLoopState,
   nextBackoffSeconds,
   orchestratorAlive,
   readOrchestratorInfo,
   saveLoopState,
-  todayStamp,
   zeroCounters,
 } from "../src/state.js";
-import { abortRequestPath, pausedPath, resetRequestPath, worktreePath } from "../src/paths.js";
-import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
+import { resetRequestPath } from "../src/paths.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 /** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
