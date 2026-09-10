@@ -32,6 +32,7 @@ import { renderDoctor, runDoctor } from "./doctor.js";
 import { ensureParentDir, findOnPath, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { followFile } from "./ui/tail.js";
+import { collectReport, renderReportMarkdown } from "./report.js";
 import { snapshot } from "./ui/status.js";
 import { renderStatus } from "./ui/status-render.js";
 import { runTui } from "./ui/tui.js";
@@ -54,6 +55,7 @@ Usage:
                                    the director)
   tumwater status [--json]         One-shot status table (--json prints machine-readable
                                    fleet state — same payload as the GUI's /api/status)
+  tumwater report [--days N]       Markdown usage report — tokens/ticks/commits per day (default 14 days)
   tumwater doctor                  Pre-flight check: git, repo, config, pi, locks (exit 0/1)
   tumwater logs [-f] [-n N]        Show (and follow) harness events
   tumwater logs --role <id> [-f] [-n N]
@@ -366,6 +368,15 @@ async function main(): Promise<void> {
         );
       }
       break;
+    case "report": {
+      // No requireReadyRepo gate: the report aggregates files that degrade to zeros when
+      // missing, so it runs (and prints an all-zero window) in any directory.
+      rejectUnknownArgs("report", args, [{ names: ["--days"], value: true, valueName: "<n>" }]);
+      const daysFlag = args.indexOf("--days");
+      const days = daysFlag >= 0 ? parseCountFlag("--days", args[daysFlag + 1]) : 14;
+      process.stdout.write(renderReportMarkdown(collectReport(root, days)) + "\n");
+      break;
+    }
     case "doctor": {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.

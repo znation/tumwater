@@ -171,6 +171,7 @@ tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N
 tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
 tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)
+tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days)
 tumwater doctor       # pre-flight check: git, repo, config, pi, locks, build (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
