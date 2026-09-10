@@ -38,7 +38,8 @@ export interface SuperviseOptions {
   now?(): number;
 }
 
-/** The exit code a child's ChildExit maps to: its own code, or 128+signal-ish 1 for a kill. */
+/** The exit code a child's ChildExit maps to: its own code when it exited normally, or 1
+ * when it died by signal (code null) — a killed child must not read as success. */
 function exitCodeOf(exit: ChildExit): number {
   return exit.code ?? 1;
 }
