@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { parseVerdict, reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review.js";
-import { checkMainBaseline, clipBuildTail, detectBuildCheck, runBuildCheck } from "../src/build-check.js";
+import { clipBuildTail, detectBuildCheck, runBuildCheck } from "../src/build-check.js";
 import { aheadOfMain, headOf } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config.js";
@@ -586,6 +586,7 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
     const state = freshLoopState(ROLE);
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), buildCheckTimeoutMs: 400 }, state);
     assert.equal(result.decision, "approved"); // a timeout is environmental — not fail-closed
+    assert.equal(result.verifiedHead, undefined); // no suite ran green — nothing to hand the landing path
     assert.ok(fs.existsSync(marker), "the reviewer still ran after the warning");
     const warning = readEvents(root).find((e) => e.type === "warning");
     assert.match(String(warning?.message), /build check timed out after 0\.4s; proceeding to model review/);
@@ -594,34 +595,19 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
   }
 });
 
-// The gate's green pre-check seeds the red-main baseline cache (noteGreenBaseline): once the
-// merge lands, main points at exactly this SHA and every role's next fresh tick must be a cache
-// hit — no second full-suite run on an already-verified tree.
-test("gate's green pre-check seeds the baseline cache: after the merge, checkMainBaseline re-runs nothing for this SHA", async () => {
-  const counter = path.join(tmpdir(), "runs"); // each suite run appends one line
-  const { root, wt } = await gateBuildFixture(
-    "buildcheck-tool --ok",
-    `#!/bin/sh\necho ok >> ${counter}\n`,
-  );
+// The gate hands its green pre-check verdict to the landing path via GateResult.verifiedHead:
+// src/merge.ts seeds the red-main baseline with the SHA that actually becomes main (the
+// rebased head, which may differ from this one — merge.test.ts covers the seeding and the
+// post-rebase re-verify). A skipped pre-check makes no fresh observation: verifiedHead stays
+// absent even when the model approves (asserted in the timeout test above).
+test("a green pre-check hands its verified head to the landing path", async () => {
+  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n");
   const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
     const state = freshLoopState(ROLE);
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
     assert.equal(result.decision, "approved"); // pre-check passed AND the reviewer approved
-
-    // The merge lands: main now points at exactly this HEAD (what ffMainTo does when the
-    // primary checkout is on main). update-ref rather than a real merge: the fixture's root
-    // manifest is untracked, so git would refuse to overwrite it — an artifact of the scratch
-    // layout that cannot happen in a real project where package.json is tracked (and the merge
-    // mechanics themselves are covered by merge.test.ts). The next fresh tick's red-main
-    // baseline check must be a cache hit — the gate already ran the suite on this very tree.
-    sh(root, "git", "update-ref", "refs/heads/main", `tumwater/${ROLE}`);
-    const head = await headOf(wt, "HEAD");
-    const baseline = await checkMainBaseline(wt);
-    assert.equal(baseline.baseline?.status, "green");
-    assert.equal(baseline.baseline?.sha, head);
-    const runs = fs.existsSync(counter) ? fs.readFileSync(counter, "utf8").trim().split("\n").length : 0;
-    assert.equal(runs, 1, "the gate's run is the ONLY suite run for this SHA — no redundant re-check after the merge");
+    assert.equal(result.verifiedHead, await headOf(wt, "HEAD")); // exactly the tree the pre-check ran green on
   } finally {
     restore();
   }

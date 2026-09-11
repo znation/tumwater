@@ -204,7 +204,7 @@ export interface HarnessEvent {
     | "review_verdict" // approved; carries durationMs of the reviewer run
     | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
     | "review_failed"
-    | "build_check" // the project's declared check ran: scope gate|baseline, status, script, durationMs
+    | "build_check" // the project's declared check ran: scope gate|baseline|landing (the merge lock's post-rebase re-check), status, script, durationMs
     | "budget_paused" // fleet daily spend reached maxDailyCostUsd; role loops stop starting ticks
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
     | "fleet_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt

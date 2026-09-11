@@ -61,8 +61,6 @@ Open items:
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
   next is landing in a per-role detached worktree (planned 2026-09-08).
-- Open bug: review gate checks the pre-rebase tree, so the bytes that land on main were never run
-  through a check.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
 Current main (`70c018d`): build clean, suite 853/853, verified 2026-09-10.
@@ -88,8 +86,9 @@ one loop per enabled role. Every loop tick:
    fresh-session reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject` (md-only
    diffs are exempt); rejects reset the branch with reasons injected into the author's
    next tick, failures keep the commit for re-review under a 3-strike discard cap. Approved work
-   rebases the branch onto main (so main's history stays linear) and fast-forwards — all under a
-   merge lock shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
+   rebases the branch onto main (so main's history stays linear), re-runs the declared check on
+   the rebased tree when main moved under it, and fast-forwards — all under a merge lock shared
+   by every loop. If pi found nothing to do, the loop backs off (exponentially,
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
@@ -138,8 +137,9 @@ being built IS tumwater (dogfood), the harness compares the stamp against main w
 moves: a `build_stale` event fires the first time main's `src/`, `package.json`, or
 `tsconfig.json` differ from the running code, both dashboards show `STALE: main +N` in the
 header, and `tumwater doctor` warns. With `autoRestart` (default true) the fleet then redeploys
-itself: it verifies main is green (the review gate's pre-check verdict, or one run of the suite in
-a detached `_main` worktree), compiles main into `.tumwater/build/<sha>` with the project's own
+itself: it verifies main is green (a green verdict seeded by the landing path — its post-rebase
+check at merge time, or one run of the suite in a detached `_main` worktree), compiles main into
+`.tumwater/build/<sha>` with the project's own
 tsc — borrowed from the nearest ancestor install, since no worktree has one of its own — stops
 starting new ticks while in-flight ones finish (role ticks up to 30 minutes, counted across the
 whole hold even when main moves again meanwhile, after which they are aborted resuably; an in-flight

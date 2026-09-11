@@ -84,7 +84,8 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)${elapsed(e.durationMs)}`;
     case "build_check":
       // The deterministic check's cost, per run: scope names which gate paid (the pre-merge
-      // gate, or the red-main baseline check of main itself).
+      // review gate, the red-main baseline check of main itself, or the merge lock's
+      // post-rebase re-check of the tree about to land).
       return `${time} ${loop} build check (${e.scope}): npm ${e.script} ${e.status}${elapsed(e.durationMs)}`;
     case "budget_paused":
       // Routine state change, like counters_reset — no warning prefix.

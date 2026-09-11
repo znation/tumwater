@@ -4,6 +4,7 @@ import { openQuestions } from "./backlog.js";
 import { logEvent } from "./events.js";
 import {
   COMMIT_IDENT,
+  aheadOfMainFiles,
   currentBranch,
   git,
   gitTry,
@@ -12,12 +13,20 @@ import {
   unquotePorcelainPath,
 } from "./git.js";
 import { abortSync } from "./worktree.js";
+import {
+  BUILD_CHECK_TIMEOUT_MS,
+  detectBuildCheck,
+  noteGreenBaseline,
+  runBuildCheck,
+} from "./build-check.js";
+import { isExemptDiff } from "./exemptions.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";
 import { mergeLockDir } from "./paths.js";
 import type { PiRunResult, TickResult } from "./types.js";
 
-/** Landing a change on main: rebase onto main (keeping history linear), fast-forward, and —
+/** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased
+ * tree with the project's declared check when main moved under it, fast-forward, and —
  * when the rebase conflicts — one pi-driven resolution attempt before giving up. The landing is
  * worktree- and ref-parameterized — `MergeContext.ref` names what to land instead of deriving it
  * from the role, so loop.ts passes its own worktree and branch exactly as before, and later plans
@@ -40,6 +49,9 @@ export interface MergeContext {
   ref: string;
   role: string;
   mainBranch: string;
+  /** The review gate's exemption patterns (config.review.exemptPaths) — the in-lock re-check
+   * skips doc-only deltas with exactly the same test the gate applies. */
+  exemptPaths: string[];
   /** The current tick number (names the conflict-resolution pi session). */
   tick: number;
   /** Run one pi run in `wt` with the loop's shared wiring and fold its usage into the tick. */
@@ -47,20 +59,41 @@ export interface MergeContext {
 }
 
 /** Land the worktree branch on main under the shared merge lock: rebase it onto main (keeping
- * history linear) and fast-forward. On conflict, makes one pi-driven resolution attempt
+ * history linear), verify the rebased tree when it differs from what was reviewed, and
+ * fast-forward. On conflict, makes one pi-driven resolution attempt
  * (outside the lock) before giving up. A routine conflict is normal operation, not a warning:
  * success lands as an ordinary `merged` event and failure surfaces via the tick's merge_conflict
  * result — no separate log line for the hand-off itself. A merged diff that adds entries under
  * QUESTIONS.md's ## Open also emits one `question_posted` per new heading alongside the `merged`
- * event, so `tumwater logs` shows what the fleet is asking for (plans/questions-outbox.md). */
-export async function mergeToMain(ctx: MergeContext, wt: string, summary: string): Promise<TickResult> {
-  const first = await tryMerge(ctx, wt, summary);
+ * event, so `tumwater logs` shows what the fleet is asking for (plans/questions-outbox.md).
+ * `verifiedHead` is the head the review gate's pre-check just ran green on
+ * (GateResult.verifiedHead) — when the rebase turns out to be a no-op it names the exact tree
+ * about to land, so the in-lock re-check can both skip and seed the baseline from it; pass
+ * undefined when no fresh green observation was made (exempt diff, review disabled,
+ * already-approved early return). */
+export async function mergeToMain(
+  ctx: MergeContext,
+  wt: string,
+  summary: string,
+  verifiedHead?: string,
+): Promise<TickResult> {
+  // The branch tip before ANY rebase of this landing. Captured once here — not per tryMerge —
+  // because the conflict-retry path rebases twice: after pi resolves, the second attempt's
+  // rebase is a no-op even though its tree (the resolution) was never checked.
+  const preMergeHead = await headOf(wt, "HEAD");
+  const first = await tryMerge(ctx, wt, summary, preMergeHead, verifiedHead);
   if (first !== "merge_conflict") return first;
   if (!(await resolveConflict(ctx, wt))) return "merge_conflict";
-  return tryMerge(ctx, wt, summary);
+  return tryMerge(ctx, wt, summary, preMergeHead, verifiedHead);
 }
 
-async function tryMerge(ctx: MergeContext, wt: string, summary: string): Promise<TickResult> {
+async function tryMerge(
+  ctx: MergeContext,
+  wt: string,
+  summary: string,
+  preMergeHead: string,
+  verifiedHead?: string,
+): Promise<TickResult> {
   return withLock(mergeLockDir(ctx.root), async () => {
     // Capture the Open questions before the rebase so a merged diff that posts new ones can
     // emit one question_posted per entry. The lock keeps no other merge landing between capture
@@ -68,6 +101,11 @@ async function tryMerge(ctx: MergeContext, wt: string, summary: string): Promise
     // reaches the post-ff code, so nothing double-emits.
     const before = openQuestions(ctx.root);
     if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return "merge_conflict";
+    // The gate's pre-check ran OUTSIDE this lock against the head as it stood then; a rebase
+    // that rewrote anything means the tree about to land is new bytes (BUGS.md 2026-09-08).
+    // Re-verify exactly what will become main before fast-forwarding.
+    if (!(await verifyLanding(ctx, wt, await headOf(wt, "HEAD"), preMergeHead, verifiedHead)))
+      return "merge_blocked";
     if (!(await ffMainTo(ctx.root, ctx.ref, ctx.mainBranch))) return "merge_blocked";
     const commit = await headOf(ctx.root, ctx.mainBranch);
     logEvent(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
@@ -78,6 +116,62 @@ async function tryMerge(ctx: MergeContext, wt: string, summary: string): Promise
     }
     return "changed";
   });
+}
+
+/** Verify the exact tree about to land on main — the post-rebase head (BUGS.md 2026-09-08: the
+ * gate's pre-check ran outside this lock against a head the rebase may have rewritten, so the
+ * bytes that become main were never run through a check). Returns false only when the project's
+ * declared check FAILS on the rebased tree; every other outcome lands. Skips:
+ * - no-op rebase (`rebasedHead === preMergeHead`): main did not move under us, so the landing
+ *   tree is byte-identical to what this gate invocation already checked (or to a tree nothing
+ *   checks — exempt diff / review disabled). When `verifiedHead` names it, seed the red-main
+ *   baseline with the SHA that becomes main: every role's next fresh tick then hits the cache
+ *   instead of re-running the full suite on an already-verified tree.
+ * - doc-only delta ahead of main (the gate's own exemption test): cannot break the build.
+ * - no declared check at all: nothing to run, exactly like the gate skipping its pre-check.
+ * An environmental skip (timeout / no npm) warns and proceeds — deliberately NOT fail-closed,
+ * so a hung build script cannot wedge every landing behind the merge lock. */
+async function verifyLanding(
+  ctx: MergeContext,
+  wt: string,
+  rebasedHead: string,
+  preMergeHead: string,
+  verifiedHead?: string,
+): Promise<boolean> {
+  if (rebasedHead === preMergeHead) {
+    if (rebasedHead === verifiedHead) noteGreenBaseline(rebasedHead);
+    return true;
+  }
+  const files = await aheadOfMainFiles(wt, ctx.mainBranch);
+  if (isExemptDiff(files, ctx.exemptPaths)) return true;
+  const check = detectBuildCheck(wt);
+  if (!check) return true;
+  const startedAt = Date.now();
+  const outcome = await runBuildCheck(wt, check);
+  logEvent(ctx.root, {
+    loop: ctx.role,
+    type: "build_check",
+    scope: "landing",
+    status: outcome.status,
+    script: check.script,
+    durationMs: Date.now() - startedAt,
+  });
+  if (outcome.status === "failed") return false;
+  if (outcome.status === "skipped") {
+    logEvent(ctx.root, {
+      loop: ctx.role,
+      type: "warning",
+      message:
+        outcome.skipReason === "no-npm"
+          ? "no npm on PATH; skipping landing build check"
+          : `landing build check timed out after ${BUILD_CHECK_TIMEOUT_MS / 1000}s; proceeding to merge`,
+    });
+    return true;
+  }
+  // Green on exactly the tree that becomes main: seed it so the next tick's red-main baseline
+  // check is a cache hit instead of one redundant full-suite run.
+  noteGreenBaseline(rebasedHead);
+  return true;
 }
 
 /** Re-run the conflicting rebase leaving markers in place, let pi resolve them, and continue

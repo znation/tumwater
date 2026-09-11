@@ -197,22 +197,26 @@ export class LoopRunner {
     return { result: "aborted" };
   }
 
-  /** Land the worktree branch on main (see src/merge.ts for the rebase → ff-merge → conflict-
-   * retry flow): delegates with this loop's identity, its own branch as the ref to land, tick
-   * number, and shared pi wiring so a conflict-resolution run folds into this tick's counters
-   * like any other pi run. */
-  private async merge(wt: string, summary: string): Promise<TickResult> {
+  /** Land the worktree branch on main (see src/merge.ts for the rebase → verify → ff-merge →
+   * conflict-retry flow): delegates with this loop's identity, its own branch as the ref to
+   * land, tick number, and shared pi wiring so a conflict-resolution run folds into this tick's
+   * counters like any other pi run. `verifiedHead` is the head the gate's pre-check just ran
+   * green on (GateResult.verifiedHead) — the landing path re-verifies anything else.
+   * Callers that never ran the gate (refusal notes) pass nothing. */
+  private async merge(wt: string, summary: string, verifiedHead?: string): Promise<TickResult> {
     return mergeToMain(
       {
         root: this.root,
         ref: branchName(this.role),
         role: this.role,
         mainBranch: this.mainBranch,
+        exemptPaths: this.config.review.exemptPaths,
         tick: this.state.ticks,
         runPi: (w, prompt, sessionName) => this.runRolePi(w, prompt, sessionName),
       },
       wt,
       summary,
+      verifiedHead,
     );
   }
 
@@ -455,7 +459,7 @@ export class LoopRunner {
           mainBranch: this.mainBranch,
           reviewGate: (w) => this.reviewGate(w, undefined, undefined, "-recovery"),
           foldUsage: (run) => this.foldUsage(run),
-          merge: (w, sum) => this.merge(w, sum),
+          merge: (w, sum, v) => this.merge(w, sum, v),
         },
         wt,
       );
@@ -618,7 +622,7 @@ export class LoopRunner {
       return { result: "review_error", summary: gate.detail };
     }
 
-    const result = await this.merge(wt, summary);
+    const result = await this.merge(wt, summary, gate.verifiedHead);
     if (result !== "changed") s.lastError = `merge failed: ${result}`;
     // The flag's durable record is the Friction trailer line stamped on the commit above;
     // lastSummary and the tick_end event carry it too for dashboards and logs.

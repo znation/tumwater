@@ -390,16 +390,16 @@ test("a red is provisional: reverifyRed re-runs it in the caller's own worktree 
   assert.equal(runsOf(counter), 2);
 });
 
-// --- noteGreenBaseline: the review gate's green pre-check seeds this cache so a merged tree is
-// never re-verified by checkMainBaseline (the gate already ran the suite on exactly this SHA).
+// --- noteGreenBaseline: the landing path (src/merge.ts) seeds this cache with the post-rebase
+// head after a green check, so a merged tree is never re-verified by checkMainBaseline.
 
 test("noteGreenBaseline records a directly-observed green verdict: checkMainBaseline returns it without running the suite", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = await baselineFixture(`echo run >> ${counter}; echo ok`);
-  // The gate's pre-check just verified this exact tree (branch HEAD == main here) and passed:
-  // record that verdict the way reviewAheadOfMain does after a green runBuildCheck.
+  // The landing path just verified this exact tree (branch HEAD == main here) and passed:
+  // record that verdict the way verifyLanding does after a green runBuildCheck.
   noteGreenBaseline(sh(root, "git", "rev-parse", "HEAD"));
   const result = await checkMainBaseline(wt);
   assert.equal(result.baseline?.status, "green");
-  assert.ok(!fs.existsSync(counter), "the suite never ran — the gate's verdict is trusted for this SHA");
+  assert.ok(!fs.existsSync(counter), "the suite never ran — the landing path's verdict is trusted for this SHA");
 });

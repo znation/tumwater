@@ -21,8 +21,10 @@ export interface LeftoverContext {
   reviewGate(wt: string): Promise<GateResult>;
   /** Fold one pi run's usage into the tick's counters. */
   foldUsage(run: PiRunResult): void;
-  /** Land the worktree branch on main with the loop's shared wiring. */
-  merge(wt: string, summary: string): Promise<TickResult>;
+  /** Land the worktree branch on main with the loop's shared wiring; `verifiedHead` is the
+   * head this recovery gate's pre-check just ran green on (undefined when it made no fresh
+   * observation — the landing path re-verifies anything else). */
+  merge(wt: string, summary: string, verifiedHead?: string): Promise<TickResult>;
 }
 
 /** Salvage commits left on the branch by a previous run whose merge never landed. Leftovers
@@ -44,7 +46,7 @@ export async function recoverLeftover(ctx: LeftoverContext, wt: string): Promise
     // At/over the strike cap the gate already discarded the leftover — nothing left to keep.
     return (await aheadOfMain(wt, ctx.mainBranch).catch(() => 0)) > 0;
   }
-  const result = await ctx.merge(wt, `recovered leftover work from ${ctx.role}`);
+  const result = await ctx.merge(wt, `recovered leftover work from ${ctx.role}`, gate.verifiedHead);
   if (result !== "changed") {
     logEvent(ctx.root, {
       loop: ctx.role,

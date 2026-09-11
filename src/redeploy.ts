@@ -334,9 +334,10 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
   }
 }
 
-/** Is main green at the mirror worktree's HEAD? The review gate's pre-check seeds a green
- * verdict for every merged SHA (noteGreenBaseline), so the common case is a cache hit;
- * otherwise the project's declared check runs once in the mirror. No declared check or an
+/** Is main green at the mirror worktree's HEAD? The landing path seeds a green verdict for
+ * every merged code SHA (noteGreenBaseline — its in-lock post-rebase re-check, or the gate's
+ * pre-check when the rebase was a no-op), so the common case is a cache hit; otherwise the
+ * project's declared check runs once in the mirror. No declared check or an
  * environmental skip reads as green — the gates' warn-and-proceed policy.
  *
  * A cached RED, though, is re-verified here (checkMainBaseline's `reverifyRed`) instead of

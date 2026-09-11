@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { ffMainTo, mergeToMain, type MergeContext } from "../src/merge.js";
+import { checkMainBaseline } from "../src/build-check.js";
 import { branchName } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { aheadOfMain } from "../src/git.js";
@@ -41,7 +42,8 @@ interface PiCall {
 
 /** A MergeContext for role "improve" on tick 7 whose runPi records every call and then
  * defers to `resolve` (or returns a plain ok result when none is given). The ref is the role's
- * own branch — exactly what loop.ts passes. */
+ * own branch — exactly what loop.ts passes. exemptPaths carries the config defaults, as
+ * loop.ts does. */
 function makeCtx(
   root: string,
   resolve?: (wt: string, prompt: string, session: string) => Promise<PiRunResult>,
@@ -53,6 +55,7 @@ function makeCtx(
       ref: branchName("improve"),
       role: "improve",
       mainBranch: "main",
+      exemptPaths: ["*.md", "docs/**"],
       tick: 7,
       runPi: async (wt, prompt, session) => {
         calls.push({ wt, prompt, session });
@@ -299,4 +302,152 @@ test("a merged diff that posts new Open questions emits one question_posted per 
     ["Second question (asked by improve)"],
     "exactly one event for the new heading — the pre-existing entry is not re-posted",
   );
+});
+
+// ── In-lock post-rebase verification (BUGS.md 2026-09-08: the gate checks the pre-rebase tree,
+// so the bytes that land on main were never run through a check) ────────────────────────────
+
+/** Give the project a declared build check, laid out exactly like dogfood: root has
+ * package.json + the fake toolchain in node_modules/.bin (the install — node_modules stays
+ * untracked; only the manifest is committed to main, so a branch that carries the same
+ * manifest rebases and ff-merges cleanly), and `wt` gets its own copy of the manifest but no
+ * install — npm's run-script resolves the ancestor's .bin only when the worktree carries a
+ * manifest of its own. Call it BEFORE commitIn(wt) to have the manifest ride in the branch
+ * commit (keeps the worktree clean), or after, to keep it out of the diff. `toolBody` is the
+ * script's body — tests use it to make the check sensitive to WHICH tree runs.
+ * `commitManifestToMain` (default true) commits the manifest to main so a branch carrying the
+ * same blob rebases and ff-merges cleanly; pass false when NOTHING tracks it, because git
+ * refuses any rebase/ff whose target would turn an untracked worktree file into a tracked one. */
+function declareBuildCheck(root: string, wt: string, toolBody = "exit 0", commitManifestToMain = true): void {
+  const binDir = path.join(root, "node_modules", ".bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  const manifest = JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "buildcheck-tool" } });
+  fs.writeFileSync(path.join(root, "package.json"), manifest);
+  if (commitManifestToMain) {
+    sh(root, "git", "add", "package.json"); // targeted — never sweeps in node_modules
+    sh(root, "git", "commit", "-m", "declare build check");
+  }
+  const tool = path.join(binDir, "buildcheck-tool");
+  fs.writeFileSync(tool, `#!/bin/sh\n${toolBody}\n`);
+  fs.chmodSync(tool, 0o755);
+  fs.writeFileSync(path.join(wt, "package.json"), manifest);
+}
+
+/** Advance main (the primary checkout) by one commit touching exactly `file` — a targeted add,
+ * never `-A`, so the untracked build-check fixture at root is not swept into the commit. */
+function advanceMain(root: string, file: string, content: string): void {
+  fs.writeFileSync(path.join(root, file), content);
+  sh(root, "git", "add", file);
+  sh(root, "git", "commit", "-m", `main moves (${file})`);
+}
+
+test("a rebase that rewrote the commits re-runs the declared check on the rebased tree before landing", async () => {
+  const { root, wt } = await setup();
+  // The tool passes only when BOTH files exist — true of the post-rebase tree, false of the
+  // pre-rebase head (which lacks main's file). A check of the wrong tree would block the merge.
+  declareBuildCheck(root, wt, "test -f app.js && test -f mainfile.txt");
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  advanceMain(root, "mainfile.txt", "from main\n"); // main moves while the change is under review
+  const { ctx } = makeCtx(root);
+
+  const result = await mergeToMain(ctx, wt, "branch work");
+
+  assert.equal(result, "changed");
+  const landingChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "landing");
+  assert.equal(landingChecks.length, 1, "the rebased tree was re-verified inside the merge lock");
+  assert.equal(landingChecks[0]!.status, "passed");
+  assert.ok(fs.existsSync(path.join(root, "app.js")), "both changes landed on main");
+  assert.equal(fs.readFileSync(path.join(root, "mainfile.txt"), "utf8"), "from main\n");
+});
+
+test("a red post-rebase check blocks the landing and keeps the commit for recovery", async () => {
+  const { root, wt } = await setup();
+  declareBuildCheck(root, wt, "exit 1"); // fails on every tree — a deterministic red
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  advanceMain(root, "mainfile.txt", "from main\n");
+  const { ctx } = makeCtx(root);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+
+  const result = await mergeToMain(ctx, wt, "branch work");
+
+  assert.equal(result, "merge_blocked");
+  assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing lands on a red tree");
+  assert.ok(
+    readEvents(root).some((e) => e.type === "build_check" && e.scope === "landing" && e.status === "failed"),
+    "the failed re-check is priced in the feed",
+  );
+  assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0);
+  // The commit stays on the branch: next tick's recovery routes it through the gate, whose
+  // pre-check rejects it deterministically and injects the build tail into the author's prompt.
+  assert.equal(await aheadOfMain(wt, "main"), 1);
+  assertWorktreeSettled(wt); // no rebase left in progress
+});
+
+test("a no-op rebase skips the re-check and seeds the baseline for the landed SHA", async () => {
+  const { root, wt } = await setup();
+  declareBuildCheck(root, wt); // would pass if run — but must NOT run (no landing event)
+  sh(wt, "git", "reset", "--hard", "main"); // tick-start reset: author on top of CURRENT main
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  const head = sh(wt, "git", "rev-parse", "HEAD");
+  const { ctx } = makeCtx(root);
+
+  // The gate's pre-check just ran green on exactly this head (GateResult.verifiedHead).
+  const result = await mergeToMain(ctx, wt, "branch work", head);
+
+  assert.equal(result, "changed");
+  assert.ok(
+    !readEvents(root).some((e) => e.type === "build_check"),
+    "no-op rebase: the gate's run is trusted — no second suite run",
+  );
+  // The landed SHA (== main now) must be a baseline cache hit: checkMainBaseline runs nothing.
+  const runs: unknown[] = [];
+  await checkMainBaseline(root, (run) => runs.push(run));
+  assert.equal(runs.length, 0, "the landing path seeded the green verdict for the SHA that became main");
+});
+
+test("a doc-only delta skips the re-check even when main moved under it", async () => {
+  const { root, wt } = await setup();
+  fs.writeFileSync(path.join(wt, "NOTES.md"), "notes\n");
+  commitIn(wt, "doc work");
+  // Declared AFTER the commit and tracked NOWHERE: the manifest stays out of every diff so
+  // the delta is exempt, while detectBuildCheck still finds a check that would block if run —
+  // proving the exemption. (Nothing may track it: git refuses a rebase whose target would
+  // turn an untracked worktree file into a tracked one.)
+  declareBuildCheck(root, wt, "exit 1", false);
+  advanceMain(root, "mainfile.txt", "from main\n");
+  const { ctx } = makeCtx(root);
+
+  // No verifiedHead: the gate would have exempted this diff before running any check.
+  const result = await mergeToMain(ctx, wt, "doc work");
+
+  assert.equal(result, "changed");
+  assert.ok(
+    !readEvents(root).some((e) => e.type === "build_check"),
+    "an md-only delta cannot break the build — same exemption as the gate",
+  );
+});
+
+test("a conflict resolution is re-verified inside the lock before landing", async () => {
+  const { root, wt } = await setup();
+  // The tool passes only when seed.txt holds the RESOLVED content — true of the post-resolution
+  // tree, false of both pre-conflict sides. A check of either original head would block.
+  declareBuildCheck(root, wt, "grep -q resolved seed.txt");
+  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
+  commitIn(wt, "branch edit");
+  advanceMain(root, "seed.txt", "main\n"); // same file → rebase conflict
+  const { ctx } = makeCtx(root, async (w) => {
+    fs.writeFileSync(path.join(w, "seed.txt"), "resolved\n"); // resolve the markers
+    return piResult();
+  });
+
+  const result = await mergeToMain(ctx, wt, "branch edit");
+
+  assert.equal(result, "changed");
+  const landingChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "landing");
+  // The second rebase is a no-op, but its bytes (pi's resolution) were never checked — the
+  // pre-merge head captured before the FIRST rebase is what makes this run.
+  assert.equal(landingChecks.length, 1, "the post-resolution tree was re-verified");
 });

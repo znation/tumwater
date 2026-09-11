@@ -13,7 +13,6 @@ import {
   BUILD_CHECK_TIMEOUT_MS,
   clipReason,
   detectBuildCheck,
-  noteGreenBaseline,
   runBuildCheck,
 } from "./build-check.js";
 import { isExemptDiff } from "./exemptions.js";
@@ -75,6 +74,12 @@ interface ReviewContext {
  * per policy (branch reset / commit left for retry) — never merge. */
 export interface GateResult {
   decision: "approved" | "exempt" | "rejected" | "failed";
+  /** The branch HEAD this gate invocation's pre-check just ran green on — the one tree the
+   * landing path may trust without re-running the check (src/merge.ts seeds the red-main
+   * baseline with it when the rebase is a no-op, and re-verifies anything else). Absent when
+   * no fresh green observation was made: gate disabled, exempt diff, already-approved early
+   * return, or a pre-check that failed or skipped. */
+  verifiedHead?: string;
   /** The reviewer run was killed by harness shutdown mid-review: fail closed, leave the
    * commit, and let the tick report aborted (resume re-reviews via the combined diff). */
   aborted?: boolean;
@@ -146,6 +151,9 @@ export async function reviewAheadOfMain(
   // Named in the reviewer's prompt when the pre-check ran green: the model reviewer then spends
   // its run on what a passing suite cannot show instead of re-running `npm test` itself.
   let verifiedByHarness: string | undefined;
+  // The head the pre-check just verified (see GateResult.verifiedHead) — handed to the landing
+  // path, which owns the baseline seeding for the SHA that actually becomes main.
+  let verifiedHead: string | undefined;
   if (check) {
     const timeoutMs = ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS;
     const checkStartedAt = Date.now();
@@ -185,11 +193,12 @@ export async function reviewAheadOfMain(
             : `build check timed out after ${timeoutMs / 1000}s; proceeding to model review`,
       });
     } else {
-      // Passed: this exact tree just went green under the project's own declared check. Seed
-      // the red-main baseline cache with that verdict (noteGreenBaseline) so that after the
-      // merge lands — main now points at this very SHA — every role's next fresh tick is a
-      // cache hit instead of one redundant full-suite re-run on an already-verified tree.
-      noteGreenBaseline(head);
+      // Passed: this exact tree just went green under the project's own declared check. Hand
+      // the verdict to the landing path via verifiedHead — it seeds the red-main baseline with
+      // the SHA that actually becomes main (the rebased head, which may differ from `head`),
+      // so every role's next fresh tick is a cache hit instead of one redundant full-suite
+      // re-run on an already-verified tree.
+      verifiedHead = head;
       verifiedByHarness = `\`npm run ${check.script}\` (the project's declared check) passed`;
     }
   }
@@ -270,5 +279,5 @@ export async function reviewAheadOfMain(
     reason: verdict.reasons[0],
     durationMs: Date.now() - reviewStartedAt,
   });
-  return { decision: "approved", run: pi };
+  return { decision: "approved", run: pi, verifiedHead };
 }

@@ -241,7 +241,9 @@ interface MainBaselineCheck {
 /** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is
  * cold and one re-check per red SHA happens — cheap and deterministic, mirroring the budget
  * gate's stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
- * noteGreenBaseline seeding a green verdict the review gate observed directly on that tree.
+ * noteGreenBaseline seeding a green verdict for a SHA that just became main (src/merge.ts:
+ * either its in-lock post-rebase re-check passed on exactly that tree, or the rebase was a
+ * no-op so the review gate's pre-check had already run green on it).
  *
  * The two verdicts are not equally trustworthy, and the cache is written accordingly. A GREEN
  * is authoritative wherever it was observed — the suite ran on this immutable tree and passed —
@@ -260,16 +262,20 @@ const baselineCache = new Map<string, MainBaseline>();
  * worktree's run would observe the wrong environment — the one thing it exists to re-test. */
 const baselineInFlight = new Map<string, Promise<MainBaselineCheck>>();
 
-/** Record a green baseline verdict for `sha` WITHOUT running anything: the review gate's own
- * pre-check just ran this project's declared check against exactly this tree (the branch HEAD
- * about to be merged) and it passed. Seeding here means that after the merge lands — main now
- * points at this very SHA — the next fresh tick's checkMainBaseline is a cache hit instead of
- * re-running the full suite on an already-verified tree: for tumwater itself that saves one
- * redundant `npm test` (~1 min) per merged code tick, plus every other role waking on "main
- * moved" stalling behind that in-flight run. Safe because git trees are immutable — a SHA's
- * content cannot change under a cached verdict, the same staleness semantics checkMainBaseline
- * already has for its own entries. Only a directly observed pass may seed this; skips and
- * failures leave the baseline unknown (the caller decides). */
+/** Record a green baseline verdict for `sha` WITHOUT running anything. The sole caller is the
+ * landing path (src/merge.ts's verifyLanding), which calls it with the POST-rebase head — the
+ * exact SHA about to become main — in two cases: its own in-lock re-check just ran this
+ * project's declared check green on that tree, or the rebase was a no-op so the review gate's
+ * pre-check (which runs outside the merge lock) had already run green on exactly this tree.
+ * Seeding here means that once the merge lands — main now points at this very SHA — the next
+ * fresh tick's checkMainBaseline is a cache hit instead of re-running the full suite on an
+ * already-verified tree: for tumwater itself that saves one redundant `npm test` (~1 min) per
+ * merged code tick, plus every other role waking on "main moved" stalling behind that in-flight
+ * run. Never seed a pre-rebase head: whenever main moved under the review, that SHA never
+ * becomes main and the entry would silently miss (BUGS.md 2026-09-08). Safe because git trees
+ * are immutable — a SHA's content cannot change under a cached verdict, the same staleness
+ * semantics checkMainBaseline already has for its own entries. Only a directly observed pass
+ * may seed this; skips and failures leave the baseline unknown (the caller decides). */
 export function noteGreenBaseline(sha: string): void {
   baselineCache.set(sha, { status: "green", sha });
 }
