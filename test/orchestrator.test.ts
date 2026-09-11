@@ -769,6 +769,12 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
       () => readEvents(repo).some((e) => e.type === "max_concurrent_changed" && e.to === 2),
       "the max_concurrent_changed event",
     );
+    // Need-based deferral (landed after this test was written) leaves only bugfix ticking:
+    // clean and dry defer after their nothing-to-do startup ticks, so without a landing there
+    // is no queued work for the grow to admit and no overlap can ever form — phase 2 would
+    // then pass only by racing the startup burst's tail. Land work to wake the deferred roles:
+    // with cap 2 at least two of them tick concurrently, making the overlap deterministic.
+    landWork(repo);
     await waitFor(() => readSamples(runDir).some((n) => n >= 2), "overlapping runs after the grow");
 
     // Phase 3 (cap 1 again): shrinking admits no NEW concurrent run until in-flight work

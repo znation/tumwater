@@ -368,7 +368,22 @@ function seedEntry(root: string, file: string, heading: string): void {
   fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("_None yet._", `${heading}\n`));
 }
 
-test("Ctrl+T cycles events → transcript → project status with real content", async () => {
+/** Local-noon timestamp `daysAgo` days before today — a fixed hour keeps the fixture from
+ * straddling midnight between seeding and collectReport's own clock read. */
+function atNoon(daysAgo: number): number {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() - daysAgo);
+  return d.getTime();
+}
+
+/** Local calendar day key (YYYY-MM-DD) of a timestamp — the report's row dates. */
+function dayKeyOf(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+test("Ctrl+T cycles events → transcript → project status → usage report with real content", async () => {
   const repo = await makeTuiRepo();
   // Seed the clean loop's pi log with one assistant turn so the transcript pane has
   // something real to show (the user message must never render).
@@ -383,6 +398,18 @@ test("Ctrl+T cycles events → transcript → project status with real content",
         type: "message_end",
         message: { role: "assistant", content: [{ type: "text", text: "tidied the imports" }] },
       }),
+    ].join("\n") + "\n",
+  );
+  // Seed the event log with explicit ts values (logEvent always stamps Date.now(), so direct
+  // append is the controllable path): ticks across two roles on two days plus one merge.
+  const eventsFile = path.join(repo, ".tumwater", "log", "events.jsonl");
+  fs.mkdirSync(path.dirname(eventsFile), { recursive: true });
+  fs.writeFileSync(
+    eventsFile,
+    [
+      JSON.stringify({ ts: atNoon(1), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+      JSON.stringify({ ts: atNoon(0), loop: "clean", type: "tick_end", tick: 2, result: "no_change", tokens: 150 }),
+      JSON.stringify({ ts: atNoon(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
     ].join("\n") + "\n",
   );
 
@@ -411,6 +438,15 @@ test("Ctrl+T cycles events → transcript → project status with real content",
     assert.match(frame, /Crashes on empty input/);
     assert.match(frame, /open questions \(0\):/);
     assert.match(frame, /\(none\)/);
+
+    tui.key(undefined, "t", { ctrl: true }); // → usage report
+    frame = tui.lastFrame();
+    assert.match(frame, /usage report — Ctrl\+T to cycle/);
+    // The pane shows the same Markdown `tumwater report` prints for this root and window:
+    // the Totals line plus a day row per seeded event (tokens bucketed by local day).
+    assert.match(frame, /Totals:/);
+    assert.match(frame, new RegExp(`\\| ${dayKeyOf(atNoon(1)).slice(5)} \\| 500`));
+    assert.match(frame, new RegExp(`\\| ${dayKeyOf(atNoon(0)).slice(5)} \\| 150`));
 
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /recent activity/); // wraps back to events
@@ -471,7 +507,8 @@ test("project status browses entries in full with up/down and resets on Ctrl+T",
     assert.match(tui.lastFrame(), /plan: Add a --json flag/);
 
     tui.key(undefined, "t", { ctrl: true }); // leaves the view and clears the selection…
-    assert.match(tui.lastFrame(), /recent activity/); // …wrapping back to events
+    assert.match(tui.lastFrame(), /usage report —/); // …onto the usage-report pane (no events seeded)
+    tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "t", { ctrl: true }); // → project status again
     frame = tui.lastFrame();
