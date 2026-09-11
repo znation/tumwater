@@ -81,14 +81,17 @@ function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root
 
 /** Handle GET /api/report?days=N: the usage report data (collectReport's ReportData) as
  * JSON — the dashboard's report tab renders it. days defaults to 14 and clamps to 1..90 by
- * one exact rule: missing or non-numeric → 14, out-of-range clamped (never error: a URL typo
+ * one exact rule: missing or non-decimal → 14, out-of-range clamped (never error: a URL typo
  * must degrade to the default window, deliberately unlike handleTranscript's
- * parsePositiveInt→400 idiom). Reads files directly, so it works whether or not the fleet is
- * running. */
+ * parsePositiveInt→400 idiom). "Non-decimal" is the shared plain-digit rule
+ * (cli-args.parseNonNegativeInt): hex/scientific/signed/padded spellings are not counts and get
+ * the default instead of a coerced value — raw Number.parseInt would read "1e3" as 1, "0x10"
+ * as 0, and "-5" as -5. Reads files directly, so it works whether or not the fleet is running.
+ */
 function handleReport(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
   const q = new URL(req.url ?? "", "http://localhost").searchParams;
-  const n = Number.parseInt(q.get("days") ?? "", 10);
-  const days = Number.isFinite(n) ? Math.min(90, Math.max(1, n)) : 14;
+  const n = parseNonNegativeInt(q.get("days") ?? "");
+  const days = n === null ? 14 : Math.min(90, Math.max(1, n));
   sendJson(res, 200, collectReport(root, days));
 }
 

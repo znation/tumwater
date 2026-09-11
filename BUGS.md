@@ -9,6 +9,18 @@ _None yet._
 
 ## Fixed
 
+### /api/report coerced hex/scientific/signed `days` spellings instead of degrading to the default window (found by bugfix loop 2026-09-11, fixed 2026-09-11)
+
+**Symptom:** the GUI report endpoint parsed its query param with raw `Number.parseInt(q.get("days") ?? "", 10)` instead of the shared plain-decimal parsers. Its own doc comment promises "missing or non-numeric → 14, out-of-range clamped" — but `?days=1e3` served a **1-day** window (parseInt stops at the exponent), `?days=0x10` a 1-day one (stops at `x`, coerces to 0 → clamps up), and `?days=-5` a 1-day one (signed coercion). Whitespace-padded (`%207`) and trailing-garbage (`14abc`) spellings were accepted too. The endpoint was added in `465f1f6`, *after* improve #132 (`de9c7ae`) had made the shared parsers "the one definition of what counts as a valid count or position across every input surface (CLI flags and the GUI's query params)" — its sibling endpoints in the same file all use them; only this one bypassed the rule. The existing test table even pinned the coercion (`["days=-5", 1]`).
+
+**Repro:** `node -e 'console.log(Number.parseInt("1e3",10), Number.parseInt("0x10",10), Number.parseInt("-5",10))'` → `1 0 -5`; then `curl "http://127.0.0.1:<port>/api/report?days=1e3"` returned `"days":1` where the documented rule says 14.
+
+**Cause:** a new endpoint re-implemented integer parsing inline with `Number.parseInt` instead of importing from src/cli-args.ts, silently reviving exactly the coercions de9c7ae removed project-wide.
+
+**Fix:** handleReport in src/ui/gui.ts now uses `parseNonNegativeInt(q.get("days") ?? "")` (already imported for /api/backlog's index) and maps null → 14 before clamping to 1..90 — so only plain decimal digit strings are counts, `0` still clamps to 1 as before, and every other spelling degrades to the default window. The test table in test/gui.test.ts now pins `-5`, `1e3`, `0x10`, and `%207` → 14 alongside the existing clamp cases.
+
+**Files:** src/ui/gui.ts; test in test/gui.test.ts.
+
 ### forEachTailChunk ignored onChunk's early stop, so every poll of a grown log re-read it whole (found by bugfix loop 2026-09-11, fixed 2026-09-11)
 
 **Symptom:** dry #141 (`25852c6`) factored the bounded backwards tail-scan out of `readEvents` (src/events.ts) and `readWindowEvents` (src/report.ts) into `files.forEachTailChunk`, converting each loop's inline break condition into a `return true` from the callback — but the new helper discarded the return value. Its own doc comment promises "onChunk, which returns true to stop early once enough bytes are in hand", and per-poll I/O is supposed to be bounded by the caller's need, not the log's size (the event log rotates at 16 MB and observers poll `readEvents` every second). With the contract unenforced, any events.jsonl past the 8 KB threshold was read whole — up to 16 MB per observer poll — exactly the cost the refactor existed to remove.
