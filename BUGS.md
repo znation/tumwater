@@ -5,9 +5,31 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### readEvents' torn trailing line occupies one of the limit slots: while events.jsonl ends unterminated, feeds show at most limit−1 events (found by bugfix loop 2026-09-11)
+
+**Symptom:** `readEvents` (src/events.ts) stops its backwards scan at `newlines >= limit + 1`, on the documented assumption that "the partial leading line, if any, is unparseable and skipped" — but a torn trailing line at EOF (no final \n) also becomes a split("\n") element, occupies one slot in `slice(-limit)`, and fails to parse. While events.jsonl ends with an unterminated line, every display surface (GUI feed limit 40, TUI, `tumwater logs`) shows at most limit−1 events even though the log holds more complete lines.
+
+**Repro:** write ≥ limit+2 complete event lines plus a final fragment without \n; readEvents returns limit−1 parseable events instead of limit.
+
+**Cause:** slice(-limit) is applied before the torn tail is excluded. Unlike `readCompleteLines`/`followFile`, which hold back an unterminated trailing line until its newline lands, readEvents parses (and silently drops) it while still counting its slot.
+
+**Note:** since the logEvent fix below (2026-09-11), a torn tail only exists during the microsecond window of an in-flight append or between a crash and the next event — so this is now display-only, self-healing within one poll cycle under normal operation. Fix: drop the last split element before slicing when the concatenated text does not end with "\n" (hold back until complete, the same policy as readCompleteLines).
+
+**Files:** src/events.ts; test in test/events.test.ts.
 
 ## Fixed
+
+### logEvent glued a new event onto an unterminated trailing line: after a crash mid-append, one complete event was lost from every consumer (found by bugfix loop 2026-09-11, fixed 2026-09-11)
+
+**Symptom:** `logEvent` (src/events.ts) appended with raw `fs.appendFileSync`. When the previous append was interrupted mid-write — kill -9 or power loss during the syscall, both documented recovery scenarios in the README — events.jsonl ended without a newline. The next append landed directly after the fragment: `{…torn{"ts":…,"type":"tick_end",…}\n` became one glued line that fails JSON.parse forever, so BOTH events were lost from every consumer until rotation (16 MB): `readEvents` (GUI/TUI feeds, `tumwater logs`) skipped it and `collectReport`'s totals undercounted by one tick/commit per crash. The harness's own policy for torn lines elsewhere is to hold them back until the newline lands (`readCompleteLines`: "a trailing partial line (torn write in flight) is NOT consumed") — but nothing on the writer side ever supplied that newline.
+
+**Repro:** append an event, then `fs.appendFileSync(eventsLogPath(dir), '{"loop":"x","type":"tick_end","tick":1,"resu')` (no trailing \n), then logEvent again: before the fix the file held one glued line and readEvents returned only the first event.
+
+**Cause:** append-only writers assume the previous write completed; torn tails were handled reader-side only — and even there incompletely (see the sibling open bug about readEvents' slot).
+
+**Fix:** logEvent now calls a private `terminateTornTail(file)` after rotation: stat-or-missing, fstat the opened inode, read the last byte, and append one "\n" when it is not already — so the fragment becomes its own (unparseable but harmless) line and the new event starts on a fresh line. No-op for missing/empty/terminated files; never throws. Regression test in test/events.test.ts pins that after an unterminated tail, the next logEvent terminates it in place and readEvents returns both surviving events.
+
+**Files:** src/events.ts; test in test/events.test.ts.
 
 ### /api/report coerced hex/scientific/signed `days` spellings instead of degrading to the default window (found by bugfix loop 2026-09-11, fixed 2026-09-11)
 

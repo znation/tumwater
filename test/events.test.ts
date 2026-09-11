@@ -24,6 +24,22 @@ test("readEvents skips corrupt lines", () => {
   assert.equal(readEvents(dir).length, 2);
 });
 
+// A crash or power loss mid-append leaves the last line without its newline. Without
+// termination the next append glues onto the fragment and BOTH lines fail JSON.parse forever —
+// one complete event lost from every consumer until rotation.
+test("logEvent terminates a torn trailing line before appending", () => {
+  const dir = tmpdir();
+  logEvent(dir, { loop: "x", type: "warning", message: "ok" });
+  const frag = '{"loop":"x","type":"tick_end","tick":1,"resu'; // no trailing \n
+  fs.appendFileSync(eventsLogPath(dir), frag);
+  logEvent(dir, { loop: "x", type: "warning", message: "after" });
+  const lines = fs.readFileSync(eventsLogPath(dir), "utf8").split("\n").filter(Boolean);
+  assert.equal(lines.length, 3); // ok / torn fragment on its own line / after
+  assert.equal(lines[1], frag); // terminated in place — not glued onto the next event
+  const events = readEvents(dir);
+  assert.deepEqual(events.map((e) => e.message), ["ok", "after"]); // the torn fragment is skipped, "after" survives
+});
+
 // Reference implementation: read the whole file (what readEvents used to do).
 function referenceTail(root: string, limit: number) {
   const lines = fs.readFileSync(eventsLogPath(root), "utf8").split("\n").filter(Boolean);

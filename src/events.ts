@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
-import { ensureParentDir, forEachTailChunk, rotateIfLarge } from "./files.js";
+import {
+  ensureParentDir,
+  forEachTailChunk,
+  rotateIfLarge,
+  statOrNull,
+} from "./files.js";
 
 type EventListener = (event: HarnessEvent) => void;
 const listeners = new Set<EventListener>();
@@ -26,15 +31,46 @@ export interface HarnessEventInput {
   [key: string]: unknown;
 }
 
-/** Append one event to the project's events.jsonl and notify in-process subscribers. */
+/** Append one event to the project's events.jsonl and notify in-process subscribers.
+ * A torn trailing line (a crash or power loss mid-append leaves the last line without its
+ * newline) is terminated first: appended raw, the new event would glue onto the fragment and
+ * both lines would fail JSON.parse forever — one complete event lost from every consumer
+ * (report totals, feeds) until rotation. */
 export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
   const full = { ts: Date.now(), ...event };
   const file = eventsLogPath(root);
   ensureParentDir(file);
   rotateIfLarge(file, EVENTS_MAX_BYTES);
+  terminateTornTail(file);
   fs.appendFileSync(file, JSON.stringify(full) + "\n");
   for (const listener of listeners) listener(full);
   return full;
+}
+
+/** Append a newline when `file`'s last byte is not one — terminating a torn trailing line so
+ * the next append starts on its own line instead of gluing onto the fragment. No-op for a
+ * missing, empty, or already-terminated file; never throws (a vanished file just means there
+ * is nothing to terminate). Runs after rotateIfLarge: rotation moves any torn tail into the
+ * unread `.1` archive and starts an empty file that needs no termination. */
+function terminateTornTail(file: string): void {
+  const st = statOrNull(file);
+  if (!st || st.size === 0) return; // No log yet.
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "r");
+  } catch {
+    return; // Vanished between stat and open — nothing to terminate.
+  }
+  try {
+    const size = fs.fstatSync(fd).size; // fstat on the opened inode: correct even if rotation renamed the file mid-check.
+    if (size === 0) return;
+    const buf = Buffer.alloc(1);
+    const got = fs.readSync(fd, buf, 0, 1, size - 1);
+    if (got !== 1 || (buf[0] ?? 0) === 10) return; // Already newline-terminated (or vanished).
+    fs.appendFileSync(file, "\n");
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 /** Read the last `limit` events (best-effort; skips malformed lines).
