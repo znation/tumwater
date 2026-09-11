@@ -40,6 +40,24 @@ test("logEvent terminates a torn trailing line before appending", () => {
   assert.deepEqual(events.map((e) => e.message), ["ok", "after"]); // the torn fragment is skipped, "after" survives
 });
 
+// While events.jsonl ends with an unterminated line — a torn write in flight, or between a
+// crash and the next event — that fragment must not occupy one of the `limit` slots: hold it
+// back until its newline lands, the same policy as readCompleteLines.
+test("readEvents holds back a torn trailing line instead of letting it eat a limit slot", () => {
+  const dir = tmpdir();
+  const limit = 5;
+  for (let i = 0; i < limit + 2; i++) {
+    logEvent(dir, { loop: "x", type: "warning", message: `event ${i}` });
+  }
+  fs.appendFileSync(eventsLogPath(dir), '{"loop":"x","type":"tick_end","resu'); // no trailing \n
+  const events = readEvents(dir, limit);
+  assert.equal(events.length, limit); // not limit-1: the fragment is held back, not counted
+  assert.deepEqual(
+    events.map((e) => e.message),
+    ["event 2", "event 3", "event 4", "event 5", "event 6"],
+  );
+});
+
 // Reference implementation: read the whole file (what readEvents used to do).
 function referenceTail(root: string, limit: number) {
   const lines = fs.readFileSync(eventsLogPath(root), "utf8").split("\n").filter(Boolean);

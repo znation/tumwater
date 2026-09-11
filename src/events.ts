@@ -91,7 +91,11 @@ export function readEvents(root: string, limit = 200): HarnessEvent[] {
   });
   const text = Buffer.concat(parts).toString("utf8");
 
-  const lines = text.split("\n").filter(Boolean);
+  let lines = text.split("\n").filter(Boolean);
+  // A torn trailing line (no final \n — a write in flight, or between a crash and the next
+  // event) would occupy one of the `limit` slots below and fail to parse: hold it back until
+  // its newline lands, the same policy as readCompleteLines.
+  if (lines.length > 0 && !text.endsWith("\n")) lines.pop();
   const tail = lines.slice(-limit);
   const events: HarnessEvent[] = [];
   for (const line of tail) {

@@ -5,19 +5,19 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### readEvents' torn trailing line occupies one of the limit slots: while events.jsonl ends unterminated, feeds show at most limit−1 events (found by bugfix loop 2026-09-11)
+## Fixed
 
-**Symptom:** `readEvents` (src/events.ts) stops its backwards scan at `newlines >= limit + 1`, on the documented assumption that "the partial leading line, if any, is unparseable and skipped" — but a torn trailing line at EOF (no final \n) also becomes a split("\n") element, occupies one slot in `slice(-limit)`, and fails to parse. While events.jsonl ends with an unterminated line, every display surface (GUI feed limit 40, TUI, `tumwater logs`) shows at most limit−1 events even though the log holds more complete lines.
+### readEvents' torn trailing line occupied one of the limit slots: while events.jsonl ended unterminated, feeds showed at most limit−1 events (found by bugfix loop 2026-09-11, fixed 2026-09-11)
 
-**Repro:** write ≥ limit+2 complete event lines plus a final fragment without \n; readEvents returns limit−1 parseable events instead of limit.
+**Symptom:** `readEvents` (src/events.ts) stops its backwards scan at `newlines >= limit + 1`, on the documented assumption that "the partial leading line, if any, is unparseable and skipped" — but a torn trailing line at EOF (no final \n) also becomes a split("\n") element, occupies one slot in `slice(-limit)`, and fails to parse. While events.jsonl ended with an unterminated line, every display surface (GUI feed limit 40, TUI, `tumwater logs`) showed at most limit−1 events even though the log held more complete lines.
 
-**Cause:** slice(-limit) is applied before the torn tail is excluded. Unlike `readCompleteLines`/`followFile`, which hold back an unterminated trailing line until its newline lands, readEvents parses (and silently drops) it while still counting its slot.
+**Repro:** write ≥ limit+2 complete event lines plus a final fragment without \n; readEvents returned limit−1 parseable events instead of limit.
 
-**Note:** since the logEvent fix below (2026-09-11), a torn tail only exists during the microsecond window of an in-flight append or between a crash and the next event — so this is now display-only, self-healing within one poll cycle under normal operation. Fix: drop the last split element before slicing when the concatenated text does not end with "\n" (hold back until complete, the same policy as readCompleteLines).
+**Cause:** slice(-limit) was applied before the torn tail was excluded. Unlike `readCompleteLines`/`followFile`, which hold back an unterminated trailing line until its newline lands, readEvents parsed (and silently dropped) it while still counting its slot.
+
+**Fix:** when the concatenated tail text does not end with "\n", drop the last split element before slicing — holding the fragment back until its newline lands, the same policy as `readCompleteLines`. No-op for terminated or empty logs. Regression test in test/events.test.ts pins that a torn trailing line after limit+2 complete events still yields exactly `limit` events (the correct ones), not limit−1.
 
 **Files:** src/events.ts; test in test/events.test.ts.
-
-## Fixed
 
 ### logEvent glued a new event onto an unterminated trailing line: after a crash mid-append, one complete event was lost from every consumer (found by bugfix loop 2026-09-11, fixed 2026-09-11)
 
