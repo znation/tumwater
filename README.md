@@ -66,7 +66,7 @@ Open items:
   next is landing in a per-role detached worktree (planned 2026-09-08).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`7ce70ae`): build clean, suite 871/871, verified 2026-09-11.
+Current main (`493fd45`): build clean, suite 872/872, verified 2026-09-11.
 <!-- tumwater:status:end -->
 
 ## How it works
