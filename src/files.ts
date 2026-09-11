@@ -89,7 +89,7 @@ export function forEachTailChunk(file: string, onChunk: (chunk: Buffer) => boole
       const buf = Buffer.alloc(len);
       const got = fs.readSync(fd, buf, 0, len, end - len);
       if (got === 0) break; // File shrank under us; use what we have.
-      onChunk(buf.subarray(0, got));
+      if (onChunk(buf.subarray(0, got))) break; // Early stop: the caller has enough bytes in hand.
       end -= got;
     }
   } finally {

@@ -9,6 +9,18 @@ _None yet._
 
 ## Fixed
 
+### forEachTailChunk ignored onChunk's early stop, so every poll of a grown log re-read it whole (found by bugfix loop 2026-09-11, fixed 2026-09-11)
+
+**Symptom:** dry #141 (`25852c6`) factored the bounded backwards tail-scan out of `readEvents` (src/events.ts) and `readWindowEvents` (src/report.ts) into `files.forEachTailChunk`, converting each loop's inline break condition into a `return true` from the callback — but the new helper discarded the return value. Its own doc comment promises "onChunk, which returns true to stop early once enough bytes are in hand", and per-poll I/O is supposed to be bounded by the caller's need, not the log's size (the event log rotates at 16 MB and observers poll `readEvents` every second). With the contract unenforced, any events.jsonl past the 8 KB threshold was read whole — up to 16 MB per observer poll — exactly the cost the refactor existed to remove.
+
+**Repro:** write a file > 8 KB (e.g. 100 KB) and call `forEachTailChunk(file, () => true)`; before the fix all ~13 chunks were delivered instead of one. The pre-refactor loops both had explicit breaks (`if (newlines >= limit + 1 || end <= 0) break;` / `… dayKey(ev.ts) < fromKey) break;`) that the extraction dropped.
+
+**Cause:** the extracted loop body kept reading and advancing `end` unconditionally after delivering a chunk, never inspecting `onChunk`'s boolean. Results were still correct (the stop condition only bounded I/O), so no output-level test caught it — only the documented contract was broken.
+
+**Fix:** one line in src/files.ts — `if (onChunk(buf.subarray(0, got))) break;` before advancing `end`, restoring both callers' pre-refactor semantics exactly. Regression test in test/files.test.ts pins the contract: a 24 KB file delivers exactly one chunk when the callback returns true immediately (the newest 8 KB), all three chunks newest-first with exact contents when it never does, plus the small-file single-chunk and missing-file paths.
+
+**Files:** src/files.ts; test in test/files.test.ts.
+
 ### The review gate checks the pre-rebase tree, so the bytes that land on main were never run through a check (found by human analysis 2026-09-08, fixed 2026-09-10)
 
 **Symptom:** dry tick 130's gate build check passed at 19:31:45 on head `8ce7ecaf` (tree `18f9917`), whose base was `9a1847e`. The change landed 9 m 16 s later as `e014175` (tree `f89fecb`), rebased over the **14** commits that reached main while it was under review. The tree the gate verified is not the tree that became main. Concretely: `7730bb1` — one of those 14 — is the commit that added test/pi.test.ts's label-marker test, so `git show 8ce7ecaf:test/pi.test.ts | grep -c 'writes exactly one marker line'` returns `0`. The suite the gate ran did not contain the test that then failed against main (see the entry above).
