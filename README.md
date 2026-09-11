@@ -37,7 +37,8 @@ locally and keep all project state within the git repo.
 
 <!-- tumwater:status:start -->
 v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
-`status` (`--json`), `doctor` (pre-flight check of git, repo, config, pi, locks, and build — read-only,
+`status` (`--json`), `report` (`--days N`; Markdown usage report, default 14 days),
+`doctor` (pre-flight check of git, repo, config, pi, locks, and build — read-only,
 exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` /
 `prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`, `abort --role <id>`
 (kills one loop's in-flight tick; work discarded, the loop keeps running), and `pause` /
@@ -50,6 +51,8 @@ until main is green again (director, bugfix, and the markdown-only roles keep ti
 land the fix).
 
 Open items:
+- Planned: TUI "usage report" pane in the Ctrl+T cycle — same Markdown as `tumwater report`,
+  fixed 14-day window; core + CLI and the GUI tab already landed (report 3/3, planned 2026-09-10).
 - Planned: sort the GUI loop table by state category (active before inactive), then last tick
   most-recent-first — client-side only, `status --json`/TUI order unchanged (planned 2026-09-09).
 - Planned: make the daily cost budget editable from the TUI/GUI (TUI Ctrl+B; GUI badge
@@ -63,7 +66,7 @@ Open items:
   next is landing in a per-role detached worktree (planned 2026-09-08).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`70c018d`): build clean, suite 853/853, verified 2026-09-10.
+Current main (`7ce70ae`): build clean, suite 871/871, verified 2026-09-11.
 <!-- tumwater:status:end -->
 
 ## How it works
