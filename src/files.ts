@@ -3,7 +3,8 @@ import path from "node:path";
 
 /** Generic file operations under the harness's error policy — missing is no data, cleanup
  * must not throw, directories are created before writes: stat-or-missing for log readers,
- * PATH lookup for the pi-installation preflight, size-based rotation for append-only logs,
+ * PATH lookup for the pi-installation preflight, size-based rotation and bounded backwards
+ * tail scans for append-only logs,
  * recursive directory creation before file writes, quiet deletes after marker consumption,
  * and age-based pruning of pi session files. The JSON state-file convention (tolerant reads
  * of possibly-torn writes, pretty-printed overwrites) lives in json-files.ts; stat-keyed
@@ -48,6 +49,51 @@ export function rotateIfLarge(file: string, maxBytes: number): boolean {
     return true;
   } catch {
     return false; // Missing file or racing rotation; nothing to do.
+  }
+}
+
+/** Files at or under this size are read whole in one go; larger ones get a tail window.
+ * Small on purpose: below it a single read is cheapest, and above it the windowed path reads
+ * only what the caller's stop condition needs — so a poll asking for ~40 events never pays to
+ * re-read log growth (the event log rotates at 16 MB). */
+const TAIL_SCAN_THRESHOLD = 8 * 1024;
+
+/** Chunk size for the backwards tail scan. Small on purpose: a bounded query (last N lines,
+ * events since day X) needs only a few KB, and one oversized chunk per poll would re-read bytes
+ * no caller asked for — with the old 64KB chunk, every poll of a grown log cost as much as
+ * reading it whole. */
+const TAIL_CHUNK_BYTES = 8 * 1024;
+
+/** Read an append-only line log backwards from EOF in TAIL_CHUNK_BYTES chunks, delivering each
+ * chunk (newest first) to `onChunk`, which returns true to stop early once enough bytes are in
+ * hand. Files at or under TAIL_SCAN_THRESHOLD are delivered whole as a single chunk; a missing
+ * or empty file delivers nothing. Per-call I/O is bounded by the caller's stop condition, not
+ * the log's size — callers typically unshift each chunk into an array and decode
+ * Buffer.concat(parts) once the scan ends. */
+export function forEachTailChunk(file: string, onChunk: (chunk: Buffer) => boolean): void {
+  const st = statOrNull(file);
+  if (!st || st.size === 0) return; // No log yet.
+  let size = st.size;
+  if (size <= TAIL_SCAN_THRESHOLD) {
+    onChunk(fs.readFileSync(file));
+    return;
+  }
+  const fd = fs.openSync(file, "r");
+  try {
+    // fstat on the opened inode stays correct even if rotation renames the file mid-read.
+    size = fs.fstatSync(fd).size;
+    let end = size;
+    for (;;) {
+      const len = Math.min(TAIL_CHUNK_BYTES, end);
+      if (len <= 0) break; // Reached the start of the file: everything is in hand.
+      const buf = Buffer.alloc(len);
+      const got = fs.readSync(fd, buf, 0, len, end - len);
+      if (got === 0) break; // File shrank under us; use what we have.
+      onChunk(buf.subarray(0, got));
+      end -= got;
+    }
+  } finally {
+    fs.closeSync(fd);
   }
 }
 

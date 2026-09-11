@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
-import { statOrNull } from "./files.js";
+import { forEachTailChunk } from "./files.js";
 
 /** One day of a usage report: the local calendar day key plus what the fleet did on it.
  * `ticksByRole` counts tick_end events per loop id (role ids — works for custom loops too);
@@ -32,11 +32,6 @@ export interface ReportData {
     bugsFixed: number;
   };
 }
-
-/** Files at or under this size are read whole in one go; larger ones get a tail window. Same
- * constants and rationale as src/events.ts's readEvents (the event log rotates at 16 MB). */
-const TAIL_SCAN_THRESHOLD = 8 * 1024;
-const TAIL_CHUNK_BYTES = 8 * 1024;
 
 /** The local calendar day key ("YYYY-MM-DD") of a timestamp — the report buckets by the day an
  * event happened in LOCAL time, not UTC. */
@@ -80,44 +75,24 @@ function oldestCompleteLine(parts: Buffer[], atFileStart: boolean): string | nul
 }
 
 /** The events whose local day is on or after `fromKey`, read with bounded I/O: the log is
- * append-only and chronological, so we scan backwards in chunks from EOF and stop as soon as
- * the oldest complete line in hand predates the window — cost scales with the window's size,
- * not the log's (the same tail-scan pattern as readEvents in src/events.ts). */
+ * append-only and chronological, so we scan backwards in chunks from EOF (files.forEachTailChunk)
+ * and stop as soon as the oldest complete line in hand predates the window — cost scales with
+ * the window's size, not the log's. */
 function readWindowEvents(root: string, fromKey: string): HarnessEvent[] {
   const file = eventsLogPath(root);
-  const st = statOrNull(file);
-  if (!st || st.size === 0) return []; // No log yet.
-  let size = st.size;
-
-  let text: string;
-  if (size <= TAIL_SCAN_THRESHOLD) {
-    text = fs.readFileSync(file, "utf8");
-  } else {
-    const fd = fs.openSync(file, "r");
-    try {
-      // fstat on the opened inode stays correct even if rotation renames the file mid-read.
-      size = fs.fstatSync(fd).size;
-      let end = size;
-      const parts: Buffer[] = [];
-      for (;;) {
-        const len = Math.min(TAIL_CHUNK_BYTES, end);
-        const buf = Buffer.alloc(len);
-        const got = fs.readSync(fd, buf, 0, len, end - len);
-        if (got === 0) break; // File shrank under us; use what we have.
-        parts.unshift(buf.subarray(0, got));
-        end -= got;
-        if (end <= 0) break; // Reached the start of the file: everything is in hand.
-        const oldest = oldestCompleteLine(parts, false);
-        if (oldest !== null) {
-          const ev = parseEventLine(oldest);
-          if (ev && typeof ev.ts === "number" && dayKey(ev.ts) < fromKey) break; // Window passed.
-        }
-      }
-      text = Buffer.concat(parts).toString("utf8");
-    } finally {
-      fs.closeSync(fd);
+  const parts: Buffer[] = [];
+  forEachTailChunk(file, (chunk) => {
+    parts.unshift(chunk);
+    // At the file start the oldest chunk's first line is complete, not torn — passing false may
+    // forgo an early stop on that last chunk, which costs nothing: the scan ends with the file.
+    const oldest = oldestCompleteLine(parts, false);
+    if (oldest !== null) {
+      const ev = parseEventLine(oldest);
+      if (ev && typeof ev.ts === "number" && dayKey(ev.ts) < fromKey) return true; // Window passed.
     }
-  }
+    return false;
+  });
+  const text = Buffer.concat(parts).toString("utf8");
 
   const events: HarnessEvent[] = [];
   for (const line of text.split("\n")) {
