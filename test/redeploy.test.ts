@@ -317,6 +317,50 @@ test("a swap failure is reported and blocks like a compile failure", async () =>
   assert.equal(r.status().restartBlocked, "swapping the new build into place failed");
 });
 
+// The tracked background promises are documented to never reject (mainIsGreen and compileStaged
+// both catch internally), but a regression that lets one through must strand the fleet on stale
+// code with a visible block — not crash the poll or hold forever. These drive track()'s rejection
+// handler, which the resolved-failure tests above cannot reach.
+
+test("a thrown green check blocks like a red one: no hang, one warning", async () => {
+  const f = fakeDeps({ mainGreen: () => Promise.reject(new Error("baseline check blew up")) });
+  const { r, events } = harness(f.deps);
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
+  await settle(); // the rejection lands in the tracked slot
+  assert.equal(
+    await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true),
+    "none",
+    "a thrown check ends the hold like a red verdict",
+  );
+  assert.deepEqual(events.map((e) => e.type), ["build_stale", "warning"]);
+  assert.match(String(events.at(-1)!.message), /is red — holding the restart until main is green/);
+  assert.equal(r.status().restartBlocked, "main bbbbbbbb is red");
+});
+
+test("a thrown compile blocks with its error text, not a bare failure", async () => {
+  const f = fakeDeps({
+    mainGreen: async () => true,
+    compile: () => Promise.reject(new Error("tsc exploded")),
+  });
+  const { r, events } = harness(f.deps);
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
+  await settle(); // green resolves; the next poll starts the compile
+  assert.equal(
+    await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true),
+    "hold",
+    "compile runs in the background",
+  );
+  await settle(); // the rejection lands in the tracked slot
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
+  assert.deepEqual(events.map((e) => e.type), ["build_stale", "restart_pending", "warning"]);
+  // compiled.error carries the rejection's message — the "compile threw" fallback would hide it.
+  assert.match(
+    String(events.at(-1)!.message),
+    /rebuild of bbbbbbbb failed — staying on build aaaaaaaa: tsc exploded/,
+  );
+  assert.equal(r.status().restartBlocked, "rebuild of bbbbbbbb failed");
+});
+
 test("main moving during a pending restart supersedes it: the new head is evaluated afresh", async () => {
   const f = fakeDeps();
   const { r } = harness(f.deps);
@@ -436,6 +480,22 @@ test("swapDist replaces dist with the staged build, restores on failure, and cle
   assert.deepEqual(fs.readdirSync(stagingRootDir(root)), [], "prev and superseded stagings are gone");
   assert.throws(() => swapDist(root, dist, HEAD_C), /no staged build for cccccccc/);
   assert.deepEqual(fs.readdirSync(dist), ["new.js"], "a failed swap leaves dist untouched");
+});
+
+test("swapDist throws when the staged build cannot land and leaves nothing half-swapped", () => {
+  // The catch's restore path needs a live dist to put back; with none, the failure must still
+  // propagate (the Redeployer blocks on it) without touching the staged build. A regular file in
+  // the dist path's ancestry makes the rename fail ENOTDIR.
+  const root = tmpdir();
+  fs.mkdirSync(stagingDir(root, HEAD_B), { recursive: true });
+  fs.writeFileSync(path.join(stagingDir(root, HEAD_B), "new.js"), "new");
+  const blocker = path.join(root, "blocker");
+  fs.writeFileSync(blocker, "a file where a directory must be");
+  assert.throws(() => swapDist(root, path.join(blocker, "sub", "dist"), HEAD_B), /ENOTDIR|not a directory/);
+  assert.ok(
+    fs.existsSync(path.join(stagingDir(root, HEAD_B), "new.js")),
+    "the staged build is untouched when nothing was moved aside",
+  );
 });
 
 test("compileStaged compiles the mirror worktree with the project's tsc and stamps the result", async () => {
