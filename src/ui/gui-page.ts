@@ -30,12 +30,23 @@ export const GUI_PAGE = `<!doctype html>
   button { background:#20303e; color:#d6dde4; border:1px solid #2a3642; border-radius:6px;
            padding:8px 16px; font:inherit; cursor:pointer; }
   #flash { color:#7fd88f; margin-left:8px; }
+  #viewnav { margin:0.5rem 0; }
+  .stats { display:flex; gap:12px; flex-wrap:wrap; margin:1rem 0; }
+  .stat { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:8px 14px; min-width:9em; }
+  .stat b { display:block; font-size:15px; margin-top:2px; }
+  .chartblock { margin:1rem 0; }
+  .charttitle { color:#7a8794; font-weight:500; margin-bottom:6px; }
+  #report svg text { fill:#7a8794; font-size:10px; }
+  .legend { display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; color:#9fb0bf; font-size:12px; }
+  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
 </style>
 <h1>tumwater <span class="muted" id="header">connecting…</span></h1>
+<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet</a><span class="muted"> | </span><a href="#" id="tab-report">report</a></nav>
 <form id="promptform">
   <input id="prompt" placeholder="type a prompt for the project — it runs immediately via the director loop" autocomplete="off">
   <button>send</button><span id="flash"></span>
 </form>
+<div id="fleet-view">
 <table>
   <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>today</th><th>last tick</th><th>last result</th></tr></thead>
   <tbody id="loops"></tbody>
@@ -43,6 +54,8 @@ export const GUI_PAGE = `<!doctype html>
 <div id="transcript" hidden></div>
 <div id="backlog"></div>
 <div id="feed"></div>
+</div>
+<div id="report" hidden></div>
 <script>
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   const fmtTokens = (n) => (n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
@@ -56,6 +69,131 @@ export const GUI_PAGE = `<!doctype html>
     if (Date.now() - ts > 86400000) s = p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + s;
     return s;
   };
+  // ---- report tab: the usage dashboard ------------------------------------------
+  // Top-level views inside one page: "fleet" (today's dashboard, default) and "report"
+  // (usage charts). The director prompt form sits outside both — an operator control,
+  // visible on every tab. The 1s status poll keeps running on both tabs; the report data
+  // itself is fetched only on tab activation (usage moves at tick granularity, not per second).
+  let activeView = "fleet";
+  function switchView(v) {
+    if (v !== "fleet" && v !== "report") return;
+    activeView = v;
+    document.getElementById("fleet-view").hidden = v !== "fleet";
+    document.getElementById("report").hidden = v !== "report";
+    document.getElementById("tab-fleet").classList.toggle("active", v === "fleet");
+    document.getElementById("tab-report").classList.toggle("active", v === "report");
+    if (v === "report") fetchReport(); // on every activation — re-clicking refetches
+  }
+
+  // report-chart:start
+  const REPORT_PALETTE = ["#7ec8ff", "#7fd88f", "#ffb454", "#c792ea", "#ff9a8a", "#56b6c2", "#e0d37a", "#d19bf6"];
+
+  // Window totals per role, in the same order renderReportMarkdown's "Ticks by role" line
+  // uses — count desc, then name asc — so legend and stack order match the Markdown report.
+  function reportRoleOrder(data) {
+    const byRole = {};
+    for (const d of data.series)
+      for (const [role, n] of Object.entries(d.ticksByRole)) byRole[role] = (byRole[role] || 0) + n;
+    return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+
+  // X-axis labels: MM-DD like the Markdown table's day column, thinned to at most seven —
+  // label index i when i % ceil(n/7) === 0 (n=14 → every other day; n≤7 → all days).
+  function reportDayLabels(series) {
+    const step = Math.ceil(series.length / 7);
+    return series.map((d, i) => (i % step === 0 ? d.date.slice(5) : ""));
+  }
+
+  // Shared bar geometry: fixed plot box, one slot per day so zero days keep their space and
+  // all three charts' x-axes line up. segmentsOf(day) → [{ value, color, title }] stacked
+  // bottom-up; each positive segment becomes a <rect> whose <title> carries the exact raw
+  // value (zero values leave an empty slot — no rect to hover).
+  const REPORT_W = 560;
+  const REPORT_H = 170;
+  const REPORT_PAD_T = 8;
+  const REPORT_PAD_B = 24;
+
+  function reportSvg(series, segmentsOf) {
+    const n = series.length;
+    const plotH = REPORT_H - REPORT_PAD_T - REPORT_PAD_B;
+    const slotW = REPORT_W / n;
+    const barW = Math.max(4, slotW * 0.6);
+    const max = Math.max(0, ...series.map((d) => segmentsOf(d).reduce((a, s) => a + s.value, 0)));
+    const labels = reportDayLabels(series);
+    let out = "<svg viewBox='0 0 " + REPORT_W + " " + REPORT_H + "' width='" + REPORT_W + "' height='" + REPORT_H + "' role='img'>";
+    out += "<line x1='0' y1='" + (REPORT_PAD_T + plotH) + "' x2='" + REPORT_W + "' y2='" + (REPORT_PAD_T + plotH) + "' stroke='#1e2831'/>";
+    series.forEach((d, i) => {
+      const x = i * slotW + (slotW - barW) / 2;
+      let y = REPORT_PAD_T + plotH; // stack from the baseline up
+      for (const s of segmentsOf(d)) {
+        if (s.value <= 0 || max === 0) continue;
+        const h = Math.max(1, (s.value / max) * plotH);
+        y -= h;
+        out += "<rect x='" + x.toFixed(2) + "' y='" + y.toFixed(2) + "' width='" + barW.toFixed(2) + "' height='" + h.toFixed(2) + "' fill='" + s.color + "'><title>" + esc(s.title) + "</title></rect>";
+      }
+      if (labels[i]) out += "<text x='" + (i * slotW + slotW / 2).toFixed(2) + "' y='" + (REPORT_H - 8) + "' text-anchor='middle'>" + labels[i] + "</text>";
+    });
+    return out + "</svg>";
+  }
+
+  function chartTokens(data) {
+    return reportSvg(data.series, (d) => [{ value: d.tokensOut, color: "#7ec8ff", title: d.date + ": " + d.tokensOut }]);
+  }
+
+  function chartCommits(data) {
+    return reportSvg(data.series, (d) => [{ value: d.commits, color: "#7fd88f", title: d.date + ": " + d.commits }]);
+  }
+
+  // Stacked bars, one color per role from the fixed palette — colors wrap modulo so a fleet
+  // with more roles than palette entries still renders. The first (highest-count) role sits
+  // at the bottom; the legend under the chart lists roles in that same stack order. Role
+  // names are dynamic strings (custom loops): escaped like every other dynamic value.
+  function chartTicksByRole(data) {
+    const roles = reportRoleOrder(data);
+    const colorOf = (i) => REPORT_PALETTE[i % REPORT_PALETTE.length];
+    const svg = reportSvg(
+      data.series,
+      (d) => roles.map(([role], i) => ({ value: d.ticksByRole[role] || 0, color: colorOf(i), title: d.date + " " + role + ": " + (d.ticksByRole[role] || 0) })),
+    );
+    const legend = roles.length
+      ? "<div class='legend'>" + roles.map(([role], i) => "<span><span class='swatch' style='background:" + colorOf(i) + "'></span>" + esc(role) + "</span>").join("") + "</div>"
+      : "";
+    return svg + legend;
+  }
+  // report-chart:end
+
+  // The six stat blocks above the charts, from data.totals — tokens through fmtTokens and
+  // cost as $ + toFixed(2), the same two rules the Markdown Totals line uses.
+  function reportSummary(data) {
+    const t = data.totals;
+    const block = (label, value) => "<div class='stat'><span class='muted'>" + esc(label) + "</span><b>" + value + "</b></div>";
+    return [
+      block("output tokens", fmtTokens(t.tokensOut)),
+      block("ticks", String(t.ticks)),
+      block("commits", String(t.commits)),
+      block("cost", "$" + t.costUsd.toFixed(2)),
+      block("features done", String(t.featuresDone)),
+      block("bugs fixed", String(t.bugsFixed)),
+    ].join("");
+  }
+
+  // Fetch the report on tab activation and render summary + three charts into #report.
+  async function fetchReport() {
+    const panel = document.getElementById("report");
+    try {
+      const r = await fetch("/api/report?days=14");
+      if (!r.ok) throw new Error("bad response");
+      const d = await r.json();
+      const block = (title, svg) => "<div class='chartblock'><div class='charttitle'>" + title + "</div>" + svg + "</div>";
+      panel.innerHTML = "<div class='stats'>" + reportSummary(d) + "</div>" +
+        block("Output tokens per day", chartTokens(d)) +
+        block("Ticks per day by role", chartTicksByRole(d)) +
+        block("Commits per day", chartCommits(d));
+    } catch {
+      panel.innerHTML = "<span class='muted'>report unavailable</span>";
+    }
+  }
+
   let transcriptRole = null; // loop whose transcript panel is open (null = closed)
   let backlogKey = null; // "file:index" of the open backlog entry (null = closed) — mutually
                          // exclusive with transcriptRole: both render into #transcript, so only
@@ -154,6 +292,12 @@ export const GUI_PAGE = `<!doctype html>
     const key = a.dataset.file + ":" + a.dataset.index;
     backlogKey = backlogKey === key ? null : key; // toggle / switch, same rule as loop links
     refresh();
+  });
+  document.getElementById("viewnav").addEventListener("click", (ev) => {
+    const a = ev.target.closest("a");
+    if (!a || !a.id.startsWith("tab-")) return;
+    ev.preventDefault();
+    switchView(a.id.slice(4)); // "fleet" | "report" — re-clicking the active tab refetches
   });
   document.getElementById("promptform").addEventListener("submit", async (ev) => {
     ev.preventDefault();

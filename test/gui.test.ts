@@ -5,11 +5,12 @@ import type os from "node:os";
 import net from "node:net";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
+import { collectReport, type ReportData, type ReportDay } from "../src/report.js";
 import { lanAddresses, startGui } from "../src/ui/gui.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
-import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
+import { eventsLogPath, orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState, todayStamp } from "../src/state.js";
 import { assistantLine, makeRepo } from "./util.js";
 
@@ -989,4 +990,205 @@ test("gui survives a client that disconnects mid-upload and keeps serving", asyn
   } finally {
     server.close();
   }
+});
+
+// The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
+// as JSON with days clamped rather than errored, the page carries the tab nav + #report
+// container, and its pure SVG chart builders are extracted from a marked region and tested.
+
+/** Local calendar-day timestamp `daysAgo` days back at noon — same local-date-part rule as
+ * test/report.test.ts's fixtures (the report buckets by LOCAL day). */
+function atNoon(daysAgo: number): number {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() - daysAgo);
+  return d.getTime();
+}
+
+function localDayKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+test("gui /api/report serves collectReport's JSON and clamps days instead of erroring", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "report api test");
+  // Seed events with explicit ts values across two roles (the role field is `loop`, as
+  // collectReport reads it — a line using `role` would bucket under "?") plus one merged;
+  // features/bugs come from dated headings in PLANS.md/BUGS.md, not from events.
+  const evFile = eventsLogPath(repo);
+  fs.mkdirSync(path.dirname(evFile), { recursive: true });
+  fs.writeFileSync(
+    evFile,
+    [
+      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
+      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "tick_end", tick: 2, result: "no_change" }),
+      JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }),
+      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "tick_end", tick: 3, result: "no_change", tokens: 250, costUsd: 1.5 }),
+    ].join("\n") + "\n",
+  );
+  const today = localDayKey(Date.now());
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### A done plan (planned ${today}, done ${today})\n`,
+  );
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### A fixed bug (found by qa loop ${today}, fixed ${today})\n`,
+  );
+
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  try {
+    // Default window: the JSON equals collectReport's output for the same root/days.
+    const res = await fetch(base + "/api/report");
+    assert.equal(res.status, 200);
+    const d = (await res.json()) as ReturnType<typeof collectReport>;
+    assert.deepEqual(d, collectReport(repo, 14), "the endpoint serves collectReport's ReportData");
+    assert.equal(d.totals.featuresDone, 1, "a dated Done heading counts as a feature done");
+    assert.equal(d.totals.bugsFixed, 1, "a dated Fixed heading counts as a bug fixed");
+
+    // days: missing or non-numeric → default 14; out-of-range clamped to 1..90 — never an error.
+    const cases: Array<[string, number]> = [
+      ["days=14", 14],
+      ["days=", 14],
+      ["days=abc", 14],
+      ["days=0", 1],
+      ["days=-5", 1],
+      ["days=91", 90],
+      ["days=900", 90],
+    ];
+    for (const [q, expected] of cases) {
+      const r = await fetch(base + "/api/report?" + q);
+      assert.equal(r.status, 200, `${q} → 200 (a URL typo degrades to a window, not an error)`);
+      const dd = (await r.json()) as { days: number; series: unknown[] };
+      assert.equal(dd.days, expected, `${q} → ${expected}`);
+      assert.equal(dd.series.length, expected, `series length follows the clamped window`);
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("the dashboard page carries the report tab nav and its view containers", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+
+  // Nav row under the h1 with both tabs; fleet is active by default.
+  assert.match(
+    GUI_PAGE,
+    /<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet<\/a>[\s\S]*?<a href="#" id="tab-report">report<\/a><\/nav>/,
+  );
+
+  // The fleet view wraps exactly the four fleet elements; #report is a hidden sibling shown
+  // when active (the page's existing hidden-attribute pattern).
+  assert.match(
+    GUI_PAGE,
+    /<div id="fleet-view">\n<table>[\s\S]*?<\/table>\n<div id="transcript" hidden><\/div>\n<div id="backlog"><\/div>\n<div id="feed"><\/div>\n<\/div>/,
+  );
+  assert.match(GUI_PAGE, /<\/div>\n<div id="report" hidden><\/div>\n<script>/);
+
+  // The director prompt form sits outside the fleet view — visible on both tabs.
+  const formIdx = GUI_PAGE.indexOf('<form id="promptform">');
+  const viewIdx = GUI_PAGE.indexOf('<div id="fleet-view">');
+  assert.ok(formIdx !== -1 && viewIdx !== -1 && formIdx < viewIdx, "the prompt form stays outside the fleet view");
+
+  // The report is fetched on tab activation only — no per-second poll of it while open.
+  assert.match(GUI_PAGE, /fetch\("\/api\/report\?days=14"\)/);
+  assert.match(GUI_PAGE, /if \(v === "report"\) fetchReport\(\)/);
+  assert.equal(GUI_PAGE.match(/setInterval\(/g)?.length ?? 0, 1, "the only poll is the existing 1s status refresh");
+});
+
+test("the report tab's SVG chart builders render bars, stacks, and thinned labels", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+
+  // Extract the marked region — same regex-extract + new Function pattern as the esc test.
+  // The page's own esc is injected so role names escape exactly like every other dynamic value.
+  const m = GUI_PAGE.match(/\/\/ report-chart:start\n([\s\S]*?)\n  \/\/ report-chart:end/);
+  assert.ok(m, "report-chart region found in the page");
+  type ChartBuilders = {
+    chartTokens(d: ReportData): string;
+    chartTicksByRole(d: ReportData): string;
+    chartCommits(d: ReportData): string;
+  };
+  const escImpl = (s: string) => String(s).replace(/[&<>]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c] as string));
+  const builders = new Function("esc", `${m[1]}\nreturn { chartTokens, chartTicksByRole, chartCommits };`) as unknown as (
+    esc: (s: string) => string,
+  ) => ChartBuilders;
+  const { chartTokens, chartTicksByRole, chartCommits } = builders(escImpl);
+
+  // Fixture: 14 days — tokens rising to a max on the last day, two roles with distinct window
+  // totals (feature > bugfix), one zero day in the middle.
+  const mkDay = (date: string, tokensOut: number, ticksByRole: Record<string, number>, commits: number): ReportDay => ({
+    date,
+    tokensOut,
+    ticksByRole,
+    commits,
+    costUsd: 0.5,
+    featuresDone: 0,
+    bugsFixed: 0,
+  });
+  const series: ReportDay[] = [];
+  for (let i = 0; i < 14; i++) {
+    const date = `2026-09-${String(i + 1).padStart(2, "0")}`;
+    if (i === 7) series.push({ ...mkDay(date, 0, {}, 0), costUsd: 0 }); // the zero day
+    else series.push(mkDay(date, (i + 1) * 1000, i % 2 === 0 ? { feature: 3, bugfix: 1 } : { feature: 2 }, i % 3 === 0 ? 2 : 1));
+  }
+  const data: ReportData = {
+    days: 14,
+    from: series[0]!.date,
+    to: series[13]!.date,
+    series,
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+  };
+
+  const parseRects = (svg: string) =>
+    [...svg.matchAll(/<rect x='([\d.]+)' y='([\d.]+)' width='([\d.]+)' height='([\d.]+)' fill='([^']*)'><title>([^<]*)<\/title><\/rect>/g)].map(
+      (r) => ({ x: +r[1]!, y: +r[2]!, w: +r[3]!, h: +r[4]!, fill: r[5]!, title: r[6]! }),
+    );
+
+  // "Output tokens per day": one bar per non-zero day; the window-max day's bar is the tallest.
+  const tokenRects = parseRects(chartTokens(data));
+  assert.equal(tokenRects.length, 13, "one bar per non-zero day (the zero day leaves an empty slot)");
+  const maxBar = tokenRects.find((r) => r.title === "2026-09-14: 14000");
+  assert.ok(maxBar, "tooltips carry the exact raw value");
+  for (const r of tokenRects) {
+    assert.ok(r.h <= maxBar!.h + 1e-9, "no bar exceeds the window-max bar");
+    assert.ok(Math.abs(r.y + r.h - (maxBar!.y + maxBar!.h)) < 1e-9, "every bar sits on the same baseline");
+  }
+
+  // X-axis labels: MM-DD like the Markdown table, thinned to at most seven.
+  const labels = [...chartTokens(data).matchAll(/<text [^>]*>([^<]*)<\/text>/g)].map((t) => t[1]!);
+  assert.ok(labels.length <= 7, "labels thinned to at most seven");
+  assert.equal(labels[0], "09-01", "the first day is always labeled (MM-DD)");
+
+  // "Commits per day": one bar per non-zero day with the exact raw value in its tooltip.
+  const commitRects = parseRects(chartCommits(data));
+  assert.equal(commitRects.length, 13);
+  assert.ok(commitRects.some((r) => r.title === "2026-09-04: 2"), "commit tooltips carry the exact raw value");
+
+  // "Ticks per day by role": one segment per (day, role) with ticks; the highest-count role
+  // sits at the bottom of each stack and first in the legend, colored from the fixed palette.
+  const stacked = parseRects(chartTicksByRole(data));
+  assert.equal(stacked.length, 7 * 2 + 6 * 1, "one segment per (day, role) with ticks");
+  const day0 = stacked.filter((r) => r.title.startsWith("2026-09-01 "));
+  assert.equal(day0.length, 2);
+  const feat = day0.find((r) => r.title.includes("feature"))!;
+  const bug = day0.find((r) => r.title.includes("bugfix"))!;
+  assert.ok(feat.y > bug.y, "the highest-count role (feature) sits at the bottom of the stack");
+  assert.ok(Math.abs(feat.h - 3 * bug.h) < 0.05, "segment heights are proportional to their values");
+  const legend = chartTicksByRole(data);
+  assert.match(legend, /style='background:#7ec8ff'><\/span>feature<\/span>/, "first role gets palette[0]");
+  assert.match(legend, /style='background:#7fd88f'><\/span>bugfix<\/span>/, "second role gets palette[1]");
+
+  // Role names are dynamic strings (custom loops): escaped in legend and tooltips like every
+  // other dynamic value — raw HTML in a role name must not render.
+  const hostile: ReportData = {
+    ...data,
+    series: [mkDay("2026-09-01", 0, { "<b>x</b>": 2 }, 0)],
+  };
+  const hostileSvg = chartTicksByRole(hostile);
+  assert.ok(!hostileSvg.includes("<b>x</b>"), "raw HTML in a role name is not rendered");
+  assert.match(hostileSvg, /&lt;b&gt;x&lt;\/b&gt;/, "role names are escaped in legend and tooltips");
 });

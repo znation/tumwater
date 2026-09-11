@@ -10,6 +10,7 @@ import { parseNonNegativeInt, parsePositiveInt } from "../cli-args.js";
 import { submitPrompt } from "../inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
+import { collectReport } from "../report.js";
 import { statusPayload } from "./status-payload.js";
 import { readTranscript } from "./transcript.js";
 import { errorMessage } from "../text.js";
@@ -76,6 +77,19 @@ function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root
     return;
   }
   sendJson(res, 200, { title: entry.title, body: entry.body });
+}
+
+/** Handle GET /api/report?days=N: the usage report data (collectReport's ReportData) as
+ * JSON — the dashboard's report tab renders it. days defaults to 14 and clamps to 1..90 by
+ * one exact rule: missing or non-numeric → 14, out-of-range clamped (never error: a URL typo
+ * must degrade to the default window, deliberately unlike handleTranscript's
+ * parsePositiveInt→400 idiom). Reads files directly, so it works whether or not the fleet is
+ * running. */
+function handleReport(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+  const q = new URL(req.url ?? "", "http://localhost").searchParams;
+  const n = Number.parseInt(q.get("days") ?? "", 10);
+  const days = Number.isFinite(n) ? Math.min(90, Math.max(1, n)) : 14;
+  sendJson(res, 200, collectReport(root, days));
 }
 
 /** Max request body for /api/prompt, in wire bytes. Over it the promise rejects
@@ -180,6 +194,8 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
         res.end(GUI_PAGE);
       } else if (req.method === "GET" && pathname === "/api/status") {
         sendJson(res, 200, statusPayload(root));
+      } else if (req.method === "GET" && pathname === "/api/report") {
+        handleReport(req, res, root);
       } else if (req.method === "GET" && pathname === "/api/transcript") {
         handleTranscript(req, res, root);
       } else if (req.method === "GET" && pathname === "/api/backlog") {
