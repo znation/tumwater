@@ -24,14 +24,14 @@ import { errorMessage } from "./text.js";
 
 /** One line of the doctor report: a check's verdict plus what it found. "ok" and "warn" never
  * affect the exit code; only "fail" does (the CLI sets process.exitCode = 1 on any fail). */
-export interface CheckOutcome {
+interface CheckOutcome {
   level: "ok" | "warn" | "fail";
   detail: string;
 }
 
 /** The full pre-flight report: a header carrying harness state, one entry per check in fixed
  * order, and the verdict line. */
-export interface DoctorReport {
+interface DoctorReport {
   header: string;
   checks: Array<{ name: string } & CheckOutcome>;
   verdict: string;

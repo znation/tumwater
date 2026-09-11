@@ -54,7 +54,7 @@ interface RunOptions {
 
 /** How runOrchestrator ended: `restart` means dist/ now holds a newer build and the caller should
  * exit RESTART_EXIT_CODE so the supervisor respawns onto it; otherwise the stop signal fired. */
-export interface OrchestratorExit {
+interface OrchestratorExit {
   restart: boolean;
 }
 

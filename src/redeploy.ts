@@ -63,11 +63,11 @@ const COMPILE_TIMEOUT_MS = 5 * 60_000;
 
 /** What the orchestrator should do this poll: `hold` starts no new ticks (a restart is pending),
  * `restart` means dist/ now holds the new build — stop and exit RESTART_EXIT_CODE. */
-export type RedeployAction = "none" | "hold" | "restart";
+type RedeployAction = "none" | "hold" | "restart";
 
 /** How many ticks are running, split by who requested them: role ticks get one drain window,
  * a director tick (an explicit human prompt) holds the restart open without any cap. */
-export interface InFlightCounts {
+interface InFlightCounts {
   roleInFlight: number;
   directorInFlight: number;
 }

@@ -212,7 +212,7 @@ work yourself:
 
 /** Why a tick is being resumed: a harness restart interrupted it, or it ran out of context (the
  * harness resumes the compacted session — see LoopState.cutOffStreak). */
-export type ResumeCause = "restart" | "cut-off";
+type ResumeCause = "restart" | "cut-off";
 
 /** The follow-up prompt for resuming an interrupted tick. It is sent into the SAME pi session as
  * the interrupted run — which already carries the full original prompt, all rules, and the work

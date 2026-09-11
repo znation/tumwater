@@ -22,7 +22,7 @@ function rmLockDir(dir: string): void {
  * get it. "absent": no dir — nothing to wait for or break. "live": held by a process we must
  * not steal (a live pid, or a fresh no-pid dir whose creator may still be between mkdir and
  * the pid write). "stale": safe to break. */
-export type LockState = "absent" | "live" | "stale";
+type LockState = "absent" | "live" | "stale";
 
 /** Read the lock's pid file: the holder's pid, or null when it is missing, unreadable, or
  * not a finite integer. The one reader of withLock's pid-file convention (the `pid` filename

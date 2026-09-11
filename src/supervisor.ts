@@ -24,7 +24,7 @@ export interface ChildExit {
   signal: NodeJS.Signals | null;
 }
 
-export interface SuperviseOptions {
+interface SuperviseOptions {
   /** Start one child generation; resolves when it exits. `signal` aborts when the supervisor
    * was asked to stop (SIGTERM) — the implementation should terminate the child then. */
   spawnChild(signal: AbortSignal): Promise<ChildExit>;
