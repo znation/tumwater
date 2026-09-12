@@ -293,7 +293,8 @@ they write tumwater.json like any other edit, so it applies live within ~2s.
 ## Development
 
 ```
-npm test               # build + unit tests (node:test)
+npm test               # build + full unit suite (node:test)
+npm test <filter>      # …or just the test files whose name contains <filter> (e.g. npm test merge)
 ```
 
 Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `orchestrator.ts` the scheduler,
