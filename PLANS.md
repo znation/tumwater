@@ -5,6 +5,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Show the GUI loop table's last tick with relative age — match the TUI's "· Nm ago" (planned 2026-09-11, requested by user)
+
+**Goal.** The user asked to show "last tick" in the TUI/GUI as a relative date/time. The TUI and `tumwater status` tables already do: `lastTickCell()` in src/ui/status-render.ts renders the absolute local time alongside its relative age ("14:32:05 · 3m ago"). The GUI loop table does not — its client-side `fmtLastTick` closure (src/ui/gui-page.ts, inside the page's `<script>`) renders only the absolute stamp (`HH:MM:SS`, prefixed `MM-DD` once older than a day). Make the GUI cell match the TUI format so both surfaces show at a glance how long ago each loop last ticked.
+
+**Design (decided, with rationale).**
+- **Append the relative age; keep the absolute stamp.** The cell becomes `<absolute> · <age>` — exactly the TUI's `lastTickCell` shape. Replacing the stamp with relative-only would lose the unambiguous anchor across day boundaries and diverge from the surface this request names as already correct (the TUI).
+- **Age bucketing mirrors `humanSeconds` in src/ui/status-render.ts byte-for-byte:** whole seconds since ts; `< 60` → `${s}s`; `< 3600` → `${Math.round(s / 60)}m`; else → `${Math.round(s / 3600)}h`. The GUI page is a self-contained HTML document that cannot import TS, so this is a JS copy in the template — the same "formatting at each surface" precedent `fmtLastTick` already follows for the absolute part (see its comment and the fmtTokens note).
+- **No new timer.** The page already polls /api/status every second and re-renders the loop table; compute the age from `Date.now()` at render time (`fmtLastTick` already calls Date.now() for the day check), so labels stay fresh on the existing refresh.
+- **Scope guard:** no TUI/CLI rendering changes, no `/api/status` or `status --json` payload changes (`lastTickEndedAt` stays epoch ms), no `sortLoops` changes.
+
+**Approach.**
+- src/ui/gui-page.ts — extend the existing `fmtLastTick` closure: keep the absolute-string construction (including the MM-DD prefix and the "-" case) unchanged, then append `" · " + age` per the bucketing above; wrap the function in a marked region (`// last-tick-fmt:start` … `// last-tick-fmt:end`, same convention as loop-sort) so tests can extract it; update its comment to note it mirrors the TUI's lastTickCell.
+- test/gui.test.ts — new test: regex-extract the marked region and run it with `new Function(...)` (the established pattern from the sortLoops and esc tests), asserting: null/0 → "-"; a ts 45 s old → absolute prefix + " · 45s ago"; ~3 m old → " · 3m ago"; ~2 h old → " · 2h ago"; 3 days old → MM-DD-prefixed stamp with the relative age. Pick timestamps well inside each bucket so Date.now() drift cannot flip a result; keep the existing call-site pin `fmtLastTick(l.lastTickEndedAt)` in place.
+
+**Files touched.** src/ui/gui-page.ts, test/gui.test.ts only — no changes to status-render.ts, tui.ts, gui.ts, or any payload shape.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- The GUI loop table's last tick cell renders `HH:MM:SS · <age>` (with the MM-DD prefix once older than a day) for loops that have ticked and "-" for ones that never did, with age buckets identical to the TUI (<60 s → Ns; <1 h → rounded Nm; else → rounded Nh); labels stay fresh on the page's existing 1-second poll with no new timer.
+- TUI and `tumwater status` output is byte-identical (`lastTickCell` unchanged); `/api/status` and `status --json` payloads are unchanged.
+
 ### Make the daily cost budget editable from the TUI/GUI (planned 2026-09-07)
 
 **Goal.** The fleet's daily spend cap (`maxDailyCostUsd`, default $50, 0 = disabled) can today only be changed by hand-editing tumwater.json while the harness runs. Both dashboards already show the budget badge (TUI header via renderStatus; GUI header from /api/status), but neither offers a way to change it — an operator who hits the cap mid-day must leave the dashboard, find the file, edit JSON, and come back. Make the cap editable in place on both surfaces: the TUI through a key-driven edit mode on its existing input line, the GUI through an inline editor on the budget badge. Both write through one shared setter that persists to tumwater.json — so the change is durable (survives restarts), applies live within ~2 s via the orchestrator's existing config poll, and needs no new reload machinery or event types: raising/disabling the cap while paused already flips the gate on the next poll and emits the existing `budget_resumed` transition.
