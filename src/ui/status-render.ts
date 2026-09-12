@@ -28,8 +28,8 @@ function ago(ts: number | undefined): string {
 /** The table's `last tick` cell: the absolute local time of the last tick end alongside its
  * relative age ("14:32:05 · 3m ago"). Zero-padded HH:MM:SS in local time, prefixed `MM-DD `
  * once older than a day so multi-day runs stay unambiguous; "-" for loops that never ticked.
- * The GUI renders the same absolute stamp (without the relative age) from its own JS copy —
- * formatting at each surface, per the fmtTokens precedent. */
+ * The GUI renders the same cell (absolute stamp plus relative age) from its own JS copy in
+ * gui-page.ts — formatting at each surface, per the fmtTokens precedent. */
 export function lastTickCell(ts: number | undefined): string {
   if (!ts) return "-";
   const d = new Date(ts);

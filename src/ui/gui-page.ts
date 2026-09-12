@@ -59,16 +59,24 @@ export const GUI_PAGE = `<!doctype html>
 <script>
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   const fmtTokens = (n) => (n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
-  // Absolute local time of the last tick end, same format rules as the TUI's last-tick
-  // cell: zero-padded HH:MM:SS, prefixed MM-DD once older than a day; "-" when never ticked.
+  // last-tick-fmt:start
+  // Last tick cell — mirrors the TUI's lastTickCell in status-render.ts: the absolute local
+  // time of the last tick end alongside its relative age ("14:32:05 · 3m ago"). Zero-padded
+  // HH:MM:SS, prefixed MM-DD once older than a day; "-" when never ticked. The age bucketing
+  // is a JS copy of humanSeconds there (whole seconds since ts; <60 → Ns, <3600 → rounded Nm,
+  // else rounded Nh) — the page cannot import TS, per the fmtTokens precedent. Computed from
+  // Date.now() at render time, so labels stay fresh on the existing 1-second poll.
   const fmtLastTick = (ts) => {
     if (!ts) return "-";
     const d = new Date(ts);
     const p = (n) => String(n).padStart(2, "0");
     let s = p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
     if (Date.now() - ts > 86400000) s = p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + s;
-    return s;
+    const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    const age = (sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h") + " ago";
+    return s + " · " + age;
   };
+  // last-tick-fmt:end
   // loop-sort:start
   // Loop-table row order: active loops (working/reviewing — the two in-flight phases, same
   // prefix convention as the row coloring below, extended with reviewing) before inactive

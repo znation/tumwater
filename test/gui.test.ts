@@ -292,6 +292,53 @@ test("the dashboard page has a last tick column between cost and last result", a
   assert.match(GUI_PAGE, /fmtLastTick\(l\.lastTickEndedAt\)/);
 });
 
+test("the GUI last tick cell shows absolute time plus relative age, mirroring the TUI", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { lastTickCell } = await import("../src/ui/status-render.js");
+
+  // Extract the marked region — same regex-extract + new Function pattern as the esc test and
+  // sortLoops. fmtLastTick is pure (no DOM), so nothing is injected.
+  const m = GUI_PAGE.match(/\/\/ last-tick-fmt:start\n([\s\S]*?)\n  \/\/ last-tick-fmt:end/);
+  assert.ok(m, "last-tick-fmt region found in the page");
+  const fmtLastTick = new Function(`${m[1]}\nreturn fmtLastTick;`)() as (ts: number | null) => string;
+
+  // The cell renders client-side from the payload's existing lastTickEndedAt field.
+  assert.match(GUI_PAGE, /fmtLastTick\(l\.lastTickEndedAt\)/);
+
+  const now = Date.now();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  // The absolute part derives from the fixed ts, so it is stable across the test's own clock
+  // drift; only the relative age reads Date.now() at call time.
+  const abs = (ts: number) => {
+    const d = new Date(ts);
+    return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+  };
+
+  // Never ticked.
+  assert.equal(fmtLastTick(null), "-");
+  assert.equal(fmtLastTick(0), "-");
+
+  // Timestamps sit well inside each bucket so Date.now() drift between the call and the
+  // assertion cannot flip a result: 45 s (not near 60); 190 s → 3m (far from the 2.5/3.5 m
+  // rounding edges); 7500 s → 2h; ~3 d + 2 h → 74h with the MM-DD prefix.
+  const t45 = now - 45_000;
+  assert.equal(fmtLastTick(t45), `${abs(t45)} · 45s ago`);
+
+  const t190 = now - 190_000;
+  assert.equal(fmtLastTick(t190), `${abs(t190)} · 3m ago`);
+
+  const t2h = now - 7_500_000;
+  assert.equal(fmtLastTick(t2h), `${abs(t2h)} · 2h ago`);
+
+  const t3d = now - (3 * 86_400_000 + 7_200_000);
+  const d3 = new Date(t3d);
+  assert.equal(fmtLastTick(t3d), `${p2(d3.getMonth() + 1)}-${p2(d3.getDate())} ${abs(t3d)} · 74h ago`);
+
+  // The whole cell — absolute stamp and age bucketing — must stay byte-identical to the TUI's
+  // lastTickCell, so a drift in either surface fails here.
+  for (const ts of [t45, t190, t2h, t3d]) assert.equal(fmtLastTick(ts), lastTickCell(ts));
+});
+
 test("the GUI loop table sorts active first, then by last tick most-recent-first", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
 
