@@ -460,6 +460,34 @@ test("the completion timestamp survives process restart via its state file", asy
   assert.equal(stored.at, secondSwap, "the file holds the LATEST completion for the next process");
 });
 
+test("an unpersistable completion timestamp degrades to no cooldown rather than failing the restart", async () => {
+  // record() runs inside poll immediately before it returns "restart": by then the swap has
+  // already succeeded and the process exits right after. If persisting threw (disk full,
+  // permissions) and the error propagated, a fleet would sit on stale code with no restart —
+  // so the catch degrades to no cooldown for the NEXT process instead of failing this one.
+  const f = fakeDeps();
+  let recordedAt: number | null = null;
+  const record: AutoRestartRecord = {
+    lastAt: null,
+    record(at) {
+      recordedAt = at;
+      throw new Error("disk full");
+    },
+  };
+  const h = harness(f.deps, true, undefined, record);
+  const swappedAt = await driveToRestart(h.r, f, HEAD_B, 2_000_000); // would reject if the throw escaped
+  assert.equal(recordedAt, swappedAt, "the timestamp was attempted at the swap");
+
+  // The restart still lands: its event is logged…
+  assert.ok(h.types().includes("restart"), `a restart event was logged:\n${JSON.stringify(h.events)}`);
+  // …and the in-memory cooldown still defers the next episode within this process.
+  assert.equal(
+    await h.r.poll(HEAD_C, IDLE, true, swappedAt + 60_000),
+    "none",
+    "the in-memory cooldown applies even though persistence failed",
+  );
+});
+
 test("RESTART_EXIT_CODE is EX_TEMPFAIL, distinct from success, fail(), and a forced Ctrl+C", () => {
   assert.equal(RESTART_EXIT_CODE, 75);
 });
