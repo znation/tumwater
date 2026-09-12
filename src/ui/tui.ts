@@ -73,14 +73,22 @@ export function applyKey(
 }
 
 /** Parse a daily cost budget cap from the TUI's Ctrl+B edit line: empty → 0 (disabled —
- * empty means "no cap" on save), otherwise a finite number ≥ 0 with fractional dollars
- * allowed. Returns an actionable error for invalid input so the flash can show it and the
- * editor stays open for a fix. Pure, like applyKey. */
+ * empty means "no cap" on save), otherwise a plain decimal number ≥ 0 with fractional
+ * dollars allowed ("25", "12.34", ".5") — hex and exponent notation are rejected, so the
+ * TUI admits exactly what the GUI's number input and the server check admit. Returns an
+ * actionable error for invalid input so the flash can show it and the editor stays open
+ * for a fix. Pure, like applyKey. */
 export function parseBudgetInput(
   text: string,
 ): { ok: true; value: number } | { ok: false; error: string } {
   const t = text.trim();
   if (t === "") return { ok: true, value: 0 };
+  // Plain decimal dollars only — Number() would also read hex ("0x10" → 16) and finite
+  // exponent notation ("1e2" → 100) as a cap, neither of which an operator means when typing
+  // a USD amount; the GUI's number input + server check already admit plain decimals, so both
+  // surfaces share one rule. The isFinite backstop catches absurd digit counts (→ Infinity).
+  if (!/^\d*\.?\d+$/.test(t))
+    return { ok: false, error: `budget must be a number of 0 or more (got ${JSON.stringify(text)})` };
   const n = Number(t);
   if (!Number.isFinite(n) || n < 0)
     return { ok: false, error: `budget must be a number of 0 or more (got ${JSON.stringify(text)})` };

@@ -97,7 +97,20 @@ test("parseBudgetInput maps empty to disabled and validates the rest", () => {
   assert.deepEqual(parseBudgetInput("   "), { ok: true, value: 0 }, "whitespace-only is empty too");
   assert.deepEqual(parseBudgetInput("25"), { ok: true, value: 25 });
   assert.deepEqual(parseBudgetInput("12.34"), { ok: true, value: 12.34 }, "fractional dollars allowed");
-  for (const bad of ["abc", "-1", "Infinity", "1e999"]) {
+  assert.deepEqual(parseBudgetInput(".5"), { ok: true, value: 0.5 }, "leading-dot decimals stay admitted");
+  for (const bad of [
+    "abc",
+    "-1",
+    "Infinity",
+    "1e999",
+    // Non-decimal notations must not set a cap: Number() would read hex as 16 and finite
+    // exponent notation as 100 — regression for the TUI accepting both as dollar amounts.
+    "0x10",
+    "1e2",
+    "+5",
+    // Absurd digit counts overflow to Infinity: the isFinite backstop still rejects them.
+    "9".repeat(410),
+  ]) {
     const r = parseBudgetInput(bad);
     assert.equal(r.ok, false, bad);
     if (!r.ok) assert.match(r.error, /number of 0 or more/);

@@ -7,6 +7,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### TUI's Ctrl+B budget editor accepted hex and exponent notation as a dollar cap (found by bugfix loop 2026-09-12, fixed 2026-09-12)
+
+**Symptom:** In the TUI's Ctrl+B daily-cost-budget editor, typing `0x10` set the fleet-wide spend cap to $16 and `1e2` set it to $100 — both accepted with a success flash. The GUI surface cannot produce these (its number input + JSON body yield plain numbers only), so the two surfaces disagreed on what "a valid daily budget cap" means even though both claim to implement the shared rule in config.ts (`checkDailyBudgetUsd`: finite ≥ 0).
+
+**Repro:** `parseBudgetInput("0x10")` returned `{ ok: true, value: 16 }` — `Number()` reads hex strings as numbers; likewise `"1e2"` → 100. Only non-finite spellings (`Infinity`, `1e999`) were rejected.
+
+**Cause:** src/ui/tui.ts, `parseBudgetInput` — the TUI is the only surface that converts free text to a number, and it used bare `Number(t)`, which also admits hex, finite exponent notation, and signed spellings as dollar amounts. No guard restricted input to plain decimals.
+
+**Fix:** `parseBudgetInput` now requires a plain decimal spelling (`/^\d*\.?\d+$/` — "25", "12.34", ".5") before converting; the existing isFinite check stays as a backstop for absurd digit counts that overflow to Infinity. The TUI thus admits exactly what the GUI's number input and the server check admit. Regression cases added to test/tui.test.ts ("0x10", "1e2", "+5", 410 nines; ".5" pinned as still admitted).
+
+**Files:** src/ui/tui.ts (`parseBudgetInput`); test/tui.test.ts.
+
 ### TUI/GUI "reviewing" state shows only elapsed time — no turn/ctx/tool detail like the "working" state does (reported by user 2026-09-11, fixed by bugfix loop 2026-09-12)
 
 **Symptom:** While a loop's committed tick is under the adversarial review gate, both dashboards' state cell shows only `reviewing <elapsed>` (e.g. `reviewing 2m`) — no turn count, context size, or current tool/command. The same loop's in-flight author phase shows all of that (`working 3m · turn 12 · ctx 21.9k · bash npm test`), so an operator cannot tell whether the reviewer run is progressing or stalled until it finishes (the ≥5-min no-output stall flag that workingDetail adds is also absent from reviewing).
