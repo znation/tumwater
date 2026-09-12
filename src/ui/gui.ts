@@ -9,7 +9,7 @@ import {
 import { submitPrompt } from "../inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
-import { collectReport } from "../report.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "../report.js";
 import { statusPayload } from "./status-payload.js";
 import { readTranscript } from "./transcript.js";
 import { errorMessage, parseNonNegativeInt, parsePositiveInt } from "../text.js";
@@ -79,7 +79,9 @@ function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root
 }
 
 /** Handle GET /api/report?days=N: the usage report data (collectReport's ReportData) as
- * JSON — the dashboard's report tab renders it. days defaults to 14 and clamps to 1..90 by
+ * JSON — the dashboard's report tab renders it. days defaults to REPORT_DEFAULT_DAYS and
+ * clamps to 1..REPORT_MAX_DAYS (the same bounds the CLI's --days enforces, shared in
+ * report.ts) by
  * one exact rule: missing or non-decimal → 14, out-of-range clamped (never error: a URL typo
  * must degrade to the default window, deliberately unlike handleTranscript's
  * parsePositiveInt→400 idiom). "Non-decimal" is the shared plain-digit rule
@@ -90,7 +92,7 @@ function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root
 function handleReport(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
   const q = new URL(req.url ?? "", "http://localhost").searchParams;
   const n = parseNonNegativeInt(q.get("days") ?? "");
-  const days = n === null ? 14 : Math.min(90, Math.max(1, n));
+  const days = n === null ? REPORT_DEFAULT_DAYS : Math.min(REPORT_MAX_DAYS, Math.max(1, n));
   sendJson(res, 200, collectReport(root, days));
 }
 

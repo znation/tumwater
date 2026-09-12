@@ -32,7 +32,7 @@ import { renderDoctor, runDoctor } from "./doctor.js";
 import { ensureParentDir, findOnPath, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { followFile } from "./ui/tail.js";
-import { collectReport, renderReportMarkdown } from "./report.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport, renderReportMarkdown } from "./report.js";
 import { snapshot } from "./ui/status.js";
 import { renderStatus } from "./ui/status-render.js";
 import { runTui } from "./ui/tui.js";
@@ -373,7 +373,16 @@ async function main(): Promise<void> {
       // missing, so it runs (and prints an all-zero window) in any directory.
       rejectUnknownArgs("report", args, [{ names: ["--days"], value: true, valueName: "<n>" }]);
       const daysFlag = args.indexOf("--days");
-      const days = daysFlag >= 0 ? parseCountFlag("--days", args[daysFlag + 1]) : 14;
+      let days = REPORT_DEFAULT_DAYS;
+      if (daysFlag >= 0) {
+        days = parseCountFlag("--days", args[daysFlag + 1]);
+        // /api/report clamps its ?days= param to the same bound; an explicit flag fails fast
+        // instead — a typo'd "3650" must not build a ten-year series (one entry per day), and
+        // a huge value would grow it until the process runs out of memory. parseCountFlag has
+        // already rejected 0, non-decimals, and a missing value.
+        if (days > REPORT_MAX_DAYS)
+          fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(args[daysFlag + 1])})`);
+      }
       process.stdout.write(renderReportMarkdown(collectReport(root, days)) + "\n");
       break;
     }

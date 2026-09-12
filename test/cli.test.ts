@@ -1021,6 +1021,36 @@ test("doctor rejects unknown arguments", async () => {
   assert.match(r.stderr, /takes no arguments/);
 });
 
+// --- report: usage report through the real CLI entry point ---
+// collectReport/renderReportMarkdown are pinned in-process in test/report.test.ts; what is
+// missing here is main()'s wiring — that report runs WITHOUT a readiness gate (it degrades to
+// zeros in any directory) and that --days shares /api/report's window bound: above it the
+// command fails fast with the offending value instead of building an unbounded series.
+
+test("report prints a zero-filled window outside a repo and honors --days", async () => {
+  // No readiness gate: in a bare directory every source degrades to zeros, so the report
+  // still renders (an all-zero default window).
+  const r = await cli(tmpdir(), "report");
+  assert.equal(r.code, 0, `expected exit 0 in any directory:\n${r.stdout}\n${r.stderr}`);
+  assert.match(r.stdout, /^# tumwater usage report$/m);
+  assert.match(r.stdout, /\(14 days\)/);
+
+  const r2 = await cli(tmpdir(), "report", "--days", "3");
+  assert.equal(r2.code, 0, `expected exit 0 with --days 3:\n${r2.stdout}\n${r2.stderr}`);
+  assert.match(r2.stdout, /\(3 days\)/);
+});
+
+test("report --days above the shared bound fails fast with the offending value", async () => {
+  const r = await cli(tmpdir(), "report", "--days", "91");
+  assert.equal(r.code, 1, `expected exit 1 for --days 91:\n${r.stdout}\n${r.stderr}`);
+  assert.match(r.stderr, /--days must be between 1 and 90 \(got "91"\)/);
+
+  // The bound itself is allowed — the GUI clamps to it, so the CLI accepts exactly that.
+  const ok = await cli(tmpdir(), "report", "--days", "90");
+  assert.equal(ok.code, 0, `expected exit 0 at the bound:\n${ok.stdout}\n${ok.stderr}`);
+  assert.match(ok.stdout, /\(90 days\)/);
+});
+
 // --- long-running commands (run, logs -f): spawned with a live handle so the test can
 // observe startup output, exercise the follow behavior, and always reap the child. ---
 

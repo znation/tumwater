@@ -5,6 +5,14 @@ import { eventsLogPath } from "./paths.js";
 import { forEachTailChunk } from "./files.js";
 import { formatDate } from "./text.js";
 
+/** The report window's bounds, shared by every surface that takes a day count (the CLI's
+ * --days and /api/report?days=N): 14-day default, at most 90 days. A longer window only
+ * re-reads more of the event log and renders more lines without adding signal — and an
+ * unbounded count would build one series entry per day (a typo'd "3650" is a ten-year report;
+ * a huge value grows until the process runs out of memory), so both surfaces bound it. */
+export const REPORT_DEFAULT_DAYS = 14;
+export const REPORT_MAX_DAYS = 90;
+
 /** One day of a usage report: the local calendar day key plus what the fleet did on it.
  * `ticksByRole` counts tick_end events per loop id (role ids — works for custom loops too);
  * tokensOut sums their `tokens`; commits counts `merged` events; costUsd sums `costUsd`. */
