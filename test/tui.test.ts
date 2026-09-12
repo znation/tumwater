@@ -16,6 +16,7 @@ import {
   runTui,
   stepEntryScroll,
 } from "../src/ui/tui.js";
+import { formatDate } from "../src/text.js";
 import { makeRepo } from "./util.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
@@ -377,12 +378,6 @@ function atNoon(daysAgo: number): number {
   return d.getTime();
 }
 
-/** Local calendar day key (YYYY-MM-DD) of a timestamp — the report's row dates. */
-function dayKeyOf(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 test("Ctrl+T cycles events → transcript → project status → usage report with real content", async () => {
   const repo = await makeTuiRepo();
   // Seed the clean loop's pi log with one assistant turn so the transcript pane has
@@ -445,8 +440,8 @@ test("Ctrl+T cycles events → transcript → project status → usage report wi
     // The pane shows the same Markdown `tumwater report` prints for this root and window:
     // the Totals line plus a day row per seeded event (tokens bucketed by local day).
     assert.match(frame, /Totals:/);
-    assert.match(frame, new RegExp(`\\| ${dayKeyOf(atNoon(1)).slice(5)} \\| 500`));
-    assert.match(frame, new RegExp(`\\| ${dayKeyOf(atNoon(0)).slice(5)} \\| 150`));
+    assert.match(frame, new RegExp(`\\| ${formatDate(new Date(atNoon(1))).slice(5)} \\| 500`));
+    assert.match(frame, new RegExp(`\\| ${formatDate(new Date(atNoon(0))).slice(5)} \\| 150`));
 
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /recent activity/); // wraps back to events

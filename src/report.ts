@@ -3,6 +3,7 @@ import path from "node:path";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
 import { forEachTailChunk } from "./files.js";
+import { formatDate } from "./text.js";
 
 /** One day of a usage report: the local calendar day key plus what the fleet did on it.
  * `ticksByRole` counts tick_end events per loop id (role ids — works for custom loops too);
@@ -31,13 +32,6 @@ export interface ReportData {
     featuresDone: number;
     bugsFixed: number;
   };
-}
-
-/** The local calendar day key ("YYYY-MM-DD") of a timestamp — the report buckets by the day an
- * event happened in LOCAL time, not UTC. */
-function dayKey(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function parseEventLine(line: string): HarnessEvent | null {
@@ -88,7 +82,7 @@ function readWindowEvents(root: string, fromKey: string): HarnessEvent[] {
     const oldest = oldestCompleteLine(parts, false);
     if (oldest !== null) {
       const ev = parseEventLine(oldest);
-      if (ev && typeof ev.ts === "number" && dayKey(ev.ts) < fromKey) return true; // Window passed.
+      if (ev && typeof ev.ts === "number" && formatDate(new Date(ev.ts)) < fromKey) return true; // Window passed.
     }
     return false;
   });
@@ -98,7 +92,7 @@ function readWindowEvents(root: string, fromKey: string): HarnessEvent[] {
   for (const line of text.split("\n")) {
     if (!line) continue;
     const ev = parseEventLine(line); // A torn leading line fails to parse and is skipped.
-    if (ev && typeof ev.ts === "number" && dayKey(ev.ts) >= fromKey) events.push(ev);
+    if (ev && typeof ev.ts === "number" && formatDate(new Date(ev.ts)) >= fromKey) events.push(ev);
   }
   return events;
 }
@@ -158,13 +152,13 @@ export function collectReport(root: string, days: number): ReportData {
   // Local midnight of each day in the window; setDate arithmetic handles month/year edges.
   const dayAt = (offsetFromToday: number) =>
     new Date(now.getFullYear(), now.getMonth(), now.getDate() - offsetFromToday);
-  const from = dayKey(dayAt(days - 1).getTime());
-  const to = dayKey(dayAt(0).getTime());
+  const from = formatDate(dayAt(days - 1));
+  const to = formatDate(dayAt(0));
 
   const series: ReportDay[] = [];
   for (let i = days - 1; i >= 0; i--) {
     series.push({
-      date: dayKey(dayAt(i).getTime()),
+      date: formatDate(dayAt(i)),
       tokensOut: 0,
       ticksByRole: {},
       commits: 0,
@@ -178,7 +172,7 @@ export function collectReport(root: string, days: number): ReportData {
 
   for (const ev of readWindowEvents(root, from)) {
     if (typeof ev.ts !== "number") continue; // Unreachable: the reader filters on ts.
-    const day = byDate.get(dayKey(ev.ts));
+    const day = byDate.get(formatDate(new Date(ev.ts)));
     if (!day) continue; // Outside [from, to] — also guards future-dated events.
     if (ev.type === "tick_end") {
       const role = typeof ev.loop === "string" && ev.loop !== "" ? ev.loop : "?";

@@ -89,8 +89,9 @@ export function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/** Calendar date as `YYYY-MM-DD` in local time — shared by the transcript run separators and
- * the daily-budget day stamp (todayStamp), which must agree on what counts as one day. */
+/** Calendar date as `YYYY-MM-DD` in local time — shared by the transcript run separators,
+ * the daily-budget day stamp (todayStamp), and the usage report's per-day buckets, which must
+ * all agree on what counts as one day. */
 export function formatDate(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
