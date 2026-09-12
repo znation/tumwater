@@ -152,12 +152,13 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   // free — the dollar badge stays.
   assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, free: false });
 
-  // Disabling the cap (0) drops the badge data entirely — renderStatus shows no budget line.
+  // Disabling the cap (0) keeps the budget object — spend is still reported and the badge
+  // is the affordance for setting a cap again; only its display changes (`· no cap`).
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
   snap = snapshot(repo);
-  assert.equal(snap.budget, null);
+  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, free: false });
 });
 
 // The free-fleet case (BUGS.md: budget badge on local LLM fleets): when every model the

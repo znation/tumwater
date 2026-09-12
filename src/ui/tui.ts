@@ -9,6 +9,7 @@ import { readEvents } from "../events.js";
 import { collectReport, renderReportMarkdown } from "../report.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "../inbox.js";
+import { setDailyBudgetUsd } from "../config.js";
 import { snapshot } from "./status.js";
 import { clipToWidth, renderStatus } from "./status-render.js";
 import { cutSplitsSurrogatePair } from "../text.js";
@@ -69,6 +70,21 @@ export function applyKey(
     return { text: text.slice(0, c) + str + text.slice(c), cursor: c + str.length };
   }
   return { text, cursor: c };
+}
+
+/** Parse a daily cost budget cap from the TUI's Ctrl+B edit line: empty → 0 (disabled —
+ * empty means "no cap" on save), otherwise a finite number ≥ 0 with fractional dollars
+ * allowed. Returns an actionable error for invalid input so the flash can show it and the
+ * editor stays open for a fix. Pure, like applyKey. */
+export function parseBudgetInput(
+  text: string,
+): { ok: true; value: number } | { ok: false; error: string } {
+  const t = text.trim();
+  if (t === "") return { ok: true, value: 0 };
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0)
+    return { ok: false, error: `budget must be a number of 0 or more (got ${JSON.stringify(text)})` };
+  return { ok: true, value: n };
 }
 
 /** The visible slice of the prompt line for a terminal `width` columns: the whole text
@@ -162,6 +178,15 @@ export async function runTui(root: string): Promise<void> {
 
   let input = "";
   let cursor = 0;
+  // Ctrl+B budget-edit mode on the prompt line: while set, the line edits the daily cost cap
+  // (pre-filled with the current cap — empty when disabled) instead of a director prompt.
+  // The previous prompt text is saved so leaving the mode restores it byte-for-byte.
+  let budgetMode = false;
+  let savedInput = "";
+  let savedCursor = 0;
+  // The last snapshot's cap, captured by render so the Ctrl+B handler can pre-fill without
+  // re-reading config itself (render already polls snapshot every second).
+  let currentCapUsd = 0;
   let flash = "";
   let flashUntil = 0;
   // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
@@ -203,6 +228,7 @@ export async function runTui(root: string): Promise<void> {
     const rows = process.stdout.rows ?? 40;
     const width = process.stdout.columns ?? 120;
     const snap = snapshot(root);
+    currentCapUsd = snap.budget.capUsd;
     roleIds = snap.loops.map((s) => s.role);
     view = Math.min(view, roleIds.length + 2); // clamp a stale index if roles changed
     const status = renderStatus(root, snap, width);
@@ -295,11 +321,19 @@ export async function runTui(root: string): Promise<void> {
     parts.push("");
     if (flash && Date.now() < flashUntil) parts.push(`${BOLD}${clipToWidth(flash, width)}${RESET}`);
     parts.push(
-      `${DIM}${clipToWidth("type a prompt for the project, Enter to send · Ctrl+C to quit", width)}${RESET}`,
+      `${DIM}${clipToWidth("type a prompt for the project, Enter to send · Ctrl+B edit budget · Ctrl+C to quit", width)}${RESET}`,
     );
     // Window long prompts around the cursor so its position stays visible.
     parts.push(`> ${renderInputView(input, cursor, width)}`);
     process.stdout.write(CLEAR + parts.join("\n"));
+  };
+
+  // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
+  const exitBudgetMode = (): void => {
+    if (!budgetMode) return;
+    budgetMode = false;
+    input = savedInput;
+    cursor = savedCursor;
   };
 
   readline.emitKeypressEvents(process.stdin);
@@ -315,7 +349,28 @@ export async function runTui(root: string): Promise<void> {
         resolve();
         return;
       }
+      if (key.ctrl && key.name === "b") {
+        // Ctrl+B toggles budget-edit mode on the prompt line (mnemonic for *b*udget): entering
+        // pre-fills the current cap (empty when disabled — empty means "no cap" on save) and
+        // saves the prompt text; leaving restores it. Esc cancels the same way.
+        if (budgetMode) {
+          exitBudgetMode();
+        } else {
+          savedInput = input;
+          savedCursor = cursor;
+          budgetMode = true;
+          input = currentCapUsd > 0 ? String(currentCapUsd) : "";
+          cursor = input.length;
+          flash = "edit daily cost budget (USD): Enter to save, Esc to cancel";
+          flashUntil = Date.now() + 3000;
+        }
+        render();
+        return;
+      }
       if (key.ctrl && key.name === "t") {
+        // Ctrl+T exits budget-edit mode too — view cycling is orthogonal to it, so a cycle
+        // never strands the editor with its pre-filled cap in the prompt line.
+        exitBudgetMode();
         view = (view + 1) % (roleIds.length + 3); // events → each loop's transcript → project status → usage report → events
         selectedEntry = null; // leaving a view drops any entry selection…
         entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
@@ -367,14 +422,44 @@ export async function runTui(root: string): Promise<void> {
         render();
         return;
       }
+      if (key.name === "escape" && budgetMode) {
+        // Esc cancels budget-edit mode, restoring the previous prompt text.
+        exitBudgetMode();
+        render();
+        return;
+      }
       if (key.name === "return") {
-        const prompt = input.trim();
-        input = "";
-        cursor = 0;
-        if (prompt) {
-          submitPrompt(root, prompt);
-          flash = "queued for the director loop";
+        if (budgetMode) {
+          // Enter in budget mode parses + saves the cap through the shared setter (which
+          // writes tumwater.json atomically; the running orchestrator picks it up on its next
+          // ~2 s poll). An invalid value flashes and STAYS in edit mode so the operator can
+          // fix it; success restores the saved prompt text.
+          const parsed = parseBudgetInput(input);
+          if (!parsed.ok) {
+            flash = parsed.error;
+          } else {
+            const result = setDailyBudgetUsd(root, parsed.value);
+            if (result.ok) {
+              exitBudgetMode();
+              currentCapUsd = parsed.value; // the next render's snapshot agrees within ~2 s
+              flash =
+                parsed.value === 0
+                  ? "budget disabled"
+                  : `budget set to $${parsed.value.toFixed(2).replace(/\.00$/, "")}`;
+            } else {
+              flash = result.error; // broken config or write failure — stay in edit mode
+            }
+          }
           flashUntil = Date.now() + 3000;
+        } else {
+          const prompt = input.trim();
+          input = "";
+          cursor = 0;
+          if (prompt) {
+            submitPrompt(root, prompt);
+            flash = "queued for the director loop";
+            flashUntil = Date.now() + 3000;
+          }
         }
       } else {
         const next = applyKey(input, cursor, str, key);

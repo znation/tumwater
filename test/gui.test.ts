@@ -714,13 +714,50 @@ test("status payload carries the daily budget while enabled and null when disabl
   assert.equal(payload.budget?.spentUsd, 12.34, "today's spend shows in the badge data");
   assert.equal(payload.budgetBadge, " · budget: $12.34/$50 today", "today's spend shows in the badge text");
 
-  // 0 disables: the badge data disappears entirely (the page renders no badge for null).
+  // 0 disables: the raw data stays (spend is still reported; capUsd 0 says disabled) and
+  // the preformatted badge switches to the standing `· no cap` form — it never disappears,
+  // because the badge is also the affordance for setting a cap from a disabled fleet.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
   payload = statusPayload(repo) as typeof payload;
-  assert.equal(payload.budget, null, "cap 0 disables the budget");
-  assert.equal(payload.budgetBadge, "", "disabled: no badge at all");
+  assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, free: false }, "cap 0 disables the gate but keeps the data");
+  assert.equal(payload.budgetBadge, " · budget: $12.34 today · no cap", "disabled: standing badge with spend and no cap");
+});
+
+// Regression (review of the editable-budget feature): the payload's budget object is now
+// unconditional, so a DISABLED cap must not read as reached — with a running orchestrator,
+// spend ≥ 0 = cap would otherwise export every idle role loop as `budget paused`.
+test("a disabled cap never pauses the fleet in the phase payload", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui no-cap test");
+  // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
+  const infoFile = orchestratorStatePath(repo);
+  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
+  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }));
+  // …cap disabled with today's spend far above zero.
+  const cfg = loadConfig(repo);
+  cfg.maxDailyCostUsd = 0;
+  saveConfig(repo, cfg);
+  const s = freshLoopState("clean");
+  s.dayStamp = todayStamp();
+  s.dayCostUsd = 500; // would be "reached" against any positive cap
+  saveLoopState(repo, s);
+
+  const payload = statusPayload(repo) as {
+    budget: { spentUsd: number; capUsd: number; free: boolean };
+    budgetBadge: string;
+    loops: Array<{ role: string; phase: string }>;
+  };
+  assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, free: false });
+  assert.equal(payload.budgetBadge, " · budget: $500.00 today · no cap");
+  // No loop reads budget paused — the gate is off by definition while the cap is 0.
+  for (const l of payload.loops) {
+    assert.notEqual(l.phase, "budget paused", `${l.role} must not read budget paused with the cap disabled`);
+  }
+  assert.match(payload.loops.find((l) => l.role === "clean")?.phase ?? "", /^(queued|sleeping)/);
+  // The director is exempt as always.
+  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "waiting for prompts");
 });
 
 test("the dashboard page renders the preformatted budget badge from the payload", async () => {
@@ -760,6 +797,78 @@ test("a paused fleet's idle role loops read budget paused in the phase payload",
   saveLoopState(repo, under);
   payload = statusPayload(repo) as typeof payload;
   assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "budget paused");
+});
+
+// POST /api/budget — the dashboard badge editor's save path: one shared setter with the
+// TUI's Ctrl+B, so both surfaces write tumwater.json identically and the running orchestrator
+// picks the change up on its next ~2 s poll.
+
+test("POST /api/budget persists a valid cap and rejects invalid bodies without touching the file", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui budget edit test"); // defaultConfig: maxDailyCostUsd 50
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  const configFile = path.join(repo, "tumwater.json");
+  try {
+    // Whole dollars persist and come back in the response.
+    let res = await fetch(base + "/api/budget", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ maxDailyCostUsd: 25 }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, maxDailyCostUsd: 25 });
+    let onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
+    assert.equal(onDisk.maxDailyCostUsd, 25);
+
+    // Fractional dollars keep their cents (the badge renders them).
+    res = await fetch(base + "/api/budget", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ maxDailyCostUsd: 12.34 }),
+    });
+    assert.equal(res.status, 200);
+    onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
+    assert.equal(onDisk.maxDailyCostUsd, 12.34);
+
+    // Zero disables the cap — a valid value, not an error.
+    res = await fetch(base + "/api/budget", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ maxDailyCostUsd: 0 }),
+    });
+    assert.equal(res.status, 200);
+    onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
+    assert.equal(onDisk.maxDailyCostUsd, 0);
+
+    // The save preserved every other key: diff the file minus that one key against a fresh
+    // load of the same config (initProject's defaults plus nothing else changed).
+    const raw = JSON.parse(fs.readFileSync(configFile, "utf8")) as Record<string, unknown>;
+    delete raw.maxDailyCostUsd;
+    const { maxDailyCostUsd: _ignored, ...rest } = loadConfig(repo) as unknown as Record<string, unknown> & {
+      maxDailyCostUsd: number;
+    };
+    assert.deepEqual(raw, rest, "only maxDailyCostUsd differs from the loaded config");
+
+    // Invalid bodies get 400 with an actionable message and leave the file untouched.
+    const before = fs.readFileSync(configFile, "utf8");
+    for (const body of ["{}", '{"maxDailyCostUsd": -1}', '{"maxDailyCostUsd": NaN}', '{"maxDailyCostUsd": "25"}', 'not json', "null", "[0]"]) {
+      res = await fetch(base + "/api/budget", { method: "POST", body });
+      assert.equal(res.status, 400, body);
+      const err = (await res.json()) as { error: string };
+      assert.ok(err.error.length > 0, `actionable message for ${body}`);
+    }
+    assert.match(((await (await fetch(base + "/api/budget", { method: "POST", body: '{"maxDailyCostUsd": -1}' })).json()) as { error: string }).error, /-1/);
+    assert.equal(fs.readFileSync(configFile, "utf8"), before, "rejected bodies change nothing");
+
+    // No tmp remnant from any of the writes above.
+    const leftovers = fs.readdirSync(repo).filter((f) => f.startsWith("tumwater.json.tmp-"));
+    assert.deepEqual(leftovers, [], "no tmp file left behind");
+  } finally {
+    server.close();
+  }
 });
 
 // The build badge on the GUI surface: /api/status carries it pre-formatted through

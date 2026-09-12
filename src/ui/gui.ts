@@ -7,6 +7,7 @@ import {
   plannedPlanEntries,
 } from "../backlog.js";
 import { submitPrompt } from "../inbox.js";
+import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "../report.js";
@@ -244,6 +245,50 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
         }
         submitPrompt(root, text);
         sendJson(res, 200, { ok: true });
+      } else if (req.method === "POST" && pathname === "/api/budget") {
+        // The dashboard's budget-badge editor saves the daily cost cap here. Same body
+        // discipline as /api/prompt (readBody cap, 4xx with actionable messages), and the
+        // same shared validation rule + atomic setter the TUI's Ctrl+B uses — so both
+        // surfaces write tumwater.json identically and the running orchestrator picks the
+        // change up on its next ~2 s poll.
+        let body: string;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          sendJson(res, 413, { error: errorMessage(err) }); // body too large
+          return;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          sendJson(res, 400, { error: 'body must be a JSON object like {"maxDailyCostUsd": 25}' });
+          return;
+        }
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          sendJson(res, 400, { error: 'body must be a JSON object like {"maxDailyCostUsd": 25}' });
+          return;
+        }
+        const value = (parsed as { maxDailyCostUsd?: unknown }).maxDailyCostUsd;
+        if (value === undefined) {
+          sendJson(res, 400, { error: "maxDailyCostUsd required" });
+          return;
+        }
+        // The shared rule (finite ≥ 0; 0 disables): missing/non-finite/negative → 400 with
+        // the offending value named.
+        const problem = checkDailyBudgetUsd(value);
+        if (problem) {
+          sendJson(res, 400, { error: problem });
+          return;
+        }
+        const result = setDailyBudgetUsd(root, value as number);
+        if (!result.ok) {
+          // The value was valid — this is a server-side failure (broken tumwater.json or
+          // disk), not the client's fault.
+          sendJson(res, 500, { error: result.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number });
       } else {
         res.writeHead(404, { "content-type": "text/plain" });
         res.end("not found");

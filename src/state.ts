@@ -89,13 +89,15 @@ export function fleetDailyCost(states: LoopState[], now = Date.now()): number {
   return states.reduce((sum, s) => sum + dailyCost(s, now), 0);
 }
 
-/** True when today's spend has reached the daily cost budget — the view is non-null (the cap
- * is enabled) and spend sits at or above it. The single definition of "the budget gate is on":
- * the orchestrator evaluates it from live loop states via budgetPaused, and both dashboards
- * evaluate it from the snapshot's materialized budget field (status.ts), so the comparison
- * cannot drift between what the scheduler enforces and what users see. */
+/** True when today's spend has reached the daily cost budget — the view is non-null, its
+ * cap is enabled (capUsd > 0; a cap of 0 disables the gate regardless of spend), and spend
+ * sits at or above it. The single definition of "the budget gate is on": the orchestrator
+ * evaluates it from live loop states via budgetPaused, and both dashboards evaluate it from
+ * the snapshot's materialized budget field (status.ts) — which carries the object even while
+ * disabled, so the capUsd > 0 term is what keeps a disabled fleet out of "budget paused".
+ * The comparison cannot drift between what the scheduler enforces and what users see. */
 export function budgetReached(budget: { spentUsd: number; capUsd: number } | null): boolean {
-  return budget !== null && budget.spentUsd >= budget.capUsd;
+  return budget !== null && budget.capUsd > 0 && budget.spentUsd >= budget.capUsd;
 }
 
 /** True while the fleet's spend for the local day has reached `maxDailyCostUsd` (a cap of 0

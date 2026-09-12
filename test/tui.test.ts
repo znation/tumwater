@@ -12,6 +12,7 @@ import {
   backlogLines,
   entryBodyWindow,
   moveEntrySelection,
+  parseBudgetInput,
   renderInputView,
   runTui,
   stepEntryScroll,
@@ -89,6 +90,18 @@ test("applyKey ignores control and meta characters but clamps a stale cursor", (
   assert.deepEqual(applyKey("ab", 1, "é", key("e", { meta: true })), { text: "ab", cursor: 1 });
   // An out-of-range cursor (stale after a submit) is clamped instead of corrupting the edit.
   assert.deepEqual(applyKey("ab", 9, "x", key("x")), { text: "abx", cursor: 3 });
+});
+
+test("parseBudgetInput maps empty to disabled and validates the rest", () => {
+  assert.deepEqual(parseBudgetInput(""), { ok: true, value: 0 }, "empty means no cap");
+  assert.deepEqual(parseBudgetInput("   "), { ok: true, value: 0 }, "whitespace-only is empty too");
+  assert.deepEqual(parseBudgetInput("25"), { ok: true, value: 25 });
+  assert.deepEqual(parseBudgetInput("12.34"), { ok: true, value: 12.34 }, "fractional dollars allowed");
+  for (const bad of ["abc", "-1", "Infinity", "1e999"]) {
+    const r = parseBudgetInput(bad);
+    assert.equal(r.ok, false, bad);
+    if (!r.ok) assert.match(r.error, /number of 0 or more/);
+  }
 });
 
 test("renderInputView shows short prompts whole and long ones as a cursor window", () => {
@@ -737,4 +750,68 @@ test("Ctrl+C exits cleanly: raw mode off, stdin paused, render timer cleared", a
   assert.deepEqual(tui.rawModes, [true, false]);
   assert.equal(tui.frames.at(-1), "\n"); // final newline after the last frame
   assert.ok(tui.clearCalls >= 1, "the render interval is cleared on exit");
+});
+
+// Ctrl+B budget-edit mode on the prompt line (PLANS.md, editable daily cost budget): the
+// single interactive surface edits the cap in place — pre-filled with the current cap, Enter
+// saves through the shared setter (which writes tumwater.json), Esc/Ctrl+T restore the draft.
+test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ctrl+T exit", async () => {
+  const repo = await makeTuiRepo(); // defaultConfig: maxDailyCostUsd 50 (enabled)
+  const tui = startTui(repo);
+  try {
+    // A draft prompt first — leaving budget mode must restore it byte-for-byte.
+    for (const ch of "draft prompt") tui.key(ch, ch);
+
+    // Ctrl+B enters budget-edit mode pre-filled with the current cap and flashes a hint.
+    tui.key(undefined, "b", { ctrl: true });
+    assert.match(tui.lastFrame(), /edit daily cost budget/);
+    assert.equal(tui.lines().at(-1), "> 50");
+
+    // Enter on a valid value persists it to tumwater.json and returns to prompt mode.
+    tui.key(undefined, "backspace");
+    tui.key(undefined, "backspace");
+    for (const ch of "25") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /budget set to \$25/);
+    let cfg = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8")) as { maxDailyCostUsd: number };
+    assert.equal(cfg.maxDailyCostUsd, 25);
+    assert.equal(tui.lines().at(-1), "> draft prompt"); // previous prompt text restored
+
+    // Invalid input flashes the error and STAYS in edit mode so it can be fixed.
+    tui.key(undefined, "b", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "> 25"); // re-entered pre-filled with the new cap
+    tui.key(undefined, "backspace");
+    tui.key(undefined, "backspace");
+    for (const ch of "abc") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /budget must be a number/);
+    assert.equal(tui.lines().at(-1), "> abc", "still in edit mode with the text kept");
+
+    // Esc cancels back to prompt mode with the previous text restored.
+    tui.key(undefined, "escape");
+    assert.equal(tui.lines().at(-1), "> draft prompt");
+
+    // Empty means "no cap": clear the line and Enter disables the budget.
+    tui.key(undefined, "b", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "> 25");
+    tui.key(undefined, "backspace");
+    tui.key(undefined, "backspace");
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /budget disabled/);
+    cfg = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8")) as { maxDailyCostUsd: number };
+    assert.equal(cfg.maxDailyCostUsd, 0);
+
+    // A disabled cap pre-fills an empty line (empty means "no cap" on save)…
+    tui.key(undefined, "b", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "> ");
+    // …and Ctrl+T exits budget mode too — cycling the view and restoring the draft.
+    tui.key(undefined, "t", { ctrl: true });
+    assert.match(tui.lastFrame(), /transcript: clean/);
+    assert.equal(tui.lines().at(-1), "> draft prompt");
+
+    // The footer hint advertises the key.
+    assert.match(tui.lastFrame(), /Ctrl\+B edit budget/);
+  } finally {
+    await tui.quit();
+  }
 });

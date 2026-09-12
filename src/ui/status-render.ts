@@ -220,15 +220,18 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
   return `, build ${shortSha(build.sha)}${stale}${restart}`;
 }
 
-/** The header's daily-cost-budget fragment: `· budget: $X.XX/$Y today` while enabled with
- * priced models, `· budget: n/a today` for a fleet whose models are all free (spend can never
- * accumulate against the cap), and empty when disabled. One home for the three-case rule —
- * renderStatus renders it in the TUI/status header and status-payload.ts ships its output
- * preformatted as `budgetBadge`, so the GUI page cannot drift from this string. */
+/** The header's daily-cost-budget fragment, standing in every cap state (the badge is also
+ * the affordance for editing the cap, so a disabled fleet needs it too): `· budget: n/a
+ * today` for a fleet whose models are all free (spend can never accumulate against a cap
+ * that cannot be reached — checked first, in every cap state), `· budget: $X.XX/$Y today`
+ * while enabled with priced models, and `· budget: $X today · no cap` when disabled. One
+ * home for the rule — renderStatus renders it in the TUI/status header and status-payload.ts
+ * ships its output preformatted as `budgetBadge`, so the GUI page cannot drift from this
+ * string. */
 export function budgetBadge(budget: StatusSnapshot["budget"]): string {
-  if (!budget) return "";
-  const spend = budget.free ? "n/a" : `${usd(budget.spentUsd)}/${usdCap(budget.capUsd)}`;
-  return ` · budget: ${spend} today`;
+  if (budget.free) return " · budget: n/a today";
+  if (budget.capUsd > 0) return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today`;
+  return ` · budget: ${usd(budget.spentUsd)} today · no cap`;
 }
 
 /** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is
@@ -238,10 +241,11 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   const lines: string[] = [];
   const header = snap.running ? `running (pid ${snap.pid}${buildBadge(snap.build)})` : "not running — start with `tumwater run`";
   // The questions badge (like the inbox one) appears only when something needs an answer.
-  // The budget badge is standing information for a money-spending system, so it shows at all
-  // levels while enabled (absent when disabled); on narrow terminals the header's existing
-  // last-resort whole-line clipping applies. A fleet whose models are all free reads n/a —
-  // spend can never accumulate against the cap, so a dollar figure would mislead.
+  // The budget badge is standing information for a money-spending system in EVERY cap state
+  // (disabled reads `· no cap` — and it is the affordance for editing the cap); on narrow
+  // terminals the header's existing last-resort whole-line clipping applies. A fleet whose
+  // models are all free reads n/a — spend can never accumulate against a cap that cannot be
+  // reached, so a dollar figure would mislead.
   lines.push(
     `tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
       snap.questions ? ` · questions: ${snap.questions}` : ""

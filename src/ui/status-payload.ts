@@ -29,16 +29,17 @@ export function statusPayload(root: string): object {
     // not be re-derived client-side where it could drift from the TUI header.
     buildBadge: buildBadge(snap.build),
     // The header's daily-cost-budget badge preformatted through status-render's budgetBadge —
-    // the same string the TUI/status table renders (n/a for an all-free fleet; empty when
-    // disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
+    // the same string the TUI/status table renders (n/a for an all-free fleet; `· no cap`
+    // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
     budgetBadge: budgetBadge(snap.budget),
     inbox: snap.inbox,
     // Previews of the queued director prompts in execution order (truncated server-side —
     // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.
     inboxPrompts: snap.inboxPrompts,
-    // The raw daily-cost-budget data while enabled (null when disabled) — machine-readable
-    // for `status --json`; the display-ready header badge is the preformatted `budgetBadge`.
-    budget: snap.budget ?? null,
+    // The raw daily-cost-budget data, unconditionally (capUsd 0 = disabled; spend still
+    // reported) — machine-readable for `status --json`; the display-ready header badge is
+    // the preformatted `budgetBadge`.
+    budget: snap.budget,
     // Operator pause (`tumwater pause` marker present): every idle role loop's phase reads
     // `paused` ahead of budget/main-red — one flag covers both dashboards through loopPhase.
     paused: snap.paused,

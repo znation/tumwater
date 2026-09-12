@@ -18,9 +18,14 @@ function writePiLog(root: string, role: string, lines: string[]): string {
   return file;
 }
 
+// The default is the default config's enabled cap with no spend — the badge renders in
+// every render now (standing information + edit affordance), and 0 < 50 keeps budgetReached
+// false so phase assertions are unaffected by the default.
+const DEFAULT_BUDGET: StatusSnapshot["budget"] = { spentUsd: 0, capUsd: 50, free: false };
+
 function snapshotWith(
   loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string }>,
-  budget: StatusSnapshot["budget"] = null,
+  budget: StatusSnapshot["budget"] = DEFAULT_BUDGET,
   paused = false,
 ): StatusSnapshot {
   return {
@@ -69,7 +74,8 @@ test("the status header carries a questions badge only while questions await", (
   const snap = snapshotWith([{ role: "clean" }]);
   snap.questions = 2;
   const header = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
-  assert.match(header, /· questions: 2$/);
+  // The standing budget badge follows the questions one in the header.
+  assert.match(header, /· questions: 2 · budget: \$0\.00\/\$50 today$/);
 });
 
 test("renderStatus with maxWidth clips every line and truncates wide cells", () => {
@@ -566,7 +572,7 @@ test("work items survive narrow-terminal clipping at the head of the state cell"
 // The daily cost budget (plans/daily-cost-budget.md): the header badge is standing
 // information while enabled, and paused role loops' state cell reads `budget paused`.
 
-test("the status header carries a budget badge while enabled and none when disabled", () => {
+test("the status header carries a budget badge in every cap state", () => {
   const enabled = renderStatus(
     tmpdir(),
     snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50, free: false }),
@@ -580,9 +586,13 @@ test("the status header carries a budget badge while enabled and none when disab
   ).split("\n")[0] ?? "";
   assert.match(fractional, /· budget: \$0\.00\/\$12\.34 today$/);
 
-  // Disabled (cap 0 → snapshot sends null): no badge at all.
-  const disabled = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
-  assert.doesNotMatch(disabled, /budget/);
+  // Disabled (cap 0): the badge stays — it is the affordance for SETTING a cap — and reads
+  // spend plus `no cap` instead of a $X/$Y figure.
+  const disabled = renderStatus(
+    tmpdir(),
+    snapshotWith([{ role: "clean" }], { spentUsd: 3.25, capUsd: 0, free: false }),
+  ).split("\n")[0] ?? "";
+  assert.match(disabled, /· budget: \$3\.25 today · no cap$/);
 });
 
 // A fleet whose models are all free (local LLMs) can never accumulate spend against the cap,
@@ -685,6 +695,23 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
   assert.match(reached.split("\n")[0] ?? "", /· budget: \$50\.00\/\$50 today$/);
 });
 
+// Regression (review of the editable-budget feature): the snapshot's budget object is now
+// unconditional, so a DISABLED cap (capUsd 0) must not read as reached — spend ≥ 0 would
+// otherwise flag every idle loop `budget paused` on a fleet with no cap at all.
+test("renderStatus never reads budget paused while the cap is disabled, even past any spend", () => {
+  const root = tmpdir();
+  // Cap disabled (0) with today's spend far above zero: the gate is off by definition.
+  const out = renderStatus(
+    root,
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 999, capUsd: 0, free: false }), running: true },
+  );
+  assert.doesNotMatch(out, /budget paused/, "no loop reads budget paused with the cap disabled");
+  assert.match(out, /feature\s+queued/);
+  assert.match(out, /director\s+waiting for prompts/);
+  // The badge stays standing and says no cap.
+  assert.match(out.split("\n")[0] ?? "", /· budget: \$999\.00 today · no cap$/);
+});
+
 // The operator pause (PLANS.md, fleet-pause plan): while the `tumwater pause` marker exists,
 // every idle role loop's state cell reads `paused` — after the director exemption and ahead
 // of budget paused / main red, because user intent is the most specific reason: it tells the
@@ -781,12 +808,15 @@ test("the header names the running build and flags a stale one", () => {
   assert.equal(buildBadge(null), "");
 });
 
-test("budgetBadge renders the three-case daily-cost rule", () => {
+test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
   // One home for the badge string (renderStatus's header and the payload's preformatted
-  // `budgetBadge` field): empty when disabled, n/a for an all-free fleet, $X/$Y otherwise —
-  // whole-dollar caps stay bare ($50), fractional ones keep their cents ($12.34).
-  assert.equal(budgetBadge(null), "", "disabled: no badge");
+  // budgetBadge field): n/a for an all-free fleet (checked first, in EVERY cap state — a
+  // disabled free fleet still cannot accumulate spend), $X/$Y while enabled with priced
+  // models, `· no cap` when disabled. Whole-dollar caps stay bare ($50); fractional ones
+  // keep their cents ($12.34).
   assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, free: true }), " · budget: n/a today", "all-free fleet reads n/a");
   assert.equal(budgetBadge({ spentUsd: 12.34, capUsd: 50, free: false }), " · budget: $12.34/$50 today", "whole-dollar cap stays bare");
   assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, free: false }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
+  assert.equal(budgetBadge({ spentUsd: 7.5, capUsd: 0, free: false }), " · budget: $7.50 today · no cap", "disabled: spend shown, gate off");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, free: true }), " · budget: n/a today", "free outranks disabled too");
 });

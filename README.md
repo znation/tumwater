@@ -215,8 +215,9 @@ thinking/instructions, tick intervals, backoff, the `maxConcurrent` cap, `autoRe
 
 Spend is capped by `maxDailyCostUsd` in tumwater.json (default 50; set 0 to disable): once the
 day's total cost across all loops reaches it, role loops stop starting new ticks for the rest of
-the local day — in-flight ticks finish and the director keeps running your prompts. Edits apply
-live within ~2s.
+the local day — in-flight ticks finish and the director keeps running your prompts. The cap is
+editable from both dashboards (TUI Ctrl+B on the prompt line; GUI header badge click-to-edit) —
+they write tumwater.json like any other edit, so it applies live within ~2s.
 
 ## Notes on local model servers
 

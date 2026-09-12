@@ -10,6 +10,7 @@ import {
   loadConfigSafe,
   reviewConfig,
   saveConfig,
+  setDailyBudgetUsd,
   validateConfig,
 } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
@@ -351,6 +352,53 @@ test("saveConfig refuses to persist invalid configs", () => {
   config.maxConcurrent = -1;
   assert.throws(() => saveConfig(dir, config), /maxConcurrent must be an integer of at least 1/);
   assert.ok(!fs.existsSync(path.join(dir, "tumwater.json")), "nothing written on invalid config");
+});
+
+// setDailyBudgetUsd — the shared setter behind the TUI's Ctrl+B editor and the GUI's
+// /api/budget endpoint: fresh read-modify-write of ONE key, atomic (tmp + rename), errors as
+// strings so both surfaces can flash them without try/catch plumbing.
+test("setDailyBudgetUsd persists only the cap, atomically, and rejects invalid values", () => {
+  const dir = tmpdir();
+  // Start from a config with distinctive values in other keys so preservation is observable.
+  const base = defaultConfig();
+  base.maxConcurrent = 3;
+  base.roles.clean!.instructions = "keep it tidy";
+  saveConfig(dir, base);
+
+  // Valid whole / fractional / zero caps persist and preserve every other key (0 disables).
+  for (const value of [25, 12.34, 0]) {
+    assert.deepEqual(setDailyBudgetUsd(dir, value), { ok: true }, `cap ${value}`);
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8")) as Record<string, unknown>;
+    assert.equal(raw.maxDailyCostUsd, value);
+    delete raw.maxDailyCostUsd;
+    const { maxDailyCostUsd: _cap, ...rest } = loadConfig(dir) as unknown as Record<string, unknown> & {
+      maxDailyCostUsd: number;
+    };
+    assert.deepEqual(raw, rest, `only the cap differs after setting ${value}`);
+  }
+
+  // Invalid values reject with an actionable message and leave the file untouched.
+  const before = fs.readFileSync(path.join(dir, "tumwater.json"), "utf8");
+  for (const value of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+    const r = setDailyBudgetUsd(dir, value);
+    assert.equal(r.ok, false, String(value));
+    if (!r.ok) assert.match(r.error, /number of 0 or more/);
+  }
+  assert.equal(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8"), before, "rejected values change nothing");
+
+  // No tmp remnant from any write (successes and the rejected ones).
+  assert.deepEqual(
+    fs.readdirSync(dir).filter((f) => f.startsWith("tumwater.json.tmp-")),
+    [],
+    "no tmp file left behind",
+  );
+
+  // A broken config is surfaced as an error, never overwritten with defaults + the new cap.
+  fs.writeFileSync(path.join(dir, "tumwater.json"), "{ still editing");
+  const r = setDailyBudgetUsd(dir, 10);
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /not valid JSON/);
+  assert.equal(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8"), "{ still editing");
 });
 
 // --- loadConfigCached: the stat-keyed cache behind every poll's config reload ---

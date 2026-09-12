@@ -324,6 +324,47 @@ export function saveConfig(root: string, config: TumwaterConfig): void {
   fs.writeFileSync(configPath(root), JSON.stringify(config, null, 2) + "\n");
 }
 
+/** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
+ * /api/budget endpoint both run their input through it): a finite number of 0 or more —
+ * 0 disables the gate, fractional dollars allowed (the badge renders cents). Returns an
+ * actionable error message for anything else so both surfaces can flash it without
+ * try/catch plumbing. */
+export function checkDailyBudgetUsd(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+    return `maxDailyCostUsd must be a number of 0 or more, 0 disables (got ${show(value)})`;
+  return null;
+}
+
+/** Set the daily cost budget cap in tumwater.json: fresh loadConfig (no stat cache — a
+ * writer must see the latest file), validate the value, mutate ONLY that key, and write
+ * atomically (tmp file + rename) because this is the first in-harness WRITER of the config
+ * while readers poll it every ~2 s and two dashboards could save concurrently. A broken or
+ * missing-on-disk config surfaces as an error string instead of throwing, so both UIs can
+ * flash it; on any failure the file (and no tmp remnant) is left untouched. */
+export function setDailyBudgetUsd(
+  root: string,
+  value: number,
+): { ok: true } | { ok: false; error: string } {
+  const problem = checkDailyBudgetUsd(value);
+  if (problem) return { ok: false, error: problem };
+  let cfg: TumwaterConfig;
+  try {
+    cfg = loadConfig(root); // fresh — bypasses the stat cache on purpose
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) }; // broken file: never overwrite it with defaults
+  }
+  const file = configPath(root);
+  const tmp = `${file}.tmp-${process.pid}`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify({ ...cfg, maxDailyCostUsd: value }, null, 2) + "\n");
+    fs.renameSync(tmp, file); // atomic on POSIX — readers never see a partial file
+  } catch (err) {
+    fs.rmSync(tmp, { force: true });
+    return { ok: false, error: errorMessage(err) };
+  }
+  return { ok: true };
+}
+
 /** Ids of the enabled roles, in config.roles order (catalog order for known ids). */
 export function enabledRoleIds(config: TumwaterConfig): string[] {
   return Object.entries(config.roles)

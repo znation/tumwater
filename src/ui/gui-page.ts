@@ -40,7 +40,7 @@ export const GUI_PAGE = `<!doctype html>
   .legend { display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; color:#9fb0bf; font-size:12px; }
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
 </style>
-<h1>tumwater <span class="muted" id="header">connecting…</span></h1>
+<h1>tumwater <span class="muted" id="header">connecting…</span><span id="budgetwrap"></span></h1>
 <nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet</a><span class="muted"> | </span><a href="#" id="tab-report">report</a></nav>
 <form id="promptform">
   <input id="prompt" placeholder="type a prompt for the project — it runs immediately via the director loop" autocomplete="off">
@@ -212,6 +212,62 @@ export const GUI_PAGE = `<!doctype html>
     }
   }
 
+  // budget-edit:start
+  // The header's daily cost budget badge is editable: clicking swaps just that fragment for
+  // an inline input + set/cancel; saving POSTs /api/budget, which writes tumwater.json through
+  // the same shared setter as the TUI's Ctrl+B. No optimistic local state: on success the
+  // badge re-renders from the next 1 s poll (the orchestrator picks the new cap up within ~2
+  // s), and a failed save flashes the server's error and keeps the editor open so the operator
+  // can fix it. lastStatus is the latest /api/status payload, kept so cancel can restore the
+  // badge without waiting for the next poll.
+  let lastStatus = null;
+  let budgetEditing = false;
+  function renderBudgetBadge(d) {
+    if (budgetEditing) return; // keep the editor until set/cancel decides
+    document.getElementById("budgetwrap").innerHTML =
+      "<a href='#' id='budgetbadge'>" + esc(d.budgetBadge || "") + "</a>";
+  }
+  function openBudgetEditor() {
+    budgetEditing = true;
+    // Pre-filled with the current cap — empty when disabled (empty means "no cap" on save).
+    const cap = lastStatus && lastStatus.budget && lastStatus.budget.capUsd > 0 ? String(lastStatus.budget.capUsd) : "";
+    document.getElementById("budgetwrap").innerHTML =
+      "<input type='number' min='0' step='0.01' id='budgetinput' value='" + esc(cap) + "' style='width:9em;padding:2px 6px'>"
+      + " <button id='budgetset'>set</button> <button id='budgetcancel'>cancel</button>";
+    const input = document.getElementById("budgetinput");
+    input.focus();
+    input.select();
+  }
+  function showFlash(msg) {
+    const f = document.getElementById("flash");
+    f.textContent = msg;
+    setTimeout(() => (f.textContent = ""), 3000);
+  }
+  async function saveBudget() {
+    const input = document.getElementById("budgetinput");
+    if (!input) return;
+    // Empty means "no cap" (0 disables); a number input yields "" for rejected text.
+    const value = input.value === "" ? 0 : Number(input.value);
+    try {
+      const r = await fetch("/api/budget", { method: "POST", headers: { "content-type": "application/json" },
+                                              body: JSON.stringify({ maxDailyCostUsd: value }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "bad response");
+      budgetEditing = false; // the next poll re-renders the badge from the payload
+    } catch (e) {
+      showFlash("error: " + e.message); // stay in edit mode so the operator can fix it
+    }
+  }
+  document.addEventListener("click", (ev) => {
+    if (ev.target.closest("#budgetbadge")) { ev.preventDefault(); openBudgetEditor(); return; }
+    if (ev.target.id === "budgetset") { saveBudget(); return; }
+    if (ev.target.id === "budgetcancel") { budgetEditing = false; renderBudgetBadge(lastStatus); }
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && ev.target.id === "budgetinput") saveBudget(); // Enter saves, like set
+  });
+  // budget-edit:end
+
   let transcriptRole = null; // loop whose transcript panel is open (null = closed)
   let backlogKey = null; // "file:index" of the open backlog entry (null = closed) — mutually
                          // exclusive with transcriptRole: both render into #transcript, so only
@@ -253,17 +309,19 @@ export const GUI_PAGE = `<!doctype html>
     try {
       const r = await fetch("/api/status");
       const d = await r.json();
+      lastStatus = d;
       const qn = (d.questions || []).length;
       // The build badge arrives pre-formatted from the payload — status-render's buildBadge,
       // the same string the TUI/status header renders, so the two surfaces cannot drift.
       document.getElementById("header").textContent =
         (d.running ? "running (pid " + d.pid + (d.buildBadge || "") + ")" : "orchestrator not running") +
         (d.inbox ? " · inbox: " + d.inbox : "") +
-        (qn ? " · questions: " + qn : "") +
-        // The daily cost budget badge arrives preformatted from the payload — status-render's
-        // budgetBadge, the same string the TUI/status header renders (n/a for an all-free
-        // fleet; empty when disabled), so the two surfaces cannot drift.
-        (d.budgetBadge || "");
+        (qn ? " · questions: " + qn : "");
+      // The daily cost budget badge arrives preformatted from the payload — status-render's
+      // budgetBadge, the same string the TUI/status header renders (n/a for an all-free
+      // fleet; "· no cap" when disabled), so the two surfaces cannot drift. It is its own
+      // element because it is clickable: the editor swaps just this fragment.
+      renderBudgetBadge(d);
       document.getElementById("loops").innerHTML = sortLoops(d.loops).map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";

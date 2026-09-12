@@ -29,13 +29,15 @@ export interface StatusSnapshot {
   /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
   questions: number;
   loops: LoopState[];
-  /** The daily cost budget while enabled (`maxDailyCostUsd` > 0): today's fleet spend vs the
-   * cap, for the `· budget: $X/$Y today` header badge on both dashboards. Null when disabled.
-   * Spend lags in-flight ticks by up to one tick boundary — exactly like the cost column.
-   * `free` is true when every model the fleet could use resolves to an unpriced or zero-cost
-   * entry in pi's models.json (src/pi-models.ts): spend can never accumulate against the cap,
-   * so both dashboards read `· budget: n/a today` instead of a dollar figure. */
-  budget: { spentUsd: number; capUsd: number; free: boolean } | null;
+  /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
+   * show): today's fleet spend vs the cap, for the header badge on both dashboards (`· budget:
+   * $X/$Y today` while enabled, `· no cap` when disabled) and the editable affordance that
+   * needs a badge even on a disabled fleet. Spend lags in-flight ticks by up to one tick
+   * boundary — exactly like the cost column. `free` is true when every model the fleet could
+   * use resolves to an unpriced or zero-cost entry in pi's models.json (src/pi-models.ts):
+   * spend can never accumulate against a cap that cannot be reached, so both dashboards read
+   * `· budget: n/a today` instead of a dollar figure. */
+  budget: { spentUsd: number; capUsd: number; free: boolean };
   /** True while the operator has paused the fleet (`tumwater pause` marker present): every
    * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
    * because a 2-second-stale pause flag would mislead an operator mid-resume. */
@@ -114,14 +116,14 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     inboxPrompts,
     questions: openQuestions(root).length,
     loops,
-    budget:
-      cfg.maxDailyCostUsd > 0
-        ? {
-            spentUsd: fleetDailyCost(loops),
-            capUsd: cfg.maxDailyCostUsd,
-            free: fleetModelsFree(cfg, modelsPath),
-          }
-        : null,
+    // Unconditional (never null): a disabled fleet still shows its spend and the badge is
+    // the affordance for SETTING a cap. The extra models.json read per poll while disabled
+    // is one small file — deliberately uncached, like every other field here.
+    budget: {
+      spentUsd: fleetDailyCost(loops),
+      capUsd: cfg.maxDailyCostUsd,
+      free: fleetModelsFree(cfg, modelsPath),
+    },
     paused: isFleetPaused(root),
   };
 }
