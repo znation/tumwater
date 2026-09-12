@@ -5,6 +5,28 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### Auto-restart completes on every stale episode under churn: rate-limit completed auto-restarts to at most one per 12 hours (reported by user 2026-09-11)
+
+**Symptom:** On a self-hosting fleet whose main churns (bugfix/feature work landing many commits an hour), every move of main past the running build's stamp drives a full auto-redeploy episode: green check → compile → hold, during which no new ticks start on any loop and in-flight role ticks are drained up to `RESTART_DRAIN_MAX_MS` (30 min) → swap → exit → respawn. Under sustained churn these episodes run back to back — the fleet halts for a drain window over and over (dashboards show `STALE: main +N`, then restart pending), interrupting work far more often than is desirable. The 30-minute cap bounds one episode's drain; nothing bounds how often episodes complete a restart.
+
+**Repro:**
+1. Dogfood with `autoRestart` true (or unit-test `Redeployer.poll` directly): let a first stale episode reach its swap — green main, compile ok, no in-flight ticks → poll returns "restart".
+2. Move main again so the new build is stale; minutes later the second episode reaches the same point.
+3. Today both episodes return "restart": `poll()` has no notion of when the last restart landed, so under churn the fleet redeploys — and halts for a drain — on every burst.
+
+**Expected:** completed auto-restarts happen at most once per 12 hours. While inside that cooldown after a restart lands: the fleet keeps ticking on the stale build exactly as it does today when a restart is blocked — no hold, no drain, no new-tick block (poll returns "none"); staleness stays visible in both dashboards; status explains why the old build still runs via the existing `restartBlocked` channel with a deadline (e.g. `cooldown until <iso>`), plus one warning event per episode (not per poll). Once 12 h have elapsed since the last completed auto-restart, the next poll resumes the normal cycle for the current head. Only completed auto-restarts set the timestamp — an operator's manual restart (Ctrl+C / `tumwater run`) neither counts toward nor resets it.
+
+**Suspected cause:**
+- src/redeploy.ts — `Redeployer.poll` (~lines 165–270) has no record of when the last restart completed: every stale head drives a full hold+swap cycle. `RESTART_DRAIN_MAX_MS` (line 50, 30 min) bounds the drain within an episode; nothing bounds frequency across episodes.
+- The timestamp must survive process exit — auto-restart kills the orchestrator (exit code 75 → supervisor respawn), and `.tumwater/state/orchestrator.json` is per-process-lifetime (written at start, src/orchestrator.ts:230–232; removed on exit, :495) — so it needs its own persistent file under `.tumwater/state/`.
+
+**Fix direction:**
+- New constant `RESTART_COOLDOWN_MS = 12 * 60 * 60_000` in src/redeploy.ts next to `RESTART_DRAIN_MAX_MS`, with a comment citing this entry. Do not touch the drain window or the director exemption (Fixed 2026-09-09): those bound one episode, this bounds how often episodes complete. A previous director tick tried to answer related drain complaints by raising `RESTART_DRAIN_MAX_MS` (commit 5f10e9f, discarded after review) — do not repeat that.
+- Persist the last completed auto-restart as epoch ms in a new small JSON file under `.tumwater/state/` (new path helper next to `orchestratorStatePath`, src/paths.ts:27). Redeployer reads it at construction (test seam for injection) and writes `now` inside poll immediately before returning "restart" — the process exits right after, so orchestrator cleanup is too late.
+- In poll: when main is stale and autoRestart is on but now < lastAutoRestartAt + RESTART_COOLDOWN_MS → do not set pendingHead or start green/compile/drain; publish a `restartBlocked`-style reason with the deadline (BuildStatus, src/build-info.ts:72–90; rendered as `restart BLOCKED: …` by src/ui/status-render.ts:207–209 and warned by doctor), log one warning event when an episode first hits the cooldown, and return "none" so the orchestrator keeps scheduling normally (src/orchestrator.ts:433 blocks only on "hold"). Re-evaluate on every poll — do not reuse `block()`/`blockedHead`, whose no-retry-until-main-moves semantics would skip the restart entirely if main happens not to move again.
+- README "How it works" auto-restart paragraph: one sentence — completed auto-restarts are rate-limited to at most once per 12 h; during the cooldown STALE stays visible with a deadline and ticks continue.
+- Tests (test/redeploy.test.ts): (a) a second stale episode within 12 h of a completed swap returns "none" without holding, and status carries the deferred reason with its deadline; (b) advancing injected `now` past lastAutoRestartAt + 12 h lets the same head proceed to "restart"; (c) the timestamp is written on swap and re-read by a second Redeployer constructed from the same state file (survives process restart); (d) the existing drain/director-exemption tests pass unchanged.
+
 ## Fixed
 
 ### readEvents' torn trailing line occupied one of the limit slots: while events.jsonl ended unterminated, feeds showed at most limit−1 events (found by bugfix loop 2026-09-11, fixed 2026-09-11)
