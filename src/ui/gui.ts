@@ -150,6 +150,40 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
+/** Read a POST body as a JSON object — the shared front half of every /api POST handler:
+ * oversized bodies get 413, malformed or non-object bodies get 400 with `example` showing
+ * the expected shape (client-side failures get an actionable message, not a 500 carrying
+ * Node's raw SyntaxError/TypeError, which misreports the fault and hides the fix), and the
+ * parsed object is returned — null once any 4xx was sent. */
+async function readJsonObject(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  example: string,
+): Promise<Record<string, unknown> | null> {
+  let body: string;
+  try {
+    body = await readBody(req);
+  } catch (err) {
+    sendJson(res, 413, { error: errorMessage(err) }); // body too large
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    sendJson(res, 400, { error: `body must be a JSON object like ${example}` });
+    return null;
+  }
+  // Valid JSON that is not an object ("just a string", [1], null) gets the same fix as
+  // malformed JSON — pointing at a field of a body that has none would mislead. Arrays are
+  // objects in JS, so they need their own clause.
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    sendJson(res, 400, { error: `body must be a JSON object like ${example}` });
+    return null;
+  }
+  return parsed as Record<string, unknown>;
+}
+
 /** External IPv4 addresses of this machine's network interfaces, for printing the URLs a
  * `gui --all-interfaces` server is reachable at. IPv6 and internal (loopback) addresses are
  * skipped: the loopback URL is printed separately, and bracketed IPv6 URLs are rarely what
@@ -206,31 +240,9 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
       } else if (req.method === "GET" && pathname === "/api/backlog") {
         handleBacklog(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/prompt") {
-        // Client-side request failures get 4xx with an actionable message — not a 500
-        // carrying Node's raw SyntaxError/TypeError, which misreports the fault and hides
-        // the fix (send {"text": "..."}).
-        let body: string;
-        try {
-          body = await readBody(req);
-        } catch (err) {
-          sendJson(res, 413, { error: errorMessage(err) }); // body too large
-          return;
-        }
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(body);
-        } catch {
-          sendJson(res, 400, { error: 'body must be a JSON object like {"text": "..."}' });
-          return;
-        }
-        // Valid JSON that is not an object ("just a string", [1], null) gets the same fix as
-        // malformed JSON — "text required" would point at a field of a body that has none.
-        // Arrays are objects in JS, so they need their own clause.
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-          sendJson(res, 400, { error: 'body must be a JSON object like {"text": "..."}' });
-          return;
-        }
-        const text = (parsed as { text?: unknown }).text;
+        const body = await readJsonObject(req, res, '{"text": "..."}');
+        if (!body) return; // 4xx already sent — oversized or not a JSON object
+        const text = body.text;
         if (typeof text !== "string") {
           sendJson(
             res,
@@ -246,30 +258,13 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
         submitPrompt(root, text);
         sendJson(res, 200, { ok: true });
       } else if (req.method === "POST" && pathname === "/api/budget") {
-        // The dashboard's budget-badge editor saves the daily cost cap here. Same body
-        // discipline as /api/prompt (readBody cap, 4xx with actionable messages), and the
-        // same shared validation rule + atomic setter the TUI's Ctrl+B uses — so both
-        // surfaces write tumwater.json identically and the running orchestrator picks the
-        // change up on its next ~2 s poll.
-        let body: string;
-        try {
-          body = await readBody(req);
-        } catch (err) {
-          sendJson(res, 413, { error: errorMessage(err) }); // body too large
-          return;
-        }
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(body);
-        } catch {
-          sendJson(res, 400, { error: 'body must be a JSON object like {"maxDailyCostUsd": 25}' });
-          return;
-        }
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-          sendJson(res, 400, { error: 'body must be a JSON object like {"maxDailyCostUsd": 25}' });
-          return;
-        }
-        const value = (parsed as { maxDailyCostUsd?: unknown }).maxDailyCostUsd;
+        // The dashboard's budget-badge editor saves the daily cost cap here — same body
+        // discipline as /api/prompt (readJsonObject), and the same shared validation rule +
+        // atomic setter the TUI's Ctrl+B uses, so both surfaces write tumwater.json
+        // identically and the running orchestrator picks the change up on its next ~2 s poll.
+        const body = await readJsonObject(req, res, '{"maxDailyCostUsd": 25}');
+        if (!body) return; // 4xx already sent — oversized or not a JSON object
+        const value = body.maxDailyCostUsd;
         if (value === undefined) {
           sendJson(res, 400, { error: "maxDailyCostUsd required" });
           return;
