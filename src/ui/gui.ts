@@ -6,14 +6,13 @@ import {
   openQuestionEntries,
   plannedPlanEntries,
 } from "../backlog.js";
-import { parseNonNegativeInt, parsePositiveInt } from "../cli-args.js";
 import { submitPrompt } from "../inbox.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
 import { collectReport } from "../report.js";
 import { statusPayload } from "./status-payload.js";
 import { readTranscript } from "./transcript.js";
-import { errorMessage } from "../text.js";
+import { errorMessage, parseNonNegativeInt, parsePositiveInt } from "../text.js";
 
 /** Send a JSON response with the given status code and body. Every /api endpoint answers
  * this way (errors included), so the content-type header lives in exactly one place. */
@@ -84,7 +83,7 @@ function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root
  * one exact rule: missing or non-decimal → 14, out-of-range clamped (never error: a URL typo
  * must degrade to the default window, deliberately unlike handleTranscript's
  * parsePositiveInt→400 idiom). "Non-decimal" is the shared plain-digit rule
- * (cli-args.parseNonNegativeInt): hex/scientific/signed/padded spellings are not counts and get
+ * (text.parseNonNegativeInt): hex/scientific/signed/padded spellings are not counts and get
  * the default instead of a coerced value — raw Number.parseInt would read "1e3" as 1, "0x10"
  * as 0, and "-5" as -5. Reads files directly, so it works whether or not the fleet is running.
  */

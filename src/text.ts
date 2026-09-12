@@ -1,8 +1,8 @@
 /** Shared text-shaping helpers for human-facing one-line text — the observability layer's
  * display labels (live progress, transcripts, tool-call descriptions), tick commit subjects and
  * body fields, and build-check reason lines — plus number and time formats: whitespace
- * collapsing, ellipsis truncation, compact token counts, abbreviated commit hashes, and
- * zero-padded local date/time parts. Presentation only:
+ * collapsing, ellipsis truncation, compact token counts, abbreviated commit hashes, plain-
+ * decimal integer parsing, and zero-padded local date/time parts. Presentation only:
  * depends on nothing, so any surface can import it without reaching into another module's
  * internals — and the collapse/truncation/compaction/abbreviation semantics live in exactly one
  * place instead of drifting per consumer. */
@@ -51,6 +51,27 @@ export function truncate(s: string, max: number): string {
   let cut = max - 1;
   if (cutSplitsSurrogatePair(s, cut)) cut -= 1; // Never emit a lone high surrogate.
   return `${s.slice(0, cut).trimEnd()}…`;
+}
+
+/** Parse `raw` as a positive integer — the one definition of what counts as a valid count or
+ * position across every input surface (CLI flags and the GUI's query params). Only plain
+ * decimal digit strings qualify: Number() would silently coerce hex ("0x10" → 16), scientific
+ * ("1e3" → 1000), signed, and whitespace-padded forms, none of which a user typing a count or
+ * position meant. Null when it isn't one (non-decimal, fractional, zero); each caller keeps its
+ * own missing-value check and failure mode (fail vs HTTP 400), and bounded variants like --port
+ * add their upper limit. */
+export function parsePositiveInt(raw: string): number | null {
+  if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or padding.
+  const n = Number(raw);
+  return n >= 1 ? n : null;
+}
+
+/** Parse `raw` as a non-negative integer — zero-based positions (like /api/backlog's index,
+ * where the first entry is 0), unlike parsePositiveInt's counts and 1-based positions, for
+ * which 0 is invalid. Same plain-decimal rule: hex/scientific/signed/padded spellings are null. */
+export function parseNonNegativeInt(raw: string): number | null {
+  if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or padding.
+  return Number(raw);
 }
 
 /** Compact token count for display: one-decimal `k` at ≥10,000 (`12.3k`), bare integer

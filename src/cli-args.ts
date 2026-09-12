@@ -1,37 +1,17 @@
 import fs from "node:fs";
 import { allRoleIds } from "./roles.js";
-import { errorMessage } from "./text.js";
+import { errorMessage, parsePositiveInt } from "./text.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
  * layer calls these before running a command, so a bad flag fails fast with an actionable
- * message instead of the command silently running with default behavior. parsePositiveInt is
- * also used by gui.ts's query-param validation, so one definition of a valid count/position
- * covers both input surfaces. */
+ * message instead of the command silently running with default behavior. The plain-decimal
+ * integer core (parsePositiveInt/parseNonNegativeInt) lives in text.ts — shared by these flags
+ * and gui.ts's query-param validation, so one definition of a valid count/position covers both
+ * input surfaces without the UI layer importing this module. */
 
 export function fail(message: string): never {
   process.stderr.write(`tumwater: ${message}\n`);
   process.exit(1);
-}
-
-/** Parse `raw` as a positive integer — the one definition of what counts as a valid count or
- * position across every input surface (CLI flags and the GUI's query params). Only plain
- * decimal digit strings qualify: Number() would silently coerce hex ("0x10" → 16), scientific
- * ("1e3" → 1000), signed, and whitespace-padded forms, none of which a user typing a count or
- * position meant. Null when it isn't one (non-decimal, fractional, zero); each caller keeps its
- * own missing-value check and failure mode (fail vs HTTP 400), and bounded variants like --port
- * add their upper limit. */
-export function parsePositiveInt(raw: string): number | null {
-  if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or padding.
-  const n = Number(raw);
-  return n >= 1 ? n : null;
-}
-
-/** Parse `raw` as a non-negative integer — zero-based positions (like /api/backlog's index,
- * where the first entry is 0), unlike parsePositiveInt's counts and 1-based positions, for
- * which 0 is invalid. Same plain-decimal rule: hex/scientific/signed/padded spellings are null. */
-export function parseNonNegativeInt(raw: string): number | null {
-  if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or padding.
-  return Number(raw);
 }
 
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.

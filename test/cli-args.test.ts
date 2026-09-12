@@ -4,8 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   parseCountFlag,
-  parseNonNegativeInt,
-  parsePositiveInt,
   parsePortFlag,
   parseRoleFlag,
   rejectUnknownArgs,
@@ -68,24 +66,6 @@ function expectOk<T>(fn: () => T): T {
   if (out.exited) assert.fail(`expected success, but process.exit(${out.code}) with:\n${out.stderr}`);
   return out.value;
 }
-
-// --- parsePositiveInt / parseNonNegativeInt (the shared numeric core) ---
-
-test("parsePositiveInt accepts plain decimal only — hex, scientific, signed, and padded forms are null", () => {
-  assert.equal(parsePositiveInt("1"), 1);
-  assert.equal(parsePositiveInt("65535"), 65535);
-  for (const raw of ["0x10", "1e3", "+5", "-5", " 5", "5 ", "", "abc", "2.5", "0"]) {
-    assert.equal(parsePositiveInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
-  }
-});
-
-test("parseNonNegativeInt accepts plain decimal only and allows zero", () => {
-  assert.equal(parseNonNegativeInt("0"), 0);
-  assert.equal(parseNonNegativeInt("42"), 42);
-  for (const raw of ["0x10", "1e3", "+5", "-5", "-0", " 5", "", "abc"]) {
-    assert.equal(parseNonNegativeInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
-  }
-});
 
 // --- parseCountFlag ---
 

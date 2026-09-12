@@ -1102,7 +1102,7 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
     assert.equal(d.totals.bugsFixed, 1, "a dated Fixed heading counts as a bug fixed");
 
     // days: missing or non-decimal → default 14; out-of-range clamped to 1..90 — never an
-    // error. Non-decimal follows the shared plain-digit rule (cli-args.parseNonNegativeInt):
+    // error. Non-decimal follows the shared plain-digit rule (text.parseNonNegativeInt):
     // hex/scientific/signed/padded spellings are not counts, so they get the default instead
     // of a coerced value (raw Number.parseInt read "1e3" as 1 and "0x10" as 0).
     const cases: Array<[string, number]> = [

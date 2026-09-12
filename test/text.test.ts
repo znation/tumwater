@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactTokens, collapseWhitespace, truncate } from "../src/text.js";
+import {
+  compactTokens,
+  collapseWhitespace,
+  parseNonNegativeInt,
+  parsePositiveInt,
+  truncate,
+} from "../src/text.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
 // (live progress work items, transcript lines/thinking/errors, tool-call descriptions)
@@ -107,4 +113,22 @@ test("compactTokens renders bare integers below 10,000", () => {
 test("compactTokens renders one-decimal k at and above 10,000", () => {
   assert.equal(compactTokens(10_000), "10.0k"); // boundary: compacted with a .0
   assert.equal(compactTokens(12_345), "12.3k");
+});
+
+// --- parsePositiveInt / parseNonNegativeInt (the shared numeric core) ---
+
+test("parsePositiveInt accepts plain decimal only — hex, scientific, signed, and padded forms are null", () => {
+  assert.equal(parsePositiveInt("1"), 1);
+  assert.equal(parsePositiveInt("65535"), 65535);
+  for (const raw of ["0x10", "1e3", "+5", "-5", " 5", "5 ", "", "abc", "2.5", "0"]) {
+    assert.equal(parsePositiveInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
+  }
+});
+
+test("parseNonNegativeInt accepts plain decimal only and allows zero", () => {
+  assert.equal(parseNonNegativeInt("0"), 0);
+  assert.equal(parseNonNegativeInt("42"), 42);
+  for (const raw of ["0x10", "1e3", "+5", "-5", "-0", " 5", "", "abc"]) {
+    assert.equal(parseNonNegativeInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
+  }
 });
