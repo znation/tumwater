@@ -272,20 +272,33 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   let lastRetention = config.sessionRetentionDays;
   let lastPruneAt: number | null = config.sessionRetentionDays > 0 ? Date.now() : null;
 
-  // Need-based deferral (PLANS.md "Prioritize loops by need"): TRUE work-landed verdicts are
-  // cached per base head — a true verdict is monotone under fast-forward-only main movement, so
-  // it never needs re-evaluation; falses re-check each poll at one local `git log` per due
-  // deferred role (main advancing can flip them). Bounded, so a long-running fleet cannot grow
-  // the set unbounded.
+  // Need-based deferral (PLANS.md "Prioritize loops by need"): work-landed verdicts are cached
+  // per base head so a quiet fleet pays no git cost in steady state. A TRUE verdict is monotone
+  // under fast-forward-only main movement — once work has landed in (sinceHead, main] it stays
+  // there — so true heads never re-evaluate. A FALSE verdict is valid exactly while main sits at
+  // the head it was checked against: the range cannot grow until main moves, so a cached false
+  // skips the `git log` entirely and re-checks once when main's head changes (a false can flip to
+  // true only on such movement — caching it unconditionally would defer a role forever after the
+  // very commit that should wake it). Both caches are bounded, so a long-running fleet cannot
+  // grow them unbounded.
   const workLandedHeads = new Set<string>();
-  async function workLandedSince(sinceHead: string): Promise<boolean> {
+  const noWorkAtHead = new Map<string, string>(); // sinceHead -> main head at which "no work" held
+  async function workLandedSince(sinceHead: string, mainHeadNow: string): Promise<boolean> {
     if (workLandedHeads.has(sinceHead)) return true;
+    const checkedAt = noWorkAtHead.get(sinceHead);
+    // Main has not moved since the last check for this head — the range is unchanged. An empty
+    // mainHead means the ref could not be resolved: never trust or store a cache against it.
+    if (mainHeadNow !== "" && checkedAt === mainHeadNow) return false;
     const subjects = await subjectsBetween(root, sinceHead, mainBranch);
     // A range that cannot be evaluated is treated as work landed — conservative: run the tick.
     const verdict = subjects === null ? true : workLanded(subjects);
     if (verdict) {
+      noWorkAtHead.delete(sinceHead);
       if (workLandedHeads.size >= 200) workLandedHeads.clear();
       workLandedHeads.add(sinceHead);
+    } else if (mainHeadNow !== "") {
+      if (noWorkAtHead.size >= 200) noWorkAtHead.clear();
+      noWorkAtHead.set(sinceHead, mainHeadNow);
     }
     return verdict;
   }
@@ -450,7 +463,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           const s = runner.state;
           // The git range is only consulted when the other three conditions already hold — a
           // never-ticked role or a tick with pending business runs without paying for it.
-          const landed = s.lastMainHead !== "" ? await workLandedSince(s.lastMainHead) : true;
+          const landed =
+            s.lastMainHead !== "" ? await workLandedSince(s.lastMainHead, mainHead) : true;
           const deferredNow = deferTick(s, runner.role, landed);
           if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
             if (deferredNow)
