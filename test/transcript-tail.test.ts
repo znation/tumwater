@@ -7,7 +7,7 @@ import { readTranscriptTail } from "../src/ui/transcript-tail.js";
 import { formatTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/ui/tail.js";
-import { FIXED_TS, agentStart, assistantBlocks, tmpdir, userLine } from "./util.js";
+import { FIXED_TS, agentStart, assistantBlocks, tmpdir, userLine, vanishOnOpen } from "./util.js";
 
 /** Local wall-clock rendering of an epoch-ms timestamp (independent of the implementation). */
 function expectedTimestamp(ts: number): string {
@@ -178,6 +178,19 @@ test("readTranscriptTail returns null for missing or empty logs", () => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, "");
   assert.equal(readTranscriptTail(file, 50), null);
+});
+
+test("readTranscriptTail returns null when rotation removes the file between stat and open", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, agentStart() + "\n" + assistantBlocks([{ type: "text", text: "hi" }]) + "\n");
+  const restore = vanishOnOpen(file);
+  try {
+    assert.equal(readTranscriptTail(file, 50), null); // no throw — same as a missing log
+  } finally {
+    restore();
+  }
 });
 
 // Run labels: a labeled run's marker line sits just before its agent_start, so the backward

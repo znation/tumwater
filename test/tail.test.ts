@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { followFile, readCompleteLines, withTail, type TailState } from "../src/ui/tail.js";
-import { tmpdir } from "./util.js";
+import { tmpdir, vanishOnOpen } from "./util.js";
 
 /** Poll until `pred` holds or the timeout elapses; returns whether it held. */
 async function waitFor(pred: () => boolean, timeoutMs = 3000): Promise<boolean> {
@@ -172,4 +172,16 @@ test("readCompleteLines returns only complete lines and stops at the last newlin
   const empty = path.join(tmpdir(), "empty.jsonl");
   fs.writeFileSync(empty, "abc");
   assert.deepEqual(readCompleteLines(empty, 0, 3), { lines: [], end: 0 });
+});
+
+test("readCompleteLines returns no lines when rotation removes the file between stat and open", () => {
+  const file = path.join(tmpdir(), "log.jsonl");
+  fs.writeFileSync(file, "a\nb\nc\n");
+  const size = fs.statSync(file).size; // the caller's stat sees the pre-rotation file
+  const restore = vanishOnOpen(file);
+  try {
+    assert.deepEqual(readCompleteLines(file, 0, size), { lines: [], end: 0 }); // no throw — next poll reseeds
+  } finally {
+    restore();
+  }
 });

@@ -75,10 +75,19 @@ export function forEachTailChunk(file: string, onChunk: (chunk: Buffer) => boole
   if (!st || st.size === 0) return; // No log yet.
   let size = st.size;
   if (size <= TAIL_SCAN_THRESHOLD) {
-    onChunk(fs.readFileSync(file));
+    try {
+      onChunk(fs.readFileSync(file));
+    } catch {
+      return; // Rotated away between stat and read — no data, the same policy as a missing file.
+    }
     return;
   }
-  const fd = fs.openSync(file, "r");
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "r");
+  } catch {
+    return; // Vanished (rotated) between stat and open — nothing to deliver.
+  }
   try {
     // fstat on the opened inode stays correct even if rotation renames the file mid-read.
     size = fs.fstatSync(fd).size;

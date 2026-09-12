@@ -10,7 +10,7 @@ import {
   rotateIfLarge,
   statOrNull,
 } from "../src/files.js";
-import { tmpdir } from "./util.js";
+import { tmpdir, vanishOnOpen, vanishOnReadFile } from "./util.js";
 
 test("rotateIfLarge rotates once over the cap and replaces the previous rotation", () => {
   const dir = tmpdir();
@@ -123,6 +123,29 @@ test("forEachTailChunk delivers chunks newest-first and honors onChunk's early s
     return false;
   });
   assert.equal(missingCalls, 0);
+});
+
+test("forEachTailChunk delivers nothing when rotation removes the file between stat and open", () => {
+  const dir = tmpdir();
+  // Both read paths: over the small-file threshold opens an fd, at or under it reads whole.
+  for (const [name, data] of [
+    ["large.jsonl", Buffer.alloc(3 * 8192).fill(0x61)],
+    ["small.jsonl", Buffer.from("abc\n")],
+  ] as const) {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, data);
+    const restore = name === "large.jsonl" ? vanishOnOpen(file) : vanishOnReadFile(file);
+    try {
+      let calls = 0;
+      forEachTailChunk(file, () => {
+        calls++;
+        return false;
+      }); // must not throw — a rotated-away file is no data, like a missing one
+      assert.equal(calls, 0, `${name}: nothing delivered`);
+    } finally {
+      restore();
+    }
+  }
 });
 
 test("statOrNull treats a missing file as no data, not an error", () => {

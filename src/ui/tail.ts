@@ -18,7 +18,14 @@ import { piLogPath } from "../paths.js";
 export function readCompleteLines(file: string, offset: number, size: number): { lines: string[]; end: number } {
   const len = size - offset;
   if (len <= 0) return { lines: [], end: offset };
-  const fd = fs.openSync(file, "r");
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "r");
+  } catch {
+    // The caller's stat saw the file but rotation renamed it away before this open — no data
+    // yet, exactly like a shrunken read below; the next poll re-stats and reseeds.
+    return { lines: [], end: offset };
+  }
   try {
     const buf = Buffer.alloc(len);
     const got = fs.readSync(fd, buf, 0, len, offset);

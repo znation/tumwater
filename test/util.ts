@@ -38,6 +38,41 @@ export function fakePi(script: string): () => void {
   };
 }
 
+/** Wrap fs.openSync so the first open of `file` unlinks it instead — simulating a log
+ * rotation rename landing between a reader's stat and its open (the race tail readers must
+ * survive as "no data", not an ENOENT throw). Returns an undo function. */
+export function vanishOnOpen(file: string): () => void {
+  const orig = fs.openSync.bind(fs);
+  let hit = false;
+  (fs as Record<string, unknown>).openSync = (p: unknown, flags: string) => {
+    if (!hit && p === file) {
+      hit = true;
+      fs.unlinkSync(file);
+    }
+    return (orig as (x: unknown, f: string) => number)(p, flags);
+  };
+  return () => {
+    (fs as Record<string, unknown>).openSync = orig;
+  };
+}
+
+/** The readFileSync twin of vanishOnOpen — for readers that stat and then read a small file
+ * whole. Returns an undo function. */
+export function vanishOnReadFile(file: string): () => void {
+  const orig = fs.readFileSync.bind(fs);
+  let hit = false;
+  (fs as Record<string, unknown>).readFileSync = (p: unknown, ...rest: unknown[]) => {
+    if (!hit && p === file) {
+      hit = true;
+      fs.unlinkSync(file);
+    }
+    return (orig as (x: unknown, ...r: unknown[]) => Buffer)(p, ...rest);
+  };
+  return () => {
+    (fs as Record<string, unknown>).readFileSync = orig;
+  };
+}
+
 /** A pi JSON line for an assistant message_end. */
 export function assistantLine(
   text: string,

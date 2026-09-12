@@ -7,6 +7,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### Tail readers threw ENOENT when log rotation renamed the file between their stat and open: a poll landing in that window crashed the TUI or `logs -f` process (found by bugfix loop 2026-09-11, fixed 2026-09-11)
+
+**Symptom:** every tail reader stats its log before opening it (`statOrNull`, then `openSync`/`readFileSync`). Log rotation — events.jsonl at 16 MB in `logEvent`, pi logs at `logMaxBytes` — renames the path away, so a stat→open window straddling a rename throws ENOENT out of three primitives: `forEachTailChunk` (src/files.ts, both its read paths), `readCompleteLines` (src/ui/tail.ts), and `readTranscriptTail`'s own open (src/ui/transcript-tail.ts). The TUI's per-second render loop calls `readEvents`/transcript readers with no try/catch, so one rotation landing in the window killed the whole `tumwater tui` process; `followFile` (`logs -f`) and the GUI's 1-second /api/status poll were exposed the same way (the GUI degrades to a 500 instead of crashing). Long-running fleets rotate repeatedly, so each rotation is one dangerous instant for every observer polling at that moment.
+
+**Repro:** write a log past the small-file threshold, wrap `fs.openSync`/`fs.readFileSync` to unlink the file on first access (exactly what the rename does to the path), then call the reader: all three primitives threw ENOENT where they should have returned no data. The same probes against the fixed build return nothing/empty/null without throwing.
+
+**Cause:** the codebase's "a vanished file reads as no data" policy (statOrNull, terminateTornTail, followFile's guarded stat) was not honored in the three tail primitives' open step — they assumed the path their caller just stats would still exist.
+
+**Fix:** each primitive now guards its open/read and degrades to its documented no-data result when the file is gone: `forEachTailChunk` delivers nothing, `readCompleteLines` returns `{lines: [], end: offset}` (the next poll re-stats and reseeds), `readTranscriptTail` returns null. One-line-class try/catch per site; no caller changes needed.
+
+**Files:** src/files.ts, src/ui/tail.ts, src/ui/transcript-tail.ts; regression tests in test/files.test.ts, test/tail.test.ts, test/transcript-tail.test.ts (shared `vanishOnOpen`/`vanishOnReadFile` helpers in test/util.ts).
+
 ### Auto-restart completes on every stale episode under churn: rate-limit completed auto-restarts to at most one per 12 hours (reported by user 2026-09-11, fixed 2026-09-11)
 
 **Symptom:** On a self-hosting fleet whose main churns (bugfix/feature work landing many commits an hour), every move of main past the running build's stamp drives a full auto-redeploy episode: green check → compile → hold, during which no new ticks start on any loop and in-flight role ticks are drained up to `RESTART_DRAIN_MAX_MS` (30 min) → swap → exit → respawn. Under sustained churn these episodes run back to back — the fleet halts for a drain window over and over (dashboards show `STALE: main +N`, then restart pending), interrupting work far more often than is desirable. The 30-minute cap bounds one episode's drain; nothing bounded how often episodes completed a restart.

@@ -68,7 +68,13 @@ export function readTranscriptTail(file: string, limit: number): TranscriptWindo
   if (!st || st.size === 0) return null;
   const size = st.size;
 
-  const fd = fs.openSync(file, "r");
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "r");
+  } catch {
+    // Rotation renamed the file away between stat and open — no data, same as missing.
+    return null;
+  }
   let pos = size; // Exclusive end of the not-yet-scanned region [pos - chunk, pos).
   let held: Buffer = EMPTY_BUFFER; // Tail (with its newline) of a line that starts before the current chunk and ends inside it.
   const lines: string[] = []; // Complete lines, newest first.
