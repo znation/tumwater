@@ -7,22 +7,27 @@ function tumwaterDir(root: string): string {
   return path.join(root, STATE_DIR);
 }
 
+/** The repo's tumwater.json — the fleet config (config.ts). */
 export function configPath(root: string): string {
   return path.join(root, "tumwater.json");
 }
 
+/** A loop's persistent git worktree under .tumwater/worktrees/. */
 export function worktreePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "worktrees", role);
 }
 
+/** A loop's persistent branch name. */
 export function branchName(role: string): string {
   return `tumwater/${role}`;
 }
 
+/** A role's per-loop state file (.tumwater/state/<role>.json; state.ts). */
 export function statePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", `${role}.json`);
 }
 
+/** The orchestrator's own info file (its pid, for liveness checks — state.ts). */
 export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
@@ -56,18 +61,22 @@ export function pausedPath(root: string): string {
   return path.join(tumwaterDir(root), "paused.json");
 }
 
+/** The append-only harness event log (events.ts); the CLI, TUI, and status payload read it. */
 export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", "events.jsonl");
 }
 
+/** A role's raw pi transcript log (.tumwater/log/<role>.pi.jsonl); tailed by the GUI/TUI. */
 export function piLogPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "log", `${role}.pi.jsonl`);
 }
 
+/** Root of all pi session dirs under .tumwater/sessions/. */
 export function sessionsRootDir(root: string): string {
   return path.join(tumwaterDir(root), "sessions");
 }
 
+/** A role's own pi session dir; hasResumableSession looks here for an interrupted tick to resume. */
 export function sessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), role);
 }
@@ -81,10 +90,12 @@ export function reviewSessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), "_review", role);
 }
 
+/** Queued human prompts awaiting pickup by a loop (inbox.ts). */
 export function inboxDir(root: string): string {
   return path.join(tumwaterDir(root), "inbox");
 }
 
+/** The lock dir serializing merges to main (merge.ts; doctor checks it). */
 export function mergeLockDir(root: string): string {
   return path.join(tumwaterDir(root), "merge.lock");
 }
