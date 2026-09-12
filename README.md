@@ -51,10 +51,6 @@ until main is green again (director, bugfix, and the markdown-only roles keep ti
 land the fix).
 
 Open items:
-- Planned: TUI "usage report" pane in the Ctrl+T cycle — same Markdown as `tumwater report`,
-  fixed 14-day window; core + CLI and the GUI tab already landed (report 3/3, planned 2026-09-10).
-- Planned: sort the GUI loop table by state category (active before inactive), then last tick
-  most-recent-first — client-side only, `status --json`/TUI order unchanged (planned 2026-09-09).
 - Planned: make the daily cost budget editable from the TUI/GUI (TUI Ctrl+B; GUI badge
   click-to-edit; one shared setter + `POST /api/budget`; planned 2026-09-07).
 - Planned: user-defined loops — sub-plans 1/3–3/3 tracked in PLANS.md; first is `customLoops`
@@ -64,9 +60,10 @@ Open items:
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
   next is landing in a per-role detached worktree (planned 2026-09-08).
+- Open bugs: none.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`493fd45`): build clean, suite 872/872, verified 2026-09-11.
+Current main (`a48e388`): build clean, suite 884/884, verified 2026-09-11.
 <!-- tumwater:status:end -->
 
 ## How it works
