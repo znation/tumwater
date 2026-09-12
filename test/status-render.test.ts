@@ -438,7 +438,7 @@ test("loopPhase live detail degrades to plain working when the tick has no start
   assert.equal(loopPhase(s, true, root), "working · turn 2 · ctx 3000");
 });
 
-test("loopPhase shows the review gate instead of pi detail while a tick is under review", () => {
+test("loopPhase shows the review gate label without a log to read from", () => {
   const s = freshLoopState("feature");
   s.running = true;
   s.phase = "review";
@@ -450,12 +450,36 @@ test("loopPhase shows the review gate instead of pi detail while a tick is under
   bare.running = true;
   bare.phase = "review";
   assert.equal(loopPhase(bare, true), "reviewing"); // no start time: nothing to show elapsed for
+});
 
-  // The review label wins over live pi detail even when a log tail exists — the tail now
-  // describes the reviewer run, not the author's.
+test("loopPhase shows the reviewer run's live detail while a tick is under review", () => {
   const root = tmpdir();
-  writePiLog(root, "feature", [SESSION, assistantLine("working", { tokens: 3_000 })]);
-  assert.match(loopPhase(s, true, root), /^reviewing /);
+  // The reviewer writes to the same per-role raw log, starting a fresh session — so the tail
+  // after the last `session` event is the reviewer's own progress.
+  writePiLog(root, "feature", [
+    SESSION,
+    assistantLine("reviewing the diff", { tokens: 22_000 }),
+    toolStart("bash", { command: "npm test" }),
+  ]);
+  const s = freshLoopState("feature");
+  s.running = true;
+  s.phase = "review";
+  s.lastTickStartedAt = Date.now() - 5_000;
+  const phase = loopPhase(s, true, root);
+  assert.match(phase, /^reviewing \ds · /, `unexpected shape: ${phase}`);
+  assert.ok(phase.includes("turn 2"), "one completed reviewer turn means the second is in flight");
+  assert.ok(phase.includes("ctx 22.0k"), "latest context size compact-formatted");
+  assert.ok(phase.endsWith("bash npm test"), "most recent tool call last");
+});
+
+test("loopPhase flags a stalled reviewer run after five minutes of silence", () => {
+  const root = tmpdir();
+  const file = writePiLog(root, "feature", [SESSION, assistantLine("reviewing", { tokens: 100 })]);
+  fs.utimesSync(file, new Date(Date.now() - 6 * 60_000), new Date(Date.now() - 6 * 60_000));
+  const s = freshLoopState("feature");
+  s.running = true;
+  s.phase = "review";
+  assert.match(loopPhase(s, true, root), /no pi output for 6m/);
 });
 
 // duration()'s hours bucket (>= 1h): every elapsed fixture above stays under an hour, so the

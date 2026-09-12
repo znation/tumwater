@@ -5,7 +5,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### TUI/GUI "reviewing" state shows only elapsed time — no turn/ctx/tool detail like the "working" state does (reported by user 2026-09-11)
+## Fixed
+
+### TUI/GUI "reviewing" state shows only elapsed time — no turn/ctx/tool detail like the "working" state does (reported by user 2026-09-11, fixed by bugfix loop 2026-09-12)
 
 **Symptom:** While a loop's committed tick is under the adversarial review gate, both dashboards' state cell shows only `reviewing <elapsed>` (e.g. `reviewing 2m`) — no turn count, context size, or current tool/command. The same loop's in-flight author phase shows all of that (`working 3m · turn 12 · ctx 21.9k · bash npm test`), so an operator cannot tell whether the reviewer run is progressing or stalled until it finishes (the ≥5-min no-output stall flag that workingDetail adds is also absent from reviewing).
 
@@ -19,7 +21,7 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Files:** src/ui/status-render.ts; tests in test/status-render.test.ts (loopPhase/workingDetail unit host) and test/status.test.ts / test/gui.test.ts if they assert on reviewing cells.
 
-## Fixed
+**Fix:** extracted workingDetail's parts assembly into a shared `inFlightDetail(s, label, p)` helper; the review branch of `loopPhase` now renders the reviewer run's live tail (the same per-role raw log, fresh `session` event) as `<elapsed> · turn N+1 · ctx Xk · <last tool>` plus the ≥5-min no-output stall flag, labeled "reviewing". Bare-label fallback kept when there is no root or no progress.
 
 ### readTranscriptTail scanned a stale stat size when rotation recreated the path with a smaller file between its stat and open: one line dropped from the window, `end` past EOF (found by bugfix loop 2026-09-11, fixed 2026-09-11)
 

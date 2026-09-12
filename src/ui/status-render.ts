@@ -54,20 +54,27 @@ function inFlightLabel(s: LoopState, label: string): string {
   return `${label} ${elapsed}`.trim();
 }
 
-/** The state cell for a working loop: elapsed · turns · live context · current tool. Pass
- * `live` — this frame's already-fetched tail (renderStatus reads once per running loop and
- * threads it through every helper) — to avoid re-reading the log; without it, this reads on
- * its own for standalone callers. */
-export function workingDetail(root: string, s: LoopState, live?: LiveProgress | null): string {
-  const p = live === undefined ? readLiveProgress(root, s.role) : live;
-  if (!p) return inFlightLabel(s, "working");
-  const parts = [inFlightLabel(s, "working"), `turn ${p.turns + 1}`];
+/** The shared parts assembly for an in-flight state cell: `<label> <elapsed>` plus turn,
+ * live context, current tool, and the ≥5-min no-output stall flag. `p` is null when there is
+ * no progress (no log yet) — falls back to the bare label. */
+function inFlightDetail(s: LoopState, label: string, p: LiveProgress | null): string {
+  if (!p) return inFlightLabel(s, label);
+  const parts = [inFlightLabel(s, label), `turn ${p.turns + 1}`];
   if (p.contextTokens > 0) parts.push(`ctx ${compactTokens(p.contextTokens)}`);
   if (p.lastTool) parts.push(p.lastTool);
   // Silence under five minutes is normal (slow local-model prefills, long tool calls);
   // only flag a stall once at least five minutes have passed without any pi output.
   if (p.quietMs >= 300_000) parts.push(`no pi output for ${duration(p.quietMs)}`);
   return parts.join(" · ");
+}
+
+/** The state cell for a working loop: elapsed · turns · live context · current tool. Pass
+ * `live` — this frame's already-fetched tail (renderStatus reads once per running loop and
+ * threads it through every helper) — to avoid re-reading the log; without it, this reads on
+ * its own for standalone callers. */
+export function workingDetail(root: string, s: LoopState, live?: LiveProgress | null): string {
+  const p = live === undefined ? readLiveProgress(root, s.role) : live;
+  return inFlightDetail(s, "working", p);
 }
 
 /** Human label of where a loop is in its cycle (stopped / working / waiting for prompts /
@@ -90,10 +97,11 @@ export function loopPhase(
 ): string {
   if (!orchestratorRunning) return "stopped";
   if (s.running) {
-    // The tick's work is committed and under adversarial review: the live log tail now
-    // describes the reviewer run, not the author's — show the gate instead of pi detail.
+    // The tick's work is committed and under adversarial review: the raw log tail now
+    // describes the reviewer run — show its live progress with a "reviewing" label.
     if (s.phase === "review") {
-      return inFlightLabel(s, "reviewing");
+      const p = root ? (live === undefined ? readLiveProgress(root, s.role) : live) : null;
+      return inFlightDetail(s, "reviewing", p);
     }
     // In-flight ticks finish even while the budget is paused — only NEW ticks are blocked,
     // so a running loop keeps its live detail.
@@ -155,7 +163,7 @@ function stateCell(
 ): string {
   const phase = loopPhase(s, orchestratorRunning, root, budgetPaused, live, userPaused);
   // While under review the log tail's "current work" is the reviewer's own output, not the
-  // author's task — show the bare gate label.
+  // author's task — don't prepend it; the phase cell already carries the reviewer's live detail.
   if (!s.running || s.phase === "review") return phase;
   const p = live === undefined ? readLiveProgress(root, s.role) : live;
   const work = p?.currentWork;
