@@ -51,8 +51,6 @@ until main is green again (director, bugfix, and the markdown-only roles keep ti
 land the fix).
 
 Open items:
-- Planned: make the daily cost budget editable from the TUI/GUI (TUI Ctrl+B; GUI badge
-  click-to-edit; one shared setter + `POST /api/budget`; planned 2026-09-07).
 - Planned: user-defined loops — sub-plans 1/3–3/3 tracked in PLANS.md; first is `customLoops`
   config plumbing, then the director control surface and dashboard markers (planned 2026-09-07,
   split 2026-09-08).
@@ -62,11 +60,10 @@ Open items:
   next is landing in a per-role detached worktree (planned 2026-09-08).
 - Planned: show the GUI loop table's last tick with relative age, matching the TUI's
   "· Nm ago" cell format (planned 2026-09-11, requested by user).
-- Open bugs: the TUI/GUI `reviewing` state shows only elapsed time — no turn/ctx/tool detail
-  like the `working` state does (reported by user 2026-09-11; fix direction pinned in BUGS.md).
+- Open bugs: none.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`207983f`): build clean, suite 886/886, verified 2026-09-12.
+Current main (`e8bdd24`): build clean, suite 897/897, verified 2026-09-12.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -177,7 +174,7 @@ tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N
 tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
 tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)
-tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days)
+tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days; --days bounded to the GUI's shared 1–90 window)
 tumwater doctor       # pre-flight check: git, repo, config, pi, locks, build (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
