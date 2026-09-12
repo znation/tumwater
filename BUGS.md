@@ -5,6 +5,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### TUI/GUI "reviewing" state shows only elapsed time — no turn/ctx/tool detail like the "working" state does (reported by user 2026-09-11)
+
+**Symptom:** While a loop's committed tick is under the adversarial review gate, both dashboards' state cell shows only `reviewing <elapsed>` (e.g. `reviewing 2m`) — no turn count, context size, or current tool/command. The same loop's in-flight author phase shows all of that (`working 3m · turn 12 · ctx 21.9k · bash npm test`), so an operator cannot tell whether the reviewer run is progressing or stalled until it finishes (the ≥5-min no-output stall flag that workingDetail adds is also absent from reviewing).
+
+**Repro:**
+1. Let any loop land a changed tick whose diff passes the deterministic build pre-check, so it enters the model review gate (`review_start` event; state cell flips to `reviewing …`).
+2. Watch the TUI or GUI loop table while the reviewer run is in flight: the cell shows only label + elapsed, where the author phase of the same tick showed turn/ctx/tool detail.
+
+**Cause:** src/ui/status-render.ts, `loopPhase` — the `s.phase === "review"` branch returns bare `inFlightLabel(s, "reviewing")`. The comment there records the original rationale: during review the raw log tail describes the reviewer run rather than the author's, so it showed the gate instead of pi detail. That discards exactly the live info an operator wants — the reviewer run's own progress.
+
+**Fix direction:** render the same live detail for reviewing that `workingDetail` renders for working, labeled "reviewing": `<elapsed> · turn N+1 · ctx Xk · <last tool>` plus the existing ≥5-min no-output stall flag. The data is already available: the reviewer run writes to the same per-role raw log (src/review.ts passes `rawLogFile: piLogPath(root, role)` with label "review"), starts a fresh `session` event that resets readLiveProgress's counters (src/ui/progress.ts), and status-payload.ts already threads this frame's precomputed `live` tail into `loopPhase`. Implementation: extract workingDetail's parts assembly into a shared helper taking the label ("working"/"reviewing") and call it from both branches; keep the bare-label fallback when no progress is available. No new plumbing — `loopPhase` already receives `root` + `live`, and both surfaces render the payload string as-is (TUI via renderStatus, GUI via /api/status's `l.phase`), so one change covers TUI and GUI. Update the now-stale comment in the review branch. Note: during the deterministic build pre-check the phase is not yet "review" (src/review.ts sets it only after the pre-check), so that window keeps showing working detail with the author's final numbers — existing behavior, unchanged.
+
+**Files:** src/ui/status-render.ts; tests in test/status-render.test.ts (loopPhase/workingDetail unit host) and test/status.test.ts / test/gui.test.ts if they assert on reviewing cells.
+
 ## Fixed
 
 ### readTranscriptTail scanned a stale stat size when rotation recreated the path with a smaller file between its stat and open: one line dropped from the window, `end` past EOF (found by bugfix loop 2026-09-11, fixed 2026-09-11)
