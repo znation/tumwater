@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { ffMainTo, mergeToMain, type MergeContext } from "../src/merge.js";
@@ -10,7 +11,7 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/types.js";
-import { makeRepo, sh } from "./util.js";
+import { makeRepo, sh, tmpdir } from "./util.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
 function piResult(over: Partial<PiRunResult> = {}): PiRunResult {
@@ -383,6 +384,44 @@ test("a red post-rebase check blocks the landing and keeps the commit for recove
   // pre-check rejects it deterministically and injects the build tail into the author's prompt.
   assert.equal(await aheadOfMain(wt, "main"), 1);
   assertWorktreeSettled(wt); // no rebase left in progress
+});
+
+test("an environmental skip of the re-check warns and still lands — never fail-closed", async () => {
+  const { root, wt } = await setup();
+  declareBuildCheck(root, wt); // would pass if it could run at all
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  advanceMain(root, "mainfile.txt", "from main\n"); // rebase is not a no-op → the re-check runs
+  const { ctx } = makeCtx(root);
+
+  // Drop npm from PATH for the merge: runBuildCheck's spawn then fails with ENOENT — an
+  // environmental skip, not a red build. git alone is symlinked into the restricted bin dir,
+  // so every other step of the landing resolves exactly as usual.
+  const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  const binDir = tmpdir("no-npm-bin-");
+  fs.symlinkSync(realGit, path.join(binDir, "git"));
+  const oldPath = process.env.PATH;
+  process.env.PATH = binDir;
+  let result: string;
+  try {
+    result = await mergeToMain(ctx, wt, "branch work");
+  } finally {
+    process.env.PATH = oldPath;
+  }
+
+  assert.equal(result, "changed", "a skip is environmental — the landing proceeds (fail-open)");
+  const events = readEvents(root);
+  assert.ok(
+    events.some((e) => e.type === "build_check" && e.scope === "landing" && e.status === "skipped"),
+    "the skipped re-check is priced in the feed",
+  );
+  const warnings = events.filter((e) => e.type === "warning").map((e) => String(e.message));
+  assert.ok(
+    warnings.includes("no npm on PATH; skipping landing build check"),
+    `the operator sees why the check did not run: ${JSON.stringify(warnings)}`,
+  );
+  assert.equal(events.filter((e) => e.type === "merged").length, 1);
+  assert.ok(fs.existsSync(path.join(root, "app.js")), "both changes landed on main");
 });
 
 test("a no-op rebase skips the re-check and seeds the baseline for the landed SHA", async () => {
