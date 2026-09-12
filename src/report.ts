@@ -221,8 +221,9 @@ function barWidth(v: number, max: number): number {
   return Math.max(1, Math.round((20 * v) / max));
 }
 
-/** Render a report as Markdown — the pinned shape the CLI prints and the GUI tab (report 2/3)
- * and TUI pane (report 3/3) will reuse. Pure function of ReportData: no I/O, no clock reads. */
+/** Render a report as Markdown — the pinned shape the CLI prints and the TUI usage pane
+ * (report 3/3) reuses; the GUI tab (report 2/3) renders its own SVG charts from the same
+ * ReportData instead. Pure function of ReportData: no I/O, no clock reads. */
 export function renderReportMarkdown(data: ReportData): string {
   const lines: string[] = [];
   lines.push("# tumwater usage report");
