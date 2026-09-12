@@ -163,7 +163,10 @@ export class PiStreamParser {
   }
 }
 
-interface PiRunOptions {
+/** Options for one non-interactive pi run (runPi). Exported so a caller that builds the
+ * same wiring in several places (loop.ts's author run and SUMMARY follow-up) can share one
+ * construction helper typed against this exact shape. */
+export interface PiRunOptions {
   cwd: string;
   prompt: string;
   config: TumwaterConfig;

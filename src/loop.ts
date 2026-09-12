@@ -9,7 +9,7 @@ import {
 } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent } from "./events.js";
-import { hasResumableSession, runPi } from "./pi.js";
+import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
 import {
   buildCommitMessage,
   commitTrailer,
@@ -244,13 +244,13 @@ export class LoopRunner {
    * bounded retry: fresh requests succeed quickly after a wake.
    * `resume` continues the role's most recent session instead — used only when picking up
    * a tick that a harness shutdown interrupted. */
-  private async runRolePi(
-    wt: string,
-    prompt: string,
-    sessionName: string,
-    resume = false,
-  ): Promise<PiRunResult> {
-    const opts = {
+  /** The shared per-loop wiring for every pi run this tick makes in worktree `wt`: the
+   * role-resolved config, this loop's session dir and raw log, and the per-tick abort signal.
+   * One place for those derivations — a new PiRunOptions field touches only here instead of
+   * drifting between the author run and the SUMMARY follow-up. Callers override what differs
+   * (the follow-up's capped timeouts). */
+  private loopPiOpts(wt: string, prompt: string, sessionName: string, resume = false): PiRunOptions {
+    return {
       cwd: wt,
       prompt,
       config: configForRole(this.config, this.role),
@@ -260,6 +260,15 @@ export class LoopRunner {
       rawLogFile: piLogPath(this.root, this.role),
       signal: this.runSignal(),
     };
+  }
+
+  private async runRolePi(
+    wt: string,
+    prompt: string,
+    sessionName: string,
+    resume = false,
+  ): Promise<PiRunResult> {
+    const opts = this.loopPiOpts(wt, prompt, sessionName, resume);
     const pi = await runPi(opts);
     // Two transient failures of the world (not of the session) earn exactly one bounded retry
     // that continues the same session: the model server timing out an idle predict stream, and
@@ -295,9 +304,10 @@ export class LoopRunner {
   private async requestSummary(wt: string): Promise<PiRunResult | null> {
     if (!hasResumableSession(sessionDir(this.root, this.role))) return null;
     const cfg = configForRole(this.config, this.role);
+    // The shared per-loop wiring (loopPiOpts) with the follow-up's hard caps overriding the
+    // authoring run's budget: one short reply on a warm session.
     const run = await runPi({
-      cwd: wt,
-      prompt: buildSummaryRequestPrompt(),
+      ...this.loopPiOpts(wt, buildSummaryRequestPrompt(), `tumwater-${this.role}-${this.state.ticks}-summary`, true),
       config: {
         ...cfg,
         tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, LoopRunner.SUMMARY_REQUEST_TIMEOUT_S),
@@ -306,11 +316,6 @@ export class LoopRunner {
             ? Math.min(cfg.quietTimeoutSeconds, LoopRunner.SUMMARY_REQUEST_QUIET_S)
             : LoopRunner.SUMMARY_REQUEST_QUIET_S,
       },
-      sessionDir: sessionDir(this.root, this.role),
-      sessionName: `tumwater-${this.role}-${this.state.ticks}-summary`,
-      continueSession: true,
-      rawLogFile: piLogPath(this.root, this.role),
-      signal: this.runSignal(),
     });
     this.foldUsage(run);
     return run;
