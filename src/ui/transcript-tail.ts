@@ -66,13 +66,23 @@ interface TranscriptWindow {
 export function readTranscriptTail(file: string, limit: number): TranscriptWindow | null {
   const st = statOrNull(file);
   if (!st || st.size === 0) return null;
-  const size = st.size;
 
   let fd: number;
   try {
     fd = fs.openSync(file, "r");
   } catch {
     // Rotation renamed the file away between stat and open — no data, same as missing.
+    return null;
+  }
+  // fstat on the opened inode re-bases the scan when rotation recreated the path with a
+  // different file between stat and open: walking st.size bytes of a smaller inode reads past
+  // its EOF (the oldest line is held for an older chunk that never comes, then dropped) and
+  // computes `end` from stale size arithmetic — past the real EOF, so a followFile started at
+  // it re-delivers the whole window. Same policy as forEachTailChunk's post-open fstat: report
+  // on what we actually opened; an empty new file is "no data", same as missing.
+  const size = fs.fstatSync(fd).size;
+  if (size === 0) {
+    fs.closeSync(fd);
     return null;
   }
   let pos = size; // Exclusive end of the not-yet-scanned region [pos - chunk, pos).

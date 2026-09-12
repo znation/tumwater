@@ -7,7 +7,15 @@ import { readTranscriptTail } from "../src/ui/transcript-tail.js";
 import { formatTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/ui/tail.js";
-import { FIXED_TS, agentStart, assistantBlocks, tmpdir, userLine, vanishOnOpen } from "./util.js";
+import {
+  FIXED_TS,
+  agentStart,
+  assistantBlocks,
+  recreateSmallerOnOpen,
+  tmpdir,
+  userLine,
+  vanishOnOpen,
+} from "./util.js";
 
 /** Local wall-clock rendering of an epoch-ms timestamp (independent of the implementation). */
 function expectedTimestamp(ts: number): string {
@@ -198,6 +206,42 @@ test("readTranscriptTail returns null when rotation removes the file between sta
 // a marker becomes the boundary (the window carries the label), while an older agent_start or
 // EOF means the run was unlabeled and the window stops at the arming agent_start exactly as
 // before. The oracle is always a full re-read — tail ≡ formatTranscript(whole file).slice(-limit).
+
+test("readTranscriptTail scans the opened inode when rotation recreates the path smaller between stat and open", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Old content: three labeled runs — larger than the new file below.
+  const oldLines: string[] = [];
+  for (let i = 1; i <= 3; i++) {
+    oldLines.push(JSON.stringify({ type: "tumwater_run", label: `old ${i}` }));
+    oldLines.push(agentStart());
+    oldLines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    oldLines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  fs.writeFileSync(file, oldLines.join("\n") + "\n");
+  // New content at the same path after rotation: two labeled runs, smaller.
+  const newLines: string[] = [];
+  for (let i = 1; i <= 2; i++) {
+    newLines.push(JSON.stringify({ type: "tumwater_run", label: `new ${i}` }));
+    newLines.push(agentStart());
+    newLines.push(userLine(`nprompt ${i}`, FIXED_TS + i * 60_000));
+    newLines.push(assistantBlocks([{ type: "text", text: `nturn ${i}` }]));
+  }
+  const newContent = newLines.join("\n") + "\n";
+  assert.ok(newContent.length < fs.statSync(file).size, "new content must be smaller");
+  const restore = recreateSmallerOnOpen(file, newContent);
+  try {
+    const win = readTranscriptTail(file, 50);
+    // The window is the tail of what was actually opened — no dropped lines (a stale stat
+    // size held back and lost the oldest line), and `end` stays within the real file (stale
+    // size arithmetic put it past EOF, where a followFile would re-deliver the whole window).
+    assert.deepEqual(win?.entries, formatTranscript(newLines).slice(-50));
+    assert.ok(win !== null && win.end <= fs.statSync(file).size);
+  } finally {
+    restore();
+  }
+});
 
 test("readTranscriptTail includes a marker line when it labels the boundary run", () => {
   const root = tmpdir();

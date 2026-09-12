@@ -56,6 +56,26 @@ export function vanishOnOpen(file: string): () => void {
   };
 }
 
+/** The rotation twin of vanishOnOpen where the path comes back before open: on the first
+ * open of `file`, rename the old file away and recreate it with `content` (smaller than the
+ * original in every use so far), then open — simulating a rotation rename plus a fresh append
+ * landing between a reader's stat and its open. Returns an undo function. */
+export function recreateSmallerOnOpen(file: string, content: string): () => void {
+  const orig = fs.openSync.bind(fs);
+  let hit = false;
+  (fs as Record<string, unknown>).openSync = (p: unknown, flags: string) => {
+    if (!hit && p === file) {
+      hit = true;
+      fs.renameSync(file, file + ".1");
+      fs.writeFileSync(file, content);
+    }
+    return (orig as (x: unknown, f: string) => number)(p, flags);
+  };
+  return () => {
+    (fs as Record<string, unknown>).openSync = orig;
+  };
+}
+
 /** The readFileSync twin of vanishOnOpen — for readers that stat and then read a small file
  * whole. Returns an undo function. */
 export function vanishOnReadFile(file: string): () => void {

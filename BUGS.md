@@ -7,6 +7,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### readTranscriptTail scanned a stale stat size when rotation recreated the path with a smaller file between its stat and open: one line dropped from the window, `end` past EOF (found by bugfix loop 2026-09-11, fixed 2026-09-11)
+
+**Symptom:** `readTranscriptTail` stats the path, then opens it. The sibling of the ENOENT race in the entry below — same stat→open window, but rotation renames the old log away AND a fresh file with content lands at the path before the open (rename plus an append). The scan still walks `st.size` bytes through an fd that now points at the smaller inode: reads past its EOF come back short, and the chunk-boundary check probes a byte offset computed from the stale size. The oldest complete line of the new file is held for an older chunk that never comes (the next read returns 0) and silently dropped — e.g. a run's `tumwater_run` marker, so `tumwater logs --role` renders its separator unlabeled — and the window's `end` offset lands past the real EOF; in follow mode (`logs -f`) a `followFile` started there resets to 0 and re-delivers every line the initial window already printed.
+
+**Repro:** write three labeled runs to a pi log; wrap `fs.openSync` so the first open renames the file away and recreates it with two (smaller) labeled runs before opening; call `readTranscriptTail(file, 50)`. Before the fix: the first run's marker line is missing from `entries` (separator renders "run" instead of its label) and `end` equals the old size — past the new file's EOF. After the fix: `entries` equal `formatTranscript(new lines).slice(-limit)` and `end` ≤ real size.
+
+**Cause:** the scan boundary came from `statOrNull(path)`, but every read goes through the opened fd, which after a rename+recreate points at a different inode. `forEachTailChunk` already re-bases on `fstatSync(fd)` for exactly this reason — `readTranscriptTail` was the one tail reader that didn't.
+
+**Fix:** fstat the opened fd and scan its size (returning null when it is empty, same as the missing-file policy). One line plus a comment; no caller changes.
+
+**Files:** src/ui/transcript-tail.ts; regression test in test/transcript-tail.test.ts (new `recreateSmallerOnOpen` helper in test/util.ts, sibling of `vanishOnOpen`).
+
 ### Tail readers threw ENOENT when log rotation renamed the file between their stat and open: a poll landing in that window crashed the TUI or `logs -f` process (found by bugfix loop 2026-09-11, fixed 2026-09-11)
 
 **Symptom:** every tail reader stats its log before opening it (`statOrNull`, then `openSync`/`readFileSync`). Log rotation — events.jsonl at 16 MB in `logEvent`, pi logs at `logMaxBytes` — renames the path away, so a stat→open window straddling a rename throws ENOENT out of three primitives: `forEachTailChunk` (src/files.ts, both its read paths), `readCompleteLines` (src/ui/tail.ts), and `readTranscriptTail`'s own open (src/ui/transcript-tail.ts). The TUI's per-second render loop calls `readEvents`/transcript readers with no try/catch, so one rotation landing in the window killed the whole `tumwater tui` process; `followFile` (`logs -f`) and the GUI's 1-second /api/status poll were exposed the same way (the GUI degrades to a 500 instead of crashing). Long-running fleets rotate repeatedly, so each rotation is one dangerous instant for every observer polling at that moment.
