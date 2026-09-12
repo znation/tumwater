@@ -222,6 +222,12 @@ export const GUI_PAGE = `<!doctype html>
     try {
       if (transcriptRole) {
         const r = await fetch("/api/transcript?role=" + encodeURIComponent(transcriptRole) + "&n=50");
+        // Same guard as the backlog branch below and fetchReport above: every error body
+        // /api/transcript sends is JSON ({error}) with no lines, so without it a failed poll
+        // (400 for an out-of-catalog role, 500 when the log read throws) would render "(no
+        // transcript yet for this loop)" — claiming the log is empty. Throwing keeps the
+        // previous panel content, like every other failed poll here.
+        if (!r.ok) throw new Error("bad response");
         const d = await r.json();
         const lines = Array.isArray(d.lines) ? d.lines : [];
         panel.hidden = false;

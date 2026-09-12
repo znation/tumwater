@@ -619,6 +619,34 @@ test("the dashboard page renders backlog entries as links into /api/backlog", as
   assert.match(GUI_PAGE, /backlogKey = backlogKey === key \? null : key/);
 });
 
+test("the dashboard page checks r.ok before parsing both on-demand panel fetches", async () => {
+  // Regression: the transcript branch parsed its response without an ok check. Every error
+  // body /api/transcript sends is JSON ({error}) with no lines, so a failed poll (400 for a
+  // role outside the catalog once custom loops exist, 500 when the log read throws) rendered
+  // "(no transcript yet for this loop)" — claiming an empty log instead of keeping the last
+  // good content. Both on-demand fetches must fail identically into the catch that keeps the
+  // previous panel content.
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const t = GUI_PAGE.match(
+    /fetch\("\/api\/transcript\?role=" \+ encodeURIComponent\(transcriptRole\) \+ "&n=50"\);([\s\S]*?)await r\.json\(\)/,
+  );
+  assert.ok(t, "the transcript fetch is in the page");
+  assert.match(
+    t[1]!,
+    /if \(!r\.ok\) throw new Error\("bad response"\);/,
+    "the transcript poll checks r.ok before parsing (a JSON error body has no lines)",
+  );
+  const b = GUI_PAGE.match(
+    /fetch\("\/api\/backlog\?file=" \+ encodeURIComponent\(file\) \+ "&index=" \+ encodeURIComponent\(index\)\);([\s\S]*?)await r\.json\(\)/,
+  );
+  assert.ok(b, "the backlog fetch is in the page");
+  assert.match(
+    b[1]!,
+    /if \(!r\.ok\) throw new Error\("bad response"\);/,
+    "the backlog poll keeps its r.ok guard (pinned so it cannot regress)",
+  );
+});
+
 test("the dashboard page escapes backlog entry bodies before innerHTML", async () => {
   // Regression: the detail panel used to splice d.body — model-written markdown from
   // PLANS/BUGS/QUESTIONS.md, edited by loops — straight into innerHTML while every other
