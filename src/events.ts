@@ -73,6 +73,19 @@ function terminateTornTail(file: string): void {
   }
 }
 
+/** Parse one line of the event log into a HarnessEvent, or null when it is torn or corrupt
+ * (a crash mid-append leaves a partial final line without its newline). The single home of
+ * the skip-without-failing policy every consumer of events.jsonl applies — readEvents here,
+ * report.ts's window scan, and `tumwater logs -f`'s follow branch all parse through it instead
+ * of repeating the try/catch per reader. */
+export function parseEventLine(line: string): HarnessEvent | null {
+  try {
+    return JSON.parse(line) as HarnessEvent;
+  } catch {
+    return null; // Skip partial/corrupt lines (e.g. torn writes).
+  }
+}
+
 /** Read the last `limit` events (best-effort; skips malformed lines).
  * Observers poll this every second and only ever need the tail, so for logs past the small-file
  * threshold we read just enough bytes from the end of the file to cover `limit` lines instead of
@@ -99,11 +112,8 @@ export function readEvents(root: string, limit = 200): HarnessEvent[] {
   const tail = lines.slice(-limit);
   const events: HarnessEvent[] = [];
   for (const line of tail) {
-    try {
-      events.push(JSON.parse(line) as HarnessEvent);
-    } catch {
-      // Skip partial/corrupt lines (e.g. torn writes).
-    }
+    const ev = parseEventLine(line);
+    if (ev) events.push(ev);
   }
   return events;
 }

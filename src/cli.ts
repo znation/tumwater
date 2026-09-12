@@ -23,7 +23,7 @@ import {
   queuedPrompts,
   submitPrompt,
 } from "./inbox.js";
-import { logEvent, readEvents, subscribeEvents } from "./events.js";
+import { logEvent, parseEventLine, readEvents, subscribeEvents } from "./events.js";
 import { formatEvent } from "./ui/event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
@@ -190,11 +190,8 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   if (!fs.existsSync(file)) fs.writeFileSync(file, "");
   followFile(file, fs.statSync(file).size, (lines) => {
     for (const line of lines.filter(Boolean)) {
-      try {
-        process.stdout.write(formatEvent(JSON.parse(line)) + "\n");
-      } catch {
-        // Non-JSON noise; skip.
-      }
+      const e = parseEventLine(line);
+      if (e) process.stdout.write(formatEvent(e) + "\n");
     }
   });
   await new Promise(() => {}); // Follow until Ctrl+C.

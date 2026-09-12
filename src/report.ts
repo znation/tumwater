@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { HarnessEvent } from "./types.js";
+import { parseEventLine } from "./events.js";
 import { eventsLogPath } from "./paths.js";
 import { forEachTailChunk } from "./files.js";
 import { formatDate } from "./text.js";
@@ -40,14 +41,6 @@ export interface ReportData {
     featuresDone: number;
     bugsFixed: number;
   };
-}
-
-function parseEventLine(line: string): HarnessEvent | null {
-  try {
-    return JSON.parse(line) as HarnessEvent;
-  } catch {
-    return null; // Skip partial/corrupt lines (e.g. torn writes).
-  }
 }
 
 /** The oldest COMPLETE line in a backwards chunk buffer, or null when none is complete yet.
