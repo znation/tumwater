@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { runOrchestrator } from "../src/orchestrator.js";
-import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import type { TumwaterConfig } from "../src/types.js";
 import { initProject } from "../src/init.js";
