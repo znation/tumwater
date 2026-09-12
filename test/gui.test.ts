@@ -918,6 +918,41 @@ test("POST /api/budget persists a valid cap and rejects invalid bodies without t
   }
 });
 
+// The 500 half of /api/budget: a VALID value that fails server-side (broken tumwater.json)
+// is not the client's fault — it must come back as 500 with the setter's error, never as 200
+// (the badge would claim a cap that was never persisted) or 400 (blaming the request).
+test("POST /api/budget answers 500 when a valid value fails server-side", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui budget 500 test");
+  const configFile = path.join(repo, "tumwater.json");
+  // Corrupt the config after init: loadConfig throws on it, so setDailyBudgetUsd — which
+  // deliberately reads fresh and never overwrites a broken file with defaults — reports an error.
+  fs.writeFileSync(configFile, "{ still editing");
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  try {
+    const res = await fetch(`http://127.0.0.1:${addr.port}/api/budget`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ maxDailyCostUsd: 25 }), // valid value — the failure is server-side
+    });
+    assert.equal(res.status, 500);
+    const err = (await res.json()) as { error: string };
+    assert.match(err.error, /not valid JSON/);
+    // The broken file survives untouched — a failed save must not clobber it with defaults + cap.
+    assert.equal(fs.readFileSync(configFile, "utf8"), "{ still editing");
+    // And the atomic write's tmp half left no remnant behind.
+    assert.deepEqual(
+      fs.readdirSync(repo).filter((f) => f.startsWith("tumwater.json.tmp-")),
+      [],
+      "no tmp file left behind",
+    );
+  } finally {
+    server.close();
+  }
+});
+
 // The build badge on the GUI surface: /api/status carries it pre-formatted through
 // status-render's buildBadge — the same string the TUI header renders — so the page cannot
 // re-derive (and drift from) the multi-branch text client-side.
