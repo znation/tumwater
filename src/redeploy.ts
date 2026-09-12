@@ -16,8 +16,9 @@ import {
 } from "./build-info.js";
 import { type BuildCheckOutcome, checkMainBaseline, clipBuildTail, resolveFromNodeModules } from "./build-check.js";
 import { ensureDir } from "./files.js";
+import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { ensureDetachedWorktree } from "./worktree.js";
-import { mirrorWorktreePath, stagingDir, stagingRootDir } from "./paths.js";
+import { autoRestartStampPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
 
 const execFileAsync = promisify(execFile);
@@ -29,6 +30,8 @@ const execFileAsync = promisify(execFile);
  * supervisor.ts) to respawn the harness onto it by exiting RESTART_EXIT_CODE. Every step is
  * non-blocking from the orchestrator's poll: the green check and the compile run in the
  * background and are consulted on later polls, so a slow `npm test` never stalls scheduling.
+ * Completed restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11), so
+ * sustained main churn cannot halt the fleet for a drain over and over.
  *
  * Nothing here is fail-open: a red main, a failed compile, or a swap error blocks the restart for
  * that head and the fleet keeps running the old build until main moves again. A block says so
@@ -48,6 +51,12 @@ export const RESTART_EXIT_CODE = 75;
  * whole unbroken hold, not per head — see Redeployer.drainSince. Director ticks are exempt:
  * an in-flight human prompt extends the hold without any cap (see poll). */
 const RESTART_DRAIN_MAX_MS = 30 * 60_000;
+
+/** How often a COMPLETED auto-restart may land — at most once per this window (BUGS.md
+ * 2026-09-11): under sustained main churn every stale head would otherwise drive a full
+ * hold+drain+swap episode back to back, halting the fleet for a drain over and over. Bounds
+ * frequency across episodes; RESTART_DRAIN_MAX_MS bounds the drain within one. */
+export const RESTART_COOLDOWN_MS = 12 * 60 * 60_000;
 
 /** Hard cap on one compile of the harness; tsc on this codebase takes well under a minute. */
 const COMPILE_TIMEOUT_MS = 5 * 60_000;
@@ -77,6 +86,30 @@ export interface RedeployDeps {
   compile(mainHead: string): Promise<{ ok: boolean; detail: string }>;
   /** Move `mainHead`'s staged build into place as the live dist/. Throws on failure. */
   swap(mainHead: string): void;
+}
+
+/** The record of COMPLETED auto-restarts — where poll reads the cooldown's start from and
+ * writes a new completion right before it returns "restart" (BUGS.md 2026-09-11). It must
+ * survive the process exit that IS the restart: orchestrator.json is per-process-lifetime, so
+ * production keeps this in its own small file under .tumwater/state/; tests inject their own. */
+export interface AutoRestartRecord {
+  /** When the last completed auto-restart landed (epoch ms) — null when none yet. Read once at
+   * construction. */
+  readonly lastAt: number | null;
+  /** Persist a completion at `at` (epoch ms). Called inside poll immediately before it returns
+   * "restart": the process exits right after, so no later cleanup could write it. */
+  record(at: number): void;
+}
+
+/** The production AutoRestartRecord: one JSON file under .tumwater/state/. A missing or torn
+ * file reads as "no completed restart yet" — the same no-data policy as every other state reader. */
+export function autoRestartRecord(root: string): AutoRestartRecord {
+  const file = autoRestartStampPath(root);
+  const stored = readJsonFile<{ at?: unknown }>(file)?.at;
+  return {
+    lastAt: typeof stored === "number" && Number.isFinite(stored) ? stored : null,
+    record: (at) => writeJsonFile(file, { at }),
+  };
 }
 
 /** A background task the poll consults without awaiting: settled flag plus result. */
@@ -127,6 +160,16 @@ export class Redeployer {
   private blockedHead: string | null = null;
   /** Why, in a few words, for status() to publish alongside the staleness verdict. */
   private blockedReason: string | null = null;
+  /** When the last completed auto-restart landed (epoch ms), or null when none yet — copied from
+   * restartRecord at construction and updated when this process completes one. The cooldown is
+   * measured from here on every poll (BUGS.md 2026-09-11). */
+  private lastAutoRestartAt: number | null = null;
+  /** The head whose cooldown deferral was already warned about — one warning per episode, not
+   * one per poll. */
+  private cooldownWarnedHead: string | null = null;
+  /** The live autoRestart flag as last seen by poll — status() publishes the cooldown reason only
+   * while it is on (off means no restart will ever be attempted, so a deadline would mislead). */
+  private autoRestartOn = true;
 
   constructor(
     readonly build: BuildInfo,
@@ -138,10 +181,16 @@ export class Redeployer {
     /** How long to wait for in-flight ticks before aborting them (default RESTART_DRAIN_MAX_MS);
      * a test seam. */
     private readonly drainMaxMs: number = RESTART_DRAIN_MAX_MS,
-  ) {}
+    /** The completed-auto-restart record (see AutoRestartRecord) — production reads it from its
+     * state file at construction via autoRestartRecord(root), tests inject one. */
+    private readonly restartRecord: AutoRestartRecord = { lastAt: null, record: () => {} },
+  ) {
+    this.lastAutoRestartAt = restartRecord.lastAt;
+  }
 
-  /** What orchestrator.json publishes (see BuildStatus). */
-  status(): BuildStatus {
+  /** What orchestrator.json publishes (see BuildStatus). `now` is the same clock poll was given
+   * — a test seam, since the cooldown deadline is only meaningful against it. */
+  status(now = Date.now()): BuildStatus {
     const s: BuildStatus = { sha: this.build.sha, builtAt: this.build.builtAt };
     if (this.lastHead !== null && this.staleness) {
       s.stale = this.staleness.stale;
@@ -150,11 +199,23 @@ export class Redeployer {
       // Why a stale build is still the one running. Staleness alone cannot say: a restart that
       // is minutes away and one that was refused hours ago look identical, and on 2026-09-08
       // that gap is what let a blocked restart sit unnoticed while the fleet ticked on stale
-      // code (BUGS.md). Mutually exclusive by construction — block() clears the pending head.
+      // code (BUGS.md). Mutually exclusive by construction — block() clears the pending head,
+      // and an episode cannot start inside the cooldown, so no two branches can hold at once.
       if (this.pendingHead === this.lastHead) s.restartPending = true;
       else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
+      // Inside the post-restart cooldown the fleet deliberately keeps ticking on the stale build
+      // — say so with a deadline, through the same channel as a refused restart (BUGS.md 2026-09-11).
+      else if (s.stale && this.autoRestartOn) {
+        const until = this.cooldownUntil();
+        if (now < until) s.restartBlocked = `cooldown until ${new Date(until).toISOString()}`;
+      }
     }
     return s;
+  }
+
+  /** When the current post-restart cooldown expires (epoch ms), or 0 when none is running. */
+  private cooldownUntil(): number {
+    return this.lastAutoRestartAt !== null ? this.lastAutoRestartAt + RESTART_COOLDOWN_MS : 0;
   }
 
   /** Decide this poll's action. `autoRestart` is the live config flag: off keeps the staleness
@@ -165,6 +226,7 @@ export class Redeployer {
     autoRestart: boolean,
     now = Date.now(),
   ): Promise<RedeployAction> {
+    this.autoRestartOn = autoRestart;
     if (!this.selfHosted || !mainHead) return this.endDrain();
     if (mainHead !== this.lastHead) {
       const wasStale = this.staleness?.stale ?? false;
@@ -185,6 +247,25 @@ export class Redeployer {
       if (this.pendingHead !== null && this.pendingHead !== mainHead) this.clearPending();
     }
     if (!this.staleness?.stale || !autoRestart || this.blockedHead === mainHead) return this.endDrain();
+
+    // Completed auto-restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11):
+    // under sustained churn every stale head would otherwise drive a full hold+drain+swap episode
+    // back to back. Inside the cooldown the fleet keeps ticking on the stale build exactly as when
+    // a restart is blocked — no pendingHead, no green check, no drain, no new-tick block. This is
+    // re-evaluated on every poll rather than latched like blockedHead: once the deadline passes,
+    // the same head proceeds even if main never moves again.
+    const cooldownUntil = this.cooldownUntil();
+    if (now < cooldownUntil) {
+      if (this.cooldownWarnedHead !== mainHead) {
+        this.cooldownWarnedHead = mainHead;
+        this.log({
+          loop: "harness",
+          type: "warning",
+          message: `auto-restart of ${shortSha(mainHead)} deferred — cooldown until ${new Date(cooldownUntil).toISOString()} (at most one completed restart per 12 h)`,
+        });
+      }
+      return this.endDrain();
+    }
 
     if (this.pendingHead === null) {
       this.pendingHead = mainHead;
@@ -236,6 +317,16 @@ export class Redeployer {
       this.block(mainHead, reason, `${reason}: ${errorMessage(err)}`);
       return this.endDrain();
     }
+    // Record the completion BEFORE returning "restart": the process exits right after (the
+    // supervisor respawns it), so nothing later could persist this — and the respawned process
+    // must see it to honor the cooldown (BUGS.md 2026-09-11). A failed write costs at most one
+    // extra restart next time; the swap itself already succeeded.
+    try {
+      this.restartRecord.record(now);
+    } catch {
+      // An unpersistable timestamp degrades to no cooldown rather than failing the restart.
+    }
+    this.lastAutoRestartAt = now;
     // The director is guaranteed finished by here (poll only reaches the swap with
     // directorInFlight === 0), so what gets aborted — and counted — are role ticks only. A
     // director-extended hold reports drainedMs past the window: correct and informative.
@@ -377,7 +468,7 @@ export async function createRedeployer(
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
     swap: (mainHead) => swapDist(root, dist, mainHead),
   };
-  return new Redeployer(build, selfHosted, deps, log);
+  return new Redeployer(build, selfHosted, deps, log, RESTART_DRAIN_MAX_MS, autoRestartRecord(root));
 }
 
 /** The inputs whose change stales a build — re-exported so operator-facing text (doctor, the

@@ -152,7 +152,7 @@ export async function checkBuild(
   if (!stale) return { level: "ok", detail: `dist/ from ${sha}` };
   if (stale.stale) {
     const next = running?.restartBlocked
-      ? `; auto-restart is BLOCKED (${running.restartBlocked}) and will not retry until main moves`
+      ? `; auto-restart is BLOCKED (${running.restartBlocked}) and will not retry until main moves or the block clears`
       : running?.restartPending
         ? "; auto-restart is under way"
         : "; run \`npm run build\` and restart \`tumwater run\` (auto-restart does this for a running fleet)";

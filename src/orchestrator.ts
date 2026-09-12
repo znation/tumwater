@@ -415,7 +415,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           (runners[0]?.config ?? config).autoRestart,
           now,
         );
-        const build = redeploy.status();
+        const build = redeploy.status(now);
         if (JSON.stringify(build) !== JSON.stringify(info.build)) {
           info.build = build;
           writeJsonFile(infoFile, info);

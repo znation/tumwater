@@ -27,6 +27,13 @@ export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
 
+/** The last completed auto-restart's timestamp (epoch ms) — unlike orchestrator.json it must
+ * survive the process exit that IS the restart, so it lives in its own file and is never removed
+ * on exit (redeploy.ts; BUGS.md 2026-09-11). */
+export function autoRestartStampPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "auto-restart.json");
+}
+
 /** Marker file `tumwater reset-counters` drops for a running fleet to consume (it must also
  * zero the runners' in-memory counters, or their next save resurrects the old values). */
 export function resetRequestPath(root: string): string {

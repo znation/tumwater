@@ -147,7 +147,10 @@ tsc — borrowed from the nearest ancestor install, since no worktree has one of
 starting new ticks while in-flight ones finish (role ticks up to 30 minutes, counted across the
 whole hold even when main moves again meanwhile, after which they are aborted resuably; an in-flight
 director tick is waited for without a cap — a human prompt outranks the redeploy), swaps the compiled tree into `dist/`, and exits so the `tumwater run` supervisor — the
-process you started, which runs the orchestrator as a child — respawns it on the new code. A green
+process you started, which runs the orchestrator as a child — respawns it on the new code.
+Completed auto-restarts are rate-limited to at most one per 12 h: inside that cooldown STALE
+stays visible with a `restart BLOCKED: cooldown until …` deadline and ticks continue on the stale
+build, so sustained churn cannot halt the fleet for a drain over and over. A green
 verdict is reused fleet-wide; a red one is re-run in the mirror first, because a suite can fail
 for reasons that belong to a worktree rather than to the tree. A red main or a failed compile
 leaves the old build running until main moves again — a warning event, and `restart BLOCKED:

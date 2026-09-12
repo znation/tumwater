@@ -8,15 +8,18 @@ import type { BuildStaleness } from "../src/build-info.js";
 import { readBuildInfo } from "../src/build-info.js";
 import { checkMainBaseline } from "../src/build-check.js";
 import {
+  autoRestartRecord,
   compileStaged,
   mainIsGreen,
+  type AutoRestartRecord,
   type RedeployDeps,
   Redeployer,
+  RESTART_COOLDOWN_MS,
   RESTART_EXIT_CODE,
   swapDist,
 } from "../src/redeploy.js";
 import { ensureDetachedWorktree } from "../src/worktree.js";
-import { mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
+import { autoRestartStampPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
 // The self-redeploy policy (src/redeploy.ts): drive the state machine with scripted effects so
@@ -60,14 +63,30 @@ function fakeDeps(over: Partial<RedeployDeps> & { stale?: BuildStaleness | null 
   };
 }
 
-function harness(deps: RedeployDeps, selfHosted = true, drainMaxMs?: number) {
+function harness(deps: RedeployDeps, selfHosted = true, drainMaxMs?: number, restartRecord?: AutoRestartRecord) {
   const events: HarnessEventInput[] = [];
-  const r = new Redeployer(BUILD, selfHosted, deps, (e) => events.push(e), drainMaxMs);
+  const r = new Redeployer(BUILD, selfHosted, deps, (e) => events.push(e), drainMaxMs, restartRecord);
   return { r, events, types: () => events.map((e) => e.type) };
 }
 
 /** Let the tracked background promises settle (one macrotask is enough). */
 const settle = () => new Promise((r) => setTimeout(r, 5));
+
+const IDLE = { roleInFlight: 0, directorInFlight: 0 };
+
+/** Drive one episode (green → compile → idle swap) to its completed restart; returns the `now`
+ * at which it landed — the cooldown's start for what follows. */
+async function driveToRestart(r: Redeployer, f: ReturnType<typeof fakeDeps>, head: string, startNow: number): Promise<number> {
+  let t = startNow;
+  assert.equal(await r.poll(head, IDLE, true, t), "hold");
+  f.green(true);
+  await settle();
+  assert.equal(await r.poll(head, IDLE, true, (t += 10)), "hold", "green: the compile starts");
+  f.compiled(true);
+  await settle();
+  assert.equal(await r.poll(head, IDLE, true, (t += 10)), "restart", "idle: swap and go");
+  return t;
+}
 
 /** This repo's typescript package, resolved the way node itself resolves it — climbing ancestor
  * node_modules from the running test file. Hard-coding `<this checkout>/node_modules/typescript`
@@ -312,6 +331,89 @@ test("main moving during a pending restart supersedes it: the new head is evalua
   await settle();
   assert.equal(await r.poll(HEAD_C, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
   assert.deepEqual(f.calls.swap, [], "the superseded build is never swapped in");
+});
+
+test("within the cooldown a second stale episode is deferred: no hold, status carries the deadline", async () => {
+  // The 2026-09-11 churn complaint in miniature: main moves again an hour after a completed
+  // swap — inside the 12 h window the fleet keeps ticking on the stale build instead of holding
+  // for another drain (BUGS.md).
+  const f = fakeDeps();
+  const { r, events, types } = harness(f.deps);
+  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
+  assert.equal(
+    await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 60 * 60_000),
+    "none",
+    "no hold: ticks continue on the stale build",
+  );
+  assert.deepEqual(f.calls.green, [HEAD_B], "no green check for the deferred head");
+  assert.deepEqual(f.calls.compile, [HEAD_B]);
+  const status = r.status(swappedAt + 60 * 60_000);
+  assert.equal(status.stale, true, "staleness stays visible");
+  assert.equal(
+    status.restartBlocked,
+    `cooldown until ${new Date(swappedAt + RESTART_COOLDOWN_MS).toISOString()}`,
+    "the deadline is published through the restartBlocked channel",
+  );
+  assert.equal(status.restartPending, undefined);
+  // One warning per episode, not one per poll.
+  assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 61 * 60_000), "none");
+  const warnings = events.filter((e) => e.type === "warning");
+  assert.equal(warnings.length, 1);
+  assert.match(String(warnings[0]!.message), /cooldown until/);
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart", "warning"]);
+});
+
+test("past the cooldown deadline the same head proceeds to a restart without main moving again", async () => {
+  // Re-evaluated on every poll rather than latched like blockedHead: once the deadline passes,
+  // the current head proceeds even if main never moves again (BUGS.md 2026-09-11).
+  const f = fakeDeps();
+  const { r } = harness(f.deps);
+  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
+  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS - 1), "none", "one ms short of the deadline still defers");
+  assert.equal(
+    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS),
+    "hold",
+    "past it: the new episode starts its green check",
+  );
+  f.green(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 10), "hold", "green: the compile starts");
+  f.compiled(true);
+  await settle();
+  assert.equal(
+    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 20),
+    "restart",
+    "the second restart lands past the deadline",
+  );
+  assert.deepEqual(f.calls.swap, [HEAD_B, HEAD_C]);
+});
+
+test("the completion timestamp survives process restart via its state file", async () => {
+  // Auto-restart kills the orchestrator and the supervisor respawns it — the cooldown's start
+  // must outlive that exit, so it lives in its own state file, not orchestrator.json (BUGS.md).
+  const root = tmpdir();
+  assert.equal(autoRestartRecord(root).lastAt, null, "a missing file reads as no completed restart yet");
+  const f1 = fakeDeps();
+  const h1 = harness(f1.deps, true, undefined, autoRestartRecord(root));
+  const swappedAt = await driveToRestart(h1.r, f1, HEAD_B, 2_000_000);
+  assert.ok(fs.existsSync(autoRestartStampPath(root)), "the timestamp is written on swap");
+
+  // A second process: a fresh Redeployer reading the same file honors the cooldown...
+  const f2 = fakeDeps();
+  const h2 = harness(f2.deps, true, undefined, autoRestartRecord(root));
+  assert.equal(await h2.r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000), "none", "the respawned process defers the second episode");
+  assert.match(String(h2.r.status(swappedAt + 60 * 60_000).restartBlocked ?? ""), /cooldown until/);
+  // ...and past the deadline it proceeds, overwriting the file with the new completion.
+  const secondSwap = swappedAt + RESTART_COOLDOWN_MS + 20;
+  assert.equal(await h2.r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS), "hold", "past the deadline: the green check starts");
+  f2.green(true);
+  await settle();
+  assert.equal(await h2.r.poll(HEAD_C, IDLE, true, secondSwap - 10), "hold", "green: the compile starts");
+  f2.compiled(true);
+  await settle();
+  assert.equal(await h2.r.poll(HEAD_C, IDLE, true, secondSwap), "restart");
+  const stored = JSON.parse(fs.readFileSync(autoRestartStampPath(root), "utf8")) as { at: number };
+  assert.equal(stored.at, secondSwap, "the file holds the LATEST completion for the next process");
 });
 
 test("RESTART_EXIT_CODE is EX_TEMPFAIL, distinct from success, fail(), and a forced Ctrl+C", () => {
