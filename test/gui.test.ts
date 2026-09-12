@@ -292,6 +292,57 @@ test("the dashboard page has a last tick column between cost and last result", a
   assert.match(GUI_PAGE, /fmtLastTick\(l\.lastTickEndedAt\)/);
 });
 
+test("the GUI loop table sorts active first, then by last tick most-recent-first", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+
+  // Extract the marked region — same regex-extract + new Function pattern as the esc test and
+  // the report-chart builders. sortLoops is pure (no DOM, no esc), so nothing is injected.
+  const m = GUI_PAGE.match(/\/\/ loop-sort:start\n([\s\S]*?)\n  \/\/ loop-sort:end/);
+  assert.ok(m, "loop-sort region found in the page");
+  type LoopRow = { role: string; phase: string; lastTickEndedAt: number | null };
+  const sortLoops = new Function(`${m[1]}\nreturn sortLoops;`)() as unknown as (loops: LoopRow[]) => LoopRow[];
+
+  // refresh() renders the sorted copy, not payload order — pin the call site so the function
+  // cannot become dead code.
+  assert.match(GUI_PAGE, /sortLoops\(d\.loops\)\.map\(\(l\) =>/);
+
+  const t = (min: number) => Date.parse("2026-09-11T00:00:00Z") + min * 60000;
+  const loops: LoopRow[] = [
+    { role: "sleepy", phase: "sleeping (for 5m)", lastTickEndedAt: t(3) },
+    { role: "working-b", phase: "working 2m", lastTickEndedAt: t(1) },
+    { role: "reviewing-a", phase: "reviewing @ …", lastTickEndedAt: null },
+    { role: "queued-z", phase: "queued", lastTickEndedAt: t(5) },
+    { role: "working-a", phase: "working 1m", lastTickEndedAt: t(2) },
+    { role: "never-ticked", phase: "stopped", lastTickEndedAt: null },
+    { role: "main-red", phase: "main red", lastTickEndedAt: t(0) },
+  ];
+  // Active (working/reviewing) before inactive; within each group, last tick most-recent-first;
+  // a null (never completed a tick) sorts after any timestamp in its own category.
+  assert.deepEqual(sortLoops(loops).map((l) => l.role), [
+    "working-a",     // active, t(2) — newest among actives
+    "working-b",     // active, t(1)
+    "reviewing-a",   // active, null — last of the active group
+    "queued-z",      // inactive, t(5) — newest among inactives
+    "sleepy",        // inactive, t(3)
+    "main-red",      // inactive, t(0)
+    "never-ticked",  // inactive, null — last of all
+  ]);
+
+  // Equal timestamps break on role name ascending, so an identical payload always renders in
+  // the same order regardless of payload order.
+  const tied: LoopRow[] = [
+    { role: "zeta", phase: "sleeping (for 1m)", lastTickEndedAt: t(4) },
+    { role: "alpha", phase: "queued", lastTickEndedAt: t(4) },
+    { role: "mid", phase: "main red", lastTickEndedAt: t(4) },
+  ];
+  assert.deepEqual(sortLoops(tied).map((l) => l.role), ["alpha", "mid", "zeta"]);
+
+  // The input array is not reordered in place — the payload stays untouched for other consumers.
+  const before = loops.map((l) => l.role);
+  sortLoops(loops);
+  assert.deepEqual(loops.map((l) => l.role), before, "sortLoops returns a new array");
+});
+
 // The per-loop today spend on the GUI surface (PLANS.md "Per-loop today spend"): /api/status
 // carries todayUsd per loop — the daily budget window, 0 while its stamp is stale or missing,
 // same helper and semantics as the TUI's `today` column — and the page renders its cell

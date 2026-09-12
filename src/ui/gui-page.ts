@@ -69,6 +69,24 @@ export const GUI_PAGE = `<!doctype html>
     if (Date.now() - ts > 86400000) s = p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + s;
     return s;
   };
+  // loop-sort:start
+  // Loop-table row order: active loops (working/reviewing — the two in-flight phases, same
+  // prefix convention as the row coloring below, extended with reviewing) before inactive
+  // ones; within each category by last tick most-recent-first. Null (never completed a tick)
+  // sorts last in its category; ties break on role name so an identical payload always renders
+  // in the same order. Client-side only — /api/status, status --json, and the TUI keep
+  // payload order.
+  function sortLoops(loops) {
+    const cat = (l) => ((l.phase.startsWith("working") || l.phase.startsWith("reviewing")) ? 0 : 1);
+    return loops.slice().sort((a, b) => {
+      if (cat(a) !== cat(b)) return cat(a) - cat(b);
+      const ta = a.lastTickEndedAt ?? 0;
+      const tb = b.lastTickEndedAt ?? 0;
+      if (ta !== tb) return tb - ta;
+      return a.role.localeCompare(b.role);
+    });
+  }
+  // loop-sort:end
   // ---- report tab: the usage dashboard ------------------------------------------
   // Top-level views inside one page: "fleet" (today's dashboard, default) and "report"
   // (usage charts). The director prompt form sits outside both — an operator control,
@@ -240,7 +258,7 @@ export const GUI_PAGE = `<!doctype html>
         // budgetBadge, the same string the TUI/status header renders (n/a for an all-free
         // fleet; empty when disabled), so the two surfaces cannot drift.
         (d.budgetBadge || "");
-      document.getElementById("loops").innerHTML = d.loops.map((l) => {
+      document.getElementById("loops").innerHTML = sortLoops(d.loops).map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";
         return "<tr><td><a href='#' class='looplink" + (transcriptRole === l.role ? " active" : "") +
