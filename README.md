@@ -60,10 +60,13 @@ Open items:
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
   next is landing in a per-role detached worktree (planned 2026-09-08).
-- Open bugs: none.
+- Planned: show the GUI loop table's last tick with relative age, matching the TUI's
+  "· Nm ago" cell format (planned 2026-09-11, requested by user).
+- Open bugs: the TUI/GUI `reviewing` state shows only elapsed time — no turn/ctx/tool detail
+  like the `working` state does (reported by user 2026-09-11; fix direction pinned in BUGS.md).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`a48e388`): build clean, suite 884/884, verified 2026-09-11.
+Current main (`207983f`): build clean, suite 886/886, verified 2026-09-12.
 <!-- tumwater:status:end -->
 
 ## How it works
