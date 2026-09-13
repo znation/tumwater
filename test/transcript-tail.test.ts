@@ -243,6 +243,26 @@ test("readTranscriptTail scans the opened inode when rotation recreates the path
   }
 });
 
+test("readTranscriptTail returns null when rotation recreates the path as an empty file between stat and open", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Non-empty old content so the pre-open stat reports a size worth scanning.
+  fs.writeFileSync(
+    file,
+    agentStart() + "\n" + userLine("prompt", FIXED_TS) + "\n" + assistantBlocks([{ type: "text", text: "hi" }]) + "\n",
+  );
+  // Rotation renames the old log away and recreates the path before open lands — here as an
+  // empty file (a fresh log with nothing appended yet): the opened inode is empty, so the
+  // reader reports no data instead of scanning stale bytes off a size that no longer exists.
+  const restore = recreateSmallerOnOpen(file, "");
+  try {
+    assert.equal(readTranscriptTail(file, 50), null); // same policy as a missing or empty log — no throw
+  } finally {
+    restore();
+  }
+});
+
 test("readTranscriptTail includes a marker line when it labels the boundary run", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
@@ -348,5 +368,41 @@ test("readTranscriptTail excludes a labeled run older than the window boundary",
   assert.ok(
     all.entries.flat().includes(`── review @ ${expectedTimestamp(FIXED_TS + 60_000)} ──`),
     "the whole-file window still carries the label",
+  );
+});
+
+test("readTranscriptTail stops at the arming agent_start when EOF precedes any marker", () => {
+  // Rotation truncated a previous run mid-stream: the file's oldest lines are that run's
+  // orphaned tail — assistant turns with no agent_start and no marker before them. The next
+  // run is unlabeled (a resumed session writes no tumwater_run marker), so when the backward
+  // scan arms on its agent_start it walks straight into EOF still arming: the window must stop
+  // at that agent_start, dropping the orphan tail exactly as a full re-read's slice(-limit) does.
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const lines: string[] = [];
+  for (let i = 1; i <= 3; i++) lines.push(assistantBlocks([{ type: "text", text: `orphan ${i}` }])); // rotated tail
+  lines.push(agentStart()); // unlabeled run — no marker line precedes it
+  lines.push(userLine("prompt", FIXED_TS + 60_000));
+  for (let i = 1; i <= 10; i++) lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  const size = fs.statSync(file).size;
+  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  // Limits that arm (≤ the run's own candidate count), limits that don't (≥ total entries), and
+  // the whole-file window — the oracle must hold across all of them.
+  for (const limit of [1, 2, 5, 8, 13, 50]) {
+    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
+  }
+  const tail = readTranscriptTail(file, 5);
+  assert.ok(tail);
+  assert.equal(tail.end, size); // just past the last complete newline — a followFile start point
+  assert.ok(!tail.entries.flat().some((l) => l.includes("orphan")), "the orphaned tail stays out of the window");
+  const whole = readTranscriptTail(file, 10);
+  assert.ok(whole);
+  assert.equal(
+    whole.entries[0]?.[0],
+    `── run @ ${expectedTimestamp(FIXED_TS + 60_000)} ──`,
+    "the unlabeled run's separator is stamped from its own user message",
   );
 });
