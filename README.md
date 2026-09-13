@@ -45,15 +45,16 @@ exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt 
 `resume` (operator-intent fleet gate: role loops stop starting new ticks while in-flight ones
 finish; the director keeps running). All twelve roles —
 feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve,
-steward (~6 h clock) — plus the director are enabled by default. While main's build/test suite is
-red, code-producing roles skip their authoring run and show a `main red` state in both dashboards
-until main is green again (director, bugfix, and the markdown-only roles keep ticking — bugfix can
-land the fix).
+steward (~6 h clock) — plus the director are enabled by default; user-defined loops can be added
+as tumwater.json `customLoops` entries and act as full-citizen loops (dashboard markers and the
+director control surface still planned). While main's build/test suite is red, code-producing roles
+skip their authoring run and show a `main red` state in both dashboards until main is green again
+(director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix).
 
 Open items:
-- Planned: user-defined loops — sub-plans 1/3–3/3 tracked in PLANS.md; first is `customLoops`
-  config plumbing, then the director control surface and dashboard markers (planned 2026-09-07,
-  split 2026-09-08).
+- Planned: user-defined loops — sub-plans 2/3–3/3 tracked in PLANS.md (1/3 landed); next is the
+  director control surface (add/remove/rearrange from the prompt box), then dashboard markers
+  (planned 2026-09-07, split 2026-09-08).
 - Planned: per-loop token generation rate column in the TUI/GUI — a 5-minute moving average shown
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
@@ -62,7 +63,7 @@ Open items:
   bugs wait — deferral is reactive, not backlog-aware (reported by user 2026-09-12).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`9195997`): build clean, suite 906/906.
+Current main (`8b8aa05`): build clean, suite 925/925.
 <!-- tumwater:status:end -->
 
 ## How it works
