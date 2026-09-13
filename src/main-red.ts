@@ -1,4 +1,5 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles.js";
+import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
 import { BUILD_CHECK_TIMEOUT_MS, checkMainBaseline } from "./build-check.js";
 import { logEvent } from "./events.js";
 import type { TickOutcome } from "./types.js";
@@ -27,7 +28,13 @@ let lastMainRedSha: string | null = null;
  * `main_red` outcome for the caller to return as-is. Never throws: git, detection, and
  * execution failures all resolve to "nothing blocks authoring" inside checkMainBaseline. */
 export async function mainRedGate(root: string, role: string, wt: string): Promise<TickOutcome | null> {
-  if (!BASELINE_BLOCKED_ROLES.has(role)) return null;
+  // User-defined loops are blocked alongside the built-in code roles (plans/user-defined-loops.md):
+  // an unknown charter may produce code, and on red main such diffs are rejected deterministically
+  // at the gate's pre-check — an authoring run would be pure waste. Customs come from tumwater.json,
+  // not the catalog, so read the live config (stat-cached; a broken file degrades to defaults,
+  // which know no customs).
+  const cfg = loadConfigCached(root).config ?? defaultConfig();
+  if (!BASELINE_BLOCKED_ROLES.has(role) && !isCustomRole(cfg, role)) return null;
   // The one run per SHA (cache misses only) is logged under the role that paid for it, with its
   // duration — the gate's build_check sibling, so both halves of the fleet's deterministic
   // verification are priced in the feed.

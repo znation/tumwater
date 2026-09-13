@@ -149,6 +149,35 @@ test("mainRedGate warns once per red SHA: a repeat tick on the same HEAD re-bloc
   }
 });
 
+test("mainRedGate blocks a user-defined loop on red main like the code roles", async () => {
+  // A custom's charter may produce code, so it is blocked exactly like feature/improve
+  // (plans/user-defined-loops.md). Customs come from tumwater.json, not the catalog — declare
+  // one in the fixture repo before the gate reads the live config.
+  const counter = path.join(tmpdir(), "runs");
+  const { root, wt } = baselineFixture(`echo run >> ${counter}; exit 1`);
+  fs.writeFileSync(
+    path.join(root, "tumwater.json"),
+    JSON.stringify({ customLoops: [{ name: "docs-auditor", task: "Keep the docs current." }] }),
+  );
+  const restore = fakeNpm(`echo run >> ${counter}; exit 1`);
+  try {
+    assert.equal(
+      (await mainRedGate(root, "docs-auditor", wt))?.result,
+      "main_red",
+      "a custom loop's fresh tick on red main is blocked like feature's",
+    );
+    // The check ran once under the role that paid for it — same pricing as a built-in.
+    assert.equal(runsOf(counter), 1);
+    const checks = readEvents(root).filter((e) => e.type === "build_check");
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0]?.loop, "docs-auditor");
+    // A role that is neither in the catalog nor in customLoops still passes through ungated.
+    assert.equal(await mainRedGate(root, "not-a-role", wt), null);
+  } finally {
+    restore();
+  }
+});
+
 test("mainRedGate warns under the role and proceeds when npm is missing", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(`echo run >> ${counter}; exit 1`);

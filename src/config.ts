@@ -43,7 +43,13 @@ export function defaultConfig(): TumwaterConfig {
     // A self-hosting fleet redeploys itself onto a green main (src/redeploy.ts): the alternative
     // — a process that never reloads its own code — ran ten days stale in dogfood.
     autoRestart: true,
-    review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
+    // tumwater.json joins the default exemptions (plans/user-defined-loops.md): only the
+    // director can ever produce a diff touching that file, so exempting it means "user-directed
+    // config changes skip model review" — consistent with the md-only exemption's philosophy.
+    // Without this an explicit user command could be silently discarded: a rejected director
+    // tick does not re-queue its prompt. validateConfig is the safety net instead.
+    review: { enabled: true, exemptPaths: ["*.md", "docs/**", "tumwater.json"] },
+    customLoops: [],
     roles,
   };
 }
@@ -88,6 +94,7 @@ const TOP_LEVEL_KEYS = [
   "idleBackoff",
   "autoRestart",
   "review",
+  "customLoops",
   "roles",
 ];
 const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
@@ -100,6 +107,13 @@ const ROLE_ENTRY_KEYS = [
   "minTickIntervalSeconds",
 ];
 const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking"];
+const CUSTOM_LOOP_KEYS = ["name", "task"];
+/** A custom loop's name becomes a worktree dir and a git ref, so it is validated strictly:
+ * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */
+const CUSTOM_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+/** A custom loop's task rides into every one of that loop's tick prefills, so it is capped:
+ * unbounded text would be a standing per-tick cost. */
+const CUSTOM_TASK_MAX_CHARS = 4096;
 
 /** Collect the keys present in `obj` but not in `known` into problems, naming where they
  * were found and listing what is valid so one edit fixes them. */
@@ -199,17 +213,65 @@ export function validateConfig(raw: unknown): void {
     }
   }
 
+  // Custom loops (plans/user-defined-loops.md): names become worktree dirs and git refs, so
+  // they are validated strictly — a colliding name would silently shadow a built-in's prompt
+  // (roleById wins in tickPrompt), validation makes that impossible instead of subtle. The
+  // collected names feed the roles cross-check below: an id under `roles` is valid when it is
+  // in the catalog OR listed as a customLoops name.
+  const customNames = new Set<string>();
+  if ("customLoops" in r) {
+    const cl = r.customLoops;
+    if (!Array.isArray(cl)) {
+      problems.push(`customLoops must be an array of { name, task } entries (got ${show(cl)})`);
+    } else {
+      cl.forEach((entry, i) => {
+        const where = `customLoops[${i}]`;
+        if (!isPlainObject(entry)) {
+          problems.push(`${where} must be an object with keys name and task (got ${show(entry)})`);
+          return;
+        }
+        checkKnownKeys(entry, CUSTOM_LOOP_KEYS, where, problems);
+        const name = entry.name;
+        if (typeof name !== "string") {
+          problems.push(
+            `${where}.name must be a string matching /^[a-z0-9][a-z0-9_-]{0,31}$/ (got ${show(name)})`,
+          );
+        } else if (!CUSTOM_NAME_RE.test(name)) {
+          problems.push(
+            `${where}.name "${name}" is not a valid loop name: start with a lowercase letter or digit, then at most 31 more of [a-z0-9_-]`,
+          );
+        } else if (allRoleIds().includes(name)) {
+          problems.push(`${where}.name "${name}" collides with a built-in role id — pick another name`);
+        } else if (customNames.has(name)) {
+          problems.push(`${where}.name "${name}" is duplicated in customLoops — names must be unique`);
+        } else {
+          customNames.add(name);
+        }
+        const task = entry.task;
+        if (typeof task !== "string" || task.length === 0) {
+          problems.push(`${where}.task must be a non-empty string (got ${show(task)})`);
+        } else if (task.length > CUSTOM_TASK_MAX_CHARS) {
+          problems.push(
+            `${where}.task is ${task.length} chars — shorten it to at most ${CUSTOM_TASK_MAX_CHARS}: it rides into every tick's prefill`,
+          );
+        }
+      });
+    }
+  }
+
   if ("roles" in r) {
     const roles = r.roles;
     if (!isPlainObject(roles)) {
       problems.push(`roles must be an object mapping role ids to settings (got ${show(roles)})`);
     } else {
       for (const [id, rc] of Object.entries(roles)) {
-        // An id outside the catalog cannot work: tickPrompt has no prompt for it and the
-        // loop would error every tick forever. Reject it here with the valid ids — the same
-        // message shape `tumwater logs --role` uses for a bad flag value.
-        if (!allRoleIds().includes(id)) {
-          problems.push(`roles.${id} is not a known role (valid ids: ${allRoleIds().join(", ")})`);
+        // An id outside the catalog and customLoops cannot work: tickPrompt has no prompt for
+        // it and the loop would error every tick forever. Reject it here with the valid ids —
+        // the same message shape `tumwater logs --role` uses for a bad flag value.
+        if (!allRoleIds().includes(id) && !customNames.has(id)) {
+          problems.push(
+            `roles.${id} is not a known role (valid ids: ${[...allRoleIds(), ...customNames].join(", ")})`,
+          );
           continue;
         }
         if (!isPlainObject(rc)) {
@@ -258,8 +320,17 @@ export function loadConfig(root: string): TumwaterConfig {
     idleBackoff: { ...base.idleBackoff, ...(cfg.idleBackoff ?? {}) },
     review: { ...base.review, ...(cfg.review ?? {}) },
     piArgs: cfg.piArgs ?? base.piArgs,
+    customLoops: (cfg.customLoops ?? []).map((c) => ({ ...c })),
     roles: { ...base.roles },
   };
+  // Seed each user-defined loop into roles BEFORE the overlay loop so a file's `roles` section
+  // overrides per-key for a custom exactly like for built-ins (enabled, instructions,
+  // tickInterval, provider/model); seeding after would silently ignore those overrides.
+  // A custom absent from `roles` stays enabled. Insertion order = built-ins then customs in
+  // array order — the display and startup tie-break order.
+  for (const c of merged.customLoops) {
+    if (!merged.roles[c.name]) merged.roles[c.name] = { enabled: true };
+  }
   for (const [id, rc] of Object.entries(cfg.roles ?? {})) {
     merged.roles[id] = { ...(merged.roles[id] ?? { enabled: true }), ...rc };
   }
@@ -297,6 +368,7 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
     piArgs: [...c.piArgs],
     idleBackoff: { ...c.idleBackoff },
     review: { ...c.review },
+    customLoops: c.customLoops.map((cl) => ({ ...cl })),
     roles: Object.fromEntries(Object.entries(c.roles).map(([id, rc]) => [id, { ...rc }])),
   };
 }
@@ -363,6 +435,23 @@ export function setDailyBudgetUsd(
     return { ok: false, error: errorMessage(err) };
   }
   return { ok: true };
+}
+
+/** The names of the user-defined loops, in array order (plans/user-defined-loops.md).
+ * One source of truth for "which ids are user-defined" so consumers cannot drift. */
+export function customLoopNames(config: TumwaterConfig): string[] {
+  return config.customLoops.map((c) => c.name);
+}
+
+/** True when `id` is a user-defined loop rather than a catalog role. */
+export function isCustomRole(config: TumwaterConfig, id: string): boolean {
+  return config.customLoops.some((c) => c.name === id);
+}
+
+/** Every valid role id — the catalog plus the user-defined loops (the one answer for "which
+ * ids exist", so consumers cannot drift from each other). */
+export function knownRoleIds(config: TumwaterConfig): string[] {
+  return [...allRoleIds(), ...customLoopNames(config)];
 }
 
 /** Ids of the enabled roles, in config.roles order (catalog order for known ids). */

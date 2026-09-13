@@ -1,5 +1,5 @@
 import type { TumwaterConfig, LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
-import { DIRECTOR_ROLE, roleById } from "./roles.js";
+import { customRole, DIRECTOR_ROLE, roleById } from "./roles.js";
 import {
   branchHead,
   changedFiles,
@@ -138,7 +138,10 @@ export class LoopRunner {
       this.pendingUserPrompt = userPrompt;
       prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles);
     } else {
-      const role = roleById(this.role);
+      // Catalog first, then user-defined loops (plans/user-defined-loops.md): a custom's task
+      // is its entire find-something-to-do text and the title identifies it in the prompt.
+      const custom = this.config.customLoops.find((c) => c.name === this.role);
+      const role = roleById(this.role) ?? (custom ? customRole(custom.name, custom.task) : undefined);
       if (!role) throw new Error(`unknown role: ${this.role}`);
       prompt = buildTickPrompt({
         role,

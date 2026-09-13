@@ -16,6 +16,21 @@ export interface RoleConfig {
   minTickIntervalSeconds?: number;
 }
 
+/** A user-defined loop in tumwater.json's `customLoops` array
+ * (plans/user-defined-loops.md): each entry becomes a full-citizen loop — persistent worktree +
+ * branch, tick lifecycle, review gate, merge to main. Only the director may write this key; every
+ * other role's prompt keeps the blanket tumwater.json ban. */
+export interface CustomLoop {
+  /** The loop id: worktree dir, branch suffix (`tumwater/<name>`), and status row.
+   * Validated at load against /^[a-z0-9][a-z0-9_-]{0,31}$/ — it becomes a filesystem path
+   * and a git ref — with no collision with any catalog id (including the director) and unique
+   * within the list. */
+  name: string;
+  /** The loop's standing instruction — its entire find-something-to-do prompt. Capped at
+   * 4096 chars because it rides into every one of that loop's tick prefills. */
+  task: string;
+}
+
 /** Top-level review-gate config in tumwater.json (see src/review.ts). */
 interface ReviewConfig {
   /** Enable the adversarial pre-merge review gate (default true). */
@@ -87,6 +102,12 @@ export interface TumwaterConfig {
   autoRestart: boolean;
   /** Adversarial pre-merge review gate (see src/review.ts). */
   review: ReviewConfig;
+  /** User-defined loops (plans/user-defined-loops.md): each entry is merged into `roles` at
+   * load time as `{ enabled: true }`, appended after the built-ins in array order — that single
+   * move makes every existing mechanism (runner creation, live enable/disable, configForRole,
+   * status lists, gates) work unchanged. Optional in the file, defaulted to `[]`; required on
+   * this type so read sites never see undefined. */
+  customLoops: CustomLoop[];
   roles: Record<string, RoleConfig>;
 }
 

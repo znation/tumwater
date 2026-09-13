@@ -17,7 +17,7 @@ import {
 import { parseVerdict } from "../src/review.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
-import { DECOMPOSITION_GUIDANCE, PLAN_SIZING, ROLES, roleById, searchGuidance } from "../src/roles.js";
+import { customRole, DECOMPOSITION_GUIDANCE, PLAN_SIZING, ROLES, roleById, searchGuidance } from "../src/roles.js";
 import { tmpdir } from "./util.js";
 
 test("readInitialPrompt extracts the managed block", () => {
@@ -990,4 +990,30 @@ test("buildConflictPrompt bounds reading to the conflicted files", () => {
   const p = oneLine(buildConflictPrompt("dry", ["src/a.ts"]));
   assert.match(p, /Read only the conflicted files and what they directly reference/);
   assert.match(p, /`grep -n '<<<<<<<' FILE`/);
+});
+
+// --- User-defined loops (plans/user-defined-loops.md, PLANS.md "User-defined loops 1/3") ---
+
+test("a user-defined loop's tick prompt identifies it and carries its task as the run task", () => {
+  const role = customRole("docs-auditor", "Keep the docs current.");
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  // The title is what identifies the loop inside its own prompt and commit context.
+  assert.match(prompt, /"docs-auditor" loop \(user-defined loop\)/);
+  // The task IS the role-specific find-something-to-do text — no catalog prose around it.
+  assert.ok(prompt.includes("Keep the docs current."), "the task rides in as the run's task");
+  // COMMON_RULES ride along with every tick prompt — including the blanket tumwater.json ban
+  // (only the director writes that file, and only its customLoops key).
+  assert.match(prompt, new RegExp(NOTHING_TO_DO));
+  assert.match(prompt, /Never touch the \.tumwater directory or tumwater\.json/);
+});
+
+test("customRole yields the pinned shape while built-in prompts keep their catalog titles", () => {
+  const custom = customRole("docs-auditor", "Keep the docs current.");
+  assert.deepEqual(custom, { id: "docs-auditor", title: "user-defined loop", find: "Keep the docs current." });
+  // Invariant: built-ins are byte-identical — the customs fallback in tickPrompt only fires
+  // on a catalog miss, so a built-in's prompt is exactly what the catalog role renders.
+  const feature = roleById("feature");
+  assert.ok(feature);
+  const p = oneLine(buildTickPrompt({ role: feature, initialPrompt: "" }));
+  assert.match(p, /"feature" loop \(feature implementer\)/);
 });

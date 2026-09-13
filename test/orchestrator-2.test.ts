@@ -14,7 +14,8 @@ import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { logEvent, readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, readOrchestratorInfo, saveLoopState, todayStamp } from "../src/state.js";
-import { abortRequestPath, pausedPath, resetRequestPath, worktreePath } from "../src/paths.js";
+import { abortRequestPath, branchName, pausedPath, resetRequestPath, worktreePath } from "../src/paths.js";
+import { statusPayload } from "../src/ui/status-payload.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
@@ -217,6 +218,100 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     saveConfig(repo, fastConfig(["clean", "dry", "feature"]));
     await waitFor(() => loadLoopState(repo, "dry").ticks > dryTicks, "re-enabled role to tick again");
     assert.ok(messages().some((m) => m.includes("role dry enabled — starting ticks")), "re-enable transition logged");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+// --- User-defined loops (plans/user-defined-loops.md, PLANS.md "User-defined loops 1/3") ---
+
+test("custom loops can be added, removed, and reordered mid-run without a restart", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "custom loop e2e test");
+  saveConfig(repo, fastConfig(["clean"]));
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    const finished = (role: string) => {
+      const s = loadLoopState(repo, role);
+      return s.ticks >= 1 && !s.running;
+    };
+    const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
+    const loopOrder = () =>
+      (statusPayload(repo) as { loops: Array<{ role: string }> }).loops.map((l) => l.role);
+    await waitFor(() => finished("clean"), "the startup tick to finish");
+
+    // Adding a custom entry starts its runner within one poll cycle — the live-reload
+    // machinery already handles any enabled id, so no orchestrator change is needed.
+    let cfg = fastConfig(["clean"]);
+    cfg.customLoops.push({ name: "docs-auditor", task: "Keep the docs current." });
+    saveConfig(repo, cfg);
+    await waitFor(() => finished("docs-auditor"), "the new custom loop to tick");
+    assert.ok(
+      readEvents(repo).some((e) => e.type === "tick_start" && e.loop === "docs-auditor"),
+      "ticks under its own name",
+    );
+    // Owns its persistent worktree and branch like a built-in.
+    assert.ok(fs.existsSync(worktreePath(repo, "docs-auditor")), "its worktree");
+    const branches = sh(repo, "git", "branch", "--list").split("\n");
+    assert.ok(branches.some((b) => b.includes(branchName("docs-auditor"))), "its branch");
+
+    // A main move wakes it — customs are never deferred by need-based prioritization.
+    landWork(repo);
+    await waitFor(() => loadLoopState(repo, "docs-auditor").ticks >= 2, "a second tick after a main move");
+
+    // Removing the entry logs one warning and stops its ticks.
+    saveConfig(repo, fastConfig(["clean"]));
+    await waitFor(
+      () =>
+        messages().some((m) => m.includes("role docs-auditor disabled — stopping ticks")) &&
+        !loadLoopState(repo, "docs-auditor").running,
+      "the removal to be processed with no in-flight tick",
+    );
+    const removedTicks = loadLoopState(repo, "docs-auditor").ticks;
+    // The enabled role's next tick proves the fleet is alive and main moved — a still-enabled
+    // custom would have used that same wake (it never defers), so its count must not move.
+    landWork(repo);
+    await waitFor(() => loadLoopState(repo, "clean").ticks > 1, "an enabled role to tick again");
+    assert.equal(loadLoopState(repo, "docs-auditor").ticks, removedTicks, "removed loop stops ticking");
+
+    // Re-adding the same name revives its persisted state — counters survive, like re-enabling a built-in.
+    cfg = fastConfig(["clean"]);
+    cfg.customLoops.push({ name: "docs-auditor", task: "Keep the docs current." });
+    saveConfig(repo, cfg);
+    await waitFor(
+      () => loadLoopState(repo, "docs-auditor").ticks > removedTicks && !loadLoopState(repo, "docs-auditor").running,
+      "the re-added loop to tick again",
+    );
+    assert.equal(loadLoopState(repo, "docs-auditor").ticks, removedTicks + 1, "counters survived the removal");
+    assert.ok(
+      messages().some((m) => m.includes("role docs-auditor enabled — starting ticks")),
+      "re-add transition logged",
+    );
+
+    // Reordering two entries reorders the status table without touching built-in order.
+    cfg = fastConfig(["clean"]);
+    cfg.customLoops.push({ name: "docs-auditor", task: "Keep the docs current." });
+    cfg.customLoops.push({ name: "perf-hunter", task: "Hunt perf wins." });
+    saveConfig(repo, cfg);
+    await waitFor(() => finished("perf-hunter"), "the second custom loop to tick");
+    assert.deepEqual(loopOrder().slice(-2), ["docs-auditor", "perf-hunter"], "customs after built-ins in array order");
+
+    cfg = fastConfig(["clean"]);
+    cfg.customLoops.push({ name: "perf-hunter", task: "Hunt perf wins." });
+    cfg.customLoops.push({ name: "docs-auditor", task: "Keep the docs current." });
+    saveConfig(repo, cfg);
+    await waitFor(
+      () => {
+        const order = loopOrder();
+        return order.indexOf("perf-hunter") !== -1 && order.indexOf("perf-hunter") < order.indexOf("docs-auditor");
+      },
+      "the reorder to show in the status table",
+    );
+    const order = loopOrder();
+    assert.deepEqual(order.slice(-2), ["perf-hunter", "docs-auditor"]);
+    assert.ok(order.indexOf("clean") < order.indexOf("perf-hunter"), "built-ins keep their place ahead of customs");
   } finally {
     restore();
     await orch.stop();

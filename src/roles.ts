@@ -317,3 +317,10 @@ export function allRoleIds(): string[] {
 export function roleById(id: string): Role | undefined {
   return ROLES.find((r) => r.id === id);
 }
+
+/** A user-defined loop as a Role (plans/user-defined-loops.md): its task IS the
+ * role-specific find-something-to-do text, and the title is what identifies the loop inside
+ * its own prompt (`You are the "<name>" loop (user-defined loop)`) and commit context. */
+export function customRole(name: string, task: string): Role {
+  return { id: name, title: "user-defined loop", find: task };
+}
