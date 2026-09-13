@@ -359,6 +359,29 @@ Corrections:
 
 Sizing unchanged: lander.ts still ~140 lines (the green path loses nothing — seeding moves one call), merge.ts ~35 (ffStackToMain gains no re-check or verify step), config/types/orchestrator ~25 combined; tests ~280 dominated by lander.test.ts's four batch cases. No design question remains open.
 
+### TUI/GUI auto-reload when a newer build lands on disk (planned 2026-09-13, requested by user)
+
+**Goal.** `tumwater tui` and `tumwater gui` keep running their startup code forever: when the fleet redeploys itself onto a fresh main build (redeploy.ts swaps `dist/`), both dashboards keep serving stale UI code until someone restarts them. Make each auto-reload — like the core engine does for itself — as soon as it is stale, i.e. as soon as a newer compiled tree than its own startup stamp exists on disk.
+
+**Approach.**
+- New src/ui/self-reload.ts (~100 lines) — all logic lives here so TUI and GUI share one implementation:
+  - `captureStartupBuild(): BuildInfo | null` — calls the existing `readBuildInfo()` (src/build-info.ts) exactly once at process start. The in-memory startup stamp is the only correct reference: after a redeploy swap, the on-disk stamp already reads as fresh and the orchestrator's published `BuildStatus` flips to `stale: false` under the NEW orchestrator — both would tell an old UI process it is fine while it still executes old modules. Never re-derive "am I stale" from either.
+  - `shouldReload(startup, disk): boolean` — pure: true iff both stamps exist and `disk.sha !== startup.sha`. A differing on-disk stamp means a newer compiled tree is available (redeploy's swap or a manual `npm run build`); re-exec will load it. Deliberately NOT git-based: while main is merely ahead with no new dist yet (restart pending, blocked, or inside the 12 h cooldown) there is nothing to reload onto, and the STALE header already covers that state.
+  - `reexecSelf(spawnImpl?)` — spawn `process.execPath` with `process.argv.slice(1)` and `{ stdio: "inherit" }`, then exit with the child's code when it exits (child fails fast on a broken new build → parent surfaces its non-zero code; operator re-runs manually). Injectable spawner for tests. TUI/GUI are user-launched processes, not supervisor children — no interaction with RESTART_EXIT_CODE.
+  - `createReloadWatch({ root, startupInfo, readDisk?, isSelfHostedImpl?, spawnImpl?, onTrigger })` → `{ start, stop }` — one-time async gate via the existing `isSelfHosted(root, startup)` (src/build-info.ts; false or null stamp ⇒ never reload), then a 1 s interval re-reading the disk stamp and calling `onTrigger()` at most once when `shouldReload` holds. All seams injectable so tests need no real timers, git, or dist.
+- src/ui/tui.ts — in `runTui(root)` (line ~182): capture the startup build; start the watch with `onTrigger` setting a local flag and resolving the main keypress await — the exact same path Ctrl+C takes, so the existing teardown (`clearInterval(timer)`, `setRawMode(false)`, `stdin.pause()`) runs unchanged. After that teardown block (line ~478), call `reexecSelf()` when the flag is set; otherwise return as today.
+- src/ui/gui.ts — in/after `startGui(root, port, allInterfaces)` (line ~227): capture the startup build once and keep it for the payload; start the watch with `onTrigger` closing the server (`server.close()`) then calling `reexecSelf()`. When sending `/api/status` (line ~235), spread one extra field onto the existing payload: `serverBuildSha` — the serving process's own startup sha (string or null). Add it in gui.ts at send time, not in status-payload.ts, so `status --json` and its tests are untouched.
+- src/ui/gui-page.ts — in the page's 1 s `/api/status` poll: remember the first non-null `serverBuildSha` seen (keep it across failed polls while the server is down); when a later successful poll returns a different value, `location.reload()`. ~8 lines of inline JS; the page cannot import TypeScript.
+- test/self-reload.test.ts — `shouldReload` truth table (both present + differ ⇒ true; equal ⇒ false; either null ⇒ false); `reexecSelf` with an injected spawner asserts execPath/argv/stdio and exit-code propagation; watch driver: fires exactly once even while the disk keeps differing, never fires when not self-hosted or stampless, stays quiet on identical stamps.
+
+**Files touched.** New src/ui/self-reload.ts + test/self-reload.test.ts; modified src/ui/tui.ts, src/ui/gui.ts, src/ui/gui-page.ts. No changes to build-info.ts, redeploy.ts, status-payload.ts, or the orchestrator — this entry only consumes their existing outputs.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green, including the new self-reload tests (decision table, re-exec argv/exit code via injected spawner, one-shot trigger).
+- Dogfood: with a running fleet that redeploys onto a fresh main build, an open TUI and GUI tab both come back on the new code within ~2 s of the `dist/` swap — no manual restart; the GUI page reloads itself (its poll sees the changed `serverBuildSha`).
+- While main is ahead but no newer dist exists yet (restart pending/blocked/cooldown), neither UI reloads and the STALE header keeps showing as today.
+- A non-self-hosted install (or a stampless dev build) never auto-reloads; `status --json` output is byte-identical to before except nothing (the new field exists only on `/api/status`).
+
 ## Done
 
 ### User-defined loops 2/3 — director control surface: add/remove/rearrange from the prompt box (planned 2026-09-07, split 2026-09-08, done 2026-09-12)
