@@ -14,8 +14,8 @@ import {
   reviewConfig,
   saveConfig,
   setDailyBudgetUsd,
-  validateConfig,
 } from "../src/config.js";
+import { validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
 import { tmpdir } from "./util.js";
