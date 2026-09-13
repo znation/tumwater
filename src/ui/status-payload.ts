@@ -59,6 +59,10 @@ export function statusPayload(root: string): object {
         ticks: s.ticks,
         commits: s.commits,
         generated: m.generated,
+        // The in-flight tick's token generation rate (5-minute moving average over the raw
+        // log tail) — number|null, JSON-safe; null for idle loops and fresh ticks with no
+        // in-window samples yet.
+        tokenRate: m.tokenRate ?? null,
         peakCtx: m.peakCtx,
         costUsd: s.totalCostUsd,
         // The loop's spend for the local day (the daily budget window): 0 while its stamp

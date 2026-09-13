@@ -90,6 +90,10 @@ one loop per enabled role. Every loop tick:
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
+Both dashboards also show each in-flight tick's token generation rate (`t/s`) — a 5-minute moving
+average over the loop's raw log tail, `-` for idle loops — so an operator can tell at a glance
+whether the fleet is generating at full speed or crawling.
+
 Scheduling is need-aware: a maintenance role's due tick (scheduled or main-moved) is deferred —
 one `tick_deferred` event per episode in logs, TUI, and GUI — while its last tick did nothing
 and no feature/bugfix/director/human commit has landed on main since; it starts within one poll

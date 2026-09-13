@@ -48,7 +48,7 @@ export const GUI_PAGE = `<!doctype html>
 </form>
 <div id="fleet-view">
 <table>
-  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>today</th><th>last tick</th><th>last result</th></tr></thead>
+  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>t/s</th><th>peak ctx</th><th>cost</th><th>today</th><th>last tick</th><th>last result</th></tr></thead>
   <tbody id="loops"></tbody>
 </table>
 <div id="transcript" hidden></div>
@@ -59,6 +59,9 @@ export const GUI_PAGE = `<!doctype html>
 <script>
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   const fmtTokens = (n) => (n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
+  // The t/s cell: the in-flight tick's token generation rate, same rule as status-render's
+  // formatTokenRate — one decimal under 10, integer at/above it, "-" when idle or no samples.
+  const fmtRate = (r) => (r == null ? "-" : r < 10 ? r.toFixed(1) : String(Math.round(r)));
   // last-tick-fmt:start
   // Last tick cell — mirrors the TUI's lastTickCell in status-render.ts: the absolute local
   // time of the last tick end alongside its relative age ("14:32:05 · 3m ago"). Zero-padded
@@ -339,7 +342,7 @@ export const GUI_PAGE = `<!doctype html>
           "' data-role='" + esc(l.role) + "'>" + esc(l.role) + (l.custom ? "*" : "") + "</a></td>"
           + "<td class='wide " + cls + "'>" + esc(l.phase)
           + "</td><td class='wide'>" + esc(l.currentWork ?? "-") + "</td><td>" + l.ticks + "</td><td>" + l.commits + "</td><td>" + fmtTokens(l.generated) +
-          "</td><td>" + fmtTokens(l.peakCtx) +
+          "</td><td>" + fmtRate(l.tokenRate) + "</td><td>" + fmtTokens(l.peakCtx) +
           // today: the loop's spend for the local day (0 while its stamp is stale), same
           // two-decimal rule as cost — formatted client-side from the payload, like cost.
           "</td><td>$" + l.costUsd.toFixed(2) + "</td><td>$" + l.todayUsd.toFixed(2) + "</td><td>" + fmtLastTick(l.lastTickEndedAt) +
