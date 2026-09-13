@@ -6,7 +6,6 @@ import { deferTick, dueForPrune, fairOrder, isEligible, runOrchestrator, workLan
 import { ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
-import type { TumwaterConfig } from "../src/types.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
@@ -20,7 +19,18 @@ import {
   zeroCounters,
 } from "../src/state.js";
 import { resetRequestPath } from "../src/paths.js";
-import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import {
+  assistantLine,
+  fastConfig,
+  fakePi,
+  landWork,
+  makeRepo,
+  recordingFakePi,
+  sh,
+  startLiveOrchestrator,
+  tmpdir,
+  waitFor,
+} from "./util.js";
 
 /** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
  * 2s cadence: multi-cycle behavior (config reloads, marker consumption, wake events) resolves
@@ -579,81 +589,6 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
 });
 
 // --- Live-reload tumwater.json while running ---
-
-/** Poll until fn() is true, failing after ms (default 20s). */
-async function waitFor(fn: () => boolean, what: string, ms = 20_000): Promise<void> {
-  const deadline = Date.now() + ms;
-  while (!fn()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
-
-/** A fake pi that records each run's --provider/--model flags to argsFile and declares
- * nothing-to-do (so no commit happens). */
-function recordingFakePi(argsFile: string): () => void {
-  return fakePi(
-    [
-      `m=""; p=""`,
-      `while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; --provider) p="$2";; esac; shift; done`,
-      `echo "run: model=$m provider=$p" >> "${argsFile}"`,
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-    ].join("\n"),
-  );
-}
-
-/** A config where only the given roles tick quickly (no min gap, 1s backoff) so several
- * ticks land within a few poll cycles. */
-function fastConfig(roles: string[], model?: string): TumwaterConfig {
-  const c = defaultConfig();
-  if (model) c.model = model;
-  c.minTickIntervalSeconds = 0;
-  c.idleBackoff = { initialSeconds: 1, factor: 1, maxSeconds: 1 };
-  for (const id of Object.keys(c.roles)) c.roles[id]!.enabled = roles.includes(id);
-  return c;
-}
-
-/** Start a live orchestrator on `repo` with the config currently on disk, for tests that
- * drive it while running. Returns its exit promise plus `stop`, which aborts the run and
- * awaits its exit — swallowing shutdown noise so the test's own failure (if any) stays
- * visible; call `stop` from finally after other cleanup (e.g. restoring a fake pi). */
-function startLiveOrchestrator(
-  repo: string,
-  pollMs?: number,
-): { done: Promise<unknown>; stop: () => Promise<void> } {
-  const controller = new AbortController();
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
-    signal: controller.signal,
-    pollMs,
-  });
-  return {
-    done,
-    async stop() {
-      controller.abort();
-      try {
-        await done;
-      } catch {
-        // The test's own failure (if any) takes precedence over shutdown noise.
-      }
-    },
-  };
-}
-
-/** Land a commit on main that counts as "work" for need-based prioritization, so deferrable
- * maintenance roles wake and re-tick. Tests that pin scheduling-adjacent behavior (config
- * reloads, resets, gates) use it to keep their maintenance roles ticking — the deferral rule
- * itself is pinned in its own test above. */
-function landWork(repo: string): void {
-  fs.writeFileSync(
-    path.join(repo, `work-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`),
-    "work\n",
-  );
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "tumwater(feature): test work landing");
-}
 
 test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-known-good", async () => {
   const repo = makeRepo();
