@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -51,6 +52,56 @@ test("saveLoopState creates the state dir and round-trips without leaving a temp
   const stateDir = path.dirname(statePath(dir, "feature"));
   assert.deepEqual(fs.readdirSync(stateDir), ["feature.json"], "no .tmp leftovers");
   assert.deepEqual(loadLoopState(dir, "feature"), s);
+});
+
+// Two processes hammering one role's state file concurrently — the real-world shape: the
+// orchestrator saves at tick end and around its review gate while `tumwater reset-counters`
+// rewrites the same file from the CLI process. With per-pid tmp names each writer owns its
+// own tmp, so neither rename can ENOENT and the final file is always one complete state
+// (last writer wins), never bytes mixed from both writers.
+test("saveLoopState from two concurrent processes never tears the file or loses a rename", async () => {
+  const dir = tmpdir();
+  // The child imports the BUILT module, like every other spawned-child test in this suite.
+  // Resolved against this test's own file:// URL, so the child can import it from any cwd.
+  const stateUrl = new URL("../src/state.js", import.meta.url).href;
+  // --input-type=module: top-level import in -e code needs explicit module syntax on Node
+  // < 22.7 (engines declares >= 20); detection is not a portable default.
+  const script = `
+    import { saveLoopState } from ${JSON.stringify(stateUrl)};
+    const [root, tag, n] = process.argv.slice(1);
+    for (let i = 0; i < Number(n); i++) {
+      const s = { role: "race", ticks: i, commits: 0, nextRunAt: 0, backoffSeconds: 0, lastMainHead: "", generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0, dayStamp: "", dayCostUsd: 0 };
+      if (tag === "b") s.lastSummary = "writer-b padding ".repeat(16); // longer payload than writer a's
+      saveLoopState(root, s);
+    }`;
+  const runWriter = (tag: string) =>
+    new Promise<{ code: number | null; stderr: string }>((resolve) => {
+      const child = spawn(process.execPath, ["--input-type=module", "-e", script, dir, tag, "300"], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (d) => (stderr += d));
+      child.on("close", (code) => resolve({ code, stderr }));
+    });
+  const [a, b] = await Promise.all([runWriter("a"), runWriter("b")]);
+  assert.equal(a.code, 0, `writer a crashed: ${a.stderr}`);
+  assert.equal(b.code, 0, `writer b crashed: ${b.stderr}`);
+
+  const file = statePath(dir, "race");
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (err) {
+    assert.fail(`state file is torn after concurrent writes (${String(err)})`);
+  }
+  // Last writer wins with a COMPLETE state from one process — never bytes mixed from both.
+  const summary = parsed.lastSummary;
+  assert.ok(
+    summary === undefined || (typeof summary === "string" && summary.startsWith("writer-b padding")),
+    `mixed writers in final state: ${JSON.stringify(summary)}`,
+  );
+  // No tmp remnants from either pid.
+  assert.deepEqual(fs.readdirSync(path.dirname(file)).filter((f) => f.includes(".tmp-")), [], "no tmp leftovers");
 });
 
 test("loadLoopState fills fields missing from an older or partial file", () => {
