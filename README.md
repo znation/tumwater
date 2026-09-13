@@ -58,12 +58,13 @@ Open items:
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
   next is landing in a per-role detached worktree (planned 2026-09-08).
-- Planned: show the GUI loop table's last tick with relative age, matching the TUI's
-  "· Nm ago" cell format (planned 2026-09-11, requested by user).
-- Open bugs: none.
+- Open bug: slot wait queue is FIFO across polls — a due feature/bugfix tick can queue behind an
+  earlier maintenance waiter (reported by user 2026-09-12).
+- Open bug: maintenance roles keep ticking on their normal clock while planned features or open
+  bugs wait — deferral is reactive, not backlog-aware (reported by user 2026-09-12).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`5faaa4c`): build clean, suite 903/903.
+Current main (`9195997`): build clean, suite 906/906.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -301,6 +302,6 @@ Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `orchestrator.ts` 
 `pi.ts` the pi subprocess integration, `git.ts` the git plumbing, `worktree.ts` the persistent
 worktree lifecycle, `merge.ts` the
 rebase/fast-forward/conflict-resolution landing flow), `src/ui/` the observer/presentation layer
-(TUI, GUI dashboard, status table and transcript rendering — imported only by each other and
-`cli.ts`), `test/` unit tests.
+(TUI, GUI dashboard, status table, transcript, and report rendering — imported only by each other
+and `cli.ts`), `test/` unit tests.
 Tests fake pi with a shell shim on PATH, so they run offline.
