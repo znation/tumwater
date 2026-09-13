@@ -276,7 +276,9 @@ export class LoopRunner {
     // Two transient failures of the world (not of the session) earn exactly one bounded retry
     // that continues the same session: the model server timing out an idle predict stream, and
     // pi itself crashing on a torn server chunk (a JSON.parse failure on its stderr).
-    if (!pi.aborted && !pi.timedOut && (pi.transientServerTimeout || pi.transientPiCrash) && !pi.ok) {
+    // A harness-killed run never takes the transient-retry path: its session is intact but
+    // resuming it would just re-hit whatever hung, burning another full quiet timeout.
+    if (!pi.aborted && !pi.timedOut && !pi.quietKilled && (pi.transientServerTimeout || pi.transientPiCrash) && !pi.ok) {
       logEvent(this.root, {
         loop: this.role,
         type: "warning",
@@ -435,7 +437,10 @@ export class LoopRunner {
     // shutdown mid-resume sets it again. Nothing to resume (sessions pruned, or pi never
     // started) also falls back to fresh.
     const resumableSession = s.resumePending === true && hasResumableSession(sessionDir(this.root, this.role));
+    // Captured before the flag is consumed below; a stale cause must not leak into a later resume.
+    const pendingResumeCause = s.resumeCause;
     s.resumePending = false;
+    s.resumeCause = undefined;
     // An interruption during the review gate leaves the author's work fully committed — there
     // is nothing left to finish in its session. Recover (and re-review) the leftover commits
     // via a fresh tick instead: continuing the author session would burn a run on finished
@@ -443,9 +448,12 @@ export class LoopRunner {
     // path's reset below.
     const resuming = resumableSession && s.phase !== "review";
 
-    // Why the resume: a cut-off streak means the last run ran out of context and pi compacted
-    // the session (the bridge then asks for the smallest finish); otherwise a shutdown/crash.
-    const resumeCause = (s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart";
+    // Why the resume: a named quiet-kill means the last run died on a stalled tool call (the
+    // bridge then warns against re-running it unchanged); a cut-off streak means the last run
+    // ran out of context and pi compacted the session (the bridge asks for the smallest finish);
+    // otherwise a shutdown/crash.
+    const resumeCause =
+      pendingResumeCause === "hung-tool" ? "hung-tool" : (s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart";
     const prompt = resuming ? buildResumePrompt(this.role, resumeCause) : this.tickPrompt();
     if (prompt === null) return { result: "skipped" };
     // The raw user prompt a director tick is executing (null for role loops), so an
@@ -497,6 +505,15 @@ export class LoopRunner {
     // The next tick's reset discards them.
     if (pi.aborted) return this.finishAbortedTick(userPrompt, wt);
     this.pendingUserPrompt = null;
+    if (pi.quietKilled) {
+      // A hung tool call, not a slow run: the session and the worktree's edits are intact.
+      // Preserve both — applyTickOutcome resumes them promptly like an interruption instead of
+      // leaving hours of work for the next tick's reset to discard. Director ticks never resume;
+      // their prompt goes back to the inbox to run fresh, as on any other unfulfilled kill.
+      s.lastError = pi.errorMessage ?? "killed as hung";
+      this.requeueUnfulfilledPrompt(userPrompt);
+      return { result: "quiet_killed" };
+    }
     if (pi.timedOut) {
       s.lastError = pi.errorMessage ?? "timed out";
       // The request never ran to completion and no work landed: put it back so the next

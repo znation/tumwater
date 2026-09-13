@@ -236,6 +236,38 @@ test("message updates are skipped before parsing even in the old cumulative shap
   assert.equal(parser.progressCount, 0);
 });
 
+// The quiet watchdog's kill is reported as quietKilled, not timedOut: a hung tool call leaves
+// its session and worktree edits intact, so the loop resumes them instead of discarding hours
+// of work for the next tick's reset (BUGS.md 2026-09-12).
+
+test("a stalled run is reported as quiet-killed, not timed out", async () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 2; // the watchdog checks every second and kills after ~2 s of silence
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolName: "bash" })}'`,
+      `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
+    ].join("\n"),
+  );
+  try {
+    const result = await runPi({
+      cwd: dir,
+      prompt: "p",
+      config,
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.quietKilled, true, "the watchdog kill is reported as quiet-killed");
+    assert.equal(result.timedOut, false, "a hung tool call is not a tick timeout");
+    assert.match(result.errorMessage ?? "", /killed as hung/);
+  } finally {
+    restore();
+  }
+});
+
 test("piArgs reflects config", () => {
   const config = defaultConfig();
   config.provider = "anthropic";

@@ -68,6 +68,12 @@ Scope:
 - Do exactly ONE focused task, then stop. Small, complete, and correct beats big and half-done.
   Choose the task within your first ~15 tool calls. A task that would need more than roughly 60
   tool calls, or most of the codebase in view, is too big for one run — take a smaller one.
+- Stay inside your worktree: never run an unbounded scan or write above it (\`find /\`,
+  \`grep -r /\`, any recursive search rooted outside the repo) — an unmatched full-disk scan runs
+  for tens of minutes with no output and blocks your whole tick until the harness kills it as
+  hung. Your worktree has no node_modules of its own; it borrows the install at the repo root,
+  two levels up (\`../../node_modules\`). To inspect a dependency's types or source, read that
+  directory directly instead of widening the search outward.
 ${CONTEXT_BUDGET_RULE}
 - Leave the project working: if it has a build or test command, run it after your change and fix
   what you broke. Pipe its output through \`tail\` — only the failures matter.
@@ -224,7 +230,7 @@ any of those is guidance to record per the routing rules, not an edit you make.`
 
 /** Why a tick is being resumed: a harness restart interrupted it, or it ran out of context (the
  * harness resumes the compacted session — see LoopState.cutOffStreak). */
-type ResumeCause = "restart" | "cut-off";
+type ResumeCause = "restart" | "cut-off" | "hung-tool";
 
 /** The follow-up prompt for resuming an interrupted tick. It is sent into the SAME pi session as
  * the interrupted run — which already carries the full original prompt, all rules, and the work
@@ -243,7 +249,12 @@ re-check only what you must, in ranges — at most ~10 tool calls of re-reading,
 file twice. Finish the SAME task with the smallest change that completes it. If it cannot be
 finished within a fraction of the window, scope it down to what is already complete and coherent,
 leave the project working, and stop.`
-      : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
+      : cause === "hung-tool"
+        ? `The harness killed your previous run as the "${roleId}" loop because it made no progress long enough to trip its hang watchdog — almost always one tool call that hung (a command waiting on input, or a scan far wider than intended). That tool call is dead: do not re-run it unchanged. Your worktree is exactly as you left it, and this session carries everything you did so far — verify the effect of anything the killed call was supposed to produce before relying on it, and bound any long-running command (a time limit, a scoped path).
+
+Continue the SAME task you were working on and finish it. If the work so far turns out to be
+unusable, redo it — but stay on this task rather than picking a new one.`
+        : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
 is exactly as you left it, and this session carries everything you did so far. A tool call that
 was executing when the restart hit may not have finished — verify its effect before relying on it.
 

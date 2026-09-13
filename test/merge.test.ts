@@ -25,6 +25,7 @@ function piResult(over: Partial<PiRunResult> = {}): PiRunResult {
     turns: 1,
     costUsd: 0,
     timedOut: false,
+    quietKilled: false,
     aborted: false,
     contextExceeded: false,
     transientServerTimeout: false,

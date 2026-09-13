@@ -5,33 +5,58 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A single tool call with no timeout blocks a whole tick — `find /` stalled the bugfix loop for 19 min (reported by user 2026-09-12)
+### A stalled tool call is invisible until the quiet watchdog kills it — no warning while a tool call sits open and silent for minutes (sibling of the 2026-09-13 fixed entry below)
 
-**Symptom:** A tick makes no progress for as long as one bash tool call runs, with nothing on any dashboard to distinguish it from a slow turn. Observed live: bugfix tick 149 (started 19:19:44 PDT) issued `grep -rn 'deepEqual\|asserts' --include='*.d.ts' . 2>/dev/null | grep -v node_modules | head; echo ---; find / -name 'assert.d.ts' -path '*@types/node*' 2>/dev/null | head -3` at 20:07:15 and emitted nothing for the next 19 minutes. The `find` (PID 863, grandchild of the pi child) was still in state `R` with 7.5 min of CPU when it was killed by hand at 20:26:11; the tick resumed within two seconds (`tool_execution_end`, new turn) and went on to land normally as c1e307f. `dry`, `improve`, `coverage` and `feature` all ticked through the stall, which held 1 of `maxConcurrent` 2 slots throughout.
+**Symptom:** While one bash tool call runs, a tick makes no progress and nothing on any
+dashboard distinguishes it from a slow turn. The kill is now non-destructive (fixed sibling),
+but at the default `quietTimeoutSeconds` 1800 an operator still waits up to ~30 min before even
+that happens, with no signal that a specific command is hung.
 
-**Repro:**
-1. Get any loop to run a long, output-silent bash command — `find / -name <something-that-does-not-match> 2>/dev/null` does it directly (an unmatched full-disk scan runs well over 20 min on this machine).
-2. Watch `.tumwater/log/<role>.pi.jsonl`: the last records are `tool_execution_start` plus a couple of `tool_execution_update`s with no `tool_execution_end`, and the file's mtime freezes.
-3. No harness event fires, and no dashboard cell changes, until `quietTimeoutSeconds` elapses.
+**Repro:** get any loop to run a long, output-silent bash command (`find / -name <no-match>
+2>/dev/null`); watch `.tumwater/log/<role>.pi.jsonl` — `tool_execution_start` plus a couple of
+`tool_execution_update`s with no `tool_execution_end`, mtime frozen; no harness event fires and
+no dashboard cell changes until the quiet watchdog kills the run.
 
-**Expected:** a tool call that has been open and silent for minutes is surfaced as a warning while it is happening, and killing the run for it does not throw away the tick's work.
+**Expected:** a tool call that has been open and silent for minutes is surfaced as a warning
+while it is happening (fix direction 2 of the original report): in src/pi.ts, warn — harness
+`warning` event plus a flag on the in-flight detail cell — when one tool call has been open with
+no `tool_execution_update` content change for ~300 s, naming the command. The parser would need
+to track the currently-open tool call (name + command from `tool_execution_start`, cleared at
+`tool_execution_end`); runPi's quiet-check interval already computes the silence it needs; the
+dashboard flag rides on the status payload both TUI and GUI render.
 
-**Cause:** three gaps compound.
-- pi's bash tool has no per-command timeout, and the harness only has a handle on the pi child — not on the shell grandchild actually hanging.
-- src/pi.ts ~line 289 — the quiet watchdog is the only backstop and its granularity is the whole run. Counting only structured events as progress (`progressCount`, src/pi.ts:140) is right — a silent `find` genuinely is not progress — but at the configured `quietTimeoutSeconds` 3600 a hung tool burns a full hour first. `tickTimeoutSeconds` 54000 (15 h) is no backstop at all here.
-- src/loop.ts:500 — when the watchdog does fire, `pi.timedOut` returns `{ result: "error" }` and requeues the prompt, and the next tick's reset discards the worktree edits. Here that would have destroyed ~1h50m of work — the tier-aware slot-queue fix which, once unblocked by hand, landed intact as c1e307f — plus an unrelated true finding the same tick had turned up, `src/semaphore.ts(28,23): error TS2532: Object is possibly 'undefined'`.
+**Also consider (direction 4):** once the warning exists, lower the default
+`quietTimeoutSeconds` from 1800 — a warning then arrives long before the kill.
 
-**Why the run reached outside the worktree** (the trigger is a harness property, not model whim, so it is fixable): `.tumwater/worktrees/<role>` has no `node_modules` — worktrees borrow the ancestor install at the repo root — so the correctly-scoped `grep --include='*.d.ts' .` found nothing and the next step widened to `/`. The file it wanted was one directory up, at `node_modules/@types/node/assert.d.ts`. Note also that `| head -3` is not a bound: `find` block-buffers into a pipe, so with only a few matches it never flushes, `head` never exits, no `SIGPIPE` arrives, and the scan runs to completion regardless — a pipeline that looks bounded is not. The `2>/dev/null` removes even the permission-denied noise that would otherwise show it alive.
-
-**Fix direction:** in rough order of value per unit of work.
-1. Remove the trigger — add a Scope rule to `COMMON_RULES` in src/roles.ts: never scan outside the worktree (`find /`, `grep -r /`, or any absolute path above the repo root); to inspect a dependency's types, read the repo root's `node_modules` directly, since worktrees have none of their own. Cheapest fix and it addresses the class, not the instance.
-2. Make the stall visible — in src/pi.ts, warn (harness `warning` event, and a flag on the in-flight detail cell) when one tool call has been open with no `tool_execution_update` content change for, say, 300 s, naming the command. Non-destructive, and it is exactly what let an operator resolve this one by hand.
-3. Stop the kill from being destructive — at src/loop.ts:500, have a quiet-kill preserve the worktree edits (set `resumePending`, as the Ctrl+C/crash path already does) rather than leaving them for the next reset to discard. Distinguish `quietKilled` from `timedOut` in `PiResult` so only the hung-tool case takes the new path.
-4. Consider lowering `quietTimeoutSeconds` from 3600 once (2) exists, since a warning then arrives long before the kill.
-
-**Files:** src/roles.ts (`COMMON_RULES`), src/pi.ts (open-tool-call warning; `quietKilled` on the result), src/loop.ts:500 (kill disposition); tests in test/prompt.test.ts (the new scope rule), test/pi.test.ts (warning fires on a stalled tool call; `quietKilled` set), test/loop.test.ts (a quiet-kill leaves edits and sets `resumePending`).
+**Files:** src/pi.ts (open-tool-call tracking + stall warning), status payload / src/ui (flag on
+the in-flight detail cell), src/config.ts (default); tests in test/pi.test.ts, test/loop-2.test.ts.
 
 ## Fixed
+
+### A single tool call with no timeout blocks a whole tick — trigger removed and quiet-kills now preserve work (reported by user 2026-09-12, fixed by bugfix loop 2026-09-13)
+
+A hung bash tool call (`find /` issued from a node_modules-less worktree) blocked the whole
+tick for ~20 min with nothing on any dashboard to distinguish it from a slow turn, and when the
+quiet watchdog finally fired the kill landed as an unfulfilled timeout whose next-tick reset
+discarded the run's ~1h50m of work. Fixed (fix directions 1 + 3 of the original report):
+- **Trigger removed:** `COMMON_RULES` (src/prompt.ts) now carries a Scope rule — never run an
+  unbounded scan or write above the worktree (`find /`, `grep -r /`, recursive searches rooted
+  outside the repo), and to inspect a dependency's types read the borrowed install at the repo
+  root (`../../node_modules`) directly instead of widening the search outward.
+- **Kills are non-destructive:** `PiRunResult.quietKilled` (src/pi.ts, src/types.ts) is distinct
+  from `timedOut`; a quiet-killed author run lands as tick result `quiet_killed`, which resumes
+  promptly like an interruption — the pi session and the worktree's uncommitted edits are kept
+  (`resumePending` + new `LoopState.resumeCause = "hung-tool"`), and the resume bridge names the
+  real cause ("no progress long enough to trip its hang watchdog … do not re-run it unchanged")
+  instead of claiming a restart. Director ticks keep their existing recovery (prompt re-queued,
+  fresh run); killed runs never take the transient-retry path.
+
+Regression tests: test/prompt.test.ts (scope rule in every tick prompt; hung-tool bridge),
+test/pi.test.ts (a stalled run reports `quietKilled`, not `timedOut`), test/loop.test.ts (a
+quiet-killed tick keeps its edits, resumes with `--continue`, and the kept work lands on main),
+test/loop-2.test.ts (both watchdog tests updated to the non-destructive contract).
+
+Remaining: the stall is still invisible until the kill — see the open sibling entry above.
 
 ### Maintenance roles tick on their normal clock while planned features or open bugs wait — deferral is reactive, not backlog-aware (reported by user 2026-09-12, fixed by bugfix loop 2026-09-12)
 

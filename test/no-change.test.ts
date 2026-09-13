@@ -16,6 +16,7 @@ function noChangePi(over: Partial<PiRunResult> = {}): PiRunResult {
     costUsd: 0,
     stopReason: "stop",
     timedOut: false,
+    quietKilled: false,
     aborted: false,
     contextExceeded: false,
     transientServerTimeout: false,

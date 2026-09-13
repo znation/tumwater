@@ -502,6 +502,65 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
   }
 });
 
+// BUGS.md 2026-09-12 (fixed 2026-09-13): a hung tool call used to land as a timeout error
+// whose next-tick reset discarded the run's work. The kill must now preserve session + edits,
+// resume them promptly, and name the real cause in the bridge so the session does not re-run
+// the hung command unchanged.
+test("a quiet-killed tick keeps its edits and resumes promptly instead of discarding", async () => {
+  const repo = await initializedRepo();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 2;
+  const argsFile = path.join(tmpdir(), "argv.log");
+  let restore = fakePi(
+    [
+      `echo work > kept.txt`, // half-done edit the kill must not destroy
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolName: "bash" })}'`,
+      `exec sleep 30`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const tick = runner.tick();
+    // Wait for the half-done edit to land: a fixed timer can fire before the fake pi even
+    // starts under parallel load. The watchdog kills the run itself — no abort controller.
+    await waitForFile(path.join(worktreePath(repo, "improve"), "kept.txt"));
+    assert.equal((await tick).result, "quiet_killed");
+    assert.ok(
+      fs.existsSync(path.join(worktreePath(repo, "improve"), "kept.txt")),
+      "the edits survive the kill",
+    );
+    assert.equal(runner.state.resumePending, true, "the next tick resumes this one");
+    assert.ok(runner.state.nextRunAt <= Date.now(), "the resume is scheduled promptly, not backed off");
+
+    // The killed run's pi session is on disk (the fake pi writes none, so seed one).
+    fs.mkdirSync(sessionDir(repo, "improve"), { recursive: true });
+    fs.writeFileSync(path.join(sessionDir(repo, "improve"), "interrupted.jsonl"), "{}\n");
+
+    // Next launch resumes the session and finishes the task; the bridge names the hang
+    // watchdog. If it did not (regression), the fake pi stalls again and the assertions fail.
+    restore = fakePi(
+      [
+        `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+        `flags=""`,
+        `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
+        `echo "run:$flags" >> "${argsFile}"`,
+        `for a in "$@"; do case "$a" in *"hang watchdog"*) printf '%s\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'; exit 0;; esac; done`,
+        `exec sleep 30`,
+      ].join("\n"),
+    );
+    const resumed = new LoopRunner(repo, "improve", config, "main");
+    assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
+    const outcome = await resumed.tick();
+    assert.equal(outcome.result, "changed");
+    const run = fs.readFileSync(argsFile, "utf8").trim();
+    assert.ok(run.includes("--continue"), "the resume continues the interrupted session");
+    assert.ok(fs.existsSync(path.join(repo, "kept.txt")), "the kept edits landed on main");
+    assert.equal(resumed.state.resumePending, false, "the flag is consumed");
+  } finally {
+    restore();
+  }
+});
+
 test("resume falls back to a fresh tick when there is no session to continue", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");

@@ -121,6 +121,7 @@ export type TickResult =
   | "review_error" // the review gate failed (no parseable verdict); commit left for retry
   | "error" // pi errored or timed out
   | "aborted" // harness shutdown killed the run mid-tick; partial work discarded
+  | "quiet_killed" // the quiet watchdog killed a stalled tool call mid-run; session + worktree edits preserved and resumed promptly
   | "user_aborted" // a user-initiated abort (tumwater abort) killed the run mid-tick; work discarded, loop backed off
   | "main_red" // baseline check found main's build/test suite red; authoring run skipped, code merges blocked until main is green
   | "skipped"; // nothing to run (e.g. director with an empty inbox);
@@ -166,6 +167,11 @@ export interface LoopState {
    * (--continue) instead of starting fresh. Consumed (cleared) by that tick; set again only
    * by another interruption, so a failing resume falls back to a fresh start. */
   resumePending?: boolean;
+  /** Why a pending resume happened when it was not a cut-off: "hung-tool" when the quiet
+   * watchdog killed a run on a stalled tool call, so the bridge prompt names that cause (and
+   * warns against re-running the hung command unchanged). Cleared with resumePending at tick
+   * start; absent for restart/cut-off resumes, whose causes are derived. */
+  resumeCause?: "hung-tool";
   /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
    * past the limit the loop abandons the runaway task and falls back to a fresh tick. */
   cutOffStreak?: number;
@@ -271,6 +277,12 @@ export interface PiRunResult {
   timedOut: boolean;
   /** The run was killed because the harness is shutting down. */
   aborted: boolean;
+  /** The run was killed by the quiet watchdog: no pi progress for over quietTimeoutSeconds —
+   * typically one hung tool call (a command waiting on input or scanning far more than
+   * intended), not a slow run. Distinct from timedOut (the whole-run tick budget): the session
+   * and any worktree edits are intact, so the loop resumes them promptly instead of discarding.
+   */
+  quietKilled: boolean;
   /** The provider rejected the context as too large. With fresh-per-tick sessions this is
    * purely diagnostic: the next tick starts a new session regardless. */
   contextExceeded: boolean;

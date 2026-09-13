@@ -21,6 +21,7 @@ function refusedPi(over: Partial<PiRunResult> = {}): PiRunResult {
     turns: 3,
     costUsd: 0,
     timedOut: false,
+    quietKilled: false,
     aborted: false,
     contextExceeded: false,
     transientServerTimeout: false,

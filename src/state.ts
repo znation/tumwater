@@ -185,6 +185,16 @@ export function applyTickOutcome(
     // their user prompt, which runs fresh).
     if (role !== DIRECTOR_ROLE) s.resumePending = true;
     s.nextRunAt = Date.now();
+  } else if (outcome.result === "quiet_killed") {
+    // A hung tool call, not an idle verdict or a shutdown: the kill left the pi session and
+    // the worktree's uncommitted edits intact, so resume them promptly like an interruption.
+    // The cause is named in state so the bridge prompt tells the resumed session its run died
+    // on a stalled tool call (director ticks never resume — their prompt was re-queued fresh).
+    if (role !== DIRECTOR_ROLE) {
+      s.resumePending = true;
+      s.resumeCause = "hung-tool";
+    }
+    s.nextRunAt = Date.now();
   } else if (outcome.result === "user_aborted") {
     // A deliberate stop, not an interruption: the worktree was already reset to main and a
     // director prompt deliberately dropped, so there is nothing to resume — schedule like an

@@ -355,6 +355,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       stopReason: parser.stopReason,
       errorMessage: undefined,
       timedOut: false,
+      quietKilled: false,
       aborted,
       contextExceeded: parser.contextExceeded,
       transientServerTimeout: parser.transientServerTimeout,
@@ -392,7 +393,11 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
               : timedOut
                 ? `timed out after ${opts.config.tickTimeoutSeconds}s`
                 : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
-          timedOut: timedOut || quietKilled,
+          // Kept distinct on purpose: a hung tool call leaves its session and worktree edits
+          // intact, so the loop resumes them (quiet_killed) instead of discarding them as an
+          // unfulfilled timeout does.
+          timedOut,
+          quietKilled,
         }),
       );
     });

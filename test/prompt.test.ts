@@ -89,6 +89,19 @@ test("every catalog role produces a prompt mentioning its id", () => {
   }
 });
 
+// BUGS.md 2026-09-12 (fixed 2026-09-13): an unmatched `find /` issued from inside a
+// node_modules-less worktree ran for ~20 min with no output, blocking the whole tick until it
+// was killed by hand. The rule names the class (unbounded scans above the worktree) and the
+// remedy (the borrowed install lives at the repo root, two levels up).
+test("every tick prompt forbids scanning outside the worktree", () => {
+  const role = roleById("bugfix");
+  assert.ok(role);
+  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  assert.match(prompt, /Stay inside your worktree/);
+  assert.match(prompt, /find \/\`/);
+  assert.match(prompt, /\.\.\/\.\.\/node_modules/);
+});
+
 test("tick and director prompts share one worktree + initial-prompt preamble", () => {
   const role = roleById("coverage");
   assert.ok(role);
@@ -216,6 +229,23 @@ test("buildResumePrompt differs across roles only in the role name", () => {
   const a = buildResumePrompt("feature");
   const b = buildResumePrompt("clean").replaceAll('"clean"', '"feature"');
   assert.equal(b, a, "no per-role drift in the bridge instructions");
+});
+
+// BUGS.md 2026-09-12 (fixed 2026-09-13): a quiet-killed run resumes with its session and edits
+// intact — the bridge must name the real cause so the resumed session does not re-run the hung
+// command unchanged, instead of lying that "the harness was restarted".
+test("buildResumePrompt names a quiet-kill so the session does not re-run the hung command", () => {
+  const p = buildResumePrompt("bugfix", "hung-tool");
+  assert.match(p, /"bugfix"/);
+  // The real cause is named: no progress long enough to trip the hang watchdog — not a restart.
+  assert.match(p, /hang watchdog/i);
+  assert.doesNotMatch(p, /restarted/i);
+  // The killed tool call must not be re-run unchanged; its effect needs verifying.
+  assert.match(p, /do not re-run it unchanged/);
+  assert.match(p, /verify the effect/i);
+  // Same task continues, same closing contract as every other bridge.
+  assert.match(p, /Continue the SAME task/);
+  assert.ok(p.includes(NOTHING_TO_DO));
 });
 
 // The conflict prompt drives pi's one-shot merge-conflict resolution run. Its contract is

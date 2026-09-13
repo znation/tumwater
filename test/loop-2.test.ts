@@ -125,10 +125,17 @@ test("a pi run that goes silent is killed as hung and never commits partial work
     const started = Date.now();
     const outcome = await runner.tick();
     assert.ok(Date.now() - started < 30_000, "killed by the watchdog, not the tick timeout");
-    assert.equal(outcome.result, "error");
+    assert.equal(outcome.result, "quiet_killed");
     assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
     assert.equal(sh(repo, "git", "rev-parse", "main"), before, "nothing landed on main");
     assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
+    // The kill is non-destructive (BUGS.md 2026-09-12): the partial edit survives in the
+    // worktree and the next tick resumes the session instead of resetting it away.
+    assert.ok(
+      fs.existsSync(path.join(worktreePath(repo, "improve"), "partial.txt")),
+      "the partial edit survives the kill",
+    );
+    assert.equal(runner.state.resumePending, true, "the next tick resumes this one");
   } finally {
     restore();
   }
@@ -194,7 +201,7 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
     const started = Date.now();
     const outcome = await runner.tick();
     assert.ok(Date.now() - started < 30_000, "killed by the progress watchdog");
-    assert.equal(outcome.result, "error");
+    assert.equal(outcome.result, "quiet_killed", "a zombie stream is a hung run, not an unfulfilled timeout");
     assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
   } finally {
     restore();
