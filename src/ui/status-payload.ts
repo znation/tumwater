@@ -49,6 +49,9 @@ export function statusPayload(root: string): object {
       const m = displayTokenMetrics(root, s, live);
       return {
         role: s.role,
+        // User-defined-loop marker (computed in snapshot — see StatusSnapshot.loops): the GUI
+        // renders it as an asterisk beside the loop name.
+        custom: s.custom,
         phase: loopPhase(s, snap.running, root, budgetPausedNow, live, snap.paused),
         // What a working loop is doing right now (first assistant text of the in-flight run).
         // Null when idle — never show a stale item from a finished tick.

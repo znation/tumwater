@@ -333,8 +333,10 @@ export const GUI_PAGE = `<!doctype html>
       document.getElementById("loops").innerHTML = sortLoops(d.loops).map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";
+        // User-defined loops carry an asterisk in the link text (the payload's custom flag);
+        // data-role stays the bare id so the transcript fetch keeps working.
         return "<tr><td><a href='#' class='looplink" + (transcriptRole === l.role ? " active" : "") +
-          "' data-role='" + esc(l.role) + "'>" + esc(l.role) + "</a></td>"
+          "' data-role='" + esc(l.role) + "'>" + esc(l.role) + (l.custom ? "*" : "") + "</a></td>"
           + "<td class='wide " + cls + "'>" + esc(l.phase)
           + "</td><td class='wide'>" + esc(l.currentWork ?? "-") + "</td><td>" + l.ticks + "</td><td>" + l.commits + "</td><td>" + fmtTokens(l.generated) +
           "</td><td>" + fmtTokens(l.peakCtx) +

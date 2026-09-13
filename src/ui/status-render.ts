@@ -269,8 +269,11 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     const live = s.running ? readLiveProgress(root, s.role) : null;
     return { s, m: displayTokenMetrics(root, s, live), live };
   });
+  // User-defined loops (snapshot's `custom` flag) get an asterisk beside their name — the
+  // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS and
+  // its width derives from row content, so the extra character widens it automatically.
   const rows = withMetrics.map(({ s, m, live }) => [
-    s.role,
+    s.custom ? `${s.role}*` : s.role,
     stateCell(root, s, snap.running, budgetPausedNow, live, userPausedNow),
     String(s.ticks),
     String(s.commits),
@@ -317,6 +320,9 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   for (const r of rows) lines.push(fmt(r));
   lines.push(separator);
   lines.push(fmt(totalsRow));
+  // One footnote under the table when any custom loop exists — explains the asterisk without
+  // taking a column. Absent (byte-identical table) on a fleet with no user-defined loops.
+  if (snap.loops.some((l) => l.custom)) lines.push("* user-defined loop");
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.
   const finished = lines.join("\n");

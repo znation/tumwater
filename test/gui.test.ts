@@ -207,6 +207,65 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
   }
 });
 
+// User-defined loops (tumwater.json's customLoops) are first-class transcript targets: the
+// GUI marks them with an asterisk, so clicking one must open its panel — /api/transcript
+// validates against catalog + customLoops when the config parses.
+test("gui /api/transcript accepts user-defined loop roles listed in tumwater.json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "custom transcript test");
+  const cfg = loadConfig(repo);
+  cfg.customLoops.push({ name: "nightly", task: "do the nightly thing" });
+  saveConfig(repo, cfg);
+  // A log for the custom loop — same shape as a built-in's.
+  fs.mkdirSync(path.dirname(piLogPath(repo, "nightly")), { recursive: true });
+  fs.writeFileSync(
+    piLogPath(repo, "nightly"),
+    [
+      JSON.stringify({ type: "agent_start" }),
+      JSON.stringify({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "did the nightly thing" }],
+        },
+      }),
+    ].join("\n") + "\n",
+  );
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  try {
+    // The custom id is accepted and serves its transcript like any built-in's…
+    const ok = (await (await fetch(base + "/api/transcript?role=nightly")).json()) as { lines: string[] };
+    assert.ok(ok.lines.some((l) => l.includes("did the nightly thing")));
+
+    // …and an unknown id still 400s — listing customs among the valid ids it accepts.
+    const bad = await fetch(base + "/api/transcript?role=nosuch");
+    assert.equal(bad.status, 400);
+    const body = (await bad.json()) as { error: string };
+    assert.match(body.error, /nightly/, "the 400 message lists the custom ids it accepts");
+  } finally {
+    server.close();
+  }
+});
+
+test("status payload marks user-defined loops with the custom flag", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload custom test");
+  const cfg = loadConfig(repo);
+  cfg.customLoops.push({ name: "nightly", task: "do the nightly thing" });
+  saveConfig(repo, cfg);
+  // The payload's structural fixture type tolerates the extra field — assert on it directly.
+  const payload = statusPayload(repo) as { loops: Array<{ role: string; custom?: boolean }> };
+  assert.ok(payload.loops.some((l) => l.role === "nightly" && l.custom === true), "listed custom is marked");
+  assert.equal(
+    payload.loops.filter((l) => l.custom).length,
+    1,
+    "only the custom carries the flag",
+  );
+});
+
 test("the dashboard page's inline script is syntactically valid JavaScript", async () => {
   // Regression: the page is authored inside a TS template literal, where a bare \n becomes a
   // REAL newline in the served page — splitting the page's own string literals and killing the

@@ -1,7 +1,7 @@
 import type { LoopState, TumwaterConfig } from "../types.js";
 import type { BuildStatus } from "../build-info.js";
 import { openQuestions } from "../backlog.js";
-import { defaultConfig, enabledRoleIds, loadConfigCached } from "../config.js";
+import { defaultConfig, enabledRoleIds, isCustomRole, loadConfigCached } from "../config.js";
 import { fleetModelsFree, piModelsPath } from "../pi-models.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { promptPreview, queuedPrompts } from "../inbox.js";
@@ -28,7 +28,12 @@ export interface StatusSnapshot {
   inboxPrompts: string[];
   /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
   questions: number;
-  loops: LoopState[];
+  /** One row per enabled loop. `custom` marks user-defined loops (tumwater.json's
+   * customLoops) for the dashboards' asterisk — display-only metadata computed here at the
+   * source, from the same last-known-good config that produced the role list, so a transiently
+   * broken tumwater.json keeps marking its customs rather than flipping them unmarked
+   * mid-poll. LoopState itself stays the persisted type; this intersection is view-layer only. */
+  loops: Array<LoopState & { custom: boolean }>;
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
    * show): today's fleet spend vs the cap, for the header badge on both dashboards (`· budget:
    * $X/$Y today` while enabled, `· no cap` when disabled) and the editable affordance that
@@ -102,7 +107,7 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
-  const loops = roles.map((r) => loopStateForPoll(root, r));
+  const loops = roles.map((r) => ({ ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) }));
   // One inbox pass per poll serves both fields (queuedPrompts lists the directory and reads
   // each file once): the count is the prompts' length, so a prompt enqueued or dequeued
   // mid-snapshot can never make the header badge disagree with its numbered previews.

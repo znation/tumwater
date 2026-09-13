@@ -24,7 +24,7 @@ function writePiLog(root: string, role: string, lines: string[]): string {
 const DEFAULT_BUDGET: StatusSnapshot["budget"] = { spentUsd: 0, capUsd: 50, free: false };
 
 function snapshotWith(
-  loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string }>,
+  loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string; custom?: boolean }>,
   budget: StatusSnapshot["budget"] = DEFAULT_BUDGET,
   paused = false,
 ): StatusSnapshot {
@@ -33,7 +33,9 @@ function snapshotWith(
     inbox: 0,
     inboxPrompts: [],
     questions: 0,
-    loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial })),
+    // `custom` is display-only metadata snapshot() computes per row; the fixture defaults it
+    // to false so existing all-built-in tables stay byte-identical.
+    loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial, custom: partial.custom ?? false })),
     budget,
     paused,
     build: null,
@@ -62,6 +64,38 @@ test("totals row shows zeros without breaking alignment", () => {
   assert.match(totals, /^total\b/);
   assert.match(totals, /\b0\b/);
   assert.match(totals, /\$0\.00/);
+});
+
+// User-defined loops (tumwater.json's customLoops) are marked with an asterisk beside their
+// name plus one footnote line under the table — and a fleet without any of them renders the
+// exact same table as before the marker existed.
+
+test("status table marks user-defined loops with an asterisk and a footnote", () => {
+  const snap = snapshotWith([{ role: "clean" }, { role: "nightly", custom: true }]);
+  const text = renderStatus(tmpdir(), snap);
+  assert.match(text, /nightly\*/);
+  assert.doesNotMatch(text, /clean\*/, "built-ins stay unmarked");
+  // The footnote is the line under the table — one per fleet, not per loop.
+  const lines = text.split("\n");
+  assert.equal(lines[lines.length - 1], "* user-defined loop");
+  assert.equal(text.match(/user-defined loop/g)?.length, 1);
+
+  // No customs: no asterisk anywhere and the table still ends at its totals row.
+  const plain = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }, { role: "dry" }]));
+  assert.doesNotMatch(plain, /\*/);
+  assert.match((plain.split("\n") as string[]).at(-1) ?? "", /^total\b/);
+});
+
+test("narrow-width clipping still holds when a custom loop is marked", () => {
+  const snap = snapshotWith([
+    { role: "nightly", custom: true, lastResult: "changed", lastSummary: "x".repeat(120), ticks: 7 },
+    { role: "clean" },
+  ]);
+  for (const width of [40, 60]) {
+    for (const line of renderStatus(tmpdir(), snap, width).split("\n")) {
+      assert.ok(line.length <= width, `line exceeds ${width} cols: ${JSON.stringify(line)} (${line.length})`);
+    }
+  }
 });
 
 // The questions badge (plans/questions-outbox.md) rides the header line like the inbox one:

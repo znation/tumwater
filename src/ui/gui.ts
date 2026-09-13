@@ -7,7 +7,7 @@ import {
   plannedPlanEntries,
 } from "../backlog.js";
 import { submitPrompt } from "../inbox.js";
-import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config.js";
+import { checkDailyBudgetUsd, knownRoleIds, loadConfigCached, setDailyBudgetUsd } from "../config.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "./report.js";
@@ -23,12 +23,18 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 }
 
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
- * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400. */
+ * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
+ * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
+ * one must open its transcript: when tumwater.json parses, ids validate against catalog +
+ * customLoops (knownRoleIds); a transiently broken file falls back to the built-in catalog
+ * rather than refusing every id. The 400 message lists exactly the ids accepted. */
 function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
   const q = new URL(req.url ?? "", "http://localhost").searchParams;
   const role = q.get("role");
-  if (!role || !allRoleIds().includes(role)) {
-    sendJson(res, 400, { error: `unknown or missing role (valid ids: ${allRoleIds().join(", ")})` });
+  const { config } = loadConfigCached(root);
+  const validIds = config ? knownRoleIds(config) : allRoleIds();
+  if (!role || !validIds.includes(role)) {
+    sendJson(res, 400, { error: `unknown or missing role (valid ids: ${validIds.join(", ")})` });
     return;
   }
   let n = 50;

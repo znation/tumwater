@@ -219,6 +219,31 @@ test("snapshot carries queued director prompts as truncated previews, fresh per 
   assert.deepEqual(snap.inboxPrompts, [preview, "third"]);
 });
 
+// The `custom` flag marks user-defined loops (tumwater.json's customLoops) for the
+// dashboards' asterisk. It is computed in snapshot from the same last-known-good config that
+// produced the role list — so a transiently broken file keeps marking its customs rather than
+// flipping them unmarked mid-poll.
+test("snapshot rows carry the custom flag matching the config", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "custom flag test");
+  assert.ok(snapshot(repo).loops.every((l) => l.custom === false), "built-ins unmarked by default");
+
+  const cfg = loadConfig(repo);
+  cfg.customLoops.push({ name: "nightly", task: "do the nightly thing" });
+  saveConfig(repo, cfg);
+  let snap = snapshot(repo);
+  assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom === true), "listed custom is marked");
+  assert.ok(
+    snap.loops.filter((l) => !l.custom).length >= allRoleIds().length,
+    "every built-in stays unmarked",
+  );
+
+  // The file breaks mid-edit: the last known-good config keeps marking the custom.
+  fs.writeFileSync(path.join(repo, "tumwater.json"), "{ still editing");
+  snap = snapshot(repo);
+  assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom === true), "broken file keeps last-known-good customs");
+});
+
 test("loopPhase describes each loop state", () => {
   const s = freshLoopState("clean");
   assert.equal(loopPhase(s, false), "stopped");
