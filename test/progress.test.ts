@@ -2,7 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { parseProgress, readLiveProgress, tokenRate, TOKEN_RATE_WINDOW_MS } from "../src/ui/progress.js";
+import {
+  parseProgress,
+  readLiveProgress,
+  stalledToolLabel,
+  toolCallStallMs,
+  tokenRate,
+  TOKEN_RATE_WINDOW_MS,
+} from "../src/ui/progress.js";
 import { piLogPath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
 
@@ -295,4 +302,72 @@ test("tokenRate divides a full window by 300 s and ignores out-of-window samples
 test("tokenRate returns null for a sub-second span (minimum-span guard)", () => {
   const now = Date.now();
   assert.equal(tokenRate([{ t: now - 500, tokens: 10_000 }], now), null);
+});
+
+// Open-tool-call tracking feeds the dashboard's stall flag (BUGS.md 2026-09-13 sibling):
+// a hung command must be nameable in the state cell while it is still open.
+
+test("parseProgress tracks open tool calls and clears them at end", () => {
+  const p = parseProgress([SESSION, toolStart("bash", { command: "find / -name x" })], 0);
+  assert.deepEqual(
+    p.openToolCalls?.map((c) => [c.id, c.label]),
+    [["c1", "bash find / -name x"]],
+    "the open call is tracked by id with a label that names the command",
+  );
+  // A parallel sibling stays tracked when one ends (pi runs calls concurrently by default).
+  const both = parseProgress(
+    [
+      SESSION,
+      toolStart("bash", { command: "find / -name x" }),
+      JSON.stringify({ type: "tool_execution_start", toolCallId: "c2", toolName: "read", args: { path: "/a/b.ts" } }),
+      JSON.stringify({ type: "tool_execution_end", toolCallId: "c1", toolName: "bash", result: {}, isError: false }),
+    ],
+    0,
+  );
+  assert.deepEqual(both.openToolCalls?.map((c) => c.id), ["c2"]);
+  // A new session restores the at-time-zero state (no calls tracked).
+  const reset = parseProgress(
+    [
+      SESSION,
+      toolStart("bash", { command: "find / -name x" }),
+      JSON.stringify({ type: "session", version: 3, id: "y" }),
+    ],
+    0,
+  );
+  assert.equal(reset.openToolCalls?.length ?? 0, 0);
+});
+
+test("stalledToolLabel names the first call silent past the threshold", () => {
+  const now = Date.now();
+  assert.equal(stalledToolLabel(undefined), undefined, "no tracked calls — no flag");
+  // A fresh call is not stalled (freshly fed lines stamp Date.now()).
+  assert.equal(
+    stalledToolLabel([{ id: "c1", label: "bash npm test", lastActivityAt: now - 1000 }]),
+    undefined,
+  );
+  // Past the five-minute default it names the call.
+  assert.equal(
+    stalledToolLabel([{ id: "c1", label: "bash find / -name x", lastActivityAt: now - 301_000 }]),
+    "bash find / -name x",
+  );
+  // With parallel calls, the silent one is named even while a sibling streams.
+  assert.equal(
+    stalledToolLabel([
+      { id: "c1", label: "bash npm test", lastActivityAt: now - 1000 },
+      { id: "c2", label: "bash find / -name x", lastActivityAt: now - 301_000 },
+    ]),
+    "bash find / -name x",
+  );
+  // A zero threshold disables the flag.
+  assert.equal(
+    stalledToolLabel([{ id: "c1", label: "x", lastActivityAt: now - 999_999 }], now, 0),
+    undefined,
+  );
+});
+
+test("toolCallStallMs resolves the configured threshold, defaulting to five minutes", () => {
+  assert.equal(toolCallStallMs(tmpdir()), 300_000, "no tumwater.json — the documented default");
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ toolCallStallSeconds: 5 }));
+  assert.equal(toolCallStallMs(root), 5_000);
 });

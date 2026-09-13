@@ -1,6 +1,6 @@
-import { parsePiEventLine } from "../pi-event-line.js";
-import { collapseWhitespace, truncate } from "../text.js";
-import { describeToolCall } from "./tool-call.js";
+import { parsePiEventLine, toolUpdateHasContent } from "../pi-event-line.js";
+import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
+import { defaultConfig, loadConfigCached } from "../config.js";
 import { statRoleLog, TailState, withTail } from "./tail.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
@@ -19,10 +19,21 @@ export interface LiveProgress {
   peakContextTokens: number;
   /** Short human label of the most recent tool call, e.g. `bash npm test`. */
   lastTool?: string;
+  /** Tool calls started but not yet ended in this run (pi runs a message's tool calls
+   * concurrently by default), keyed by pi's toolCallId. lastActivityAt moves only on
+   * content-bearing updates, so a hung command's entry goes stale while its siblings keep
+   * streaming — readLiveProgress turns the first one past the configured stall threshold into
+   * stalledTool. Tail state like every other field: freshProgress restores it to undefined. */
+  openToolCalls?: Array<{ id: string; label: string; lastActivityAt: number }>;
   /** What the loop is working on: first assistant text of the current run (~60 chars). */
   currentWork?: string;
   /** ms since pi last emitted anything (from file mtime). */
   quietMs: number;
+  /** The first open tool call that has been silent for at least the configured stall
+   * threshold — the in-flight cell's "tool call stalled" flag names it. Derived, not folded:
+   * silence is a property of wall-clock time, so readLiveProgress recomputes it on every read
+   * (like quietMs) instead of feedLine setting it from any single line. */
+  stalledTool?: string;
   /** Output-token samples for the trailing rate window: one per assistant message_end with
    * usage.output > 0, stamped with the line's own timestamp (parse time when absent).
    * Tail state like every other field — not display data; tokenRate() derives the moving
@@ -94,6 +105,10 @@ function freshProgress(quietMs: number): LiveProgress {
     outputTokens: 0,
     peakContextTokens: 0,
     lastTool: undefined,
+    // Run-scoped like the rest (a `session` event restores it to "no calls tracked").
+    // stalledTool is deliberately NOT part of fresh: it is derived from wall-clock time on
+    // every read, never folded from lines.
+    openToolCalls: undefined,
     currentWork: undefined,
     quietMs,
   };
@@ -103,13 +118,21 @@ function freshProgress(quietMs: number): LiveProgress {
  * bookkeeping) is ignored. Also passed as parsePiEventLine's pre-filter to skip JSON.parse for
  * pi lines whose type is verifiably not one of these; a new case in the switch must be added
  * here too. */
-const PROGRESS_TYPES = new Set(["session", "tool_execution_start", "message_end"]);
+const PROGRESS_TYPES = new Set([
+  "session",
+  "tool_execution_start",
+  "tool_execution_update",
+  "tool_execution_end",
+  "message_end",
+]);
 
 /** The fields feedLine reads off a parsed progress event (a structural subset of pi's JSON). */
 interface ProgressEvent {
   type?: string;
+  toolCallId?: string;
   toolName?: string;
   args?: unknown;
+  partialResult?: unknown;
   // pi stamps every assistant message with an epoch-ms timestamp at creation; the rate
   // window keys off it (parse time is only the fallback for malformed or legacy lines).
   message?: { role?: string; content?: unknown; usage?: { totalTokens?: number; output?: number }; timestamp?: number };
@@ -123,10 +146,32 @@ function feedLine(progress: LiveProgress, line: string): void {
     case "session": // A new run starts: everything before it was a previous tick — restore the at-time-zero state.
       Object.assign(progress, freshProgress(progress.quietMs));
       break;
-    case "tool_execution_start":
+    case "tool_execution_start": {
       progress.toolCalls += 1;
-      if (event.toolName) progress.lastTool = describeToolCall(event.toolName, event.args);
+      const label = event.toolName ? describeToolCall(event.toolName, event.args) : undefined;
+      if (label) progress.lastTool = label;
+      // Track the open call for the stall flag — pi runs a message's tool calls concurrently
+      // by default, so several can be open at once and end in completion order.
+      (progress.openToolCalls ??= []).push({
+        id: event.toolCallId ?? "",
+        label: label ?? "tool",
+        lastActivityAt: Date.now(),
+      });
       break;
+    }
+    case "tool_execution_update": {
+      // Only content-bearing updates prove the command is alive — bash emits one empty-content
+      // update right after start, and a content-free keepalive must not mask a hang.
+      if (toolUpdateHasContent(event.partialResult)) {
+        const call = progress.openToolCalls?.find((c) => c.id === event.toolCallId);
+        if (call) call.lastActivityAt = Date.now();
+      }
+      break;
+    }
+    case "tool_execution_end": {
+      progress.openToolCalls = progress.openToolCalls?.filter((c) => c.id !== event.toolCallId);
+      break;
+    }
     case "message_end":
       if (event.message?.role === "assistant") {
         progress.turns += 1;
@@ -159,7 +204,37 @@ function feedLine(progress: LiveProgress, line: string): void {
 export function parseProgress(lines: string[], quietMs: number): LiveProgress {
   const progress = freshProgress(quietMs);
   for (const line of lines) feedLine(progress, line);
+  // Freshly fed lines stamp Date.now(), so nothing is stalled right after parsing — the flag
+  // exists here so callers that pass a hand-built tail through workingDetail see the same
+  // shape readLiveProgress returns.
+  progress.stalledTool = stalledToolLabel(progress.openToolCalls);
   return progress;
+}
+
+/** The configured threshold for flagging an open tool call as stalled, in ms (0 when
+ * disabled) — the same value runPi's stall warning uses, so the state cell and the event feed
+ * agree on "stalled". Resolved through loadConfigCached: stat-keyed, so an unedited
+ * tumwater.json costs one stat per poll. */
+export function toolCallStallMs(root: string): number {
+  const loaded = loadConfigCached(root);
+  const seconds = loaded.config?.toolCallStallSeconds ?? defaultConfig().toolCallStallSeconds;
+  return Math.max(0, seconds) * 1000;
+}
+
+/** The label of the first open tool call that has been silent for at least `stallMs` — the
+ * in-flight cell's stall flag. Silence is a property of wall-clock time, not of any single
+ * line, so this runs on every read rather than in feedLine; `now` and `stallMs` are injectable
+ * for tests (freshly fed lines stamp Date.now(), so nothing is stalled right after parsing). */
+export function stalledToolLabel(
+  open: LiveProgress["openToolCalls"],
+  now = Date.now(),
+  stallMs = defaultConfig().toolCallStallSeconds * 1000,
+): string | undefined {
+  if (!open || stallMs <= 0) return undefined;
+  for (const call of open) {
+    if (now - call.lastActivityAt >= stallMs) return call.label;
+  }
+  return undefined;
 }
 
 /** Live progress for a loop's in-flight tick, or null when there is no log yet.
@@ -180,8 +255,17 @@ export function readLiveProgress(root: string, role: string): LiveProgress | nul
     feedLine,
   );
   progress.quietMs = quietMs;
-  // Copy the sample ring: feedLine mutates the stored tail value in place, and every other
-  // LiveProgress field is a scalar — an un-copied array would alias one mutable ring across
-  // every frame ever returned AND with the live tail state.
-  return { ...progress, samples: progress.samples ? [...progress.samples] : undefined };
+  // The stall flag is derived from wall-clock time (like quietMs), not folded from lines —
+  // recomputed on every read with the configured threshold. A call already open when this
+  // observer first saw the log stamps "now" at seed, so it cannot be flagged retroactively;
+  // the mtime-based "no pi output" flag covers late observers.
+  progress.stalledTool = stalledToolLabel(progress.openToolCalls, Date.now(), toolCallStallMs(root));
+  // Copy the sample ring and open-call entries: feedLine mutates the stored tail value in
+  // place — an un-copied collection would alias one mutable structure across every frame ever
+  // returned AND with the live tail state.
+  return {
+    ...progress,
+    samples: progress.samples ? [...progress.samples] : undefined,
+    openToolCalls: progress.openToolCalls ? progress.openToolCalls.map((c) => ({ ...c })) : undefined,
+  };
 }

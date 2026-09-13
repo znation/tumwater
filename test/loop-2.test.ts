@@ -141,6 +141,36 @@ test("a pi run that goes silent is killed as hung and never commits partial work
   }
 });
 
+// The stall warning (BUGS.md 2026-09-13 sibling): a tool call open and silent past the
+// threshold names itself in the event feed while the run is still alive — before this, a hung
+// command was invisible until the quiet watchdog's kill.
+
+test("a stalled tool call warns in the event feed with the command named", async () => {
+  const repo = await initializedRepo();
+  // Names a hung bash command, then hangs like an interactive tool waiting for stdin.
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
+      `exec sleep 60`, // exec so the signal reaches the sleeper directly
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.quietTimeoutSeconds = 2; // the watchdog still owns the kill...
+    config.toolCallStallSeconds = 1; // ...but the warning lands a second after the call goes silent
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "quiet_killed");
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
+      `the stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("a slow but talkative pi run is not killed by the quiet watchdog", async () => {
   const repo = await initializedRepo();
   // Streams a line every ~300ms for ~1.2s — always slower than the 1s quiet window would

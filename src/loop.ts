@@ -262,6 +262,12 @@ export class LoopRunner {
       continueSession: resume,
       rawLogFile: piLogPath(this.root, this.role),
       signal: this.runSignal(),
+      // A tool call silent for the configured stall threshold names itself in the event feed
+      // while the quiet watchdog still counts down (BUGS.md 2026-09-13 sibling): before this,
+      // a hung command was invisible until the kill. The dashboards derive their own flag from
+      // the raw log, so only the harness event needs wiring here.
+      onToolCallStalled: (message) =>
+        logEvent(this.root, { loop: this.role, type: "warning", message }),
     };
   }
 

@@ -41,3 +41,21 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
     return null; // Torn or non-JSON line — skip without failing.
   }
 }
+
+/** True when a tool_execution_update's partialResult carries new output content. bash emits
+ * one empty-content update right after start, and only updates with real text prove the command
+ * is alive — so stalled-tool-call tracking (src/pi.ts's warning, src/ui/progress.ts's flag)
+ * moves its clock on these alone: a content-free keepalive must not mask a hang, exactly as
+ * message_update deltas cannot reset the quiet watchdog. */
+export function toolUpdateHasContent(partialResult: unknown): boolean {
+  if (!partialResult || typeof partialResult !== "object") return false;
+  const content = (partialResult as { content?: unknown }).content;
+  if (!Array.isArray(content)) return false;
+  return content.some(
+    (block) =>
+      block &&
+      typeof block === "object" &&
+      typeof (block as { text?: unknown }).text === "string" &&
+      (block as { text: string }).text.trim() !== "",
+  );
+}

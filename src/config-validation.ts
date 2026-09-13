@@ -39,6 +39,7 @@ const TOP_LEVEL_KEYS = [
   "minTickIntervalSeconds",
   "tickTimeoutSeconds",
   "quietTimeoutSeconds",
+  "toolCallStallSeconds",
   "logMaxBytes",
   "sessionRetentionDays",
   "maxDailyCostUsd",
@@ -126,6 +127,7 @@ export function validateConfig(raw: unknown): void {
   checkNumber(r, "", "minTickIntervalSeconds", (n) => n >= 0, "a number of 0 or more");
   checkNumber(r, "", "tickTimeoutSeconds", (n) => n > 0, "a number greater than 0");
   checkNumber(r, "", "quietTimeoutSeconds", (n) => n >= 0, "a number of 0 or more (0 disables)");
+  checkNumber(r, "", "toolCallStallSeconds", (n) => n >= 0, "a number of 0 or more (0 disables)");
   checkNumber(r, "", "logMaxBytes", (n) => n > 0, "a number greater than 0");
   checkNumber(r, "", "sessionRetentionDays", (n) => n >= 0, "a number of 0 or more (0 disables)");
   checkNumber(r, "", "maxDailyCostUsd", (n) => n >= 0, "a number of 0 or more (0 disables)");

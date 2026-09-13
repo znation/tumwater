@@ -231,6 +231,9 @@ export async function reviewAheadOfMain(
     // `── review @ <ts> ──`) so an operator can tell reviewer runs from author ticks.
     label: "review",
     signal: ctx.signal,
+    // A stalled tool call during review hangs the gate just like one during authoring —
+    // name it in the event feed while the quiet watchdog still counts down.
+    onToolCallStalled: (message) => logEvent(root, { loop: role, type: "warning", message }),
   });
 
   if (pi.aborted) {

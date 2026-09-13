@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { PiStreamParser, TRANSIENT_PI_CRASH, piArgs, runPi } from "../src/pi.js";
+import { toolUpdateHasContent } from "../src/pi-event-line.js";
 import type { PiRunResult } from "../src/types.js";
 import { REFUSED_SENTINEL } from "../src/reply-contract.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
@@ -263,6 +264,156 @@ test("a stalled run is reported as quiet-killed, not timed out", async () => {
     assert.equal(result.quietKilled, true, "the watchdog kill is reported as quiet-killed");
     assert.equal(result.timedOut, false, "a hung tool call is not a tick timeout");
     assert.match(result.errorMessage ?? "", /killed as hung/);
+  } finally {
+    restore();
+  }
+});
+
+// Open-tool-call tracking feeds the stall warning (BUGS.md 2026-09-13 sibling): a hung
+// command must be nameable while it is still open, and content-free updates must not mask
+// its silence the way they cannot reset the quiet watchdog.
+
+test("parser tracks open tool calls across start, update, and end", () => {
+  const parser = new PiStreamParser();
+  assert.equal(parser.openToolCalls.length, 0);
+  parser.feed(
+    JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "find / -name x" } }) + "\n",
+  );
+  assert.deepEqual(
+    parser.openToolCalls.map((c) => [c.id, c.label]),
+    [["c1", "bash find / -name x"]],
+    "the open call is tracked by id with a label that names the command",
+  );
+  const call = parser.openToolCalls[0];
+  assert.ok(call, "one entry for the started call");
+  // A content-bearing update moves the activity clock...
+  call.lastActivityAt -= 60_000; // simulate a minute of silence
+  parser.feed(
+    JSON.stringify({
+      type: "tool_execution_update",
+      toolCallId: "c1",
+      toolName: "bash",
+      args: {},
+      partialResult: { content: [{ type: "text", text: "some output" }] },
+    }) + "\n",
+  );
+  assert.ok(call.lastActivityAt > Date.now() - 1000, "content update moves the clock");
+  // ...but an empty-content one (bash emits it right after start) does not.
+  call.lastActivityAt -= 60_000;
+  const before = call.lastActivityAt;
+  parser.feed(
+    JSON.stringify({
+      type: "tool_execution_update",
+      toolCallId: "c1",
+      toolName: "bash",
+      args: {},
+      partialResult: { content: [] },
+    }) + "\n",
+  );
+  assert.equal(call.lastActivityAt, before, "empty-content update does not move the clock");
+  // An end clears only its own call — parallel siblings stay tracked.
+  parser.feed(JSON.stringify({ type: "tool_execution_start", toolCallId: "c2", toolName: "read", args: { path: "/a/b.ts" } }) + "\n");
+  parser.feed(JSON.stringify({ type: "tool_execution_end", toolCallId: "c1", toolName: "bash", result: {}, isError: false }) + "\n");
+  assert.deepEqual(parser.openToolCalls.map((c) => c.id), ["c2"]);
+});
+
+test("toolUpdateHasContent sees real text, not empty or content-less updates", () => {
+  assert.equal(toolUpdateHasContent({ content: [{ type: "text", text: "out" }] }), true);
+  assert.equal(toolUpdateHasContent({ content: [] }), false, "bash's post-start update is empty");
+  assert.equal(toolUpdateHasContent({ content: [{ type: "text", text: "   " }] }), false, "whitespace-only is not output");
+  assert.equal(toolUpdateHasContent(undefined), false);
+  assert.equal(toolUpdateHasContent(null), false);
+  assert.equal(toolUpdateHasContent("plain string"), false);
+});
+
+// The stall warning itself: one event per stalled call, naming the command, while the quiet
+// watchdog still owns the kill.
+
+test("a stalled tool call warns once with the command named", async () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 2; // the watchdog checks every second and kills after ~2 s of silence
+  config.toolCallStallSeconds = 1; // warn after just one second of call silence (test speed)
+  const warnings: string[] = [];
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
+      `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
+    ].join("\n"),
+  );
+  try {
+    const result = await runPi({
+      cwd: dir,
+      prompt: "p",
+      config,
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+      onToolCallStalled: (message) => warnings.push(message),
+    });
+    assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
+    assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
+    assert.match(warnings[0] ?? "", /^tool call stalled: bash sleep 999 — no output for \d+[sm]/);
+  } finally {
+    restore();
+  }
+});
+
+test("no stall warning when the tool call ends before the threshold", async () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 2;
+  // The real default: nothing this fast can trip it.
+  assert.equal(config.toolCallStallSeconds, 300);
+  const warnings: string[] = [];
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "true" } })}'`,
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_end", toolCallId: "c1", toolName: "bash", result: {}, isError: false })}'`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  try {
+    const result = await runPi({
+      cwd: dir,
+      prompt: "p",
+      config,
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+      onToolCallStalled: (message) => warnings.push(message),
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(warnings, []);
+  } finally {
+    restore();
+  }
+});
+
+test("toolCallStallSeconds 0 disables the stall warning", async () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 2; // the kill still happens...
+  config.toolCallStallSeconds = 0; // ...but no warning accompanies it
+  const warnings: string[] = [];
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
+      `exec sleep 30`,
+    ].join("\n"),
+  );
+  try {
+    const result = await runPi({
+      cwd: dir,
+      prompt: "p",
+      config,
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+      onToolCallStalled: (message) => warnings.push(message),
+    });
+    assert.equal(result.quietKilled, true);
+    assert.deepEqual(warnings, []);
   } finally {
     restore();
   }

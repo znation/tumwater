@@ -5,33 +5,39 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A stalled tool call is invisible until the quiet watchdog kills it — no warning while a tool call sits open and silent for minutes (sibling of the 2026-09-13 fixed entry below)
-
-**Symptom:** While one bash tool call runs, a tick makes no progress and nothing on any
-dashboard distinguishes it from a slow turn. The kill is now non-destructive (fixed sibling),
-but at the default `quietTimeoutSeconds` 1800 an operator still waits up to ~30 min before even
-that happens, with no signal that a specific command is hung.
-
-**Repro:** get any loop to run a long, output-silent bash command (`find / -name <no-match>
-2>/dev/null`); watch `.tumwater/log/<role>.pi.jsonl` — `tool_execution_start` plus a couple of
-`tool_execution_update`s with no `tool_execution_end`, mtime frozen; no harness event fires and
-no dashboard cell changes until the quiet watchdog kills the run.
-
-**Expected:** a tool call that has been open and silent for minutes is surfaced as a warning
-while it is happening (fix direction 2 of the original report): in src/pi.ts, warn — harness
-`warning` event plus a flag on the in-flight detail cell — when one tool call has been open with
-no `tool_execution_update` content change for ~300 s, naming the command. The parser would need
-to track the currently-open tool call (name + command from `tool_execution_start`, cleared at
-`tool_execution_end`); runPi's quiet-check interval already computes the silence it needs; the
-dashboard flag rides on the status payload both TUI and GUI render.
-
-**Also consider (direction 4):** once the warning exists, lower the default
-`quietTimeoutSeconds` from 1800 — a warning then arrives long before the kill.
-
-**Files:** src/pi.ts (open-tool-call tracking + stall warning), status payload / src/ui (flag on
-the in-flight detail cell), src/config.ts (default); tests in test/pi.test.ts, test/loop-2.test.ts.
-
 ## Fixed
+
+### A stalled tool call is invisible until the quiet watchdog kills it — stall warning names the command in the event feed and state cell (reported by user 2026-09-12, fixed by bugfix loop 2026-09-13)
+
+Fixed (fix direction 2 of the original report): a tool call open with no content-bearing
+`tool_execution_update` for `toolCallStallSeconds` (new config field, default 300 s; 0 disables)
+is surfaced while it is happening, on both surfaces:
+- **Harness warning event:** `PiStreamParser` tracks open tool calls by pi's `toolCallId`
+  (pi runs a message's tool calls concurrently by default), moving each call's activity clock
+  only on content-bearing updates — bash emits one empty-content update right after start, and a
+  content-free keepalive must not mask a hang the way it cannot reset the quiet watchdog. The
+  check interval in `runPi` warns once per stalled call (`tool call stalled: <label> — no output
+  for N m/s`), wired to a `warning` event in src/loop.ts (author runs and SUMMARY follow-ups)
+  and src/review.ts (reviewer runs). The warning is independent of the kill: it fires even while
+  sibling calls keep streaming, and still when the quiet watchdog itself is disabled.
+- **Dashboard flag:** `LiveProgress` tracks open calls from the raw log tail; `readLiveProgress`
+  recomputes a `stalledTool` label on every read (silence is wall-clock time, not any single
+  line) against the same configured threshold (`toolCallStallMs`, resolved through
+  loadConfigCached), and the in-flight detail cell renders `tool call stalled: <label>` — taking
+  lastTool's slot when it is that tool instead of repeating the label. Both TUI and GUI get it
+  through the shared status payload / phase string.
+
+`describeToolCall` moved from src/ui/tool-call.ts to src/text.ts so the harness layer can name
+the hung command without importing presentation; `toolUpdateHasContent` (src/pi-event-line.ts)
+is the one content check both layers share. Direction 4 of the original report (lowering the
+default quietTimeoutSeconds now that a warning lands first) was not taken: the kill default is
+unchanged at 1800 s.
+
+Regression tests: test/pi.test.ts (open-call tracking, warn-once with the command named, no
+warning when the call ends in time, 0 disables), test/progress.test.ts (tail-side tracking,
+stalledToolLabel, threshold resolution), test/status-render.test.ts (cell names a stalled call,
+never flags a fresh one), test/loop-2.test.ts (end-to-end: the warning lands in events.jsonl
+while the run is still alive).
 
 ### A single tool call with no timeout blocks a whole tick — trigger removed and quiet-kills now preserve work (reported by user 2026-09-12, fixed by bugfix loop 2026-09-13)
 

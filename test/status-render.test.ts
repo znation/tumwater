@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { parseProgress, stalledToolLabel } from "../src/ui/progress.js";
 import { budgetBadge, buildBadge, clipToWidth, lastTickCell, loopPhase, renderStatus, workingDetail } from "../src/ui/status-render.js";
 import type { StatusSnapshot } from "../src/ui/status.js";
 import { fleetDailyCost, freshLoopState, todayStamp } from "../src/state.js";
@@ -512,6 +513,40 @@ test("workingDetail flags a stalled run only after at least five minutes of sile
   const sixMinAgo = new Date(Date.now() - 6 * 60_000);
   fs.utimesSync(file, sixMinAgo, sixMinAgo);
   assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 6m/);
+});
+
+// The stall flag (BUGS.md 2026-09-13 sibling): a tool call open and silent past the threshold
+// names itself in the state cell — the same rule as runPi's warning event.
+
+test("workingDetail names a stalled tool call in the state cell", () => {
+  const root = tmpdir();
+  const s = freshLoopState("clean");
+  s.lastTickStartedAt = Date.now() - 5_000;
+  // A hand-built live tail (what readLiveProgress returns) with one open call backdated past
+  // the five-minute stall threshold.
+  const p = parseProgress([SESSION, toolStart("bash", { command: "find / -name x" })], 0);
+  assert.equal(p.stalledTool, undefined, "a freshly fed call is not stalled");
+  const call = p.openToolCalls?.[0];
+  assert.ok(call, "the open call is tracked");
+  call.lastActivityAt -= 301_000;
+  p.stalledTool = stalledToolLabel(p.openToolCalls); // what readLiveProgress recomputes per read
+  const detail = workingDetail(root, s, p);
+  assert.ok(detail.includes("tool call stalled: bash find / -name x"), `unexpected shape: ${detail}`);
+  assert.equal(
+    detail.split("find / -name x").length - 1,
+    1,
+    "the command appears once — the flag takes lastTool's slot, not alongside it",
+  );
+});
+
+test("workingDetail does not flag a fresh tool call as stalled", () => {
+  const root = tmpdir();
+  writePiLog(root, "clean", [SESSION, assistantLine("starting"), toolStart("bash", { command: "npm test" })]);
+  const s = freshLoopState("clean");
+  s.lastTickStartedAt = Date.now() - 5_000;
+  const detail = workingDetail(root, s);
+  assert.ok(detail.endsWith("bash npm test"), `unexpected shape: ${detail}`);
+  assert.doesNotMatch(detail, /tool call stalled/);
 });
 
 test("loopPhase surfaces the live detail only while a tick is in flight", () => {

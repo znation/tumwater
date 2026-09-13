@@ -4,7 +4,8 @@ import { StringDecoder } from "node:string_decoder";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { extractRefusal, hasVerdictLine, isNothingToDo, REFUSED_SENTINEL } from "./reply-contract.js";
-import { piEventType } from "./pi-event-line.js";
+import { piEventType, toolUpdateHasContent } from "./pi-event-line.js";
+import { describeToolCall } from "./text.js";
 
 interface PiMessage {
   role: string;
@@ -92,6 +93,12 @@ export class PiStreamParser {
    * nothing this parser acts on, and a zombie stream's content-free keepalives must not
    * reset the harness's hang watchdog. */
   progressCount = 0;
+  /** Tool calls started but not yet ended — pi runs one message's tool calls concurrently by
+   * default, so several can be open at once and end in completion order (keyed by pi's
+   * toolCallId). `lastActivityAt` moves only on content-bearing updates: bash emits an
+   * empty-content update right after start, and a content-free keepalive must not mask a hang.
+   * Feeds runPi's stall warning; entries clear at tool_execution_end. */
+  openToolCalls: Array<{ id: string; label: string; lastActivityAt: number }> = [];
   private buffer = "";
 
   feed(chunk: string, onLine?: (line: string) => void): void {
@@ -122,7 +129,16 @@ export class PiStreamParser {
     // events around them). Skip even parsing them.
     if (piEventType(line) === "message_update") return;
 
-    let event: { type?: string; message?: PiMessage; errorMessage?: string; finalError?: string };
+    let event: {
+      type?: string;
+      message?: PiMessage;
+      errorMessage?: string;
+      finalError?: string;
+      toolCallId?: string;
+      toolName?: string;
+      args?: unknown;
+      partialResult?: unknown;
+    };
     try {
       event = JSON.parse(line);
     } catch {
@@ -139,6 +155,20 @@ export class PiStreamParser {
     // progress — streaming deltas never are (they are skipped above, before parsing).
     this.progressCount += 1;
     if (event.type === "compaction_start") this.compacted = true;
+    // Open-tool-call tracking for the stall warning: a call that sits open and silent is
+    // surfaced by name while the quiet watchdog still counts down.
+    if (event.type === "tool_execution_start") {
+      this.openToolCalls.push({
+        id: event.toolCallId ?? "",
+        label: describeToolCall(event.toolName ?? "", event.args),
+        lastActivityAt: Date.now(),
+      });
+    } else if (event.type === "tool_execution_update" && toolUpdateHasContent(event.partialResult)) {
+      const call = this.openToolCalls.find((c) => c.id === event.toolCallId);
+      if (call) call.lastActivityAt = Date.now();
+    } else if (event.type === "tool_execution_end") {
+      this.openToolCalls = this.openToolCalls.filter((c) => c.id !== event.toolCallId);
+    }
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;
     const text = messageText(msg);
@@ -185,6 +215,11 @@ export interface PiRunOptions {
    * surface renders a labeled separator for it. No label → no write — author-run logs stay
    * byte-identical to today's shape. */
   label?: string;
+  /** Called once per stalled tool call when it has been open with no content-bearing update
+   * for config.toolCallStallSeconds: the harness logs a warning event naming the command
+   * while the quiet watchdog still counts down (the dashboards derive their own flag from the
+   * raw log, so only the event needs wiring). */
+  onToolCallStalled?: (message: string) => void;
 }
 
 /** Build the pi argv for one tick. Exported for tests. */
@@ -282,24 +317,47 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     // burn the whole tick timeout. Raw output bytes deliberately do NOT reset the clock:
     // keepalives are bytes without progress. Checked on an interval against the wall clock,
     // so it also fires promptly after a machine sleep rather than pausing with a suspended
-    // timer.
+    // timer. The stall warning below rides the same interval: it needs no kill of its own,
+    // only a periodic look at which open tool calls have gone silent.
     let lastProgressAt = Date.now();
     let lastProgressCount = 0;
     let quietKilled = false;
     const quietMs = opts.config.quietTimeoutSeconds * 1000;
+    // The stall warning's threshold (distinct from the kill above): one hung tool call is
+    // surfaced by name even while sibling calls keep streaming, so total silence is not
+    // required. One warning per stalled call — the interval keeps firing until the kill or
+    // the call ends.
+    const stallMs = Math.max(0, opts.config.toolCallStallSeconds) * 1000;
+    const warnedStalledCalls = new Set<string>();
+    const checkEveryMs = quietMs > 0 ? quietMs : stallMs;
     const quietCheck =
-      quietMs > 0
+      checkEveryMs > 0
         ? setInterval(
             () => {
               if (parser.progressCount > lastProgressCount) {
                 lastProgressCount = parser.progressCount;
                 lastProgressAt = Date.now();
-              } else if (Date.now() - lastProgressAt > quietMs) {
+              } else if (quietMs > 0 && Date.now() - lastProgressAt > quietMs) {
                 quietKilled = true;
                 terminateChild(child);
               }
+              if (stallMs > 0) {
+                for (const call of parser.openToolCalls) {
+                  if (warnedStalledCalls.has(call.id)) continue;
+                  const silentMs = Date.now() - call.lastActivityAt;
+                  if (silentMs >= stallMs) {
+                    warnedStalledCalls.add(call.id);
+                    // Whole minutes read cleaner in the feed; sub-minute thresholds stay in seconds.
+                    const silent =
+                      silentMs < 60_000
+                        ? `${Math.round(silentMs / 1000)}s`
+                        : `${Math.round(silentMs / 60_000)}m`;
+                    opts.onToolCallStalled?.(`tool call stalled: ${call.label} — no output for ${silent}`);
+                  }
+                }
+              }
             },
-            Math.min(Math.max(quietMs / 2, 250), 30_000),
+            Math.min(Math.max(checkEveryMs / 2, 250), 30_000),
           )
         : undefined;
 

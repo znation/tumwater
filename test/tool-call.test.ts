@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { describeToolCall } from "../src/ui/tool-call.js";
+// describeToolCall moved to src/text.ts (shared by the harness's stalled-tool-call warning
+// and the observer layer) — this file keeps its dedicated coverage of that one function.
+import { describeToolCall } from "../src/text.js";
 
 test("describeToolCall summarizes common arg shapes tersely", () => {
   assert.equal(describeToolCall("read", { path: "/a/b/loop.ts" }), "read loop.ts");

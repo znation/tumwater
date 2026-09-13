@@ -32,6 +32,11 @@ export function defaultConfig(): TumwaterConfig {
     minTickIntervalSeconds: 20,
     tickTimeoutSeconds: 1800,
     quietTimeoutSeconds: 1800,
+    // Five minutes of command silence is well past any legitimate prefill or slow scan, and
+    // lands long before the quiet watchdog's kill — the warning names what is hung while there
+    // is still time to see it (BUGS.md 2026-09-13: stalled tool calls were invisible until the
+    // kill).
+    toolCallStallSeconds: 300,
     logMaxBytes: 16 * 1024 * 1024,
     sessionRetentionDays: 7,
     // An unattended fleet must not spend unbounded (plans/daily-cost-budget.md): $50/day is

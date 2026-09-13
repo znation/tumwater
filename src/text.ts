@@ -1,10 +1,13 @@
+import path from "node:path";
+
 /** Shared text-shaping helpers for human-facing one-line text — the observability layer's
  * display labels (live progress, transcripts, tool-call descriptions), tick commit subjects and
  * body fields, and build-check reason lines — plus number and time formats: whitespace
  * collapsing, ellipsis truncation, compact token counts, abbreviated commit hashes, plain-
  * decimal integer parsing, and zero-padded local date/time parts. Presentation only:
- * depends on nothing, so any surface can import it without reaching into another module's
- * internals — and the collapse/truncation/compaction/abbreviation semantics live in exactly one
+ * depends on node built-ins alone, so any layer (harness or observer) can import it without
+ * reaching into another module's internals — and the collapse/truncation/compaction/
+ * abbreviation semantics live in exactly one
  * place instead of drifting per consumer. */
 
 /** Collapse every run of whitespace to a single space and trim both ends — the shape every
@@ -121,4 +124,21 @@ export function formatDate(d: Date): string {
  * separators and the status table's last-tick cell. */
 export function formatTime(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+/** One-line description of a tool call from its name and args — shared by live progress data
+ * collection (LiveProgress.lastTool), transcript rendering, and the harness's stalled-tool-call
+ * warning (src/pi.ts names the hung command through it). Path-like keys reduce to the file
+ * name; the other candidate keys are shown verbatim. */
+export function describeToolCall(toolName: string, args: unknown): string {
+  let detail = "";
+  if (args && typeof args === "object") {
+    const a = args as Record<string, unknown>;
+    const candidate = a.path ?? a.file_path ?? a.command ?? a.cmd ?? a.pattern ?? a.url;
+    if (typeof candidate === "string") {
+      detail = candidate === a.path || candidate === a.file_path ? path.basename(candidate) : candidate;
+    }
+  }
+  detail = truncate(collapseWhitespace(detail), 32);
+  return detail ? `${toolName} ${detail}` : toolName;
 }

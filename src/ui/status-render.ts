@@ -61,7 +61,11 @@ function inFlightDetail(s: LoopState, label: string, p: LiveProgress | null): st
   if (!p) return inFlightLabel(s, label);
   const parts = [inFlightLabel(s, label), `turn ${p.turns + 1}`];
   if (p.contextTokens > 0) parts.push(`ctx ${compactTokens(p.contextTokens)}`);
-  if (p.lastTool) parts.push(p.lastTool);
+  // A tool call open and silent past the configured stall threshold names itself in the cell —
+  // the same rule as runPi's warning event, derived from the raw log tail. It takes lastTool's
+  // slot when it is that tool (the common single-call case) instead of repeating the label.
+  if (p.stalledTool) parts.push(`tool call stalled: ${p.stalledTool}`);
+  else if (p.lastTool) parts.push(p.lastTool);
   // Silence under five minutes is normal (slow local-model prefills, long tool calls);
   // only flag a stall once at least five minutes have passed without any pi output.
   if (p.quietMs >= 300_000) parts.push(`no pi output for ${duration(p.quietMs)}`);

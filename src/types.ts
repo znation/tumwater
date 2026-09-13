@@ -79,6 +79,11 @@ export interface TumwaterConfig {
    * run streams events continuously even when slow; prolonged silence means a hung tool
    * (interactive command, zombie socket) that would otherwise burn the whole tick timeout. */
   quietTimeoutSeconds: number;
+  /** Warn — without killing — when ONE tool call has been open this many seconds with no
+   * content-bearing output update: a `warning` event names the command and the loop's state
+   * cell flags it, while the quiet watchdog still counts down. Fires even while sibling calls
+   * keep streaming (total silence is not required); 0 disables the warning. */
+  toolCallStallSeconds: number;
   /** Rotate events.jsonl and per-role pi logs when they exceed this size. */
   logMaxBytes: number;
   /** Delete pi session files older than this many days at orchestrator start (0 disables). */
