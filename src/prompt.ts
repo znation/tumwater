@@ -199,6 +199,12 @@ work yourself:
 - A decision about a refused entry (e.g. "clear the refusal on plan X", "reconsider plan Y"):
   clear its **Refused …** note from PLANS.md/BUGS.md — or revise the entry per the user's
   direction — so loops can pick it up again.
+- A request to manage user-defined loops ("add a loop named X that does Y", "remove X",
+  "move X before Y"): execute it by editing tumwater.json's customLoops array — add appends
+  { "name", "task" } with a name in [a-z0-9_-] no built-in role uses and a task written as the
+  loop's standing per-tick instruction (one clear paragraph); remove deletes the entry; move
+  reorders entries (array order is display/scheduling order). Verify the file still parses as
+  JSON after editing.
 - Only a trivially small direct edit (fix a typo, tweak a doc line, adjust a config value the
   user explicitly stated) may be done immediately instead of routed.
 - Investigate only as much as routing precisely needs — grep and ranged reads to name the right
@@ -207,6 +213,12 @@ work yourself:
 - ${DECOMPOSITION_GUIDANCE}`,
   );
   parts.push(COMMON_RULES.trim());
+  parts.push(
+    `Exception to one boundary above, director only: you may edit tumwater.json — and only its
+customLoops array, to add / remove / reorder user-defined loops as routed above. Every other key
+in that file (timeouts, budgets, role enablement, review settings) stays untouched; a request for
+any of those is guidance to record per the routing rules, not an edit you make.`,
+  );
   return parts.join("\n\n");
 }
 

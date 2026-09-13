@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { enabledRoleIds, loadConfig } from "./config.js";
+import { enabledRoleIds, knownRoleIds, loadConfig } from "./config.js";
 import {
   fail,
   parseCountFlag,
@@ -178,7 +178,10 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   const follow = args.includes("-f") || args.includes("--follow");
   const nFlag = args.indexOf("-n");
   const limit = nFlag >= 0 ? parseCountFlag("-n", args[nFlag + 1]) : 50;
-  const role = parseRoleFlag(args);
+  // The config is needed only to validate --role against built-ins PLUS user-defined loops —
+  // loading it unconditionally would make a broken tumwater.json break the read-only event
+  // feed too, which never needs it.
+  const role = args.includes("--role") ? parseRoleFlag(args, knownRoleIds(loadConfig(root))) : null;
   if (role !== null) {
     await cmdLogsTranscript(root, role, limit, follow);
     return;
@@ -239,7 +242,7 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
  * untouched: loops keep sleeping/waking exactly as before. */
 async function cmdResetCounters(root: string, args: string[]): Promise<void> {
   const config = loadConfig(root);
-  const role = parseRoleFlag(args);
+  const role = parseRoleFlag(args, knownRoleIds(config));
   const targets = role ? [role] : Object.keys(config.roles); // Default: every role in the config.
   for (const r of targets) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
   writeJsonFile(resetRequestPath(root), { at: Date.now(), roles: targets });
@@ -253,7 +256,9 @@ async function cmdResetCounters(root: string, args: string[]): Promise<void> {
  * with no fleet there is nothing to consume the marker. The loop stays enabled: it backs
  * off normally and later ticks proceed as usual. */
 async function cmdAbort(root: string, args: string[]): Promise<void> {
-  const role = parseRoleFlag(args);
+  // As in cmdLogs: the config exists only to validate the id against built-ins plus
+  // user-defined loops; a missing --role fails before it is ever needed.
+  const role = args.includes("--role") ? parseRoleFlag(args, knownRoleIds(loadConfig(root))) : null;
   if (!role) fail("abort requires --role <id> (e.g. `--role feature`)");
   if (!orchestratorAlive(root)) fail("no harness is running — start it with `tumwater run` first");
   writeJsonFile(abortRequestPath(root, role), { at: Date.now() });

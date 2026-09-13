@@ -5,29 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### User-defined loops 2/3 — director control surface: add/remove/rearrange from the prompt box (planned 2026-09-07, split 2026-09-08)
-
-**Goal.** Let the user steer custom loops from the director prompt box (TUI or `tumwater prompt`): "add a loop named X that does Y" → the director edits tumwater.json's `customLoops`; "remove X"; "move X before Y". The 1/3 machinery makes the fleet react within ~2 s of the edit merging to main; this entry gives the user the channel and keeps every other role forbidden from touching the file. Depends on `User-defined loops 1/3`. Shared design: plans/user-defined-loops.md (anchors verified there — see 1/3's Refined note). Sibling: `User-defined loops 3/3` (independent).
-
-**Approach.**
-- src/prompt.ts — `buildDirectorPrompt` only (role tick prompts keep the blanket ban in COMMON_RULES, which already says "Never touch the .tumwater directory or tumwater.json"):
-  - New routing bullet in the existing routing list: a loop-management request (add / remove / rearrange user-defined loops) is executed by editing tumwater.json's `customLoops` array — add appends `{ "name", "task" }` with a name in `[a-z0-9_-]` that no built-in role uses and a task written as the loop's standing per-tick instruction (one clear paragraph); remove deletes the entry; rearrange reorders entries (array order is display/scheduling order). Verify the file still parses as JSON after editing.
-  - An explicit exception paragraph appended after COMMON_RULES: the director may edit tumwater.json **only** to manage `customLoops`, and nothing else in that file — scoped so the model cannot drift into retuning timeouts or disabling roles on a vague user request.
-- src/cli-args.ts + src/cli.ts — `parseRoleFlag` gains the valid-id list as a parameter (its three call sites — cmdLogs, cmdResetCounters, cmdAbort — all have `root` in scope; reset-counters already loads config, logs and abort add `loadConfig(root)`): custom names are accepted by `logs --role`, `abort --role`, and `reset-counters --role`, and unknown ids fail listing the known ones including customs.
-- test/prompt.test.ts — director prompt carries the routing bullet and the scoped exception; built-in role tick prompts byte-identical (the ban is untouched).
-- test/cli-args.test.ts (+ test/cli.test.ts where command behavior is pinned) — `--role <custom>` accepted for the three commands once the config lists it; a bogus id fails naming customs in the valid list.
-- README.md — one sentence added to the user-defined-loops paragraph in Roles (creating that paragraph if 3/3 has not landed yet): loops can also be added/removed/rearranged by prompting the director ("add a loop named X that does Y"). Each sibling adds only its own sentences, so either landing order documents exactly what exists.
-
-**Files touched.** src/prompt.ts, src/cli-args.ts, src/cli.ts, README.md, test/prompt.test.ts, test/cli-args.test.ts (and test/cli.test.ts if command-level behavior is pinned there). No changes to loop.ts, config.ts, or the dashboards; README.md carries only this entry's own sentence (see Approach) — 3/3 writes its own sentences to the same paragraph.
-
-**Acceptance criteria.**
-- `npm run build` clean; full suite green.
-- In a running fleet (fake shim), `tumwater prompt "add a loop named docs-sync that keeps the README examples current"`: after the director's change merges to main, within ~2 s the new loop ticks under its own name (1/3 machinery); "remove docs-sync" → entry gone from main's tumwater.json, one warning event, no further ticks; rearranging reorders the status table.
-- A director tick whose only change is tumwater.json skips model review (exempt diff per 1/3) yet still commits, merges, and lands; every non-director loop's prompt still forbids touching tumwater.json — pinned by test.
-- `logs --role <custom>` serves its transcript and an unknown id fails listing customs; `abort --role` and `reset-counters --role` accept custom names like built-ins.
-
-**Relationship to other plans.** Sibling 2/3 of user-defined loops (plans/user-defined-loops.md). Depends on 1/3 (the helpers and the exemptPaths default); independent of 3/3 — either can land first.
-
 ### User-defined loops 3/3 — dashboard identification: mark user-defined loops on both surfaces (planned 2026-09-07, split 2026-09-08)
 
 **Goal.** Both dashboards identify user-defined loops at a glance: a `*` next to the loop name in the TUI/status table and the GUI loop table, one footnote line under the table when any custom exists, a `custom` boolean on each /api/status (and `status --json`) loop row, the README sentences documenting what exists at landing time, and a working transcript panel when a marked loop's name is clicked in the GUI (`/api/transcript` today rejects every id outside the built-in catalog). Depends on `User-defined loops 1/3` (`isCustomRole`). Independent of `User-defined loops 2/3`. Shared design: plans/user-defined-loops.md.
@@ -383,6 +360,31 @@ Corrections:
 Sizing unchanged: lander.ts still ~140 lines (the green path loses nothing — seeding moves one call), merge.ts ~35 (ffStackToMain gains no re-check or verify step), config/types/orchestrator ~25 combined; tests ~280 dominated by lander.test.ts's four batch cases. No design question remains open.
 
 ## Done
+
+### User-defined loops 2/3 — director control surface: add/remove/rearrange from the prompt box (planned 2026-09-07, split 2026-09-08, done 2026-09-12)
+
+**Landed 2026-09-12 (feature loop).** As planned: `buildDirectorPrompt` gains the routing bullet for loop-management requests (add / remove / rearrange → edit tumwater.json's `customLoops`; name in `[a-z0-9_-]` no built-in role uses, task as the standing per-tick instruction, array order = display/scheduling order, JSON parse check after editing) plus the exception paragraph appended after COMMON_RULES scoping the director's tumwater.json edits to `customLoops` only — every other key (timeouts, budgets, role enablement, review settings) is routed as guidance, not edited. `parseRoleFlag` takes an optional `validIds` list (defaulting to the catalog), and cmdLogs/cmdResetCounters/cmdAbort validate against `knownRoleIds(config)` so custom names work like built-ins and unknown ids fail listing customs. One deliberate deviation: logs and abort load the config only when `--role` is present, so a broken tumwater.json cannot break the read-only event feed (`logs` without `--role`). Pinned by tests: prompt.test.ts (routing bullet + scoped exception; every built-in role tick prompt keeps the blanket ban and carries no exception), cli-args.test.ts (custom accepted from a supplied list; bogus id names customs in the valid list; catalog-only default rejects customs), and a new e2e in test/cli.test.ts (`logs --role <custom>` → "no transcript yet"; unknown id lists customs; `reset-counters --role <custom>` zeroes just that loop; `abort --role <custom>` passes validation). README.md gains this entry's own sentence in the Roles paragraph (user-defined loops can be added, removed, or rearranged by prompting the director), per main's refinement of this plan after this branch diverged — 3/3 adds its own sentences to the same paragraph when it lands. Suite 929/929.
+
+**Goal.** Let the user steer custom loops from the director prompt box (TUI or `tumwater prompt`): "add a loop named X that does Y" → the director edits tumwater.json's `customLoops`; "remove X"; "move X before Y". The 1/3 machinery makes the fleet react within ~2 s of the edit merging to main; this entry gives the user the channel and keeps every other role forbidden from touching the file. Depends on `User-defined loops 1/3`. Shared design: plans/user-defined-loops.md (anchors verified there — see 1/3's Refined note). Sibling: `User-defined loops 3/3` (independent).
+
+**Approach.**
+- src/prompt.ts — `buildDirectorPrompt` only (role tick prompts keep the blanket ban in COMMON_RULES, which already says "Never touch the .tumwater directory or tumwater.json"):
+  - New routing bullet in the existing routing list: a loop-management request (add / remove / rearrange user-defined loops) is executed by editing tumwater.json's `customLoops` array — add appends `{ "name", "task" }` with a name in `[a-z0-9_-]` that no built-in role uses and a task written as the loop's standing per-tick instruction (one clear paragraph); remove deletes the entry; rearrange reorders entries (array order is display/scheduling order). Verify the file still parses as JSON after editing.
+  - An explicit exception paragraph appended after COMMON_RULES: the director may edit tumwater.json **only** to manage `customLoops`, and nothing else in that file — scoped so the model cannot drift into retuning timeouts or disabling roles on a vague user request.
+- src/cli-args.ts + src/cli.ts — `parseRoleFlag` gains the valid-id list as a parameter (its three call sites — cmdLogs, cmdResetCounters, cmdAbort — all have `root` in scope; reset-counters already loads config, logs and abort add `loadConfig(root)`): custom names are accepted by `logs --role`, `abort --role`, and `reset-counters --role`, and unknown ids fail listing the known ones including customs.
+- test/prompt.test.ts — director prompt carries the routing bullet and the scoped exception; built-in role tick prompts byte-identical (the ban is untouched).
+- test/cli-args.test.ts (+ test/cli.test.ts where command behavior is pinned) — `--role <custom>` accepted for the three commands once the config lists it; a bogus id fails naming customs in the valid list.
+- README.md — one sentence added to the user-defined-loops paragraph in Roles (creating that paragraph if 3/3 has not landed yet): loops can also be added/removed/rearranged by prompting the director ("add a loop named X that does Y"). Each sibling adds only its own sentences, so either landing order documents exactly what exists.
+
+**Files touched.** src/prompt.ts, src/cli-args.ts, src/cli.ts, README.md, test/prompt.test.ts, test/cli-args.test.ts (and test/cli.test.ts if command-level behavior is pinned there). No changes to loop.ts, config.ts, or the dashboards; README.md carries only this entry's own sentence (see Approach) — 3/3 writes its own sentences to the same paragraph.
+
+**Acceptance criteria.**
+- `npm run build` clean; full suite green.
+- In a running fleet (fake shim), `tumwater prompt "add a loop named docs-sync that keeps the README examples current"`: after the director's change merges to main, within ~2 s the new loop ticks under its own name (1/3 machinery); "remove docs-sync" → entry gone from main's tumwater.json, one warning event, no further ticks; rearranging reorders the status table.
+- A director tick whose only change is tumwater.json skips model review (exempt diff per 1/3) yet still commits, merges, and lands; every non-director loop's prompt still forbids touching tumwater.json — pinned by test.
+- `logs --role <custom>` serves its transcript and an unknown id fails listing customs; `abort --role` and `reset-counters --role` accept custom names like built-ins.
+
+**Relationship to other plans.** Sibling 2/3 of user-defined loops (plans/user-defined-loops.md). Depends on 1/3 (the helpers and the exemptPaths default); independent of 3/3 — either can land first.
 
 ### User-defined loops 1/3 — config plumbing: `customLoops` in tumwater.json (planned 2026-09-07, split 2026-09-08, done 2026-09-12)
 

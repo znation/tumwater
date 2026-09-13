@@ -808,6 +808,42 @@ test("logs --role validates the role id and reports a missing transcript", async
   assert.equal(r.code, 0);
   assert.match(r.stdout, /no transcript yet for clean/);
 });
+
+// User-defined loops are valid --role targets for logs/reset-counters/abort once tumwater.json
+// lists them (plans/user-defined-loops.md): the id validates against built-ins PLUS customs,
+// and an unknown id fails naming the customs in the valid list.
+
+test("logs, reset-counters, and abort accept user-defined loop names from tumwater.json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "custom role cli test");
+  const cfg = loadConfig(repo);
+  cfg.customLoops.push({ name: "docs-sync", task: "keep the README examples current" });
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+
+  // logs --role <custom>: valid id, no transcript yet.
+  let r = await cli(repo, "logs", "--role", "docs-sync");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no transcript yet for docs-sync/);
+
+  // An unknown id fails and lists the custom loop among the valid ones.
+  r = await cli(repo, "logs", "--role", "bogus");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus \(valid ids: .+\)/);
+  assert.ok(r.stderr.includes("docs-sync"), "the valid list names the custom loop");
+
+  // reset-counters --role <custom> zeroes just that loop.
+  seedCounters(repo, "docs-sync");
+  r = await cli(repo, "reset-counters", "--role", "docs-sync");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /counters reset for docs-sync/);
+  assert.equal(loadLoopState(repo, "docs-sync").ticks, 0);
+
+  // abort --role <custom> passes validation (no live fleet: it fails on the alive check,
+  // which proves the id was accepted rather than rejected).
+  r = await cli(repo, "abort", "--role", "docs-sync");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no harness is running/);
+});
 // --- reset-counters ---
 
 /** Seed a role's state file with non-zero counters plus scheduling fields. */

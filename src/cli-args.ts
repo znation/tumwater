@@ -37,13 +37,17 @@ export function parsePortFlag(raw: string | undefined): number {
 
 /** Parse an optional `--role <id>` flag: the validated role id, or null when absent.
  * Shared by every command that scopes to one loop so their validation and error messages
- * cannot drift. */
-export function parseRoleFlag(args: string[]): string | null {
+ * cannot drift. `validIds` is the set of ids this command accepts — callers pass
+ * knownRoleIds(config) so user-defined loops are accepted like built-ins; it defaults to the
+ * catalog alone, which keeps in-process callers (and tests) that have no config working.
+ */
+export function parseRoleFlag(args: string[], validIds?: string[]): string | null {
   const i = args.indexOf("--role");
   if (i < 0) return null;
   const role = args[i + 1];
   if (!role) fail("--role needs a role id (e.g. `--role feature`)");
-  if (!allRoleIds().includes(role)) fail(`unknown role: ${role} (valid ids: ${allRoleIds().join(", ")})`);
+  const ids = validIds ?? allRoleIds();
+  if (!ids.includes(role)) fail(`unknown role: ${role} (valid ids: ${ids.join(", ")})`);
   return role;
 }
 

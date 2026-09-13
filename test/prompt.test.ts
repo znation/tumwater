@@ -359,6 +359,37 @@ test("the director routes refusal decisions by clearing the Refused note", () =>
   assert.match(prompt, /so loops can pick it up again/);
 });
 
+// The director is the only loop allowed to touch tumwater.json — and only its customLoops
+// array (plans/user-defined-loops.md). The routing bullet names the mechanics; the exception
+// paragraph scopes the edit so a vague request cannot drift into retuning timeouts or
+// disabling roles. Role tick prompts keep the blanket ban untouched.
+
+test("the director routes loop-management requests to tumwater.json's customLoops", () => {
+  const prompt = oneLine(
+    buildDirectorPrompt("add a loop named docs-sync that keeps the README examples current", "a project"),
+  );
+  assert.match(prompt, /A request to manage user-defined loops/);
+  assert.match(prompt, /editing tumwater\.json's customLoops array/);
+  assert.match(prompt, /\[a-z0-9_-\] no built-in role uses/);
+  assert.match(prompt, /standing per-tick instruction/);
+  assert.match(prompt, /array order is display\/scheduling order/);
+  assert.match(prompt, /still parses as JSON after editing/);
+});
+
+test("the director's tumwater.json exception is scoped to customLoops; role prompts keep the blanket ban", () => {
+  const d = oneLine(buildDirectorPrompt("add a loop named x that does y", "a project"));
+  assert.match(d, /Exception to one boundary above, director only/);
+  assert.match(d, /only its customLoops array/);
+  // The blanket ban still stands in the director prompt — the exception carves out one file's
+  // one key, not the whole boundary.
+  assert.match(d, /Never touch the \.tumwater directory or tumwater\.json/);
+  for (const role of ROLES) {
+    const p = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+    assert.match(p, /Never touch the \.tumwater directory or tumwater\.json/, `${role.id} keeps the ban`);
+    assert.ok(!p.includes("Exception to one boundary above"), `${role.id} carries no exception`);
+  }
+});
+
 // Prompt contract for the questions outbox (plans/questions-outbox.md): every tick reads
 // QUESTIONS.md first and carries the ask-don't-guess rule; the director routes answers back.
 // Same whitespace-collapsed matching as the refusal contract above — the prose is hard-wrapped

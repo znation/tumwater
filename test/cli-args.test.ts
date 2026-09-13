@@ -128,6 +128,28 @@ test("parseRoleFlag returns null when absent (even among other flags) and valida
   for (const id of allRoleIds()) assert.ok(bogus.stderr.includes(id), `valid list names ${id}`);
 });
 
+// User-defined loops are valid --role targets once the config lists them (plans/
+// user-defined-loops.md): callers pass knownRoleIds(config) as the accepted set, and an
+// unknown id fails naming the customs too.
+
+test("parseRoleFlag accepts user-defined loop names from a supplied id list", () => {
+  const ids = [...allRoleIds(), "docs-sync"];
+  assert.equal(expectOk(() => parseRoleFlag(["--role", "docs-sync"], ids)), "docs-sync");
+
+  // Built-ins validate against the same supplied list.
+  const first = allRoleIds()[0];
+  assert.ok(first, "role catalog is non-empty");
+  assert.equal(expectOk(() => parseRoleFlag(["--role", first], ids)), first);
+
+  const bogus = expectFail(() => parseRoleFlag(["--role", "bogus"], ids));
+  assert.match(bogus.stderr, /unknown role: bogus \(valid ids: .+\)/);
+  assert.ok(bogus.stderr.includes("docs-sync"), "the valid list names the custom loop");
+
+  // Without a supplied list the catalog alone is authoritative — a custom name is unknown.
+  const strict = expectFail(() => parseRoleFlag(["--role", "docs-sync"]));
+  assert.match(strict.stderr, /unknown role: docs-sync/);
+});
+
 // --- rejectUnknownArgs ---
 
 /** The flag vocabulary each command passes in cli.ts — kept in sync with main()'s cases. */
