@@ -117,8 +117,8 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     questions: openQuestions(root).length,
     loops,
     // Unconditional (never null): a disabled fleet still shows its spend and the badge is
-    // the affordance for SETTING a cap. The extra models.json read per poll while disabled
-    // is one small file — deliberately uncached, like every other field here.
+    // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
+    // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
     budget: {
       spentUsd: fleetDailyCost(loops),
       capUsd: cfg.maxDailyCostUsd,

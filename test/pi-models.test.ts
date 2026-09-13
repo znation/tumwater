@@ -98,3 +98,18 @@ test("a fleet with no enabled roles and review off cannot spend — free by cons
   // No definitions file at all: there is nothing to consult.
   assert.equal(fleetModelsFree(cfg, path.join(tmpdir(), "absent.json")), true);
 });
+
+test("rewriting models.json between polls flips the answer (stat-keyed cache stays fresh)", () => {
+  const dir = tmpdir("pi-models-");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "models.json");
+  const cfg = fleetAt("lm-studio", "m");
+  // Distinct sizes so the stat key (dev/ino/mtime/size) changes even within one millisecond.
+  fs.writeFileSync(file, JSON.stringify({ providers: { "lm-studio": { models: [{ id: "m" }] } } }));
+  assert.equal(fleetModelsFree(cfg, file), true, "unpriced model reads free");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ providers: { "lm-studio": { models: [{ id: "m", cost: { input: 1, output: 2 } }] } } }),
+  );
+  assert.equal(fleetModelsFree(cfg, file), false, "a price added after the first read is seen");
+});
