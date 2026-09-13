@@ -5,23 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Maintenance roles tick on their normal clock while planned features or open bugs wait — deferral is reactive, not backlog-aware (reported by user 2026-09-12)
-
-**Symptom:** With entries under PLANS.md `## Planned` and/or BUGS.md `## Open`, all nine maintenance roles keep starting due ticks on their scheduled clocks. The existing need-based deferral fires only when the last tick was `no_change` AND no feature/bugfix/director/human commit landed since — so a maintenance loop whose last tick landed something, or whose wake coincides with any landing, runs anyway and consumes slots the work roles could use (feeding the slot-wait inversion in the sibling entry above).
-
-**Repro:**
-1. Leave at least one `###` entry under PLANS.md `## Planned` (or BUGS.md `## Open`).
-2. Let a maintenance role's last tick land a change (`lastResult` ≠ `no_change`), or let any commit land on main so `workLandedSinceLast` is true.
-3. On its next due poll the role starts a new tick although feature/bugfix work is still queued — `deferTick` returns false because one of its four conjuncts fails, and it never consults backlog state.
-
-**Expected:** while PLANS.md `## Planned` or BUGS.md `## Open` on main is non-empty, due maintenance ticks (scheduled or main-moved) from idle loops defer exactly like today's deferral — `nextRunAt` untouched, re-checked every poll, one `tick_deferred` event per episode — until the backlog drains. The pending-business exception stands: a loop whose last tick ended in error, review rejection, merge failure, or main-red recording still runs (its own unfinished business must not stall), as do never-ticked loops; work roles are not deferrable at all.
-
-**Suspected cause:**
-- src/orchestrator.ts:143 — `deferTick(s, role, workLandedSinceLast)` has exactly four conjuncts; none consult PLANS.md or BUGS.md.
-- src/orchestrator.ts ~line 468 — the poll computes only `landed` (`workLandedSince`) and passes it in; backlog state is never read on this path, even though src/backlog.ts already exports cheap section-heading parsers for exactly these two sections.
-
-**Fix direction:** compute `workBacklogOpen = plannedPlans(root).length > 0 || openBugs(root).length > 0` once per poll (src/backlog.ts:100/105 — the same parsers `/api/backlog` uses) and pass it to `deferTick` as a fifth argument; defer when `DEFERRABLE_ROLES.has(role) && s.lastMainHead !== "" && s.lastResult === "no_change" && (workBacklogOpen || !workLandedSinceLast)`. When `workBacklogOpen` is true the git-range consult can be skipped entirely (deferral holds regardless of `landed`). Update `deferTick`'s doc comment and the README "How it works" deferral paragraph (one sentence: while planned features or open bugs remain, idle maintenance ticks stay deferred). Tests in test/orchestrator.test.ts: deferTick unit cases — backlog non-empty defers an idle loop even when work landed; backlog empty preserves today's behavior exactly; `lastResult` ≠ `no_change` never defers regardless of backlog. Accepted edge: a permanently blocked backlog (e.g. entries carrying Refused notes) keeps maintenance deferred — intended per the user request; clearing or revising the entry lifts it on the next poll. Cross-reference: sibling entry under ## Fixed (tier-ordered slot wait, fixed by bugfix loop 2026-09-12) — together they implement this user request; that one fixes the inversion, this one stops new maintenance ticks starting while backlog is non-empty.
-
 ### A single tool call with no timeout blocks a whole tick — `find /` stalled the bugfix loop for 19 min (reported by user 2026-09-12)
 
 **Symptom:** A tick makes no progress for as long as one bash tool call runs, with nothing on any dashboard to distinguish it from a slow turn. Observed live: bugfix tick 149 (started 19:19:44 PDT) issued `grep -rn 'deepEqual\|asserts' --include='*.d.ts' . 2>/dev/null | grep -v node_modules | head; echo ---; find / -name 'assert.d.ts' -path '*@types/node*' 2>/dev/null | head -3` at 20:07:15 and emitted nothing for the next 19 minutes. The `find` (PID 863, grandchild of the pi child) was still in state `R` with 7.5 min of CPU when it was killed by hand at 20:26:11; the tick resumed within two seconds (`tool_execution_end`, new turn) and went on to land normally as c1e307f. `dry`, `improve`, `coverage` and `feature` all ticked through the stall, which held 1 of `maxConcurrent` 2 slots throughout.
@@ -49,6 +32,23 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 **Files:** src/roles.ts (`COMMON_RULES`), src/pi.ts (open-tool-call warning; `quietKilled` on the result), src/loop.ts:500 (kill disposition); tests in test/prompt.test.ts (the new scope rule), test/pi.test.ts (warning fires on a stalled tool call; `quietKilled` set), test/loop.test.ts (a quiet-kill leaves edits and sets `resumePending`).
 
 ## Fixed
+
+### Maintenance roles tick on their normal clock while planned features or open bugs wait — deferral is reactive, not backlog-aware (reported by user 2026-09-12, fixed by bugfix loop 2026-09-12)
+
+**Symptom:** With entries under PLANS.md `## Planned` and/or BUGS.md `## Open`, all nine maintenance roles keep starting due ticks on their scheduled clocks. The existing need-based deferral fires only when the last tick was `no_change` AND no feature/bugfix/director/human commit landed since — so a maintenance loop whose last tick landed something, or whose wake coincides with any landing, runs anyway and consumes slots the work roles could use (feeding the slot-wait inversion in the sibling entry above).
+
+**Repro:**
+1. Leave at least one `###` entry under PLANS.md `## Planned` (or BUGS.md `## Open`).
+2. Let a maintenance role's last tick land a change (`lastResult` ≠ `no_change`), or let any commit land on main so `workLandedSinceLast` is true.
+3. On its next due poll the role starts a new tick although feature/bugfix work is still queued — `deferTick` returns false because one of its four conjuncts fails, and it never consults backlog state.
+
+**Expected:** while PLANS.md `## Planned` or BUGS.md `## Open` on main is non-empty, due maintenance ticks (scheduled or main-moved) from idle loops defer exactly like today's deferral — `nextRunAt` untouched, re-checked every poll, one `tick_deferred` event per episode — until the backlog drains. The pending-business exception stands: a loop whose last tick ended in error, review rejection, merge failure, or main-red recording still runs (its own unfinished business must not stall), as do never-ticked loops; work roles are not deferrable at all.
+
+**Suspected cause:**
+- src/orchestrator.ts:143 — `deferTick(s, role, workLandedSinceLast)` has exactly four conjuncts; none consult PLANS.md or BUGS.md.
+- src/orchestrator.ts ~line 468 — the poll computes only `landed` (`workLandedSince`) and passes it in; backlog state is never read on this path, even though src/backlog.ts already exports cheap section-heading parsers for exactly these two sections.
+
+**Fix direction:** compute `workBacklogOpen = plannedPlans(root).length > 0 || openBugs(root).length > 0` once per poll (src/backlog.ts:100/105 — the same parsers `/api/backlog` uses) and pass it to `deferTick` as a fifth argument; defer when `DEFERRABLE_ROLES.has(role) && s.lastMainHead !== "" && s.lastResult === "no_change" && (workBacklogOpen || !workLandedSinceLast)`. When `workBacklogOpen` is true the git-range consult can be skipped entirely (deferral holds regardless of `landed`). Update `deferTick`'s doc comment and the README "How it works" deferral paragraph (one sentence: while planned features or open bugs remain, idle maintenance ticks stay deferred). Tests in test/orchestrator.test.ts: deferTick unit cases — backlog non-empty defers an idle loop even when work landed; backlog empty preserves today's behavior exactly; `lastResult` ≠ `no_change` never defers regardless of backlog. Accepted edge: a permanently blocked backlog (e.g. entries carrying Refused notes) keeps maintenance deferred — intended per the user request; clearing or revising the entry lifts it on the next poll. Cross-reference: sibling entry under ## Fixed (tier-ordered slot wait, fixed by bugfix loop 2026-09-12) — together they implement this user request; that one fixes the inversion, this one stops new maintenance ticks starting while backlog is non-empty.
 
 ### Slot wait queue is FIFO across polls: a due feature/bugfix tick queues behind maintenance ticks that requested slots earlier (reported by user 2026-09-12, fixed by bugfix loop 2026-09-12)
 

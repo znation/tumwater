@@ -5,6 +5,7 @@ import type { OrchestratorInfo } from "./state.js";
 import { configForRole, enabledRoleIds, loadConfigCached } from "./config.js";
 import { budgetPaused, fleetDailyCost, isFleetPaused } from "./state.js";
 import { DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
+import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, subjectsBetween } from "./git.js";
 import { logEvent } from "./events.js";
@@ -132,17 +133,28 @@ export function workLanded(subjects: string[]): boolean {
   );
 }
 
-/** Should a due maintenance tick be deferred? (Need-based prioritization.) All four must hold:
- * the role is one of the nine deferrable built-ins — work roles and unknown/custom never defer,
- * the harness cannot judge what an arbitrary custom role needs; its last tick did nothing;
- * it has seen main before (a never-ticked role always runs its first tick); and no feature/
- * bugfix/director/human commit landed since that head. Only `no_change` defers: every other
- * outcome carries pending business (retry an error, address recorded review-rejection reasons,
- * recover a merge failure) that must not stall until unrelated work lands.
+/** Should a due maintenance tick be deferred? (Need-based prioritization.) All must hold: the
+ * role is one of the nine deferrable built-ins — work roles and unknown/custom never defer, the
+ * harness cannot judge what an arbitrary custom role needs; its last tick did nothing; it has
+ * seen main before (a never-ticked role always runs its first tick); and either the backlog is
+ * open — PLANS.md `## Planned` or BUGS.md `## Open` non-empty, so queued feature/bugfix work
+ * outranks idle maintenance regardless of what landed — or no feature/bugfix/director/human
+ * commit landed since that head. Only `no_change` defers: every other outcome carries pending
+ * business (retry an error, address recorded review-rejection reasons, recover a merge failure)
+ * that must not stall until unrelated work lands. A permanently blocked backlog keeps
+ * maintenance deferred — intended; clearing or revising the entry lifts it on the next poll.
  */
-export function deferTick(s: LoopState, role: string, workLandedSinceLast: boolean): boolean {
+export function deferTick(
+  s: LoopState,
+  role: string,
+  workLandedSinceLast: boolean,
+  workBacklogOpen: boolean,
+): boolean {
   return (
-    DEFERRABLE_ROLES.has(role) && s.lastResult === "no_change" && s.lastMainHead !== "" && !workLandedSinceLast
+    DEFERRABLE_ROLES.has(role) &&
+    s.lastResult === "no_change" &&
+    s.lastMainHead !== "" &&
+    (workBacklogOpen || !workLandedSinceLast)
   );
 }
 
@@ -441,6 +453,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         holdForRestart = action === "hold";
       }
 
+      // Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main is
+      // non-empty, idle maintenance ticks stay deferred — queued feature/bugfix work outranks
+      // them regardless of what landed. Stat-cached reads (backlog.ts): one stat per file per
+      // poll while the files are unchanged.
+      const workBacklogOpen = plannedPlans(root).length > 0 || openBugs(root).length > 0;
+
       const reasons = new Map<LoopRunner, string | undefined>();
       for (const runner of runners) {
         if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
@@ -454,18 +472,22 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           continue;
         }
         // Need-based deferral: a due maintenance tick (scheduled or main-moved wake) whose last
-        // tick did nothing and has no new work to react to stays deferred — nextRunAt is left
-        // untouched, so it re-checks every poll until qualifying work lands. Resume wakes
-        // precede this check in isEligible, the director's "inbox" reason skips it, and work
-        // roles are not in DEFERRABLE_ROLES. Sitting before reasons.set also keeps a deferred
-        // role out of the wake-event pass below.
+        // tick did nothing stays deferred while the feature/bugfix backlog is open or no new
+        // work has landed to react to — nextRunAt is left untouched, so it re-checks every poll
+        // until the backlog drains and qualifying work lands. Resume wakes precede this check in
+        // isEligible, the director's "inbox" reason skips it, and work roles are not in
+        // DEFERRABLE_ROLES. Sitting before reasons.set also keeps a deferred role out of the
+        // wake-event pass below.
         if (reason === "scheduled" || reason === "main moved") {
           const s = runner.state;
-          // The git range is only consulted when the other three conditions already hold — a
-          // never-ticked role or a tick with pending business runs without paying for it.
+          // The git range is only consulted when the other conditions already hold — a
+          // never-ticked role or a tick with pending business runs without paying for it, and an
+          // open backlog defers regardless of what landed.
           const landed =
-            s.lastMainHead !== "" ? await workLandedSince(s.lastMainHead, mainHead) : true;
-          const deferredNow = deferTick(s, runner.role, landed);
+            !workBacklogOpen && s.lastMainHead !== ""
+              ? await workLandedSince(s.lastMainHead, mainHead)
+              : true;
+          const deferredNow = deferTick(s, runner.role, landed, workBacklogOpen);
           if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
             if (deferredNow)
               logEvent(root, { loop: runner.role, type: "tick_deferred" });
