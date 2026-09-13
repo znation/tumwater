@@ -6,7 +6,7 @@ import {
   plannedPlanEntries,
 } from "../backlog.js";
 import { readEvents } from "../events.js";
-import { collectReport, renderReportMarkdown } from "../report.js";
+import { collectReport, renderReportMarkdown } from "./report.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config.js";

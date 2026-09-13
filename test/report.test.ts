@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectReport, renderReportMarkdown, type ReportData } from "../src/report.js";
+import { collectReport, renderReportMarkdown, type ReportData } from "../src/ui/report.js";
 import { makeRepo, tmpdir } from "./util.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts

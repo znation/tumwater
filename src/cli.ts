@@ -32,7 +32,7 @@ import { renderDoctor, runDoctor } from "./doctor.js";
 import { ensureParentDir, findOnPath, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { followFile } from "./ui/tail.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport, renderReportMarkdown } from "./report.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport, renderReportMarkdown } from "./ui/report.js";
 import { snapshot } from "./ui/status.js";
 import { renderStatus } from "./ui/status-render.js";
 import { runTui } from "./ui/tui.js";

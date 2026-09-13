@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { HarnessEvent } from "./types.js";
-import { parseEventLine } from "./events.js";
-import { eventsLogPath } from "./paths.js";
-import { forEachTailChunk } from "./files.js";
-import { formatDate } from "./text.js";
+import type { HarnessEvent } from "../types.js";
+import { parseEventLine } from "../events.js";
+import { eventsLogPath } from "../paths.js";
+import { forEachTailChunk } from "../files.js";
+import { formatDate } from "../text.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
  * --days and /api/report?days=N): 14-day default, at most 90 days. A longer window only

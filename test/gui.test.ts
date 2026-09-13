@@ -5,7 +5,7 @@ import type os from "node:os";
 import net from "node:net";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { collectReport, type ReportData, type ReportDay } from "../src/report.js";
+import { collectReport, type ReportData, type ReportDay } from "../src/ui/report.js";
 import { lanAddresses, startGui } from "../src/ui/gui.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";

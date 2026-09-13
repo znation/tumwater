@@ -10,7 +10,7 @@ import { submitPrompt } from "../inbox.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "../report.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "./report.js";
 import { statusPayload } from "./status-payload.js";
 import { readTranscript } from "./transcript.js";
 import { errorMessage, parseNonNegativeInt, parsePositiveInt } from "../text.js";
