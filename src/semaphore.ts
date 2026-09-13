@@ -3,7 +3,8 @@
  * coordinates within a single harness process. */
 
 export class Semaphore {
-  private waiters: Array<() => void> = [];
+  /** A parked waiter: its scheduling tier plus the resolver that hands it the permit. */
+  private waiters: Array<{ tier: number; resolve: () => void }> = [];
   /** Permits currently held, tracked separately from capacity (rather than as an "available"
    * count): setCapacity can shrink below the current in-use, and a free-permit count cannot
    * represent that state — it would over-admit new work after a shrink. */
@@ -11,12 +12,26 @@ export class Semaphore {
 
   constructor(private capacity: number) {}
 
-  async acquire(): Promise<void> {
+  /** Acquire a permit, parking in the wait queue when none is free. `tier` orders WAITING
+   * requests only: on arrival a waiter inserts ahead of every parked waiter with a strictly
+   * greater tier (the orchestrator passes roleTier so work roles beat maintenance across
+   * polls), keeping stable FIFO within a tier. In-flight holders are never preempted — they
+   * run to completion and their release is what hands out the permit. */
+  async acquire(tier: number): Promise<void> {
     if (this.inUse < this.capacity) {
       this.inUse += 1;
       return;
     }
-    await new Promise<void>((resolve) => this.waiters.push(resolve));
+    await new Promise<void>((resolve) => {
+      const waiter = { tier, resolve };
+      let i = this.waiters.length;
+      while (i > 0) {
+        const prev = this.waiters[i - 1];
+        if (!prev || prev.tier <= tier) break; // insert before strictly-greater tiers only
+        i -= 1;
+      }
+      this.waiters.splice(i, 0, waiter);
+    });
   }
 
   release(): void {
@@ -30,7 +45,7 @@ export class Semaphore {
       const next = this.waiters.shift();
       if (next) {
         this.inUse += 1;
-        next();
+        next.resolve();
       }
     }
   }
@@ -44,7 +59,7 @@ export class Semaphore {
       const next = this.waiters.shift();
       if (!next) break;
       this.inUse += 1;
-      next();
+      next.resolve();
     }
   }
 }

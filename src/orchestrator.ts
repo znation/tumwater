@@ -485,10 +485,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         }
         runner.state.running = true; // Reserve before the semaphore wait so we don't double-schedule.
         // The director never queues behind role loops: a user prompt starts immediately,
-        // even when maxConcurrent slots are busy.
+        // even when maxConcurrent slots are busy. Parked waiters keep fairOrder's tier order
+        // across polls too: a work-role arrival jumps ahead of maintenance ticks that queued
+        // in an earlier poll (in-flight ticks always run to completion).
         const usesSlot = runner.role !== DIRECTOR_ROLE;
         const task = (async () => {
-          if (usesSlot) await semaphore.acquire();
+          if (usesSlot) await semaphore.acquire(roleTier(runner.role));
           try {
             if (signal.aborted) return;
             await runner.tick();

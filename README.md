@@ -58,8 +58,6 @@ Open items:
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
 - Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
   next is landing in a per-role detached worktree (planned 2026-09-08).
-- Open bug: slot wait queue is FIFO across polls — a due feature/bugfix tick can queue behind an
-  earlier maintenance waiter (reported by user 2026-09-12).
 - Open bug: maintenance roles keep ticking on their normal clock while planned features or open
   bugs wait — deferral is reactive, not backlog-aware (reported by user 2026-09-12).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
@@ -97,7 +95,10 @@ Scheduling is need-aware: a maintenance role's due tick (scheduled or main-moved
 one `tick_deferred` event per episode in logs, TUI, and GUI — while its last tick did nothing
 and no feature/bugfix/director/human commit has landed on main since; it starts within one poll
 of such work landing. Slot allocation orders the work roles (feature, bugfix, plan) ahead of
-every maintenance role, least-recently-ticked first within a tier.
+every maintenance role, least-recently-ticked first within a tier — and the same tier order
+holds for ticks already waiting on a slot across polls: a work-role tick that becomes due later
+jumps ahead of maintenance ticks parked from an earlier poll (in-flight ticks always run to
+completion).
 
 The fleet's autonomous spend is capped by `maxDailyCostUsd` (default $50; set 0 to disable).
 While the day's total cost has reached the cap, role loops stop starting new ticks — scheduled,

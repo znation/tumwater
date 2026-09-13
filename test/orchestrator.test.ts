@@ -670,6 +670,15 @@ function readSamples(runDir: string): number[] {
   }
 }
 
+/** Role names in the order their pi runs STARTED (the shim's cwd is the role's worktree). */
+function readOrder(runDir: string): string[] {
+  try {
+    return fs.readFileSync(path.join(runDir, "order.log"), "utf8").trim().split("\n");
+  } catch {
+    return [];
+  }
+}
+
 test("a live maxConcurrent edit resizes the cap without a restart", async () => {
   const repo = makeRepo();
   await initProject(repo, "live maxConcurrent test");
@@ -740,6 +749,43 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
         ["harness", 1, 2],
         ["harness", 2, 1],
       ],
+    );
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a work-role tick that becomes due later jumps ahead of maintenance waiters parked in an earlier poll", async () => {
+  // Cross-poll slot inversion (BUGS.md 2026-09-12): with one slot, the startup poll admits
+  // bugfix first and parks clean + dry behind it. When bugfix becomes due again (~1s idle
+  // backoff) while clean is still in flight, its acquire must jump ahead of the maintenance
+  // waiters that parked in an EARLIER poll — plain FIFO would hand clean's freed slot to dry.
+  const repo = makeRepo();
+  await initProject(repo, "cross-poll tier test");
+  const base = fastConfig(["clean", "dry", "bugfix"]);
+  base.maxConcurrent = 1;
+  saveConfig(repo, base);
+  const runDir = tmpdir();
+  // Records each role's START (cwd is the role's worktree) so the wake order after clean's
+  // first release is observable; ~2s holds keep bugfix due while clean is still in flight.
+  const restore = fakePi(
+    [
+      `printf '%s\\n' "$(basename "$PWD")" >> "${runDir}/order.log"`,
+      `sleep 2`,
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(() => readOrder(runDir).length >= 3, "three role starts");
+    const order = readOrder(runDir);
+    assert.equal(order[0], "bugfix", "the work tier leads the startup poll (fairOrder)");
+    assert.equal(order[1], "clean", "the first-parked maintenance waiter runs next");
+    assert.equal(
+      order[2],
+      "bugfix",
+      `bugfix became due while clean was in flight and must jump ahead of parked dry (${order})`,
     );
   } finally {
     restore();
