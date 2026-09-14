@@ -1,10 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { LoopState, TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
-import { configForRole, enabledRoleIds, loadConfigCached } from "./config.js";
+import { enabledRoleIds, loadConfigCached } from "./config.js";
+import {
+  deferTick,
+  dueForPrune,
+  fairOrder,
+  isEligible,
+  workLanded,
+} from "./scheduling.js";
 import { budgetPaused, fleetDailyCost, isFleetPaused } from "./state.js";
-import { DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
+import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, subjectsBetween } from "./git.js";
@@ -57,113 +64,6 @@ interface RunOptions {
  * exit RESTART_EXIT_CODE so the supervisor respawns onto it; otherwise the stop signal fired. */
 interface OrchestratorExit {
   restart: boolean;
-}
-
-/** Should this loop tick now? Exported for tests. */
-export function isEligible(
-  runner: LoopRunner,
-  now: number,
-  mainHead: string,
-  inboxCount: number,
-): { run: boolean; reason?: string } {
-  const s = runner.state;
-  // A role disabled in tumwater.json stops ticking immediately (live-reload); re-enabling
-  // resumes within one poll cycle because the runner and its persisted state survive.
-  if (!runner.config.roles[runner.role]?.enabled) return { run: false };
-  if (s.running) return { run: false };
-
-  // The director carries the user's own requests: no min-gap, no backoff — a queued
-  // prompt runs as soon as the previous one finishes.
-  if (runner.role === DIRECTOR_ROLE) {
-    return inboxCount > 0 ? { run: true, reason: "inbox" } : { run: false };
-  }
-
-  // An interrupted tick (graceful abort or crash) leaves half-finished work in its pi
-  // session and worktree: resume it promptly on restart instead of holding it for a full
-  // interval — the min gap below throttles scheduled ticks, not recovery. nextRunAt still
-  // gates cut-off resumes, which deliberately wait one interval from their compacted context.
-  if (s.resumePending) {
-    return now >= s.nextRunAt ? { run: true, reason: "resume" } : { run: false };
-  }
-
-  // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates both scheduled
-  // ticks and "main moved" early wakes — resolved here so a live-reloaded config applies.
-  const minGap = configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000;
-  const sinceLast = now - (s.lastTickEndedAt ?? 0);
-  if (sinceLast < minGap) return { run: false };
-  if (now >= s.nextRunAt) {
-    return { run: true, reason: s.ticks === 0 ? "startup" : "scheduled" };
-  }
-  // The world changed under a sleeping loop: main moved since its last tick.
-  if (s.lastMainHead && mainHead && mainHead !== s.lastMainHead) {
-    return { run: true, reason: "main moved" };
-  }
-  return { run: false };
-}
-
-/** Fair scheduling order for one poll's eligible loops: the director always leads (it runs
- * the user's prompts), then the work tier (feature/bugfix/plan) before maintenance — a stale-
- * ticked feature takes a slot over a fresh-ticked steward, because shipping work is what the
- * fleet exists to do — and within a tier least-recently-ticked first, so loops alternate
- * instead of the same ones re-claiming freed slots. Never-run loops tie at zero and the stable
- * sort keeps them in role-catalog (priority) order. */
-export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
-  return [...runners].sort((a, b) => {
-    if ((a.role === DIRECTOR_ROLE) !== (b.role === DIRECTOR_ROLE)) {
-      return a.role === DIRECTOR_ROLE ? -1 : 1;
-    }
-    const tier = roleTier(a.role) - roleTier(b.role);
-    if (tier !== 0) return tier;
-    return (a.state.lastTickEndedAt ?? 0) - (b.state.lastTickEndedAt ?? 0);
-  });
-}
-
-/** Did work land on main since a head? (Need-based prioritization, PLANS.md "Prioritize loops
- * by need".) A commit counts when its subject starts with `tumwater(feature):`,
- * `tumwater(bugfix):`, or `tumwater(director):` — the harness stamps that prefix itself
- * (buildCommitMessage), so attribution needs no new metadata; a director commit is user-directed
- * work, and after a pure-director burst the maintenance roles must resync. Or the subject
- * carries no `tumwater(` prefix at all: a human commit, where the world changed in a way the
- * fleet cannot generate itself. Every other role's landing is markdown or hygiene; waking
- * maintenance roles on it is exactly the cascade deferral removes.
- */
-export function workLanded(subjects: string[]): boolean {
-  return subjects.some(
-    (subject) => /^tumwater\((feature|bugfix|director)\):/.test(subject) || !/^tumwater\(/.test(subject),
-  );
-}
-
-/** Should a due maintenance tick be deferred? (Need-based prioritization.) All must hold: the
- * role is one of the nine deferrable built-ins — work roles and unknown/custom never defer, the
- * harness cannot judge what an arbitrary custom role needs; its last tick did nothing; it has
- * seen main before (a never-ticked role always runs its first tick); and either the backlog is
- * open — PLANS.md `## Planned` or BUGS.md `## Open` non-empty, so queued feature/bugfix work
- * outranks idle maintenance regardless of what landed — or no feature/bugfix/director/human
- * commit landed since that head. Only `no_change` defers: every other outcome carries pending
- * business (retry an error, address recorded review-rejection reasons, recover a merge failure)
- * that must not stall until unrelated work lands. A permanently blocked backlog keeps
- * maintenance deferred — intended; clearing or revising the entry lifts it on the next poll.
- */
-export function deferTick(
-  s: LoopState,
-  role: string,
-  workLandedSinceLast: boolean,
-  workBacklogOpen: boolean,
-): boolean {
-  return (
-    DEFERRABLE_ROLES.has(role) &&
-    s.lastResult === "no_change" &&
-    s.lastMainHead !== "" &&
-    (workBacklogOpen || !workLandedSinceLast)
-  );
-}
-
-/** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
- * has passed since the last prune (or no prune has run yet). */
-export function dueForPrune(lastPruneAt: number | null, now: number, retentionDays: number): boolean {
-  if (retentionDays <= 0) return false; // 0 disables pruning — never due.
-  if (lastPruneAt === null) return true; // Never pruned yet — due immediately.
-  return now - lastPruneAt >= 24 * 3600 * 1000;
 }
 
 /** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI already
