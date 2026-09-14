@@ -238,15 +238,22 @@ Lightning MTP speculative decoding (2.5–3.0 tokens per backbone cycle at 68–
 the `lmstudio-community` checkpoints carry no MTP tensors, making `mtp_enabled` a no-op there).
 oMLX config lives outside this repo in `~/.omlx/`: `model_settings.json` sets
 `max_context_window` **131072**, pinned + default;
-`settings.json` sets `max_concurrent_requests` 4 and an API key. pi (`~/.pi/agent/`) and omp
+`settings.json` sets `max_concurrent_requests` **3**, `memory_guard_tier` aggressive,
+`hot_cache_max_size` 4GB and an API key. pi (`~/.pi/agent/`) and omp
 (`~/.omp/agent/models.yml` — YAML, not models.json) both use provider `omlx`,
 `api: openai-completions`, `contextWindow` **126928** (a 4144-token margin under the server's
 limit for pi's output reserve), and must send the API key. `tumwater.json`
 names `provider`/`model` explicitly so `fleetModelsFree()` sees a free fleet, with
-`maxConcurrent` 3 (+ the director's bypass = 4 clients ≤ 4 slots). Measured server-reported:
-**35.2 tok/s per stream at ~51k context** (fleet paused); a slot sweep at ~20k context shows the
-aggregate plateauing around 3–4 slots — at 4 slots: 65.0 aggregate / 16.2 per stream / 70%
-acceptance; rate is strongly context-dependent, so quote a context size with any tok/s figure.
+`maxConcurrent` **2** (+ the director's bypass = 3 clients ≤ 3 slots). Measured server-reported:
+**35.2 tok/s per stream at ~51k context** (fleet paused); a slot sweep at ~20k context put 3 slots
+ahead of 4 on every axis — 73.3 aggregate / 24.4 per stream / 74.2% draft acceptance / 28.3 GiB
+peak wired, versus 65.0 / 16.2 / 69.7% / 32.6 GiB — because MTP acceptance falls monotonically with
+concurrency (unaligned batches drop back to standard decode). Rate is strongly context-dependent,
+so quote a context size with any tok/s figure.
+
+Do not reach for the slot count to fix memory pressure: it was tried twice (6→4, then 4→3) and
+moved nothing either time. At 3 slots the live footprint was pool ~57 GB / KV 10.8 GB / hot cache 0
+/ model 16 GB — the pinned MLX buffer pool is ~60% of it and does not scale with concurrency.
 
 A third deliberate value: `max_context_window` is **131072, not the model's 262144 maximum**. At the
 full window oMLX aborted prefills outright — `Request aborted: process memory limit exceeded (usage
