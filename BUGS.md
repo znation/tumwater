@@ -30,13 +30,13 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Symptom:** When pi's `tool_execution_start` event omits `toolName`, runPi's stall warning — the feature that exists to name a hung command in the event feed — degraded: with no recognizable arg key it emitted `tool call stalled:  — no output for 5m` (empty name, double space), and with one (e.g. `args.command`) it emitted `tool call stalled:  sleep 999 — …` with a leading space after the colon. The code comment in src/pi.ts claims "the warning names the command even when pi omits a toolName"; only half of that held.
 
-**Repro:** feed PiStreamParser a start line without `toolName`: `{ type: "tool_execution_start", toolCallId: "c1", args: { command: "sleep 999" } }` → the open-call label is `" sleep 999"` (leading space); with `args: {}` it is `""`. The stall warning renders that label verbatim. Pinned by test/pi.test.ts ("a start without toolName still names the command…", "a stalled call without toolName warns with the bare command named") and test/tool-call.test.ts.
+**Repro:** feed PiStreamParser a start line without `toolName`: `{ type: "tool_execution_start", toolCallId: "c1", args: { command: "sleep 999" } }` → the open-call label is `" sleep 999"` (leading space); with `args: {}` it is `""`. The stall warning renders that label verbatim. Pinned by test/pi.test.ts ("a start without toolName still names the command…", "a stalled call without toolName warns with the bare command named") and test/text.test.ts (describeToolCall).
 
 **Cause:** src/text.ts, `describeToolCall` — it unconditionally joined name and detail as `${toolName} ${detail}`, so an empty name left a leading space (or nothing at all when no arg key matched). src/pi.ts passed `event.toolName ?? ""` straight through with no fallback, unlike src/ui/progress.ts which guards (`label ?? "tool"`) — the two surfaces of the same state machine disagreed on the nameless case.
 
 **Fix:** `describeToolCall` now returns the bare detail when the name is empty (no leading space) and still `""` when neither name nor recognizable arg exists; src/pi.ts falls back to `"tool"` in that last case, mirroring progress.ts's stall flag so both surfaces always name something.
 
-**Files:** src/text.ts (`describeToolCall`); src/pi.ts (open-call label fallback); test/tool-call.test.ts, test/pi.test.ts.
+**Files:** src/text.ts (`describeToolCall`); src/pi.ts (open-call label fallback); test/text.test.ts (describeToolCall), test/pi.test.ts.
 
 ### A stalled tool call is invisible until the quiet watchdog kills it — stall warning names the command in the event feed and state cell (reported by user 2026-09-12, fixed by bugfix loop 2026-09-13)
 
