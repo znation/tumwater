@@ -59,3 +59,42 @@ export function toolUpdateHasContent(partialResult: unknown): boolean {
       (block as { text: string }).text.trim() !== "",
   );
 }
+
+/** One tool call started but not yet ended — keyed by pi's toolCallId, with a short human
+ * label and the wall-clock time of its start or last content-bearing update. The shared shape
+ * behind both open-call trackers: runPi's stall warning (src/pi.ts) and the dashboards' live
+ * flag (src/ui/progress.ts). */
+export interface OpenToolCall {
+  id: string;
+  label: string;
+  /** Epoch ms when the call started or last received a content-bearing update. */
+  lastActivityAt: number;
+}
+
+/** Fold one tool-execution event into an open-call list, mutating it in place — the single
+ * definition of the tracking state machine both consumers need (see OpenToolCall): start opens
+ * a call under its id with the caller-computed label (each surface names its calls for itself),
+ * a content-bearing update moves that call's activity clock (a content-free keepalive must not
+ * mask a hang — see toolUpdateHasContent), and end closes it. pi runs one message's tool calls
+ * concurrently by default, so several can be open at once and end in completion order: entries
+ * are matched by id, never by position. */
+export function applyToolExecutionEvent(
+  calls: OpenToolCall[],
+  type: string | undefined,
+  toolCallId: unknown,
+  partialResult: unknown,
+  label = "",
+): void {
+  const id = String(toolCallId ?? "");
+  if (type === "tool_execution_start") {
+    calls.push({ id, label, lastActivityAt: Date.now() });
+  } else if (type === "tool_execution_update" && toolUpdateHasContent(partialResult)) {
+    const call = calls.find((c) => c.id === id);
+    if (call) call.lastActivityAt = Date.now();
+  } else if (type === "tool_execution_end") {
+    for (let i = calls.length - 1; i >= 0; i--) {
+      const call = calls[i];
+      if (call && call.id === id) calls.splice(i, 1);
+    }
+  }
+}

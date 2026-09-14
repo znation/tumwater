@@ -4,7 +4,7 @@ import { StringDecoder } from "node:string_decoder";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { extractRefusal, hasVerdictLine, isNothingToDo, REFUSED_SENTINEL } from "./reply-contract.js";
-import { piEventType, toolUpdateHasContent } from "./pi-event-line.js";
+import { applyToolExecutionEvent, piEventType, type OpenToolCall } from "./pi-event-line.js";
 import { describeToolCall } from "./text.js";
 
 interface PiMessage {
@@ -98,7 +98,7 @@ export class PiStreamParser {
    * toolCallId). `lastActivityAt` moves only on content-bearing updates: bash emits an
    * empty-content update right after start, and a content-free keepalive must not mask a hang.
    * Feeds runPi's stall warning; entries clear at tool_execution_end. */
-  openToolCalls: Array<{ id: string; label: string; lastActivityAt: number }> = [];
+  openToolCalls: OpenToolCall[] = [];
   private buffer = "";
 
   feed(chunk: string, onLine?: (line: string) => void): void {
@@ -156,18 +156,22 @@ export class PiStreamParser {
     this.progressCount += 1;
     if (event.type === "compaction_start") this.compacted = true;
     // Open-tool-call tracking for the stall warning: a call that sits open and silent is
-    // surfaced by name while the quiet watchdog still counts down.
-    if (event.type === "tool_execution_start") {
-      this.openToolCalls.push({
-        id: event.toolCallId ?? "",
-        label: describeToolCall(event.toolName ?? "", event.args),
-        lastActivityAt: Date.now(),
-      });
-    } else if (event.type === "tool_execution_update" && toolUpdateHasContent(event.partialResult)) {
-      const call = this.openToolCalls.find((c) => c.id === event.toolCallId);
-      if (call) call.lastActivityAt = Date.now();
-    } else if (event.type === "tool_execution_end") {
-      this.openToolCalls = this.openToolCalls.filter((c) => c.id !== event.toolCallId);
+    // surfaced by name while the quiet watchdog still counts down. The start/update/end state
+    // machine lives in applyToolExecutionEvent, shared with the dashboards' live flag
+    // (progress.ts); only the label is surface-specific — the warning names the command even
+    // when pi omits a toolName, where progress falls back to "tool".
+    if (
+      event.type === "tool_execution_start" ||
+      event.type === "tool_execution_update" ||
+      event.type === "tool_execution_end"
+    ) {
+      applyToolExecutionEvent(
+        this.openToolCalls,
+        event.type,
+        event.toolCallId,
+        event.partialResult,
+        describeToolCall(event.toolName ?? "", event.args),
+      );
     }
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;

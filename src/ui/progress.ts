@@ -1,4 +1,4 @@
-import { parsePiEventLine, toolUpdateHasContent } from "../pi-event-line.js";
+import { applyToolExecutionEvent, parsePiEventLine, type OpenToolCall } from "../pi-event-line.js";
 import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
 import { defaultConfig, loadConfigCached } from "../config.js";
 import { statRoleLog, TailState, withTail } from "./tail.js";
@@ -24,7 +24,7 @@ export interface LiveProgress {
    * content-bearing updates, so a hung command's entry goes stale while its siblings keep
    * streaming — readLiveProgress turns the first one past the configured stall threshold into
    * stalledTool. Tail state like every other field: freshProgress restores it to undefined. */
-  openToolCalls?: Array<{ id: string; label: string; lastActivityAt: number }>;
+  openToolCalls?: OpenToolCall[];
   /** What the loop is working on: first assistant text of the current run (~60 chars). */
   currentWork?: string;
   /** ms since pi last emitted anything (from file mtime). */
@@ -151,25 +151,27 @@ function feedLine(progress: LiveProgress, line: string): void {
       const label = event.toolName ? describeToolCall(event.toolName, event.args) : undefined;
       if (label) progress.lastTool = label;
       // Track the open call for the stall flag — pi runs a message's tool calls concurrently
-      // by default, so several can be open at once and end in completion order.
-      (progress.openToolCalls ??= []).push({
-        id: event.toolCallId ?? "",
-        label: label ?? "tool",
-        lastActivityAt: Date.now(),
-      });
+      // by default, so several can be open at once and end in completion order. The state
+      // machine is shared with runPi's warning (pi.ts); only the fallback label differs here.
+      applyToolExecutionEvent(
+        progress.openToolCalls ??= [],
+        event.type,
+        event.toolCallId,
+        event.partialResult,
+        label ?? "tool",
+      );
       break;
     }
     case "tool_execution_update": {
       // Only content-bearing updates prove the command is alive — bash emits one empty-content
       // update right after start, and a content-free keepalive must not mask a hang.
-      if (toolUpdateHasContent(event.partialResult)) {
-        const call = progress.openToolCalls?.find((c) => c.id === event.toolCallId);
-        if (call) call.lastActivityAt = Date.now();
-      }
+      if (progress.openToolCalls)
+        applyToolExecutionEvent(progress.openToolCalls, event.type, event.toolCallId, event.partialResult);
       break;
     }
     case "tool_execution_end": {
-      progress.openToolCalls = progress.openToolCalls?.filter((c) => c.id !== event.toolCallId);
+      if (progress.openToolCalls)
+        applyToolExecutionEvent(progress.openToolCalls, event.type, event.toolCallId, event.partialResult);
       break;
     }
     case "message_end":
