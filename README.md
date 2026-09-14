@@ -237,15 +237,27 @@ imatrix-calibrated ~4.9 bpw quant that preserves the model's native MTP head, so
 Lightning MTP speculative decoding (2.5–3.0 tokens per backbone cycle at 68–84% draft acceptance;
 the `lmstudio-community` checkpoints carry no MTP tensors, making `mtp_enabled` a no-op there).
 oMLX config lives outside this repo in `~/.omlx/`: `model_settings.json` sets
-`max_context_window` 262144 (the model's `max_position_embeddings`), pinned + default;
+`max_context_window` **131072**, pinned + default;
 `settings.json` sets `max_concurrent_requests` 4 and an API key. pi (`~/.pi/agent/`) and omp
 (`~/.omp/agent/models.yml` — YAML, not models.json) both use provider `omlx`,
-`api: openai-completions`, `contextWindow` 258000, and must send the API key. `tumwater.json`
+`api: openai-completions`, `contextWindow` **126928** (a 4144-token margin under the server's
+limit for pi's output reserve), and must send the API key. `tumwater.json`
 names `provider`/`model` explicitly so `fleetModelsFree()` sees a free fleet, with
 `maxConcurrent` 3 (+ the director's bypass = 4 clients ≤ 4 slots). Measured server-reported:
 **35.2 tok/s per stream at ~51k context** (fleet paused); a slot sweep at ~20k context shows the
 aggregate plateauing around 3–4 slots — at 4 slots: 65.0 aggregate / 16.2 per stream / 70%
 acceptance; rate is strongly context-dependent, so quote a context size with any tok/s figure.
+
+A third deliberate value: `max_context_window` is **131072, not the model's 262144 maximum**. At the
+full window oMLX aborted prefills outright — `Request aborted: process memory limit exceeded (usage
+111.0 GB, abort threshold (hard watermark) 92.1 GB, metal_cap ceiling 96.9 GB)` — killing 9 ticks,
+three at a time, because `_get_dynamic_ceiling` is recomputed every poll and collapses when the rest
+of the Mac is busy, taking the abort threshold down with it. Halving the window halves the
+worst-case prefill transient and KV. Live ticks peak around 64-80k, so 131072 still leaves ~1.6x
+headroom. The companion fix is `memory_guard_tier: aggressive` (active-reclaim ratio 0.5 -> 0.8),
+which holds the ceiling at the Metal cap instead of letting it collapse, plus `hot_cache_max_size`
+4GB. **Slot count is not a lever here** — it was tried twice (6->4, 4->3) and moved nothing; the
+pinned MLX pool is ~60% of the footprint and does not scale with concurrency.
 
 Two oMLX settings are deliberately left at non-obvious values:
 - `chunked_prefill` stays **false** (its default). Turning it on collapsed throughput ~20× here
