@@ -1,8 +1,8 @@
 {
   "provider": "omlx",
-  "model": "Qwen3.8-27B-MLX-8bit",
+  "model": "Qwen3.8-27B-MLX-oQ4e-mtp",
   "piArgs": [],
-  "maxConcurrent": 2,
+  "maxConcurrent": 3,
   "minTickIntervalSeconds": 20,
   "tickTimeoutSeconds": 54000,
   "idleBackoff": {
