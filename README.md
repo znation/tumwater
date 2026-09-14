@@ -52,8 +52,6 @@ their authoring run and show a `main red` state in both dashboards until main is
 (director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix).
 
 Open items:
-- Planned: remove the per-loop tokens/sec column from the TUI/GUI tables (it landed 2026-09-13
-  and the user judged it not useful; user decision 2026-09-14 — see PLANS.md).
 - Planned: harness-level merge queue — sub-plans 3/5–5/5 tracked in PLANS.md (2/5 landed
   2026-09-13); next is asynchronous landing via the durable land queue (planned 2026-09-08).
 - Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13).
@@ -92,10 +90,6 @@ one loop per enabled role. Every loop tick:
    shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
-
-Both dashboards also show each in-flight tick's token generation rate (`t/s`) — a 5-minute moving
-average over the loop's raw log tail, `-` for idle loops — so an operator can tell at a glance
-whether the fleet is generating at full speed or crawling.
 
 Scheduling is need-aware: a maintenance role's due tick (scheduled or main-moved) is deferred —
 one `tick_deferred` event per episode in logs, TUI, and GUI — while its last tick did nothing

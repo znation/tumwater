@@ -169,58 +169,6 @@ test("gen/peak ctx combine persisted totals with live in-tick progress for runni
   assert.match(totals, /\b3800\b/, "totals row sums the displayed (combined) values");
 });
 
-// The t/s column: each in-flight tick's token generation rate — a 5-minute moving average over
-// the raw log tail. `-` for every idle loop and for a running loop with no in-window samples.
-
-test("status table carries the t/s column between gen and peak ctx", () => {
-  const header = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[2] ?? "";
-  assert.match(header, /gen\s+t\/s\s+peak ctx/);
-});
-
-/** Split a rendered table row into cells (cells are joined by two-or-more spaces). */
-function cellsOf(row: string): string[] {
-  return row.trim().split(/\s{2,}/);
-}
-
-test("running loop shows its moving-average rate; idle loops show -", () => {
-  const root = tmpdir();
-  const now = Date.now();
-  // In-flight tick: one turn a minute ago that generated 500 output tokens → ~8.3 t/s.
-  writePiLog(root, "clean", [SESSION, assistantLine("turn", { output: 500, timestamp: now - 60_000 })]);
-  // Idle loop whose log tail is a finished tick — its recent samples must not leak into the table.
-  writePiLog(root, "dry", [SESSION, assistantLine("done", { output: 9_000, timestamp: now - 30_000 })]);
-  const snap = snapshotWith([
-    { role: "clean", running: true },
-    { role: "dry" },
-  ]);
-  const out = renderStatus(root, snap).split("\n");
-  const cleanRow = out.find((l) => l.startsWith("clean")) ?? "";
-  assert.equal(cellsOf(cleanRow)[5], "8.3", "running loop: 500 tokens over ~60 s reads 8.3 (one decimal under 10)");
-  const dryRow = out.find((l) => l.startsWith("dry")) ?? "";
-  assert.equal(cellsOf(dryRow)[5], "-", "idle loop shows - even though its log tail has recent samples");
-});
-
-/** Slice one cell out of a rendered line using the separator's column offsets (index 3 holds
- * one dash run per column at its exact width). Unlike whitespace splitting, this survives
- * consecutive empty cells, which collapse into a single gap. */
-function cellAt(lines: string[], lineIdx: number, colIdx: number): string {
-  const segs = (lines[3] ?? "").split("  ");
-  let start = 0;
-  for (let i = 0; i < colIdx; i++) start += (segs[i]?.length ?? 0) + 2;
-  return (lines[lineIdx] ?? "").slice(start, start + (segs[colIdx]?.length ?? 0));
-}
-
-test("t/s renders as an integer at and above ten, and the totals row leaves it blank", () => {
-  const root = tmpdir();
-  writePiLog(root, "clean", [SESSION, assistantLine("turn", { output: 4_200, timestamp: Date.now() - 60_000 })]);
-  const snap = snapshotWith([{ role: "clean", running: true }]);
-  const out = renderStatus(root, snap).split("\n");
-  const cleanRow = out.find((l) => l.startsWith("clean")) ?? "";
-  assert.equal(cellsOf(cleanRow)[5], "70", "4200 tokens over ~60 s reads 70 (integer at/above 10)");
-  // The totals row has no fleet-wide rate — like state/ticks/commits, the cell stays blank.
-  assert.match(cellAt(out, out.length - 1, 5), /^ *$/, "totals row leaves t/s blank");
-});
-
 test("clipToWidth never exceeds the requested width, even at degenerate widths", () => {
   const text = "a much longer line than any of these widths";
   assert.equal(clipToWidth(text, 100), text, "shorter-than-width text is untouched");
@@ -314,31 +262,29 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
     return sep.split("  ").map((seg) => seg.length);
   };
   const col = (w: number[], i: number): number => w[i] ?? -1;
-  // Column indices follow the t/s insertion at index 5 (PLANS.md token-rate entry): last
-  // tick is now 9, last result 10.
   const natural = widthsOf(renderStatus(root, snap)); // unclipped render
-  assert.equal(col(natural, 9), 17, "fixture sanity: last tick column is HH:MM:SS · 3m ago");
+  assert.equal(col(natural, 8), 17, "fixture sanity: last tick column is HH:MM:SS · 3m ago");
   const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
 
   // Stage 1: only `last result` shrinks.
   let w = widthsOf(renderStatus(root, snap, total - 5));
-  assert.equal(col(w, 10), col(natural, 10) - 5, "last result absorbs the first overflow");
+  assert.equal(col(w, 9), col(natural, 9) - 5, "last result absorbs the first overflow");
   assert.equal(col(w, 1), col(natural, 1), "state untouched while last result has room");
-  assert.equal(col(w, 9), col(natural, 9), "last tick untouched until the others are exhausted");
+  assert.equal(col(w, 8), col(natural, 8), "last tick untouched until the others are exhausted");
 
   // Stage 2: `last result` clamped at its minimum; `state` shrinks next.
-  w = widthsOf(renderStatus(root, snap, total - (col(natural, 10) - 12) - 5));
-  assert.equal(col(w, 10), 12, "last result clamped at its minimum");
+  w = widthsOf(renderStatus(root, snap, total - (col(natural, 9) - 12) - 5));
+  assert.equal(col(w, 9), 12, "last result clamped at its minimum");
   assert.ok(col(w, 1) < col(natural, 1), "state shrinks after last result is exhausted");
-  assert.equal(col(w, 9), col(natural, 9), "last tick still untouched");
+  assert.equal(col(w, 8), col(natural, 8), "last tick still untouched");
 
   // Stage 3: both at their minimums; `last tick` shrinks last, down to a bare HH:MM:SS.
   w = widthsOf(
-    renderStatus(root, snap, total - (col(natural, 10) - 12) - (col(natural, 1) - 12) - (col(natural, 9) - 10)),
+    renderStatus(root, snap, total - (col(natural, 9) - 12) - (col(natural, 1) - 12) - (col(natural, 8) - 10)),
   );
-  assert.equal(col(w, 10), 12);
+  assert.equal(col(w, 9), 12);
   assert.equal(col(w, 1), 12);
-  assert.equal(col(w, 9), 10, "last tick shrinks last and only to its HH:MM:SS minimum");
+  assert.equal(col(w, 8), 10, "last tick shrinks last and only to its HH:MM:SS minimum");
 
   // And at a hard 80 columns nothing wraps.
   for (const line of renderStatus(root, snap, 80).split("\n")) {

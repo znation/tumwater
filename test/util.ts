@@ -96,13 +96,10 @@ export function vanishOnReadFile(file: string): () => void {
   };
 }
 
-/** A pi JSON line for an assistant message_end. `timestamp` (epoch ms) is emitted as
- * message.timestamp only when given — real pi logs carry it on every assistant message, but
- * existing fixtures stay byte-identical without it (lines lacking one fall back to parse
- * time in the rate window). */
+/** A pi JSON line for an assistant message_end. */
 export function assistantLine(
   text: string,
-  opts: { tokens?: number; output?: number; cost?: number; stopReason?: string; timestamp?: number } = {},
+  opts: { tokens?: number; output?: number; cost?: number; stopReason?: string } = {},
 ): string {
   const message: Record<string, unknown> = {
     role: "assistant",
@@ -110,7 +107,6 @@ export function assistantLine(
     usage: { totalTokens: opts.tokens ?? 0, output: opts.output ?? 0, cost: { total: opts.cost ?? 0 } },
     stopReason: opts.stopReason ?? "stop",
   };
-  if (opts.timestamp !== undefined) message.timestamp = opts.timestamp;
   return JSON.stringify({ type: "message_end", message });
 }
 

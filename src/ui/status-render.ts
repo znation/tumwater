@@ -3,7 +3,7 @@ import { DIRECTOR_ROLE } from "../roles.js";
 import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
 import { dailyCost, fleetDailyCost, budgetReached } from "../state.js";
-import { readLiveProgress, tokenRate, type LiveProgress } from "./progress.js";
+import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd } from "../text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
@@ -143,23 +143,12 @@ export function displayTokenMetrics(
   root: string,
   s: LoopState,
   live?: LiveProgress | null,
-): { generated: number; peakCtx: number; tokenRate: number | null } {
+): { generated: number; peakCtx: number } {
   const p = s.running ? (live === undefined ? readLiveProgress(root, s.role) : live) : null;
   return {
     generated: s.generatedTokens + (p?.outputTokens ?? 0),
     peakCtx: Math.max(s.peakContextTokens, p?.peakContextTokens ?? 0),
-    // The trailing-window generation rate rides the same running-gating as the counters:
-    // idle loops show `-` so no stale rate lingers on a sleeping loop.
-    tokenRate: s.running ? tokenRate(p?.samples ?? [], Date.now()) : null,
   };
-}
-
-/** The t/s cell: one decimal under 10 (`8.3`), an integer at and above it (`42`), `-`
- * when the loop is idle or has no in-window samples yet. Mirrored client-side by the GUI
- * page's fmtRate (the page cannot import TypeScript — the fmtTokens precedent). */
-function formatTokenRate(rate: number | null): string {
-  if (rate === null) return "-";
-  return rate < 10 ? rate.toFixed(1) : String(Math.round(rate));
 }
 
 /** The table's state cell: loopPhase's label, with the current work item prepended while a
@@ -211,9 +200,9 @@ function usdCap(n: number): string {
  * below — renumber when columns change. (`today`, like `cost`, is a short fixed-width cell:
  * never flexible.) */
 const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
-  { index: 10, minWidth: 12 },
+  { index: 9, minWidth: 12 },
   { index: 1, minWidth: 12 },
-  { index: 9, minWidth: 10 },
+  { index: 8, minWidth: 10 },
 ];
 const COLUMN_GAP = 2;
 
@@ -271,9 +260,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // or missing, so loops that never ticked — or last ticked yesterday — read zero without a
   // save. It renders whether or not the cap is enabled: spend observability does not depend
   // on it.
-  // `t/s` is the in-flight tick's token generation rate (5-minute moving average over the
-  // raw log tail) — `-` for every idle loop; see displayTokenMetrics.
-  const cols = ["loop", "state", "ticks", "commits", "gen", "t/s", "peak ctx", "cost", "today", "last tick", "last result"];
+  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last result"];
   // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
   // reached the cap, every idle role loop shows `budget paused` in its state cell. The
   // operator pause is fleet-wide too (`tumwater pause` marker present) and outranks it.
@@ -295,7 +282,6 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     String(s.ticks),
     String(s.commits),
     compactTokens(m.generated),
-    formatTokenRate(m.tokenRate),
     compactTokens(m.peakCtx),
     usd(s.totalCostUsd),
     usd(dailyCost(s)),
@@ -308,8 +294,6 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     "",
     "",
     compactTokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
-    // No fleet-wide rate: the column is per-loop in-flight detail, like state/ticks/commits.
-    "",
     compactTokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
     usd(snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0)),
     // The fleet's today-spend — by construction equal to the header badge's spend while

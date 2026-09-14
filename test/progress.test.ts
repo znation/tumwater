@@ -7,8 +7,6 @@ import {
   readLiveProgress,
   stalledToolLabel,
   toolCallStallMs,
-  tokenRate,
-  TOKEN_RATE_WINDOW_MS,
 } from "../src/ui/progress.js";
 import { piLogPath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
@@ -223,85 +221,6 @@ test("parseProgress still parses non-compact JSON shapes (fast-path fallback)", 
   ); // type not first: the prefix check cannot apply, full parse still counts it
   assert.equal(reordered.turns, 1);
   assert.equal(reordered.contextTokens, 9);
-});
-
-// Token generation rate samples: one per assistant message_end with usage.output > 0, stamped
-// with the line's own timestamp — the trailing-window ring behind the dashboards' t/s column.
-
-test("feedLine appends a rate sample stamped with the line's own timestamp", () => {
-  const now = Date.now();
-  const p = parseProgress([SESSION, assistantLine("turn", { output: 1200, timestamp: now - 60_000 })], 0);
-  assert.deepEqual(p.samples, [{ t: now - 60_000, tokens: 1200 }]);
-});
-
-test("feedLine adds no rate sample for zero or missing output", () => {
-  const p = parseProgress(
-    [
-      SESSION,
-      assistantLine("default usage"), // usage.output defaults to 0
-      JSON.stringify({ type: "message_end", message: { role: "assistant", content: [], usage: { totalTokens: 10 } } }), // no output field at all
-      assistantLine("explicit zero", { output: 0, timestamp: Date.now() - 5_000 }),
-    ],
-    0,
-  );
-  assert.equal(p.samples, undefined, "the ring is never initialized without a real sample");
-});
-
-test("feedLine prunes samples older than the rate window at append", () => {
-  const now = Date.now();
-  const p = parseProgress(
-    [
-      SESSION,
-      assistantLine("old", { output: 100, timestamp: now - 6 * 60_000 }), // aged out on arrival
-      assistantLine("new", { output: 50, timestamp: now - 60_000 }),
-    ],
-    0,
-  );
-  assert.deepEqual(p.samples, [{ t: now - 60_000, tokens: 50 }]);
-});
-
-test("a session event preserves the sample ring (the window spans tick boundaries)", () => {
-  const now = Date.now();
-  const p = parseProgress(
-    [
-      SESSION,
-      assistantLine("previous tick", { output: 300, timestamp: now - 4 * 60_000 }),
-      SESSION, // back-to-back ticks: the trailing window legitimately spans this boundary
-      assistantLine("current tick", { output: 200, timestamp: now - 60_000 }),
-    ],
-    0,
-  );
-  assert.deepEqual(p.samples, [
-    { t: now - 4 * 60_000, tokens: 300 },
-    { t: now - 60_000, tokens: 200 },
-  ]);
-});
-
-test("tokenRate is null with no samples and divides a young window by its own span", () => {
-  const now = Date.now();
-  assert.equal(tokenRate([], now), null);
-  // One sample two minutes old: 12_000 tokens / 120 s — not divided by the full 300 s, which
-  // would under-report a tick that started recently.
-  assert.equal(tokenRate([{ t: now - 120_000, tokens: 12_000 }], now), 100);
-});
-
-test("tokenRate divides a full window by 300 s and ignores out-of-window samples", () => {
-  const now = Date.now();
-  // Samples spanning the whole window (the lower bound is inclusive): sum / 300 s.
-  assert.equal(
-    tokenRate([{ t: now - TOKEN_RATE_WINDOW_MS, tokens: 6_000 }, { t: now - 60_000, tokens: 9_000 }], now),
-    15_000 / 300,
-  );
-  // A sample older than the window contributes neither tokens nor span.
-  assert.equal(
-    tokenRate([{ t: now - 6 * 60_000, tokens: 99_999 }, { t: now - 240_000, tokens: 4_800 }], now),
-    4_800 / 240,
-  );
-});
-
-test("tokenRate returns null for a sub-second span (minimum-span guard)", () => {
-  const now = Date.now();
-  assert.equal(tokenRate([{ t: now - 500, tokens: 10_000 }], now), null);
 });
 
 // Open-tool-call tracking feeds the dashboard's stall flag (BUGS.md 2026-09-13 sibling):

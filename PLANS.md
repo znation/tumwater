@@ -5,44 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Remove the per-loop tokens/sec column from the TUI/GUI tables (planned 2026-09-14, requested by user)
-
-*Cross-reference (reversal): the 2026-09-13 Done entry "Show per-loop token generation rate (5-minute moving average) in the TUI/GUI" — the user saw the column in the UI and judged it not useful (2026-09-14). This plan removes the display and the machinery that exists solely to feed it.*
-
-**Goal.** The loop table on both dashboards drops its `t/s` column, and `tokenRate` leaves the `status --json`/`/api/status` payload. The 5-minute moving-average sample ring inside `LiveProgress` exists only to feed that column, so it goes with it. Every other cell (`gen`, `peak ctx`, cost, …) and the usage-report surfaces (per-day token counts, not a rate) are untouched.
-
-**Approach.** (Inverse of the Done entry; every listed item is the rate's sole consumer — confirm with `grep -rn 'tokenRate\|TOKEN_RATE\|fmtRate\|formatTokenRate' src/ test/` before starting.)
-- src/ui/progress.ts — drop the `LiveProgress.samples` field and its doc comment; drop the sample append+prune block in `feedLine`'s `message_end` case (the `outputTokens += usage.output` accumulation feeding `gen` stays); drop the `samples` copy in `readLiveProgress`'s return; delete `tokenRate()` and `TOKEN_RATE_WINDOW_MS`; drop the `timestamp?: number` member from the `ProgressEvent` `message` type and its two-line doc comment (lines 136–137) — its sole read is inside the sample block above.
-- src/ui/status-render.ts — `displayTokenMetrics` returns only `{ generated, peakCtx }`; delete `formatTokenRate`; remove `"t/s"` from `cols`, `formatTokenRate(m.tokenRate)` from the row arrays, and the `totalsRow`'s empty t/s cell with its "No fleet-wide rate" comment (≈line 307 — leaving it yields an 11-cell totals row under 10 headers); renumber `FLEXIBLE_COLUMNS` (`last result` index 10→9, `last tick` 9→8 — the file documents renumbering when columns change); drop `tokenRate` from the progress.js import; delete the `t/s` comment above `cols`.
-- src/ui/status-payload.ts — drop `tokenRate: m.tokenRate ?? null` and its comment from the loops map.
-- src/ui/gui-page.ts — drop `<th>t/s</th>` from thead, the `fmtRate` function, and the `+ "</td><td>" + fmtRate(l.tokenRate) + ` row fragment.
-- test/progress.test.ts — remove the rate section whole: from the `// Token generation rate samples:` comment (line 228) through the "tokenRate returns null for a sub-second span" test (line 305), the last before the open-tool-call section; drop `tokenRate`/`TOKEN_RATE_WINDOW_MS` from the progress.js import (lines 10–11 — tsconfig sets no `noUnusedLocals`, so a leftover import compiles but violates the "no reference remains" criterion); leave the other progress tests untouched.
-- test/util.ts — drop the `timestamp` option from `assistantLine` (emitted only when given, lines 105/113). After the drop, the only callsite still passing it outside the deleted sections is test/gui.test.ts's metrics fixture (lines 300–301 — see that bullet). `userLine`'s timestamp (transcript run separators, lines 152–155) is separate — do not touch it.
-- test/status-render.test.ts — remove lines 172–222 whole: the section comment, the two t/s tests, and the module-level `cellsOf` (line 181) and slice-based `cellAt` (line 206) helpers defined between them — their only callers are those two tests, so they go as dead code (the later today-spend tests' locally-scoped `cellAt`s at lines 359/386/416 are different functions — untouched). Then renumber the width-clipping test: the lines-316–317 comment ("last tick is now 9, last result 10" → 8 and 9) and EVERY `col(…, 10)`/`col(…, 9)` use in its body (the line-319 sanity assert plus stages 1–3, ≈lines 326–341 — a stale index reads the wrong column, out-of-range `col` returns −1, and the test fails), 10→9 for `last result` and 9→8 for `last tick`, in lockstep with `FLEXIBLE_COLUMNS`.
-- test/gui.test.ts — in the metrics test: drop `tokenRate` from the payload type (line 307) and the three rate assertions (lines 314–317); the surviving assertions (gen, peakCtx) stay, so also drop the fixture's `timestamp` arguments from its two `assistantLine` calls (lines 300–301 — the util.ts option they use is deleted), the now-unused `const now` (line 293), and the "rate window real span" comment (lines 290–292).
-- README.md — delete the "How it works" paragraph beginning "Both dashboards also show each in-flight tick's token generation rate (`t/s`)".
-- PLANS.md — move this entry to ## Done on landing.
-
-**Acceptance criteria.**
-- No t/s column in the TUI table or the GUI table; no `tokenRate` field in the `status --json` payload.
-- No reference to `tokenRate`, `TOKEN_RATE_WINDOW_MS`, `formatTokenRate`, `fmtRate`, or `LiveProgress.samples` remains in src/ or test/.
-- `gen` and `peak ctx` render exactly as before; the width-clipping tests pass with the renumbered `FLEXIBLE_COLUMNS`.
-- `npm test` is green.
-
-**Refined 2026-09-14 (plan loop) — first audit, against main `af4e1fe` (README still stamps `8b8aa05`; the landings since are the oMLX backend flip, organize/dry/bugfix work in files this entry never names, and the director's routing commit that wrote this entry — none touch the rate machinery or its tests). Every anchor verified on this tree; the line pins are exact because the entry was written at the tip. Six gaps corrected in place above.**
-
-Verified as written: the sole-consumer grep (`tokenRate|TOKEN_RATE|fmtRate|formatTokenRate` over src/ and test/) matches exactly the sites the entry lists — progress.ts (field+doc 37–43, const 62, function 64–79, feedLine's sample append+prune block 185–195 sitting directly after the surviving `outputTokens` accumulation at line 183, `readLiveProgress`'s return copy 270); status-render.ts (import 6, `displayTokenMetrics` return+field+running-gating comment 146–153, `formatTokenRate`+doc 157–163, `cols`+its two-line comment 274–276, row fragment 298, `FLEXIBLE_COLUMNS` 213–217 with its "renumber when columns change" doc); status-payload.ts (comment+field 60–65); gui-page.ts (thead 51, `fmtRate`+comment 62–64, row fragment 345); the test sites as pinned (progress.test.ts 10–11 + 228–305, util.ts 105/113, status-render.test.ts 172–222 + 316–341, gui.test.ts 290–301/307/314–317). `displayTokenMetrics` has exactly two callers (status-render.ts:287, status-payload.ts:49), both consuming only the surviving fields. The README's "How it works" paragraph is where the entry says. No test outside the named files pins the t/s cell or header: tui.test.ts' and status.test.ts' only "t/s" grep hits are the `assert/strict` import string, and tui.test.ts' table assertions are structural (line widths, queue numbering), not full-row bytes.
-
-Corrections:
-1. **The `timestamp` "read" is a type member.** progress.ts:136–138 declares `timestamp?: number` on the `ProgressEvent` `message` type behind a two-line comment; its sole read is line 189, inside the sample block the first bullet already deletes. The bullet now names the member+comment removal — no third read exists.
-2. **The `totalsRow`'s empty t/s cell was unnamed.** renderStatus' totals row carries an `""` cell with a "No fleet-wide rate" comment for the column (≈line 307); deleting the column without it leaves an 11-cell totals row under 10 headers. Added to the status-render.ts bullet.
-3. **util.ts' "no other test passes it" was false.** gui.test.ts:300–301 passes `timestamp` to `assistantLine` (the metrics-test fixture); with the option deleted those calls would not compile. The bullet now pins dropping the arguments, `const now` (line 293), and the "rate window real span" comment (lines 290–292). The other passing callsites all live inside sections the sibling bullets delete (progress.test.ts' rate section, status-render.test.ts' two t/s tests).
-4. **The width-clipping renumber was under-scoped.** Only the ≈line-319 sanity assert was named, but stages 1–3 of the same test (≈lines 326–341) carry ~a dozen more `col(…, 10)`/`col(…, 9)` uses — each 10→9 / 9→8 in lockstep with `FLEXIBLE_COLUMNS` — and a stale index reads the wrong column (`col` returns −1 out of range), so the test fails rather than silently passing. The bullet now covers the whole test body.
-5. **The 172–222 region hides two helpers that go with it.** `cellsOf` (line 181) and the module-level slice-based `cellAt` (line 206) sit between the two t/s tests and are called only by them; pinned as intentional dead-code removal so the implementer does not re-home them. The later today-spend tests' locally-scoped `cellAt`s (lines 359/386/416) are different functions and stay.
-6. **progress.test.ts' import lines and section bounds pinned.** Lines 10–11 import `tokenRate`/`TOKEN_RATE_WINDOW_MS`; after the section removal they are unused and tsconfig sets no `noUnusedLocals`, so tsc would not catch a leftover — the "no reference remains" acceptance criterion does. The section runs lines 228–305 (the `// Token generation rate samples:` comment through the sub-second-span test), immediately before the open-tool-call section.
-
-Sizing unchanged: the corrections are one production array cell and test cleanup, no new code paths. No design question remains open.
-
 ### Merge queue 3/5 — asynchronous landing via a durable land queue (planned 2026-09-08, requested by user, refined 2026-09-13)
 
 *Cross-reference (refined 2026-09-10, plan loop): `applyLandingOutcome` must also clear `s.phase` — mirroring applyTickOutcome's rule (every outcome except "aborted") — because the gate persists phase="review" on the authoring state during a landing; see Merge queue 4/5.*
@@ -309,6 +271,31 @@ Corrections:
 Sizing unchanged: self-reload.ts is still ~100 lines of new wiring over existing functions; tui.ts and gui.ts each gain a few lines around their existing teardown/send sites; the test file is as scoped. No design question remains open.
 
 ## Done
+
+### Remove the per-loop tokens/sec column from the TUI/GUI tables (planned 2026-09-14, requested by user, refined 2026-09-14, done 2026-09-14)
+
+*Cross-reference (reversal): the 2026-09-13 Done entry "Show per-loop token generation rate (5-minute moving average) in the TUI/GUI" — the user saw the column in the UI and judged it not useful (2026-09-14). This plan removes the display and the machinery that exists solely to feed it.*
+
+**Goal.** The loop table on both dashboards drops its `t/s` column, and `tokenRate` leaves the `status --json`/`/api/status` payload. The 5-minute moving-average sample ring inside `LiveProgress` exists only to feed that column, so it goes with it. Every other cell (`gen`, `peak ctx`, cost, …) and the usage-report surfaces (per-day token counts, not a rate) are untouched.
+
+**Approach.** (Inverse of the Done entry; every listed item is the rate's sole consumer — confirmed with `grep -rn 'tokenRate\|TOKEN_RATE\|fmtRate\|formatTokenRate' src/ test/` before starting: zero remaining references after the change.)
+- src/ui/progress.ts — dropped the `LiveProgress.samples` field and its doc comment; dropped the sample append+prune block in `feedLine`'s `message_end` case (the `outputTokens += usage.output` accumulation feeding `gen` stays); dropped the `samples` copy in `readLiveProgress`'s return; deleted `tokenRate()` and `TOKEN_RATE_WINDOW_MS`; dropped the now-unused `timestamp` read from `ProgressEvent`.
+- src/ui/status-render.ts — `displayTokenMetrics` returns only `{ generated, peakCtx }`; deleted `formatTokenRate`; removed `"t/s"` from `cols` and `formatTokenRate(m.tokenRate)` from the row arrays (and the totals row's blank rate cell); renumbered `FLEXIBLE_COLUMNS` (`last result` index 10→9, `last tick` 9→8).
+- src/ui/status-payload.ts — dropped `tokenRate: m.tokenRate ?? null` and its comment from the loops map.
+- src/ui/gui-page.ts — dropped `<th>t/s</th>` from thead, the `fmtRate` function, and the `+ "</td><td>" + fmtRate(l.tokenRate) +` row fragment.
+- test/progress.test.ts — removed the rate-sample section and the `tokenRate` decision-table tests (7 tests); left the other progress tests untouched.
+- test/util.ts — dropped the `timestamp` option from `assistantLine` (it was the rate tests' only consumer; `userLine`'s timestamp is separate and untouched).
+- test/status-render.test.ts — removed the three t/s tests (and the `cellsOf`/`cellAt` helpers that existed only for them) and updated the width-clipping test's indices: last tick 9→8, last result 10→9, including the fixture-sanity `col(natural, …)` assertion.
+- test/gui.test.ts — dropped `tokenRate` from the payload type and the three rate assertions; the log fixture's explicit timestamps (added to give the rate window span) went with them, along with the now-unreferenced idle-loop fixture.
+- README.md — deleted the "How it works" paragraph describing the `t/s` cell and the stale "Planned: remove the per-loop tokens/sec column" status bullet.
+
+**Acceptance criteria.**
+- No t/s column in the TUI table or the GUI table; no `tokenRate` field in the `status --json` payload.
+- No reference to `tokenRate`, `TOKEN_RATE_WINDOW_MS`, `formatTokenRate`, `fmtRate`, or `LiveProgress.samples` remains in src/ or test/.
+- `gen` and `peak ctx` render exactly as before; the width-clipping tests pass with the renumbered `FLEXIBLE_COLUMNS`.
+- `npm test` is green (966/966 at landing).
+
+**Landed 2026-09-14 (feature loop).** As planned — the plan loop's 2026-09-14 audit of this entry against main `af4e1fe` (six in-place corrections) is covered by the bullets above: the `ProgressEvent` `timestamp` member+comment removal, the totals row's blank rate cell, the gui.test.ts fixture's explicit timestamps, the width-clipping test's full-body renumber (stages 1–3 plus the sanity assert), the `cellsOf`/`cellAt` dead-code removal, and the progress.test.ts import lines; the acceptance grep returns zero references.
 
 ### Merge queue 2/5 — land in a per-role detached worktree (planned 2026-09-08, requested by user, refined 2026-09-13, done 2026-09-13)
 

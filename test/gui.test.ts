@@ -287,34 +287,20 @@ test("status payload combines persisted + live token metrics for running loops o
   s.peakContextTokens = 6_000;
   s.running = true; // a tick is in flight
   saveLoopState(repo, s);
-  // ...and the in-flight tick's log tail (800 output so far, peak context 12k). The explicit
-  // timestamps (two and one minute ago) give the rate window real span — without them every
-  // sample falls back to parse time and the sub-second minimum-span guard reads null.
-  const now = Date.now();
+  // ...and the in-flight tick's log tail (800 output so far, peak context 12k).
   const file = piLogPath(repo, "feature");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(
     file,
-    [
-      SESSION,
-      assistantLine("turn one", { tokens: 8_000, output: 300, timestamp: now - 120_000 }),
-      assistantLine("turn two", { tokens: 12_000, output: 500, timestamp: now - 60_000 }),
-    ].join("\n") + "\n",
+    [SESSION, assistantLine("turn one", { tokens: 8_000, output: 300 }), assistantLine("turn two", { tokens: 12_000, output: 500 })].join("\n") + "\n",
   );
-  // An idle loop: its log tail is a finished tick and never feeds the rate.
-  saveLoopState(repo, freshLoopState("clean"));
   const payload = statusPayload(repo) as {
-    loops: Array<{ role: string; generated: number; peakCtx: number; tokenRate: number | null }>;
+    loops: Array<{ role: string; generated: number; peakCtx: number }>;
   };
   const feature = payload.loops.find((l) => l.role === "feature");
   assert.ok(feature, "feature loop present in payload");
   assert.equal(feature.generated, 1_800, "running loop gen = persisted + live output (1000+300+500)");
   assert.equal(feature.peakCtx, 12_000, "running loop peak ctx = max(persisted, live)");
-  // 800 tokens over the ~120 s since the oldest in-window sample → ~6.7 t/s (a number, not null).
-  assert.equal(typeof feature.tokenRate, "number", "running loop with recent samples carries a numeric rate");
-  assert.ok(Math.abs((feature.tokenRate as number) - 800 / 120) < 0.5, `rate far from ~6.7: ${feature.tokenRate}`);
-  const clean = payload.loops.find((l) => l.role === "clean");
-  assert.equal(clean?.tokenRate, null, "idle loop's tokenRate is null — no stale rate on a sleeping loop");
 });
 
 test("status payload carries the current work item for running loops only", async () => {
