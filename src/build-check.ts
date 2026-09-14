@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { logEvent } from "./events.js";
 import { gitTry } from "./git.js";
 import { truncate } from "./text.js";
 
@@ -14,10 +15,11 @@ const execFileAsync = promisify(execFile);
  * keeps the adversarial review gate itself — because this is a self-contained concern with its
  * own data model (BuildCheck/BuildCheckOutcome), detection algorithm (walk-up to the install),
  * and execution/classification logic: deterministic process verification, distinct from the
- * model-based review. The gate (review.ts) consumes detectBuildCheck + runBuildCheck for its
- * per-merge pre-check; main-red.ts's red-main baseline gate (checkMainBaseline below) reuses
- * the same machinery to verify main itself once per SHA before an authoring run is spent on
- * top of it. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
+ * model-based review. runScopedBuildCheck below is the shared detect → run → build_check
+ * event → skip-warning sequence of the gate's pre-check (review.ts) and the landing path's
+ * in-lock re-check (merge.ts); main-red.ts's red-main baseline gate (checkMainBaseline below)
+ * reuses the same machinery to verify main itself once per SHA before an authoring run is
+ * spent on top of it. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
  * by clipBuildTail and parseVerdict in review.ts — so that helper has a single home. */
 
 /** Per-reason length cap with ellipsis — bounds one line of machine-generated or reviewer
@@ -38,7 +40,7 @@ export function clipReason(r: string): string {
 
 /** The project's declared deterministic check: an npm script name plus the directory whose
  * package.json declares it (the walk-up target holding both package.json and node_modules). */
-interface BuildCheck {
+export interface BuildCheck {
   /** Directory holding the qualifying package.json + node_modules. */
   rootDir: string;
   /** The npm script to run — `test` preferred, then `typecheck`, else `build`. */
@@ -205,6 +207,66 @@ export async function runBuildCheck(
     // Spawn failed before anything ran — the npm binary is missing from PATH.
     return { status: "skipped", script: check.script, skipReason: "no-npm" };
   }
+}
+
+/** The scopes named in a build_check event logged from this helper. The red-main baseline
+ * names its own ("baseline") from main-red.ts, because the one-run-per-SHA cache and in-flight
+ * dedup live in checkMainBaseline — the event there is logged by the paying role via the onRun
+ * hook. */
+export type BuildCheckScope = "gate" | "landing";
+
+/** Per-scope wording for the environmental-skip warning. The two call sites' current messages
+ * are identical apart from these words, so keying them on the scope keeps each surface's feed
+ * line byte-for-byte what it is today. */
+const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }> = {
+  gate: { label: "build check", proceeding: "proceeding to model review" },
+  landing: { label: "landing build check", proceeding: "proceeding to merge" },
+};
+
+/** Run the project's declared check for a named scope — the detect → run → build_check
+ * event → skip-warning sequence the review gate's pre-check (scope "gate") and the landing
+ * path's in-lock re-check (scope "landing") previously each ran inline, kept in one place so
+ * the event's shape and the skip warning cannot drift between the two surfaces. Every run is
+ * an event with its cost: the deterministic checks are where the fleet's compute goes after
+ * the authoring run, and "how long does npm test take per merge" must be answerable from the
+ * feed, not by timing it by hand. Returns null when no check is declared (nothing to run —
+ * the caller passes, exactly as before this split), otherwise the declared check plus its
+ * classified outcome. A "skipped" outcome also logs its standard warning here (wording keyed
+ * on the scope, the timeout as actually set); "failed" and "passed" are the caller's to decide
+ * (deterministic reject vs. verifiedHead / baseline seeding). Never throws. */
+export async function runScopedBuildCheck(
+  root: string,
+  role: string,
+  scope: BuildCheckScope,
+  wt: string,
+  timeoutMs = BUILD_CHECK_TIMEOUT_MS,
+): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
+  const check = detectBuildCheck(wt);
+  if (!check) return null;
+  const startedAt = Date.now();
+  const outcome = await runBuildCheck(wt, check, timeoutMs);
+  logEvent(root, {
+    loop: role,
+    type: "build_check",
+    scope,
+    status: outcome.status,
+    script: check.script,
+    durationMs: Date.now() - startedAt,
+  });
+  if (outcome.status === "skipped") {
+    // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
+    // code tick into the 3-strike discard (gate) or every landing behind the merge lock.
+    const w = SCOPE_WORDS[scope];
+    logEvent(root, {
+      loop: role,
+      type: "warning",
+      message:
+        outcome.skipReason === "no-npm"
+          ? `no npm on PATH; skipping ${w.label}`
+          : `${w.label} timed out after ${timeoutMs / 1000}s; ${w.proceeding}`,
+    });
+  }
+  return { check, outcome };
 }
 
 // ── Main baseline (red-main gate) ────────────────────────────────────────────────────────

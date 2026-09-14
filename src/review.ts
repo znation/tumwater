@@ -12,8 +12,7 @@ import { shortSha } from "./text.js";
 import {
   BUILD_CHECK_TIMEOUT_MS,
   clipReason,
-  detectBuildCheck,
-  runBuildCheck,
+  runScopedBuildCheck,
 } from "./build-check.js";
 import { isExemptDiff } from "./exemptions.js";
 
@@ -146,29 +145,24 @@ export async function reviewAheadOfMain(
   // Deterministic build pre-check — after BOTH early returns above (an md-only diff cannot
   // break the build) and before any reviewer run or the phase/event that would show
   // "reviewing": a deterministic rejection never shows as reviewing on the dashboards. Both
-  // gate callers (the tick path and leftover.ts's recoverLeftover) get it for free.
-  const check = detectBuildCheck(wt);
+  // gate callers (the tick path and leftover.ts's recoverLeftover) get it for free. The run
+  // itself (build_check event, environmental-skip warning) lives in runScopedBuildCheck,
+  // shared with the landing path's in-lock re-check.
   // Named in the reviewer's prompt when the pre-check ran green: the model reviewer then spends
   // its run on what a passing suite cannot show instead of re-running `npm test` itself.
   let verifiedByHarness: string | undefined;
   // The head the pre-check just verified (see GateResult.verifiedHead) — handed to the landing
   // path, which owns the baseline seeding for the SHA that actually becomes main.
   let verifiedHead: string | undefined;
-  if (check) {
-    const timeoutMs = ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS;
-    const checkStartedAt = Date.now();
-    const outcome = await runBuildCheck(wt, check, timeoutMs);
-    // Every pre-check run is an event with its cost: the gate is where the fleet's compute
-    // goes after the authoring run, and "how long does npm test take per merge" must be
-    // answerable from the feed, not by timing it by hand.
-    logEvent(root, {
-      loop: role,
-      type: "build_check",
-      scope: "gate",
-      status: outcome.status,
-      script: check.script,
-      durationMs: Date.now() - checkStartedAt,
-    });
+  const preCheck = await runScopedBuildCheck(
+    root,
+    role,
+    "gate",
+    wt,
+    ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
+  );
+  if (preCheck) {
+    const { check, outcome } = preCheck;
     if (outcome.status === "failed") {
       // Machine-generated reasons: the header joined to the first output line (so the
       // compiler error sits right after it in the injected next-tick note), then the rest of
@@ -181,18 +175,7 @@ export async function reviewAheadOfMain(
           : [`build check failed (${check.script})`];
       return reject(reasons);
     }
-    if (outcome.status === "skipped") {
-      // Environmental — warn and proceed to the model review; deliberately NOT fail-closed,
-      // so a hung build script cannot wedge every code tick into the 3-strike discard.
-      logEvent(root, {
-        loop: role,
-        type: "warning",
-        message:
-          outcome.skipReason === "no-npm"
-            ? `no npm on PATH; skipping build check`
-            : `build check timed out after ${timeoutMs / 1000}s; proceeding to model review`,
-      });
-    } else {
+    if (outcome.status === "passed") {
       // Passed: this exact tree just went green under the project's own declared check. Hand
       // the verdict to the landing path via verifiedHead — it seeds the red-main baseline with
       // the SHA that actually becomes main (the rebased head, which may differ from `head`),

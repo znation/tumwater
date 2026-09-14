@@ -13,12 +13,7 @@ import {
   unquotePorcelainPath,
 } from "./git.js";
 import { abortSync } from "./worktree.js";
-import {
-  BUILD_CHECK_TIMEOUT_MS,
-  detectBuildCheck,
-  noteGreenBaseline,
-  runBuildCheck,
-} from "./build-check.js";
+import { noteGreenBaseline, runScopedBuildCheck } from "./build-check.js";
 import { isExemptDiff } from "./exemptions.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";
@@ -147,30 +142,12 @@ async function verifyLanding(
   }
   const files = await aheadOfMainFiles(wt, ctx.mainBranch);
   if (isExemptDiff(files, ctx.exemptPaths)) return true;
-  const check = detectBuildCheck(wt);
-  if (!check) return true;
-  const startedAt = Date.now();
-  const outcome = await runBuildCheck(wt, check);
-  logEvent(ctx.root, {
-    loop: ctx.role,
-    type: "build_check",
-    scope: "landing",
-    status: outcome.status,
-    script: check.script,
-    durationMs: Date.now() - startedAt,
-  });
-  if (outcome.status === "failed") return false;
-  if (outcome.status === "skipped") {
-    logEvent(ctx.root, {
-      loop: ctx.role,
-      type: "warning",
-      message:
-        outcome.skipReason === "no-npm"
-          ? "no npm on PATH; skipping landing build check"
-          : `landing build check timed out after ${BUILD_CHECK_TIMEOUT_MS / 1000}s; proceeding to merge`,
-    });
-    return true;
-  }
+  // The run itself (build_check event, environmental-skip warning) lives in
+  // runScopedBuildCheck, shared with the review gate's pre-check.
+  const check = await runScopedBuildCheck(ctx.root, ctx.role, "landing", wt);
+  if (!check) return true; // No declared check: nothing to run, exactly like the gate skipping its pre-check.
+  if (check.outcome.status === "failed") return false;
+  if (check.outcome.status === "skipped") return true; // Environmental — the helper already warned.
   // Green on exactly the tree that becomes main: seed it so the next tick's red-main baseline
   // check is a cache hit instead of one redundant full-suite run.
   noteGreenBaseline(rebasedHead);
