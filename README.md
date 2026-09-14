@@ -57,8 +57,8 @@ Open items:
   (planned 2026-09-07, split 2026-09-08).
 - Planned: per-loop token generation rate column in the TUI/GUI — a 5-minute moving average shown
   for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
-- Planned: harness-level merge queue — sub-plans 2/5–5/5 tracked in PLANS.md (1/5 landed);
-  next is landing in a per-role detached worktree (planned 2026-09-08).
+- Planned: harness-level merge queue — sub-plans 3/5–5/5 tracked in PLANS.md (2/5 landed);
+  next is asynchronous landing via the durable land queue (planned 2026-09-08).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
 Current main (`8b8aa05`): build clean, suite 925/925.
@@ -83,10 +83,13 @@ one loop per enabled role. Every loop tick:
    when declared, else typecheck/build; failure rejects without spending a model run), then a
    fresh-session reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject` (md-only
    diffs are exempt); rejects reset the branch with reasons injected into the author's
-   next tick, failures keep the commit for re-review under a 3-strike discard cap. Approved work
-   rebases the branch onto main (so main's history stays linear), re-runs the declared check on
-   the rebased tree when main moved under it, and fast-forwards — all under a merge lock shared
-   by every loop. If pi found nothing to do, the loop backs off (exponentially,
+   next tick, failures keep the commit for re-review under a 3-strike discard cap. The gate and
+   the landing run in a harness-owned per-role worktree (`_land-<role>`) off a pinned ref —
+   `refs/tumwater/landing/<role>` — so the role's own branch is reset to main the moment its
+   commit exists, and an interrupted landing re-lands through the same gate on the next tick.
+   Approved work rebases onto main (so main's history stays linear), re-runs the declared check
+   on the rebased tree when main moved under it, and fast-forwards — all under a merge lock
+   shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
    capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 

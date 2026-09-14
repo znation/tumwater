@@ -149,6 +149,31 @@ export async function headOf(cwd: string, ref: string): Promise<string> {
   return git(cwd, "rev-parse", "--verify", ref);
 }
 
+/** Point `ref` at `sha`, creating the ref if needed (git update-ref). The landing pin of
+ * plans/merge-queue.md invariant 4 uses this to keep a committed sha reachable across the role
+ * branch's reset-to-main. Returns false instead of throwing when git fails — the caller then
+ * keeps the commit on its branch (no reset) so leftover recovery can still reach it. */
+export async function setRef(root: string, ref: string, sha: string): Promise<boolean> {
+  return (await gitTry(root, "update-ref", ref, sha)) !== null;
+}
+
+/** Delete `ref`; a no-op when it is already gone (idempotent cleanup on terminal outcomes). */
+export async function deleteRef(root: string, ref: string): Promise<void> {
+  await gitTry(root, "update-ref", "-d", ref);
+}
+
+/** The sha `ref` names, or null when the ref is absent. */
+export async function refSha(root: string, ref: string): Promise<string | null> {
+  return gitTry(root, "rev-parse", "--verify", ref);
+}
+
+/** True when `sha` is already contained in `branch` (git merge-base --is-ancestor; equality
+ * counts as contained). The leftover-recovery entry condition uses this to tell a stale pin —
+ * landed but not yet un-pinned by a crash between the ff and the ref deletion — from real work. */
+export async function isMergedInto(root: string, sha: string, branch: string): Promise<boolean> {
+  return (await gitTry(root, "merge-base", "--is-ancestor", sha, branch)) !== null;
+}
+
 /** The branch the primary checkout has, or null when detached. */
 export async function currentBranch(root: string): Promise<string | null> {
   const out = await gitTry(root, "symbolic-ref", "--short", "HEAD");

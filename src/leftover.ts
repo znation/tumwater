@@ -1,58 +1,75 @@
-import { aheadOfMain } from "./git.js";
+import { aheadOfMain, deleteRef, headOf, isMergedInto, refSha, setRef } from "./git.js";
 import { logEvent } from "./events.js";
-import type { GateResult } from "./review.js";
-import type { PiRunResult, TickResult } from "./types.js";
+import { landingRefName } from "./paths.js";
+import { shortSha } from "./text.js";
+import type { TickResult } from "./types.js";
 
-/** Salvaging commits left on a branch by a previous run whose merge never landed. Split out of
- * loop.ts — which keeps the tick lifecycle around it — because this is a self-contained concern
- * with its own flow (ahead check → recovery review → merge or warn) and its own git surface;
- * the only things it borrows from the loop are identity, the shared review-gate wiring, usage
- * folding into the tick counters, and the loop's shared merge landing so a recovery run folds
- * in like any other pi run. */
+/** Salvaging a commit a previous tick left unlanded (plans/merge-queue.md). Since merge queue
+ * 2/5 the role's branch is reset to main the moment its commit is pinned, so the leftover
+ * normally lives in `refs/tumwater/landing/<role>`: recovery re-lands that sha through the SAME
+ * lander a fresh tick uses (same review gate, same strike cap), so no crash or abort path
+ * smuggles unreviewed work into main (invariant 1). A commit with NO pin — a crash in the window
+ * between the tick's commit and its pin write, or a failed pin write itself — still sits on the
+ * branch ahead of main; recovery adopts that tip into the pin scheme and re-lands it, so
+ * invariant 1 holds whether or not the pin survived. Split out of loop.ts — which keeps the tick
+ * lifecycle around it — because this is
+ * a self-contained concern with its own entry condition and git surface; the only things it
+ * borrows from the loop are identity, the worktree (for the no-pin fallback), and the lander
+ * wiring so a recovery run folds into the same tick counters as an authoring run. */
 
-/** What recoverLeftover needs from its owning loop: identity, the loop's shared review gate
- * (so a recovery review folds into the same tick counters as an authoring run), usage folding,
- * and the loop's shared merge landing. */
+/** What recoverLeftover needs from its owning loop: identity, the role's worktree (needed only
+ * for the no-pin ahead-of-main fallback), and the lander closure that re-lands a sha through the
+ * full gate + landing flow (loop.ts wires it to landChange with the "-recovery" session suffix). */
 export interface LeftoverContext {
   root: string;
   role: string;
   mainBranch: string;
-  /** Run the review gate over everything ahead of main in `wt` (the recovery session). */
-  reviewGate(wt: string): Promise<GateResult>;
-  /** Fold one pi run's usage into the tick's counters. */
-  foldUsage(run: PiRunResult): void;
-  /** Land the worktree branch on main with the loop's shared wiring; `verifiedHead` is the
-   * head this recovery gate's pre-check just ran green on (undefined when it made no fresh
-   * observation — the landing path re-verifies anything else). */
-  merge(wt: string, summary: string, verifiedHead?: string): Promise<TickResult>;
+  /** The role's worktree — read for the no-pin fallback only. */
+  wt: string;
+  /** Land `sha` through the shared lander (review gate, rebase, ff-merge). */
+  land(sha: string): Promise<TickResult>;
 }
 
-/** Salvage commits left on the branch by a previous run whose merge never landed. Leftovers
- * route through the SAME review gate as fresh ticks — every path that can move a commit into
- * main reviews the full ahead-of-main diff first, so no crash or abort path smuggles
- * unreviewed work in (see src/review.ts). Returns true when the leftover was deliberately
- * left on the branch for re-review (a failed review under the strike cap) so the caller keeps
- * it instead of resetting to main. */
-export async function recoverLeftover(ctx: LeftoverContext, wt: string): Promise<boolean> {
-  const ahead = await aheadOfMain(wt, ctx.mainBranch).catch(() => 0);
-  if (ahead <= 0) return false;
-  const gate = await ctx.reviewGate(wt);
-  if (gate.run) ctx.foldUsage(gate.run);
-  // Shutdown mid-review: fail closed — the commit stays for next time. A reject already reset
-  // to main inside the gate; a failure below the strike cap leaves the commit on purpose.
-  if (gate.aborted) return true;
-  if (gate.decision === "rejected") return false;
-  if (gate.decision === "failed") {
-    // At/over the strike cap the gate already discarded the leftover — nothing left to keep.
-    return (await aheadOfMain(wt, ctx.mainBranch).catch(() => 0)) > 0;
+/** Re-land a commit a previous tick left unlanded. Entry condition: the landing ref exists and
+ * its sha is not yet contained in main — or, with no pin at all, the role's branch is ahead of
+ * main (crash between the commit and the pin). A present-but-contained ref is stale — a crash
+ * between the ff-merge and the ref deletion — and is deleted without any landing run. Returns
+ * null when there was nothing to salvage, otherwise the lander's outcome: the caller discards
+ * the pin on a user-aborted recovery (a deliberate stop must not be resurrected by the next
+ * tick). Whatever lands or fails, nothing is left on the role's branch — the commit lives in
+ * its ref (kept by landChange on every non-terminal outcome) or, unpinned, on the branch until
+ * it lands. Never throws for a failed landing — only git-level errors propagate. */
+export async function recoverLeftover(ctx: LeftoverContext): Promise<TickResult | null> {
+  const ref = landingRefName(ctx.role);
+  let sha = await refSha(ctx.root, ref).catch(() => null);
+  if (sha) {
+    if (await isMergedInto(ctx.root, sha, ctx.mainBranch)) {
+      // Stale pin: the work already landed and a crash skipped its un-pinning. Clean it up so
+      // the next tick does not re-land what main already holds.
+      await deleteRef(ctx.root, ref);
+      return null;
+    }
+  } else {
+    // No pin: either nothing was left behind, or a crash landed in the commit→pin window (or
+    // the pin write failed) and the commit still sits on the branch ahead of main. Recover that
+    // tip too — invariant 1 must hold whether or not the pin survived. An unreadable worktree
+    // reads as "no leftover", exactly like a failed ref read: never propagate into the tick.
+    const ahead = await aheadOfMain(ctx.wt, ctx.mainBranch).catch(() => 0);
+    if (ahead <= 0) return null;
+    sha = await headOf(ctx.wt, "HEAD").catch(() => null);
+    if (!sha) return null;
+    // Adopt the unpinned commit into the pin scheme so every downstream outcome — kept on an
+    // under-cap review failure (the strike cap's retry), deleted on reject/land/discard,
+    // discarded on a user abort — behaves exactly as for a normally pinned one. A failed
+    // adoption is logged and harmless: the landing proceeds anyway, with the branch still
+    // holding the commit until the caller's post-recovery reset.
+    if (!(await setRef(ctx.root, ref, sha))) {
+      logEvent(ctx.root, {
+        loop: ctx.role,
+        type: "warning",
+        message: `failed to adopt unpinned leftover ${shortSha(sha)} into its landing ref`,
+      });
+    }
   }
-  const result = await ctx.merge(wt, `recovered leftover work from ${ctx.role}`, gate.verifiedHead);
-  if (result !== "changed") {
-    logEvent(ctx.root, {
-      loop: ctx.role,
-      type: "warning",
-      message: `discarding ${ahead} unmergeable leftover commit(s) (${result})`,
-    });
-  }
-  return false; // merged or warned-and-left-to-the-reset: caller resets to main as usual
+  return await ctx.land(sha);
 }

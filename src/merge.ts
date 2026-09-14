@@ -28,25 +28,23 @@ import type { PiRunResult, TickResult } from "./types.js";
 /** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased
  * tree with the project's declared check when main moved under it, fast-forward, and —
  * when the rebase conflicts — one pi-driven resolution attempt before giving up. The landing is
- * worktree- and ref-parameterized — `MergeContext.ref` names what to land instead of deriving it
- * from the role, so loop.ts passes its own worktree and branch exactly as before, and later plans
- * (merge queue 2/5) pass a pinned sha from a lander worktree. Split out of loop.ts — which keeps
- * the tick lifecycle around it — because this is a self-contained concern with its own flow
- * (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it borrows
- * from the loop are identity (root/ref/mainBranch), `role` for events and session naming only,
+ * worktree-parameterized: whatever `wt` holds at its HEAD after the rebase is what lands — a role
+ * branch (whose ref tracks its own tip through the rebase) or a detached lander worktree pinned
+ * at a bare sha (which does not move when git rebase rewrites it, so fast-forwarding to the
+ * original pin would fail whenever main moved between commit and landing). Split out of loop.ts —
+ * which keeps the tick lifecycle around it — because this is a self-contained concern with its own
+ * flow (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it
+ * borrows from the loop are identity (root/mainBranch), `role` for events and session naming only,
  * the current tick number for session naming, and the loop's shared pi wiring so a
  * conflict-resolution run folds into the same tick counters as an authoring run. */
 
-/** What mergeToMain needs from its owning loop: identity (root, the ref to land, main branch),
- * the role for events and session naming only — the landing code never re-derives it into a
- * branch — plus the tick number that names the conflict-resolution session, and the loop's shared
- * pi runner (role config, session dir, raw log, transient-timeout retry) with usage folded into
- * the tick counters — every pi run of a tick lands there exactly once. */
+/** What mergeToMain needs from its owning loop: identity (root, main branch), the role for
+ * events and session naming only — the landing code never re-derives it into a branch — plus the
+ * tick number that names the conflict-resolution session, and the loop's shared pi runner (role
+ * config, session dir, raw log, transient-timeout retry) with usage folded into the tick counters
+ * — every pi run of a tick lands there exactly once. */
 export interface MergeContext {
   root: string;
-  /** The ref to land on main: anything `git rev-parse` accepts (the role's branch today; a bare
-   * sha from merge queue 2/5 onward). */
-  ref: string;
   role: string;
   mainBranch: string;
   /** The review gate's exemption patterns (config.review.exemptPaths) — the in-lock re-check
@@ -106,7 +104,12 @@ async function tryMerge(
     // Re-verify exactly what will become main before fast-forwarding.
     if (!(await verifyLanding(ctx, wt, await headOf(wt, "HEAD"), preMergeHead, verifiedHead)))
       return "merge_blocked";
-    if (!(await ffMainTo(ctx.root, ctx.ref, ctx.mainBranch))) return "merge_blocked";
+    // Fast-forward to the worktree's POST-REBASE HEAD, not a ref captured before it: a branch
+    // ref tracks its own tip through the rebase (so this is behavior-preserving for role
+    // branches), but a pinned bare sha does not move when git rebase rewrites it — ff'ing main
+    // to the original pin would fail as merge_blocked whenever main moved between commit and
+    // landing, which under concurrency is the common case (review runs outside this lock).
+    if (!(await ffMainTo(ctx.root, await headOf(wt, "HEAD"), ctx.mainBranch))) return "merge_blocked";
     const commit = await headOf(ctx.root, ctx.mainBranch);
     logEvent(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
     for (const question of openQuestions(ctx.root)) {
@@ -288,11 +291,10 @@ export async function continueRebase(wt: string): Promise<string> {
   return headOf(wt, "HEAD");
 }
 
-/** Fast-forward main to `ref`, without touching any remote. `ref` is anything `git rev-parse`
- * accepts — a branch name today, a bare sha from merge queue 2/5 onward; both arms already accept
- * either form (`merge --ff-only <sha>` and `push . <sha>:<main>`). Uses a working-tree merge when
- * the primary checkout is on main (so its files update), otherwise a local ref push. Returns true
- * on success. */
+/** Fast-forward main to `ref`, without touching any remote. Callers pass the worktree's
+ * post-rebase HEAD — a bare sha, which both arms accept (`merge --ff-only <sha>` and
+ * `push . <sha>:<main>`). Uses a working-tree merge when the primary checkout is on main (so its
+ * files update), otherwise a local ref push. Returns true on success. */
 export async function ffMainTo(root: string, ref: string, mainBranch: string): Promise<boolean> {
   const primaryBranch = await currentBranch(root);
   if (primaryBranch === mainBranch) {

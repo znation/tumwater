@@ -4,8 +4,9 @@ import {
   branchHead,
   changedFiles,
   commitAll,
-  git,
+  deleteRef,
   isDirty,
+  setRef,
 } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent } from "./events.js";
@@ -29,7 +30,7 @@ import {
 } from "./prompt.js";
 import { readInitialPrompt } from "./readme.js";
 import { configForRole } from "./config.js";
-import { reviewAheadOfMain, type GateResult } from "./review.js";
+import { landChange, type LandRequest } from "./lander.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { applyTickOutcome, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
 import { recoverLeftover } from "./leftover.js";
@@ -37,8 +38,8 @@ import { mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
-import { branchName, piLogPath, sessionDir } from "./paths.js";
-import { errorMessage } from "./text.js";
+import { landingRefName, piLogPath, sessionDir } from "./paths.js";
+import { errorMessage, shortSha } from "./text.js";
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
@@ -201,16 +202,15 @@ export class LoopRunner {
   }
 
   /** Land the worktree branch on main (see src/merge.ts for the rebase → verify → ff-merge →
-   * conflict-retry flow): delegates with this loop's identity, its own branch as the ref to
-   * land, tick number, and shared pi wiring so a conflict-resolution run folds into this tick's
-   * counters like any other pi run. `verifiedHead` is the head the gate's pre-check just ran
-   * green on (GateResult.verifiedHead) — the landing path re-verifies anything else.
-   * Callers that never ran the gate (refusal notes) pass nothing. */
-  private async merge(wt: string, summary: string, verifiedHead?: string): Promise<TickResult> {
+   * conflict-retry flow): delegates with this loop's identity, tick number, and shared pi wiring
+   * so a conflict-resolution run folds into this tick's counters like any other pi run. Since
+   * merge queue 2/5 only the refusal-note landing (src/refusal.ts) still uses it — reviewed
+   * changes land through the lander in _land-<role> instead; md-only notes are review-exempt by
+   * construction, so they keep this branch path (plans/merge-queue.md 2/5). */
+  private async merge(wt: string, summary: string): Promise<TickResult> {
     return mergeToMain(
       {
         root: this.root,
-        ref: branchName(this.role),
         role: this.role,
         mainBranch: this.mainBranch,
         exemptPaths: this.config.review.exemptPaths,
@@ -219,7 +219,45 @@ export class LoopRunner {
       },
       wt,
       summary,
-      verifiedHead,
+    );
+  }
+
+  /** Pin `sha` by this role's landing ref and free the worktree (plans/merge-queue.md invariant
+   * 4): the pin must exist BEFORE resetWorktreeToMain moves the branch, or the commit is
+   * orphaned. Returns false when the pin write failed — the caller then leaves the commit on its
+   * branch (no reset) and defers to next-tick recovery, which adopts it into the pin scheme.
+   * After a successful pin the review gate and the rebase run in _land-<role> — never in this
+   * worktree (merge queue 2/5). */
+  private async pinAndReset(wt: string, sha: string): Promise<boolean> {
+    const pinned = await setRef(this.root, landingRefName(this.role), sha);
+    if (!pinned) {
+      logEvent(this.root, {
+        loop: this.role,
+        type: "warning",
+        message: `failed to pin ${shortSha(sha)} by its landing ref — leaving the commit on the branch for next-tick recovery`,
+      });
+      return false;
+    }
+    await resetWorktreeToMain(wt, this.mainBranch);
+    return true;
+  }
+
+  /** Review and land a pinned commit in this role's lander worktree (src/lander.ts) with this
+   * loop's shared wiring: the reviewer run folds via foldUsage, merge.ts's conflict resolver
+   * goes through runRolePi (which folds internally), and aborts ride on the tick's signal.
+   * Returns the same TickResult values a tick returns today. */
+  private async land(req: LandRequest): Promise<TickResult> {
+    return landChange(
+      {
+        root: this.root,
+        mainBranch: this.mainBranch,
+        config: this.config,
+        state: this.state,
+        runPi: (w, prompt, sessionName) => this.runRolePi(w, prompt, sessionName),
+        foldUsage: (run) => this.foldUsage(run),
+        signal: () => this.runSignal(),
+      },
+      req,
     );
   }
 
@@ -332,36 +370,6 @@ export class LoopRunner {
     return run;
   }
 
-  /** Run the adversarial review gate over everything ahead of main in `wt` (see
-   * src/review.ts for exemption, verdict parsing, and failure policy). `commitBody` is the
-   * author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff.
-   * `highFriction` flags a change whose authoring run burned more than the configured
-   * turn/time thresholds; the flag rides along in the review prompt for extra scrutiny. */
-  private async reviewGate(
-    wt: string,
-    summary?: string,
-    commitBody?: string,
-    sessionSuffix?: string,
-    highFriction?: boolean,
-  ): Promise<GateResult> {
-    return reviewAheadOfMain(
-      {
-        root: this.root,
-        role: this.role,
-        wt,
-        mainBranch: this.mainBranch,
-        config: this.config,
-        tick: this.state.ticks,
-        sessionSuffix,
-        signal: this.runSignal(),
-      },
-      this.state,
-      summary,
-      commitBody,
-      highFriction,
-    );
-  }
-
   /** Run one full tick of this role loop: build (or resume) the prompt, run pi in the
    * worktree, commit and merge any changes it made, then schedule the next run from the
    * outcome — changed/skipped/cut-off ticks wait at least the minimum interval, an aborted
@@ -472,36 +480,39 @@ export class LoopRunner {
       await abortSync(wt);
       logEvent(this.root, { loop: this.role, type: "resume", cause: resumeCause });
     } else {
-      // Salvage commits a previous run's merge never landed (src/leftover.ts): they route
-      // through the same review gate as fresh ticks, with this loop's shared wiring.
-      const leftForRetry = await recoverLeftover(
-        {
-          root: this.root,
-          role: this.role,
-          mainBranch: this.mainBranch,
-          reviewGate: (w) => this.reviewGate(w, undefined, undefined, "-recovery"),
-          foldUsage: (run) => this.foldUsage(run),
-          merge: (w, sum, v) => this.merge(w, sum, v),
-        },
+      // Salvage a commit a previous tick left unlanded (src/leftover.ts): it re-lands through
+      // the same lander as fresh ticks, so no crash or abort path smuggles unreviewed work into
+      // main. Whatever recovery does, nothing is left on this branch — the leftover lives in
+      // its landing ref + _land-<role> (or, unpinned, on the branch until it lands) — so the
+      // reset below always runs and the red-main gate sees pristine main.
+      const recovered = await recoverLeftover({
+        root: this.root,
+        role: this.role,
+        mainBranch: this.mainBranch,
         wt,
-      );
-      if (leftForRetry) {
-        // A failed (or aborted) recovery review deliberately left its commit on the branch for
-        // re-review — bounded by the gate's strike cap. Keep it; discard only uncommitted stray
-        // edits so the next tick reviews the combined ahead-of-main diff.
-        await abortSync(wt);
-        await git(wt, "reset", "--hard", "HEAD");
-        await git(wt, "clean", "-fd");
-      } else {
-        await resetWorktreeToMain(wt, this.mainBranch);
-        // Red-main baseline gate (src/main-red.ts): the worktree is pristine main right now —
-        // verify main's own suite before spending an authoring run on top of it. Only roles
-        // whose diff can carry code changes are blocked; resume and leftover-recovery ticks
-        // skip this by construction (their worktree is not pristine main, and recovery routes
-        // through the gate, which fails closed against red main).
-        const blocked = await mainRedGate(this.root, this.role, wt);
-        if (blocked) return blocked;
+        land: (sha) =>
+          this.land({
+            role: this.role,
+            sha,
+            tick: s.ticks,
+            summary: `recovered leftover work from ${this.role}`,
+            sessionSuffix: "-recovery",
+          }),
+      });
+      if (recovered === "aborted" && this.userAborted) {
+        // A deliberate stop during recovery discards the pinned work — exactly like the tick's
+        // own landing path. Keeping it would let next-tick recovery resurrect what the operator
+        // explicitly killed (`tumwater abort`: "work discarded"). Shutdowns keep it: fail-closed
+        // re-review is the point.
+        await deleteRef(this.root, landingRefName(this.role));
       }
+      await resetWorktreeToMain(wt, this.mainBranch);
+      // Red-main baseline gate (src/main-red.ts): the worktree is pristine main right now —
+      // verify main's own suite before spending an authoring run on top of it. Only roles whose
+      // diff can carry code changes are blocked; resume ticks skip this by construction (their
+      // worktree is not pristine main).
+      const blocked = await mainRedGate(this.root, this.role, wt);
+      if (blocked) return blocked;
     }
 
     const piStartedAt = Date.now();
@@ -629,32 +640,42 @@ export class LoopRunner {
     );
     const commit = await commitAll(wt, message);
 
-    // Adversarial review gate (src/review.ts): no diff reaches main unreviewed. Runs outside
-    // the merge lock, before it — other loops keep merging while this one is under review.
-    // The reviewer checks the author's claimed WHY/VERIFIED against the actual diff.
-    const gate = await this.reviewGate(
-      wt,
-      summary,
-      body ? formatCommitBody(body) : undefined,
-      undefined,
-      highFriction || undefined,
-    );
-    if (gate.run) this.foldUsage(gate.run);
-    if (gate.aborted) return this.finishAbortedTick(userPrompt, wt);
-    if (gate.decision === "rejected") {
-      // The gate already reset the branch to main; its reasons ride along on this role's next
-      // tick prompt via state.lastReview (see tickPrompt).
-      return { result: "rejected", summary: gate.detail ?? "rejected in review" };
-    }
-    if (gate.decision === "failed") {
-      // Fail closed: the commit stays on the branch for the next tick's recovery re-review
-      // (bounded by the gate's strike cap). Backoff applies as for errors.
-      s.lastError = `review failed: ${gate.detail}`;
-      return { result: "review_error", summary: gate.detail };
+    // Pin the commit by its landing ref BEFORE freeing the worktree (invariant 4), then hand it
+    // to the lander: from here on the review gate and the rebase run in _land-<role>, never in
+    // this worktree (plans/merge-queue.md 2/5). A failed pin defers to next-tick recovery —
+    // landing without a pin would lose the ref lifecycle this whole flow depends on. The
+    // reviewer checks the author's claimed WHY/VERIFIED against the actual diff; no diff reaches
+    // main unreviewed.
+    if (!(await this.pinAndReset(wt, commit))) {
+      s.lastError = "failed to pin the landing ref; left for next-tick recovery";
+      return { result: "error", summary: s.lastError };
     }
 
-    const result = await this.merge(wt, summary, gate.verifiedHead);
-    if (result !== "changed") s.lastError = `merge failed: ${result}`;
+    const result = await this.land({
+      role: this.role,
+      sha: commit,
+      tick: s.ticks,
+      summary,
+      body: body ? formatCommitBody(body) : undefined,
+      highFriction: highFriction || undefined,
+    });
+    if (result === "aborted") {
+      // A deliberate user stop discards the pinned work too — otherwise next-tick recovery would
+      // resurrect what the operator explicitly killed (`tumwater abort`: "work discarded").
+      // Shutdowns keep it: landChange already did, and fail-closed re-review is the point.
+      if (this.userAborted) await deleteRef(this.root, landingRefName(this.role));
+      return this.finishAbortedTick(userPrompt, wt);
+    }
+    if (result === "rejected") {
+      // The gate recorded its reasons in state.lastReview; they ride along on this role's next
+      // tick prompt via buildRejectedReviewNote (see tickPrompt).
+      return { result, summary: s.lastReview?.reasons[0] ?? "rejected in review" };
+    }
+    if (result === "review_error") {
+      // Fail closed: the pin stays for the next tick's recovery re-review (bounded by the gate's
+      // strike cap). Backoff applies as for errors. landChange set lastError.
+      return { result, summary: s.lastReview?.reasons[0] ?? "review failed" };
+    }
     // The flag's durable record is the Friction trailer line stamped on the commit above;
     // lastSummary and the tick_end event carry it too for dashboards and logs.
     const finalSummary = highFriction

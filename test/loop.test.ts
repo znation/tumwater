@@ -7,8 +7,10 @@ import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
+import { setRef } from "../src/git.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
-import { sessionDir, worktreePath } from "../src/paths.js";
+import { landingRefName, sessionDir, worktreePath } from "../src/paths.js";
+import { ensureWorktree } from "../src/worktree.js";
 import { assistantLine, errorLine, fakePi, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
@@ -27,22 +29,23 @@ async function waitForFile(file: string, timeoutMs = 10_000): Promise<void> {
   }
 }
 
-/** Poll until `branch` is at least one commit ahead of main (bounded). Times an abort to
- * land AFTER the author run's commit and BEFORE/IN the review gate's run — a fixed sleep
- * would race the commit under parallel load. The branch does not exist until ensureWorktree
- * creates it, so a missing revision reads as "not ahead yet", not a poll failure. */
-async function waitForAhead(repo: string, branch: string, timeoutMs = 10_000): Promise<void> {
+/** Poll until `ref` exists (bounded). Times an abort to land AFTER the tick's commit is
+ * pinned by its landing ref and BEFORE/IN the review gate's run — a fixed sleep would race the
+ * pin under parallel load. Since merge queue 2/5 the role branch resets to main immediately
+ * after the pin, so "branch ahead of main" can no longer mark that window; the ref is what
+ * survives it. */
+async function waitForLandingRef(repo: string, role: string, timeoutMs = 10_000): Promise<string> {
   const start = Date.now();
   for (;;) {
-    let count = 0;
+    let sha: string | null = null;
     try {
-      count = Number(sh(repo, "git", "rev-list", "--count", `main..${branch}`));
+      sha = sh(repo, "git", "rev-parse", "--verify", landingRefName(role)).trim() || null;
     } catch {
-      // Branch not created yet — keep polling.
+      // Ref not pinned yet — keep polling.
     }
-    if (count >= 1) return;
+    if (sha) return sha;
     if (Date.now() - start > timeoutMs)
-      throw new Error(`timed out waiting for ${branch} to get ahead of main`);
+      throw new Error(`timed out waiting for ${landingRefName(role)} to be pinned`);
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
@@ -724,16 +727,24 @@ test("a user-abort mid-review discards the committed work too", async () => {
     enqueuePrompt(repo, "ship the hello file");
     const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
     const tick = runner.tick();
-    // Abort only once the author run has committed (branch ahead of main): an earlier abort
+    // Abort only once the author run's commit is pinned by its landing ref: an earlier abort
     // would hit the author-run path instead of the review gate.
-    await waitForAhead(repo, "tumwater/director");
+    await waitForLandingRef(repo, "director");
     runner.abortTick();
     const outcome = await tick;
     assert.equal(outcome.result, "user_aborted", "a mid-review user abort is an abort, not a failed review");
 
     // Unlike a shutdown (which fails closed and keeps the commit for re-review), a deliberate
-    // stop discards it: resetWorktreeToMain drops the unmerged commit too.
+    // stop discards it: the role worktree is clean at main AND the landing pin is deleted —
+    // keeping it would let next-tick recovery resurrect what the operator explicitly killed.
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
+    let refGone = false;
+    try {
+      sh(repo, "git", "rev-parse", "--verify", landingRefName("director"));
+    } catch {
+      refGone = true; // a missing ref makes rev-parse --verify exit nonzero
+    }
+    assert.ok(refGone, "the pinned commit was discarded with the abort");
     assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
 
     // And like the author-run branch: no re-queue of the unfulfilled prompt.
@@ -933,9 +944,11 @@ test("a stray pi commit makes rebase --continue stop a second time: aborted, mer
     assert.equal(outcome.result, "merge_conflict", "the second conflict is reported, not crashed on");
     // Nothing landed: main keeps its version…
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n", "main keeps its version");
-    // …and both of the tick's commits stay stranded on the branch for the next tick's
-    // recovery, exactly like any other failed merge.
-    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "2", "the tick's commits are kept for recovery");
+    // …and both of the tick's commits are kept for recovery — pinned by the landing ref (the
+    // pin names the top commit, which contains the stray one below it).
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+    const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
+    assert.ok(pinned.length === 40, "the tick's commits are kept for recovery via the pin");
     const wt = path.join(repo, ".tumwater/worktrees/improve");
     // No rebase is left in progress: the branch ref is checked out again (mid-rebase HEAD
     // would be detached), and no conflict markers survive.
@@ -968,8 +981,12 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
     assert.equal(outcome.result, "merge_blocked");
     // The user's local edit survives — the blocked merge must not touch it.
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "user's uncommitted edit\n");
-    // main did not move; the tick's commit stays on the branch for the next tick's recovery.
-    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
+    // main did not move; the tick's commit is kept in its landing pin for the next tick's
+    // recovery — and the role worktree is clean at main whatever the landing outcome.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+    const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
+    assert.ok(pinned.length === 40, "the blocked commit is pinned for recovery");
+    assert.equal(sh(worktreePath(repo, "improve"), "git", "status", "--porcelain"), "", "role worktree clean at main");
     assert.match(sh(repo, "git", "show", "main:seed.txt"), /^seed$/);
     // The failure is recorded and the loop backs off like any other error.
     assert.equal(runner.state.lastError, "merge failed: merge_blocked");
@@ -1010,8 +1027,11 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
     assert.equal((await runner.tick()).result, "merge_conflict");
-    // The tick's commit is stranded on the branch: that is what recovery must salvage.
-    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
+    // The tick's commit is pinned by its landing ref: that is what recovery must salvage.
+    // (The role branch itself is clean at main — the pin is the leftover now.)
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+    const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
+    assert.ok(pinned.length === 40, "the failed merge's commit is pinned for recovery");
 
     const second = await runner.tick();
     assert.equal(second.result, "no_change", "tick 2 itself found nothing to do");
@@ -1029,11 +1049,146 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
   }
 });
 
-test("unmergeable leftover commits are discarded with a warning on the next tick", async () => {
+// The crash path of plans/merge-queue.md invariant 7: a shutdown between the tick's commitAll
+// and its landing leaves the pin on disk (the branch is already reset to main). The next tick
+// must re-land that sha through the SAME gate — reviewed, never smuggled in unreviewed.
+test("a landing pin left behind by an interrupted tick is re-landed through the gate on the next tick", async () => {
+  const repo = await initializedRepo();
+  // Simulate the crash: a commit not contained in main, pinned by the landing ref, with the
+  // role branch back at main.
+  sh(repo, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(repo, "crash.txt"), "interrupted work\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "interrupted tick's commit");
+  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+  sh(repo, "git", "checkout", "main");
+  await setRef(repo, landingRefName("improve"), sha);
+
+  // The next tick's recovery re-lands the pin through the full gate: approve → land.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change", "the tick's own authoring run found nothing to do");
+
+    // The interrupted work landed on main via recovery — reviewed, not smuggled in.
+    assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
+    assert.ok(fs.existsSync(path.join(repo, "crash.txt")), "the recovered file is on main");
+    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    assert.ok(
+      merged.some((e) => String(e.summary) === "recovered leftover work from improve"),
+      "recovery is recorded as a merge of the leftover work",
+    );
+    let refGone = false;
+    try {
+      sh(repo, "git", "rev-parse", "--verify", landingRefName("improve"));
+    } catch {
+      refGone = true; // a missing ref makes rev-parse --verify exit nonzero
+    }
+    assert.ok(refGone, "the pin was deleted once the work landed");
+  } finally {
+    restore();
+  }
+});
+
+// The user-abort sibling of the crash-pin test above: a `tumwater abort` that lands in the
+// leftover-recovery window (the pin exists BEFORE the tick starts) must discard the pinned work
+// exactly like an abort in the tick's own landing path — keeping it would let next-tick recovery
+// resurrect what the operator explicitly killed (`abort`: "work discarded").
+test("a user-abort during leftover recovery discards the pinned work too", async () => {
+  const repo = await initializedRepo();
+  // Simulate the crash: a commit not contained in main, pinned by the landing ref, with the
+  // role branch back at main — exactly what an interrupted tick leaves behind.
+  sh(repo, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(repo, "crash.txt"), "interrupted work\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "interrupted tick's commit");
+  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+  sh(repo, "git", "checkout", "main");
+  await setRef(repo, landingRefName("improve"), sha);
+
+  // The recovery review (its prompt contains VERDICT): hang until the abort kills it. The tick's
+  // own authoring run then starts with an already-aborted signal and returns aborted at once.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const tick = runner.tick();
+    // Abort only once recovery has checked the pin out into its lander worktree: an earlier
+    // abort would take the same path, but this pins the window under test.
+    await waitForFile(path.join(repo, ".tumwater/worktrees/_land-improve"));
+    runner.abortTick();
+    const outcome = await tick;
+    assert.equal(outcome.result, "user_aborted", "a mid-recovery user abort is an abort, not a failed review");
+
+    // A deliberate stop discards the pinned work: nothing landed on main and the pin is gone —
+    // next-tick recovery must NOT resurrect it.
+    assert.ok(!fs.existsSync(path.join(repo, "crash.txt")), "nothing landed on main");
+    let refGone = false;
+    try {
+      sh(repo, "git", "rev-parse", "--verify", landingRefName("improve"));
+    } catch {
+      refGone = true; // a missing ref makes rev-parse --verify exit nonzero
+    }
+    assert.ok(refGone, "the pinned commit was discarded with the abort");
+  } finally {
+    restore();
+  }
+});
+
+// The no-pin crash window: a shutdown between the tick's commitAll and its pin write leaves the
+// commit on the role branch with NO landing ref. Recovery must fall back to the branch tip so
+// invariant 1 (a shutdown between commit and landing loses nothing) holds whether or not the
+// pin survived.
+test("an unpinned commit ahead of main is recovered from the branch tip", async () => {
+  const repo = await initializedRepo();
+  // Simulate the crash: a commit on the role branch, no landing ref written.
+  const wt = await ensureWorktree(repo, "improve", "main");
+  fs.writeFileSync(path.join(wt, "unpinned.txt"), "committed but unpinned\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "the pin write never happened");
+  const sha = sh(wt, "git", "rev-parse", "HEAD").trim();
+
+  // The next tick's recovery finds no ref but a branch ahead of main: it re-lands the tip.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change", "the tick's own authoring run found nothing to do");
+
+    // The unpinned work landed on main via recovery — reviewed, not smuggled in.
+    assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
+    assert.ok(fs.existsSync(path.join(repo, "unpinned.txt")), "the recovered file is on main");
+    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    assert.ok(
+      merged.some((e) => String(e.summary) === "recovered leftover work from improve"),
+      "recovery is recorded as a merge of the leftover work",
+    );
+    // The role worktree is clean at main whatever recovery did.
+    assert.equal(sh(wt, "git", "status", "--porcelain"), "");
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+  } finally {
+    restore();
+  }
+});
+
+test("an unmergeable leftover is retried on the next tick and keeps its landing pin", async () => {
   const repo = await initializedRepo();
   const m1 = path.join(tmpdir(), "phase1");
   // Phase 0 (any run whose prompt asks for a VERDICT — the review gate, which recovery
-  // now routes through): approve, so recovery reaches the merge and can fail there. Phase
+  // routes through): approve, so recovery reaches the merge and can fail there. Phase
   // 1 (tick 1): branch edit + conflicting main advance. Every conflict-resolution run
   // (detected by markers in seed.txt) leaves the markers: unresolvable, both ticks.
   const restore = fakePi(
@@ -1055,33 +1210,39 @@ test("unmergeable leftover commits are discarded with a warning on the next tick
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
     assert.equal((await runner.tick()).result, "merge_conflict");
+
+    // Tick 2: recovery re-lands the pin through the same gate (the early approved return — no
+    // reviewer run — since tick 1's gate already signed off on this HEAD) and hits the same
+    // unresolvable conflict; the tick's own authoring run then finds nothing to do.
     assert.equal((await runner.tick()).result, "no_change");
 
-    // Recovery gave up: the discard is warned about and main keeps its version.
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
-    assert.ok(
-      warnings.some((w) => /discarding 1 unmergeable leftover commit\(s\) \(merge_conflict\)/.test(w)),
-      `expected a discard warning, got: ${JSON.stringify(warnings)}`,
-    );
+    // merge_conflict is non-terminal: a fresh-context retry may resolve what two consecutive
+    // attempts could not (a bounded attempt count lands with merge queue 3/5; review failures
+    // have their own strike cap). The pin survives for the next tick's retry, and main keeps
+    // its version either way.
+    const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
+    assert.ok(pinned.length === 40, "the unmergeable commit is kept for the next tick's retry");
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n");
-    // The stranded commit is gone (reset to main), so it cannot resurface on tick 3.
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
   } finally {
     restore();
   }
 });
 
-test("a failed recovery review keeps its commit on the branch for re-review", async () => {
+test("a failed recovery review keeps its pinned commit for re-review", async () => {
   const repo = await initializedRepo();
   const m1 = path.join(tmpdir(), "phase1");
   // Phase 0 (any run whose prompt asks for a VERDICT — the review gate): reply without a
-  // VERDICT line, failing closed under the strike cap both times, and leave an untracked
-  // stray file in the worktree. Phase 1 (tick 1): edit seed.txt on the branch — its commit
-  // is stranded when the tick's own review fails. Phase 2 (tick 2's own tick): nothing to do.
+  // VERDICT line, failing closed under the strike cap both times. The FIRST review run only
+  // leaves an untracked stray file in the worktree it runs in (_land-improve) — guarded so the
+  // recovery review does not recreate it and mask the cleanup assertion below. Phase 1 (tick
+  // 1): edit seed.txt on the branch — its commit is pinned when the tick's own review fails.
+  // Phase 2 (tick 2's own tick): nothing to do.
+  const strayOnce = path.join(tmpdir(), "stray-once");
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-      `  touch stray.txt`,
+      `  [ -f "${strayOnce}" ] || touch "${strayOnce}" stray.txt`,
       `  printf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
       `  exit 0;; esac; done`,
       `if [ ! -f "${m1}" ]; then`,
@@ -1096,22 +1257,26 @@ test("a failed recovery review keeps its commit on the branch for re-review", as
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
     assert.equal((await runner.tick()).result, "review_error");
-    // The tick's commit is stranded on the branch; its recovery review will fail too.
-    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
+    // The tick's commit is pinned for recovery; the role worktree is clean at main.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+    const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
+    assert.ok(pinned.length === 40, "the failed review's commit is pinned for re-review");
 
     const second = await runner.tick();
     assert.equal(second.result, "no_change", "tick 2 itself found nothing to do");
 
-    // The failed recovery review (under the strike cap) deliberately left its commit on
-    // the branch for re-review — a plain reset-to-main would have discarded it. This is
-    // tick()'s left-for-retry path: reset --hard HEAD + clean -fd keep the commit but drop
-    // uncommitted strays (regression: this path once called git() without importing it,
-    // erroring every such tick and breaking the build).
-    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
+    // The failed recovery review (under the strike cap) deliberately kept its pin for
+    // re-review — a plain ref deletion would have discarded it. The role worktree stays
+    // clean at main whatever recovery does, and the reviewer's stray file in _land-improve
+    // is cleaned by the next landing's ensureDetachedWorktree.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const wt = worktreePath(repo, "improve");
-    assert.ok(!fs.existsSync(path.join(wt, "stray.txt")), "the stray untracked file is cleaned");
+    assert.ok(!fs.existsSync(path.join(wt, "stray.txt")), "no stray file in the role worktree");
     assert.equal(sh(wt, "git", "status", "--porcelain"), "", "no uncommitted edits remain");
+    const landWt = path.join(repo, ".tumwater/worktrees/_land-improve");
+    assert.ok(!fs.existsSync(path.join(landWt, "stray.txt")), "the reviewer's stray file is cleaned on re-landing");
     const failed = readEvents(repo).filter((e) => e.type === "review_failed");
+    assert.equal(failed.length, 2, "both the tick's review and its recovery review failed");
     assert.ok(
       failed.some((e) => /no parseable VERDICT/.test(String(e.message))),
       `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,
@@ -1121,7 +1286,7 @@ test("a failed recovery review keeps its commit on the branch for re-review", as
   }
 });
 
-test("a shutdown mid-review fails closed: commit stays on the branch and the prompt is re-queued", async () => {
+test("a shutdown mid-review fails closed: the pinned commit survives and the prompt is re-queued", async () => {
   const repo = await initializedRepo();
   // Author run (the tick prompt): make a change and finish. Review run (its prompt contains
   // VERDICT): hang until the abort kills it — simulating Ctrl+C while under review.
@@ -1137,15 +1302,18 @@ test("a shutdown mid-review fails closed: commit stays on the branch and the pro
     enqueuePrompt(repo, "ship the hello file");
     const runner = new LoopRunner(repo, "director", defaultConfig(), "main", controller.signal);
     const tick = runner.tick();
-    // Abort only once the author run has committed (branch ahead of main): an earlier abort
+    // Abort only once the author run's commit is pinned by its landing ref: an earlier abort
     // would hit the author-run path instead of the review gate.
-    await waitForAhead(repo, "tumwater/director");
+    await waitForLandingRef(repo, "director");
     controller.abort();
     const outcome = await tick;
     assert.equal(outcome.result, "aborted", "a mid-review shutdown is an abort, not a failed review");
 
-    // Fail closed: nothing merged — the commit stays on the branch for re-review.
-    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "1");
+    // Fail closed: nothing merged — the role worktree is clean at main and the commit survives
+    // in its landing pin for the next tick's recovery re-review.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
+    const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("director")).trim();
+    assert.ok(pinned.length === 40, "the pin survived the abort");
     assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
 
     // The unfulfilled director prompt goes back in the inbox: the director recovers via the
@@ -1196,6 +1364,15 @@ test("a rejected change rides along on the role's next tick prompt with its reas
     // Tick 1: the change is committed, then rejected — nothing lands on main.
     assert.equal((await runner.tick()).result, "rejected");
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+    const wt = worktreePath(repo, "improve");
+    assert.equal(sh(wt, "git", "status", "--porcelain"), "", "a rejected tick leaves the role worktree clean at main");
+    let refGone = false;
+    try {
+      sh(repo, "git", "rev-parse", "--verify", landingRefName("improve"));
+    } catch {
+      refGone = true; // a missing ref makes rev-parse --verify exit nonzero
+    }
+    assert.ok(refGone, "a rejection is terminal: the pin was deleted with it");
     assert.ok(!fs.existsSync(path.join(repo, "rejected.txt")), "the rejected change did not merge");
 
     // Tick 2: the rejection is the only cross-tick memory — every tick starts a fresh pi

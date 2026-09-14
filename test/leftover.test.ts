@@ -1,196 +1,135 @@
-import test from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { recoverLeftover, type LeftoverContext } from "../src/leftover.js";
-import { aheadOfMain } from "../src/git.js";
-import { ensureWorktree, resetWorktreeToMain } from "../src/worktree.js";
-import { readEvents } from "../src/events.js";
-import type { GateResult } from "../src/review.js";
-import type { PiRunResult, TickResult } from "../src/types.js";
+import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
+import { landingRefName } from "../src/paths.js";
+import { ensureWorktree } from "../src/worktree.js";
+import type { TickResult } from "../src/types.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
-// Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that re-reviews and
-// re-merges commits a previous run left on the branch. The loop e2e tests (test/loop.test.ts)
-// exercise only two of its branches end-to-end (approved → merged, unmergeable → warned); the
-// aborted / rejected / failed-at-cap decisions and the usage-folding wiring are covered here
-// against a real git worktree with the gate, merge, and foldUsage seams faked.
+// Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that re-lands a commit
+// a previous tick left unlanded (merge queue 2/5): normally pinned by
+// refs/tumwater/landing/<role>, or unpinned on the branch when a crash landed in the commit→pin
+// window. The lander seam is faked; the ref mechanics are real git. The loop e2e tests
+// (test/loop.test.ts) exercise the full recovery flow end-to-end through a live tick.
 
 const ROLE = "improve";
 
-/** A minimal PiRunResult for asserting foldUsage received the reviewer's run. */
-function fakeRun(overrides: Partial<PiRunResult> = {}): PiRunResult {
-  return {
-    ok: true,
-    finalText: "",
-    nothingToDo: false,
-    refused: false,
-    outputTokens: 0,
-    peakContextTokens: 0,
-    turns: 1,
-    costUsd: 0,
-    timedOut: false,
-    quietKilled: false,
-    aborted: false,
-    contextExceeded: false,
-    transientServerTimeout: false,
-    transientPiCrash: false,
-    finalMessageContentless: false,
-    compacted: false,
-    ...overrides,
-  };
-}
-
-/** A LeftoverContext whose gate/merge/foldUsage are recording stubs. `gate` may be a fixed
- * GateResult or an async function (for gates that mutate the worktree, like reject/discard). */
-function fakeCtx(
+/** A LeftoverContext whose land records every call and returns `landResult`. */
+function makeCtx(
   root: string,
-  gate: GateResult | ((wt: string) => Promise<GateResult>),
-  mergeResult: TickResult = "changed",
-): { ctx: LeftoverContext; calls: { gates: number; merges: [string, string][]; folded: PiRunResult[] } } {
-  const calls = { gates: 0, merges: [] as [string, string][], folded: [] as PiRunResult[] };
+  wt: string,
+  landResult: TickResult = "changed",
+): { ctx: LeftoverContext; landed: string[] } {
+  const landed: string[] = [];
   const ctx: LeftoverContext = {
     root,
     role: ROLE,
     mainBranch: "main",
-    reviewGate: async (w) => {
-      calls.gates++;
-      return typeof gate === "function" ? await gate(w) : gate;
-    },
-    foldUsage: (run) => calls.folded.push(run),
-    merge: async (w, summary) => {
-      calls.merges.push([w, summary]);
-      return mergeResult;
+    wt,
+    land: async (sha) => {
+      landed.push(sha);
+      return landResult;
     },
   };
-  return { ctx, calls };
+  return { ctx, landed };
 }
 
-/** Repo with a worktree one commit ahead of main — the leftover to salvage. */
-async function leftoverFixture(): Promise<{ root: string; wt: string }> {
+/** A repo with one commit NOT contained in main, pinned by the landing ref — the leftover to
+ * salvage. The commit sits on a throwaway branch so it stays reachable after leaving it. */
+async function pinnedFixture(): Promise<{ root: string; sha: string }> {
+  const root = makeRepo();
+  sh(root, "git", "checkout", "-b", "stray");
+  fs.appendFileSync(path.join(root, "seed.txt"), "leftover change\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "stranded work");
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+  await setRef(root, landingRefName(ROLE), sha);
+  return { root, sha };
+}
+
+test("no landing ref and nothing ahead of main: no-op without calling the lander", async () => {
+  const root = makeRepo(); // nothing pinned, branch at main
+  const wt = await ensureWorktree(root, ROLE, "main");
+  const { ctx, landed } = makeCtx(root, wt);
+
+  assert.equal(await recoverLeftover(ctx), null);
+
+  assert.equal(landed.length, 0, "the lander never runs when there is no pin and nothing ahead");
+});
+
+test("a pinned commit not in main is re-landed through the lander", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main"); // branch at main: only the pin matters
+  const { ctx, landed } = makeCtx(root, wt);
+
+  assert.equal(await recoverLeftover(ctx), "changed", "the lander's outcome passes through");
+  assert.deepEqual(landed, [sha], "the lander gets exactly the pinned sha");
+});
+
+test("a stale ref already contained in main is deleted without a landing run", async () => {
+  const { root, sha } = await pinnedFixture();
+  // Simulate the crash window: the work landed on main but the ref deletion never ran.
+  sh(root, "git", "merge", "--ff-only", "stray");
+  assert.ok(await isMergedInto(root, sha, "main"), "fixture sanity: the pin is now contained in main");
+  const wt = await ensureWorktree(root, ROLE, "main");
+  const { ctx, landed } = makeCtx(root, wt);
+
+  assert.equal(await recoverLeftover(ctx), null);
+
+  assert.equal(landed.length, 0, "contained work is never re-landed");
+  assert.equal(await refSha(root, landingRefName(ROLE)), null, "the stale pin was cleaned up");
+});
+
+test("a non-terminal landing outcome passes through unchanged (no throw)", async () => {
+  const { root } = await pinnedFixture();
+  // merge_conflict keeps the ref for next-tick recovery — that bookkeeping is the lander's;
+  // recoverLeftover must neither swallow it nor treat it as an error.
+  const wt = await ensureWorktree(root, ROLE, "main");
+  const { ctx, landed } = makeCtx(root, wt, "merge_conflict");
+
+  assert.equal(await recoverLeftover(ctx), "merge_conflict", "the caller sees the abort/conflict to act on");
+  assert.equal(landed.length, 1);
+});
+
+test("an unpinned commit ahead of main (crash in the commit→pin window) is adopted and recovered from the branch tip", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
-  fs.appendFileSync(path.join(wt, "seed.txt"), "leftover change\n");
+  fs.appendFileSync(path.join(wt, "seed.txt"), "unpinned work\n");
   sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "stranded work");
-  return { root, wt };
-}
+  sh(wt, "git", "commit", "-m", "committed but the pin write never happened");
+  const tip = sh(wt, "git", "rev-parse", "HEAD").trim();
+  assert.equal(await refSha(root, landingRefName(ROLE)), null, "fixture sanity: no pin exists");
+  const { ctx, landed } = makeCtx(root, wt);
 
-test("no leftover: returns false without running the gate or merging", async () => {
+  assert.equal(await recoverLeftover(ctx), "changed");
+  assert.deepEqual(landed, [tip], "the branch tip is the sha to re-land when no pin survived");
+  // The unpinned commit was adopted into the pin scheme: an under-cap review failure would keep
+  // this ref for the strike cap's retry exactly as for a normally pinned one. (The fake lander
+  // does not delete it, so it is still here.)
+  assert.equal(await refSha(root, landingRefName(ROLE)), tip, "the fallback adopts the pin");
+});
+
+test("an unreadable ref read and an unreadable worktree both read as no leftover: no lander call", async () => {
+  const root = tmpdir(); // not a git repo at all — every git command in it fails
+  const bogusWt = tmpdir();
+  const { ctx, landed } = makeCtx(root, bogusWt);
+
+  assert.equal(await recoverLeftover(ctx), null, "a failed ref read never reaches the lander");
+  assert.equal(landed.length, 0);
+});
+
+test("deleteRef is idempotent (terminal-outcome cleanup can run twice)", async () => {
   const root = makeRepo();
-  const wt = await ensureWorktree(root, ROLE, "main"); // nothing ahead of main
-  const { ctx, calls } = fakeCtx(root, { decision: "approved" });
+  sh(root, "git", "commit", "--allow-empty", "-m", "pin target");
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  await setRef(root, landingRefName(ROLE), sha);
 
-  assert.equal(await recoverLeftover(ctx, wt), false);
-  assert.equal(calls.gates, 0, "the gate never runs when the branch is not ahead");
-  assert.equal(calls.merges.length, 0);
-});
+  await deleteRef(root, landingRefName(ROLE));
+  await assert.doesNotReject(() => deleteRef(root, landingRefName(ROLE)));
 
-test("approved leftover merges; reviewer usage folds in and the summary names the role", async () => {
-  const { root, wt } = await leftoverFixture();
-  const run = fakeRun({ outputTokens: 42 });
-  const { ctx, calls } = fakeCtx(root, { decision: "approved", run });
-
-  assert.equal(await recoverLeftover(ctx, wt), false); // merged: caller resets as usual
-  assert.equal(calls.gates, 1);
-  assert.deepEqual(calls.merges, [[wt, `recovered leftover work from ${ROLE}`]]);
-  assert.equal(calls.folded.length, 1, "the recovery review's usage folds into the tick counters");
-  assert.equal(calls.folded[0], run);
-});
-
-test("exempt diff merges without a reviewer run and folds no usage", async () => {
-  const { root, wt } = await leftoverFixture();
-  const { ctx, calls } = fakeCtx(root, { decision: "exempt" }); // no `run` in the result
-
-  assert.equal(await recoverLeftover(ctx, wt), false);
-  assert.equal(calls.merges.length, 1);
-  assert.equal(calls.folded.length, 0, "no pi run was consumed, so nothing folds");
-});
-
-test("unmergeable leftover is warned about and left to the caller's reset", async () => {
-  const { root, wt } = await leftoverFixture();
-  const { ctx, calls } = fakeCtx(root, { decision: "approved" }, "merge_conflict");
-
-  assert.equal(await recoverLeftover(ctx, wt), false); // not kept for retry — it is gone after reset
-  assert.equal(calls.merges.length, 1);
-  const warnings = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
-  assert.ok(
-    warnings.some((w) => /discarding 1 unmergeable leftover commit\(s\) \(merge_conflict\)/.test(w)),
-    `expected a discard warning, got: ${JSON.stringify(warnings)}`,
-  );
-});
-
-test("shutdown mid-recovery-review fails closed: kept for retry, nothing merged", async () => {
-  const { root, wt } = await leftoverFixture();
-  const run = fakeRun({ aborted: true });
-  const { ctx, calls } = fakeCtx(root, { decision: "failed", aborted: true, run });
-
-  assert.equal(await recoverLeftover(ctx, wt), true); // caller keeps the commit for re-review
-  assert.equal(calls.merges.length, 0, "an aborted review never reaches the merge");
-  assert.equal(calls.folded.length, 1, "the killed reviewer's partial usage still folds in");
-  assert.equal(await aheadOfMain(wt, "main"), 1); // the commit is untouched on the branch
-});
-
-test("rejected leftover: the gate already reset to main and recovery does not re-merge", async () => {
-  const { root, wt } = await leftoverFixture();
-  // The real reject path resets the branch inside the gate; simulate that side effect.
-  const { ctx, calls } = fakeCtx(root, async (w) => {
-    await resetWorktreeToMain(w, "main");
-    return { decision: "rejected", detail: "breaks the zero-dep rule" };
-  });
-
-  assert.equal(await recoverLeftover(ctx, wt), false); // discarded: caller resets as usual (no-op)
-  assert.equal(calls.merges.length, 0, "a rejected leftover must never reach the merge");
-  assert.equal(await aheadOfMain(wt, "main"), 0);
-});
-
-test("failed review under the strike cap keeps the commit for re-review", async () => {
-  const { root, wt } = await leftoverFixture();
-  const run = fakeRun({ errorMessage: "no parseable VERDICT line in the reviewer's reply" });
-  const { ctx, calls } = fakeCtx(root, { decision: "failed", detail: "no verdict", run });
-
-  assert.equal(await recoverLeftover(ctx, wt), true); // under the cap the gate left it on purpose
-  assert.equal(calls.merges.length, 0);
-  assert.equal(await aheadOfMain(wt, "main"), 1);
-});
-
-test("failed review at the strike cap: the gate discarded it, so nothing is kept", async () => {
-  const { root, wt } = await leftoverFixture();
-  // At/over REVIEW_FAILURE_LIMIT the real gate resets to main and warns; simulate that.
-  const { ctx, calls } = fakeCtx(root, async (w) => {
-    await resetWorktreeToMain(w, "main");
-    return { decision: "failed", detail: "no verdict" };
-  });
-
-  assert.equal(await recoverLeftover(ctx, wt), false); // re-check finds nothing ahead
-  assert.equal(calls.merges.length, 0);
-  assert.equal(await aheadOfMain(wt, "main"), 0);
-});
-
-// --- git failure in the ahead checks: both .catch(() => 0) fallbacks ---
-// A broken or missing worktree (crash mid-reset, disk error, pruned dir) makes `git rev-list`
-// fail. recoverLeftover must read that as "no leftover" — never propagate the git error into
-// the tick, and never misread it as "keep for retry", which would strand a broken branch.
-
-test("ahead check failing on an unreadable worktree reads as no leftover: no gate, no merge", async () => {
-  const root = makeRepo();
-  const bogusWt = tmpdir(); // not a git worktree at all — every git command in it throws
-  const { ctx, calls } = fakeCtx(root, { decision: "approved" });
-
-  assert.equal(await recoverLeftover(ctx, bogusWt), false); // caller resets as usual
-  assert.equal(calls.gates, 0, "an unreadable ahead count never reaches the gate");
-  assert.equal(calls.merges.length, 0);
-});
-
-test("ahead re-check failing after a failed review reads as nothing left to keep", async () => {
-  const { root, wt } = await leftoverFixture(); // one commit ahead: first check succeeds
-  // The gate fails under the strike cap — which normally keeps the commit for retry (true) —
-  // but the worktree's git state is unreadable by the time the re-check runs.
-  const { ctx, calls } = fakeCtx(root, async (w) => {
-    fs.rmSync(w, { recursive: true, force: true });
-    return { decision: "failed", detail: "no verdict" };
-  });
-
-  assert.equal(await recoverLeftover(ctx, wt), false); // nothing left to keep; caller resets
-  assert.equal(calls.merges.length, 0);
+  assert.equal(await refSha(root, landingRefName(ROLE)), null);
 });

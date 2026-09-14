@@ -5,10 +5,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { ffMainTo, mergeToMain, type MergeContext } from "../src/merge.js";
 import { checkMainBaseline } from "../src/build-check.js";
-import { branchName } from "../src/paths.js";
+import { branchName, landWorktreePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { aheadOfMain } from "../src/git.js";
-import { ensureWorktree } from "../src/worktree.js";
+import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/types.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
@@ -43,9 +43,9 @@ interface PiCall {
 }
 
 /** A MergeContext for role "improve" on tick 7 whose runPi records every call and then
- * defers to `resolve` (or returns a plain ok result when none is given). The ref is the role's
- * own branch — exactly what loop.ts passes. exemptPaths carries the config defaults, as
- * loop.ts does. */
+ * defers to `resolve` (or returns a plain ok result when none is given). The landing target is
+ * derived from the worktree's post-rebase HEAD inside mergeToMain (merge queue 2/5), so there is
+ * no ref field. exemptPaths carries the config defaults, as loop.ts does. */
 function makeCtx(
   root: string,
   resolve?: (wt: string, prompt: string, session: string) => Promise<PiRunResult>,
@@ -54,7 +54,6 @@ function makeCtx(
   return {
     ctx: {
       root,
-      ref: branchName("improve"),
       role: "improve",
       mainBranch: "main",
       exemptPaths: ["*.md", "docs/**"],
@@ -257,6 +256,33 @@ function detachedAheadOfMain(repo: string): string {
   sh(wt, "git", "commit", "-m", "detached work");
   return sh(wt, "git", "rev-parse", "HEAD");
 }
+
+/** The regression merge queue 2/5 exists for: the lander pins a BARE SHA (a branch ref tracks
+ * its own tip through the rebase, but a pinned sha does not move when git rebase rewrites it).
+ * When main moves between commit and landing — the common case under concurrency, since review
+ * runs outside the merge lock — fast-forwarding to the original pin would fail as merge_blocked;
+ * ff'ing to the worktree's post-rebase HEAD lands cleanly. */
+test("a detached worktree's pinned sha lands when main moved after the commit (ff to post-rebase tip)", async () => {
+  const root = await initializedRoot();
+  // A lander-style detached worktree at its production path: checked out at a bare sha, not on
+  // a branch ref. Under root so .tumwater/ exists for the merge lock (as in the real flow).
+  const wt = await ensureDetachedWorktree(root, landWorktreePath(root, "improve"), "main");
+  fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
+  commitIn(wt, "detached work");
+  const pinnedSha = sh(wt, "git", "rev-parse", "HEAD").trim();
+  // Advance main after the commit: the rebase must rewrite the detached head on top of it.
+  fs.writeFileSync(path.join(root, "other.txt"), "main\n");
+  commitIn(root, "main advance");
+
+  const { ctx } = makeCtx(root);
+  const result = await mergeToMain(ctx, wt, "detached work");
+
+  assert.equal(result, "changed", "the ff targets the post-rebase tip, not the stale pinned sha");
+  const mainHead = sh(root, "git", "rev-parse", "main").trim();
+  assert.notEqual(mainHead, pinnedSha, "the rebase rewrote the commit — main is NOT at the pin");
+  assert.equal(sh(wt, "git", "rev-parse", "HEAD"), mainHead);
+  assert.equal(fs.readFileSync(path.join(root, "hello.txt"), "utf8"), "hi\n");
+});
 
 test("ffMainTo lands a bare sha from a detached worktree while root is on main", async () => {
   const repo = makeRepo();

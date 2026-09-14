@@ -107,6 +107,21 @@ export function mirrorWorktreePath(root: string): string {
   return path.join(tumwaterDir(root), "worktrees", "_main");
 }
 
+/** A role's lander worktree (src/lander.ts): the detached checkout where its pinned commit is
+ * reviewed and rebased onto main, outside the role's own worktree. One per role so two roles'
+ * landings never wait on each other; the leading underscore follows the _main convention above,
+ * so it can never collide with a role worktree (plans/merge-queue.md). */
+export function landWorktreePath(root: string, role: string): string {
+  return path.join(tumwaterDir(root), "worktrees", `_land-${role}`);
+}
+
+/** The ref pinning a role's committed-but-unlanded sha (plans/merge-queue.md invariant 4):
+ * written right after the tick's commit, before its branch resets to main, so the reset cannot
+ * orphan the work. Deleted on every terminal landing outcome; kept until re-landed otherwise. */
+export function landingRefName(role: string): string {
+  return `refs/tumwater/landing/${role}`;
+}
+
 /** Where redeploy stages compiled builds before swapping one into dist/ — under .tumwater/ so a
  * build in progress never dirties the primary checkout (dist/ is gitignored, a sibling would not be). */
 export function stagingRootDir(root: string): string {

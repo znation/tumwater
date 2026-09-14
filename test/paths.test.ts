@@ -8,6 +8,8 @@ import {
   configPath,
   eventsLogPath,
   inboxDir,
+  landingRefName,
+  landWorktreePath,
   mergeLockDir,
   orchestratorStatePath,
   pausedPath,
@@ -64,6 +66,7 @@ test("pins the full runtime layout", () => {
   assert.equal(reviewSessionDir(ROOT, "qa"), path.join(S, "sessions", "_review", "qa"));
   assert.equal(inboxDir(ROOT), path.join(S, "inbox"));
   assert.equal(mergeLockDir(ROOT), path.join(S, "merge.lock"));
+  assert.equal(landWorktreePath(ROOT, "qa"), path.join(S, "worktrees", "_land-qa"));
 });
 
 test("branch names are tumwater/<role> for every role, director included", () => {
@@ -85,6 +88,21 @@ test("review sessions live outside the role's own session dir but inside the pru
       !path.relative(sessionsRootDir(ROOT), review).startsWith(".."),
       `review dir ${review} escapes the sessions root and would never be pruned`,
     );
+  }
+});
+
+// The lander worktree's leading underscore (plans/merge-queue.md): it must never collide with
+// a role worktree — a role literally named "_land-x" is impossible today, but the convention is
+// what keeps the two namespaces apart if roles ever gain prefixes.
+test("a lander worktree and landing ref are unique per role and never collide with role paths", () => {
+  const ids = allRoleIds();
+  const seen = new Map<string, string>();
+  for (const id of ids) {
+    assert.notEqual(landWorktreePath(ROOT, id), worktreePath(ROOT, id), `role ${id} shares its lander worktree`);
+    for (const p of [landWorktreePath(ROOT, id), landingRefName(id)]) {
+      assert.ok(!seen.has(p), `role ${id} shares ${p} with role ${seen.get(p)}`);
+      seen.set(p, id);
+    }
   }
 });
 

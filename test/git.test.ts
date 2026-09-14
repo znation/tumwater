@@ -10,12 +10,16 @@ import {
   commitAll,
   commitPathsAndDiscardRest,
   currentBranch,
+  deleteRef,
   hasCommits,
   headOf,
   isDirty,
   isGitRepo,
+  isMergedInto,
   readBranchHead,
+  refSha,
   runGit,
+  setRef,
   subjectsBetween,
   unquotePorcelainPath,
 } from "../src/git.js";
@@ -126,6 +130,50 @@ test("ffMainTo works via ref push when root is on another branch", async () => {
   const commit = await commitAll(wt, "tumwater(improve): add other.txt");
   assert.ok(await ffMainTo(repo, branchName("improve"), "main"));
   assert.equal(await headOf(repo, "main"), commit);
+});
+
+// The landing-ref helpers (merge queue 2/5): refs/tumwater/landing/<role> pins a committed sha
+// across the role branch's reset-to-main. setRef/deleteRef/refSha are the pin mechanics;
+// isMergedInto tells recovery apart a stale pin from real work.
+test("setRef creates and moves a ref; refSha reads it back", async () => {
+  const repo = makeRepo();
+  sh(repo, "git", "commit", "--allow-empty", "-m", "one");
+  const first = sh(repo, "git", "rev-parse", "HEAD").trim();
+
+  assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), null, "absent before creation");
+  await setRef(repo, "refs/tumwater/landing/improve", first);
+  assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), first);
+
+  sh(repo, "git", "commit", "--allow-empty", "-m", "two");
+  const second = sh(repo, "git", "rev-parse", "HEAD").trim();
+  await setRef(repo, "refs/tumwater/landing/improve", second);
+  assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), second, "re-pinning moves the ref");
+});
+
+test("deleteRef removes a ref and is idempotent on an absent one", async () => {
+  const repo = makeRepo();
+  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+  await setRef(repo, "refs/tumwater/landing/improve", sha);
+
+  await deleteRef(repo, "refs/tumwater/landing/improve");
+  assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), null);
+  await assert.doesNotReject(() => deleteRef(repo, "refs/tumwater/landing/improve"));
+});
+
+test("isMergedInto is true for ancestors and equality, false otherwise", async () => {
+  const repo = makeRepo();
+  const base = sh(repo, "git", "rev-parse", "HEAD").trim();
+  sh(repo, "git", "commit", "--allow-empty", "-m", "one");
+  const one = sh(repo, "git", "rev-parse", "HEAD").trim();
+
+  assert.ok(await isMergedInto(repo, base, "main"), "an ancestor counts as contained");
+  assert.ok(await isMergedInto(repo, one, "main"), "the tip itself counts (equality)");
+
+  // A commit on a side branch that main does not hold.
+  sh(repo, "git", "checkout", "-b", "side");
+  sh(repo, "git", "commit", "--allow-empty", "-m", "side work");
+  const side = sh(repo, "git", "rev-parse", "HEAD").trim();
+  assert.ok(!(await isMergedInto(repo, side, "main")), "unlanded work is not contained");
 });
 
 test("rebaseOntoMain resolves divergence and aborts cleanly on conflict", async () => {
