@@ -55,8 +55,8 @@ Open items:
 - Planned: user-defined loops — sub-plans 2/3–3/3 tracked in PLANS.md (1/3 landed); next is the
   director control surface (add/remove/rearrange from the prompt box), then dashboard markers
   (planned 2026-09-07, split 2026-09-08).
-- Planned: per-loop token generation rate column in the TUI/GUI — a 5-minute moving average shown
-  for loops with an in-flight tick, `-` otherwise (planned 2026-09-08).
+- Planned: remove the per-loop tokens/sec column from the TUI/GUI tables (user decision 2026-09-14 —
+  it landed 2026-09-13 and the user judged it not useful; see the 2026-09-14 entry in PLANS.md).
 - Planned: harness-level merge queue — sub-plans 3/5–5/5 tracked in PLANS.md (2/5 landed);
   next is asynchronous landing via the durable land queue (planned 2026-09-08).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
