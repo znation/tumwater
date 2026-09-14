@@ -229,6 +229,35 @@ they write tumwater.json like any other edit, so it applies live within ~2s.
 
 ## Notes on local model servers
 
+**Current backend: oMLX (MLX), since 2026-09-14.** `/Applications/oMLX.app` 0.7.0.dev2 serves
+`lmstudio-community/Qwen3.8-27B-MLX-8bit` (API id `Qwen3.8-27B-MLX-8bit`) at `127.0.0.1:8000`.
+oMLX config lives outside this repo in `~/.omlx/`: `model_settings.json` sets
+`max_context_window` 262144 (the model's `max_position_embeddings`), `turboquant_kv_bits` 8 (the
+MLX analogue of q8_0 K/V), pinned + default; `settings.json` sets `max_concurrent_requests` 3 and
+an API key. pi (`~/.pi/agent/`) and omp (`~/.omp/agent/models.yml` — YAML, not models.json) both
+use provider `omlx`, `api: openai-completions`, `contextWindow` 258000, and must send the API key.
+`tumwater.json` names `provider`/`model` explicitly so `fleetModelsFree()` sees a free fleet, with
+`maxConcurrent` 2 (+ the director's bypass = 3 clients ≤ 3 slots). Measured under live fleet load:
+**2.4–2.7 tok/s per stream at 21–29k context** (~7.8 aggregate); rate is strongly context-dependent,
+so quote a context size with any tok/s figure.
+
+Two oMLX settings are deliberately left at non-obvious values:
+- `chunked_prefill` stays **false** (its default). Turning it on collapsed throughput ~20× here
+  (16.4 → 0.8 tok/s, TTFT 118 s): with the memory guard off nothing throttles prefill, so the
+  fleet's large prefills interleave continuously and starve decode.
+- `prefill_memory_guard` is **false** (`--memory-guard off`). oMLX pins MLX's buffer pool via
+  `mx.set_cache_limit(total_mem)` (issue #300 — otherwise `allocator::free()` can release a Metal
+  buffer the GPU still holds and panic on M4), so freed buffers never leave the process and the
+  enforcer reads the pinned pool as pressure: it tripped 562 times in 46 min, each trip forcing a
+  synchronized `clear_cache()` that stalls every stream — a visible sawtooth in tok/s. With the
+  guard off there are no trips and no stalls. Cost: no OOM safety net; wired memory oscillates
+  ~40 ↔ 107 GiB (it does come back down, and swap stayed flat).
+
+The bullets below were written for the previous **LM Studio / GGUF** backend and are kept as
+hard-won background; the llama.cpp-specific parts (unified KV, slot allocation, q8_0 flags) no
+longer describe what runs.
+
+
 - **LM Studio WARN flood** (`Reasoning setting 'high' is not supported by model '…'. Supported
   settings: 'on', 'off'. Falling back to reasoning setting 'on'.`): benign. pi requests its
   configured thinking level per turn; GGUF models that only expose an on/off reasoning toggle make
@@ -288,7 +317,7 @@ they write tumwater.json like any other edit, so it applies live within ~2s.
   the wedge zone — so the KV cache is stored at q8_0 instead (LM Studio's saved load config:
   `llm.load.llama.kCacheQuantizationType` / `vCacheQuantizationType` = q8_0 with flash attention on),
   which brings 3 × 262144 slots to ~62 GB wired with three streams still at 7.8–8.3 tok/s each.
-  Current configuration for this setup: unified KV off, context-length 262144 (the model's maximum),
+  Historical LM Studio configuration (superseded by oMLX, above): unified KV off, context-length 262144 (the model's maximum),
   parallel 3, q8_0 K/V cache, pi `contextWindow` 258000 (a margin under the slot for pi's output
   reserve), `maxConcurrent` 2 (+ the director's bypass = 3 clients ≤ 3 slots). Keep the model's
   saved default in LM Studio identical to the live load: a just-in-time load after an idle unload

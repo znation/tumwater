@@ -29,9 +29,10 @@ function messageText(msg: PiMessage): string {
  * Module-private: only PiStreamParser.feedLine below matches against it. */
 const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded|exceeds? (the )?context|too (long|large) for .*context/i;
 
-/** LM Studio kills predict streams idle >600 s (e.g. the machine slept mid-run) and reports
+/** LM Studio killed predict streams idle >600 s (e.g. the machine slept mid-run) and reported
  * it back through pi as a server error on an assistant message. Fresh requests succeed
- * within seconds of a wake, so this is retryable — unlike every other error class.
+ * within seconds of a wake, so this is retryable — unlike every other error class. Kept after
+ * the 2026-09-14 move to oMLX: defensive, and oMLX has no equivalent message.
  * Module-private: only PiStreamParser.feedLine below matches against it. */
 const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
 
@@ -71,19 +72,24 @@ export class PiStreamParser {
   stopReason: string | undefined;
   errorMessage: string | undefined;
   /** True when any event reports the provider rejecting the context as too large
-   * (e.g. LM Studio's "Context size has been exceeded"). Diagnostic: every tick starts a
-   * fresh session, so nothing needs dropping — but the error names the real cause. */
+   * (LM Studio's "Context size has been exceeded"; oMLX rejects over max_context_window).
+   * Diagnostic: every tick starts a fresh session, so nothing needs dropping — but the
+   * error names the real cause. */
   contextExceeded = false;
   /** True when any event reports the model server killing an idle predict stream
    * (LM Studio's "Engine protocol predict stream timed out", e.g. after OS sleep).
-   * Transient: the session is healthy and a fresh attempt usually succeeds. */
+   * Transient: the session is healthy and a fresh attempt usually succeeds. Retained as a
+   * guard after the move to oMLX, which has not been seen to emit this. */
   transientServerTimeout = false;
   /** True when the run's LAST assistant message carried no text and no tool call
    * (thinking-only or empty). A compliant finish always ends with a text block (the
    * SUMMARY/sentinel line), so this signals a generation cut off mid-stream — typically
    * pi clamping max output tokens to the sliver left under the declared context window,
-   * with the provider misreporting the truncation as a normal stop (LM Studio's
-   * /v1/responses reports status "completed" instead of "incomplete"). */
+   * with the provider misreporting the truncation as a normal stop — LM Studio's
+   * /v1/responses reported status "completed" instead of "incomplete". **oMLX reports this
+   * correctly** (chat/completions finish_reason "length"; /v1/responses status "incomplete"
+   * with incomplete_details.reason "max_output_tokens"), so on the current backend a
+   * contentless final message points at a genuine cut-off, not a misreported stop. */
   finalMessageContentless = false;
   /** True when pi auto-compacted the session during (or at the end of) the run. */
   compacted = false;
