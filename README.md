@@ -45,23 +45,23 @@ exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt 
 `resume` (operator-intent fleet gate: role loops stop starting new ticks while in-flight ones
 finish; the director keeps running). All twelve roles —
 feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve,
-steward (~6 h clock) — plus the director are enabled by default; user-defined loops can be added
-as tumwater.json `customLoops` entries and act as full-citizen loops (dashboard markers and the
-director control surface still planned). While main's build/test suite is red, code-producing roles
-skip their authoring run and show a `main red` state in both dashboards until main is green again
+steward (~6 h clock) — plus the director are enabled by default; user-defined loops are added
+from `customLoops` in tumwater.json or by prompting the director, and act as full-citizen loops
+marked `*` on both dashboards. While main's build/test suite is red, code-producing roles skip
+their authoring run and show a `main red` state in both dashboards until main is green again
 (director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix).
 
 Open items:
-- Planned: user-defined loops — sub-plans 2/3–3/3 tracked in PLANS.md (1/3 landed); next is the
-  director control surface (add/remove/rearrange from the prompt box), then dashboard markers
-  (planned 2026-09-07, split 2026-09-08).
-- Planned: remove the per-loop tokens/sec column from the TUI/GUI tables (user decision 2026-09-14 —
-  it landed 2026-09-13 and the user judged it not useful; see the 2026-09-14 entry in PLANS.md).
-- Planned: harness-level merge queue — sub-plans 3/5–5/5 tracked in PLANS.md (2/5 landed);
-  next is asynchronous landing via the durable land queue (planned 2026-09-08).
+- Planned: remove the per-loop tokens/sec column from the TUI/GUI tables (it landed 2026-09-13
+  and the user judged it not useful; user decision 2026-09-14 — see PLANS.md).
+- Planned: harness-level merge queue — sub-plans 3/5–5/5 tracked in PLANS.md (2/5 landed
+  2026-09-13); next is asynchronous landing via the durable land queue (planned 2026-09-08).
+- Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13).
+- Open bug: budget badge reads "n/a today" and its GUI/TUI cap editor still opens on all-free
+  fleets (reported 2026-09-14 — see BUGS.md).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`8b8aa05`): build clean, suite 925/925.
+Current main (`af4e1fe`): build clean, suite 976/976.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -136,7 +136,9 @@ spends its run on what a green suite cannot show rather than re-running it.
 
 Stopping the harness (Ctrl+C) mid-tick loses nothing: the interrupted loop's pi session and its
 worktree's uncommitted edits stay in place, and on the next `tumwater run` that loop resumes the
-same session (`--continue`) with a short bridge prompt and finishes the task it was on. A crash
+same session (`--continue`) with a short bridge prompt and finishes the task it was on. A run the
+quiet watchdog kills for lack of progress (tick result `quiet_killed`) is recovered the same way,
+with the bridge prompt naming the hang instead of claiming a restart. A crash
 (power loss, kill -9) is recovered the same way — except an interruption during the review gate,
 where the work is already committed and the next launch recovers and re-reviews it via a fresh
 tick instead of resuming the author session. The director is the exception: its interrupted
@@ -230,28 +232,33 @@ they write tumwater.json like any other edit, so it applies live within ~2s.
 ## Notes on local model servers
 
 **Current backend: oMLX (MLX), since 2026-09-14.** `/Applications/oMLX.app` 0.7.0.dev2 serves
-`lmstudio-community/Qwen3.8-27B-MLX-8bit` (API id `Qwen3.8-27B-MLX-8bit`) at `127.0.0.1:8000`.
+`fcmeyer/Qwen3.8-27B-MLX-oQ4e-mtp` (API id `Qwen3.8-27B-MLX-oQ4e-mtp`) at `127.0.0.1:8000` — an
+imatrix-calibrated ~4.9 bpw quant that preserves the model's native MTP head, so oMLX runs
+Lightning MTP speculative decoding (2.5–3.0 tokens per backbone cycle at 68–84% draft acceptance;
+the `lmstudio-community` checkpoints carry no MTP tensors, making `mtp_enabled` a no-op there).
 oMLX config lives outside this repo in `~/.omlx/`: `model_settings.json` sets
-`max_context_window` 262144 (the model's `max_position_embeddings`), `turboquant_kv_bits` 8 (the
-MLX analogue of q8_0 K/V), pinned + default; `settings.json` sets `max_concurrent_requests` 3 and
-an API key. pi (`~/.pi/agent/`) and omp (`~/.omp/agent/models.yml` — YAML, not models.json) both
-use provider `omlx`, `api: openai-completions`, `contextWindow` 258000, and must send the API key.
-`tumwater.json` names `provider`/`model` explicitly so `fleetModelsFree()` sees a free fleet, with
-`maxConcurrent` 2 (+ the director's bypass = 3 clients ≤ 3 slots). Measured under live fleet load:
-**2.4–2.7 tok/s per stream at 21–29k context** (~7.8 aggregate); rate is strongly context-dependent,
-so quote a context size with any tok/s figure.
+`max_context_window` 262144 (the model's `max_position_embeddings`), pinned + default;
+`settings.json` sets `max_concurrent_requests` 4 and an API key. pi (`~/.pi/agent/`) and omp
+(`~/.omp/agent/models.yml` — YAML, not models.json) both use provider `omlx`,
+`api: openai-completions`, `contextWindow` 258000, and must send the API key. `tumwater.json`
+names `provider`/`model` explicitly so `fleetModelsFree()` sees a free fleet, with
+`maxConcurrent` 3 (+ the director's bypass = 4 clients ≤ 4 slots). Measured server-reported:
+**35.2 tok/s per stream at ~51k context** (fleet paused); a slot sweep at ~20k context shows the
+aggregate plateauing around 3–4 slots — at 4 slots: 65.0 aggregate / 16.2 per stream / 70%
+acceptance; rate is strongly context-dependent, so quote a context size with any tok/s figure.
 
 Two oMLX settings are deliberately left at non-obvious values:
 - `chunked_prefill` stays **false** (its default). Turning it on collapsed throughput ~20× here
-  (16.4 → 0.8 tok/s, TTFT 118 s): with the memory guard off nothing throttles prefill, so the
-  fleet's large prefills interleave continuously and starve decode.
-- `prefill_memory_guard` is **false** (`--memory-guard off`). oMLX pins MLX's buffer pool via
-  `mx.set_cache_limit(total_mem)` (issue #300 — otherwise `allocator::free()` can release a Metal
-  buffer the GPU still holds and panic on M4), so freed buffers never leave the process and the
-  enforcer reads the pinned pool as pressure: it tripped 562 times in 46 min, each trip forcing a
-  synchronized `clear_cache()` that stalls every stream — a visible sawtooth in tok/s. With the
-  guard off there are no trips and no stalls. Cost: no OOM safety net; wired memory oscillates
-  ~40 ↔ 107 GiB (it does come back down, and swap stayed flat).
+  (16.4 → 0.8 tok/s, TTFT 118 s): the fleet's large prefills interleave continuously and starve
+  decode.
+- `prefill_memory_guard` is **on** (re-enabled 2026-09-14 with the 16 GB oQ4e model). It had been
+  turned off under the earlier 8-bit model, where oMLX's pinned buffer pool
+  (`mx.set_cache_limit(total_mem)`, issue #300 — otherwise `allocator::free()` can release a Metal
+  buffer the GPU still holds and panic on M4) made the enforcer read the pinned pool as pressure:
+  562 trips in 46 min, each forcing a synchronized `clear_cache()` that stalled every stream — a
+  visible sawtooth in tok/s — while wired memory oscillated ~40 ↔ 107 GiB. With the 16 GB model the
+  peak wired across the whole slot sweep was 49.7 GiB against the 96.8 GiB soft watermark, and the
+  guard has logged 0 pressure trips in 30 min — the OOM safety net is back with no stalls.
 
 The bullets below were written for the previous **LM Studio / GGUF** backend and are kept as
 hard-won background; the llama.cpp-specific parts (unified KV, slot allocation, q8_0 flags) no
