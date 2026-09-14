@@ -140,5 +140,7 @@ export function describeToolCall(toolName: string, args: unknown): string {
     }
   }
   detail = truncate(collapseWhitespace(detail), 32);
-  return detail ? `${toolName} ${detail}` : toolName;
+  // An empty name (pi omits toolName on some start events) yields the bare detail — no
+  // leading space in front of it.
+  return detail ? (toolName ? `${toolName} ${detail}` : detail) : toolName;
 }

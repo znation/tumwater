@@ -12,6 +12,13 @@ test("describeToolCall summarizes common arg shapes tersely", () => {
   assert.equal(describeToolCall("bash", { command: "a\n  b\tc" }), "bash a b c");
 });
 
+test("describeToolCall with an omitted toolName yields the bare detail, no leading space", () => {
+  // pi omits toolName on some start events; the stall warning must still name the command.
+  assert.equal(describeToolCall("", { command: "sleep 999" }), "sleep 999");
+  assert.equal(describeToolCall("", { path: "/a/b/loop.ts" }), "loop.ts");
+  assert.equal(describeToolCall("", {}), "", "no name and no recognizable arg — the caller falls back");
+});
+
 test("describeToolCall basenames path-like keys and shows the others verbatim", () => {
   // Both path spellings reduce to the file name, not the full directory.
   assert.equal(describeToolCall("read", { file_path: "/a/b/loop.ts" }), "read loop.ts");

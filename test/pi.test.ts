@@ -317,6 +317,54 @@ test("parser tracks open tool calls across start, update, and end", () => {
   assert.deepEqual(parser.openToolCalls.map((c) => c.id), ["c2"]);
 });
 
+test("a start without toolName still names the command (or 'tool') in the open-call label", () => {
+  const parser = new PiStreamParser();
+  // pi omits toolName on some start events: the warning must name the bare command, with no
+  // leading space and no empty name.
+  parser.feed(JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", args: { command: "sleep 999" } }) + "\n");
+  assert.deepEqual(
+    parser.openToolCalls.map((c) => c.label),
+    ["sleep 999"],
+    "no toolName — the label is the bare command, not ' sleep 999' or ''",
+  );
+  // No name and no recognizable arg falls back to 'tool', like progress.ts's stall flag.
+  parser.feed(JSON.stringify({ type: "tool_execution_start", toolCallId: "c2", args: {} }) + "\n");
+  assert.deepEqual(parser.openToolCalls.map((c) => c.label), ["sleep 999", "tool"]);
+});
+
+test("a stalled call without toolName warns with the bare command named", async () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 2; // the watchdog checks every second and kills after ~2 s of silence
+  config.toolCallStallSeconds = 1; // warn after just one second of call silence (test speed)
+  const warnings: string[] = [];
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", args: { command: "sleep 999" } })}'`,
+      `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
+    ].join("\n"),
+  );
+  try {
+    const result = await runPi({
+      cwd: dir,
+      prompt: "p",
+      config,
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+      onToolCallStalled: (message) => warnings.push(message),
+    });
+    assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
+    assert.match(
+      warnings[0] ?? "",
+      /^tool call stalled: sleep 999 — no output for \d+[sm]/,
+      "the warning names the bare command even though pi omitted toolName",
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("toolUpdateHasContent sees real text, not empty or content-less updates", () => {
   assert.equal(toolUpdateHasContent({ content: [{ type: "text", text: "out" }] }), true);
   assert.equal(toolUpdateHasContent({ content: [] }), false, "bash's post-start update is empty");

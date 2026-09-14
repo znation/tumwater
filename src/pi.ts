@@ -170,7 +170,9 @@ export class PiStreamParser {
         event.type,
         event.toolCallId,
         event.partialResult,
-        describeToolCall(event.toolName ?? "", event.args),
+        // A nameless call with no recognizable arg still names something — the same "tool"
+        // fallback progress.ts uses for its stall flag.
+        describeToolCall(event.toolName ?? "", event.args) || "tool",
       );
     }
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
