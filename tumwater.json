@@ -2,7 +2,7 @@
   "provider": "omlx",
   "model": "Qwen3.8-27B-MLX-oQ4e-mtp",
   "piArgs": [],
-  "maxConcurrent": 3,
+  "maxConcurrent": 2,
   "minTickIntervalSeconds": 20,
   "tickTimeoutSeconds": 54000,
   "idleBackoff": {
