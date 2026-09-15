@@ -2,8 +2,7 @@ import fs from "node:fs";
 import type { TumwaterConfig, LoopState, TickOutcome } from "./types.js";
 import type { BuildStatus } from "./build-info.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { ensureParentDir } from "./files.js";
-import { readJsonFile } from "./json-files.js";
+import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { pidAlive } from "./process.js";
 import { formatDate } from "./text.js";
 import { orchestratorStatePath, pausedPath, statePath } from "./paths.js";
@@ -32,19 +31,13 @@ export function loadLoopState(root: string, role: string): LoopState {
   return { ...freshLoopState(role), ...(saved ?? {}) };
 }
 
-/** Persist the loop's state atomically (tmp file + rename), so a crash mid-write cannot
- * leave a torn file behind. The tmp name carries the pid because two processes can write
- * one role's state concurrently: the orchestrator saves at tick end and around its review
- * gate while `tumwater reset-counters` rewrites the same file from the CLI process. A shared
- * tmp name would let their writes interleave into mixed JSON, or make the second rename fail
- * with ENOENT mid-tick — per-pid names give each writer its own tmp and a clean last-writer-
- * wins (the setDailyBudgetUsd idiom in config.ts does the same for tumwater.json). */
+/** Persist the loop's state atomically via writeJsonAtomic, so a crash mid-write cannot
+ * leave a torn file behind. Its per-pid tmp name matters here: two processes can write one
+ * role's state concurrently — the orchestrator saves at tick end and around its review gate
+ * while `tumwater reset-counters` rewrites the same file from the CLI process — and per-pid
+ * names give each writer its own tmp with a clean last-writer-wins. */
 export function saveLoopState(root: string, state: LoopState): void {
-  const file = statePath(root, state.role);
-  ensureParentDir(file);
-  const tmp = `${file}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(statePath(root, state.role), state);
 }
 
 /** Zero the accumulated counters (ticks, commits, tokens, cost) so a fresh observation

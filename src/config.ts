@@ -4,6 +4,7 @@ import { allRoleIds } from "./roles.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { configPath } from "./paths.js";
 import { errorMessage } from "./text.js";
+import { writeJsonAtomic } from "./json-files.js";
 import { show, validateConfig } from "./config-validation.js";
 
 /** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick, qa on
@@ -169,10 +170,11 @@ export function checkDailyBudgetUsd(value: unknown): string | null {
 
 /** Set the daily cost budget cap in tumwater.json: fresh loadConfig (no stat cache — a
  * writer must see the latest file), validate the value, mutate ONLY that key, and write
- * atomically (tmp file + rename) because this is the first in-harness WRITER of the config
- * while readers poll it every ~2 s and two dashboards could save concurrently. A broken or
- * missing-on-disk config surfaces as an error string instead of throwing, so both UIs can
- * flash it; on any failure the file (and no tmp remnant) is left untouched. */
+ * atomically (writeJsonAtomic: tmp file + rename) because this is the first in-harness
+ * WRITER of the config while readers poll it every ~2 s and two dashboards could save
+ * concurrently. A broken or missing-on-disk config surfaces as an error string instead of
+ * throwing, so both UIs can flash it; on any failure the file (and no tmp remnant) is left
+ * untouched. */
 export function setDailyBudgetUsd(
   root: string,
   value: number,
@@ -186,12 +188,10 @@ export function setDailyBudgetUsd(
     return { ok: false, error: errorMessage(err) }; // broken file: never overwrite it with defaults
   }
   const file = configPath(root);
-  const tmp = `${file}.tmp-${process.pid}`;
   try {
-    fs.writeFileSync(tmp, JSON.stringify({ ...cfg, maxDailyCostUsd: value }, null, 2) + "\n");
-    fs.renameSync(tmp, file); // atomic on POSIX — readers never see a partial file
+    // The trailing newline is tumwater.json's convention (POSIX text file).
+    writeJsonAtomic(file, { ...cfg, maxDailyCostUsd: value }, true);
   } catch (err) {
-    fs.rmSync(tmp, { force: true });
     return { ok: false, error: errorMessage(err) };
   }
   return { ok: true };
