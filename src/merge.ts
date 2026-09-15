@@ -127,8 +127,10 @@ async function tryMerge(
  *   instead of re-running the full suite on an already-verified tree.
  * - doc-only delta ahead of main (the gate's own exemption test): cannot break the build.
  * - no declared check at all: nothing to run, exactly like the gate skipping its pre-check.
- * An environmental skip (timeout / no npm) warns and proceeds — deliberately NOT fail-closed,
- * so a hung build script cannot wedge every landing behind the merge lock. */
+ * An environmental skip (timeout / no npm / broken toolchain) warns and proceeds —
+ * deliberately NOT fail-closed, so a hung build script — or a broken toolchain that would fail
+ * every check regardless of the tree (BUGS.md 2026-09-15) — cannot wedge every landing behind
+ * the merge lock. */
 async function verifyLanding(
   ctx: MergeContext,
   wt: string,

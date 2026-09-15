@@ -620,6 +620,44 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
   assert.equal(runsOf(counter), 2, "the promotion re-runs nothing");
 });
 
+test("a toolchain-broken suite leaves no latched block: the skip reads as green and the restart proceeds", async () => {
+  // BUGS.md 2026-09-15 end to end: git works (the mirror checkout and the rev-parse key both
+  // succeed), the suite runs and dies on the toolchain — pre-fix that read as a RED main and
+  // latched the restart until main moved; the fix must let the same episode proceed.
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({
+      name: "proj",
+      version: "1.0.0",
+      scripts: { test: 'echo "xcrun: error: missing input"; exit 1' },
+    }),
+  );
+  fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "project");
+  const head = sh(root, "git", "rev-parse", "HEAD");
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+
+  const f = fakeDeps({ mainGreen: () => mainIsGreen(mirror) }); // the production wiring, real check
+  const { r, events } = harness(f.deps);
+  assert.equal(await r.poll(head, IDLE, true), "hold");
+  // The real check runs a full `npm run` — poll as the orchestrator would until the green
+  // check settles and the compile starts. Pre-fix the second poll answered "none" with a
+  // latched "main is red" instead of ever reaching restart_pending.
+  const started = Date.now();
+  while (!events.some((e) => e.type === "restart_pending")) {
+    assert.equal(await r.poll(head, IDLE, true), "hold", "no block while the green check settles");
+    if (Date.now() - started > 60_000) throw new Error("green check did not settle in time");
+    await settle();
+  }
+  f.compiled(true);
+  await settle();
+  assert.equal(await r.poll(head, IDLE, true), "restart");
+  assert.equal(r.status().restartBlocked, undefined, "no latched block — the skip is environmental");
+  assert.ok(!events.some((e) => String(e.message ?? "").includes("is red")), "no false red verdict");
+});
+
 test("ensureDetachedWorktree pins the mirror at a ref and re-points an existing one", async () => {
   const root = makeRepo();
   const first = sh(root, "git", "rev-parse", "HEAD");

@@ -96,6 +96,76 @@ test("runBuildCheck skips (not fails closed) when npm is missing from PATH", asy
   }
 });
 
+/** A scratch bin dir holding a `git` that fails the way the 2026-09-15 incident's did:
+ * the xcrun shim of an invalidated Xcode license, exit 69 with the license message. */
+function brokenGitBin(): string {
+  const bin = tmpdir("broken-git-");
+  const git = path.join(bin, "git");
+  fs.writeFileSync(git, "#!/bin/sh\necho \"xcrun: error: SDK root does not exist\" >&2\necho \"You have not agreed to the Xcode license agreements.\" >&2\nexit 69\n");
+  fs.chmodSync(git, 0o755);
+  return bin;
+}
+
+test("runBuildCheck skips (not fails closed) when the toolchain probe fails, and the check never runs", async () => {
+  // BUGS.md 2026-09-15 in miniature: git exits 69 before any check runs. Pre-fix every such
+  // run was classified `failed` — a deterministic rejection at the gate, a red baseline at the
+  // main-red gate, a latched \"main is red\" at the redeploy — all of them about the toolchain,
+  // none of them about the tree.
+  const { root, wt } = buildCheckFixture();
+  const counter = path.join(tmpdir(), "runs");
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: `echo run >> ${counter}` } }),
+  );
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${brokenGitBin()}:${oldPath}`; // the broken git shadows the real one; npm stays
+  try {
+    const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+    assert.equal(outcome.status, "skipped");
+    assert.equal(outcome.skipReason, "toolchain");
+    assert.ok(!fs.existsSync(counter), "the check itself never ran — the probe short-circuited it");
+  } finally {
+    process.env.PATH = oldPath;
+  }
+});
+
+test("runBuildCheck reads a toolchain error in a failed run's output as skipped, not failed", async () => {
+  // The incident's suite path: git ran the probe fine, the suite ran, and the suite's own
+  // git calls died on the license error — the nonzero exit is noise from the environment,
+  // not a verdict about the tree. Both signatures the incident produced must classify.
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({
+      name: "proj",
+      version: "1.0.0",
+      scripts: { build: 'echo "You have not agreed to the Xcode license agreements."; echo "xcrun: error: missing input"; exit 1' },
+    }),
+  );
+  const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+  assert.equal(outcome.status, "skipped");
+  assert.equal(outcome.skipReason, "toolchain");
+});
+
+test("runBuildCheck proceeds when git is missing from PATH: a check that never touches git still runs", async () => {
+  // The probe must tell "no git at all" (missing) from "git refuses to work" (broken): this
+  // project's check has no git in it, so a git-less machine is not an environmental skip.
+  const { root, wt } = buildCheckFixture();
+  const bin = tmpdir("no-git-");
+  for (const tool of ["node", "npm", "sh"]) {
+    const found = sh(wt, "which", tool).trim();
+    if (found) fs.symlinkSync(found, path.join(bin, tool));
+  }
+  const oldPath = process.env.PATH;
+  process.env.PATH = bin; // node + npm + sh, no git
+  try {
+    const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+    assert.equal(outcome.status, "passed");
+  } finally {
+    process.env.PATH = oldPath;
+  }
+});
+
 test("detectBuildCheck walks up from a worktree without node_modules to the installed project root", () => {
   const { root, wt } = buildCheckFixture();
   assert.deepEqual(detectBuildCheck(wt), { rootDir: root, script: "build" });
@@ -346,6 +416,30 @@ test("checkMainBaseline never caches red for an environmental skip: with npm mis
   const result = await checkMainBaseline(wt);
   assert.equal(result.baseline?.status, "red");
   assert.equal(runsOf(counter), 1, "exactly one real run — the skipped attempt ran nothing");
+});
+
+test("checkMainBaseline reads a toolchain-failing suite as an environmental skip, never red", async () => {
+  // BUGS.md 2026-09-15: the harness's own suite failed with an Xcode license error in its
+  // output, the red verdict latched, and the fleet sat on a stale build until main moved. The
+  // incident's suite path, in miniature: git works (rev-parse keys the check), the suite runs
+  // and dies on the toolchain — the verdict must be a skip, not a red.
+  const counter = path.join(tmpdir(), "runs");
+  const { wt } = await baselineFixture(
+    `echo run >> ${counter}; echo "You have not agreed to the Xcode license agreements."; exit 1`,
+  );
+  const skipped = await checkMainBaseline(wt);
+  assert.equal(skipped.baseline, null, "a toolchain skip never blocks authoring or a restart");
+  assert.equal(skipped.skipReason, "toolchain");
+  // The skip is never cached: once the toolchain is fixed the SAME SHA must be re-checked —
+  // this is the latch the incident left, and a cached red would rebuild it.
+  fs.rmSync(counter, { force: true });
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: `echo run >> ${counter}; echo ok` } }),
+  );
+  const rechecked = await checkMainBaseline(wt);
+  assert.equal(rechecked.baseline?.status, "green", "the fixed toolchain re-checks the same SHA");
+  assert.equal(runsOf(counter), 1, "one real run — the skip cached nothing");
 });
 
 test("checkMainBaseline dedups concurrent checks of one new SHA into a single run", async () => {

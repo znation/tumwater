@@ -143,8 +143,10 @@ export const BUILD_CHECK_TIMEOUT_MS = 300_000;
 /** What the deterministic build check concluded. "passed": proceed to the reviewer unchanged.
  * "failed": a started process exited nonzero — a deterministic REJECTION with the clipped
  * output tail as machine-generated reasons (no pi run consumed). "skipped": environmental
- * (timeout, or no npm on PATH) — warn and still proceed to the model review; deliberately NOT
- * fail-closed so a hung build script cannot wedge every code tick into the 3-strike discard. */
+ * (timeout, no npm on PATH, or a broken toolchain) — warn and still proceed to the model
+ * review; deliberately NOT fail-closed so a hung build script cannot wedge every code tick into
+ * the 3-strike discard, and a toolchain broken below the project (BUGS.md 2026-09-15) cannot be
+ * misread as a red build of the tree. */
 export interface BuildCheckOutcome {
   status: "passed" | "failed" | "skipped";
   /** The script that was run (or attempted). */
@@ -153,7 +155,45 @@ export interface BuildCheckOutcome {
    * npm banner excluded), each clipped to MAX_REASON_CHARS. */
   outputTail?: string[];
   /** Why no verdict was reached ("skipped"). */
-  skipReason?: "timeout" | "no-npm";
+  skipReason?: "timeout" | "no-npm" | "toolchain";
+}
+
+/** Probe the check's environment BEFORE spending a run on it: `git --version`, unambiguous
+ * and fast, and it exercises the same binary (and the same xcrun shim on macOS) a
+ * git-dependent check would. "broken" — git ran and refused to work, e.g. exit 69 on an
+ * invalidated Xcode license — is the environmental case: it would fail EVERY check with noise
+ * unrelated to the tree, and a failure so read is a false red build (BUGS.md 2026-09-15: exactly
+ * that made the harness's own suite fail and latched a false "main is red" on a green tree). It
+ * must read as a skip — warn-and-proceed — like no-npm, never as a deterministic rejection.
+ * "missing" (git absent from PATH) is NOT broken: a check whose script never touches git runs
+ * fine without it, so the check proceeds. Never throws. */
+async function probeToolchain(): Promise<"ok" | "broken" | "missing"> {
+  try {
+    await execFileAsync("git", ["--version"], { timeout: 10_000 });
+    return "ok";
+  } catch (err) {
+    const code = (err as { code?: number | string }).code;
+    // A string errno is a spawn failure (no binary at all); a numeric exit is git running and
+    // failing. A probe timeout (a string signal) reads as "missing" — proceed, and the check's
+    // own timeout bounds the worst case.
+    return typeof code === "number" ? "broken" : "missing";
+  }
+}
+
+/** Toolchain-level failure signatures in a check's output. A run that died on one of these
+ * was killed by the environment, not the tree: its nonzero exit says nothing about the code
+ * (BUGS.md 2026-09-15 — an invalidated Xcode license put both of these into the harness's own
+ * suite output and the harness latched a false red main on a green tree). The probe above
+ * catches a broken git before anything runs; this catches what it cannot — a sub-tool that
+ * the probe cannot see (xcrun under a working git) or a suite whose runner reported the
+ * failure in its own output. */
+const TOOLCHAIN_ERROR_PATTERNS: Array<RegExp> = [
+  /you have not agreed to the \S+ license/i,
+  /xcrun: error/i,
+];
+
+function toolchainErrorInOutput(output: string): boolean {
+  return TOOLCHAIN_ERROR_PATTERNS.some((p) => p.test(output));
 }
 
 /** Keep the TAIL of a build's combined output: last ≤10 meaningful lines, each via clipReason —
@@ -165,8 +205,9 @@ export function clipBuildTail(output: string): string[] {
   return lines.slice(-10).map(clipReason);
 }
 
-/** Run `npm run <script>` in the worktree (cwd = wt), capturing combined output with a hard
- * timeout. Never throws: every outcome is classified per BuildCheckOutcome. Running a local
+/** Probe the toolchain (see probeToolchain), then run `npm run <script>` in the worktree
+ * (cwd = wt), capturing combined output with a hard timeout. Never throws: every outcome is
+ * classified per BuildCheckOutcome. Running a local
  * script needs no network.
  * No env manipulation is needed even though the worktree has no node_modules of its own
  * (gitignored): npm's run-script walks UP from the project path, adding EVERY level's
@@ -179,6 +220,12 @@ export async function runBuildCheck(
   check: BuildCheck,
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
 ): Promise<BuildCheckOutcome> {
+  // Environmental probe first: a toolchain broken below the project (git exiting 69 on an
+  // invalidated Xcode license) would fail the check with noise unrelated to the tree and the
+  // failure would be misread as a red build — run nothing, read it as a skip (BUGS.md 2026-09-15).
+  if ((await probeToolchain()) === "broken") {
+    return { status: "skipped", script: check.script, skipReason: "toolchain" };
+  }
   try {
     await execFileAsync("npm", ["run", check.script], {
       cwd: wt,
@@ -196,12 +243,18 @@ export async function runBuildCheck(
     };
     // Killed by the timeout (or an output overflow): environmental — warn and proceed.
     if (e.killed || e.signal) return { status: "skipped", script: check.script, skipReason: "timeout" };
-    // A started process that exited nonzero is a deterministic failure of the build itself.
+    // A started process that exited nonzero is a deterministic failure of the build itself —
+    // unless its output names a broken toolchain: then the environment, not the tree, killed it,
+    // and the same skip semantics apply (never a deterministic rejection, never a red baseline).
     if (typeof e.code === "number") {
+      const output = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+      if (toolchainErrorInOutput(output)) {
+        return { status: "skipped", script: check.script, skipReason: "toolchain" };
+      }
       return {
         status: "failed",
         script: check.script,
-        outputTail: clipBuildTail(`${e.stdout ?? ""}${e.stderr ?? ""}`),
+        outputTail: clipBuildTail(output),
       };
     }
     // Spawn failed before anything ran — the npm binary is missing from PATH.
@@ -263,7 +316,9 @@ export async function runScopedBuildCheck(
       message:
         outcome.skipReason === "no-npm"
           ? `no npm on PATH; skipping ${w.label}`
-          : `${w.label} timed out after ${timeoutMs / 1000}s; ${w.proceeding}`,
+          : outcome.skipReason === "toolchain"
+            ? `the toolchain is broken; skipping ${w.label}; ${w.proceeding}`
+            : `${w.label} timed out after ${timeoutMs / 1000}s; ${w.proceeding}`,
     });
   }
   return { check, outcome };
@@ -291,13 +346,14 @@ interface MainBaseline {
 
 /** checkMainBaseline's result. `baseline` is null when nothing blocks authoring: either no
  * declared build check at all (nothing to verify → nothing to block on, consistent with the
- * gate skipping its pre-check) or an environmental skip (`skipReason` set — timeout/no-npm),
- * which the caller warns about and proceeds with, exactly like the gate's pre-check. Skips are
- * never cached red: a hung script must not wedge authoring for the life of the process. */
+ * gate skipping its pre-check) or an environmental skip (`skipReason` set — timeout/no-npm/
+ * broken toolchain), which the caller warns about and proceeds with, exactly like the gate's
+ * pre-check. Skips are never cached red: a hung script — or a broken toolchain (BUGS.md
+ * 2026-09-15) — must not wedge authoring, or the fleet's restart, for the life of the process. */
 interface MainBaselineCheck {
   baseline: MainBaseline | null;
-  /** Set when a detected check could not be run (timeout or no npm on PATH). */
-  skipReason?: "timeout" | "no-npm";
+  /** Set when a detected check could not be run (timeout, no npm on PATH, or a broken toolchain). */
+  skipReason?: "timeout" | "no-npm" | "toolchain";
 }
 
 /** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is

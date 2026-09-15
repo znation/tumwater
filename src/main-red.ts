@@ -55,7 +55,9 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
       message:
         baseline.skipReason === "no-npm"
           ? "no npm on PATH; skipping main baseline check"
-          : `main baseline check timed out after ${BUILD_CHECK_TIMEOUT_MS / 1000}s; proceeding with authoring unverified`,
+          : baseline.skipReason === "toolchain"
+            ? "the toolchain is broken; skipping the main baseline check; proceeding with authoring unverified"
+            : `main baseline check timed out after ${BUILD_CHECK_TIMEOUT_MS / 1000}s; proceeding with authoring unverified`,
     });
     return null;
   }
