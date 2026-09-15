@@ -341,6 +341,22 @@ Corrections:
 
 Sizing unchanged: self-reload.ts is still ~100 lines of new wiring over existing functions; tui.ts and gui.ts each gain a few lines around their existing teardown/send sites; the test file is as scoped. No design question remains open.
 
+### Portability & packaging — run tumwater anywhere, against anything (planned 2026-09-14, requested by user)
+
+**Full plan: plans/portability.md** — seven independently landable sub-plans, each with its own goal, design rationale, approach, files touched, and acceptance criteria; the shared problem statement, invariants, and sequencing live at the top of that document. Kept there rather than inline because the series spans packaging, config, git, prompts, and init, and the detail would crowd out every other entry here.
+
+**Why.** tumwater has only ever run as a checkout of its own repo, on one machine, against a branch named `main`, driving one local MLX server and one 27B model, verified by `npm test`. Each of those is baked in somewhere, and the goal is to run an installed copy against other people's repositories.
+
+1. **1/7 — CI and a publishable npm package.** `.github/workflows/{ci,release}.yml`, a `files` allowlist (the tarball ships 230 files / 1.1 MB today, and `dist/` reaches it only by an npm packlist quirk), `prepack`, LICENSE. No behavior change; lands first so the rest run under CI.
+2. **2/7 — Repo root and any branch.** Resolve the root from `git rev-parse --show-toplevel` instead of `process.cwd()`; `--branch` / `baseBranch` override with the checked-out branch as the default. The branch is already a parameter at every call site, so this is small.
+3. **3/7 — Harness-mediated config writes.** Move `customLoops` off the commit → review → merge path onto a request file the director leaves in its own worktree, so custom loops need neither a tracked config, nor the tumwater repo, nor the review gate. Supersedes three bullets and invariant 4 of plans/user-defined-loops.md.
+4. **4/7 — Untrack the config; ship a template.** `tumwater.json` gitignored per machine, `tumwater.example.json` tracked as the project's shareable baseline; README's rig-specific backend section becomes a generic `docs/backends.md`. Depends on 3/7.
+5. **5/7 — Configurable agent binary.** `TUMWATER_PI_BIN` → `agentBin` → `"pi"`, replacing `spawn("pi", …)` and two `findOnPath("pi")` gates.
+6. **6/7 — Configurable verification command.** `check.command` in config, with today's npm auto-detection as the fallback. Without it a non-npm repo silently loses the review gate's build pre-check and the red-main gate.
+7. **7/7 — Adopt an existing repository.** `TUMWATER.md` as the project brief with README as the compatibility path, plus `init --adopt` / `--dry-run`, so init stops hard-failing on a repo that already has a README.
+
+**Critical path.** 1/7 → 2/7 → 3/7 → 4/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
+
 ## Done
 
 ### Remove the per-loop tokens/sec column from the TUI/GUI tables (planned 2026-09-14, requested by user, refined 2026-09-14, done 2026-09-14)
