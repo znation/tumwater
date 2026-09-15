@@ -871,6 +871,40 @@ test("the dashboard page renders the preformatted budget badge from the payload"
   assert.doesNotMatch(GUI_PAGE, /fmtUsdCap/, "the old client-side cap mirror is gone");
 });
 
+// Free-state regression (BUGS.md, 2026-09-14): an all-free fleet's badge must be plain,
+// unclickable text — no <a id=budgetbadge>, so the page's delegated click handler cannot
+// open a cap editor that could never bind. The budget-edit block runs in the page's script
+// scope, where esc() is defined; the test extracts the marker-delimited block and evals it
+// against a minimal DOM stub, so the free branch is tested behaviorally, not by source shape.
+test("the budget badge is plain text on an all-free fleet and a link otherwise", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const block = GUI_PAGE.split("// budget-edit:start")[1]!.split("// budget-edit:end")[0]!;
+  const wrap = { innerHTML: "" };
+  const empty = { innerHTML: "", textContent: "", focus() {}, select() {} };
+  const document = {
+    getElementById: (id: string) => (id === "budgetwrap" ? wrap : empty),
+    addEventListener: () => {},
+  };
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const { renderBudgetBadge } = new Function(
+    "document",
+    "esc",
+    block + "\nreturn { renderBudgetBadge };",
+  )(document, esc) as { renderBudgetBadge: (d: object) => void };
+
+  renderBudgetBadge({ budget: { spentUsd: 0, capUsd: 50, free: true }, budgetBadge: " · budget: n/a" });
+  assert.doesNotMatch(wrap.innerHTML, /<a[^>]*id='budgetbadge'/, "free fleet: no clickable badge");
+  assert.doesNotMatch(wrap.innerHTML, /<input/, "free fleet: no editor in sight");
+  assert.match(wrap.innerHTML, /· budget: n\/a/, "free fleet: the n/a text still shows");
+
+  renderBudgetBadge({ budget: { spentUsd: 1.5, capUsd: 50, free: false }, budgetBadge: " · budget: $1.50/$50 today" });
+  assert.match(wrap.innerHTML, /<a href='#' id='budgetbadge'>/, "priced fleet: the badge stays a link");
+
+  renderBudgetBadge({ budget: { spentUsd: 2, capUsd: 0, free: false }, budgetBadge: " · budget: $2.00 today · no cap" });
+  assert.match(wrap.innerHTML, /<a href='#' id='budgetbadge'>/, "disabled fleet: the badge is still the edit affordance");
+});
+
 test("a paused fleet's idle role loops read budget paused in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget pause test");

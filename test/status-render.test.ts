@@ -671,7 +671,7 @@ test("the status header budget badge reads n/a for an all-free fleet", () => {
     tmpdir(),
     snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: true }),
   ).split("\n")[0] ?? "";
-  assert.match(free, /· budget: n\/a today$/);
+  assert.match(free, /· budget: n\/a$/);
 
   // The dollar form is untouched for a fleet that can spend (byte-identical to before).
   const paid = renderStatus(
@@ -883,9 +883,9 @@ test("budgetBadge renders the standing daily-cost rule in every cap state", () =
   // disabled free fleet still cannot accumulate spend), $X/$Y while enabled with priced
   // models, `· no cap` when disabled. Whole-dollar caps stay bare ($50); fractional ones
   // keep their cents ($12.34).
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, free: true }), " · budget: n/a today", "all-free fleet reads n/a");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, free: true }), " · budget: n/a", "all-free fleet reads n/a");
   assert.equal(budgetBadge({ spentUsd: 12.34, capUsd: 50, free: false }), " · budget: $12.34/$50 today", "whole-dollar cap stays bare");
   assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, free: false }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
   assert.equal(budgetBadge({ spentUsd: 7.5, capUsd: 0, free: false }), " · budget: $7.50 today · no cap", "disabled: spend shown, gate off");
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, free: true }), " · budget: n/a today", "free outranks disabled too");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, free: true }), " · budget: n/a", "free outranks disabled too");
 });

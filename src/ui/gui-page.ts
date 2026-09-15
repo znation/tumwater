@@ -232,8 +232,12 @@ export const GUI_PAGE = `<!doctype html>
   let budgetEditing = false;
   function renderBudgetBadge(d) {
     if (budgetEditing) return; // keep the editor until set/cancel decides
-    document.getElementById("budgetwrap").innerHTML =
-      "<a href='#' id='budgetbadge'>" + esc(d.budgetBadge || "") + "</a>";
+    // An all-free fleet has no spend a cap could ever bind: its badge is plain text (no
+    // link, no pointer) so it cannot open a cap editor that would never take effect. Every
+    // other state keeps the clickable badge — the affordance for editing the cap.
+    document.getElementById("budgetwrap").innerHTML = d.budget && d.budget.free
+      ? "<span>" + esc(d.budgetBadge || "") + "</span>"
+      : "<a href='#' id='budgetbadge'>" + esc(d.budgetBadge || "") + "</a>";
   }
   function openBudgetEditor() {
     budgetEditing = true;
@@ -328,7 +332,8 @@ export const GUI_PAGE = `<!doctype html>
       // The daily cost budget badge arrives preformatted from the payload — status-render's
       // budgetBadge, the same string the TUI/status header renders (n/a for an all-free
       // fleet; "· no cap" when disabled), so the two surfaces cannot drift. It is its own
-      // element because it is clickable: the editor swaps just this fragment.
+      // element because it is clickable (in priced states — an all-free fleet renders
+      // plain text, not a link): the editor swaps just this fragment.
       renderBudgetBadge(d);
       document.getElementById("loops").innerHTML = sortLoops(d.loops).map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");

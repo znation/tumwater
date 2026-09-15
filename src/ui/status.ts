@@ -41,7 +41,7 @@ export interface StatusSnapshot {
    * boundary — exactly like the cost column. `free` is true when every model the fleet could
    * use resolves to an unpriced or zero-cost entry in pi's models.json (src/pi-models.ts):
    * spend can never accumulate against a cap that cannot be reached, so both dashboards read
-   * `· budget: n/a today` instead of a dollar figure. */
+   * `· budget: n/a` instead of a dollar figure. */
   budget: { spentUsd: number; capUsd: number; free: boolean };
   /** True while the operator has paused the fleet (`tumwater pause` marker present): every
    * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,

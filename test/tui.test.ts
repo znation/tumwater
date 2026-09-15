@@ -19,7 +19,7 @@ import {
   tuiTerminalError,
 } from "../src/ui/tui.js";
 import { formatDate } from "../src/text.js";
-import { makeRepo } from "./util.js";
+import { makeRepo, tmpdir } from "./util.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
 
@@ -845,5 +845,42 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
     assert.match(tui.lastFrame(), /Ctrl\+B edit budget/);
   } finally {
     await tui.quit();
+  }
+});
+
+// Free-state budget (BUGS.md, 2026-09-14): a fleet whose models are all free has no spend
+// a cap could bind, so Ctrl+B flashes a notice instead of opening the editor — the prompt
+// line stays byte-for-byte (no pre-filled cap, nothing to save on Enter).
+test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet", async () => {
+  const repo = await makeTuiRepo();
+  // snapshot() resolves pi's model catalog at $HOME/.pi/agent/models.json (src/pi-models.ts):
+  // aim a temp home at an unpriced model the repo config points at, so the fleet reads free.
+  const home = tmpdir("tui-free-home-");
+  fs.mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, ".pi", "agent", "models.json"),
+    JSON.stringify({ providers: { "lm-studio": { models: [{ id: "qwen3.8-27b" }] } } }),
+  );
+  const cfg = loadConfig(repo);
+  cfg.provider = "lm-studio";
+  cfg.model = "qwen3.8-27b";
+  saveConfig(repo, cfg);
+  const oldHome = process.env.HOME;
+  process.env.HOME = home; // must be set before the first render so Ctrl+B reads the free flag
+  try {
+    const tui = startTui(repo);
+    try {
+      // A draft prompt — the notice must leave it byte-for-byte intact.
+      for (const ch of "draft prompt") tui.key(ch, ch);
+      tui.key(undefined, "b", { ctrl: true });
+      assert.match(tui.lastFrame(), /budget n\/a — all models free/);
+      assert.equal(tui.lines().at(-1), "> draft prompt", "the editor never opened — prompt untouched");
+      assert.match(tui.lastFrame(), /Ctrl\+B edit budget/, "the footer hint is unchanged");
+    } finally {
+      await tui.quit();
+    }
+  } finally {
+    if (oldHome === undefined) delete process.env.HOME;
+    else process.env.HOME = oldHome;
   }
 });

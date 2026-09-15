@@ -210,6 +210,10 @@ export async function runTui(root: string): Promise<void> {
   // The last snapshot's cap, captured by render so the Ctrl+B handler can pre-fill without
   // re-reading config itself (render already polls snapshot every second).
   let currentCapUsd = 0;
+  // The last snapshot's free flag: true when every model the fleet could use is unpriced,
+  // so a cap could never bind — the Ctrl+B handler flashes a notice instead of opening
+  // the editor (BUGS.md 2026-09-14), leaving the prompt line untouched.
+  let currentBudgetFree = false;
   let flash = "";
   let flashUntil = 0;
   // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
@@ -252,6 +256,7 @@ export async function runTui(root: string): Promise<void> {
     const width = process.stdout.columns ?? 120;
     const snap = snapshot(root);
     currentCapUsd = snap.budget.capUsd;
+    currentBudgetFree = snap.budget.free;
     roleIds = snap.loops.map((s) => s.role);
     view = Math.min(view, roleIds.length + 2); // clamp a stale index if roles changed
     const status = renderStatus(root, snap, width);
@@ -378,6 +383,12 @@ export async function runTui(root: string): Promise<void> {
         // saves the prompt text; leaving restores it. Esc cancels the same way.
         if (budgetMode) {
           exitBudgetMode();
+        } else if (currentBudgetFree) {
+          // An all-free fleet has no spend a cap could bind: the editor would pre-fill a
+          // value that can never take effect, so Ctrl+B flashes a one-line notice and
+          // leaves the prompt line untouched (toggle/Esc logic unchanged).
+          flash = "budget n/a — all models free";
+          flashUntil = Date.now() + 3000;
         } else {
           savedInput = input;
           savedCursor = cursor;

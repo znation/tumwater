@@ -5,26 +5,19 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Budget badge reads "n/a today", and its GUI link opens a cap editor pre-filled with 50 on all-free fleets (reported by user 2026-09-14)
+## Fixed
+
+### Budget badge reads "n/a today", and its GUI link opens a cap editor pre-filled with 50 on all-free fleets (reported by user 2026-09-14, fixed by bugfix loop 2026-09-14)
 
 **Symptom:** On a fleet whose models are all free (the n/a budget state introduced by the 2026-09-08/09 badge fix), both dashboards show `· budget: n/a today` — the "today" is nonsensical: with no priced model there is no daily spend to speak of. In the GUI the badge is additionally still a clickable link; clicking it opens the daily-cap editor pre-filled with `50` (the default cap), inviting the operator to edit a value that can never bind. The TUI has the same affordance via Ctrl+B, which opens the cap editor unconditionally.
 
-**Repro:**
-1. Point tumwater.json at all-free models (e.g. a local-server model with no `cost` in pi's models.json) and run the fleet.
-2. Open the GUI or TUI: the header badge reads `· budget: n/a today`.
-3. GUI: click the badge — the editor appears pre-filled with 50. TUI: press Ctrl+B on the prompt line — the editor opens pre-filled with the cap.
+**Repro:** point tumwater.json at all-free models (a local-server model with no `cost` in pi's models.json), run the fleet, and look at the header badge (`· budget: n/a today`); in the GUI click the badge (the editor opens pre-filled with 50), in the TUI press Ctrl+B (the editor opens pre-filled with the cap).
 
-**Expected:** the badge reads `· budget: n/a` (no "today") in the free state. The GUI badge is not clickable in that state (no link, no pointer, no editor). The TUI's Ctrl+B likewise does not open the editor when the fleet is free — it shows a brief notice ("budget n/a — all models free") instead.
+**Cause:** three independent homes of the same free state: status-render.ts's `budgetBadge` appended "today" to the free branch (the single home of the TUI/status header string, shipped preformatted to the GUI as `budgetBadge`); gui-page.ts's `renderBudgetBadge` always rendered the badge as `<a id='budgetbadge'>`, and the page's delegated click handler opens `openBudgetEditor()` for any such click, pre-filling `lastStatus.budget.capUsd`; tui.ts's Ctrl+B handler toggled `budgetMode` unconditionally, pre-filling the last snapshot's cap.
 
-**Suspected cause:**
-- src/ui/status-render.ts:247 — `budgetBadge()` returns `" · budget: n/a today"` when `budget.free`; it is the single home of the TUI/status header string, and status-payload.ts:34 ships it to the GUI preformatted as `budgetBadge`.
-- src/ui/gui-page.ts:236–240 — `renderBudgetBadge` always renders `<a href='#' id='budgetbadge'>`, and the delegated document click handler (line ~270) opens `openBudgetEditor()` for any `#budgetbadge` click; the editor pre-fills `lastStatus.budget.capUsd` (default 50). The payload already ships the raw `budget` object (status-payload.ts:42), so the page can distinguish the free state.
-- src/ui/tui.ts:361–369 — the Ctrl+B handler toggles `budgetMode` unconditionally, pre-filling the last snapshot's cap.
-- Doc comments repeating the old string: src/ui/status-render.ts:239–244 and src/ui/status.ts:44.
+**Fix:** `budgetBadge` returns ` · budget: n/a` for the free state (checked first, in every cap state; dollar and no-cap branches byte-identical as before). `renderBudgetBadge` renders plain text — no link, no pointer, so the delegated click handler cannot match it — when `d.budget.free`, and keeps the link and editor for every other state. The TUI's Ctrl+B, on a free fleet, flashes `budget n/a — all models free` for 3 s and leaves the prompt line untouched (toggle/Esc logic unchanged). Doc comments in status-render.ts and status.ts updated.
 
-**Fix direction:** in `budgetBadge`, return `" · budget: n/a"` for the free state (dollar and no-cap branches byte-identical as today) and update the two doc comments. In `renderBudgetBadge`, when `d.budget.free` render a plain non-clickable element instead of the link (no pointer cursor) and leave the click handler and editor untouched for the other states. In the TUI, when the last snapshot's budget is free, Ctrl+B shows the notice instead of entering `budgetMode` (Esc/toggle logic unchanged). Tests: test/status-render.test.ts (exact free-state string), test/gui.test.ts (free state renders no link; other states still do), and test/tui.test.ts (free-state notice instead of the editor).
-
-## Fixed
+**Files:** src/ui/status-render.ts (`budgetBadge` free branch + doc comment); src/ui/status.ts (doc comment); src/ui/gui-page.ts (`renderBudgetBadge` free branch); src/ui/tui.ts (`currentBudgetFree` + Ctrl+B notice); test/status-render.test.ts (free-state strings), test/gui.test.ts (free branch renders no link — the marker-delimited budget-edit block is eval'd against a DOM stub; priced and disabled states still render the link), test/tui.test.ts (free-fleet Ctrl+B flashes the notice with the prompt untouched — temp $HOME holding an unpriced models.json).
 
 ### Stall warning for a tool call pi started without a toolName names nothing (or with a leading space) (found by bugfix loop 2026-09-13, fixed 2026-09-13)
 

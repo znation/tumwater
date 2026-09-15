@@ -225,15 +225,16 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
 }
 
 /** The header's daily-cost-budget fragment, standing in every cap state (the badge is also
- * the affordance for editing the cap, so a disabled fleet needs it too): `· budget: n/a
- * today` for a fleet whose models are all free (spend can never accumulate against a cap
- * that cannot be reached — checked first, in every cap state), `· budget: $X.XX/$Y today`
- * while enabled with priced models, and `· budget: $X today · no cap` when disabled. One
+ * the affordance for editing the cap, so a disabled fleet needs it too): `· budget: n/a`
+ * for a fleet whose models are all free (spend can never accumulate against a cap that
+ * cannot be reached — and no priced model means no daily spend to count, hence no "today"
+ * — checked first, in every cap state), `· budget: $X.XX/$Y today` while enabled with
+ * priced models, and `· budget: $X today · no cap` when disabled. One
  * home for the rule — renderStatus renders it in the TUI/status header and status-payload.ts
  * ships its output preformatted as `budgetBadge`, so the GUI page cannot drift from this
  * string. */
 export function budgetBadge(budget: StatusSnapshot["budget"]): string {
-  if (budget.free) return " · budget: n/a today";
+  if (budget.free) return " · budget: n/a";
   if (budget.capUsd > 0) return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today`;
   return ` · budget: ${usd(budget.spentUsd)} today · no cap`;
 }
