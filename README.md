@@ -57,10 +57,14 @@ Open items:
 - Planned: harness-level merge queue — sub-plans 3/5–5/5 tracked in PLANS.md (2/5 landed
   2026-09-13); next is asynchronous landing via the durable land queue (planned 2026-09-08).
 - Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13).
-- Open bugs: none.
+- Planned: portability & packaging — run an installed copy on any repo/branch with any agent
+  binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
+- Open bugs: four, all recorded 2026-09-15 from the git-outage incident (BUGS.md): error
+  ticks climb the idle backoff ladder, repeated tick failures raise no alarm, a broken
+  toolchain latches a "main is red" verdict, and no operator lever wakes a backed-off fleet.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`eaa5b83`): build clean, suite 971/971.
+Current main (`2605f24`): build clean, suite 972/972.
 <!-- tumwater:status:end -->
 
 ## How it works
