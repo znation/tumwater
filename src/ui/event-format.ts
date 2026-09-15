@@ -8,6 +8,21 @@ function budgetPhrase(e: HarnessEvent): string {
   return `${usd(Number(e.spentUsd ?? 0))} of ${usd(Number(e.capUsd ?? 0))}`;
 }
 
+/** The ` · <N> tok` / ` · $<spent>` usage fragment every event that records a run's cost
+ * shares (tick_end, landed): tokens and cost arrive loosely typed on HarnessEvent, so each is
+ * coerced and rendered through the shared token/money formats (compactTokens, usd) in one
+ * place. Either part is omitted when zero or absent, so skipped ticks and zero-usage landings
+ * render byte-identical to a pre-feature line — no trailing separator. "·" is the separator the
+ * budget badge already uses. */
+function usagePhrase(e: HarnessEvent): string {
+  const tokens = Number(e.tokens ?? 0);
+  const costUsd = Number(e.costUsd ?? 0);
+  return (
+    (tokens > 0 ? ` · ${compactTokens(tokens)} tok` : "") +
+    (costUsd > 0 ? ` · ${usd(costUsd)}` : "")
+  );
+}
+
 /** ` (in 57s)` / ` (in 12m)` for events that carry a durationMs; "" when absent (events written
  * by builds that predate the field render as before). Seconds under two minutes, minutes above. */
 function elapsed(ms: unknown): string {
@@ -31,16 +46,8 @@ export function formatEvent(e: HarnessEvent): string {
       // for every result that carries one keeps the event feed self-explanatory — a bare
       // "tick #N refused" would force operators to open the transcript for the reason.
       const extra = e.summary ? ` — ${e.summary}` : e.error ? ` — ${e.error}` : "";
-      // Per-tick usage (PLANS.md, per-tick-usage plan): where the day's spend went. The
-      // fields arrive loosely typed on HarnessEvent and are omitted when zero or absent,
-      // so skipped ticks and zero-usage error ticks render byte-identical to a pre-feature
-      // line — no trailing separator. "·" is the separator the budget badge already uses.
-      const tokens = Number(e.tokens ?? 0);
-      const costUsd = Number(e.costUsd ?? 0);
-      const usage =
-        (tokens > 0 ? ` · ${compactTokens(tokens)} tok` : "") +
-        (costUsd > 0 ? ` · ${usd(costUsd)}` : "");
-      return `${time} ${loop} tick #${e.tick} ${e.result}${extra}${usage}`;
+      // Per-tick usage (PLANS.md, per-tick-usage plan): where the day's spend went.
+      return `${time} ${loop} tick #${e.tick} ${e.result}${extra}${usagePhrase(e)}`;
     }
     case "merged":
       return `${time} ${loop} merged ${shortSha(e.commit)} to main — ${e.summary}`;
@@ -48,17 +55,11 @@ export function formatEvent(e: HarnessEvent): string {
       // Merge queue 3/5: routine state change (the tick committed and the landing slot is
       // ahead) — no warning prefix. The landing's own events follow it.
       return `${time} ${loop} queued ${shortSha(e.commit)} for landing — ${e.summary}`;
-    case "landed": {
+    case "landed":
       // The landing slot finished with the change on main; the usage is the landing's own
       // spend (reviewer + conflict resolution), omitted when zero so review-exempt landings
-      // render bare — the same pattern as tick_end.
-      const tokens = Number(e.tokens ?? 0);
-      const costUsd = Number(e.costUsd ?? 0);
-      const usage =
-        (tokens > 0 ? ` · ${compactTokens(tokens)} tok` : "") +
-        (costUsd > 0 ? ` · ${usd(costUsd)}` : "");
-      return `${time} ${loop} landing of ${shortSha(e.commit)} complete${elapsed(e.durationMs)}${usage}`;
-    }
+      // render bare — the same phrase tick_end carries for its run.
+      return `${time} ${loop} landing of ${shortSha(e.commit)} complete${elapsed(e.durationMs)}${usagePhrase(e)}`;
     case "land_failed":
       // Routine failure detail: the review events themselves (review_rejected/review_failed)
       // or the merged/build_check lines carry the reason in the feed.
