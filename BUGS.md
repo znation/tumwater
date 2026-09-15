@@ -7,6 +7,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### Display clippers violate their length invariant at degenerate budgets: truncate(s, 0) and clipToWidth(line, -1) return almost the whole input (found by bugfix loop 2026-09-14, fixed 2026-09-14)
+
+**Symptom:** `truncate("abc", 0)` returned `"ab…"` — 3 characters for a 0-character budget — and `clipToWidth(line, -1)` returned everything except the last character. Both break their documented "the result never exceeds max/width" invariant, which the TUI/GUI rely on for one-logical-line-per-visual-line rendering (an over-budget string wraps and breaks the layout).
+
+**Repro:** against the pre-fix source, `truncate("abc", 0)` → `"ab…"` (len 3 > 0); `truncate("a", 0)` → `"…"` (len 1 > 0); `clipToWidth("abcdef", -1)` → `"abcde"` (len 5). The invariant tests swept `max` from 1 (truncate) and `width` from 0 (clipToWidth), so the degenerate side of the boundary was never exercised.
+
+**Cause:** both clippers compute the cut as `max - 1` / `width - 1` and take `s.slice(0, cut)`; for a non-positive cut, `slice(0, -n)` drops n trailing characters instead of keeping none, so a degenerate budget silently becomes "almost the whole string". Latent, not user-facing: every current caller passes a positive constant (the transcript/progress/commit budgets) or a non-negative computed column width, so no surface could hit it — the guard makes the invariant hold for ANY budget, the way the sibling width-0 path already did.
+
+**Fix:** `truncate` returns "" for `max <= 0` (a non-positive budget fits nothing — not even the ellipsis); `clipToWidth` returns "" for `width < 0` (width 0 already produced ""). Regression tests pin the degenerate inputs, and truncate's invariant sweep now starts at max 0.
+
+**Files:** src/text.ts (truncate guard + doc); src/ui/status-render.ts (clipToWidth guard + doc); test/text.test.ts (degenerate-budget regression + sweep from 0); test/status-render.test.ts (negative-width regression).
+
 ### Gate verdicts were persisted only at tick boundaries: a sudden death mid-run resurrected a stale reject note into every later tick (found by bugfix loop 2026-09-14, fixed 2026-09-14)
 
 **Symptom:** A bugfix tick on 2026-09-14 started with a "Your previous change was rejected in review" note about commit d3429a2 — a source-only attempt the gate had correctly rejected (its old test still asserted "n/a today"). The replacement fix (ab176a5, source + tests) was then approved and merged WITHIN the same tick 57 minutes after the prompt was built (the reviewer run was long). Had the process died between the gate's verdict and the tick's end save, the stale reject would have stayed the persisted state: every subsequent tick of that role would carry the note pointing at rejected work already superseded by approved work on main — misdirecting any fresh authoring run, which has no memory of what happened mid-tick (the note is the only cross-tick record).

@@ -48,8 +48,11 @@ export function cutSplitsSurrogatePair(s: string, i: number): boolean {
  * `max - 1`, drop any trailing space the cut may have left behind, and append an ellipsis.
  * The result is never longer than `max`. A cut that would split a surrogate pair (an astral
  * character such as emoji) backs off one unit instead — dropping the whole character rather
- * than emitting a lone surrogate, which terminals render as garbage. */
+ * than emitting a lone surrogate, which terminals render as garbage. A non-positive `max`
+ * fits nothing — not even the ellipsis — and yields the empty string, so the length
+ * invariant holds at degenerate budgets too. */
 export function truncate(s: string, max: number): string {
+  if (max <= 0) return ""; // No budget fits nothing; without this, slice(0, -1) would keep almost all of s.
   if (s.length <= max) return s;
   let cut = max - 1;
   if (cutSplitsSurrogatePair(s, cut)) cut -= 1; // Never emit a lone high surrogate.

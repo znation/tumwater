@@ -95,11 +95,21 @@ test("truncate never returns a string longer than max (the display-width invaria
     "word ".repeat(20).trimEnd(), // every 5th char is a space
   ];
   for (const s of samples) {
-    for (let max = 1; max <= s.length + 2; max++) {
+    for (let max = 0; max <= s.length + 2; max++) {
       const out = truncate(s, max);
       assert.ok(out.length <= max, `truncate(${JSON.stringify(s.slice(0, 12))}…, ${max}) → ${out.length} chars: ${JSON.stringify(out)}`);
     }
   }
+});
+
+test("truncate with a non-positive max fits nothing and returns the empty string", () => {
+  // Without the guard, cut = max - 1 is negative and s.slice(0, -n) drops n trailing
+  // characters instead of keeping none — truncate("abc", 0) returned "ab…" (3 chars for a 0
+  // budget), violating the length invariant every display consumer sizes off.
+  assert.equal(truncate("abc", 0), "");
+  assert.equal(truncate("a much longer string than the budget", 0), "");
+  assert.equal(truncate("abc", -1), "");
+  assert.equal(truncate("", 0), "");
 });
 
 // compactTokens is the single home of the token display format shared by the status table's

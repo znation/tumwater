@@ -177,6 +177,11 @@ test("clipToWidth never exceeds the requested width, even at degenerate widths",
     const clipped = clipToWidth(text, width);
     assert.ok(clipped.length <= width, `width ${width} violated: ${clipped.length}`);
   }
+  // A negative width fits nothing: without the guard, slice(0, -n) drops n trailing
+  // characters instead of keeping none, so the "never exceeds width" invariant could not
+  // even be stated for those inputs.
+  assert.equal(clipToWidth(text, -1), "");
+  assert.equal(clipToWidth("ab", -5), "");
   assert.match(clipToWidth(text, 5), /…$/, "over-wide text ends in an ellipsis");
 });
 

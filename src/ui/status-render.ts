@@ -177,9 +177,11 @@ function stateCell(
 /** Truncate to `width` with a trailing ellipsis when over. The result never exceeds
  * `width` characters (even at width ≤ 1), so clipped lines cannot wrap in a terminal of
  * that many columns. A cut that would split a surrogate pair backs off one unit, so no line
- * ever carries a lone surrogate (terminals render it as garbage). Shared by the status table
- * and the TUI's line rendering. */
+ * ever carries a lone surrogate (terminals render it as garbage). A negative width fits
+ * nothing and yields the empty string, keeping the invariant at degenerate budgets. Shared
+ * by the status table and the TUI's line rendering. */
 export function clipToWidth(text: string, width: number): string {
+  if (width < 0) return ""; // No budget fits nothing; without this, slice(0, -1) would keep almost all of text.
   if (text.length <= width) return text;
   const bare = width <= 1; // No room for an ellipsis at degenerate widths.
   let cut = bare ? width : width - 1;
