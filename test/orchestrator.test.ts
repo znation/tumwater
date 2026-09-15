@@ -270,7 +270,7 @@ test("backoff grows by the factor and caps at max", () => {
   let backoff = 0;
   const seen: number[] = [];
   for (let i = 0; i < 4; i++) {
-    backoff = nextBackoffSeconds(backoff, config);
+    backoff = nextBackoffSeconds(backoff, config.idleBackoff);
     seen.push(backoff);
   }
   assert.deepEqual(seen, [10, 30, 50, 50]);

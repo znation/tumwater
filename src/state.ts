@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { TumwaterConfig, LoopState, TickOutcome, TickResult } from "./types.js";
+import type { TumwaterConfig, LoopState, TickOutcome, TickResult, BackoffConfig } from "./types.js";
 import type { BuildStatus } from "./build-info.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
@@ -118,12 +118,20 @@ export function isFleetPaused(root: string): boolean {
   return fs.existsSync(pausedPath(root));
 }
 
-/** Next backoff after a no-change tick: initial on the first, then multiplied, capped. */
-export function nextBackoffSeconds(current: number, config: TumwaterConfig): number {
-  const { initialSeconds, factor, maxSeconds } = config.idleBackoff;
+/** Next step of a backoff ladder: initial (capped) on the first step, then multiplied, capped. */
+export function nextBackoffSeconds(current: number, ladder: BackoffConfig): number {
+  const { initialSeconds, factor, maxSeconds } = ladder;
   if (current <= 0) return Math.min(initialSeconds, maxSeconds);
   return Math.min(current * factor, maxSeconds);
 }
+
+/** Backoff ladder for failed ticks (`error` results). The idle ladder prices hour-long model
+ * runs — its cap exists so a loop that keeps finding nothing stops burning model time. A tick
+ * that fails (a broken toolchain, a dead pi subprocess) often never reaches the model, so it
+ * climbs this short ladder, capped in minutes: one broken `git` must not park a fleet for the
+ * idle ladder's 10-hour sleep (BUGS.md, the 2026-09-15 outage). One ladder, one sensible
+ * default, no knob: the cap is the point. */
+export const ERROR_BACKOFF: BackoffConfig = { initialSeconds: 30, factor: 2, maxSeconds: 600 };
 
 /** Resumes granted to one context-ceiling cut-off streak before the loop stops resuming the
  * task and falls back to a fresh tick: a task that outruns the ceiling on every attempt (even
@@ -133,8 +141,8 @@ const CUT_OFF_RESUME_LIMIT = 3;
 
 /** Record a finished tick on the loop's state and schedule its next run from the outcome.
  * Split out of LoopRunner.tick() (loop.ts) so the scheduling policy — which outcomes retry
- * promptly, which back off, how cut-off resumes are bounded — sits with the other
- * scheduling helpers here instead of inline in the tick lifecycle. Mutates `s` in place:
+ * promptly, which back off and on which ladder, how cut-off resumes are bounded — sits with
+ * the other scheduling helpers here instead of inline in the tick lifecycle. Mutates `s` in place:
  * the caller's state object is authoritative across an in-flight tick (see resetCounters).
  * `cfg` is the role-resolved config (configForRole): its minTickIntervalSeconds carries any
  * per-role slow clock, and idleBackoff passes through it unchanged from the top level. */
@@ -197,7 +205,15 @@ export function applyTickOutcome(
     // director prompt deliberately dropped, so there is nothing to resume — schedule like an
     // unproductive tick (idle backoff) instead of resuming promptly. phase is cleared by the
     // `result !== "aborted"` check above.
-    s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg);
+    s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff);
+    s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
+  } else if (outcome.result === "error") {
+    // A failed tick, not an idle verdict: it often never reached the model, so it retries on
+    // the short error ladder (capped in minutes) instead of the idle ladder, whose cap prices
+    // hour-long model runs. backoffSeconds is shared: each ladder advances from the current
+    // value, so an error streak capped at the error ceiling never sleeps LESS than the loop
+    // already was sleeping, and the idle ladder picks up from there if the failures stop.
+    s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, ERROR_BACKOFF);
     s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
   } else if (outcome.cutOff && role !== DIRECTOR_ROLE && s.cutOffStreak <= CUT_OFF_RESUME_LIMIT) {
     // Truncated at the context ceiling, not idle: the hour(s) of work survive in the
@@ -209,7 +225,7 @@ export function applyTickOutcome(
     s.resumePending = true;
     s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
   } else {
-    s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg);
+    s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff);
     s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
   }
 }

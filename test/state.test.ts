@@ -178,11 +178,10 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
 });
 
 test("nextBackoffSeconds caps an initial above max and treats non-positive current as first", () => {
-  const config = defaultConfig();
-  config.idleBackoff = { initialSeconds: 100, factor: 2, maxSeconds: 30 };
-  assert.equal(nextBackoffSeconds(0, config), 30); // min(initial, max)
-  assert.equal(nextBackoffSeconds(-5, config), 30); // current <= 0 → initial (capped)
-  assert.equal(nextBackoffSeconds(29, config), 30); // growth still capped at max
+  const ladder = { initialSeconds: 100, factor: 2, maxSeconds: 30 };
+  assert.equal(nextBackoffSeconds(0, ladder), 30); // min(initial, max)
+  assert.equal(nextBackoffSeconds(-5, ladder), 30); // current <= 0 → initial (capped)
+  assert.equal(nextBackoffSeconds(29, ladder), 30); // growth still capped at max
 });
 
 // --- Daily cost budget window (plans/daily-cost-budget.md) ---
@@ -425,13 +424,13 @@ test("applyTickOutcome: cut-off ticks resume the compacted session until the str
   assert.equal(s.cutOffStreak, 4);
 });
 
-test("applyTickOutcome: other outcomes grow the idle backoff and clear the cut-off streak", () => {
+test("applyTickOutcome: other unproductive outcomes grow the idle backoff and clear the cut-off streak", () => {
   const cfg = testConfig();
   const s = freshLoopState("feature");
   s.backoffSeconds = 30;
   s.cutOffStreak = 2; // a prior cut-off — this tick finished normally, so it resets
-  applyTickOutcome(s, cfg, "feature", { result: "error" });
-  assert.equal(s.lastResult, "error");
+  applyTickOutcome(s, cfg, "feature", { result: "merge_conflict" });
+  assert.equal(s.lastResult, "merge_conflict");
   assert.equal(s.backoffSeconds, 60); // 30 × factor 2
   assert.ok(
     s.nextRunAt >= Date.now() - 1_000 && s.nextRunAt <= Date.now() + 61_000,
@@ -444,6 +443,64 @@ test("applyTickOutcome: other outcomes grow the idle backoff and clear the cut-o
   s2.lastSummary = "previous";
   applyTickOutcome(s2, cfg, "feature", { result: "no_change" });
   assert.equal(s2.lastSummary, "previous");
+});
+
+// --- Error ladder: a failed tick retries in minutes, never the idle ladder's cap
+// (BUGS.md 2026-09-15: one broken `git` parked the whole fleet for hours) ---
+
+test("applyTickOutcome: consecutive error ticks climb a short ladder capped in minutes", () => {
+  const cfg = testConfig();
+  const s = freshLoopState("bugfix");
+  const seen: number[] = [];
+  for (let i = 0; i < 10; i++) {
+    applyTickOutcome(s, cfg, "bugfix", { result: "error", summary: "git is broken" });
+    seen.push(s.backoffSeconds);
+  }
+  // 30 → 60 → 120 → 240 → 480, then pinned at the error cap — free failures must never
+  // reach the idle ladder's 10-hour sleep.
+  assert.deepEqual(seen, [30, 60, 120, 240, 480, 600, 600, 600, 600, 600]);
+  assert.ok(s.backoffSeconds <= 600, "a minute-order cap, not the idle ladder's 10 h");
+  assert.ok(
+    s.nextRunAt >= Date.now() - 1_000 && s.nextRunAt <= Date.now() + 601_000,
+    "the next retry is due within the error cap",
+  );
+  assert.equal(s.lastResult, "error");
+  assert.equal(s.lastSummary, "git is broken", "the failure is observable in state");
+});
+
+test("applyTickOutcome: no_change laddering is unchanged by the error ladder", () => {
+  const cfg = testConfig();
+  const s = freshLoopState("feature");
+  applyTickOutcome(s, cfg, "feature", { result: "no_change" });
+  assert.equal(s.backoffSeconds, 30, "the first no-change tick takes the idle initial");
+  applyTickOutcome(s, cfg, "feature", { result: "no_change" });
+  assert.equal(s.backoffSeconds, 60, "the second doubles it, as before the fix");
+  // The idle cap is still reachable for the case it was written for: an idle loop can
+  // reach its full 3600 s ceiling, an error loop cannot.
+  for (let i = 0; i < 20; i++) applyTickOutcome(s, cfg, "feature", { result: "no_change" });
+  assert.equal(s.backoffSeconds, 3600);
+});
+
+test("applyTickOutcome: an error after idle backoff caps at the error ceiling, and productive ticks zero it", () => {
+  const cfg = testConfig();
+  // A loop deep in idle backoff that then fails its tick retries within the error cap,
+  // not the idle cap — the ladders share backoffSeconds and each caps the step it takes.
+  const s = freshLoopState("feature");
+  s.backoffSeconds = 3600;
+  applyTickOutcome(s, cfg, "feature", { result: "error" });
+  assert.equal(s.backoffSeconds, 600); // min(3600 × 2, error cap 600)
+  // A no-change tick after the error streak resumes the idle ladder from the current
+  // value: backoff never shrinks below what the streak earned.
+  applyTickOutcome(s, cfg, "feature", { result: "no_change" });
+  assert.equal(s.backoffSeconds, 1200); // min(600 × 2, idle cap 3600)
+
+  // A productive tick zeroes the backoff regardless of which ladder fed it.
+  for (const result of ["changed", "rejected"] as const) {
+    const z = freshLoopState("feature");
+    z.backoffSeconds = 600;
+    applyTickOutcome(z, cfg, "feature", { result });
+    assert.equal(z.backoffSeconds, 0, `${result} zeroes the backoff`);
+  }
 });
 
 // --- Orchestrator info file: the readers live here so observers don't depend on the scheduler ---

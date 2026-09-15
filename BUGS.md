@@ -5,21 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A tick that fails in 200 ms climbs the idle-backoff ladder: one broken `git` put the whole fleet to sleep for hours (found by human log analysis 2026-09-15)
-
-**Symptom:** An Xcode.app update at 05:24 on 2026-09-15 invalidated the accepted Xcode/SDK license, so `/usr/bin/git` (the xcrun shim) exited 69 with "You have not agreed to the Xcode license agreements" on every call. From 06:00:43 every fresh tick died in ~200 ms at `git worktree add` inside `ensureWorktree`. Because `applyTickOutcome` routes `error` into the same exponential `idleBackoff` ladder as `no_change`, each loop doubled from 120 s to 7680 s in six free failures over ~2 h; by 09:38 all 13 loops were parked with next ticks 16–121 minutes out and nothing running at all. 44 error ticks in the episode, no work done by any of them. The ladder's cap is `idleBackoff.maxSeconds` (36000 s = 10 h), so a persistent environmental fault can park a fleet for ten hours on failures that each cost a fifth of a second.
-
-**Repro:**
-1. Shadow git with a failing stub on the fleet's PATH: `printf '#!/bin/sh\nexit 69\n' > /tmp/fakebin/git && chmod +x /tmp/fakebin/git`, `PATH=/tmp/fakebin:$PATH tumwater run`.
-2. Watch `.tumwater/log/events.jsonl`: every loop logs `tick_start` / `tick_end result:error` ~200 ms apart.
-3. Read `.tumwater/state/<role>.json` after each failure: `backoffSeconds` doubles 120 → 240 → 480 → … → 7680 → 15360 → 36000 while no tick ever reached pi.
-
-**Expected:** backoff should price what the tick actually cost. The idle ladder exists so a loop that keeps finding nothing to do stops burning hour-long model runs; an error that never spawned pi consumed no model time and should retry on a separate short ladder capped in the minutes. A fleet should not be able to reach a 10-hour sleep through failures that are free.
-
-**Suspected cause:** src/state.ts:207–209 — `applyTickOutcome`'s final `else` catches `error` alongside `no_change`, `merge_conflict`, `main_red` and the rest, and calls `nextBackoffSeconds` (src/state.ts:122), which is the single `idleBackoff` ladder from tumwater.json (`initialSeconds` 120, `factor` 2, `maxSeconds` 36000). No branch distinguishes "this tick did work and found nothing" from "this tick could not start". The outcome does not carry the tick's duration, so the scheduler has nothing to price with even if it wanted to.
-
-**Fix direction:** separate the error schedule from the idle schedule — either a distinct short ladder for `error` with a low cap (order of 10 minutes), or gate ladder advancement on the tick having actually run (a sub-second failure advances at most a step or two). Leave `no_change` semantics byte-identical: the idle ladder and its 10-hour cap are correct for the case they were written for. Tests: `applyTickOutcome` unit tests pinning that N consecutive `error` outcomes stay under the new cap, that `no_change` laddering is unchanged, and that `changed`/`rejected` still zero the backoff.
-
 ### Repeated tick failures raise no alarm: 44 errors across all 13 loops looked exactly like a quiet fleet (found by human log analysis 2026-09-15)
 
 **Symptom:** During the 2026-09-15 git outage the fleet logged 44 `tick_end result:error` events between 06:00 and 09:36, every one carrying the identical error string, across all 13 loops — and not one `warning` event, no state flag, no dashboard signal. The TUI and GUI showed loops sleeping, which is indistinguishable from a healthy fleet with nothing to do. The outage went unnoticed for 3 h 38 m and surfaced only because a human asked why nothing was running. The harness warns on far smaller anomalies — high-friction ticks, stalled tool calls, cut-off streaks, red main, deferred auto-restarts — but not on its entire fleet failing identically.
@@ -63,6 +48,21 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 **Fix direction:** add a wake request riding the same on-disk marker convention as `reset-counters` and `abort` (a `wakeRequestPath` sibling), consumed in the orchestrator's poll: set `backoffSeconds = 0` and `nextRunAt = Date.now()` for the requested roles and log the existing `wake` event per role, so a running fleet picks it up within one cycle. Keep it out of `zeroCounters` so the documented observation-window semantics stay intact. Tests: arg parsing and `rejectUnknownArgs` for the new command; a state-level test of the mutation; an orchestrator test that a sleeping loop becomes eligible within one poll of the marker appearing.
 
 ## Fixed
+
+### A tick that fails in 200 ms climbs the idle-backoff ladder: one broken `git` put the whole fleet to sleep for hours (found by human log analysis 2026-09-15, fixed 2026-09-15)
+
+**Symptom:** An Xcode.app update at 05:24 on 2026-09-15 invalidated the accepted Xcode/SDK license, so `/usr/bin/git` (the xcrun shim) exited 69 with "You have not agreed to the Xcode license agreements" on every call. From 06:00:43 every fresh tick died in ~200 ms at `git worktree add` inside `ensureWorktree`. Because `applyTickOutcome` routes `error` into the same exponential `idleBackoff` ladder as `no_change`, each loop doubled from 120 s to 7680 s in six free failures over ~2 h; by 09:38 all 13 loops were parked with next ticks 16–121 minutes out and nothing running at all. 44 error ticks in the episode, no work done by any of them. The ladder's cap is `idleBackoff.maxSeconds` (36000 s = 10 h), so a persistent environmental fault can park a fleet for ten hours on failures that each cost a fifth of a second.
+
+**Repro:**
+1. Shadow git with a failing stub on the fleet's PATH: `printf '#!/bin/sh\nexit 69\n' > /tmp/fakebin/git && chmod +x /tmp/fakebin/git`, `PATH=/tmp/fakebin:$PATH tumwater run`.
+2. Watch `.tumwater/log/events.jsonl`: every loop logs `tick_start` / `tick_end result:error` ~200 ms apart.
+3. Read `.tumwater/state/<role>.json` after each failure: `backoffSeconds` doubles 120 → 240 → 480 → … → 7680 → 15360 → 36000 while no tick ever reached pi.
+
+**Cause:** `applyTickOutcome`'s final `else` (src/state.ts) caught `error` alongside `no_change`, `merge_conflict`, `main_red` and the rest, and advanced the single `idleBackoff` ladder from tumwater.json (`initialSeconds` 120, `factor` 2, `maxSeconds` 36000). No branch distinguished "this tick ran the model and found nothing" from "this tick could not start", so free failures climbed the ladder whose 10-hour cap exists to price hour-long model runs.
+
+**Fix:** failed ticks (`error` outcomes) now climb a distinct short ladder — `ERROR_BACKOFF` in src/state.ts: 30 s initial, ×2 factor, 600 s cap — while `no_change` and the other unproductive outcomes keep the idle ladder byte-identical. `nextBackoffSeconds` now takes a `BackoffConfig` ladder instead of the whole config; the ladders share one `backoffSeconds` field and each step advances from the current value, so an error streak capped at 600 s never sleeps less than the loop already was, and the idle ladder resumes from that value when the failures stop. Productive ticks (`changed`/`rejected`) still zero the backoff. The ladder is a built-in constant, not a knob: the minute-order cap is the point.
+
+**Files:** src/state.ts (`ERROR_BACKOFF`, ladder-parameterized `nextBackoffSeconds`, `error` branch in `applyTickOutcome`); src/loop.ts (tick doc comment); test/state.test.ts (regression: ten consecutive `error` outcomes cap at 600 s, `no_change` laddering and its 3600 s ceiling unchanged, idle→error and error→idle cross-ladder steps, `changed`/`rejected` zeroing); test/orchestrator.test.ts + test/state.test.ts (helper call sites pass the ladder).
 
 ### Display clippers violate their length invariant at degenerate budgets: truncate(s, 0) and clipToWidth(line, -1) return almost the whole input (found by bugfix loop 2026-09-14, fixed 2026-09-14)
 
