@@ -1472,6 +1472,34 @@ test("the dashboard page carries the report tab nav and its view containers", as
   assert.equal(GUI_PAGE.match(/setInterval\(/g)?.length ?? 0, 1, "the only poll is the existing 1s status refresh");
 });
 
+test("the report charts carry a cursor-following hover label", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+
+  // The shared chip: fixed in viewport coordinates, inert to the pointer (so it cannot
+  // flicker away the instant the cursor reaches it), hidden until a segment shows it.
+  assert.match(GUI_PAGE, /#report-tip \{[^}]*position:fixed[^}]*pointer-events:none[^}]*display:none[^}]*\}/);
+  // The only hover affordance on the charts is the dimmed segment; legend/stats/axis text
+  // stay untouched.
+  assert.match(GUI_PAGE, /#report svg rect:hover \{[^}]*opacity:\.8/);
+
+  // The label is read from each segment's existing <title> — the exact raw value the
+  // chart-builder test pins byte-for-byte — never re-derived, so the tooltip cannot drift
+  // from the builders' label strings.
+  assert.match(GUI_PAGE, /ev\.target instanceof Element \? ev\.target\.closest\("rect"\) : null/);
+  assert.match(GUI_PAGE, /target\.querySelector\("title"\)\?\.textContent/);
+
+  // The listeners delegate off the #report container itself — which fetchReport re-renders
+  // by innerHTML but never replaces — so one attach at init survives every re-render;
+  // pointerleave hides the chip when the pointer leaves the panel.
+  assert.match(GUI_PAGE, /attachReportTip\(\) \{\n    const panel = document\.getElementById\("report"\);[\s\S]*?panel\.addEventListener\("pointermove", /);
+  assert.match(GUI_PAGE, /panel\.addEventListener\("pointerleave", /);
+
+  // The tooltip JS is a marked region (the page's loop-sort / last-tick-fmt convention)
+  // wired in once at init, immediately before the final refresh + 1 s poll.
+  assert.match(GUI_PAGE, /\/\/ report-tip:start\n[\s\S]*?\n  \/\/ report-tip:end/);
+  assert.match(GUI_PAGE, /attachReportTip\(\);\n  refresh\(\);\n  setInterval\(refresh, 1000\);/);
+});
+
 test("the report tab's SVG chart builders render bars, stacks, and thinned labels", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
 

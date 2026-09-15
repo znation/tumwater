@@ -37,6 +37,9 @@ export const GUI_PAGE = `<!doctype html>
   .chartblock { margin:1rem 0; }
   .charttitle { color:#7a8794; font-weight:500; margin-bottom:6px; }
   #report svg text { fill:#7a8794; font-size:10px; }
+  #report svg rect:hover { opacity:.8; }
+  #report-tip { position:fixed; pointer-events:none; display:none; background:#0b0e12; border:1px solid #2a3642;
+          border-radius:6px; padding:4px 8px; font-size:12px; color:#d6dde4; white-space:nowrap; z-index:10; }
   .legend { display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; color:#9fb0bf; font-size:12px; }
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
 </style>
@@ -147,7 +150,8 @@ export const GUI_PAGE = `<!doctype html>
   // Shared bar geometry: fixed plot box, one slot per day so zero days keep their space and
   // all three charts' x-axes line up. segmentsOf(day) → [{ value, color, title }] stacked
   // bottom-up; each positive segment becomes a <rect> whose <title> carries the exact raw
-  // value (zero values leave an empty slot — no rect to hover).
+  // value — the text the report-tip hover chip displays (zero values leave an empty slot —
+  // no rect to hover).
   const REPORT_W = 560;
   const REPORT_H = 170;
   const REPORT_PAD_T = 8;
@@ -201,6 +205,56 @@ export const GUI_PAGE = `<!doctype html>
     return svg + legend;
   }
   // report-chart:end
+
+  // report-tip:start
+  // Hover label for the report charts: one shared, cursor-following chip that shows each
+  // bar segment's exact value immediately. Each segment's existing <title> is the label
+  // text — the exact raw value the chart builders produce and escape — so the tooltip
+  // cannot drift from them; no rect (gaps, axis, legend, stats row) or an empty title
+  // hides the chip. The native <title> tooltip may still appear after the browser's
+  // delay; the styled chip is the immediate affordance.
+  function reportTipElement() {
+    // Idempotent: created once, on first use. It lives on document.body, outside #report,
+    // because fetchReport replaces #report's innerHTML on every tab activation — a tip
+    // inside it would be destroyed and re-created per fetch.
+    let tip = document.getElementById("report-tip");
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.id = "report-tip";
+      document.body.appendChild(tip);
+    }
+    return tip;
+  }
+  function hideReportTip() {
+    const tip = document.getElementById("report-tip");
+    if (tip) tip.style.display = "none";
+  }
+  function attachReportTip() {
+    const panel = document.getElementById("report");
+    // Delegation on the container itself — never replaced, only re-rendered by innerHTML —
+    // survives every re-render, so the listeners attach exactly once at init. pointermove
+    // positions the chip in viewport coordinates (matching position:fixed) and measures it
+    // AFTER showing it, so the flip to the cursor's other side is exact within 12 px of the
+    // viewport's right/bottom edge; pointerleave hides it when the pointer leaves the panel
+    // (switching tabs fires it, since the nav-link click moves the pointer out first).
+    panel.addEventListener("pointermove", (ev) => {
+      const target = ev.target instanceof Element ? ev.target.closest("rect") : null;
+      const title = target ? target.querySelector("title")?.textContent : "";
+      if (!title) { hideReportTip(); return; }
+      const tip = reportTipElement();
+      tip.textContent = title;
+      tip.style.display = "block";
+      let left = ev.clientX + 12;
+      let top = ev.clientY + 12;
+      const box = tip.getBoundingClientRect();
+      if (left + box.width > window.innerWidth) left = ev.clientX - box.width - 12;
+      if (top + box.height > window.innerHeight) top = ev.clientY - box.height - 12;
+      tip.style.left = left + "px";
+      tip.style.top = top + "px";
+    });
+    panel.addEventListener("pointerleave", () => hideReportTip());
+  }
+  // report-tip:end
 
   // The six stat blocks above the charts, from data.totals — tokens through fmtTokens and
   // cost as $ + toFixed(2), the same two rules the Markdown Totals line uses.
@@ -424,6 +478,7 @@ export const GUI_PAGE = `<!doctype html>
     setTimeout(() => (flash.textContent = ""), 3000);
     refresh();
   });
+  attachReportTip();
   refresh();
   setInterval(refresh, 1000);
 </script>
