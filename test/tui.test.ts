@@ -16,6 +16,7 @@ import {
   renderInputView,
   runTui,
   stepEntryScroll,
+  tuiTerminalError,
 } from "../src/ui/tui.js";
 import { formatDate } from "../src/text.js";
 import { makeRepo } from "./util.js";
@@ -748,11 +749,29 @@ test("runTui refuses to start without an interactive terminal", async () => {
   (process.stdin as { isTTY?: boolean }).isTTY = undefined;
   (process.stdout as { isTTY?: boolean }).isTTY = undefined;
   try {
-    await assert.rejects(runTui(repo), /needs an interactive terminal/);
+    await assert.rejects(
+      runTui(repo),
+      /needs an interactive terminal: neither stdin \(prompt input\) nor stdout \(the dashboard\) is a TTY/,
+    );
   } finally {
     (process.stdin as { isTTY?: boolean }).isTTY = origIn;
     (process.stdout as { isTTY?: boolean }).isTTY = origOut;
   }
+});
+
+test("tuiTerminalError names the missing stream and points at the non-interactive views", () => {
+  assert.equal(
+    tuiTerminalError(false, false),
+    "tumwater tui needs an interactive terminal: neither stdin (prompt input) nor stdout (the dashboard) is a TTY — use `tumwater status` or `tumwater gui` for a non-interactive view",
+  );
+  assert.equal(
+    tuiTerminalError(false, true),
+    "tumwater tui needs an interactive terminal: stdin (prompt input) is not a TTY — use `tumwater status` or `tumwater gui` for a non-interactive view",
+  );
+  assert.equal(
+    tuiTerminalError(true, false),
+    "tumwater tui needs an interactive terminal: stdout (the dashboard) is not a TTY — use `tumwater status` or `tumwater gui` for a non-interactive view",
+  );
 });
 
 test("Ctrl+C exits cleanly: raw mode off, stdin paused, render timer cleared", async () => {

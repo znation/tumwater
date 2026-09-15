@@ -177,11 +177,26 @@ export function stepEntryScroll(
   return Math.max(0, Math.min(maxOffset, next));
 }
 
+/** The runTui start guard's error message: names the missing stream — a piped stdin and a
+ * redirected stdout are distinct failures (the former cannot take typed prompts, the latter
+ * cannot display the dashboard), so `tumwater tui` in a script or a pipe fails with a
+ * fixable diagnosis instead of a generic refusal — and points at the non-interactive
+ * observers. Pure, so it is unit-testable without touching the process's own TTY flags. */
+export function tuiTerminalError(stdinTty: boolean, stdoutTty: boolean): string {
+  const which =
+    !stdinTty && !stdoutTty
+      ? "neither stdin (prompt input) nor stdout (the dashboard) is a TTY"
+      : !stdinTty
+        ? "stdin (prompt input) is not a TTY"
+        : "stdout (the dashboard) is not a TTY";
+  return `tumwater tui needs an interactive terminal: ${which} — use \`tumwater status\` or \`tumwater gui\` for a non-interactive view`;
+}
+
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
  * typed prompts into the inbox. Works alongside (not instead of) `tumwater run`. */
 export async function runTui(root: string): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error("tumwater tui needs an interactive terminal");
+    throw new Error(tuiTerminalError(Boolean(process.stdin.isTTY), Boolean(process.stdout.isTTY)));
   }
 
   let input = "";
