@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { recoverLeftover, type LeftoverContext } from "../src/leftover.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
-import { landingRefName } from "../src/paths.js";
+import { eventsLogPath, landingRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
 import type { TickResult } from "../src/types.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
@@ -111,6 +111,38 @@ test("an unpinned commit ahead of main (crash in the commit→pin window) is ado
   // this ref for the strike cap's retry exactly as for a normally pinned one. (The fake lander
   // does not delete it, so it is still here.)
   assert.equal(await refSha(root, landingRefName(ROLE)), tip, "the fallback adopts the pin");
+});
+
+test("a failed pin adoption is logged, and the landing proceeds with the branch tip anyway", async () => {
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.appendFileSync(path.join(wt, "seed.txt"), "unpinned work\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "committed but the pin write never happened");
+  const tip = sh(wt, "git", "rev-parse", "HEAD").trim();
+  // A read-only .git tree makes `git update-ref` fail (cannot create or lock the ref) while
+  // every read (rev-parse, rev-list) still succeeds — a standing stand-in for a failed pin
+  // write. Recursive: git needs write permission on the specific ref directory it locks.
+  sh(root, "chmod", "-R", "a-w", ".git");
+  try {
+    const { ctx, landed } = makeCtx(root, wt);
+
+    assert.equal(await recoverLeftover(ctx), "changed", "a failed adoption never stops the landing");
+    assert.deepEqual(landed, [tip], "the lander still gets the branch tip");
+    assert.equal(await refSha(root, landingRefName(ROLE)), null, "no pin was created");
+    // The failed adoption is recorded for the transcript, not swallowed.
+    const events = fs
+      .readFileSync(eventsLogPath(root), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
+    const warn = events.find((e) => e.type === "warning");
+    assert.ok(warn, "the adoption failure is logged as a warning event");
+    assert.match(String(warn.message), /failed to adopt unpinned leftover/);
+    assert.equal(warn.loop, ROLE);
+  } finally {
+    sh(root, "chmod", "-R", "u+w", ".git");
+  }
 });
 
 test("an unreadable ref read and an unreadable worktree both read as no leftover: no lander call", async () => {
