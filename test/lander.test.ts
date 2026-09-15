@@ -5,9 +5,9 @@ import path from "node:path";
 import { landChange, type LandRequest, type LanderContext } from "../src/lander.js";
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { landingRefName, landWorktreePath } from "../src/paths.js";
+import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
-import { freshLoopState } from "../src/state.js";
+import { freshLoopState, saveLoopState } from "../src/state.js";
 import type { LoopState, PiRunResult } from "../src/types.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
@@ -108,6 +108,41 @@ test("an approved landing lands on main and deletes the ref", async () => {
     assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree stayed clean at main");
     assert.equal(folded.length, 1, "the reviewer run's usage folds into the tick counters");
     assert.equal(state.lastReview?.verdict, "approve");
+  } finally {
+    restore();
+  }
+});
+
+test("the gate's verdict is durable on disk before the tick's end save", async () => {
+  // Regression (2026-09-14): state was written to disk only at tick boundaries, so a
+  // sudden death after the gate's verdict (power loss, kill -9) left the last
+  // tick-boundary snapshot on disk — a stale "reject" for work already superseded —
+  // and every later tick got a "your previous change was rejected" note about work
+  // that was already on main. The verdict must be durable before the tick's tail
+  // (the landing plus the still-to-come authoring run) can die unsaved.
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+  );
+  try {
+    const { root, sha } = await pinnedFixture();
+    const state = freshLoopState(ROLE);
+    // What disk holds at tick start: the superseded rejection's verdict.
+    state.lastReview = {
+      verdict: "reject",
+      reasons: ["build check failed (test): stale"],
+      head: "0".repeat(40),
+      at: Date.now() - 3_600_000,
+    };
+    saveLoopState(root, state);
+    const { ctx } = makeCtx(root, state);
+
+    assert.equal(await landChange(ctx, request(sha)), "changed");
+
+    // Read back from disk, not the in-memory object: without an immediate persist the
+    // file still holds the seeded reject and the stale note would survive the crash.
+    const onDisk = JSON.parse(fs.readFileSync(statePath(root, ROLE), "utf8")) as LoopState;
+    assert.equal(onDisk.lastReview?.verdict, "approve", "the approve is durable on disk, not just in memory");
+    assert.equal(onDisk.lastApprovedHead, sha, "the approved head is durable");
   } finally {
     restore();
   }

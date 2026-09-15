@@ -3,6 +3,7 @@ import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { mergeToMain } from "./merge.js";
 import { reviewAheadOfMain } from "./review.js";
+import { saveLoopState } from "./state.js";
 import type { LoopState, PiRunResult, TickResult, TumwaterConfig } from "./types.js";
 
 /** Reviewing and landing a pinned commit outside the author's worktree (plans/merge-queue.md,
@@ -79,6 +80,13 @@ export async function landChange(ctx: LanderContext, req: LandRequest): Promise<
     req.body,
     req.highFriction,
   );
+  // Persist the verdict immediately, not at the tick's end save: the gate's bookkeeping is
+  // cross-tick memory (a persisted "reject" injects a "your previous change was rejected"
+  // note into the next prompt), and this tick's tail — the landing plus the still-to-come
+  // authoring run — can outlive a sudden death by hours. A mid-run crash (power loss,
+  // kill -9) would otherwise roll the state file back to the last tick-boundary snapshot
+  // and re-inject a superseded rejection even though its replacement is already on main.
+  saveLoopState(ctx.root, ctx.state);
   if (gate.run) ctx.foldUsage(gate.run);
 
   // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-lands it.

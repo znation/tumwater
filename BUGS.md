@@ -7,6 +7,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### Gate verdicts were persisted only at tick boundaries: a sudden death mid-run resurrected a stale reject note into every later tick (found by bugfix loop 2026-09-14, fixed 2026-09-14)
+
+**Symptom:** A bugfix tick on 2026-09-14 started with a "Your previous change was rejected in review" note about commit d3429a2 — a source-only attempt the gate had correctly rejected (its old test still asserted "n/a today"). The replacement fix (ab176a5, source + tests) was then approved and merged WITHIN the same tick 57 minutes after the prompt was built (the reviewer run was long). Had the process died between the gate's verdict and the tick's end save, the stale reject would have stayed the persisted state: every subsequent tick of that role would carry the note pointing at rejected work already superseded by approved work on main — misdirecting any fresh authoring run, which has no memory of what happened mid-tick (the note is the only cross-tick record).
+
+**Repro:** `events.jsonl` of 2026-09-14 shows bugfix tick 18:35:24 with `review_verdict` approve @ 19:32:15 and `merged` @ 19:33:00, while `.tumwater/state/bugfix.json` still held the 14:41:57 reject until that tick's end save. Generalized: seed a reject verdict in the role's state file, land an approved commit through the lander, `kill -9` the process before the tick's end save — the state file on disk still holds the reject.
+
+**Cause:** loop state is written to disk only at tick start, tick end, and reset-counters (`LoopRunner.save`). The review gate records its verdict in memory (`state.lastReview`, `state.lastApprovedHead`) DURING the tick — which then continues through the landing and a full authoring run that can take hours. `landChange` (src/lander.ts, the shared gate+landing path used by both the tick's own landing and leftover recovery) mutated the live state object but nothing persisted it until the tick's end save, so any ungraceful death in that window lost the verdict and the next process re-saved the stale snapshot at its own tick end.
+
+**Fix:** `landChange` now calls `saveLoopState` immediately after `reviewAheadOfMain` returns — one atomic write per landing, covering both gate callers since they funnel through the shared lander. The verdict (approve/reject/failed) is durable before the tick's tail runs; the tick's end save remains the final authority for counters and scheduling.
+
+**Files:** src/lander.ts (immediate `saveLoopState` after the gate + comment); test/lander.test.ts (regression: seed a stale reject on disk, land an approved commit, read the state file back — the approve and `lastApprovedHead` must be durable, not just in memory).
+
 ### Budget badge reads "n/a today", and its GUI link opens a cap editor pre-filled with 50 on all-free fleets (reported by user 2026-09-14, fixed by bugfix loop 2026-09-14)
 
 **Symptom:** On a fleet whose models are all free (the n/a budget state introduced by the 2026-09-08/09 badge fix), both dashboards show `· budget: n/a today` — the "today" is nonsensical: with no priced model there is no daily spend to speak of. In the GUI the badge is additionally still a clickable link; clicking it opens the daily-cap editor pre-filled with `50` (the default cap), inviting the operator to edit a value that can never bind. The TUI has the same affordance via Ctrl+B, which opens the cap editor unconditionally.
