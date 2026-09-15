@@ -52,14 +52,15 @@ their authoring run and show a `main red` state in both dashboards until main is
 (director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix).
 
 Open items:
+- Planned: GUI report hover labels — a cursor-following tooltip for each chart bar segment
+  (planned 2026-09-14, requested by user).
 - Planned: harness-level merge queue — sub-plans 3/5–5/5 tracked in PLANS.md (2/5 landed
   2026-09-13); next is asynchronous landing via the durable land queue (planned 2026-09-08).
 - Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13).
-- Open bug: budget badge reads "n/a today" and its GUI/TUI cap editor still opens on all-free
-  fleets (reported 2026-09-14 — see BUGS.md).
+- Open bugs: none.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`af4e1fe`): build clean, suite 976/976.
+Current main (`eaa5b83`): build clean, suite 971/971.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -238,7 +239,12 @@ oMLX config lives outside this repo in `~/.omlx/`: `model_settings.json` sets
 `api: openai-completions`, `contextWindow` **126928** (a 4144-token margin under the server's
 limit for pi's output reserve), and must send the API key. `tumwater.json`
 names `provider`/`model` explicitly so `fleetModelsFree()` sees a free fleet, with
-`maxConcurrent` **2** (+ the director's bypass = 3 clients ≤ 3 slots). Measured server-reported:
+`maxConcurrent` **3** — the three role loops alone saturate all three slots (at 2, one slot
+sat idle whenever the director was not running, which is most of the time), and the
+director's bypass makes a fourth client only while it is active (~10–15% of ticks); the
+fourth request queues rather than joins the batch (`max_num_seqs` stays 3), so MTP draft
+acceptance is untouched, and its measured 103–118 s TTFT sits well inside pi's 30-min idle
+timeout and the harness's quiet watchdog. Measured server-reported:
 **35.2 tok/s per stream at ~51k context** (fleet paused); a slot sweep at ~20k context put 3 slots
 ahead of 4 on every axis — 73.3 aggregate / 24.4 per stream / 74.2% draft acceptance / 28.3 GiB
 peak wired, versus 65.0 / 16.2 / 69.7% / 32.6 GiB — because MTP acceptance falls monotonically with
