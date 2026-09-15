@@ -5,6 +5,63 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### A tick that fails in 200 ms climbs the idle-backoff ladder: one broken `git` put the whole fleet to sleep for hours (found by human log analysis 2026-09-15)
+
+**Symptom:** An Xcode.app update at 05:24 on 2026-09-15 invalidated the accepted Xcode/SDK license, so `/usr/bin/git` (the xcrun shim) exited 69 with "You have not agreed to the Xcode license agreements" on every call. From 06:00:43 every fresh tick died in ~200 ms at `git worktree add` inside `ensureWorktree`. Because `applyTickOutcome` routes `error` into the same exponential `idleBackoff` ladder as `no_change`, each loop doubled from 120 s to 7680 s in six free failures over ~2 h; by 09:38 all 13 loops were parked with next ticks 16–121 minutes out and nothing running at all. 44 error ticks in the episode, no work done by any of them. The ladder's cap is `idleBackoff.maxSeconds` (36000 s = 10 h), so a persistent environmental fault can park a fleet for ten hours on failures that each cost a fifth of a second.
+
+**Repro:**
+1. Shadow git with a failing stub on the fleet's PATH: `printf '#!/bin/sh\nexit 69\n' > /tmp/fakebin/git && chmod +x /tmp/fakebin/git`, `PATH=/tmp/fakebin:$PATH tumwater run`.
+2. Watch `.tumwater/log/events.jsonl`: every loop logs `tick_start` / `tick_end result:error` ~200 ms apart.
+3. Read `.tumwater/state/<role>.json` after each failure: `backoffSeconds` doubles 120 → 240 → 480 → … → 7680 → 15360 → 36000 while no tick ever reached pi.
+
+**Expected:** backoff should price what the tick actually cost. The idle ladder exists so a loop that keeps finding nothing to do stops burning hour-long model runs; an error that never spawned pi consumed no model time and should retry on a separate short ladder capped in the minutes. A fleet should not be able to reach a 10-hour sleep through failures that are free.
+
+**Suspected cause:** src/state.ts:207–209 — `applyTickOutcome`'s final `else` catches `error` alongside `no_change`, `merge_conflict`, `main_red` and the rest, and calls `nextBackoffSeconds` (src/state.ts:122), which is the single `idleBackoff` ladder from tumwater.json (`initialSeconds` 120, `factor` 2, `maxSeconds` 36000). No branch distinguishes "this tick did work and found nothing" from "this tick could not start". The outcome does not carry the tick's duration, so the scheduler has nothing to price with even if it wanted to.
+
+**Fix direction:** separate the error schedule from the idle schedule — either a distinct short ladder for `error` with a low cap (order of 10 minutes), or gate ladder advancement on the tick having actually run (a sub-second failure advances at most a step or two). Leave `no_change` semantics byte-identical: the idle ladder and its 10-hour cap are correct for the case they were written for. Tests: `applyTickOutcome` unit tests pinning that N consecutive `error` outcomes stay under the new cap, that `no_change` laddering is unchanged, and that `changed`/`rejected` still zero the backoff.
+
+### Repeated tick failures raise no alarm: 44 errors across all 13 loops looked exactly like a quiet fleet (found by human log analysis 2026-09-15)
+
+**Symptom:** During the 2026-09-15 git outage the fleet logged 44 `tick_end result:error` events between 06:00 and 09:36, every one carrying the identical error string, across all 13 loops — and not one `warning` event, no state flag, no dashboard signal. The TUI and GUI showed loops sleeping, which is indistinguishable from a healthy fleet with nothing to do. The outage went unnoticed for 3 h 38 m and surfaced only because a human asked why nothing was running. The harness warns on far smaller anomalies — high-friction ticks, stalled tool calls, cut-off streaks, red main, deferred auto-restarts — but not on its entire fleet failing identically.
+
+**Repro:** break git as in the entry above, run the fleet for an hour, then `grep '"type":"warning"' .tumwater/log/events.jsonl` over the window: empty. `tumwater status` reports the loops as sleeping with no indication that every one of them last failed.
+
+**Expected:** a run of consecutive error ticks — especially the same message across several roles — should raise one harness-level warning, using the once-per-episode pattern the codebase already has (redeploy's `blockedHead` / `cooldownWarnedHead`, main-red's `lastMainRedSha`), and should read in status/TUI/GUI as a distinct health state rather than as ordinary idleness.
+
+**Suspected cause:** src/loop.ts:423–437 — `applyTickOutcome` followed by a `tick_end` event carrying `error: s.lastError` is the only record a failure leaves; nothing aggregates across ticks or across roles. `LoopState` has no consecutive-error counter: the `consecutiveErrors` field still sitting in on-disk state files is vestigial — no code under src/ reads or writes it — so neither the loop nor the orchestrator can see a streak even in principle.
+
+**Fix direction:** count consecutive `error` outcomes in `LoopState` (reviving the vestigial field or replacing it, and dropping it from the persisted shape if it stays unused), emit one harness `warning` when a role crosses a small threshold or when several roles report the same `lastError` inside one window, and surface fleet health in status-render so the dashboards separate "sleeping" from "failing". Tests: counter increment/reset in `applyTickOutcome`; an orchestrator-level test that the warning fires once per episode rather than once per tick.
+
+### A broken toolchain is reported as "main is red", and the verdict then latches until main moves (found by human log analysis 2026-09-15)
+
+**Symptom:** At 05:44:40 on 2026-09-15 — 20 minutes after the Xcode update broke git, 16 minutes before the first tick failure was logged — redeploy's green check ran main's `npm run test`, the suite failed because much of the harness's own test suite shells out to git, and the harness logged `main 1384eeb0 is red — holding the restart until main is green`. Main was not red: the same suite on the same commit passed 972/972 in an isolated clone once git worked. The false verdict pinned the fleet to build ecb58b7f, 14 commits stale, and `Redeployer.block` latches `blockedHead` with no retry until main moves — so the fleet could not re-check its own verdict. Together with the backoff entry above (every loop asleep, so nothing could move main) the fleet had no path back on its own; recovery came only when a human commit landed on main at 09:43.
+
+**Repro:** break git as in the first entry, then let a redeploy poll run a green check at a stale head. The suite fails on git-dependent cases, the head is recorded red, `restartBlocked` appears in orchestrator.json, and no later poll re-checks it.
+
+**Expected:** build-check already separates an environmental skip from a real failure — `skipReason: "timeout" | "no-npm"` makes both the review gate's pre-check and the main-red gate warn-and-proceed instead of blocking. A failure caused by a broken toolchain rather than a broken tree belongs in that same category. Failing that, a red verdict should not latch indefinitely when the evidence behind it is a toolchain error.
+
+**Suspected cause:**
+- src/build-check.ts:198,208 — `skipReason` is set only for a kill/signal (timeout) and a missing npm; every other non-zero exit is classified as a genuine `failed`, whatever the output says.
+- src/redeploy.ts:280–282 — a non-green result calls `block(mainHead, …)`, and src/redeploy.ts:249 refuses to retry while `blockedHead === mainHead`, so the verdict survives until main moves.
+- The harness's suite depends on git across a large fraction of its cases, so a broken git reliably produces a red verdict for reasons that have nothing to do with the tree under test.
+
+**Fix direction:** classify toolchain-level failures as environmental skips — a cheap preflight probe before the check (`git --version` / `git rev-parse`, unambiguous and fast) and/or matching the captured output for known toolchain errors (git exit 69, "You have not agreed to the Xcode license agreements", "xcrun: error"). Return them as a new `skipReason` so they warn-and-proceed like `no-npm` and never latch `blockedHead`. Tests: build-check unit tests for the new classification (a stub check exiting with a toolchain error reads as skipped, an ordinary test failure still reads as failed); a redeploy test that a toolchain skip leaves no latched block.
+
+### No operator lever wakes a backed-off fleet: `reset-counters` preserves the schedule and a restart reloads it (found by human log analysis 2026-09-15)
+
+**Symptom:** After the 2026-09-15 outage every loop sat with `backoffSeconds` 7680 and `nextRunAt` up to two hours out. With the root cause fixed — license accepted, git working — there was no way to tell the fleet to try again. `tumwater reset-counters` is the obvious candidate and does nothing for this: `zeroCounters` deliberately preserves `nextRunAt` and `backoffSeconds`. Restarting the orchestrator does not help either, since loop state is reloaded from disk and `isEligible` still honours `nextRunAt` (its "startup" reason applies only at `ticks === 0`). The only two levers are moving main — `isEligible`'s "main moved" wake — and queuing a director prompt, which carries no backoff. Neither is discoverable as "wake the fleet", and the first is unavailable precisely when it is most needed: on a self-hosting fleet, the loops are normally the only thing that commits.
+
+**Repro:**
+1. Put a loop into deep backoff (a long `no_change` or `error` run, or stop the fleet and set `nextRunAt` far ahead in `.tumwater/state/<role>.json`).
+2. `tumwater reset-counters --role <id>`, then read the state file: `nextRunAt` and `backoffSeconds` unchanged, the loop keeps sleeping.
+3. Restart the fleet: the loop still sleeps until its original `nextRunAt`.
+
+**Expected:** an operator who has fixed whatever the loops were failing on should be able to say so — `tumwater wake [--role <id>]`, or a flag on an existing command — clearing `backoffSeconds` and setting `nextRunAt` to now for the named roles.
+
+**Suspected cause:** not an oversight in either place, but a gap between them: src/state.ts:43–53 documents `zeroCounters` as an observation-window reset that preserves scheduling fields on purpose, and src/cli.ts:243–249 writes only the counters-reset request. `pause`/`resume` gate whether new ticks start but never touch backoff. No command targets the schedule.
+
+**Fix direction:** add a wake request riding the same on-disk marker convention as `reset-counters` and `abort` (a `wakeRequestPath` sibling), consumed in the orchestrator's poll: set `backoffSeconds = 0` and `nextRunAt = Date.now()` for the requested roles and log the existing `wake` event per role, so a running fleet picks it up within one cycle. Keep it out of `zeroCounters` so the documented observation-window semantics stay intact. Tests: arg parsing and `rejectUnknownArgs` for the new command; a state-level test of the mutation; an orchestrator test that a sleeping loop becomes eligible within one poll of the marker appearing.
+
 ## Fixed
 
 ### Display clippers violate their length invariant at degenerate budgets: truncate(s, 0) and clipToWidth(line, -1) return almost the whole input (found by bugfix loop 2026-09-14, fixed 2026-09-14)
