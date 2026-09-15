@@ -14,7 +14,7 @@ import { defaultConfig } from "../src/config.js";
 import { validateConfig } from "../src/config-validation.js";
 import { readEvents } from "../src/events.js";
 import { sessionDir, worktreePath } from "../src/paths.js";
-import { assistantLine, errorLine, fakePi, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
+import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
@@ -281,8 +281,10 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
   );
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
-    // Tick 1: the change is committed, then rejected deterministically — no reviewer run.
-    assert.equal((await runner.tick()).result, "rejected");
+    // Tick 1: the change is committed and enqueued; the LANDING's build pre-check rejects it
+    // deterministically — no reviewer run.
+    assert.equal((await runner.tick()).result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "rejected");
     assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "the failing build did not merge");
 
     // Tick 2: the machine-generated reasons are the cross-tick memory of what broke — every
@@ -401,7 +403,8 @@ test("a tick that posts a question merges it and emits question_posted with the 
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "changed");
+    assert.equal(outcome.result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
 
     // The question landed on main under ## Open…
     const questionsMd = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
@@ -441,7 +444,8 @@ test("a tick that changes other files emits no question_posted event", async () 
   );
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
-    assert.equal((await runner.tick()).result, "changed");
+    assert.equal((await runner.tick()).result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     // The seeded QUESTIONS.md has no Open entries before or after: nothing to emit.
     const events = readEvents(repo);
     assert.ok(events.some((e) => e.type === "merged"), "the tick merged");
@@ -451,25 +455,32 @@ test("a tick that changes other files emits no question_posted event", async () 
   }
 });
 
-test("the merge lock is not held while a tick is under review: another loop merges concurrently", async () => {
+test("the landing slot is the only merge-lock holder: another loop ticks and queues behind it", async () => {
   const repo = await initializedRepo();
-  // Role A's reviewer run touches the marker, then sleeps — A sits in "reviewing" for ~3s.
-  // Role B waits for that marker, then does its whole tick (author + instant review + merge).
-  // If the gate ran inside withLock, B's merge would block until A's tick had fully ended;
-  // instead B must land while A is still under review.
-  const marker = path.join(tmpdir(), "a-reviewing");
+  // A's LANDING (drained right after its tick) touches the marker in its reviewer run, then
+  // sleeps — A holds the merge lock (the lander's merge) for ~3s. B waits for that marker,
+  // then does its whole tick (author + commit + pin + enqueue). Since merge queue 3/5 a tick
+  // never merges, so it never needs the lock: B must finish while A's landing is still
+  // mid-flight. The landing slot serializes merges, not authoring.
+  const marker = path.join(tmpdir(), "a-landing");
   const approveLine = assistantLine("VERDICT: approve");
   const restore = fakePi(
     [
       `case "$PWD" in`,
+      // The lander worktrees come first: their paths also end in the role name.
+      // A's landing's reviewer run (_land-improve): hold the lock while reviewing.
+      `*_land-improve)`,
+      `  touch '${marker}'; sleep 3; printf '%s\n' '${approveLine}'; exit 0;;`,
+      // B's landing's reviewer run (_land-organize): plain approve.
+      `*_land-organize)`,
+      `  printf '%s\n' '${approveLine}'; exit 0;;`,
       `*improve)`,
-      `  for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${marker}'; sleep 3; printf '%s\n' '${approveLine}'; exit 0;; esac; done`,
       `  printf '%s\n' '${assistantLine("slow work\\nSUMMARY: slow change")}'`,
       `  echo a > a.txt`,
       `  ;;`,
+      // B's tick's author run: wait for A to be mid-landing, then work fast.
       `*organize)`,
       `  i=0; while [ ! -f "${marker}" ] && [ $i -lt 60 ]; do sleep 0.2; i=$((i+1)); done`,
-      `  for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${approveLine}'; exit 0;; esac; done`,
       `  printf '%s\n' '${assistantLine("fast work\\nSUMMARY: fast change")}'`,
       `  echo b > b.txt`,
       `  ;;`,
@@ -479,26 +490,31 @@ test("the merge lock is not held while a tick is under review: another loop merg
   try {
     const a = new LoopRunner(repo, "improve", defaultConfig(), "main");
     const b = new LoopRunner(repo, "organize", defaultConfig(), "main");
-    let aEndAt = 0;
     let bEndAt = 0;
+    let aLandEndAt = 0;
     const pa = (async () => {
-      const outcome = await a.tick();
-      aEndAt = Date.now();
-      return outcome;
+      const tickOutcome = await a.tick();
+      assert.equal(tickOutcome.result, "queued");
+      const landed = await landHead(repo, a, defaultConfig(), "improve");
+      aLandEndAt = Date.now();
+      return landed;
     })();
     const pb = (async () => {
       const outcome = await b.tick();
       bEndAt = Date.now();
       return outcome;
     })();
-    const [aOutcome, bOutcome] = await Promise.all([pa, pb]);
-    assert.equal(aOutcome.result, "changed");
-    assert.equal(bOutcome.result, "changed");
-    // B's merge landed while A was still under review — the gate does not hold the lock.
+    const [aLanded, bOutcome] = await Promise.all([pa, pb]);
+    assert.equal(aLanded, "changed");
+    assert.equal(bOutcome.result, "queued");
+    // B's tick (commit + enqueue) finished while A's landing held the merge lock — the
+    // landing slot is the only place the lock is ever needed.
     assert.ok(
-      bEndAt < aEndAt,
-      `B finished at ${bEndAt} before A's tick ended at ${aEndAt}: its merge must have run during A's review`,
+      bEndAt < aLandEndAt,
+      `B finished at ${bEndAt} before A's landing ended at ${aLandEndAt}: its tick must not need the lock`,
     );
+    // Then B drains behind A: the slot is free again and both merges land linearly.
+    assert.equal(await landHead(repo, b, defaultConfig(), "organize"), "changed");
     // Both commits are on main, linearly — no lock contention broke either merge.
     assert.ok(fs.existsSync(path.join(repo, "a.txt")));
     assert.ok(fs.existsSync(path.join(repo, "b.txt")));
@@ -533,7 +549,8 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
     config.thrashTurns = 1;
     const runner = new LoopRunner(repo, "improve", config, "main");
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "changed");
+    assert.equal(outcome.result, "queued");
+    assert.equal(await landHead(repo, runner, config, "improve"), "changed");
     assert.ok(outcome.highFriction, "the tick is flagged high-friction");
     // The flag annotates the summary for dashboards and lastSummary.
     assert.match(String(outcome.summary), /^slow change \(high friction: 2 turns \/ \d+m\)$/);
@@ -578,7 +595,8 @@ test("a changed tick past thrashMinutes is flagged high-friction", async () => {
     config.thrashMinutes = 0; // validation allows >= 0
     const runner = new LoopRunner(repo, "improve", config, "main");
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "changed");
+    assert.equal(outcome.result, "queued");
+    assert.equal(await landHead(repo, runner, config, "improve"), "changed");
     assert.ok(outcome.highFriction, "the tick is flagged high-friction");
 
     const events = readEvents(repo);
@@ -612,7 +630,8 @@ test("an ordinary changed tick under both thresholds is not flagged high-frictio
     // Default thresholds (40 turns / 60 min): one fast turn is far under both.
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "changed");
+    assert.equal(outcome.result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.ok(!outcome.highFriction, "an ordinary tick is not flagged high-friction");
 
     // No high-friction warning event…
@@ -665,7 +684,8 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     // Tick 1: compliant reply → the commit on main carries subject, body (all three fields,
     // in contract order), and the harness-stamped trailer as separate paragraphs. One author
     // turn plus one reviewer run — the trailer counts only the pre-commit author turns.
-    assert.equal((await runner.tick()).result, "changed");
+    assert.equal((await runner.tick()).result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     const first = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(
       first,
@@ -673,7 +693,8 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     );
 
     // Tick 2: SUMMARY-only reply → subject + trailer only; no body paragraph at all.
-    assert.equal((await runner.tick()).result, "changed");
+    assert.equal((await runner.tick()).result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     const second = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(second, /^tumwater\(improve\): add world file\n\nTick: improve #2 · turns 1 · ctx 7$/m);
     assert.doesNotMatch(second, /WHY:|RISK:|VERIFIED:/);
@@ -701,16 +722,22 @@ test("a changed tick's tick_end event carries its per-tick tokens and cost", asy
   );
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
-    assert.equal((await runner.tick()).result, "changed");
+    assert.equal((await runner.tick()).result, "queued");
 
     const ends = readEvents(repo).filter((e) => e.type === "tick_end");
     assert.equal(ends.length, 1, "one tick ran");
-    // tokens is the per-tick window (output summed over every pi run of the tick), costUsd
-    // this tick's spend — not lifetime totals.
+    // tokens is the AUTHOR run's window, costUsd its spend — the landing's own spend (the
+    // zero-usage reviewer) rides the `landed` event instead.
     assert.equal(ends[0]!.tokens, 18400);
     assert.equal(ends[0]!.costUsd, 0.37);
     // The state file still carries the same per-tick window (the gen column's source).
     assert.equal(runner.state.generatedTokens, 18400);
+
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    const landed = readEvents(repo).filter((e) => e.type === "landed");
+    assert.equal(landed.length, 1, "the landing slot logged its own outcome");
+    assert.equal(landed[0]!.result, "changed");
+    assert.equal(landed[0]!.tokens, undefined, "the zero-usage reviewer omits the token field");
   } finally {
     restore();
   }
@@ -821,7 +848,8 @@ test("a green main passes the baseline check and authoring proceeds normally", a
   try {
     const runner = new LoopRunner(repo, "feature", defaultConfig(), "main");
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "changed");
+    assert.equal(outcome.result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "the authoring run started on a green main");
     // Two priced check runs: main's baseline before authoring, the gate's pre-check before merge.
     const scopes = readEvents(repo).filter((e) => e.type === "build_check").map((e) => `${e.scope}:${e.status}`);
@@ -846,8 +874,9 @@ test("an exempt role ticks normally while main is red — its markdown-only diff
   try {
     const runner = new LoopRunner(repo, "readme", defaultConfig(), "main");
     const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued");
     assert.equal(
-      outcome.result,
+      await landHead(repo, runner, defaultConfig(), "readme"),
       "changed",
       "markdown-only diffs are exempt from the build pre-check and land even on red main",
     );
@@ -877,7 +906,8 @@ test("after a fix lands on main, the next tick re-checks the new SHA and authori
 
     // The next fresh tick resets to the new main and re-checks it — no waiting out backoff.
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "changed");
+    assert.equal(outcome.result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "authoring resumed once main is green");
     // Grew past tick one's single red run: the baseline check re-ran for the new SHA. (The
     // review gate's own pre-check of main + changes appends too, so allow more than two.)
@@ -928,7 +958,8 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
     const outcome = await runner.tick();
 
     // Authoring proceeded and landed: the skip is environmental (warn-and-proceed), not a block.
-    assert.equal(outcome.result, "changed");
+    assert.equal(outcome.result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "the authoring run started despite the unverifiable main");
 
     // The baseline check's warning names the missing npm and that the MAIN BASELINE check was

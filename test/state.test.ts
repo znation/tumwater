@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  applyLandingOutcome,
   applyTickOutcome,
   budgetPaused,
   budgetReached,
@@ -317,6 +318,53 @@ test("applyTickOutcome: rejected and skipped ticks wait the minimum interval wit
       `next run is due after the minimum interval (${result})`,
     );
   }
+});
+
+test("applyTickOutcome: a queued tick schedules like a change without counting a commit", () => {
+  // Merge queue 3/5: the tick committed and enqueued — productive work, so the minimum-interval
+  // schedule applies — but `commits` keeps meaning "landed on main": applyLandingOutcome
+  // increments it when the landing slot actually merges.
+  const s = freshLoopState("feature");
+  s.commits = 4;
+  s.phase = "review"; // any marker from around the pin — must not linger after the tick
+  applyTickOutcome(s, testConfig(), "feature", { result: "queued", summary: "did it" });
+  assert.equal(s.lastResult, "queued");
+  assert.equal(s.lastSummary, "did it");
+  assert.equal(s.commits, 4, "the commit is not counted until it lands");
+  assert.equal(s.backoffSeconds, 0);
+  assert.ok(
+    s.nextRunAt >= Date.now() - 1_000 && s.nextRunAt <= Date.now() + 21_000,
+    "next run is due after the minimum interval",
+  );
+});
+
+test("applyLandingOutcome folds the landing's result into the authoring state", () => {
+  // A landed change counts the commit the tick queued and clears the gate's phase marker.
+  const s = freshLoopState("feature");
+  s.phase = "review";
+  applyLandingOutcome(s, "changed");
+  assert.equal(s.lastResult, "changed");
+  assert.equal(s.commits, 1);
+  assert.equal(s.phase, undefined);
+
+  // Non-terminal outcomes record the failure, count no commit, and clear the marker — the
+  // retry rides next-tick leftover recovery, so the state just has to show the failure.
+  for (const result of ["rejected", "review_error", "merge_conflict", "merge_blocked", "error"] as const) {
+    const n = freshLoopState("feature");
+    applyLandingOutcome(n, result);
+    assert.equal(n.lastResult, result);
+    assert.equal(n.commits, 0, `${result} lands nothing on main`);
+    assert.equal(n.phase, undefined);
+  }
+
+  // An aborted landing keeps the marker: a shutdown mid-review must re-review the pinned work
+  // fresh on the next launch, and the dashboard shows the landing as interrupted, not done.
+  const a = freshLoopState("feature");
+  a.phase = "review";
+  applyLandingOutcome(a, "aborted");
+  assert.equal(a.lastResult, "aborted");
+  assert.equal(a.commits, 0);
+  assert.equal(a.phase, "review");
 });
 
 test("applyTickOutcome: an aborted tick resumes promptly — role via resumePending, director via re-queue", () => {

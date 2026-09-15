@@ -54,8 +54,8 @@ their authoring run and show a `main red` state in both dashboards until main is
 Open items:
 - Planned: GUI report hover labels — a cursor-following tooltip for each chart bar segment
   (planned 2026-09-14, requested by user).
-- Planned: harness-level merge queue — sub-plans 3/5–5/5 tracked in PLANS.md (2/5 landed
-  2026-09-13); next is asynchronous landing via the durable land queue (planned 2026-09-08).
+- Planned: harness-level merge queue — sub-plans 4/5–5/5 tracked in PLANS.md (3/5 landed
+  2026-09-14); next is surfacing the land queue across both dashboards.
 - Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
@@ -80,20 +80,25 @@ one loop per enabled role. Every loop tick:
    knowledge lives in the repo itself (README/PLANS/BUGS/QUESTIONS, read at the start of every tick), not
    in model context.
 3. If pi changed files: commits (a reply without the SUMMARY block gets one follow-up turn in
-   the same session to produce it; failing that the subject names the changed files), then runs
-   an adversarial review gate over the full ahead-of-main
-   diff — first a deterministic build pre-check (the project's declared verify script: `npm test`
-   when declared, else typecheck/build; failure rejects without spending a model run), then a
-   fresh-session reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject` (md-only
-   diffs are exempt); rejects reset the branch with reasons injected into the author's
-   next tick, failures keep the commit for re-review under a 3-strike discard cap. The gate and
-   the landing run in a harness-owned per-role worktree (`_land-<role>`) off a pinned ref —
-   `refs/tumwater/landing/<role>` — so the role's own branch is reset to main the moment its
-   commit exists, and an interrupted landing re-lands through the same gate on the next tick.
-   Approved work rebases onto main (so main's history stays linear), re-runs the declared check
-   on the rebased tree when main moved under it, and fast-forwards — all under a merge lock
-   shared by every loop. If pi found nothing to do, the loop backs off (exponentially,
-   capped) and sleeps.
+   the same session to produce it; failing that the subject names the changed files), pins the
+   sha by `refs/tumwater/landing/<role>`, and enqueues a landing in `.tumwater/land-queue/` —
+   then the tick ENDS: it holds no slot through review, and the role's branch resets to main
+   the moment its commit exists. The orchestrator drains the queue on a single serial landing
+   slot, outside the author semaphore — an adversarial review gate over the full ahead-of-main
+   diff, in a harness-owned worktree (`_land-<role>`) off the pinned ref: first a deterministic
+   build pre-check (the project's declared verify script: `npm test` when declared, else
+   typecheck/build; failure rejects without spending a model run), then a fresh-session
+   reviewer against PRINCLES.md that replies `VERDICT: approve|reject` (md-only diffs are
+   exempt); rejects reset the branch with reasons injected into the author's next tick,
+   failures keep the commit for re-review under a 3-strike discard cap. Approved work rebases
+   onto main (so main's history stays linear), re-runs the declared check on the rebased tree
+   when main moved under it, and fast-forwards under the merge lock — the only code that ever
+   holds it, so other roles keep ticking behind an in-flight landing. A role with a queued or
+   in-flight landing never starts a new tick, and `tumwater abort --role` reaches the landing
+   itself (a deliberate stop discards the pin; a shutdown keeps it — every interrupted landing
+   re-lands through the same gate on the next tick). The drain runs even while the fleet is
+   paused: a queued landing is committed work, not a new tick. If pi found nothing to do, the
+   loop backs off (exponentially, capped) and sleeps.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
 Scheduling is need-aware: a maintenance role's due tick (scheduled or main-moved) is deferred —

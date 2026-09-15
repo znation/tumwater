@@ -31,6 +31,7 @@ import {
 import { readInitialPrompt } from "./readme.js";
 import { configForRole } from "./config.js";
 import { landChange, type LandRequest } from "./lander.js";
+import { enqueueLanding } from "./land-queue.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { applyTickOutcome, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
 import { recoverLeftover } from "./leftover.js";
@@ -245,7 +246,9 @@ export class LoopRunner {
   /** Review and land a pinned commit in this role's lander worktree (src/lander.ts) with this
    * loop's shared wiring: the reviewer run folds via foldUsage, merge.ts's conflict resolver
    * goes through runRolePi (which folds internally), and aborts ride on the tick's signal.
-   * Returns the same TickResult values a tick returns today. */
+   * Since merge queue 3/5 this serves the leftover-recovery path only — a fresh tick's change
+   * is ENQUEUED for the orchestrator's landing slot instead of landed inside the tick. Returns
+   * the same TickResult values a tick returns. */
   private async land(req: LandRequest): Promise<TickResult> {
     return landChange(
       {
@@ -263,7 +266,9 @@ export class LoopRunner {
 
   /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost / turns). Every
    * pi run of a tick — main attempt, transient-timeout retry, conflict resolution — lands here
-   * exactly once, so adding a usage field to PiRunResult touches this single place. */
+   * exactly once, so adding a usage field to PiRunResult touches this single place. Landing
+   * runs fold through the same place via foldLandingUsage, so the authoring role is charged
+   * for its reviewer and conflict-resolution spend too. */
   private foldUsage(run: PiRunResult): void {
     const s = this.state;
     s.generatedTokens += run.outputTokens;
@@ -309,19 +314,41 @@ export class LoopRunner {
     };
   }
 
-  private async runRolePi(
-    wt: string,
-    prompt: string,
-    sessionName: string,
-    resume = false,
-  ): Promise<PiRunResult> {
-    const opts = this.loopPiOpts(wt, prompt, sessionName, resume);
+  /** Run pi for the orchestrator's landing slot (merge queue 3/5): the shared per-loop wiring
+   * of runRolePi — role config, session dir, raw log, transient-failure retry — with usage
+   * folded into this loop's counters, but watching ONLY the harness shutdown signal
+   * (`this.signal`, which may be undefined — PiRunOptions.signal is optional): a landing is
+   * outside any tick, so `tumwater abort --role` (which targets a tick's per-tick abort
+   * controller) must never reach it, and the stale per-tick controller of a finished tick must
+   * not abort it either. Session naming is the caller's (the reviewer composes its own from
+   * ReviewContext.tick; merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
+   */
+  async runLandingPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
+    return this.runWithTransientRetry({
+      ...this.loopPiOpts(wt, prompt, sessionName),
+      signal: this.signal,
+    });
+  }
+
+  /** Public face of foldUsage for the orchestrator's landing wiring: folds a landing pi run
+   * (reviewer, conflict resolution) into the AUTHORING role's counters, so the fleet's daily
+   * cost and the per-role usage windows attribute that spend to the role that authored the
+   * work — no new counter semantics, just the same fold loop.ts applies to its tick runs. */
+  foldLandingUsage(run: PiRunResult): void {
+    this.foldUsage(run);
+  }
+
+  /** The one bounded transient-failure retry shared by EVERY pi run this loop makes
+   * (runRolePi and runLandingPi): two transient failures of the world (not of the session)
+   * earn exactly one retry that continues the same session — the model server timing out an
+   * idle predict stream, and pi itself crashing on a torn server chunk (a JSON.parse failure
+   * on its stderr). A harness-killed or quiet-killed run never takes the transient-retry path:
+   * its session is intact but resuming it would just re-hit whatever hung, burning another
+   * full quiet timeout. Extracted verbatim from runRolePi so the rule lives in one place
+   * (574a14c's loopPiOpts move was the wiring half of the same single-source-of-truth).
+   */
+  private async runWithTransientRetry(opts: PiRunOptions): Promise<PiRunResult> {
     const pi = await runPi(opts);
-    // Two transient failures of the world (not of the session) earn exactly one bounded retry
-    // that continues the same session: the model server timing out an idle predict stream, and
-    // pi itself crashing on a torn server chunk (a JSON.parse failure on its stderr).
-    // A harness-killed run never takes the transient-retry path: its session is intact but
-    // resuming it would just re-hit whatever hung, burning another full quiet timeout.
     if (!pi.aborted && !pi.timedOut && !pi.quietKilled && (pi.transientServerTimeout || pi.transientPiCrash) && !pi.ok) {
       logEvent(this.root, {
         loop: this.role,
@@ -330,7 +357,7 @@ export class LoopRunner {
           ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"}) — resuming the session once`
           : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
       });
-      // Within-tick continuity only: resume the session the first attempt created, so its
+      // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
       this.foldUsage(pi);
@@ -339,6 +366,15 @@ export class LoopRunner {
     }
     this.foldUsage(pi);
     return pi;
+  }
+
+  private async runRolePi(
+    wt: string,
+    prompt: string,
+    sessionName: string,
+    resume = false,
+  ): Promise<PiRunResult> {
+    return this.runWithTransientRetry(this.loopPiOpts(wt, prompt, sessionName, resume));
   }
 
   /** Hard caps on the SUMMARY follow-up turn: it should take one short reply on a warm session,
@@ -641,8 +677,8 @@ export class LoopRunner {
     const commit = await commitAll(wt, message);
 
     // Pin the commit by its landing ref BEFORE freeing the worktree (invariant 4), then hand it
-    // to the lander: from here on the review gate and the rebase run in _land-<role>, never in
-    // this worktree (plans/merge-queue.md 2/5). A failed pin defers to next-tick recovery —
+    // to the land queue: from here on the review gate and the rebase run in _land-<role>, never
+    // in this worktree (plans/merge-queue.md 2/5). A failed pin defers to next-tick recovery —
     // landing without a pin would lose the ref lifecycle this whole flow depends on. The
     // reviewer checks the author's claimed WHY/VERIFIED against the actual diff; no diff reaches
     // main unreviewed.
@@ -651,36 +687,28 @@ export class LoopRunner {
       return { result: "error", summary: s.lastError };
     }
 
-    const result = await this.land({
+    // The commit is pinned and the worktree is free: enqueue the landing and END the tick — the
+    // orchestrator drains the queue on its single landing slot, outside the author semaphore, so
+    // this slot is free the moment the work is committed (plans/merge-queue.md 3/5). The landing
+    // runs the same gate + landing flow through runLandingPi/foldLandingUsage on this same state
+    // object — recording the commit count, the outcome, and the reviewer spend into it — and logs
+    // landed/land_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
+    // `commits` was NOT incremented above: it counts landed changes only.
+    enqueueLanding(this.root, {
       role: this.role,
       sha: commit,
       tick: s.ticks,
       summary,
       body: body ? formatCommitBody(body) : undefined,
       highFriction: highFriction || undefined,
+      enqueuedAt: Date.now(),
     });
-    if (result === "aborted") {
-      // A deliberate user stop discards the pinned work too — otherwise next-tick recovery would
-      // resurrect what the operator explicitly killed (`tumwater abort`: "work discarded").
-      // Shutdowns keep it: landChange already did, and fail-closed re-review is the point.
-      if (this.userAborted) await deleteRef(this.root, landingRefName(this.role));
-      return this.finishAbortedTick(userPrompt, wt);
-    }
-    if (result === "rejected") {
-      // The gate recorded its reasons in state.lastReview; they ride along on this role's next
-      // tick prompt via buildRejectedReviewNote (see tickPrompt).
-      return { result, summary: s.lastReview?.reasons[0] ?? "rejected in review" };
-    }
-    if (result === "review_error") {
-      // Fail closed: the pin stays for the next tick's recovery re-review (bounded by the gate's
-      // strike cap). Backoff applies as for errors. landChange set lastError.
-      return { result, summary: s.lastReview?.reasons[0] ?? "review failed" };
-    }
+    logEvent(this.root, { loop: this.role, type: "land_queued", commit, summary });
     // The flag's durable record is the Friction trailer line stamped on the commit above;
     // lastSummary and the tick_end event carry it too for dashboards and logs.
     const finalSummary = highFriction
       ? `${summary} (high friction: ${authoringTurns} turns / ${Math.round(minutes)}m)`
       : summary;
-    return { result, summary: finalSummary, commit, highFriction };
+    return { result: "queued", summary: finalSummary, commit, highFriction };
   }
 }

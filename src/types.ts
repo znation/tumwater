@@ -117,7 +117,8 @@ export interface TumwaterConfig {
 }
 
 export type TickResult =
-  | "changed" // pi made changes; committed and merged to main
+  | "changed" // a landing completed: the change is merged to main
+  | "queued" // the tick's change is committed and pinned; the orchestrator's landing slot will pick it up from the durable land queue (plans/merge-queue.md 3/5) — the commit count and final outcome are recorded when the landing completes
   | "refused" // pi declined the work (TUMWATER_REFUSED); only its markdown objection note landed
   | "no_change" // pi decided there was nothing to do
   | "merge_conflict" // change was made but could not be merged; discarded next tick
@@ -221,6 +222,9 @@ export interface HarnessEvent {
   type:
     | "tick_start"
     | "tick_end"
+    | "land_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's landing slot (merge queue 3/5); carries sha + summary
+    | "landed" // the landing slot finished with the change on main; carries sha, the lander's outcome, durationMs, and the landing's own usage
+    | "land_failed" // the landing slot finished without landing (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload — retry rides next-tick leftover recovery, never the queue
     | "merged"
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
     | "wake"
@@ -248,6 +252,29 @@ export interface HarnessEvent {
     | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it
     | "warning";
   [key: string]: unknown;
+}
+
+/** One entry in the durable land queue (.tumwater/land-queue/; src/land-queue.ts): a commit
+ * the tick pinned by `refs/tumwater/landing/<role>` and enqueued at tick end. One file per
+ * entry, filename-ordered (`<ts>-<seq>-<pid>.json`); the entry is dropped after EVERY landing
+ * outcome, so the queue holds only unattempted landings. No attempt counter lives in the file —
+ * retry bookkeeping is the persisted `LoopState.unreviewFailures`, which governs the strike cap.
+ */
+export interface LandingEntry {
+  /** The owning loop — events, session naming, and the lander worktree all key off it. */
+  role: string;
+  /** The pinned commit to land — checked out detached in this role's lander worktree. */
+  sha: string;
+  /** The authoring tick number, for the unique per-run session names (review + conflict resolution). */
+  tick: number;
+  /** The change's one-line summary (the commit subject minus its prefix). */
+  summary: string;
+  /** The author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff. */
+  body?: string;
+  /** The authoring run burned past the friction thresholds: the reviewer applies extra scrutiny. */
+  highFriction?: boolean;
+  /** Enqueue time (epoch ms) — the filename orders the queue by it across processes. */
+  enqueuedAt: number;
 }
 
 /** Distilled result of one pi run. */

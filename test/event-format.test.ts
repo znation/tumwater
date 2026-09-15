@@ -420,3 +420,32 @@ test("formatEvent prices the gates: build_check lines and review durations", () 
   const rejected = formatEvent({ ts: 0, loop: "feature", type: "review_rejected", head: "a".repeat(40), reasons: ["dup"], durationMs: 61_000 } as never);
   assert.match(rejected, /review rejected aaaaaaaa — dup \(in 61s\)$/);
 });
+
+// The land queue's events (merge queue 3/5): the feed shows the queue's state changes — the
+// tick's enqueue, the slot's completion (with the landing's own spend), and the slot's failure.
+test("formatEvent renders land_queued, landed, and land_failed", () => {
+  // Every line starts with the wall-clock time and the padded loop name — assert the payload.
+  const queued = formatEvent({ ts: 0, loop: "clean", type: "land_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
+  assert.match(queued, /clean\s+queued abcdef12 for landing — tidy up$/, `land_queued must name the sha and summary: ${queued}`);
+
+  // Spent nothing (review-exempt or zero-usage reviewer): renders bare, like tick_end.
+  const bare = formatEvent({ ts: 0, loop: "clean", type: "landed", commit: "abcdef1234567890", result: "changed", durationMs: 1234 } as never);
+  assert.match(bare, /clean\s+landing of abcdef12 complete \(in 1s\)$/, `zero-usage landing renders bare: ${bare}`);
+  // The landing's own spend rides after the duration, "·"-separated like tick_end (minutes
+  // at two minutes and up, compact tokens at 10k and up — the shared text.ts rules).
+  const withUsage = formatEvent({
+    ts: 0,
+    loop: "clean",
+    type: "landed",
+    commit: "abcdef1234567890",
+    result: "changed",
+    durationMs: 130_000,
+    tokens: 12_345,
+    costUsd: 0.05,
+  } as never);
+  assert.match(withUsage, /landing of abcdef12 complete \(in 2m\) · 12\.3k tok · \$0\.05$/, `usage must ride after the duration: ${withUsage}`);
+
+  // A failed landing names the outcome — the detail lives in the review/merge events themselves.
+  const failed = formatEvent({ ts: 0, loop: "clean", type: "land_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500 } as never);
+  assert.match(failed, /landing of abcdef12 did not land \(merge_conflict\) \(in 1s\)$/, `land_failed must name the outcome: ${failed}`);
+});

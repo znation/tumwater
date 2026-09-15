@@ -44,6 +44,25 @@ export function formatEvent(e: HarnessEvent): string {
     }
     case "merged":
       return `${time} ${loop} merged ${shortSha(e.commit)} to main — ${e.summary}`;
+    case "land_queued":
+      // Merge queue 3/5: routine state change (the tick committed and the landing slot is
+      // ahead) — no warning prefix. The landing's own events follow it.
+      return `${time} ${loop} queued ${shortSha(e.commit)} for landing — ${e.summary}`;
+    case "landed": {
+      // The landing slot finished with the change on main; the usage is the landing's own
+      // spend (reviewer + conflict resolution), omitted when zero so review-exempt landings
+      // render bare — the same pattern as tick_end.
+      const tokens = Number(e.tokens ?? 0);
+      const costUsd = Number(e.costUsd ?? 0);
+      const usage =
+        (tokens > 0 ? ` · ${compactTokens(tokens)} tok` : "") +
+        (costUsd > 0 ? ` · ${usd(costUsd)}` : "");
+      return `${time} ${loop} landing of ${shortSha(e.commit)} complete${elapsed(e.durationMs)}${usage}`;
+    }
+    case "land_failed":
+      // Routine failure detail: the review events themselves (review_rejected/review_failed)
+      // or the merged/build_check lines carry the reason in the feed.
+      return `${time} ${loop} landing of ${shortSha(e.commit)} did not land (${e.result})${elapsed(e.durationMs)}`;
     case "question_posted":
       // Routine operation (a loop asked the user something), not a warning.
       return `${time} ${loop} question posted: ${e.question}`;

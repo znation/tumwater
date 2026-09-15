@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { TumwaterConfig } from "./types.js";
+import type { LandingEntry, TickResult, TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
 import { enabledRoleIds, loadConfigCached } from "./config.js";
 import {
@@ -11,16 +11,20 @@ import {
   workLanded,
 } from "./scheduling.js";
 import { budgetPaused, fleetDailyCost, isFleetPaused } from "./state.js";
+import { applyLandingOutcome, saveLoopState } from "./state.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
-import { branchHead, subjectsBetween } from "./git.js";
+import { branchHead, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
+import { landChange } from "./lander.js";
+import { dropLanding, headLanding, landingFor } from "./land-queue.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { inboxSize } from "./inbox.js";
 import { Semaphore } from "./semaphore.js";
-import { abortRequestPath, orchestratorStatePath, resetRequestPath, sessionsRootDir, STATE_DIR } from "./paths.js";
+import { abortRequestPath, landingRefName, orchestratorStatePath, resetRequestPath, sessionsRootDir, STATE_DIR } from "./paths.js";
+import { errorMessage } from "./text.js";
 import type { Redeployer } from "./redeploy.js";
 
 const POLL_MS = 2000;
@@ -97,8 +101,15 @@ function consumeResetRequest(root: string, runners: LoopRunner[]): void {
 /** Consume per-role abort requests from `tumwater abort --role <id>`: one marker file per
  * role (no parsing needed), so a request for an idle OR disabled loop is still cleaned up. A
  * running tick gets killed and logs exactly one event; anything else is a silent no-op — the
- * marker's presence IS the request, removing it acknowledges. */
-function consumeAbortRequests(root: string, runners: LoopRunner[]): void {
+ * marker's presence IS the request, removing it acknowledges. Since merge queue 3/5 a role's
+ * in-flight work is often a LANDING rather than a tick, so the landing's controller is passed
+ * in: an abort for the role landing right now kills that too (the drain's task sees
+ * `userAborted` and discards the pinned ref when the landing ends). */
+function consumeAbortRequests(
+  root: string,
+  runners: LoopRunner[],
+  landing: Omit<InFlightLanding, "promise"> | null,
+): void {
   try {
     const markers = fs.readdirSync(path.join(root, STATE_DIR));
     for (const name of markers) {
@@ -106,6 +117,10 @@ function consumeAbortRequests(root: string, runners: LoopRunner[]): void {
       if (!m) continue;
       const role = m[1]!;
       const runner = runners.find((r) => r.role === role);
+      if (landing && landing.role === role) {
+        landing.userAborted = true;
+        landing.controller.abort();
+      }
       if (runner?.state.running) {
         runner.abortTick();
         logEvent(root, { loop: role, type: "tick_aborted" });
@@ -115,6 +130,87 @@ function consumeAbortRequests(root: string, runners: LoopRunner[]): void {
   } catch {
     // .tumwater/ missing — nothing to consume (a fresh repo before the first tick).
   }
+}
+
+/** Land one queued entry end-to-end — the poll loop's single landing slot, exported so the
+ * loop-level tests can drive one landing without standing up the whole orchestrator (the drain
+ * calls it exactly once per queue head, per poll): run the pinned sha through the shared
+ * lander (review gate, rebase, ff-merge) with the authoring runner's wiring — its live state
+ * object, runLandingPi (harness-shutdown signal only), foldLandingUsage (reviewer and
+ * conflict-resolution spend charge to the AUTHORING role) — then fold the outcome into that
+ * state (applyLandingOutcome), save it, log landed/land_failed with the landing's own
+ * duration and usage, and drop the entry: EVERY outcome drops. Non-terminal outcomes keep
+ * the landing ref, so the retry is the role's next fresh tick through leftover recovery —
+ * normal cadence, same gate, same strike cap — never a queue re-drain. Never rejects:
+ * landChange already degrades its own failures to TickResult values; an unexpected throw
+ * lands as an "error" outcome (the ref survives for next-tick recovery). */
+export async function landQueuedEntry(
+  root: string,
+  entry: LandingEntry,
+  file: string,
+  author: LoopRunner,
+  config: TumwaterConfig,
+  mainBranch: string,
+  signal: AbortSignal,
+): Promise<TickResult> {
+  const startedAt = Date.now();
+  const usage = { tokens: 0, cost: 0 };
+  let result: TickResult;
+  try {
+    result = await landChange(
+      {
+        root,
+        mainBranch,
+        config,
+        state: author.state,
+        runPi: (w, p, s) => author.runLandingPi(w, p, s),
+        foldUsage: (run) => {
+          author.foldLandingUsage(run);
+          usage.tokens += run.outputTokens;
+          usage.cost += run.costUsd;
+        },
+        signal: () => signal,
+      },
+      {
+        role: entry.role,
+        sha: entry.sha,
+        tick: entry.tick,
+        summary: entry.summary,
+        body: entry.body,
+        highFriction: entry.highFriction,
+      },
+    );
+  } catch (err) {
+    result = "error";
+    author.state.lastError = errorMessage(err);
+  }
+  applyLandingOutcome(author.state, result);
+  saveLoopState(root, author.state);
+  // `merged` still fires from merge.ts itself — these events mark the QUEUE's bookkeeping:
+  // the slot picked the entry up (land_queued, logged at enqueue) and finished with or
+  // without landing. The usage fields are the landing's own spend (reviewer + conflict
+  // resolution), omitted when zero so review-exempt landings render bare.
+  logEvent(root, {
+    loop: entry.role,
+    type: result === "changed" ? "landed" : "land_failed",
+    commit: entry.sha,
+    result,
+    durationMs: Date.now() - startedAt,
+    ...(usage.tokens > 0 ? { tokens: usage.tokens } : {}),
+    ...(usage.cost > 0 ? { costUsd: usage.cost } : {}),
+  });
+  dropLanding(root, file);
+  return result;
+}
+
+/** The single in-flight landing the drain owns (merge queue 3/5): its task, the controller
+ * that aborts it (harness shutdown OR `tumwater abort --role`), and whether the abort was a
+ * deliberate user stop — which decides what happens to the pinned ref when it ends. */
+interface InFlightLanding {
+  promise: Promise<void>;
+  controller: AbortController;
+  role: string;
+  userAborted: boolean;
 }
 
 /** Run all enabled loops until the signal aborts — or until a pending self-redeploy has drained
@@ -162,9 +258,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   // In-flight tasks, split by who requested them: the redeploy drain caps role ticks at its
   // window but waits for a director tick without one — an explicit human prompt outranks the
-  // self-redeploy (BUGS.md 2026-09-08).
+  // self-redeploy (BUGS.md 2026-09-08). The landing slot is deliberately OUTSIDE this split:
+  // it is a single in-process task (no semaphore, one at a time) that graceful shutdown still
+  // awaits — an aborted landing keeps its ref and drops its entry, recovering on next start.
   const roleInFlight = new Set<Promise<void>>();
   const directorInFlight = new Set<Promise<void>>();
+  let landingInFlight: InFlightLanding | null = null;
   // Live-reload bookkeeping: the last config error already warned about (a broken file must
   // warn once per distinct text, not every poll), and the previous cycle's enabled set (for
   // one-shot enable/disable transition warnings).
@@ -282,7 +381,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
       // Consume CLI request markers: a reset-counters request and per-role abort requests.
       consumeResetRequest(root, runners);
-      consumeAbortRequests(root, runners);
+      consumeAbortRequests(root, runners, landingInFlight);
 
       // branchHead reads the ref files first (microsecond-scale; this runs every poll) and
       // spawns `git rev-parse` only when they cannot resolve it. "" means main does not exist
@@ -353,6 +452,64 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         holdForRestart = action === "hold";
       }
 
+      // Merge queue 3/5 — drain the durable land queue on the single landing slot. A queued
+      // landing is COMMITTED work awaiting completion, not a new tick, so the budget and
+      // user-pause gates deliberately do not hold it (pausing it would leave main behind while
+      // the interlock below blocks that role's next tick forever); `holdForRestart` DOES
+      // suppress it, like ticks — a restart lands within minutes and the entry drains on the
+      // next start (a pending-restart break above precedes this). One landing at a time: the
+      // promise is stored, never awaited in the poll loop, and cleared on completion — authors
+      // keep ticking behind it, which is the entire point. The head is deduped against main
+      // first: a crash between the ff-merge and the entry drop leaves an entry whose sha main
+      // already holds, and that is dropped without a landing run (leftover.ts's stale-pin
+      // idiom); a crash mid-review leaves both entry and ref, so the drain re-runs landChange —
+      // re-reviews — the established crash semantics.
+      if (!holdForRestart && landingInFlight === null) {
+        const head = headLanding(root);
+        if (head) {
+          if (await isMergedInto(root, head.entry.sha, mainBranch)) {
+            dropLanding(root, head.file);
+          } else {
+            // Resolve the authoring runner when it exists (runners are never removed from the
+            // array on disable — only a warning event fires); a role disabled before this
+            // process started has no runner, so a throwaway one supplies the same wiring
+            // (loopPiOpts, runLandingPi, foldLandingUsage) and a disk-loaded state to fold and
+            // save on. Both share the live config, like every runner.
+            const author =
+              runners.find((r) => r.role === head.entry.role) ??
+              new LoopRunner(root, head.entry.role, config, mainBranch, signal);
+            const landing: InFlightLanding = {
+              promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
+              controller: new AbortController(),
+              role: head.entry.role,
+              userAborted: false,
+            };
+            // Harness shutdown aborts the landing through the per-landing controller (the
+            // lander watches it); `tumwater abort --role` for this role aborts it too, flagged
+            // userAborted — the two differ only in what happens to the pinned ref after.
+            signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
+            landing.promise = (async () => {
+              try {
+                await landQueuedEntry(root, head.entry, head.file, author, config, mainBranch, landing.controller.signal);
+              } finally {
+                if (landing.userAborted) {
+                  // A deliberate stop discards the pinned work — the landing's counterpart to
+                  // the pre-3/5 mid-review user abort (loop.ts's `this.userAborted` branch);
+                  // a shutdown abort leaves the flag unset and the ref survives for recovery.
+                  try {
+                    await deleteRef(root, landingRefName(landing.role));
+                  } catch {
+                    /* already gone */
+                  }
+                }
+                landingInFlight = null;
+              }
+            })();
+            landingInFlight = landing;
+          }
+        }
+      }
+
       // Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main is
       // non-empty, idle maintenance ticks stay deferred — queued feature/bugfix work outranks
       // them regardless of what landed. Stat-cached reads (backlog.ts): one stat per file per
@@ -371,6 +528,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           if (deferredDue.get(runner.role)) deferredDue.set(runner.role, false);
           continue;
         }
+        // Merge queue 3/5 interlock (invariant 3): a role with a QUEUED or IN-FLIGHT landing
+        // never starts a tick — the entry stays in the queue until its landing completes, so
+        // one check covers both. Uniform over every role, director included: its prompt is not
+        // finished until it lands. Placed before the need-based deferral block on purpose —
+        // no episode bookkeeping is needed (a landing implies the last result is not
+        // no_change, so no deferral episode can be open), and skipping here saves that branch's
+        // workLandedSince git-range query for the skipped role.
+        if (landingFor(root, runner.role).length > 0) continue;
         // Need-based deferral: a due maintenance tick (scheduled or main-moved wake) whose last
         // tick did nothing stays deferred while the feature/bugfix backlog is open or no new
         // work has landed to react to — nextRunAt is left untouched, so it re-checks every poll
@@ -428,7 +593,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       await sleepInterruptible(pollMs, signal);
     }
   } finally {
-    await Promise.allSettled([...roleInFlight, ...directorInFlight]);
+    // The in-flight landing is awaited too: graceful shutdown waits for it, and a shutdown
+    // abort reaches its pi runs through the harness signal — the landing then ends "aborted",
+    // keeps its ref, and drops its entry for next-start recovery. (The landing is one
+    // reviewer run plus a bounded merge, not a fleet-wide drain.)
+    await Promise.allSettled(
+      landingInFlight ? [...roleInFlight, ...directorInFlight, landingInFlight.promise] : [...roleInFlight, ...directorInFlight],
+    );
     logEvent(root, { loop: "harness", type: "orchestrator_stop" });
     removeQuiet(infoFile);
   }

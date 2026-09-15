@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { TumwaterConfig, LoopState, TickOutcome } from "./types.js";
+import type { TumwaterConfig, LoopState, TickOutcome, TickResult } from "./types.js";
 import type { BuildStatus } from "./build-info.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
@@ -158,8 +158,12 @@ export function applyTickOutcome(
   s.lastTickEndedAt = Date.now();
   s.lastResult = outcome.result;
   if (outcome.summary) s.lastSummary = outcome.summary;
-  if (outcome.result === "changed") {
-    s.commits += 1;
+  if (outcome.result === "changed" || outcome.result === "queued") {
+    // "queued" schedules exactly like "changed" — the tick committed and enqueued — but the
+    // commit count waits for the landing: `commits` keeps meaning "landed on main", and
+    // applyLandingOutcome increments it when the change actually lands. The phase-clear above
+    // (`result !== "aborted"`) covers both.
+    if (outcome.result === "changed") s.commits += 1;
     s.backoffSeconds = 0;
     s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
   } else if (outcome.result === "rejected") {
@@ -208,6 +212,25 @@ export function applyTickOutcome(
     s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg);
     s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
   }
+}
+
+/** Record a completed LANDING on the authoring loop's state (plans/merge-queue.md 3/5):
+ * the orchestrator calls this on the state object the landing ran against — the runner's live
+ * copy when one exists, a disk load otherwise — then saves it, the same in-place discipline
+ * applyTickOutcome has (the caller's state object is authoritative; a role with a queued or
+ * in-flight landing never ticks, so no other writer holds it meanwhile). Sets `lastResult`
+ * to the lander's outcome, increments `commits` only on a success (the "landed on main"
+ * counter applyTickOutcome's "queued" branch left to the landing), and clears `phase` — the
+ * gate persisted `phase = "review"` on this same state object during the run, exactly as it
+ * did inside a tick, so the label must not linger past the landing (mirroring
+ * applyTickOutcome's rule: every outcome except "aborted" clears it — an aborted landing
+ * keeps it, because the interruption hit mid-review and the next launch must recover and
+ * re-review the pinned work). `lastSummary` is left untouched: the tick's summary stays, and
+ * the failure detail rides in `lastReview` and the landed/land_failed events. */
+export function applyLandingOutcome(s: LoopState, result: TickResult): void {
+  s.lastResult = result;
+  if (result === "changed") s.commits += 1;
+  if (result !== "aborted") s.phase = undefined;
 }
 
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving

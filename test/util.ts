@@ -2,9 +2,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { strict as assert } from "node:assert";
 import { defaultConfig, loadConfig } from "../src/config.js";
-import { runOrchestrator } from "../src/orchestrator.js";
-import type { TumwaterConfig } from "../src/types.js";
+import { landQueuedEntry, runOrchestrator } from "../src/orchestrator.js";
+import { headLanding } from "../src/land-queue.js";
+import { LoopRunner } from "../src/loop.js";
+import type { TickResult, TumwaterConfig } from "../src/types.js";
 
 export function tmpdir(prefix = "tumwater-test-"): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -232,4 +235,29 @@ export function landWork(repo: string): void {
   );
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "tumwater(feature): test work landing");
+}
+
+/** Land the head of the durable land queue through the orchestrator's own drain code path
+ * (merge queue 3/5). Loop-level tests call `runner.tick()` directly — no poll loop — so the
+ * entry a changed tick enqueues needs a driver, and `landQueuedEntry` IS what the drain calls
+ * (one per queue head per poll). Returns the lander's outcome; the entry is dropped after
+ * every outcome, exactly as the drain does. */
+export async function landHead(
+  repo: string,
+  runner: LoopRunner,
+  config: TumwaterConfig,
+  role: string,
+): Promise<TickResult> {
+  const head = headLanding(repo);
+  if (!head) throw new Error("expected a queued landing");
+  assert.equal(head.entry.role, role, "the queue head belongs to the expected role");
+  return await landQueuedEntry(
+    repo,
+    head.entry,
+    head.file,
+    runner,
+    config,
+    "main",
+    new AbortController().signal,
+  );
 }

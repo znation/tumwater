@@ -5,6 +5,7 @@
  * when moving tests between the files. */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { runOrchestrator } from "../src/orchestrator.js";
@@ -13,7 +14,8 @@ import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { logEvent, readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, readOrchestratorInfo, saveLoopState, todayStamp } from "../src/state.js";
-import { abortRequestPath, branchName, pausedPath, resetRequestPath, worktreePath } from "../src/paths.js";
+import { abortRequestPath, branchName, landingRefName, pausedPath, resetRequestPath, worktreePath } from "../src/paths.js";
+import { enqueueLanding, queueDepth } from "../src/land-queue.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
 import {
@@ -535,18 +537,238 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
     fs.mkdirSync(path.dirname(marker), { recursive: true });
     fs.writeFileSync(marker, JSON.stringify({ at: Date.now() }));
 
-    // The in-flight tick finishes and lands its change to main…
+    // The in-flight tick finishes (commit + pin + enqueue) and the landing slot drains the
+    // entry to main — both despite the pause: a queued landing is committed work awaiting
+    // completion, not a new tick, so the pause gate deliberately does not hold it.
     await waitFor(
-      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
-      "the in-flight tick to finish",
+      () => loadLoopState(repo, "clean").lastResult === "changed",
+      "the in-flight landing to finish",
     );
     const s = loadLoopState(repo, "clean");
+    assert.equal(s.ticks, 1, "exactly one tick started");
     assert.equal(s.lastResult, "changed", "the outcome lands despite the pause");
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change merged to main");
 
     // …and no new tick starts while the marker holds.
     await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while paused");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a user abort during a landing kills it and discards the pinned ref", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "abort landing e2e test");
+  // A long minimum interval: the aborted role must NOT start a second tick while the test
+  // asserts the aftermath (a fresh tick would re-enqueue and re-pin and muddy the asserts).
+  const cfg = fastConfig(["clean"]);
+  cfg.minTickIntervalSeconds = 300;
+  saveConfig(repo, cfg);
+  // Author run: make a change and finish. Review run (its prompt contains VERDICT): touch the
+  // marker, then hang until the abort kills it — the landing stays in flight for as long as
+  // the abort marker sits on disk.
+  const marker = path.join(tmpdir(), "clean-reviewing");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${marker}'; exec sleep 30;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // The tick commits + enqueues; the landing slot picks the entry up and starts its
+    // reviewer run — by merge queue 3/5 this is where `tumwater abort --role` reaches it.
+    await waitFor(
+      () => loadLoopState(repo, "clean").lastResult === "queued",
+      "the tick to enqueue its landing",
+    );
+    await waitFor(() => fs.existsSync(marker), "the landing's reviewer run to be in flight");
+
+    // What `tumwater abort --role clean` does from the CLI side: drop the per-role marker.
+    const markerFile = abortRequestPath(repo, "clean");
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
+
+    // The fleet consumes the request, aborts the in-flight landing, and the drain discards
+    // the pinned ref: a deliberate stop kills the work under review, the landing's
+    // counterpart of the pre-3/5 mid-review user abort. (A shutdown abort keeps the ref.)
+    await waitFor(
+      () => loadLoopState(repo, "clean").lastResult === "aborted",
+      "the aborted landing to settle",
+    );
+    assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
+    assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
+    assert.equal(queueDepth(repo), 0, "the entry was dropped after the aborted landing");
+    let refGone = false;
+    try {
+      sh(repo, "git", "rev-parse", "--verify", landingRefName("clean"));
+    } catch {
+      refGone = true; // a missing ref makes rev-parse --verify exit nonzero
+    }
+    assert.ok(refGone, "the pinned commit was discarded with the deliberate stop");
+
+    // The landing, not the tick, was aborted: one land_failed, no tick_aborted, no second tick.
+    const failed = readEvents(repo).filter((e) => e.type === "land_failed");
+    assert.equal(failed.length, 1, "the aborted landing logged its failure");
+    assert.equal(failed[0]!.result, "aborted");
+    assert.equal(readEvents(repo).filter((e) => e.type === "tick_aborted").length, 0);
+    assert.equal(loadLoopState(repo, "clean").ticks, 1);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a role with a queued or in-flight landing never starts a new tick (interlock)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "interlock e2e test");
+  // minTickInterval 0: the role is due on EVERY poll — only the interlock can hold it.
+  saveConfig(repo, fastConfig(["clean"]));
+  // Author run: first time a change, after that nothing to do. Review run: touch the marker,
+  // then hang until the test's abort kills it — the landing stays in flight through the window.
+  const hang = path.join(tmpdir(), "interlock-hang");
+  const did = path.join(tmpdir(), "interlock-did");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${hang}'; exec sleep 30;; esac; done`,
+      `if [ -f '${did}' ]; then printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; else touch '${did}'; printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'; fi`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // The tick commits + enqueues; the landing slot picks the entry up and its reviewer hangs.
+    await waitFor(
+      () => loadLoopState(repo, "clean").lastResult === "queued",
+      "the tick to enqueue its landing",
+    );
+    await waitFor(() => fs.existsSync(hang), "the landing's reviewer run to be in flight");
+
+    // ~10 poll cycles pass with the role due on every one — yet no second tick starts: the
+    // entry stays in the queue until the landing settles, and the interlock covers both the
+    // queued and the in-flight phases with that one check.
+    await new Promise((r) => setTimeout(r, 1_200));
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while its own landing is in flight");
+    assert.equal(queueDepth(repo), 1, "the entry stays queued until the landing settles");
+
+    // Settle the test: a deliberate stop kills the hung landing and drops its entry.
+    const markerFile = abortRequestPath(repo, "clean");
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
+    await waitFor(
+      () => loadLoopState(repo, "clean").lastResult === "aborted",
+      "the aborted landing to settle",
+    );
+    assert.equal(queueDepth(repo), 0, "the entry drops with the aborted landing");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a queue entry surviving a restart drains through the gate on next start", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "restart drain e2e test");
+  saveConfig(repo, fastConfig(["clean"]));
+  // Review run approves; the role's own ticks find nothing to do.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  // Seed exactly what a crash between commitAll and the landing's entry drop leaves behind:
+  // one commit (a child of main's head, same full tree plus one file) reachable from the
+  // role's branch, pinned by the landing ref, with its queue entry. The next start's drain
+  // must land it through the gate.
+  const gitIn = (args: string[], input: string) =>
+    execFileSync("git", args, { cwd: repo, encoding: "utf8", input }).trim();
+  const blob = gitIn(["hash-object", "-w", "--stdin"], "crash survivor\n");
+  // The parent's full tree plus the new file — a one-entry mktree would DELETE every other
+  // file and the ff-merge would rightly refuse to overwrite the operator's checkout.
+  const parentTree = sh(repo, "git", "ls-tree", "HEAD");
+  const tree = gitIn(["mktree"], `${parentTree}\n100644 blob ${blob}\tcrash.txt\n`);
+  const sha = gitIn(
+    ["commit-tree", tree, "-p", sh(repo, "git", "rev-parse", "HEAD"), "-m", "tumwater(feature): crash survivor"],
+    "",
+  );
+  sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
+  sh(repo, "git", "update-ref", landingRefName("clean"), sha);
+  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "crash survivor", enqueuedAt: Date.now() });
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => queueDepth(repo) === 0 && fs.existsSync(path.join(repo, "crash.txt")),
+      "the surviving entry to drain onto main",
+    );
+    assert.equal(queueDepth(repo), 0, "the entry was consumed");
+    assert.equal(
+      readEvents(repo).filter((e) => e.type === "landed").length,
+      1,
+      "the surviving change landed through the gate",
+    );
+    assert.equal(
+      readEvents(repo).filter((e) => e.type === "land_failed").length,
+      0,
+      "no failed landing",
+    );
+    assert.equal(loadLoopState(repo, "clean").commits, 1, "the landed change counts as one commit");
+    let refGone = false;
+    try {
+      sh(repo, "git", "rev-parse", "--verify", landingRefName("clean"));
+    } catch {
+      refGone = true;
+    }
+    assert.ok(refGone, "the pin is deleted with a successful landing");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("an entry whose sha main already holds is dropped at the drain without a landing run", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "dedup drain e2e test");
+  saveConfig(repo, fastConfig(["clean"]));
+  // Every reviewer run increments its own counter — a deduped drain must burn none of them.
+  const rev = path.join(tmpdir(), "interlock-review-count");
+  const did = path.join(tmpdir(), "dedup-did");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) n=$(cat '${rev}' 2>/dev/null || echo 0); echo $((n+1)) > '${rev}'; printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `if [ -f '${did}' ]; then printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; else touch '${did}'; printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'; fi`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // One real change lands end to end…
+    await waitFor(
+      () => loadLoopState(repo, "clean").lastResult === "changed" && fs.existsSync(path.join(repo, "hello.txt")),
+      "the change to land on main",
+    );
+    // …and the crash-between-ff-and-drop residue is simulated: the same sha re-enqueued.
+    const sha = sh(repo, "git", "rev-parse", "HEAD");
+    enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "stale duplicate", enqueuedAt: Date.now() });
+    await waitFor(() => queueDepth(repo) === 0, "the stale entry to be dropped");
+    assert.equal(
+      fs.readFileSync(rev, "utf8").trim(),
+      "1",
+      "exactly one reviewer run: the stale entry was deduped, not re-landed",
+    );
+    assert.equal(
+      readEvents(repo).filter((e) => e.type === "landed").length,
+      1,
+      "no second landed event",
+    );
+    assert.equal(
+      readEvents(repo).filter((e) => e.type === "land_failed").length,
+      0,
+      "the dedup drop logs no failure",
+    );
   } finally {
     restore();
     await orch.stop();

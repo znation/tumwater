@@ -1,0 +1,109 @@
+import fs from "node:fs";
+import path from "node:path";
+import { ensureDir } from "./files.js";
+import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
+import { landQueueDir } from "./paths.js";
+import type { LandingEntry } from "./types.js";
+
+/** The durable land queue (plans/merge-queue.md 3/5): a changed tick commits, pins its sha by
+ * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the tick ENDS, holding no
+ * author slot through review or the build check. The orchestrator drains the queue on its
+ * single landing slot, outside the author semaphore: it starts the head entry when no landing
+ * is in flight, and drops the entry after EVERY outcome (a non-terminal one keeps the landing
+ * ref, so the retry rides next-tick leftover recovery at normal cadence — the queue never
+ * retries). Timestamped filenames order the queue across processes; a crash between enqueue
+ * and drop loses nothing — the next start drains the survivors, deduping shas main already
+ * holds. Same reasons the director's inbox is a directory of files (inbox.ts). */
+
+let seq = 0;
+
+/** Append one landing to the queue as a single timestamped file (creating the queue dir if
+ * needed). The filename orders entries across processes by wall-clock time; the per-process
+ * counter and pid break ties within one process. */
+export function enqueueLanding(root: string, entry: LandingEntry): void {
+  const dir = landQueueDir(root);
+  ensureDir(dir);
+  const name = `${entry.enqueuedAt}-${String(seq++).padStart(6, "0")}-${process.pid}.json`;
+  fs.writeFileSync(path.join(dir, name), JSON.stringify(entry, null, 2));
+}
+
+/** Every queue file in execution order (oldest first) — the same filename sort queuedLandings,
+ * headLanding, and landingFor read. A missing queue dir reads as an empty queue. */
+function queueFiles(root: string): string[] {
+  const dir = landQueueDir(root);
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .sort()
+    .map((f) => path.join(dir, f));
+}
+
+/** Number of landings currently queued — a directory listing only; no file content is read.
+ * A missing queue dir reads as 0, like every other reader here. */
+export function queueDepth(root: string): number {
+  return queueFiles(root).length;
+}
+
+// Per-poll entry-content cache (stat-cache.cachedByStat): dashboard polls must not re-parse
+// every queued entry — each file is written once by enqueueLanding and only deleted on drop,
+// the same write-once discipline the inbox caches for prompts.
+const entryCache = new Map<string, StatKeyedValue<LandingEntry>>();
+
+/** Read one queue file through the stat-keyed cache: null when it vanishes mid-listing (a
+ * concurrent drop — the inbox.ts race policy), is unreadable, or fails to parse (a foreign or
+ * torn file is skipped, never thrown on). A shallow copy out: the entry's fields are all
+ * scalars and callers treat the result as read-only. */
+function readEntry(file: string): LandingEntry | null {
+  return cachedByStat(entryCache, file, file, () => {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<LandingEntry>;
+      if (typeof parsed.role !== "string" || typeof parsed.sha !== "string") return null;
+      return parsed as LandingEntry;
+    } catch {
+      return null; // Vanished mid-listing (or unreadable) — skip it.
+    }
+  }, (e) => ({ ...e }));
+}
+
+/** All queued landings in execution order (oldest first). A missing queue directory reads as
+ * an empty queue. */
+export function queuedLandings(root: string): LandingEntry[] {
+  const out: LandingEntry[] = [];
+  for (const f of queueFiles(root)) {
+    const entry = readEntry(f);
+    if (entry) out.push(entry);
+  }
+  return out;
+}
+
+/** The head of the queue — the single entry the orchestrator's landing slot drains per poll —
+ * plus the file to drop on completion, or null when the queue is empty or its oldest file is
+ * a vanished/torn entry. */
+export function headLanding(root: string): { entry: LandingEntry; file: string } | null {
+  const file = queueFiles(root)[0];
+  if (!file) return null;
+  const entry = readEntry(file);
+  return entry ? { entry, file } : null;
+}
+
+/** Every queued entry owned by `role` — queued AND in-flight, since the entry stays in the
+ * queue until its landing completes and drops it. The orchestrator's interlock skips a tick
+ * whenever this is non-empty: that is what keeps `state.lastReview`'s rejection reasons ahead
+ * of the author's next prompt and stops a role stacking two commits. A missing queue reads
+ * as an empty list, like every other reader here. */
+export function landingFor(root: string, role: string): LandingEntry[] {
+  return queuedLandings(root).filter((e) => e.role === role);
+}
+
+/** Remove one queued landing's file after its landing outcome — terminal or not (a
+ * non-terminal outcome keeps the landing ref; the retry is the role's next fresh tick, not a
+ * queue re-drain). ENOENT is a no-op: a concurrent drop between listing and removal is a
+ * normal race (the inbox.ts policy), not an error. */
+export function dropLanding(root: string, file: string): void {
+  try {
+    fs.rmSync(file);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+}

@@ -11,8 +11,10 @@ import type { LoopState, PiRunResult, TickResult, TumwaterConfig } from "./types
  * resets that worktree to main, and hands the sha here: landChange checks it out detached in the
  * role's own `_land-<role>` worktree and runs the SAME review gate and landing flow every other
  * path uses — so no diff reaches main unreviewed (invariant 1) and nothing is rebased inside a
- * role worktree any more. Still synchronous inside the tick; the throughput win lands in 3/5.
- * This is harness code, never a role: the only model runs it starts are the reviewer and
+ * role worktree any more. Since merge queue 3/5 the fresh-tick path calls this from the
+ * ORCHESTRATOR's landing slot (its drain of the durable land queue, outside the author
+ * semaphore); the leftover-recovery path still calls it inside the tick. This is harness code,
+ * never a role: the only model runs it starts are the reviewer and
  * merge.ts's conflict resolver. */
 
 /** One landing request: a pinned commit plus everything its gate and events need. `role` names
