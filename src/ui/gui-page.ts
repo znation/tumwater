@@ -58,6 +58,20 @@ export const GUI_PAGE = `<!doctype html>
 <div id="report" hidden></div>
 <script>
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  // A failed API call, named for the operator: endpoint, HTTP status, and the server's
+  // error text — every error body this server sends is JSON {error} except the 404's
+  // plain "not found", so parse leniently. The message surfaces in the budget-save flash
+  // and the report panel; the panel polls swallow it (they keep the last good content).
+  async function apiError(path, r) {
+    let detail = "";
+    try {
+      const body = (await r.text()).trim();
+      let parsed = null;
+      try { parsed = JSON.parse(body); } catch { /* plain-text body */ }
+      detail = parsed && typeof parsed.error === "string" ? parsed.error : body;
+    } catch { /* unreadable body — the status alone still names the failure */ }
+    return new Error(path + " failed: HTTP " + r.status + (detail ? " — " + detail : ""));
+  }
   const fmtTokens = (n) => (n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
   // last-tick-fmt:start
   // Last tick cell — mirrors the TUI's lastTickCell in status-render.ts: the absolute local
@@ -208,15 +222,17 @@ export const GUI_PAGE = `<!doctype html>
     const panel = document.getElementById("report");
     try {
       const r = await fetch("/api/report?days=14");
-      if (!r.ok) throw new Error("bad response");
+      if (!r.ok) throw await apiError("/api/report", r);
       const d = await r.json();
       const block = (title, svg) => "<div class='chartblock'><div class='charttitle'>" + title + "</div>" + svg + "</div>";
       panel.innerHTML = "<div class='stats'>" + reportSummary(d) + "</div>" +
         block("Output tokens per day", chartTokens(d)) +
         block("Ticks per day by role", chartTicksByRole(d)) +
         block("Commits per day", chartCommits(d));
-    } catch {
-      panel.innerHTML = "<span class='muted'>report unavailable</span>";
+    } catch (e) {
+      // A failed poll is no longer a bare "unavailable": the apiError message names the
+      // endpoint, status, and the server's error (a network failure says Failed to fetch).
+      panel.innerHTML = "<span class='muted'>report unavailable" + (e && e.message ? " — " + esc(e.message) : "") + "</span>";
     }
   }
 
@@ -263,8 +279,7 @@ export const GUI_PAGE = `<!doctype html>
     try {
       const r = await fetch("/api/budget", { method: "POST", headers: { "content-type": "application/json" },
                                               body: JSON.stringify({ maxDailyCostUsd: value }) });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "bad response");
+      if (!r.ok) throw await apiError("/api/budget", r);
       budgetEditing = false; // the next poll re-renders the badge from the payload
     } catch (e) {
       showFlash("error: " + e.message); // stay in edit mode so the operator can fix it
@@ -295,7 +310,7 @@ export const GUI_PAGE = `<!doctype html>
         // (400 for an out-of-catalog role, 500 when the log read throws) would render "(no
         // transcript yet for this loop)" — claiming the log is empty. Throwing keeps the
         // previous panel content, like every other failed poll here.
-        if (!r.ok) throw new Error("bad response");
+        if (!r.ok) throw await apiError("/api/transcript", r);
         const d = await r.json();
         const lines = Array.isArray(d.lines) ? d.lines : [];
         panel.hidden = false;
@@ -309,7 +324,7 @@ export const GUI_PAGE = `<!doctype html>
         // or HTML in a plan/bug entry would execute in the dashboard (XSS).
         const [file, index] = backlogKey.split(":");
         const r = await fetch("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index));
-        if (!r.ok) throw new Error("bad response");
+        if (!r.ok) throw await apiError("/api/backlog", r);
         const d = await r.json();
         panel.hidden = false;
         panel.innerHTML = "<span class='muted'>" + esc(d.title) +

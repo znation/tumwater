@@ -735,7 +735,7 @@ test("the dashboard page checks r.ok before parsing both on-demand panel fetches
   assert.ok(t, "the transcript fetch is in the page");
   assert.match(
     t[1]!,
-    /if \(!r\.ok\) throw new Error\("bad response"\);/,
+    /if \(!r\.ok\) throw await apiError\("\/api\/transcript", r\);/,
     "the transcript poll checks r.ok before parsing (a JSON error body has no lines)",
   );
   const b = GUI_PAGE.match(
@@ -744,9 +744,16 @@ test("the dashboard page checks r.ok before parsing both on-demand panel fetches
   assert.ok(b, "the backlog fetch is in the page");
   assert.match(
     b[1]!,
-    /if \(!r\.ok\) throw new Error\("bad response"\);/,
+    /if \(!r\.ok\) throw await apiError\("\/api\/backlog", r\);/,
     "the backlog poll keeps its r.ok guard (pinned so it cannot regress)",
   );
+  // The guards throw the shared helper, which names the endpoint, the HTTP status, and
+  // the server's error text (parsed leniently: JSON {error} or plain text) — the fix a
+  // failed budget save used to flash as a bare "bad response".
+  assert.match(GUI_PAGE, /async function apiError\(path, r\)/);
+  assert.match(GUI_PAGE, /throw await apiError\("\/api\/budget", r\);/);
+  // The report panel surfaces the same message instead of a bare "unavailable".
+  assert.match(GUI_PAGE, /report unavailable" \+ \(e && e\.message/);
 });
 
 test("the dashboard page escapes backlog entry bodies before innerHTML", async () => {
