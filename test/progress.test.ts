@@ -15,6 +15,14 @@ function toolStart(toolName: string, args: unknown): string {
   return JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName, args });
 }
 
+function toolUpdate(toolCallId: string, partialResult: unknown): string {
+  return JSON.stringify({ type: "tool_execution_update", toolCallId, partialResult });
+}
+
+/** Wall-clock gap in ms — readLiveProgress stamps activity at Date.now(), so two observations
+ * separated by a measurable gap can prove (or disprove) that a line moved the activity clock. */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
 test("parseProgress counts turns/tools and tracks the latest context size", () => {
@@ -254,6 +262,82 @@ test("parseProgress tracks open tool calls and clears them at end", () => {
     0,
   );
   assert.equal(reset.openToolCalls?.length ?? 0, 0);
+});
+
+test("a content-bearing tool_execution_update moves the open call's activity clock", async () => {
+  // Liveness proof: a streaming command that still prints output must not be flagged stalled,
+  // so the feed forwards content-bearing updates to the open call's clock.
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, SESSION + "\n" + toolStart("bash", { command: "npm test" }) + "\n");
+  const stamp1 = readLiveProgress(root, "clean")?.openToolCalls?.[0]?.lastActivityAt;
+  assert.ok(stamp1 !== undefined, "the bash call is open after start");
+
+  await sleep(10); // measurable gap between the start stamp and the update stamp
+
+  fs.appendFileSync(file, toolUpdate("c1", { content: [{ type: "text", text: "test output" }] }) + "\n");
+  const p2 = readLiveProgress(root, "clean");
+  const stamp2 = p2?.openToolCalls?.[0]?.lastActivityAt;
+  assert.ok(stamp2 !== undefined, "the call is still open after the update");
+  assert.ok(stamp2 > stamp1, `content-bearing update must move the clock (${stamp2} vs ${stamp1})`);
+});
+
+test("content-free tool_execution_updates leave the activity clock alone (no keepalive masking a hang)", async () => {
+  // bash emits one empty-content update right after start; a whitespace-only text block is
+  // equally content-free. Neither may move the clock, or a hung command that dribbles
+  // keepalives would never go stale. Equality is exact: the untouched entry keeps the start
+  // stamp's epoch value through the later read, no wall-clock tolerance needed.
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, SESSION + "\n" + toolStart("bash", { command: "npm test" }) + "\n");
+  const stamp1 = readLiveProgress(root, "clean")?.openToolCalls?.[0]?.lastActivityAt;
+  assert.ok(stamp1 !== undefined);
+
+  await sleep(10);
+
+  fs.appendFileSync(file, toolUpdate("c1", { content: [] }) + "\n");
+  fs.appendFileSync(file, toolUpdate("c1", { content: [{ type: "text", text: "   " }] }) + "\n");
+  const p2 = readLiveProgress(root, "clean");
+  assert.deepEqual(p2?.openToolCalls?.map((c) => c.id), ["c1"], "the call stays open after keepalives");
+  assert.equal(
+    p2?.openToolCalls?.[0]?.lastActivityAt,
+    stamp1,
+    "content-free updates must not move the clock — the hang stays nameable",
+  );
+});
+
+test("a tool_execution_update before any tool call started is ignored", () => {
+  // No start means no open-call list yet; the update must not create one (or crash).
+  const p = parseProgress(
+    [SESSION, toolUpdate("c1", { content: [{ type: "text", text: "orphan output" }] })],
+    0,
+  );
+  assert.equal(p.openToolCalls, undefined, "an update before start creates no tracked call");
+  assert.equal(p.toolCalls, 0);
+});
+
+test("a tool_execution_update for an unknown id leaves open calls untouched", async () => {
+  // pi runs a message's calls concurrently: a sibling's content-bearing update must not be
+  // credited to our call — entries are matched by id, never by position.
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, SESSION + "\n" + toolStart("bash", { command: "npm test" }) + "\n");
+  const stamp1 = readLiveProgress(root, "clean")?.openToolCalls?.[0]?.lastActivityAt;
+  assert.ok(stamp1 !== undefined);
+
+  await sleep(10);
+
+  fs.appendFileSync(file, toolUpdate("cX", { content: [{ type: "text", text: "sibling output" }] }) + "\n");
+  const p2 = readLiveProgress(root, "clean");
+  assert.deepEqual(p2?.openToolCalls?.map((c) => c.id), ["c1"], "no call opened for the unknown id");
+  assert.equal(
+    p2?.openToolCalls?.[0]?.lastActivityAt,
+    stamp1,
+    "another call's update must not move this call's clock",
+  );
 });
 
 test("stalledToolLabel names the first call silent past the threshold", () => {
