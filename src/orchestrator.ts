@@ -84,19 +84,28 @@ interface OrchestratorExit {
   restart: boolean;
 }
 
+/** Read the optional `roles` request marker the `reset-counters` and `wake` CLI commands drop
+ * (both share the convention): null when no marker exists (nothing to consume this poll), the
+ * listed roles' runners when the marker is a well-formed string array, and every runner when
+ * the marker is corrupt or its list missing (a superset — both operations are idempotent, so
+ * applying the same one to extra roles is safe). */
+function roleRequestTargets(markerFile: string, runners: LoopRunner[]): LoopRunner[] | null {
+  if (!fs.existsSync(markerFile)) return null;
+  const marker = readJsonFile<{ roles?: unknown }>(markerFile);
+  const requested =
+    marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string")
+      ? (marker.roles as string[])
+      : null;
+  return requested ? runners.filter((r) => requested.includes(r.role)) : [...runners];
+}
+
 /** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI already
  * zeroed the state files; this also zeroes the affected runners' in-memory copies (which then
- * re-save), or their next tick's save would resurrect the pre-reset values. A corrupt marker
- * resets every runner (a superset — the operation is idempotent). */
+ * re-save), or their next tick's save would resurrect the pre-reset values. */
 function consumeResetRequest(root: string, runners: LoopRunner[]): void {
   const markerFile = resetRequestPath(root);
-  if (!fs.existsSync(markerFile)) return;
-  let requested: string[] | null = null;
-  const marker = readJsonFile<{ roles?: unknown }>(markerFile);
-  if (marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string"))
-    requested = marker.roles as string[];
-  // Corrupt or missing marker: fall through and reset every runner below.
-  const affected = requested ? runners.filter((r) => requested.includes(r.role)) : [...runners];
+  const affected = roleRequestTargets(markerFile, runners);
+  if (affected === null) return;
   for (const r of affected) r.resetCounters();
   if (affected.length > 0) {
     const [only] = affected;
@@ -115,19 +124,13 @@ function consumeResetRequest(root: string, runners: LoopRunner[]): void {
 /** Consume a pending wake request from `tumwater wake [--role <id>]`, if any: the CLI
  * already cleared the state files; this also clears the affected runners' in-memory
  * schedules (backoffSeconds, nextRunAt), or their next save would resurrect the pre-wake
- * sleep window and the loops would keep sleeping until the original backoff expired. A
- * corrupt marker wakes every runner (a superset — the operation is idempotent). Each
+ * sleep window and the loops would keep sleeping until the original backoff expired. Each
  * woken role logs the existing `wake` event with the operator reason, so the fleet's
  * early ticks read in the feed as deliberate. */
 function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   const markerFile = wakeRequestPath(root);
-  if (!fs.existsSync(markerFile)) return;
-  let requested: string[] | null = null;
-  const marker = readJsonFile<{ roles?: unknown }>(markerFile);
-  if (marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string"))
-    requested = marker.roles as string[];
-  // Corrupt or missing marker: fall through and wake every runner below.
-  const affected = requested ? runners.filter((r) => requested.includes(r.role)) : [...runners];
+  const affected = roleRequestTargets(markerFile, runners);
+  if (affected === null) return;
   for (const r of affected) {
     r.wake();
     logEvent(root, { loop: r.role, type: "wake", reason: "operator" });
