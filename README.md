@@ -66,7 +66,7 @@ Open items:
   "main is red" when the redeploy's own git call fails.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`d3652c4`): build clean, suite 1016/1016.
+Current main (`10c8ae6`): build clean, suite 1019/1019.
 <!-- tumwater:status:end -->
 
 ## How it works
