@@ -53,6 +53,14 @@ export function resetRequestPath(root: string): string {
   return path.join(tumwaterDir(root), "reset-counters.json");
 }
 
+/** Marker file `tumwater wake [--role <id>]` drops for a running fleet to consume: like the
+ * reset-counters marker it must name its targets because it can affect many loops, and like it
+ * it must reach the runners' IN-MEMORY schedule — the poll loop reads eligibility from the
+ * in-memory state, so clearing only the on-disk file would not wake anything. */
+export function wakeRequestPath(root: string): string {
+  return path.join(tumwaterDir(root), "wake.json");
+}
+
 /** Per-role marker file `tumwater abort --role <id>` drops for a running fleet to consume:
  * kill that loop's in-flight tick. One file per role (presence = pending request; content is
  * just `{ at }`) keeps consumption race-free and needs no parsing — unlike the single shared

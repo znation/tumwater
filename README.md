@@ -200,6 +200,7 @@ tumwater prompt --list             # show queued prompts, numbered in execution 
 tumwater prompt --cancel <n>       # remove the Nth queued prompt (as shown by --list)
 tumwater reset-counters            # zero ticks/commits/tokens/cost (a running fleet picks it up within ~2s)
 tumwater reset-counters --role feature   # …or just one loop
+tumwater wake [--role feature]     # wake a backed-off fleet — the named roles (or all) tick within one poll
 tumwater abort --role feature      # kill that loop's in-flight tick now (work discarded; the loop keeps running)
 tumwater pause                     # stop role loops starting new ticks (in-flight finish; the director keeps running)
 tumwater resume                    # lift a fleet pause
@@ -207,6 +208,9 @@ tumwater resume                    # lift a fleet pause
 
 `reset-counters` starts a fresh observation window (e.g. "cost since today") without touching
 scheduling, backoff, or pi session continuity — loops keep sleeping and waking exactly as before.
+Its operator-side counterpart is `wake`: it touches ONLY the schedule (backoff cleared,
+next run due now), so a fleet parked in backoff after a toolchain outage starts ticking
+within one poll of the fix, instead of sleeping out its backoff.
 
 Review-gate runs are labeled in loop transcripts: each role's raw log interleaves author ticks
 and reviewer runs, and review runs render as `── review @ <timestamp> ──` in `tumwater logs

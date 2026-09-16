@@ -13,7 +13,7 @@ import { defaultConfig, loadConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
-import { abortRequestPath, inboxDir, orchestratorStatePath, pausedPath, piLogPath, resetRequestPath } from "../src/paths.js";
+import { abortRequestPath, inboxDir, orchestratorStatePath, pausedPath, piLogPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
@@ -922,6 +922,70 @@ test("reset-counters --role targets one loop; unknown or missing role fails with
 
   // A bare --role fails cleanly too.
   r = await cli(repo, "reset-counters", "--role");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--role needs a role id/);
+});
+
+// --- wake ---
+
+test("wake clears backoff in every role's state file and writes the fleet marker", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "wake test");
+  seedCounters(repo, "feature");
+  seedCounters(repo, "clean");
+  const before = Date.now();
+
+  const r = await cli(repo, "wake");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /wake requested for/);
+
+  for (const role of ["feature", "clean"]) {
+    const s = loadLoopState(repo, role);
+    assert.equal(s.backoffSeconds, 0, `${role} backoff cleared`);
+    assert.ok(
+      s.nextRunAt >= before && s.nextRunAt <= Date.now(),
+      `${role} is immediately due (nextRunAt ${s.nextRunAt})`,
+    );
+    // Waking touches ONLY the schedule: counters and wake tracking stay as they were.
+    assert.equal(s.ticks, 7, `${role} counters preserved`);
+    assert.equal(s.commits, 3, `${role} commits preserved`);
+    assert.equal(s.lastMainHead, "deadbeef", `${role} wake tracking preserved`);
+  }
+
+  // The marker a running fleet consumes lists every role in the config.
+  const marker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as {
+    at: number;
+    roles: string[];
+  };
+  assert.ok(marker.at > 0);
+  assert.deepEqual([...marker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
+});
+
+test("wake --role targets one loop; unknown or missing role fails without side effects", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "wake role test");
+  seedCounters(repo, "feature");
+  seedCounters(repo, "clean");
+
+  let r = await cli(repo, "wake", "--role", "feature");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /wake requested for feature/);
+  assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0);
+  assert.equal(loadLoopState(repo, "clean").backoffSeconds, 15, "other roles untouched");
+  const marker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
+  assert.deepEqual(marker.roles, ["feature"]);
+
+  // Unknown role: clear failure, no state changes, no marker.
+  fs.rmSync(wakeRequestPath(repo));
+  r = await cli(repo, "wake", "--role", "bogus");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
+  assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0, "already-woken role unchanged");
+  assert.equal(loadLoopState(repo, "clean").backoffSeconds, 15, "other roles untouched on failure");
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)), "no marker written on failure");
+
+  // A bare --role fails cleanly too.
+  r = await cli(repo, "wake", "--role");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--role needs a role id/);
 });

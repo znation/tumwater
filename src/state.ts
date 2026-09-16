@@ -53,6 +53,18 @@ export function zeroCounters(s: LoopState): LoopState {
   return { ...s, ticks: 0, commits: 0, generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0 };
 }
 
+/** Clear a loop's backoff so its next orchestrator poll finds it immediately due: zero
+ * backoffSeconds (so the next no_change/error tick restarts the backoff ladder from the
+ * bottom instead of climbing from wherever the fleet parked) and pull nextRunAt forward to
+ * now. Pure: returns a new state and preserves everything else — counters (an
+ * observation-window reset is zeroCounters' job), wake tracking (lastMainHead), and the
+ * last-result fields. Scheduling operation, not observation-window reset: it exists so an
+ * operator who fixed what the loops were failing on can say "try again" (BUGS.md
+ * 2026-09-15: the fleet had no wake lever). */
+export function clearBackoff(s: LoopState, now: number): LoopState {
+  return { ...s, backoffSeconds: 0, nextRunAt: now };
+}
+
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other
  * wall-clock display in the harness (lastTickCell). */
 export function todayStamp(now = Date.now()): string {

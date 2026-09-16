@@ -187,6 +187,11 @@ test("rejectUnknownArgs rejects unknown tokens with the command's valid flags li
   const stray = expectFail(() => rejectUnknownArgs("reset-counters", ["--role", "feature", "extra"], [{ names: ["--role"], value: true, valueName: "<id>" }]));
   assert.match(stray.stderr, /unknown argument: extra/);
 
+  // wake takes the same single --role flag; a misspelling fails with the accepted flag named.
+  const wake = expectFail(() => rejectUnknownArgs("wake", ["--rol", "feature"], [{ names: ["--role"], value: true, valueName: "<id>" }]));
+  assert.match(wake.stderr, /unknown argument: --rol/);
+  assert.match(wake.stderr, /valid flags for tumwater wake: --role <id>/);
+
   // The valid-flags list joins every spelling with "/" and appends the value name.
   const logs = expectFail(() => rejectUnknownArgs("logs", ["--rol"], LOGS_SPECS));
   assert.match(logs.stderr, /-f\/--follow, -n <count>, --role <id>/);

@@ -34,6 +34,7 @@ import {
   landingStatePath,
   orchestratorStatePath,
   resetRequestPath,
+  wakeRequestPath,
   sessionsRootDir,
   STATE_DIR,
 } from "./paths.js";
@@ -107,6 +108,29 @@ function consumeResetRequest(root: string, runners: LoopRunner[]): void {
         type: "counters_reset",
         roles: affected.map((r) => r.role),
       });
+  }
+  removeQuiet(markerFile);
+}
+
+/** Consume a pending wake request from `tumwater wake [--role <id>]`, if any: the CLI
+ * already cleared the state files; this also clears the affected runners' in-memory
+ * schedules (backoffSeconds, nextRunAt), or their next save would resurrect the pre-wake
+ * sleep window and the loops would keep sleeping until the original backoff expired. A
+ * corrupt marker wakes every runner (a superset — the operation is idempotent). Each
+ * woken role logs the existing `wake` event with the operator reason, so the fleet's
+ * early ticks read in the feed as deliberate. */
+function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
+  const markerFile = wakeRequestPath(root);
+  if (!fs.existsSync(markerFile)) return;
+  let requested: string[] | null = null;
+  const marker = readJsonFile<{ roles?: unknown }>(markerFile);
+  if (marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string"))
+    requested = marker.roles as string[];
+  // Corrupt or missing marker: fall through and wake every runner below.
+  const affected = requested ? runners.filter((r) => requested.includes(r.role)) : [...runners];
+  for (const r of affected) {
+    r.wake();
+    logEvent(root, { loop: r.role, type: "wake", reason: "operator" });
   }
   removeQuiet(markerFile);
 }
@@ -407,8 +431,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         lastRetention = retention;
       }
 
-      // Consume CLI request markers: a reset-counters request and per-role abort requests.
+      // Consume CLI request markers: a reset-counters request, a wake request, and per-role
+      // abort requests.
       consumeResetRequest(root, runners);
+      consumeWakeRequest(root, runners);
       consumeAbortRequests(root, runners, landingInFlight);
 
       // branchHead reads the ref files first (microsecond-scale; this runs every poll) and

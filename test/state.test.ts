@@ -8,6 +8,7 @@ import {
   applyTickOutcome,
   budgetPaused,
   budgetReached,
+  clearBackoff,
   dailyCost,
   fleetDailyCost,
   freshLoopState,
@@ -175,6 +176,40 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
   // Pure: the input is unchanged and the result is a new object.
   assert.equal(s.ticks, 12);
   assert.notEqual(z, s);
+});
+
+test("clearBackoff zeroes the backoff and pulls nextRunAt to now, preserving everything else", () => {
+  const s = freshLoopState("clean");
+  s.ticks = 12;
+  s.commits = 5;
+  s.generatedTokens = 987654;
+  s.totalCostUsd = 3.14;
+  s.nextRunAt = 1_700_000_000_000; // two hours out — deep backoff
+  s.backoffSeconds = 7680;
+  s.lastMainHead = "abc123";
+  s.lastResult = "no_change";
+  s.lastSummary = "found nothing";
+  s.dayStamp = todayStamp(); // daily budget window — must survive a wake
+  s.dayCostUsd = 12.5;
+
+  const now = 1_700_000_001_000;
+  const w = clearBackoff(s, now);
+  assert.equal(w.backoffSeconds, 0);
+  assert.equal(w.nextRunAt, now);
+  // Waking is a scheduling operation, not an observation-window reset: counters, wake
+  // tracking, last-result fields, and the daily budget window are untouched.
+  assert.equal(w.ticks, 12);
+  assert.equal(w.commits, 5);
+  assert.equal(w.generatedTokens, 987654);
+  assert.equal(w.totalCostUsd, 3.14);
+  assert.equal(w.lastMainHead, "abc123");
+  assert.equal(w.lastResult, "no_change");
+  assert.equal(w.lastSummary, "found nothing");
+  assert.equal(w.dayStamp, s.dayStamp);
+  assert.equal(w.dayCostUsd, 12.5);
+  // Pure: the input is unchanged and the result is a new object.
+  assert.equal(s.backoffSeconds, 7680);
+  assert.notEqual(w, s);
 });
 
 test("nextBackoffSeconds caps an initial above max and treats non-positive current as first", () => {

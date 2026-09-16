@@ -33,7 +33,7 @@ import { configForRole } from "./config.js";
 import { landChange, type LandRequest } from "./lander.js";
 import { enqueueLanding } from "./land-queue.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
-import { ERROR_STREAK_WARN, applyTickOutcome, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
+import { ERROR_STREAK_WARN, applyTickOutcome, clearBackoff, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
 import { recoverLeftover } from "./leftover.js";
 import { mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./merge.js";
@@ -106,6 +106,18 @@ export class LoopRunner {
    * start/end saves stay authoritative over the same object. */
   resetCounters(): void {
     Object.assign(this.state, zeroCounters(this.state));
+    this.save();
+  }
+
+  /** Clear this loop's backoff in memory and persist. The orchestrator calls this when it
+   * consumes a `tumwater wake` request: eligibility is read from the IN-MEMORY state, so
+   * without clearing the copy here the loop would keep sleeping until the original backoff
+   * expired and the next save would resurrect the pre-wake schedule on disk.
+   * As with resetCounters the mutation is in place on the EXISTING state object: a tick may
+   * be in flight when this runs and holds its own reference to the same object — the
+   * in-flight tick's own start/end saves stay authoritative over it. */
+  wake(): void {
+    Object.assign(this.state, clearBackoff(this.state, Date.now()));
     this.save();
   }
 

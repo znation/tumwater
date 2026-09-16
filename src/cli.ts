@@ -11,7 +11,7 @@ import {
   parseRoleFlag,
   rejectUnknownArgs,
 } from "./cli-args.js";
-import { loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from "./state.js";
+import { clearBackoff, loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from "./state.js";
 import { createTranscriptRenderer } from "./ui/transcript.js";
 import { readTranscriptTail } from "./ui/transcript-tail.js";
 import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
@@ -39,7 +39,7 @@ import { runTui } from "./ui/tui.js";
 import { lanAddresses, startGui } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { abortRequestPath, eventsLogPath, pausedPath, piLogPath, resetRequestPath } from "./paths.js";
+import { abortRequestPath, eventsLogPath, pausedPath, piLogPath, resetRequestPath, wakeRequestPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
@@ -64,6 +64,7 @@ Usage:
   tumwater prompt --list           Show queued prompts, numbered in execution order
   tumwater prompt --cancel <n>     Remove the Nth queued prompt (as shown by --list)
   tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
+  tumwater wake [--role <id>]             Wake a backed-off fleet — the named roles (or all) tick within one poll
   tumwater abort --role <id>             Abort that loop's in-flight tick (work discarded; the loop keeps running)
   tumwater pause                     Stop role loops starting new ticks (in-flight finish; the director keeps running)
   tumwater resume                    Lift a fleet pause
@@ -247,6 +248,25 @@ async function cmdResetCounters(root: string, args: string[]): Promise<void> {
   for (const r of targets) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
   writeJsonFile(resetRequestPath(root), { at: Date.now(), roles: targets });
   process.stdout.write(`counters reset for ${targets.join(", ")} — a running fleet picks this up within ~2s\n`);
+}
+
+/** `tumwater wake [--role <id>]`: tell the fleet "whatever the loops were failing on is
+ * fixed — try again": clear the named roles' (or every role's) backoff and pull nextRunAt
+ * to now, so they tick within one poll instead of sleeping until the backoff expires. The
+ * counterpart of reset-counters' documented hands-off stance toward scheduling: this one
+ * touches ONLY the schedule — counters, wake tracking, and session continuity are
+ * untouched. Works like reset-counters on both planes: rewrites each target's state file
+ * directly (takes effect on the next `tumwater run` even when no fleet is up) and drops a
+ * marker a running fleet consumes within one poll — it must also clear the runners'
+ * in-memory schedules, or their next save resurrects the pre-wake sleep window. */
+async function cmdWake(root: string, args: string[]): Promise<void> {
+  const config = loadConfig(root);
+  const role = parseRoleFlag(args, knownRoleIds(config));
+  const targets = role ? [role] : Object.keys(config.roles); // Default: every role in the config.
+  const now = Date.now();
+  for (const r of targets) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
+  writeJsonFile(wakeRequestPath(root), { at: now, roles: targets });
+  process.stdout.write(`wake requested for ${targets.join(", ")} — a running fleet applies it within one poll\n`);
 }
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot
@@ -443,6 +463,12 @@ async function main(): Promise<void> {
       rejectUnknownArgs("reset-counters", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
       await requireReadyRepo(root);
       await cmdResetCounters(root, args);
+      break;
+    }
+    case "wake": {
+      rejectUnknownArgs("wake", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
+      await requireReadyRepo(root);
+      await cmdWake(root, args);
       break;
     }
     case "abort": {

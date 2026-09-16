@@ -13,8 +13,8 @@ import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { logEvent, readEvents } from "../src/events.js";
-import { freshLoopState, loadLoopState, readOrchestratorInfo, saveLoopState, todayStamp } from "../src/state.js";
-import { abortRequestPath, branchName, landingRefName, pausedPath, resetRequestPath, worktreePath } from "../src/paths.js";
+import { freshLoopState, loadLoopState, readOrchestratorInfo, saveLoopState, todayStamp, clearBackoff } from "../src/state.js";
+import { abortRequestPath, branchName, landingRefName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { enqueueLanding, queueDepth } from "../src/land-queue.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
@@ -101,6 +101,90 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.loop, "harness", "a superset reset is filed harness-level with the roles list");
     assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a wake request makes a backed-off loop due within one poll and logs it under the role", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "wake request test");
+  saveConfig(repo, fastConfig(["clean"]));
+  // Deep backoff: the loop is two hours out and has ticked before, so the woken run reads as
+  // "scheduled", not "startup". lastTickEndedAt is long past, so no min-gap gate applies.
+  const seeded = freshLoopState("clean");
+  seeded.ticks = 3;
+  seeded.backoffSeconds = 7680;
+  seeded.nextRunAt = Date.now() + 2 * 3600 * 1000;
+  seeded.lastTickEndedAt = Date.now() - 3600 * 1000;
+  saveLoopState(repo, seeded);
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // The backed-off loop must stay asleep on its own (nextRunAt two hours out).
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(loadLoopState(repo, "clean").ticks, 3, "the backed-off loop stays asleep");
+
+    // Reproduce what `tumwater wake --role clean` does from the CLI side: clear the state
+    // file and drop the marker. (The CLI path itself is covered in test/cli.test.ts.)
+    saveLoopState(repo, clearBackoff(loadLoopState(repo, "clean"), Date.now()));
+    const markerFile = wakeRequestPath(repo);
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean"] }));
+
+    // The fleet consumes the marker within a poll cycle and the loop ticks — its
+    // in-memory schedule was the gate, so the file zeroing alone cannot explain the tick.
+    await waitFor(() => loadLoopState(repo, "clean").ticks >= 4, "the woken loop to tick");
+    await waitFor(() => !loadLoopState(repo, "clean").running, "the woken tick to finish");
+
+    // The wake is visible as exactly one plain event filed under the role, not a warning.
+    const wakes = readEvents(repo).filter((e) => e.type === "wake");
+    assert.equal(wakes.length, 1);
+    assert.equal(wakes[0]?.loop, "clean");
+    assert.equal(wakes[0]?.reason, "operator");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a corrupt wake marker wakes every runner and is still consumed", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "corrupt wake marker test");
+  saveConfig(repo, fastConfig(["clean", "dry"]));
+  for (const role of ["clean", "dry"]) {
+    const s = freshLoopState(role);
+    s.ticks = 3;
+    s.backoffSeconds = 7680;
+    s.nextRunAt = Date.now() + 2 * 3600 * 1000;
+    s.lastTickEndedAt = Date.now() - 3600 * 1000;
+    saveLoopState(repo, s);
+  }
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // What the CLI side of `tumwater wake` already did: both state files cleared. Then
+    // garbage where the marker should be: the parse fails → every runner wakes (a
+    // documented superset — skipping it would leave the pre-wake in-memory schedule in place).
+    for (const role of ["clean", "dry"]) {
+      saveLoopState(repo, clearBackoff(loadLoopState(repo, role), Date.now()));
+    }
+    const markerFile = wakeRequestPath(repo);
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, "{not json");
+
+    await waitFor(() => !fs.existsSync(markerFile), "the corrupt marker to be consumed");
+    for (const role of ["clean", "dry"]) {
+      await waitFor(() => loadLoopState(repo, role).ticks >= 4, `${role} to tick after the wake`);
+    }
+    const wakes = readEvents(repo).filter((e) => e.type === "wake");
+    assert.equal(wakes.length, 2, "one wake event per woken role");
+    assert.deepEqual(
+      wakes.map((e) => e.loop).sort(),
+      ["clean", "dry"],
+    );
+    for (const e of wakes) assert.equal(e.reason, "operator");
   } finally {
     restore();
     await orch.stop();
