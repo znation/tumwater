@@ -917,3 +917,108 @@ test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet
     else process.env.HOME = oldHome;
   }
 });
+
+// Ctrl+B is a TOGGLE: pressing it while already in budget-edit mode takes the exit branch
+// (exitBudgetMode) — the previous draft comes back byte-for-byte, and a following entry
+// re-fills the cap. Esc and Ctrl+T exits are pinned above; this pins the third exit.
+test("Ctrl+B again exits budget-edit mode, restoring the draft byte-for-byte", async () => {
+  const repo = await makeTuiRepo();
+  const tui = startTui(repo);
+  try {
+    for (const ch of "keep me") tui.key(ch, ch);
+    tui.key(undefined, "b", { ctrl: true }); // enter: pre-filled with the current cap
+    assert.equal(tui.lines().at(-1), "> 50");
+
+    // The same key in edit mode toggles out (the exit branch), restoring the draft.
+    tui.key(undefined, "b", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "> keep me");
+
+    // The toggle is symmetric: re-entering re-fills the cap, and the draft survives a
+    // second round-trip through the editor.
+    tui.key(undefined, "b", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "> 50");
+    tui.key(undefined, "escape");
+    assert.equal(tui.lines().at(-1), "> keep me");
+  } finally {
+    await tui.quit();
+  }
+});
+
+// PgDn/PgUp in the usage-report view (the last view of the Ctrl+T cycle) page the cached
+// report within the pane's line budget, clamped at both ends. The 14-day report is 24
+// lines (8 chrome + 14 day rows + 2); a dozen queued prompts each consume one line of
+// the budget, so the window (≤ ~21 lines at rows=40) is strictly smaller than the report
+// and paging has real room in both directions.
+test("the usage-report pane pages with PgDn/PgUp, clamped at both ends", async () => {
+  const repo = await makeTuiRepo();
+  for (let i = 1; i <= 12; i++) submitPrompt(repo, `prompt ${i}`);
+
+  const tui = startTui(repo);
+  try {
+    tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
+    tui.key(undefined, "t", { ctrl: true }); // → project status
+    tui.key(undefined, "t", { ctrl: true }); // → usage report
+    let frame = tui.lastFrame();
+    assert.match(frame, /usage report/);
+    assert.match(frame, /# tumwater usage report/); // head window shows the title
+    assert.doesNotMatch(frame, /\*\*Ticks by role:\*\*/); // …and not the tail
+
+    // Repeated PgDn advances pages and clamps at the tail: the tail line is visible and
+    // the title has scrolled out of the window.
+    for (let i = 0; i < 8; i++) tui.key(undefined, "pagedown");
+    frame = tui.lastFrame();
+    assert.match(frame, /\*\*Ticks by role:\*\*/);
+    assert.doesNotMatch(frame, /# tumwater usage report/);
+    const tailFrame = frame;
+    tui.key(undefined, "pagedown");
+    assert.equal(tui.lastFrame(), tailFrame, "PgDn past the tail is a no-op");
+
+    // PgUp mirrors back to the head and clamps there.
+    for (let i = 0; i < 8; i++) tui.key(undefined, "pageup");
+    frame = tui.lastFrame();
+    assert.match(frame, /# tumwater usage report/);
+    assert.doesNotMatch(frame, /\*\*Ticks by role:\*\*/);
+    const headFrame = frame;
+    tui.key(undefined, "pageup");
+    assert.equal(tui.lastFrame(), headFrame, "PgUp past the head is a no-op");
+  } finally {
+    await tui.quit();
+  }
+});
+
+// Enter in budget-edit mode saves through setDailyBudgetUsd, which reads the config FRESH
+// (bypassing the display's last-known-good fallback). A broken file therefore fails the
+// save while the TUI keeps rendering: the error flashes, the mode stays open so the value
+// can be retried, and the broken file is never overwritten with defaults.
+test("a budget save on a broken config flashes the error and stays in edit mode", async () => {
+  const repo = await makeTuiRepo();
+  const cfgPath = path.join(repo, "tumwater.json");
+  const original = fs.readFileSync(cfgPath, "utf8");
+  const tui = startTui(repo); // first render: the display caches this last-known-good config
+  try {
+    tui.key(undefined, "b", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "> 50");
+
+    // Break the config AFTER the first render: render falls back to the cached copy, but
+    // the saver's fresh loadConfig hits the broken file.
+    fs.writeFileSync(cfgPath, "{ not valid json\n");
+    tui.key(undefined, "backspace");
+    tui.key(undefined, "backspace");
+    for (const ch of "30") tui.key(ch, ch);
+    tui.key(undefined, "return");
+
+    assert.match(tui.lastFrame(), /not valid JSON/); // the load failure flashes
+    assert.equal(tui.lines().at(-1), "> 30", "still in edit mode with the value kept");
+    assert.match(fs.readFileSync(cfgPath, "utf8"), /not valid json/, "the broken file is not overwritten");
+
+    // Once the file is valid again the same draft saves — staying open was a retry, not a dead end.
+    fs.writeFileSync(cfgPath, original);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /budget set to \$30/);
+    assert.equal(tui.lines().at(-1), "> ");
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")) as { maxDailyCostUsd: number };
+    assert.equal(cfg.maxDailyCostUsd, 30);
+  } finally {
+    await tui.quit();
+  }
+});
