@@ -52,19 +52,17 @@ their authoring run and show a `main red` state in both dashboards until main is
 (director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix).
 
 Open items:
-- Planned: GUI report hover labels — a cursor-following tooltip for each chart bar segment
-  (planned 2026-09-14, requested by user).
 - Planned: harness-level merge queue — sub-plans 4/5–5/5 tracked in PLANS.md (3/5 landed
   2026-09-14); next is surfacing the land queue across both dashboards.
 - Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
-- Open bugs: four, all recorded 2026-09-15 from the git-outage incident (BUGS.md): error
-  ticks climb the idle backoff ladder, repeated tick failures raise no alarm, a broken
-  toolchain latches a "main is red" verdict, and no operator lever wakes a backed-off fleet.
+- Open bugs: three, all recorded 2026-09-15 from the git-outage incident (BUGS.md): repeated
+  tick failures raise no alarm, a broken toolchain latches a "main is red" verdict, and no
+  operator lever wakes a backed-off fleet.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`2605f24`): build clean, suite 972/972.
+Current main (`9d55e99`): build clean, suite 992/992.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -98,7 +96,9 @@ one loop per enabled role. Every loop tick:
    itself (a deliberate stop discards the pin; a shutdown keeps it — every interrupted landing
    re-lands through the same gate on the next tick). The drain runs even while the fleet is
    paused: a queued landing is committed work, not a new tick. If pi found nothing to do, the
-   loop backs off (exponentially, capped) and sleeps.
+   loop backs off (exponentially, capped) and sleeps; a failed tick retries on a shorter
+   error ladder (capped at ten minutes) instead, so a broken toolchain parks a loop for
+   minutes, not hours.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
 Scheduling is need-aware: a maintenance role's due tick (scheduled or main-moved) is deferred —
