@@ -40,10 +40,11 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 `status` (`--json`), `report` (`--days N`; Markdown usage report, default 14 days),
 `doctor` (pre-flight check of git, repo, config, pi, locks, and build — read-only,
 exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` /
-`prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`, `abort --role <id>`
-(kills one loop's in-flight tick; work discarded, the loop keeps running), and `pause` /
-`resume` (operator-intent fleet gate: role loops stop starting new ticks while in-flight ones
-finish; the director keeps running). All twelve roles —
+`prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`,
+`wake [--role <id>]` (clears a backed-off fleet's sleep — the named roles, or all of them,
+tick within one poll), `abort --role <id>` (kills one loop's in-flight tick; work discarded,
+the loop keeps running), and `pause` / `resume` (operator-intent fleet gate: role loops stop
+starting new ticks while in-flight ones finish; the director keeps running). All twelve roles —
 feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve,
 steward (~6 h clock) — plus the director are enabled by default; user-defined loops are added
 from `customLoops` in tumwater.json or by prompting the director, and act as full-citizen loops
@@ -61,12 +62,11 @@ Open items:
   refined 2026-09-15).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
-- Open bugs: two, both recorded 2026-09-15 (BUGS.md): no operator lever wakes a backed-off
-  fleet, and a rejected `mainGreen` latches a false "main is red" when the redeploy's own git
-  call fails.
+- Open bugs: one, recorded 2026-09-15 (BUGS.md): a rejected `mainGreen` latches a false
+  "main is red" when the redeploy's own git call fails.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`9e946eb`): build clean, suite 1008/1008.
+Current main (`d3652c4`): build clean, suite 1016/1016.
 <!-- tumwater:status:end -->
 
 ## How it works
