@@ -7,6 +7,7 @@ import { logEvent } from "../src/events.js";
 import { submitPrompt } from "../src/inbox.js";
 import { initProject } from "../src/init.js";
 import { loadConfig, saveConfig } from "../src/config.js";
+import { enqueueLanding } from "../src/land-queue.js";
 import {
   applyKey,
   backlogLines,
@@ -352,6 +353,38 @@ test("runTui renders the fleet table and an empty recent-activity pane on start"
     // The one enabled loop is listed as stopped (the orchestrator is not running).
     assert.match(frame, /clean/);
     assert.match(frame, /stopped/);
+  } finally {
+    await tui.quit();
+  }
+});
+
+// Merge queue 4/5 — the TUI header shows the land queue badge while anything is queued or
+// landing, and nothing when idle (the badge is empty at depth 0, so every existing
+// header byte stays intact). The frame carries renderStatus's full output, header line
+// included; the badge lands well inside the faked 100 columns (the budget badge after it
+// is what clips on a long name).
+test("runTui shows the land queue badge in the header while a landing is queued", async () => {
+  const repo = await makeTuiRepo();
+  enqueueLanding(repo, {
+    role: "clean",
+    sha: "abc1234",
+    tick: 1,
+    summary: "tidy something",
+    enqueuedAt: Date.now(),
+  });
+  const tui = startTui(repo);
+  try {
+    assert.match(tui.lastFrame(), /· land queue: 1/);
+  } finally {
+    await tui.quit();
+  }
+});
+
+test("runTui shows no land queue badge when the queue is idle", async () => {
+  const repo = await makeTuiRepo();
+  const tui = startTui(repo);
+  try {
+    assert.doesNotMatch(tui.lastFrame(), /land queue/);
   } finally {
     await tui.quit();
   }

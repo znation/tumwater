@@ -4,7 +4,7 @@ import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { budgetReached, dailyCost } from "../state.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, displayTokenMetrics, loopPhase } from "./status-render.js";
+import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, loopPhase } from "./status-render.js";
 
 /** The one fleet-state document both observer surfaces serve: `GET /api/status` (gui.ts) and
  * `tumwater status --json` (cli.ts) print the same payload, so the dashboard and the CLI can
@@ -32,6 +32,12 @@ export function statusPayload(root: string): object {
     // the same string the TUI/status table renders (n/a for an all-free fleet; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
     budgetBadge: budgetBadge(snap.budget),
+    // The land queue (plans/merge-queue.md 4/5): depth always (machine-readable for
+    // `status --json`; 0 when idle) plus the in-flight landing's identity only while one is
+    // actually running. Raw data here, like budget — and the display-ready header badge
+    // preformatted through status-render's landingBadge, so the page cannot re-derive it.
+    landQueue: snap.landQueue,
+    landingBadge: landingBadge(snap.landQueue),
     inbox: snap.inbox,
     // Previews of the queued director prompts in execution order (truncated server-side —
     // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.
@@ -52,7 +58,19 @@ export function statusPayload(root: string): object {
         // User-defined-loop marker (computed in snapshot — see StatusSnapshot.loops): the GUI
         // renders it as an asterisk beside the loop name.
         custom: s.custom,
-        phase: loopPhase(s, snap.running, root, budgetPausedNow, live, snap.paused),
+        phase: loopPhase(
+          s,
+          snap.running,
+          root,
+          budgetPausedNow,
+          live,
+          snap.paused,
+          // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed>`
+          // (the marker-driven record, filtered to this role); every other row is untouched.
+          snap.landQueue.inFlight && snap.landQueue.inFlight.role === s.role
+            ? { startedAt: snap.landQueue.inFlight.startedAt }
+            : null,
+        ),
         // What a working loop is doing right now (first assistant text of the in-flight run).
         // Null when idle — never show a stale item from a finished tick.
         currentWork: live?.currentWork ?? null,

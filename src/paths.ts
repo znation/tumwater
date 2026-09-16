@@ -32,6 +32,14 @@ export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
 
+/** The in-flight landing marker (state.ts, merge queue 4/5): the orchestrator's drain task
+ * writes it when a landing starts and removes it after every outcome — the observers
+ * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,
+ * but they can read this file (plans/merge-queue.md). */
+export function landingStatePath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "landing.json");
+}
+
 /** The last completed auto-restart's timestamp (epoch ms) — unlike orchestrator.json it must
  * survive the process exit that IS the restart, so it lives in its own file and is never removed
  * on exit (redeploy.ts; BUGS.md 2026-09-11). */

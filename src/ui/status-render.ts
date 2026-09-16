@@ -90,7 +90,11 @@ export function workingDetail(root: string, s: LoopState, live?: LiveProgress | 
  * show `paused`, checked before the budget gate because user intent is more specific than
  * spend state — while both hold, "paused" tells the operator what to do (`resume`).
  * `live`, when given, is the frame's precomputed tail (see workingDetail) — it skips the log
- * read; without it an in-flight tick reads on its own. */
+ * read; without it an in-flight tick reads on its own.
+ * `landing`, when given for this role, is the snapshot's in-flight landing record — the
+ * authoring role's tick already ended "queued" before its landing ran, so it is NOT running
+ * here and no phase can carry the label: the marker-driven record does, and renders
+ * `landing <elapsed>` (elapsed from the marker's startedAt) ahead of every other idle state. */
 export function loopPhase(
   s: LoopState,
   orchestratorRunning: boolean,
@@ -98,8 +102,13 @@ export function loopPhase(
   budgetPaused = false,
   live?: LiveProgress | null,
   userPaused = false,
+  landing?: { startedAt: number } | null,
 ): string {
   if (!orchestratorRunning) return "stopped";
+  // Merge queue 4/5 — the marker-driven landing label: only the role whose in-flight record
+  // was passed gets it (both call sites filter by role), and a stopped harness never shows
+  // it — a dead fleet's marker is stale by definition.
+  if (landing) return `landing ${duration(Date.now() - landing.startedAt)}`;
   if (s.running) {
     // The tick's work is committed and under adversarial review: the raw log tail now
     // describes the reviewer run — show its live progress with a "reviewing" label.
@@ -164,10 +173,13 @@ function stateCell(
   budgetPaused = false,
   live?: LiveProgress | null,
   userPaused = false,
+  landing?: { startedAt: number } | null,
 ): string {
-  const phase = loopPhase(s, orchestratorRunning, root, budgetPaused, live, userPaused);
+  const phase = loopPhase(s, orchestratorRunning, root, budgetPaused, live, userPaused, landing);
   // While under review the log tail's "current work" is the reviewer's own output, not the
-  // author's task — don't prepend it; the phase cell already carries the reviewer's live detail.
+  // author's task — don't prepend it; the phase cell already carries the reviewer's live
+  // detail. The landing label rides the same guard: the landing role is not running, so the
+  // bare phase ("landing <elapsed>") is returned without a work-item prefix.
   if (!s.running || s.phase === "review") return phase;
   const p = live === undefined ? readLiveProgress(root, s.role) : live;
   const work = p?.currentWork;
@@ -241,6 +253,15 @@ export function budgetBadge(budget: StatusSnapshot["budget"]): string {
   return ` · budget: ${usd(budget.spentUsd)} today · no cap`;
 }
 
+/** The header's land-queue fragment (plans/merge-queue.md 4/5): `· land queue: N` while any
+ * landing is queued or in flight, empty when the queue is idle — so an idle fleet keeps
+ * every existing header byte intact. One home for the rule, like buildBadge and budgetBadge:
+ * renderStatus renders it in the TUI/status header and status-payload.ts ships its output
+ * preformatted, so the GUI page cannot drift from this string. */
+export function landingBadge(landQueue: { depth: number }): string {
+  return landQueue.depth > 0 ? ` · land queue: ${landQueue.depth}` : "";
+}
+
 /** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is
  * given, wide cells are clipped so no line exceeds it (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
@@ -254,7 +275,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // models are all free reads n/a — spend can never accumulate against a cap that cannot be
   // reached, so a dollar figure would mislead.
   lines.push(
-    `tumwater · ${name} · ${header}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
+    `tumwater · ${name} · ${header}${landingBadge(snap.landQueue)}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
       snap.questions ? ` · questions: ${snap.questions}` : ""
     }${budgetBadge(snap.budget)}`,
   );
@@ -281,7 +302,19 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // its width derives from row content, so the extra character widens it automatically.
   const rows = withMetrics.map(({ s, m, live }) => [
     s.custom ? `${s.role}*` : s.role,
-    stateCell(root, s, snap.running, budgetPausedNow, live, userPausedNow),
+    // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed>` (the
+    // marker-driven record, filtered to this role); every other role is untouched.
+    stateCell(
+      root,
+      s,
+      snap.running,
+      budgetPausedNow,
+      live,
+      userPausedNow,
+      snap.landQueue.inFlight && snap.landQueue.inFlight.role === s.role
+        ? { startedAt: snap.landQueue.inFlight.startedAt }
+        : null,
+    ),
     String(s.ticks),
     String(s.commits),
     compactTokens(m.generated),

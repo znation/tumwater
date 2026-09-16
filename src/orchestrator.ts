@@ -10,7 +10,12 @@ import {
   isEligible,
   workLanded,
 } from "./scheduling.js";
-import { budgetPaused, fleetDailyCost, isFleetPaused } from "./state.js";
+import {
+  budgetPaused,
+  fleetDailyCost,
+  isFleetPaused,
+  readLandingMarker,
+} from "./state.js";
 import { applyLandingOutcome, saveLoopState } from "./state.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
@@ -23,7 +28,15 @@ import { pruneOldFiles, removeQuiet } from "./files.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { inboxSize } from "./inbox.js";
 import { Semaphore } from "./semaphore.js";
-import { abortRequestPath, landingRefName, orchestratorStatePath, resetRequestPath, sessionsRootDir, STATE_DIR } from "./paths.js";
+import {
+  abortRequestPath,
+  landingRefName,
+  landingStatePath,
+  orchestratorStatePath,
+  resetRequestPath,
+  sessionsRootDir,
+  STATE_DIR,
+} from "./paths.js";
 import { errorMessage } from "./text.js";
 import type { Redeployer } from "./redeploy.js";
 
@@ -154,6 +167,17 @@ export async function landQueuedEntry(
   signal: AbortSignal,
 ): Promise<TickResult> {
   const startedAt = Date.now();
+  // Merge queue 4/5 — publish the in-flight marker the observers read (snapshot cross-checks
+  // it with a matching queue entry and the orchestrator's liveness): written before the
+  // landing runs, removed on EVERY outcome below (the catch-all turns even an unexpected
+  // throw into an outcome, so the removal always runs). A crash in between leaves a stale
+  // marker that the cross-check self-heals — no cleanup pass needed.
+  writeJsonFile(landingStatePath(root), {
+    role: entry.role,
+    sha: entry.sha,
+    summary: entry.summary,
+    startedAt,
+  });
   const usage = { tokens: 0, cost: 0 };
   let result: TickResult;
   try {
@@ -200,6 +224,10 @@ export async function landQueuedEntry(
     ...(usage.cost > 0 ? { costUsd: usage.cost } : {}),
   });
   dropLanding(root, file);
+  // The outcome is fully applied (state saved, event logged, entry dropped): clear the 4/5
+  // marker. Between the drop and this removal a poll may briefly see depth 0 with no
+  // inFlight — the landing is done, so nothing is misdisplayed.
+  removeQuiet(landingStatePath(root));
   return result;
 }
 
@@ -469,6 +497,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         if (head) {
           if (await isMergedInto(root, head.entry.sha, mainBranch)) {
             dropLanding(root, head.file);
+            // A crash between the 4/5 marker write and its removal can leave a marker with
+            // no live landing — this branch runs only when the slot is free, so a marker
+            // naming this entry is stale; clear it so the idle fleet reads clean. (Any
+            // marker naming another entry cannot exist: that entry's landing would own the
+            // slot, and this one is the queue head.)
+            const marker = readLandingMarker(root);
+            if (marker && marker.sha === head.entry.sha) removeQuiet(landingStatePath(root));
           } else {
             // Resolve the authoring runner when it exists (runners are never removed from the
             // array on disable — only a warning event fires); a role disabled before this

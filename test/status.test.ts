@@ -7,8 +7,11 @@ import { dequeuePrompt, submitPrompt } from "../src/inbox.js";
 import { allRoleIds } from "../src/roles.js";
 import { snapshot } from "../src/ui/status.js";
 import { loopPhase, renderStatus } from "../src/ui/status-render.js";
+import { enqueueLanding } from "../src/land-queue.js";
 import { freshLoopState, recordDailyCost, saveLoopState } from "../src/state.js";
 import { initProject } from "../src/init.js";
+import { landingStatePath, landQueueDir } from "../src/paths.js";
+import { writeJsonFile } from "../src/json-files.js";
 import { makeRepo, tmpdir } from "./util.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
@@ -257,4 +260,81 @@ test("loopPhase describes each loop state", () => {
   assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
   const d = freshLoopState("director");
   assert.equal(loopPhase(d, true), "waiting for prompts");
+});
+
+// Merge queue 4/5 — the snapshot's landQueue: depth from the queue files, and inFlight only
+// when the 4/5 marker, a matching queue entry, and a live orchestrator all agree. The
+// cross-check is the crash-safety pin: a stale marker alone (any crash ordering) never
+// displays, and neither does a dead harness — no cleanup pass needed.
+test("snapshot reports the land queue depth and the in-flight landing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "land queue snapshot");
+
+  // Idle: depth 0, no inFlight (the field is unconditional, so JSON consumers see one shape).
+  let snap = snapshot(repo);
+  assert.equal(snap.landQueue.depth, 0);
+  assert.equal(snap.landQueue.inFlight, undefined);
+
+  // One queued entry (3/5's enqueue) lifts the depth — but a merely queued landing is not
+  // in flight, and the queue file alone never names an in-flight record.
+  enqueueLanding(repo, {
+    role: "clean",
+    sha: "abc1234",
+    tick: 1,
+    summary: "tidy something",
+    enqueuedAt: Date.now(),
+  });
+  snap = snapshot(repo);
+  assert.equal(snap.landQueue.depth, 1);
+  assert.equal(snap.landQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
+
+  // The 4/5 marker plus a live orchestrator plus the matching entry → in flight, with the
+  // marker's identity (the dashboard's `landing <elapsed>` label reads startedAt from it).
+  const startedAt = Date.now();
+  const infoFile = path.join(repo, ".tumwater", "state", "orchestrator.json");
+  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
+  fs.writeFileSync(
+    infoFile,
+    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }),
+  );
+  writeJsonFile(landingStatePath(repo), {
+    role: "clean",
+    sha: "abc1234",
+    summary: "tidy something",
+    startedAt,
+  });
+  snap = snapshot(repo);
+  assert.equal(snap.running, true);
+  assert.deepEqual(snap.landQueue.inFlight, { role: "clean", sha: "abc1234", summary: "tidy something", startedAt });
+
+  // Crash orderings self-heal: a DEAD harness never displays in flight (the depth — queued
+  // work that will drain on the next start — stays visible)…
+  fs.rmSync(infoFile);
+  snap = snapshot(repo);
+  assert.equal(snap.running, false);
+  assert.equal(snap.landQueue.depth, 1, "queued work is visible even while the fleet is down");
+  assert.equal(snap.landQueue.inFlight, undefined, "a dead harness never shows a landing as in flight");
+
+  // …and a marker whose sha no longer has a matching queue entry (a crash between the entry
+  // drop and the marker removal) is stale — never displayed, even with a live orchestrator.
+  fs.writeFileSync(
+    infoFile,
+    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }),
+  );
+  writeJsonFile(landingStatePath(repo), {
+    role: "clean",
+    sha: "deadbee",
+    summary: "stale marker",
+    startedAt: Date.now(),
+  });
+  snap = snapshot(repo);
+  assert.equal(snap.running, true);
+  assert.equal(snap.landQueue.inFlight, undefined, "a marker with no matching queue entry never displays");
+
+  // The queue drains and the marker is removed (the drain's own bookkeeping): back to idle.
+  fs.rmSync(path.join(landQueueDir(repo), fs.readdirSync(landQueueDir(repo))[0]!));
+  fs.rmSync(landingStatePath(repo));
+  snap = snapshot(repo);
+  assert.equal(snap.landQueue.depth, 0);
+  assert.equal(snap.landQueue.inFlight, undefined);
 });

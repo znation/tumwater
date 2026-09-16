@@ -10,8 +10,9 @@ import { lanAddresses, startGui } from "../src/ui/gui.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
-import { eventsLogPath, orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
+import { eventsLogPath, landingStatePath, orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState, todayStamp } from "../src/state.js";
+import { enqueueLanding } from "../src/land-queue.js";
 import { assistantLine, makeRepo } from "./util.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
@@ -834,6 +835,43 @@ test("status payload carries the daily budget while enabled and null when disabl
   assert.equal(payload.budgetBadge, " · budget: $12.34 today · no cap", "disabled: standing badge with spend and no cap");
 });
 
+// Merge queue 4/5 — the payload's landQueue field: depth always present, inFlight only
+// while a landing is actually running (marker + matching entry + live orchestrator), and
+// the preformatted landingBadge the page renders in its header.
+test("status payload carries the land queue depth and the in-flight landing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui land queue test");
+  const payload = statusPayload(repo) as {
+    landQueue: { depth: number; inFlight?: { role: string; sha: string; summary: string; startedAt: number } };
+    landingBadge: string;
+    loops: Array<{ role: string; phase: string }>;
+  };
+  // Idle: depth 0 (the field is never null/absent — one stable shape for JSON consumers)
+  // and the preformatted badge is empty, so the page appends nothing.
+  assert.equal(payload.landQueue.depth, 0);
+  assert.equal(payload.landingBadge, "");
+
+  // One queued entry lifts the depth — but a merely queued landing is not in flight.
+  enqueueLanding(repo, { role: "clean", sha: "abc1234", tick: 1, summary: "tidy something", enqueuedAt: Date.now() });
+  let p = statusPayload(repo) as typeof payload;
+  assert.equal(p.landQueue.depth, 1);
+  assert.equal(p.landingBadge, " · land queue: 1");
+  assert.equal(p.landQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
+
+  // A live orchestrator plus the 4/5 marker with a matching entry → in flight, and the
+  // landing role's row phase reads `landing <elapsed>` while every other row is untouched.
+  const infoFile = orchestratorStatePath(repo);
+  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
+  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }));
+  const startedAt = Date.now();
+  fs.writeFileSync(landingStatePath(repo), JSON.stringify({ role: "clean", sha: "abc1234", summary: "tidy something", startedAt }));
+  p = statusPayload(repo) as typeof payload;
+  assert.equal(p.landQueue.inFlight?.role, "clean");
+  assert.equal(p.landQueue.inFlight?.sha, "abc1234");
+  assert.match(p.loops.find((l) => l.role === "clean")!.phase, /^landing \d+s$/, "the landing role's phase is marker-driven");
+  assert.equal(p.loops.find((l) => l.role === "bugfix")!.phase, "queued", "other roles keep their normal phase");
+});
+
 // Regression (review of the editable-budget feature): the payload's budget object is now
 // unconditional, so a DISABLED cap must not read as reached — with a running orchestrator,
 // spend ≥ 0 = cap would otherwise export every idle role loop as `budget paused`.
@@ -876,6 +914,24 @@ test("the dashboard page renders the preformatted budget badge from the payload"
   // with a single home, no client-side money formatting left to drift from the TUI header.
   assert.match(GUI_PAGE, /\(d\.budgetBadge \|\| ""\)/);
   assert.doesNotMatch(GUI_PAGE, /fmtUsdCap/, "the old client-side cap mirror is gone");
+});
+
+// Merge queue 4/5 — the GUI header renders the preformatted land-queue badge in the same
+// order as renderStatus's header (after the running/pid+build part, before the inbox
+// badge) — the buildBadge pattern: plain text inside the #header span, NOT the interactive
+// #budgetwrap fragment, which owns the click-to-edit budget editor.
+test("the dashboard page renders the preformatted land-queue badge from the payload", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  assert.match(GUI_PAGE, /\(d\.landingBadge \|\| ""\)/);
+  // The badge joins the #header textContent (before the inbox badge), never the budgetwrap
+  // fragment: landingBadge has no affordance to edit, and budgetwrap's innerHTML would
+  // clobber it.
+  const headerLine = GUI_PAGE.match(/document\.getElementById\("header"\)\.textContent =\n?\s*\(d\.running[\s\S]*?qn : ""\);/);
+  assert.ok(headerLine, "the #header textContent assignment exists");
+  assert.ok(
+    (headerLine[0] ?? "").indexOf("d.landingBadge") < (headerLine[0] ?? "").indexOf("d.inbox"),
+    "the landing badge precedes the inbox badge, mirroring renderStatus's header order",
+  );
 });
 
 // Free-state regression (BUGS.md, 2026-09-14): an all-free fleet's badge must be plain,

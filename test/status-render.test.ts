@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress.js";
-import { budgetBadge, buildBadge, clipToWidth, lastTickCell, loopPhase, renderStatus, workingDetail } from "../src/ui/status-render.js";
+import { budgetBadge, buildBadge, clipToWidth, lastTickCell, landingBadge, loopPhase, renderStatus, workingDetail } from "../src/ui/status-render.js";
 import type { StatusSnapshot } from "../src/ui/status.js";
 import { fleetDailyCost, freshLoopState, todayStamp } from "../src/state.js";
 import { piLogPath } from "../src/paths.js";
@@ -40,6 +40,9 @@ function snapshotWith(
     budget,
     paused,
     build: null,
+    // The fixture's queue is idle: depth 0 keeps every existing header line byte-identical
+    // (the 4/5 badge is empty at depth 0) and renders no in-flight label.
+    landQueue: { depth: 0 },
   };
 }
 
@@ -893,4 +896,63 @@ test("budgetBadge renders the standing daily-cost rule in every cap state", () =
   assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, free: false }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
   assert.equal(budgetBadge({ spentUsd: 7.5, capUsd: 0, free: false }), " · budget: $7.50 today · no cap", "disabled: spend shown, gate off");
   assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, free: true }), " · budget: n/a", "free outranks disabled too");
+});
+
+// Merge queue 4/5 — the land queue's one payload field, three renderers: the header badge,
+// the marker-driven row label, and the payload's preformatted field.
+test("landingBadge shows the land queue depth and stays empty when idle", () => {
+  // Empty at depth 0 keeps every existing header byte identical; the count while anything
+  // is queued or landing (in-flight landings always count toward depth — their entry stays
+  // in the queue until its outcome).
+  assert.equal(landingBadge({ depth: 0 }), "", "idle queue adds nothing to the header");
+  assert.equal(landingBadge({ depth: 1 }), " · land queue: 1");
+  assert.equal(landingBadge({ depth: 3 }), " · land queue: 3");
+});
+
+test("loopPhase renders the marker-driven landing label when the record is passed", () => {
+  const s = freshLoopState("clean");
+  s.nextRunAt = Date.now() + 90_000; // would read "sleeping (for 2m)" without the record
+  const startedAt = Date.now() - 90_000; // 90s of landing → "1m30s"
+  // The record renders `landing <elapsed>` ahead of every idle state…
+  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { startedAt }), "landing 1m30s");
+  // …and it is the caller's job to pass it only for the landing role: without it the loop
+  // keeps its ordinary state (the "other roles" case — the record is filtered upstream).
+  assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
+  // A stopped harness never shows it — a dead fleet's marker is stale by definition.
+  assert.equal(loopPhase(s, false, undefined, false, undefined, false, { startedAt }), "stopped");
+});
+
+test("renderStatus shows the land-queue badge in the header and the label in the landing role's row", () => {
+  const root = tmpdir();
+  // Idle queue: the header carries no badge (every existing byte stays intact)…
+  const idle = renderStatus(root, {
+    ...snapshotWith([{ role: "clean" }]),
+    running: true,
+    pid: 4242,
+  });
+  assert.doesNotMatch(idle, /land queue/);
+  assert.match(idle, /^clean +queued/m, "an idle loop keeps its ordinary state cell");
+
+  // Two queued landings: the header badge appears…
+  const queued = {
+    ...snapshotWith([{ role: "clean" }, { role: "bugfix" }]),
+    running: true,
+    pid: 4242,
+    landQueue: { depth: 2 } as StatusSnapshot["landQueue"],
+  };
+  const text = renderStatus(root, queued);
+  assert.match(text.split("\n")[0]!, /running \(pid 4242\) · land queue: 2/, "badge after the running part, before the budget badge");
+  assert.match(text, /clean +queued/, "a merely queued role shows its normal state");
+
+  // …and the role whose in-flight record is attached reads `landing <elapsed>` in its row —
+  // bare (no work-item prefix: the loop is not running, so stateCell returns the phase),
+  // while the other row is untouched.
+  const startedAt = Date.now() - 90_000;
+  const landing = {
+    ...queued,
+    landQueue: { depth: 2, inFlight: { role: "clean", sha: "abc123", summary: "tidy", startedAt } } as StatusSnapshot["landQueue"],
+  };
+  const text2 = renderStatus(root, landing);
+  assert.match(text2, /clean +landing 1m30s/, "the landing role reads the marker's elapsed");
+  assert.match(text2, /bugfix +queued/, "other roles are untouched");
 });

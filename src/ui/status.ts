@@ -1,5 +1,6 @@
 import type { LoopState, TumwaterConfig } from "../types.js";
 import type { BuildStatus } from "../build-info.js";
+import type { LandingInFlight } from "../state.js";
 import { openQuestions } from "../backlog.js";
 import { defaultConfig, enabledRoleIds, isCustomRole, loadConfigCached } from "../config.js";
 import { fleetModelsFree, piModelsPath } from "../pi-models.js";
@@ -12,8 +13,10 @@ import {
   isFleetPaused,
   loadLoopState,
   orchestratorAlive,
+  readLandingMarker,
   readOrchestratorInfo,
 } from "../state.js";
+import { queuedLandings } from "../land-queue.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts. */
@@ -52,6 +55,15 @@ export interface StatusSnapshot {
    * dist carries no stamp. Both dashboards render it in the header — a stale build is the one
    * fact about the fleet that nothing inside the fleet can otherwise see. */
   build: BuildStatus | null;
+  /** The durable land queue (plans/merge-queue.md 4/5), unconditionally (depth 0 when
+   * empty) so `status --json` consumers see one stable shape: the number of committed-but-
+   * unlanded changes awaiting the single landing slot, and — only while a landing is
+   * actually running — which one. `inFlight` requires three things to agree: the 4/5 marker
+   * exists, a queue entry with its sha still exists (entries are dropped only AFTER an
+   * outcome — 3/5 — so in-flight always implies depth ≥ 1), and the orchestrator is alive.
+   * The cross-check makes every crash ordering self-healing: a stale marker without a
+   * matching entry never displays. */
+  landQueue: { depth: number; inFlight?: LandingInFlight };
 }
 
 // The last config each root loaded successfully. snapshot is polled every second by the
@@ -113,6 +125,16 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
   // mid-snapshot can never make the header badge disagree with its numbered previews.
   const inboxPrompts = queuedPrompts(root).map(promptPreview);
   const running = orchestratorAlive(root, info);
+  // One land-queue pass per poll (land-queue.ts's stat cache keeps an unchanged queue at one
+  // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator
+  // still has a queue entry with the marker's sha — the cross-check makes every crash
+  // ordering self-healing (a stale marker alone never displays, and needs no cleanup pass).
+  const landings = queuedLandings(root);
+  const landingMarker = readLandingMarker(root);
+  const landQueue: StatusSnapshot["landQueue"] = { depth: landings.length };
+  if (running && landingMarker && landings.some((e) => e.sha === landingMarker.sha)) {
+    landQueue.inFlight = landingMarker;
+  }
   return {
     running,
     pid: info?.pid,
@@ -130,5 +152,6 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
       free: fleetModelsFree(cfg, modelsPath),
     },
     paused: isFleetPaused(root),
+    landQueue,
   };
 }
