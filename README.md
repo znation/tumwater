@@ -49,20 +49,24 @@ steward (~6 h clock) — plus the director are enabled by default; user-defined 
 from `customLoops` in tumwater.json or by prompting the director, and act as full-citizen loops
 marked `*` on both dashboards. While main's build/test suite is red, code-producing roles skip
 their authoring run and show a `main red` state in both dashboards until main is green again
-(director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix).
+(director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix); three
+consecutive error ticks on one loop raise one `warning` and that loop reads `failing` in both
+dashboards until a healthy tick. Queued landings show as `· land queue: N` in the status
+header and both dashboard headers, and the landing role's row reads `landing <elapsed>`.
 
 Open items:
-- Planned: harness-level merge queue — sub-plans 4/5–5/5 tracked in PLANS.md (3/5 landed
-  2026-09-14); next is surfacing the land queue across both dashboards.
-- Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13).
+- Planned: harness-level merge queue — 5/5 (coalesce the build check across queued landings)
+  is the remaining sub-plan, refined 2026-09-15; 4/5 (land-queue surfacing) landed 2026-09-15.
+- Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13,
+  refined 2026-09-15).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
-- Open bugs: three, all recorded 2026-09-15 from the git-outage incident (BUGS.md): repeated
-  tick failures raise no alarm, a broken toolchain latches a "main is red" verdict, and no
-  operator lever wakes a backed-off fleet.
+- Open bugs: two, both recorded 2026-09-15 (BUGS.md): no operator lever wakes a backed-off
+  fleet, and a rejected `mainGreen` latches a false "main is red" when the redeploy's own git
+  call fails.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`9d55e99`): build clean, suite 992/992.
+Current main (`9e946eb`): build clean, suite 1008/1008.
 <!-- tumwater:status:end -->
 
 ## How it works
