@@ -13,7 +13,9 @@ import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { validateConfig } from "../src/config-validation.js";
 import { readEvents } from "../src/events.js";
-import { sessionDir, worktreePath } from "../src/paths.js";
+import { refSha } from "../src/git.js";
+import { queueDepth } from "../src/land-queue.js";
+import { landingRefName, sessionDir, worktreePath } from "../src/paths.js";
 import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
@@ -1090,5 +1092,83 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
     assert.ok(warnings.some((w) => /pi crashed on malformed JSON .*Unterminated string.* — resuming the session once/.test(w)), JSON.stringify(warnings));
   } finally {
     restore();
+  }
+});
+
+// A failed pin write is the tick's fail-closed branch: the commit STAYS on the branch for
+// next-tick recovery — resetting the worktree here would orphan it. Blocking the ref: git
+// happily removes an EMPTY directory at a ref's path before creating the file, but not a
+// non-empty one — the stray blocker file makes `git update-ref` fail, like an un-writable
+// .git would. Tick 2's leftover recovery then adopts the unpinned tip
+// into the pin scheme and re-lands it through the same review gate — invariant 1 must hold
+// whether or not the pin survived (plans/merge-queue.md).
+test("a failed pin leaves the commit on the branch; the next tick recovers and lands it", async () => {
+  const repo = await initializedRepo();
+  // Tick 1: one authoring run that makes a change. The tick ends at commit + pin, so the
+  // VERDICT branch below only guards against the review prompt ever reaching this script.
+  const restore1 = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  const blockedRef = path.join(repo, ".git", "refs", "tumwater", "landing", "improve");
+  fs.mkdirSync(blockedRef, { recursive: true });
+  fs.writeFileSync(path.join(blockedRef, "blocker"), "keep the directory non-empty\n");
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.equal(outcome.summary, "failed to pin the landing ref; left for next-tick recovery");
+    assert.equal(runner.state.lastError, "failed to pin the landing ref; left for next-tick recovery");
+    assert.ok(runner.state.backoffSeconds > 0, "the error tick backs off on the error ladder");
+
+    // The commit stays on the branch ahead of main — the worktree was NOT reset.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve").trim(), "1");
+    assert.equal(fs.existsSync(path.join(repo, "hello.txt")), false, "nothing reached main");
+
+    // Nothing was enqueued, and the ref was never pinned.
+    assert.equal(queueDepth(repo), 0);
+    assert.equal(await refSha(repo, landingRefName("improve")), null);
+
+    // The failure is observable as a warning naming the recovery plan.
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.some((w) =>
+        /failed to pin \S+ by its landing ref — leaving the commit on the branch for next-tick recovery/.test(w),
+      ),
+      JSON.stringify(warnings),
+    );
+  } finally {
+    restore1();
+    fs.rmSync(blockedRef, { recursive: true, force: true });
+  }
+
+  // Unblock done (finally); tick 2's authoring run finds nothing to do, but the leftover
+  // recovery re-lands the unpinned commit first — through the same gate, with the approve.
+  const restore2 = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change", "the authoring run did nothing; the recovery did the work");
+    assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the recovered commit landed on main");
+    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve").trim(), "0", "the branch is back at main");
+    assert.equal(await refSha(repo, landingRefName("improve")), null, "the landed pin is deleted");
+    assert.equal(queueDepth(repo), 0);
+    // Like the pinned-recovery case, the landing is recorded as a merged event (what the
+    // usage report counts) rather than via the tick outcome — tick 2's own authoring run
+    // found nothing to do.
+    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    assert.equal(merged.length, 1);
+    assert.match(String(merged[0]!.summary), /recovered leftover work from improve/);
+  } finally {
+    restore2();
   }
 });
