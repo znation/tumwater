@@ -739,6 +739,42 @@ test("loopPhase shows main red for idle loops whose last tick was blocked by a r
   assert.equal(loopPhase(s, false), "stopped");
 });
 
+test("loopPhase shows failing for idle loops stuck on an error streak, not sleeping", () => {
+  // BUGS.md 2026-09-15: a fleet whose every loop is failing must read as failing, not as
+  // an ordinary quiet/sleeping fleet.
+  const s = freshLoopState("feature");
+  s.lastResult = "error";
+  s.consecutiveErrors = 3;
+  s.nextRunAt = Date.now() + 1_800_000;
+  assert.equal(loopPhase(s, true), "failing", "the streak at the threshold outranks sleep");
+
+  // Below the threshold the loop keeps its ordinary label — a few failed ticks are
+  // retryable transients, not a health state.
+  const shallow = freshLoopState("feature");
+  shallow.lastResult = "error";
+  shallow.consecutiveErrors = 2;
+  shallow.nextRunAt = Date.now() + 1_800_000;
+  assert.match(loopPhase(shallow, true), /^sleeping/);
+
+  // A deeper streak stays failing, even queued.
+  const deep = freshLoopState("feature");
+  deep.lastResult = "error";
+  deep.consecutiveErrors = 4;
+  assert.equal(loopPhase(deep, true), "failing");
+
+  // In-flight ticks are untouched (the label describes the finished tick only).
+  const running = freshLoopState("feature");
+  running.running = true;
+  running.lastResult = "error";
+  running.consecutiveErrors = 3;
+  assert.equal(loopPhase(running, true), "working");
+
+  // The table's state cell carries the label through to status output.
+  const snap = snapshotWith([{ role: "feature", lastResult: "error", consecutiveErrors: 3 }]);
+  const out = renderStatus(tmpdir(), { ...snap, running: true });
+  assert.match(out, /feature\s+failing/);
+});
+
 test("renderStatus shows the main-red blockage in a blocked loop's state cell and last-result line", () => {
   const snap = snapshotWith([
     { role: "feature", lastResult: "main_red", lastSummary: "code merges blocked until main is green" },

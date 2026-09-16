@@ -314,6 +314,36 @@ test("a failing pi run records an error and backs off", async () => {
   }
 });
 
+test("consecutive error ticks raise one warning per episode, not one per tick", async () => {
+  // BUGS.md 2026-09-15: 44 identical error ticks across every loop raised no alarm. The
+  // streak crossing fires exactly one warning per episode — the fourth failure deepens the
+  // episode without re-warniing, and a healthy tick re-arms it for the next episode.
+  const repo = await initializedRepo();
+  const restore = fakePi(`echo 'git is broken' >&2\nexit 1`);
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const warnings = () => readEvents(repo).filter((e) => e.type === "warning");
+    assert.equal((await runner.tick()).result, "error");
+    assert.equal((await runner.tick()).result, "error");
+    assert.equal(warnings().length, 0, "below the threshold there is no alarm");
+    assert.equal((await runner.tick()).result, "error");
+    assert.equal(runner.state.consecutiveErrors, 3);
+    const [w] = warnings();
+    assert.ok(w, "the third consecutive failure crosses the threshold once");
+    assert.match(String(w.message), /3 consecutive tick failures: git is broken/);
+    // A fourth failure deepens the episode without a second alarm.
+    assert.equal((await runner.tick()).result, "error");
+    assert.equal(runner.state.consecutiveErrors, 4);
+    assert.equal(warnings().length, 1);
+    // The persisted state carries the streak, so a restarted observer reads "failing" too.
+    const saved = loadLoopState(repo, "clean");
+    assert.equal(saved.lastResult, "error");
+    assert.equal(saved.consecutiveErrors, 4);
+  } finally {
+    restore();
+  }
+});
+
 // tick() promises to never throw: runTick's own error paths RETURN an "error" outcome, but
 // any unexpected exception (a bug in a new code path, a failed git call, …) must be caught
 // by tick()'s defensive branch and degrade the same way. Without it the rejection would

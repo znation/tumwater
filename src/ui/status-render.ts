@@ -2,7 +2,7 @@ import path from "node:path";
 import { DIRECTOR_ROLE } from "../roles.js";
 import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
-import { dailyCost, fleetDailyCost, budgetReached } from "../state.js";
+import { ERROR_STREAK_WARN, dailyCost, fleetDailyCost, budgetReached } from "../state.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd } from "../text.js";
 
@@ -82,7 +82,7 @@ export function workingDetail(root: string, s: LoopState, live?: LiveProgress | 
 }
 
 /** Human label of where a loop is in its cycle (stopped / working / waiting for prompts /
- * sleeping / queued). Pass `root` so an in-flight tick expands into live detail
+ * paused / budget paused / main red / failing / sleeping / queued). Pass `root` so an in-flight tick expands into live detail
  * (elapsed · turn · ctx · tool); without it a working loop shows plain "working".
  * `budgetPaused` marks the fleet's daily cost budget as reached: idle role loops show
  * `budget paused` instead of their sleep/queue state — that is why they are not ticking.
@@ -128,6 +128,12 @@ export function loopPhase(
   // because it explains why the loop keeps waking and landing nothing; self-correcting, since
   // each blocked tick re-records main_red while red and a green wake overwrites lastResult.
   if (s.lastResult === "main_red") return "main red";
+  // An error streak at or past the warning threshold (state.ts's ERROR_STREAK_WARN): the
+  // loop is retrying the same failure on the error ladder, and the operator must see
+  // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). Self-clearing:
+  // the first non-error tick resets the streak, and each retry re-records "error" while the
+  // environment stays broken.
+  if (s.lastResult === "error" && (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN) return "failing";
   if (s.nextRunAt > Date.now()) {
     // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
     // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder

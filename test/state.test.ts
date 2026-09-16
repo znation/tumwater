@@ -468,6 +468,20 @@ test("applyTickOutcome: consecutive error ticks climb a short ladder capped in m
   assert.equal(s.lastSummary, "git is broken", "the failure is observable in state");
 });
 
+test("applyTickOutcome: the error streak counts consecutive failures and resets on any other result", () => {
+  const cfg = testConfig();
+  const s = freshLoopState("clean");
+  applyTickOutcome(s, cfg, "clean", { result: "no_change" });
+  assert.equal(s.consecutiveErrors, 0, "a healthy tick leaves the streak at zero");
+  applyTickOutcome(s, cfg, "clean", { result: "error", summary: "git is broken" });
+  applyTickOutcome(s, cfg, "clean", { result: "error", summary: "git is broken" });
+  assert.equal(s.consecutiveErrors, 2, "two consecutive failures");
+  applyTickOutcome(s, cfg, "clean", { result: "no_change" });
+  assert.equal(s.consecutiveErrors, 0, "one healthy tick breaks the episode");
+  applyTickOutcome(s, cfg, "clean", { result: "error" });
+  assert.equal(s.consecutiveErrors, 1, "the next episode re-arms from scratch");
+});
+
 test("applyTickOutcome: no_change laddering is unchanged by the error ladder", () => {
   const cfg = testConfig();
   const s = freshLoopState("feature");

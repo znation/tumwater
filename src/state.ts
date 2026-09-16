@@ -133,6 +133,12 @@ export function nextBackoffSeconds(current: number, ladder: BackoffConfig): numb
  * default, no knob: the cap is the point. */
 export const ERROR_BACKOFF: BackoffConfig = { initialSeconds: 30, factor: 2, maxSeconds: 600 };
 
+/** Consecutive failed ticks after which the loop raises a harness warning and its state
+ * cell reads "failing" (BUGS.md 2026-09-15: every loop failing identically looked like a
+ * quiet fleet). Small on purpose — at 3 the error ladder has already doubled twice and
+ * the failure is clearly not transient. */
+export const ERROR_STREAK_WARN = 3;
+
 /** Resumes granted to one context-ceiling cut-off streak before the loop stops resuming the
  * task and falls back to a fresh tick: a task that outruns the ceiling on every attempt (even
  * from a freshly compacted context) is too big to converge, and each cycle costs an hour-plus
@@ -157,6 +163,11 @@ export function applyTickOutcome(
   // resume limit too: the next fresh tick's prompt names how many attempts the window has eaten
   // (buildCutOffNote), so the count must not freeze at the limit. Any other outcome resets it.
   s.cutOffStreak = outcome.cutOff ? (s.cutOffStreak ?? 0) + 1 : 0;
+  // The error streak counts consecutive failed ticks; any other result resets it
+  // (BUGS.md 2026-09-15: 44 identical failures raised no alarm). loop.ts emits one
+  // warning when the streak crosses ERROR_STREAK_WARN — once per episode, since the
+  // reset re-arms it — and the dashboards read "failing" from the same field.
+  s.consecutiveErrors = outcome.result === "error" ? (s.consecutiveErrors ?? 0) + 1 : 0;
   // The review gate persists phase="review" around its run so a dashboard mid-review shows
   // "reviewing". A completed tick clears it so the label never lingers — except an aborted
   // one: there the interruption hit mid-review, and the next launch must recover (and

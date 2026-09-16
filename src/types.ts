@@ -181,6 +181,11 @@ export interface LoopState {
   /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
    * past the limit the loop abandons the runaway task and falls back to a fresh tick. */
   cutOffStreak?: number;
+  /** Consecutive ticks that ended in `error`. While at or past the warning threshold
+   * (state.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
+   * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
+   * identical tick failures looked like a quiet fleet). Reset by any non-error result. */
+  consecutiveErrors?: number;
   /** Where in its cycle the loop was when it last persisted state: "review" means the
    * interruption hit during the review gate, so any uncommitted worktree edits are the
    * reviewer's stray output (discarded on resume), not author work. Set + saved around the
