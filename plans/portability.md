@@ -84,10 +84,13 @@ two workflows.
 **Design (decided, with rationale).**
 - **An explicit `files` allowlist, not packlist's gitignore fallback.** `"files": ["dist/src",
   "dist/build-info.json", "README.md", "LICENSE"]` makes both halves explicit — what ships and
-  what does not — instead of depending on npm's undocumented treatment of a gitignored `dist/`.
-  `dist/test` is deliberately excluded: `dist/src/test-runner.js` resolves it at runtime and
-  already reports "run `npm run build` first" when absent, which is the right answer for an
-  installed package.
+  what does not — instead of depending on npm's undocumented treatment of a gitignored `dist/`
+  (measured 2026-09-16 against main: a root checkout's `npm pack --dry-run` ships 633 files /
+  2.8 MB — 384 untracked machine-local `.claude/` state files, 114 gitignored `dist/` files npm
+  packs anyway, and the 135 packed tracked files; the allowlist makes the tarball identical on
+  every machine). `dist/test` is deliberately excluded: `dist/src/test-runner.js` resolves it at
+  runtime and already reports "run `npm run build` first" when absent, which is the right answer
+  for an installed package.
 - **`prepack` builds.** The tarball's entire value is `dist/`, which is gitignored, so a publish
   from a clean checkout would ship a package whose `bin` points at a missing file.
   `"prepack": "npm run build"` covers `npm pack`, `npm publish`, and a git-URL install in one
@@ -115,18 +118,19 @@ two workflows.
   `cache: npm`, a `git config --global user.name/user.email` step (the suite's fixtures set their
   own identity today, but a runner with none must not be able to fail a future one), `npm ci`,
   `npm run build`, `npm test`. `concurrency` cancels superseded runs — the fleet pushes often.
-  The suite is 970 tests / ~53 s locally, so the matrix stays cheap.
+  The suite is 1019 tests, ~1 min locally, so the matrix stays cheap.
 - .github/workflows/release.yml (new) — `on: push: tags: ['v*']`;
   `permissions: { contents: write, id-token: write }`; checkout, setup-node with `registry-url`,
   `npm ci`, `npm test`, tag/version agreement check, `npm publish --provenance --access public`,
   then `gh release create` attaching `npm pack`'s tarball.
 - README.md — rewrite `## Usage`'s opening: `npm install -g tumwater` (or `npx tumwater`) as the
   primary install, `npm install && npm run build && npm link` as the from-source path. CI badge.
-- test/cli.test.ts — assert `tumwater version` prints package.json's version, pinning that the
-  compiled `bin` entry point runs from `dist/` alone.
+- No new CLI test: test/cli.test.ts's existing "version prints the package version" (line 59)
+  already execFiles the compiled `dist/src/cli.js` and asserts package.json's version — the
+  exact pin this sub-plan wanted for the installed tarball.
 
 **Files touched.** package.json, LICENSE (new), .github/workflows/ci.yml (new),
-.github/workflows/release.yml (new), README.md, test/cli.test.ts.
+.github/workflows/release.yml (new), README.md. No source or test changes.
 
 **Acceptance criteria.**
 - `npm pack --dry-run` lists only `dist/src/**`, `dist/build-info.json`, `README.md`, `LICENSE`,
@@ -139,6 +143,17 @@ two workflows.
   failures in a suite that has only ever run on macOS; fixing them is part of this entry.)
 - Pushing tag `v0.1.1` while `package.json` says `0.1.0` fails the release workflow before
   anything is published.
+
+**Refined 2026-09-16 (plan loop) — audited against main `00501fa` (build clean, suite 1019/1019 per the README's stamp at 10c8ae6; this series had no audit since `074e48f` wrote it on 2026-09-15, and no landing since then touches this sub-plan's anchors — the `--since=2026-09-13` log over package.json/tsconfig.json is empty, and the landings since are markdown, TUI-test, and orchestrator-only). Every load-bearing claim verified on this tree; two pins corrected in place (the redundant `version` test, the test count), and the tarball facts re-measured from a root checkout and a worktree.**
+
+Verified as written: package.json — `files`, `prepack`, `repository`, `homepage`, `bugs`, `keywords`, and `engines.os` are all absent (the Approach adds them), `bin` is still `dist/src/cli.js`, `engines.node` is still ">=20", `build` still opens with `rm -rf dist` (the `node -e` replacement target), and `license: "MIT"` is declared with no LICENSE file on disk — "a licence claim it cannot substantiate" holds. No `.github/` directory and no `.npmignore`, so the packlist behavior the allowlist replaces is today's default. `scripts/stamp-build.mjs` stamps through build-info.ts' `stampBuild(root, dist, sha?)` — `dist/build-info.json` with the checkout's HEAD and `path.resolve(root)`, and no resolvable HEAD → no stamp at all — so the "build stamping already degrades correctly" bullet holds for a CI checkout. `isSelfHosted` (src/build-info.ts line 67) is false when the stamp's `root` differs from the run root or the sha is not in the repo's history — the "never redeploy a user's project" contract holds. `dist/src/test-runner.js` (src/test-runner.ts lines 39/46) reports "run `npm run build` first" when `dist/test` is absent — the dist/test exclusion rationale holds. The suite's fixtures set their own git identity (test/util.ts lines 25-26) — the runner-identity step's rationale holds. package-lock.json is tracked, so CI's `npm ci` and setup-node's `cache: npm` both work. `version`/`--version`/`-v` exists (src/cli.ts line 492) and reads `../../package.json` — present in every tarball, so an installed copy reports its version. README's `## Usage` (line 185) still opens with `npm install && npm run build` — the rewrite anchor holds.
+
+Corrections (pinned in place):
+1. **The `version` test already exists.** test/cli.test.ts line 59 ("version prints the package version") execFiles the compiled `dist/src/cli.js` and asserts package.json's version — the exact pin the old Approach bullet asked to add, already in the suite. The bullet is replaced with a pointer, test/cli.test.ts leaves Files touched, and "No source or test changes" is true; an implementer following the old text would have shipped a duplicate test.
+2. **Test count 970 → 1019** (the ci.yml bullet) — the suite has grown since the series was written; the "matrix stays cheap" conclusion is unchanged.
+3. **Tarball facts re-measured** (`npm pack --dry-run`, 2026-09-16): the PLANS.md entry's "230 files / 1.1 MB" is stale in both numbers, and the quirk is worse than "dist by a packlist quirk" — a root checkout packs 633 files / 2.8 MB: 384 untracked machine-local `.claude/` state files, 114 gitignored `dist/` files npm packs anyway, and the 135 packed tracked files (137 tracked, minus `.gitignore` and `package-lock.json`, which npm drops from the pack); a worktree checkout (no `dist/` on disk) packs those 135 / 866 kB. Without the allowlist, a publish from this machine ships `.claude/` — the Design bullet is strengthened with the measured numbers and the PLANS.md bullet corrected to match.
+
+Sizing unchanged: one package.json edit block, a LICENSE, two workflow files, one README rewrite, no source or test changes. One run. No design question remains open.
 
 ---
 

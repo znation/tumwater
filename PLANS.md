@@ -198,13 +198,13 @@ Drift (corrected in place):
 
 Sizing unchanged: self-reload.ts ~100 lines; tui.ts ~10; gui.ts ~5; gui-page.ts ~8; tests as scoped plus one string-level pin. No design question remains open.
 
-### Portability & packaging — run tumwater anywhere, against anything (planned 2026-09-14, requested by user)
+### Portability & packaging — run tumwater anywhere, against anything (planned 2026-09-14, requested by user, refined 2026-09-16)
 
 **Full plan: plans/portability.md** — seven independently landable sub-plans, each with its own goal, design rationale, approach, files touched, and acceptance criteria; the shared problem statement, invariants, and sequencing live at the top of that document. Kept there rather than inline because the series spans packaging, config, git, prompts, and init, and the detail would crowd out every other entry here.
 
 **Why.** tumwater has only ever run as a checkout of its own repo, on one machine, against a branch named `main`, driving one local MLX server and one 27B model, verified by `npm test`. Each of those is baked in somewhere, and the goal is to run an installed copy against other people's repositories.
 
-1. **1/7 — CI and a publishable npm package.** `.github/workflows/{ci,release}.yml`, a `files` allowlist (the tarball ships 230 files / 1.1 MB today, and `dist/` reaches it only by an npm packlist quirk), `prepack`, LICENSE. No behavior change; lands first so the rest run under CI.
+1. **1/7 — CI and a publishable npm package.** `.github/workflows/{ci,release}.yml`, a `files` allowlist (today a root checkout packs 633 files / 2.8 MB — 384 of them machine-local `.claude/` state and 114 gitignored `dist/` files npm ships anyway; 1/7 audited against main 2026-09-16), `prepack`, LICENSE. No behavior change; lands first so the rest run under CI.
 2. **2/7 — Repo root and any branch.** Resolve the root from `git rev-parse --show-toplevel` instead of `process.cwd()`; `--branch` / `baseBranch` override with the checked-out branch as the default. The branch is already a parameter at every call site, so this is small.
 3. **3/7 — Harness-mediated config writes.** Move `customLoops` off the commit → review → merge path onto a request file the director leaves in its own worktree, so custom loops need neither a tracked config, nor the tumwater repo, nor the review gate. Supersedes three bullets and invariant 4 of plans/user-defined-loops.md.
 4. **4/7 — Untrack the config; ship a template.** `tumwater.json` gitignored per machine, `tumwater.example.json` tracked as the project's shareable baseline; README's rig-specific backend section becomes a generic `docs/backends.md`. Depends on 3/7.
