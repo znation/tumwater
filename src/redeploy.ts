@@ -34,7 +34,10 @@ const execFileAsync = promisify(execFile);
  * sustained main churn cannot halt the fleet for a drain over and over.
  *
  * Nothing here is fail-open: a red main, a failed compile, or a swap error blocks the restart for
- * that head and the fleet keeps running the old build until main moves again. A block says so
+ * that head and the fleet keeps running the old build until main moves again. A green check that
+ * REJECTS is the one non-verdict — it could not run, so it says nothing about the tree: the
+ * pending head is dropped, one warning is logged per episode, and the next poll re-runs the
+ * check (BUGS.md 2026-09-16). A block says so
  * out loud — one warning event, and the reason in BuildStatus.restartBlocked, which the
  * dashboards and doctor render — because a stale build that is about to be replaced and one
  * that never will be look identical otherwise (BUGS.md, 2026-09-08). Every tick a restart
@@ -167,6 +170,9 @@ export class Redeployer {
   /** The head whose cooldown deferral was already warned about — one warning per episode, not
    * one per poll. */
   private cooldownWarnedHead: string | null = null;
+  /** The head whose green check already warned that it could not run (a rejection, not a red
+   * verdict) — one warning per episode, matching cooldownWarnedHead. */
+  private checkFailedHead: string | null = null;
   /** The live autoRestart flag as last seen by poll — status() publishes the cooldown reason only
    * while it is on (off means no restart will ever be attempted, so a deadline would mislead). */
   private autoRestartOn = true;
@@ -277,6 +283,23 @@ export class Redeployer {
       return "hold";
     }
     if (!this.green?.done) return "hold";
+    // A REJECTED check is not a verdict: it could not run (git broke inside the mirror worktree,
+    // or the check itself threw), so it says nothing about the tree. Drop the pending head — no
+    // blockedHead, no latched "main is red" — warn once per episode, and let the next poll
+    // re-run the check on the same head; a fleet whose toolchain recovers redeploys itself
+    // without main ever moving (BUGS.md 2026-09-16). A red VERDICT below still blocks.
+    if (this.green.error) {
+      if (this.checkFailedHead !== mainHead) {
+        this.checkFailedHead = mainHead;
+        this.log({
+          loop: "harness",
+          type: "warning",
+          message: `green check of ${shortSha(mainHead)} could not run: ${this.green.error} — retrying on the next poll`,
+        });
+      }
+      this.clearPending();
+      return this.endDrain();
+    }
     if (this.green.result !== true) {
       const reason = `main ${shortSha(mainHead)} is red`;
       this.block(mainHead, reason, `${reason} — holding the restart until main is green`);

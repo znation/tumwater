@@ -318,23 +318,60 @@ test("a swap failure is reported and blocks like a compile failure", async () =>
 });
 
 // The tracked background promises are documented to never reject (mainIsGreen and compileStaged
-// both catch internally), but a regression that lets one through must strand the fleet on stale
-// code with a visible block — not crash the poll or hold forever. These drive track()'s rejection
-// handler, which the resolved-failure tests above cannot reach.
+// both catch internally), but a regression can still let one through, and the two tracked checks
+// are treated differently: a REJECTED green check is a "could not run", not a red verdict — drop
+// the pending head, warn once, retry on the next poll (BUGS.md 2026-09-16); a rejected compile
+// is a failed step and blocks with its error text. These drive track()'s rejection handler,
+// which the resolved-failure tests above cannot reach.
 
-test("a thrown green check blocks like a red one: no hang, one warning", async () => {
-  const f = fakeDeps({ mainGreen: () => Promise.reject(new Error("baseline check blew up")) });
+test("a thrown green check is a 'could not run': drop, warn once, retry — no latched red", async () => {
+  let checks = 0;
+  const f = fakeDeps({
+    mainGreen: () => {
+      checks++;
+      return Promise.reject(new Error("baseline check blew up"));
+    },
+  });
   const { r, events } = harness(f.deps);
-  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "hold");
   await settle(); // the rejection lands in the tracked slot
-  assert.equal(
-    await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true),
-    "none",
-    "a thrown check ends the hold like a red verdict",
-  );
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "a thrown check ends the hold without a verdict");
   assert.deepEqual(events.map((e) => e.type), ["build_stale", "warning"]);
-  assert.match(String(events.at(-1)!.message), /is red — holding the restart until main is green/);
-  assert.equal(r.status().restartBlocked, "main bbbbbbbb is red");
+  assert.match(
+    String(events.at(-1)!.message),
+    /green check of bbbbbbbb could not run: baseline check blew up/,
+  );
+  assert.equal(r.status().restartBlocked, undefined, "no latched block");
+  // The next poll re-checks the same head instead of waiting for main to move — a retry, not a latch.
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "hold");
+  assert.equal(checks, 2, "the green check re-ran");
+  await settle();
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "none");
+  assert.equal(events.filter((e) => e.type === "warning").length, 1, "one warning per episode");
+});
+
+test("a green check that fails once and then recovers still reaches the swap: the fleet self-heals", async () => {
+  let checks = 0;
+  const f = fakeDeps({
+    mainGreen: () => {
+      checks++;
+      return checks === 1 ? Promise.reject(new Error("git broke mid-check")) : Promise.resolve(true);
+    },
+  });
+  const { r, events } = harness(f.deps);
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "hold");
+  await settle();
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "first check failed: dropped, not blocked");
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "retry starts");
+  await settle();
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "recovered check is green: the compile starts");
+  f.compiled(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "restart");
+  assert.equal(checks, 2);
+  assert.deepEqual(f.calls.compile, [HEAD_B]);
+  assert.deepEqual(f.calls.swap, [HEAD_B]);
+  assert.deepEqual(events.map((e) => e.type), ["build_stale", "warning", "restart_pending", "restart"]);
 });
 
 test("a thrown compile blocks with its error text, not a bare failure", async () => {
