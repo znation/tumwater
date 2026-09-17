@@ -40,7 +40,7 @@ import { lanAddresses, startGui } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { abortRequestPath, eventsLogPath, pausedPath, piLogPath, resetRequestPath, wakeRequestPath } from "./paths.js";
-import { errorMessage } from "./text.js";
+import { errorMessage, shortSha } from "./text.js";
 
 const HELP = `tumwater — autonomous development harness built on pi
 
@@ -131,7 +131,7 @@ async function cmdRun(root: string): Promise<void> {
   process.on("SIGTERM", stop);
   const enabled = enabledRoleIds(config);
   const redeploy = await createRedeployer(root, (e) => logEvent(root, e));
-  const build = redeploy ? ` · build ${redeploy.build.sha.slice(0, 8)}` : "";
+  const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
   process.stdout.write(`tumwater running on branch ${mainBranch}${build} — Ctrl+C to stop\n`);
   process.stdout.write(`loops: ${enabled.join(", ")}\n`);
   process.stdout.write("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n\n");

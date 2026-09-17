@@ -9,7 +9,7 @@ import { GIT_MISSING_MESSAGE, currentBranch, gitTry, hasCommits, isGitRepo } fro
 import { classifyLock, readLockPid } from "./lock.js";
 import { STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./state.js";
-import { errorMessage } from "./text.js";
+import { errorMessage, shortSha } from "./text.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -143,7 +143,7 @@ export async function checkBuild(
   running: BuildStatus | null = null,
 ): Promise<CheckOutcome> {
   if (!info) return { level: "ok", detail: "no build stamp — dist/ compiled without `npm run build`" };
-  const sha = info.sha.slice(0, 8);
+  const sha = shortSha(info.sha);
   if (!(await isSelfHosted(root, info)))
     return { level: "ok", detail: `dist/ from ${sha} (this project is not the harness itself)` };
   const mainHead = head === undefined ? await currentHead(root) : head;
@@ -176,7 +176,7 @@ export async function runDoctor(root: string, pathEnv: string = process.env.PATH
   const info = readOrchestratorInfo(root);
   const header =
     orchestratorAlive(root, info) && info
-      ? `tumwater doctor — harness running (pid ${info.pid}${info.build ? `, build ${info.build.sha.slice(0, 8)}${info.build.stale ? " — STALE" : ""}${info.build.restartBlocked ? " (restart blocked)" : ""}` : ""})`
+      ? `tumwater doctor — harness running (pid ${info.pid}${info.build ? `, build ${shortSha(info.build.sha)}${info.build.stale ? " — STALE" : ""}${info.build.restartBlocked ? " (restart blocked)" : ""}` : ""})`
       : "tumwater doctor — harness not running";
   const checks: DoctorReport["checks"] = [
     { name: "git binary", ...checkGitBinary(pathEnv) },
