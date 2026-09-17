@@ -8,14 +8,15 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { runOrchestrator } from "../src/orchestrator.js";
+import { landQueuedEntry, runOrchestrator } from "../src/orchestrator.js";
+import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { logEvent, readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, readOrchestratorInfo, saveLoopState, todayStamp, clearBackoff } from "../src/state.js";
-import { abortRequestPath, branchName, landingRefName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
-import { enqueueLanding, queueDepth } from "../src/land-queue.js";
+import { abortRequestPath, branchName, landingRefName, landingStatePath, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
+import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
 import {
@@ -857,6 +858,39 @@ test("an entry whose sha main already holds is dropped at the drain without a la
     restore();
     await orch.stop();
   }
+});
+
+test("a landing whose pinned sha no longer exists degrades to an error outcome, not a throw", async () => {
+  // The queue entry can outlive its commit: the pin ref is dropped or the dangling commit
+  // gc'd while the entry waits (a crash between pin and drop, manual gc). landChange throws
+  // on the uncheckable sha — the landQueuedEntry catch-all must turn that into a normal
+  // "error" outcome with every bookkeeping step a real failure gets, instead of taking the
+  // landing slot down with it.
+  const repo = makeRepo();
+  const sha = "0".repeat(40); // a commit git cannot check out
+  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "lost pin", enqueuedAt: Date.now() });
+  const { entry, file } = headLanding(repo)!;
+  const config = fastConfig(["clean"]);
+  const author = new LoopRunner(repo, "clean", config, "main");
+
+  const result = await landQueuedEntry(repo, entry, file, author, config, "main", new AbortController().signal);
+
+  assert.equal(result, "error");
+  // The git failure is recorded where the next tick's prompt reads it.
+  assert.match(author.state.lastError ?? "", /invalid reference/);
+  // The 4/5 in-flight marker is cleared, the entry dropped, and the failure logged —
+  // the same tail a landed or rejected entry goes through.
+  assert.ok(!fs.existsSync(landingStatePath(repo)), "the landing marker survives the error outcome");
+  assert.equal(queueDepth(repo), 0, "the entry is dropped after the error outcome");
+  const failed = readEvents(repo).filter((e) => e.type === "land_failed");
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0]?.loop, "clean");
+  assert.equal(failed[0]?.result, "error");
+  assert.equal(failed[0]?.commit, sha);
+  assert.equal(readEvents(repo).filter((e) => e.type === "landed").length, 0);
+  // The degraded outcome is persisted on the author's state, like any other tick result.
+  assert.equal(loadLoopState(repo, "clean").lastResult, "error");
+  assert.equal(loadLoopState(repo, "clean").lastError, author.state.lastError);
 });
 
 // --- abort requests (PLANS.md, abort plan): the marker-file plumbing that reaches LoopRunner's
