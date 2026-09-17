@@ -57,7 +57,7 @@ header and both dashboard headers, and the landing role's row reads `landing <el
 
 Open items:
 - Planned: harness-level merge queue — 5/5 (coalesce the build check across queued landings)
-  is the remaining sub-plan, refined 2026-09-15; 4/5 (land-queue surfacing) landed 2026-09-15.
+  is the remaining sub-plan, refined 2026-09-16.
 - Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13,
   refined 2026-09-15).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
@@ -66,7 +66,7 @@ Open items:
   "main is red" when the redeploy's own git call fails.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`10c8ae6`): build clean, suite 1019/1019.
+Current main (`00501fa`): build clean, suite 1019/1019.
 <!-- tumwater:status:end -->
 
 ## How it works
