@@ -94,7 +94,22 @@ export function workingDetail(root: string, s: LoopState, live?: LiveProgress | 
  * `landing`, when given for this role, is the snapshot's in-flight landing record — the
  * authoring role's tick already ended "queued" before its landing ran, so it is NOT running
  * here and no phase can carry the label: the marker-driven record does, and renders
- * `landing <elapsed>` (elapsed from the marker's startedAt) ahead of every other idle state. */
+ * `landing <elapsed>` (elapsed from the marker's startedAt) ahead of every other idle state.
+ * Build it with landingForRole so the marker's role filter lives in one place. */
+
+/** The snapshot's in-flight landing record (merge queue 4/5) filtered to one role: the
+ * record when this role's change is landing, null otherwise. The single home of the
+ * "is this role landing" filter — every phase call site derives its `landing` argument
+ * through this so the filtering cannot drift between them. */
+export function landingForRole(
+  landQueue: StatusSnapshot["landQueue"],
+  role: string,
+): { startedAt: number } | null {
+  return landQueue.inFlight && landQueue.inFlight.role === role
+    ? { startedAt: landQueue.inFlight.startedAt }
+    : null;
+}
+
 export function loopPhase(
   s: LoopState,
   orchestratorRunning: boolean,
@@ -106,8 +121,8 @@ export function loopPhase(
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only the role whose in-flight record
-  // was passed gets it (both call sites filter by role), and a stopped harness never shows
-  // it — a dead fleet's marker is stale by definition.
+  // was passed gets it (callers derive it via landingForRole), and a stopped harness never
+  // shows it — a dead fleet's marker is stale by definition.
   if (landing) return `landing ${duration(Date.now() - landing.startedAt)}`;
   if (s.running) {
     // The tick's work is committed and under adversarial review: the raw log tail now
@@ -317,9 +332,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
       budgetPausedNow,
       live,
       userPausedNow,
-      snap.landQueue.inFlight && snap.landQueue.inFlight.role === s.role
-        ? { startedAt: snap.landQueue.inFlight.startedAt }
-        : null,
+      landingForRole(snap.landQueue, s.role),
     ),
     String(s.ticks),
     String(s.commits),

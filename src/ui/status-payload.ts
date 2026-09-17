@@ -4,7 +4,7 @@ import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { budgetReached, dailyCost } from "../state.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, loopPhase } from "./status-render.js";
+import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForRole, loopPhase } from "./status-render.js";
 
 /** The one fleet-state document both observer surfaces serve: `GET /api/status` (gui.ts) and
  * `tumwater status --json` (cli.ts) print the same payload, so the dashboard and the CLI can
@@ -67,9 +67,7 @@ export function statusPayload(root: string): object {
           snap.paused,
           // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed>`
           // (the marker-driven record, filtered to this role); every other row is untouched.
-          snap.landQueue.inFlight && snap.landQueue.inFlight.role === s.role
-            ? { startedAt: snap.landQueue.inFlight.startedAt }
-            : null,
+          landingForRole(snap.landQueue, s.role),
         ),
         // What a working loop is doing right now (first assistant text of the in-flight run).
         // Null when idle — never show a stale item from a finished tick.
