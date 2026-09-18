@@ -1380,6 +1380,45 @@ test("multi-byte UTF-8 characters straddling chunk boundaries arrive intact", as
   }
 });
 
+test("gui answers 404, not 500, for a request target the URL parser rejects", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui malformed target test");
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  try {
+    // An absolute-form target whose host is malformed (`http://[`) is accepted by Node's HTTP
+    // parser and handed to the handler as req.url, but `new URL(req.url, base)` throws on it.
+    // requestPathname must swallow that and read as "no route" — a 404 — instead of letting
+    // the throw reach the handler's 500 catch, which would report a server fault for what is
+    // plainly a bad request. A raw socket is required: fetch/undici reject the malformed URL
+    // client-side before it ever reaches the server.
+    const socket = net.connect(addr.port, "127.0.0.1");
+    let response = "";
+    socket.on("data", (d: Buffer) => {
+      response += d.toString("ascii");
+    });
+    const ended = new Promise<void>((resolve) => socket.on("end", () => resolve()));
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write("GET http://[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n", () => resolve());
+    });
+    await ended;
+
+    assert.match(response, /^HTTP\/1\.1 404/, `expected 404, got: ${response.split("\r\n")[0]}`);
+    assert.match(response, /not found/);
+    socket.destroy();
+
+    // The rejection is confined to the bad request: the server keeps routing well-formed ones.
+    assert.equal((await fetch(base + "/nope")).status, 404);
+    const status = await fetch(base + "/api/status");
+    assert.equal(status.status, 200);
+  } finally {
+    server.close();
+  }
+});
+
 test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui body bound test");
