@@ -434,6 +434,51 @@ test("a green batch stacks every approved change, fast-forwards main once, and l
   }
 });
 
+test("a fast-forward blocked by a concurrent landing keeps every ref as merge_blocked", async () => {
+  // Main moves while the batch's shared check runs — a human commit or a non-batched role's
+  // recovery landing. The stack was assembled on the old tip, so its tip is no longer a
+  // descendant of main and the single ff fails: every approved change must keep its ref for
+  // leftover recovery (which re-lands each through its own gate) and nothing may merge.
+  const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  // The check moves main on its THIRD run only: the two gate pre-checks pass, then the batch
+  // check passes but commits a concurrent landing, so the batch's ff is no longer fast-forward.
+  const count = path.join(root, ".checkcount");
+  declareCheck(
+    root,
+    `#!/bin/sh\nc=$(cat ${count} 2>/dev/null || echo 0)\nn=$((c+1))\necho "$n" > ${count}\n` +
+      `if [ "$n" = "3" ]; then git -C ${root} commit --allow-empty -m "concurrent landing"; fi\necho ok\n`,
+  );
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
+    const { wiringFor } = makeWiring(states);
+
+    const results = await landBatch(
+      makeBatchCtx(root),
+      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
+      wiringFor,
+    );
+
+    assert.deepEqual(
+      results.map((r) => r.result),
+      ["merge_blocked", "merge_blocked"],
+      "a blocked ff leaves every approved change for recovery",
+    );
+    assert.notEqual(sh(root, "git", "rev-parse", "main"), shas.beta!, "the stack did not land");
+    assert.equal(
+      sh(root, "git", "rev-list", "--count", `${mainBefore}..main`),
+      "1",
+      "only the concurrent landing is new on main",
+    );
+    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the head keeps its ref");
+    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "and the stacked change keeps its");
+    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0, "nothing merged");
+  } finally {
+    restore();
+  }
+});
+
 test("a one-change batch is the single landing path: one ff, one merged event", async () => {
   const restore = fakePi(APPROVE_PI);
   try {
