@@ -101,10 +101,22 @@ export function validateConfig(raw: unknown): void {
   }
   const problems: string[] = [];
 
-  const checkString = (obj: Record<string, unknown>, prefix: string, key: string): void => {
+  // `allowEmpty` defaults true: an empty `instructions` is a deliberate "no extra
+  // instructions". The model-triple fields (provider/model/thinking) pass false: pi.ts skips
+  // an empty value when it builds its flags, so `"provider": ""` would be silently ignored
+  // and the fleet would quietly fall back to pi's default — and an empty `fallbackModel`
+  // field makes fallbackPair drop it, so the fallback never engages. Reject it here instead.
+  const checkString = (
+    obj: Record<string, unknown>,
+    prefix: string,
+    key: string,
+    allowEmpty = true,
+  ): void => {
     if (!(key in obj)) return;
     const v = obj[key];
     if (typeof v !== "string") problems.push(`${prefix}${key} must be a string (got ${show(v)})`);
+    else if (!allowEmpty && v.trim() === "")
+      problems.push(`${prefix}${key} must not be empty (got ${show(v)})`);
   };
 
   const checkNumber = (
@@ -122,7 +134,7 @@ export function validateConfig(raw: unknown): void {
 
   const r = raw; // Narrowed to an object by isPlainObject above.
   checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
-  for (const key of ["provider", "model", "thinking"]) checkString(r, "", key);
+  for (const key of ["provider", "model", "thinking"]) checkString(r, "", key, false);
   if ("piArgs" in r) {
     const v = r.piArgs;
     if (!Array.isArray(v) || !v.every((a) => typeof a === "string"))
@@ -170,7 +182,7 @@ export function validateConfig(raw: unknown): void {
         if (!Array.isArray(v) || !v.every((p) => typeof p === "string"))
           problems.push(`review.exemptPaths must be an array of strings (got ${show(v)})`);
       }
-      for (const key of ["provider", "model", "thinking"]) checkString(o, "review.", key);
+      for (const key of ["provider", "model", "thinking"]) checkString(o, "review.", key, false);
     }
   }
 
@@ -184,7 +196,7 @@ export function validateConfig(raw: unknown): void {
       problems.push(`fallbackModel must be an object (got ${show(fb)})`);
     } else {
       checkKnownKeys(fb, FALLBACK_MODEL_KEYS, "fallbackModel", problems);
-      for (const key of FALLBACK_MODEL_KEYS) checkString(fb, "fallbackModel.", key);
+      for (const key of FALLBACK_MODEL_KEYS) checkString(fb, "fallbackModel.", key, false);
       if (!("provider" in fb) && !("model" in fb))
         problems.push(`fallbackModel must name a provider or a model (got ${show(fb)})`);
     }
@@ -257,8 +269,8 @@ export function validateConfig(raw: unknown): void {
         }
         const o = rc;
         checkKnownKeys(o, ROLE_ENTRY_KEYS, `roles.${id}`, problems);
-        for (const key of ["instructions", "provider", "model", "thinking"])
-          checkString(o, `roles.${id}.`, key);
+        checkString(o, `roles.${id}.`, "instructions"); // Empty is a deliberate "no extra instructions".
+        for (const key of ["provider", "model", "thinking"]) checkString(o, `roles.${id}.`, key, false);
         if ("enabled" in o && typeof o.enabled !== "boolean")
           problems.push(`roles.${id}.enabled must be true or false (got ${show(o.enabled)})`);
         checkNumber(

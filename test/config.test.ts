@@ -216,6 +216,28 @@ test("validateConfig accepts defaults and fully valid overrides", () => {
   );
 });
 
+test("model-triple fields reject empty strings but instructions may be empty", () => {
+  // pi.ts skips an empty provider/model/thinking when it builds its flags, so a blank value
+  // is silently ignored and the fleet quietly uses pi's default — reject it instead. This
+  // covers the top level and the per-role overrides; review and fallbackModel have their own
+  // tests above.
+  for (const key of ["provider", "model", "thinking"]) {
+    assert.match(
+      validationError({ [key]: "" }),
+      new RegExp(`${key} must not be empty \\(got ""\\)`),
+      `top-level ${key}`,
+    );
+    assert.match(
+      validationError({ roles: { feature: { [key]: "  " } } }),
+      new RegExp(`roles\\.feature\\.${key} must not be empty`),
+      `roles.feature.${key}`,
+    );
+    assert.doesNotThrow(() => validateConfig({ [key]: "set" }));
+  }
+  // An empty instructions string is a deliberate "no extra instructions", not a typo.
+  assert.doesNotThrow(() => validateConfig({ roles: { feature: { instructions: "" } } }));
+});
+
 test("landBatchMax is validated like maxConcurrent: a positive integer", () => {
   // 0 would disable the drain, a fraction would slice an empty batch, a string is a typo —
   // all of them must fail the same validation their sibling does.
@@ -293,6 +315,12 @@ test("validateConfig guards the review section like its sibling sections", () =>
     assert.match(
       validationError({ review: { [key]: 7 } }),
       new RegExp(`review\\.${key} must be a string \\(got 7\\)`),
+    );
+    // pi.ts skips an empty value when it builds its flags, so an empty override would be
+    // silently ignored and the reviewers would quietly use the top-level model.
+    assert.match(
+      validationError({ review: { [key]: "" } }),
+      new RegExp(`review\\.${key} must not be empty \\(got ""\\)`),
     );
   }
 
@@ -705,6 +733,12 @@ test("fallbackModel is an optional validated key, absent by default", () => {
   );
   assert.match(validationError({ fallbackModel: "omlx" }), /fallbackModel must be an object/);
   assert.match(validationError({ fallbackModel: { model: 7 } }), /fallbackModel\.model must be a string/);
+  // An empty string names nothing either: pi.ts skips it and fallbackPair drops it, so the
+  // fallback would never engage despite the section passing the shape checks.
+  assert.match(
+    validationError({ fallbackModel: { provider: "" } }),
+    /fallbackModel\.provider must not be empty \(got ""\)/,
+  );
   // An empty object names nothing, so it would silently never engage — reject it outright.
   assert.match(validationError({ fallbackModel: {} }), /fallbackModel must name a provider or a model/);
 });
