@@ -62,11 +62,10 @@ Open items:
   refined 2026-09-15).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
-- Open bugs: one, recorded 2026-09-15 (BUGS.md): a rejected `mainGreen` latches a false
-  "main is red" when the redeploy's own git call fails.
+- Open bugs: none.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`00501fa`): build clean, suite 1019/1019.
+Current main (`4879cc3`): build clean, suite 1021/1021.
 <!-- tumwater:status:end -->
 
 ## How it works
