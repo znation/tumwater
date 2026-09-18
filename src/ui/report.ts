@@ -44,19 +44,16 @@ export interface ReportData {
 }
 
 /** The oldest COMPLETE line in a backwards chunk buffer, or null when none is complete yet.
- * `parts` holds the read bytes oldest-first; unless we reached the file start, its leading
- * segment up to the first newline was cut by a chunk boundary and is discarded (it becomes
- * whole again once the earlier chunk lands). Lines are bounded by \n bytes, which cannot occur
- * inside a multi-byte UTF-8 sequence, so slicing on them is character-safe. */
-function oldestCompleteLine(parts: Buffer[], atFileStart: boolean): string | null {
-  let offset = 0;
-  if (!atFileStart) {
-    const first = parts[0];
-    if (first === undefined || first.length === 0) return null;
-    const nl = first.indexOf(10);
-    if (nl < 0) return null; // Still one partial line in hand.
-    offset = nl + 1;
-  }
+ * `parts` holds the read bytes oldest-first; the oldest chunk's leading segment up to its
+ * first newline was cut by a chunk boundary and is discarded (it becomes whole again once the
+ * earlier chunk lands). Lines are bounded by \n bytes, which cannot occur inside a multi-byte
+ * UTF-8 sequence, so slicing on them is character-safe. */
+function oldestCompleteLine(parts: Buffer[]): string | null {
+  const first = parts[0];
+  if (first === undefined || first.length === 0) return null;
+  const firstNl = first.indexOf(10);
+  if (firstNl < 0) return null; // Still one partial line in hand.
+  const offset = firstNl + 1;
   let line = "";
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i] ?? Buffer.alloc(0);
@@ -78,9 +75,10 @@ function readWindowEvents(root: string, fromKey: string): HarnessEvent[] {
   const parts: Buffer[] = [];
   forEachTailChunk(file, (chunk) => {
     parts.unshift(chunk);
-    // At the file start the oldest chunk's first line is complete, not torn — passing false may
-    // forgo an early stop on that last chunk, which costs nothing: the scan ends with the file.
-    const oldest = oldestCompleteLine(parts, false);
+    // The oldest chunk's leading line may be torn by the chunk boundary, so oldestCompleteLine
+    // always drops it; at the file start that merely forgoes an early stop on the final chunk,
+    // and the scan ends with the file anyway.
+    const oldest = oldestCompleteLine(parts);
     if (oldest !== null) {
       const ev = parseEventLine(oldest);
       if (ev && typeof ev.ts === "number" && formatDate(new Date(ev.ts)) < fromKey) return true; // Window passed.
