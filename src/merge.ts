@@ -128,10 +128,11 @@ async function tryMerge(
  *   instead of re-running the full suite on an already-verified tree.
  * - doc-only delta ahead of main (the gate's own exemption test): cannot break the build.
  * - no declared check at all: nothing to run, exactly like the gate skipping its pre-check.
- * An environmental skip (timeout / no npm / broken toolchain) warns and proceeds —
- * deliberately NOT fail-closed, so a hung build script — or a broken toolchain that would fail
- * every check regardless of the tree (BUGS.md 2026-09-15) — cannot wedge every landing behind
- * the merge lock. */
+ * An environmental skip (no npm / broken toolchain) warns and proceeds — deliberately NOT
+ * fail-closed, so a broken toolchain that would fail every check regardless of the tree
+ * (BUGS.md 2026-09-15) cannot wedge every landing behind the merge lock. A TIMEOUT is not
+ * environmental here: the tree is unverified, so runScopedBuildCheck remaps it to a failed
+ * check and the landing rejects (BUGS.md: an unverified landing must not reach main). */
 async function verifyLanding(
   ctx: MergeContext,
   wt: string,
@@ -150,7 +151,7 @@ async function verifyLanding(
   const check = await runScopedBuildCheck(ctx.root, ctx.role, "landing", wt);
   if (!check) return true; // No declared check: nothing to run, exactly like the gate skipping its pre-check.
   if (check.outcome.status === "failed") return false;
-  if (check.outcome.status === "skipped") return true; // Environmental — the helper already warned.
+  if (check.outcome.status === "skipped") return true; // No npm / broken toolchain — the helper already warned.
   // Green on exactly the tree that becomes main: seed it so the next tick's red-main baseline
   // check is a cache hit instead of one redundant full-suite run.
   noteGreenBaseline(rebasedHead);

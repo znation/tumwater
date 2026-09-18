@@ -5,27 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A landing build check that times out merges to main unverified: one skip on 2026-09-16 turned main red for five hours (found by log analysis 2026-09-18)
-
-**Symptom:** `runScopedBuildCheck` classifies a timeout as an environmental `skipped` and the caller proceeds — at `landing` scope that means "proceeding to merge", so a commit whose post-rebase suite never finished lands on main with no verification at all. This happened once in the observed week and the consequence was immediate. From `events.jsonl` on 2026-09-16:
-
-- `02:04:43` `build_check coverage scope:landing status:skipped`, warning `landing build check timed out after 300s; proceeding to merge`, then `merged` + `landed` for "Unit-test writeJsonAtomic's success and failure paths in json-files".
-- `02:04:46` `plan` merges an md-only re-audit on top; main head is now `d3652c43`.
-- `03:27:14` the next code tick's baseline check runs: `build_check dry status:failed`, warning `main d3652c43 is red`.
-- `03:27` → `08:35` every code tick returns `main_red` — six `tick_end result:main_red` events across `dry` and `coverage`, "code merges blocked until main is green" — until an md-only `readme` merge at 13:03.
-
-The only code change in that range is the unverified one: `plan`'s commit is md-only and review-exempt, so it cannot fail a suite. The landing check is the in-lock *post-rebase* re-check — the one run whose entire purpose is to catch a semantic conflict with whatever landed while the author was working — and skipping it is exactly how such a conflict reaches main.
-
-The gate scope fails open the same way (`proceeding to model review`): `organize` 09-11 05:59:13, `perf` 09-11 06:17:56, `dry` 09-17 11:30:10. So does the red-main baseline (src/main-red.ts:60, `proceeding with authoring unverified`): `dry` and `coverage` both at 09-16 12:09:11. Six fail-open skips in the week.
-
-**Repro:** make the declared check exceed `BUILD_CHECK_TIMEOUT_MS` (src/build-check.ts:141, 300 s) at landing scope — in production, run it while the fleet is at full concurrency — and watch the merge proceed on a `skipped` outcome.
-
-**Expected:** a timeout is not an environmental skip. "npm is missing from PATH" and "the toolchain is broken" are genuine environment verdicts that say nothing about the tree; "the suite did not finish in 300 s" says the tree is unverified, which at landing scope is the one place the harness has already decided not to fail open — `mainGreen`'s doc states "Nothing here is fail-open", and a red landing check rejects. At minimum the landing scope should treat a timeout as a deterministic reject (the author retries; nothing is lost but one tick), or the timeout should scale with observed suite duration rather than being a constant.
-
-**Suspected cause:** src/build-check.ts:310 folds all three skip reasons into one branch — "Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every code tick into the 3-strike discard (gate) or every landing behind the merge lock." The reasoning is sound for `no-npm` and `toolchain` and for the gate scope, and it predates the landing scope sharing this helper. The constant is also calibrated for a quieter fleet: observed landing checks run 46–65 s (`build_check` durations 65 368 / 64 392 / 46 847 ms on 09-18), so a 300 s ceiling is ~5x headroom on paper, but it is the *tail* under concurrent suites that matters and two full suites run side by side already take ~66 s each.
-
-**Related:** "`maxConcurrent` stopped bounding model load…" below — the concurrency that makes a 300 s suite run plausible.
-
 ### The restart drain has never once completed: 38 of 39 redeploys held the fleet a full 30 minutes and then aborted 4–12 ticks anyway (found by log analysis 2026-09-18)
 
 **Symptom:** `RESTART_DRAIN_MAX_MS` is 30 minutes on the stated premise that most ticks finish inside it (src/redeploy.ts:52-56: "Median ticks run ~35 min on local hardware; a half-hour drain lets most of them finish while bounding how long the fleet keeps executing stale code"). Of the 39 `restart` events in `events.jsonl` since 2026-09-08, **38 carry `drainedMs` at or past the cap** (1 801 272 – 2 267 835 ms) and each aborted 4–12 in-flight ticks. The single exception — 09-15 09:44:03, `drainedMs` 48 074, `abortedTicks` 0 — is the recovery restart after the Xcode-license outage, when every loop was already asleep. The drain has never once done what it exists to do on a working fleet.
@@ -65,6 +44,31 @@ Occupancy reconstructed from `tick_start`/`tick_end` plus `landed`/`land_failed`
 **Suspected cause:** none of the 14 `fs.rmSync` call sites under `src/` passes `maxRetries` or `retryDelay`, so every recursive delete in the harness is one transient filesystem race away from throwing. The swap is where it hurts most, because `swapDist` is the one caller whose throw is load-bearing — it blocks the restart — but the same exposure sits in the staging cleanup loop at src/redeploy.ts:446-448 and in the scratch-dir cleanups elsewhere.
 
 ## Fixed
+
+### A landing build check that times out merges to main unverified: one skip on 2026-09-16 turned main red for five hours (found by log analysis 2026-09-18, fixed 2026-09-18)
+
+**Symptom:** `runScopedBuildCheck` classifies a timeout as an environmental `skipped` and the caller proceeds — at `landing` scope that means "proceeding to merge", so a commit whose post-rebase suite never finished lands on main with no verification at all. This happened once in the observed week and the consequence was immediate. From `events.jsonl` on 2026-09-16:
+
+- `02:04:43` `build_check coverage scope:landing status:skipped`, warning `landing build check timed out after 300s; proceeding to merge`, then `merged` + `landed` for "Unit-test writeJsonAtomic's success and failure paths in json-files".
+- `02:04:46` `plan` merges an md-only re-audit on top; main head is now `d3652c43`.
+- `03:27:14` the next code tick's baseline check runs: `build_check dry status:failed`, warning `main d3652c43 is red`.
+- `03:27` → `08:35` every code tick returns `main_red` — six `tick_end result:main_red` events across `dry` and `coverage`, "code merges blocked until main is green" — until an md-only `readme` merge at 13:03.
+
+The only code change in that range is the unverified one: `plan`'s commit is md-only and review-exempt, so it cannot fail a suite. The landing check is the in-lock *post-rebase* re-check — the one run whose entire purpose is to catch a semantic conflict with whatever landed while the author was working — and skipping it is exactly how such a conflict reaches main.
+
+The gate scope fails open the same way (`proceeding to model review`): `organize` 09-11 05:59:13, `perf` 09-11 06:17:56, `dry` 09-17 11:30:10. So does the red-main baseline (src/main-red.ts:60, `proceeding with authoring unverified`): `dry` and `coverage` both at 09-16 12:09:11. Six fail-open skips in the week.
+
+**Repro:** make the declared check exceed `BUILD_CHECK_TIMEOUT_MS` (src/build-check.ts:141, 300 s) at landing scope — in production, run it while the fleet is at full concurrency — and watch the merge proceed on a `skipped` outcome.
+
+**Expected:** a timeout is not an environmental skip. "npm is missing from PATH" and "the toolchain is broken" are genuine environment verdicts that say nothing about the tree; "the suite did not finish in 300 s" says the tree is unverified, which at landing scope is the one place the harness has already decided not to fail open — `mainGreen`'s doc states "Nothing here is fail-open", and a red landing check rejects. At minimum the landing scope should treat a timeout as a deterministic reject (the author retries; nothing is lost but one tick), or the timeout should scale with observed suite duration rather than being a constant.
+
+**Suspected cause:** src/build-check.ts:310 folds all three skip reasons into one branch — "Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every code tick into the 3-strike discard (gate) or every landing behind the merge lock." The reasoning is sound for `no-npm` and `toolchain` and for the gate scope, and it predates the landing scope sharing this helper. The constant is also calibrated for a quieter fleet: observed landing checks run 46–65 s (`build_check` durations 65 368 / 64 392 / 46 847 ms on 09-18), so a 300 s ceiling is ~5x headroom on paper, but it is the *tail* under concurrent suites that matters and two full suites run side by side already take ~66 s each.
+
+**Related:** "`maxConcurrent` stopped bounding model load…" below — the concurrency that makes a 300 s suite run plausible.
+
+**Fix:** `runScopedBuildCheck` now treats a timeout as a deterministic rejection at the two scopes whose next step is a merge. A `MERGE_SCOPES` set (`landing`, `batch`) remaps a `skipped`/`timeout` outcome to `failed` with a synthesized reason, logs the `build_check` event as `failed`, and warns `…; rejecting the merge`. The author keeps its commit and the next tick retries the landing through the same gate, so nothing is lost but a tick. The gate scope and the red-main baseline are unchanged — a timeout there still warns and proceeds, because the model reviewer and the landing path's own in-lock check stand behind the gate, and the baseline's skip only defers an authoring run.
+
+**Files:** src/build-check.ts (`MERGE_SCOPES`, merge-scope timeout remap + reject warning); src/merge.ts, src/lander.ts (policy comments); test/build-check.test.ts (landing/batch timeout rejects, gate still skips).
 
 ### `quiet_killed` is the only tick outcome with no strike cap, no backoff and no alarm: hour-long empty retries consumed 44% of the fleet over two days (found by log analysis 2026-09-18, fixed 2026-09-18)
 

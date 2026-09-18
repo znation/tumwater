@@ -145,7 +145,8 @@ export const BUILD_CHECK_TIMEOUT_MS = 300_000;
  * (timeout, no npm on PATH, or a broken toolchain) — warn and still proceed to the model
  * review; deliberately NOT fail-closed so a hung build script cannot wedge every code tick into
  * the 3-strike discard, and a toolchain broken below the project (BUGS.md 2026-09-15) cannot be
- * misread as a red build of the tree. */
+ * misread as a red build of the tree. runScopedBuildCheck remaps a timeout at a merge scope
+ * (landing/batch) to "failed": a suite that never finished is unverified, not environmental. */
 export interface BuildCheckOutcome {
   status: "passed" | "failed" | "skipped";
   /** The script that was run (or attempted). */
@@ -278,6 +279,12 @@ const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }
   batch: { label: "batch build check", proceeding: "proceeding to merge" },
 };
 
+/** Scopes whose outcome gates a merge to main. A timeout here leaves the tree unverified, and
+ * these are the last checks before main, so it rejects deterministically; the gate scope's
+ * pre-check stays fail-open because the model reviewer and the landing path's own check still
+ * stand behind it (BUGS.md: a landing build check that times out must not merge unverified). */
+const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"]);
+
 /** Run the project's declared check for a named scope — the detect → run → build_check
  * event → skip-warning sequence the review gate's pre-check (scope "gate"), the landing
  * path's in-lock re-check (scope "landing"), and the batch lander's one check over the whole
@@ -289,7 +296,9 @@ const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }
  * the caller passes, exactly as before this split), otherwise the declared check plus its
  * classified outcome. A "skipped" outcome also logs its standard warning here (wording keyed
  * on the scope, the timeout as actually set); "failed" and "passed" are the caller's to decide
- * (deterministic reject vs. verifiedHead / baseline seeding). Never throws. */
+ * (deterministic reject vs. verifiedHead / baseline seeding). A timeout at a merge scope is
+ * remapped to a deterministic "failed" — the tree is unverified, so it must not land. Never
+ * throws. */
 export async function runScopedBuildCheck(
   root: string,
   role: string,
@@ -300,7 +309,18 @@ export async function runScopedBuildCheck(
   const check = detectBuildCheck(wt);
   if (!check) return null;
   const startedAt = Date.now();
-  const outcome = await runBuildCheck(wt, check, timeoutMs);
+  const raw = await runBuildCheck(wt, check, timeoutMs);
+  // A timeout at a merge scope is not environmental: no verdict about the tree was reached,
+  // and this is the check whose whole job is to catch a semantic conflict before it lands, so
+  // it rejects deterministically — the author keeps its commit and retries. no-npm and a
+  // broken toolchain still say nothing about the tree, and the gate scope still proceeds to
+  // the model reviewer, which the landing path's own check backs up.
+  const mergeTimeout =
+    raw.status === "skipped" && raw.skipReason === "timeout" && MERGE_SCOPES.has(scope);
+  const timeoutReason = `${SCOPE_WORDS[scope].label} timed out after ${timeoutMs / 1000}s; the tree is unverified`;
+  const outcome: BuildCheckOutcome = mergeTimeout
+    ? { status: "failed", script: check.script, outputTail: [timeoutReason] }
+    : raw;
   logEvent(root, {
     loop: role,
     type: "build_check",
@@ -311,7 +331,7 @@ export async function runScopedBuildCheck(
   });
   if (outcome.status === "skipped") {
     // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
-    // code tick into the 3-strike discard (gate) or every landing behind the merge lock.
+    // code tick into the 3-strike discard (gate) or a merge behind the merge lock.
     const w = SCOPE_WORDS[scope];
     logEvent(root, {
       loop: role,
@@ -322,6 +342,12 @@ export async function runScopedBuildCheck(
           : outcome.skipReason === "toolchain"
             ? `the toolchain is broken; skipping ${w.label}; ${w.proceeding}`
             : `${w.label} timed out after ${timeoutMs / 1000}s; ${w.proceeding}`,
+    });
+  } else if (mergeTimeout) {
+    logEvent(root, {
+      loop: role,
+      type: "warning",
+      message: `${timeoutReason}; rejecting the merge`,
     });
   }
   return { check, outcome };

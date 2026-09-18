@@ -7,7 +7,9 @@ import {
   detectBuildCheck,
   resolveFromNodeModules,
   runBuildCheck,
+  runScopedBuildCheck,
 } from "../src/build-check.js";
+import { readEvents } from "../src/events.js";
 import { sh, tmpdir } from "./util.js";
 
 // Unit coverage for the deterministic build pre-check (src/build-check.ts): detection by
@@ -75,6 +77,39 @@ test("runBuildCheck skips (not fails closed) when the script times out", async (
   const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 400);
   assert.equal(outcome.status, "skipped");
   assert.equal(outcome.skipReason, "timeout");
+});
+
+test("a landing- or batch-scope timeout is a deterministic reject, not an environmental skip", async () => {
+  // BUGS.md 2026-09-18: the landing check is the last gate before main, so a suite that never
+  // finished must not read as "environmental" and merge the unverified tree. The gate scope
+  // stays fail-open because the model reviewer and the landing check still stand behind it.
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "sleep 5" } }),
+  );
+
+  for (const scope of ["landing", "batch"] as const) {
+    const result = await runScopedBuildCheck(root, ROLE, scope, wt, 400);
+    assert.equal(result!.outcome.status, "failed", `${scope}: a timeout rejects`);
+    assert.match(
+      result!.outcome.outputTail?.[0] ?? "",
+      /timed out after 0\.4s; the tree is unverified/,
+    );
+  }
+  const events = readEvents(root);
+  assert.ok(
+    events.some((e) => e.type === "build_check" && e.scope === "landing" && e.status === "failed"),
+    "the rejected timeout is priced as a failed check in the feed",
+  );
+  assert.ok(
+    events.some((e) => e.type === "warning" && /rejecting the merge/.test(String(e.message))),
+    "the operator sees why the landing did not proceed",
+  );
+
+  const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, 400);
+  assert.equal(gate!.outcome.status, "skipped");
+  assert.equal(gate!.outcome.skipReason, "timeout");
 });
 
 test("runBuildCheck skips (not fails closed) when npm is missing from PATH", async () => {

@@ -189,9 +189,9 @@ export interface BatchRoleWiring {
  * those captured shas. ONE scope-`batch` runScopedBuildCheck over the combined tree
  * — the expensive, deterministic half the batch shares (the model review already ran per
  * change in Phase A, because an adversarial review of a stack would blur which change a
- * criticism applies to). null (no declared check) → land directly; "failed" → abandon;
- * "skipped" (environmental — the helper already warned) → proceed, never fail-closed, like
- * both existing scopes; "passed" → green. Green: under the merge lock, ffStackToMain ff's
+ * criticism applies to). null (no declared check) → land directly; "failed" (a red tree or a
+ * timeout remapped to a reject — the tree is unverified) → abandon; "skipped" (no npm /
+ * broken toolchain — the helper already warned) → proceed, never fail-closed; "passed" → green. Green: under the merge lock, ffStackToMain ff's
  * main through the stack in ONE fast-forward, emits one `merged` event per change, and —
  * only when the check PASSED — the lander seeds noteGreenBaseline with the stacked tip (the
  * exact future main head). ff failure → every S change keeps its ref with "merge_blocked"
@@ -355,9 +355,9 @@ export async function landBatch(
   }
   if (!abandon) {
     // The expensive deterministic half, shared: ONE run over the combined tree. Outcome
-    // routing — null: no declared check, land directly; "failed": red, abandon;
-    // "skipped": environmental (the helper warned), proceed — never fail-closed, the
-    // semantics both existing scopes use; "passed": green.
+    // routing — null: no declared check, land directly; "failed": red or a merge-scope
+    // timeout, abandon; "skipped": no npm / broken toolchain (the helper warned), proceed —
+    // never fail-closed; "passed": green.
     const check = await runScopedBuildCheck(ctx.root, headReq.role, "batch", wt!);
     abandon = check !== null && check.outcome.status === "failed";
     if (!abandon) {
