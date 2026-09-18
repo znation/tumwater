@@ -1,8 +1,8 @@
 # Portability & packaging — run tumwater anywhere, against anything
 
 Planned 2026-09-14, requested by the user; audited against main `1384eeb` on 2026-09-15, 1/7
-re-audited against `00501fa` on 2026-09-16, 2/7 against `e76c5d5` on 2026-09-17 (3/7–7/7 remain on
-`1384eeb`). Full plan
+re-audited against `00501fa` on 2026-09-16, 2/7 against `e76c5d5` on 2026-09-17, 6/7 against
+`94562d8` on 2026-09-18 (3/7–5/7 and 7/7 remain on `1384eeb`). Full plan
 for the `Portability & packaging` entry in PLANS.md: seven independently landable sub-plans, each
 with its own goal, design rationale, approach, files touched, and acceptance criteria. The problem
 statement, invariants, and sequencing below are shared by all seven.
@@ -501,13 +501,14 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   string. `clipBuildTail`'s npm-banner filter stays (harmless elsewhere).
 - src/prompt.ts — thread `describeCheck` into COMMON_RULES; drop the unconditional node_modules
   sentence.
-- Threading config to `detectBuildCheck` is now a two-site change, not four: ecad7e2 factored the
-  gate/landing/baseline runs into `runScopedBuildCheck(root, role, scope, wt, timeoutMs)` in
-  build-check.ts, which calls `detectBuildCheck(wt)` itself and logs the `build_check` event and
-  skip warning. Add the config parameter there (its callers — src/review.ts, src/merge.ts, and
-  `checkMainBaseline` inside build-check.ts — pass it through) and to src/doctor.ts's direct call.
-  src/redeploy.ts reaches the check through `mainIsGreen`/`checkMainBaseline`, so it needs no
-  change beyond what it already hands down.
+- Threading config to `detectBuildCheck` reaches three call sites, not two: `runScopedBuildCheck(root,
+  role, scope, wt, timeoutMs)` in build-check.ts calls `detectBuildCheck(wt)` itself and serves the
+  `gate` (src/review.ts:157), `landing` (src/merge.ts:151) and `batch` (src/lander.ts:376) scopes;
+  `checkMainBaseline` (src/main-baseline.ts:137) calls `detectBuildCheck(wt)` + `runBuildCheck` at
+  line 159; and src/doctor.ts:145 calls it directly. Add the config parameter to all three, plus
+  `config: TumwaterConfig` on `MergeContext` (src/merge.ts:42, set at src/loop.ts:230 — review.ts
+  and lander.ts already hold it). src/redeploy.ts reaches the check through `checkMainBaseline`, so
+  it needs no change beyond what it already hands down.
 - src/doctor.ts — a `project check` line: configured command, detected npm script, or the warn
   case.
 - Tests: test/build-check.test.ts (a configured command passing, failing with its tail as reasons,
@@ -517,8 +518,9 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   red baseline), test/doctor.test.ts.
 
 **Files touched.** src/types.ts, src/config-validation.ts, src/build-check.ts, src/prompt.ts,
-src/review.ts, src/merge.ts, src/main-red.ts, src/doctor.ts, test/build-check.test.ts,
-test/prompt.test.ts, test/review.test.ts, test/main-red.test.ts, test/doctor.test.ts.
+src/review.ts, src/merge.ts, src/lander.ts, src/main-baseline.ts, src/loop.ts, src/doctor.ts,
+test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts, test/main-baseline.test.ts,
+test/doctor.test.ts.
 
 **Acceptance criteria.**
 - A repo with `check.command = "pytest -q"` and no `package.json` anywhere has its check run at
@@ -526,12 +528,84 @@ test/prompt.test.ts, test/review.test.ts, test/main-red.test.ts, test/doctor.tes
   rejects the diff with the command's output tail as the reasons.
 - A repo with no `check` and a `package.json` behaves exactly as today (pinned by the existing
   build-check tests passing unmodified).
-- A configured command that hangs is killed at `timeoutSeconds` and classified `skipped`, not
-  `failed` — the tick proceeds to model review with a warning.
+- A configured command that hangs is killed at `timeoutSeconds`; at the `gate` scope it is
+  classified `skipped` and the tick proceeds to model review with a warning, while at
+  `landing`/`batch` it is remapped to `failed` with the "tree is unverified" reason and rejects the
+  merge (the existing `MERGE_SCOPES` policy, unchanged).
 - Tick prompts in a non-npm repo never mention `node_modules`, and name the configured command
   where they used to say "if it has a build or test command".
 - `doctor` warns, naming the consequence, when neither a configured command nor an npm script is
   found.
+
+**Refined 2026-09-18 (plan loop) — 6/7 audited against main `94562d8` (README stamp is behind at
+`2ab6f0d`). The last audit was the 2026-09-15
+series write against `1384eeb`, and three landings since moved the threading surface this entry
+describes: `8a3e6a1` (merge queue 5/5: the new `batch` scope), `0394c6d` (the baseline split into
+src/main-baseline.ts), and `5b125c4` (the `MERGE_SCOPES` timeout rejection). (`ecad7e2`'s
+`runScopedBuildCheck` predates the audit and is already reflected in the write.) Every anchor
+re-verified; the "two-site change"
+claim is now wrong in three ways, and one acceptance criterion contradicts existing merge-scope
+policy. Corrected in place above; the pins follow.**
+
+Verified as written: src/prompt.ts's node_modules sentence is still lines 74–76 and the vague
+"if it has a build or test command" line 78; `detectBuildCheck` (src/build-check.ts:114) still
+walks up for `package.json` + `node_modules` and prefers test → typecheck → build via the private
+`buildCheckFrom` (line 71); `BUILD_CHECK_TIMEOUT_MS` is 300_000 (line 140); `BuildCheckOutcome`
+(line 150) keeps `passed|failed|skipped` with `skipReason: "timeout" | "no-npm" | "toolchain"`;
+src/doctor.ts:145 still calls `detectBuildCheck(root)` directly; `TOP_LEVEL_KEYS`
+(src/config-validation.ts:33) has no `check`, and `checkKnownKeys` (line 136) is the guard that
+rejects unknown keys. Capability absence re-confirmed: `grep -rn '"check"\|check:' src/types.ts
+src/config-validation.ts` finds nothing, and no prompt or template mentions a configured check.
+
+Corrections (pinned; the three stale spots are already corrected in place):
+1. **`checkMainBaseline` is in src/main-baseline.ts, not build-check.ts — and main-red.ts needs
+   no change.** `checkMainBaseline` (src/main-baseline.ts:137) calls `detectBuildCheck(wt)` +
+   `runBuildCheck(wt, check)` itself (line 159), so it is a third `detectBuildCheck` site the plan
+   must thread; src/main-red.ts only imports it (`checkMainBaseline, failureHeadline`, line 4) and
+   passes an `onRun` hook, and src/redeploy.ts:469 calls it too. The files bullet now names
+   `src/main-baseline.ts` in place of `src/main-red.ts` and `test/main-baseline.test.ts` in place of
+   `test/main-red.test.ts`.
+2. **The threading surface is three `detectBuildCheck` sites plus a new `batch` scope, not
+   "two".** `runScopedBuildCheck(root, role, scope, wt, timeoutMs)` (src/build-check.ts:302) now
+   serves `gate` (src/review.ts:157), `landing` (src/merge.ts:151) and `batch` (src/lander.ts:376);
+   `BuildCheckScope`/`MERGE_SCOPES` (lines 269/281) postdate the last audit. Config must reach
+   `detectBuildCheck` at src/build-check.ts:309, src/main-baseline.ts:159, and src/doctor.ts:145.
+   Pinned mechanism: add `config` as an explicit parameter to `runScopedBuildCheck` (review.ts and
+   lander.ts already hold it; `MergeContext` does not — add `config: TumwaterConfig` to
+   src/merge.ts:42 and set it beside `exemptPaths` at its construction site, src/loop.ts:230) and
+   to `checkMainBaseline` and `detectBuildCheck`. Prefer this over `loadConfig(root)` inside the
+   helper: tests build configs in memory, and a hidden disk read makes detection untestable in
+   isolation.
+3. **`detectBuildCheck`'s second positional is `maxLevels`.** `detectBuildCheck(startDir,
+   maxLevels = WALK_UP_LEVELS)` already spends its 2nd argument, and four tests pass it there
+   (test/build-check.test.ts:276/287/288, test/review.test.ts:424). Pin the new signature as
+   `detectBuildCheck(startDir, config?, maxLevels = WALK_UP_LEVELS)` and update those four call
+   sites to `(dir, undefined, N)`.
+4. **Configured timeout precedence was unnamed.** `runScopedBuildCheck` takes an explicit
+   `timeoutMs`, and src/review.ts:157 passes `ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS`
+   — which would override a configured `check.timeoutSeconds`. Pin the order: explicit per-scope
+   argument > `check.timeoutSeconds * 1000` > `BUILD_CHECK_TIMEOUT_MS`; `runScopedBuildCheck`'s
+   default and main-baseline.ts's `runBuildCheck(wt, check)` call both read the configured value,
+   while the review gate's explicit override still wins.
+5. **The "classified skipped" acceptance criterion contradicted merge-scope policy.** A timeout at
+   `landing`/`batch` is remapped to `failed` by `MERGE_SCOPES` (build-check.ts), with the "the tree
+   is unverified" reason and a warning — by design, since a landing check that times out must not
+   merge unverified (BUGS.md 2026-09-18). Corrected in place: gate → `skipped` + proceed; landing/
+   batch → `failed` + reject, for the configured command exactly as for npm.
+6. **`tumwater.example.json` does not exist yet.** It is 4/7's deliverable and 4/7 is unlanded, so
+   6/7 cannot require it. Pinned: 6/7's required surfaces are config + validation + code + prompt +
+   doctor + README; the example's `check` entry is a one-line optional edit only when the file
+   already exists (i.e. after 4/7), otherwise 4/7's template carries it. `tumwater.example.json` is
+   not added to 6/7's files touched.
+7. **`BuildCheck` is private.** The plan's union replaces the private `interface BuildCheck`
+   (src/build-check.ts:42, today `{ rootDir; script }`), whose only constructor is `buildCheckFrom`
+   (line 71). Pin: export the union type so `describeCheck` and the tests can name the configured
+   variant; no other module constructs a `BuildCheck` directly.
+
+Sizing: unchanged apart from the wider threading surface — build-check.ts ~60 lines (union +
+`buildCheckFrom` variant + dispatch + `describeCheck`), main-baseline.ts ~5, doctor.ts ~10,
+prompt.ts ~15, review/merge/lander ~10, loop.ts ~2 (MergeContext wiring), config-validation/types
+~10, tests ~180. One run. No design question remains open.
 
 ---
 
