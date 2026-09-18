@@ -34,12 +34,12 @@ export class Semaphore {
     });
   }
 
+  /** Release a held permit. The finishing work gives back its permit first, and a queued waiter
+   * takes it over only if there is headroom: after a shrink, inUse can sit at or above the cap
+   * for a while (the in-flight work admitted before it), and no new grant may proceed until
+   * releases bring in-use under the cap. In the normal case this is exactly the classic
+   * hand-off — one release wakes one waiter, net in-use unchanged. */
   release(): void {
-    // The finishing work gives back its permit first. A queued waiter takes it over only if
-    // there is headroom: after a shrink, inUse can sit at or above the cap for a while (the
-    // in-flight work admitted before it), and no new grant may proceed until releases bring
-    // in-use under the cap. In the normal case this is exactly the classic hand-off — one
-    // release wakes one waiter, net in-use unchanged.
     this.inUse -= 1;
     if (this.inUse < this.capacity) {
       const next = this.waiters.shift();
