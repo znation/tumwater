@@ -5,7 +5,7 @@ import type { StatusSnapshot } from "./status.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../state.js";
 import { budgetGate, dailyCost, fleetDailyCost, budgetReached } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
-import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd, usdCap } from "../text.js";
+import { clipToWidth, compactTokens, formatTime, pad2, shortSha, usd, usdCap } from "../text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
  * cycle position, time/token formatters, and the width-aware table shared by
@@ -210,21 +210,6 @@ function stateCell(
   const p = live === undefined ? readLiveProgress(root, s.role) : live;
   const work = p?.currentWork;
   return work ? `${work} · ${phase}` : phase;
-}
-
-/** Truncate to `width` with a trailing ellipsis when over. The result never exceeds
- * `width` characters (even at width ≤ 1), so clipped lines cannot wrap in a terminal of
- * that many columns. A cut that would split a surrogate pair backs off one unit, so no line
- * ever carries a lone surrogate (terminals render it as garbage). A negative width fits
- * nothing and yields the empty string, keeping the invariant at degenerate budgets. Shared
- * by the status table and the TUI's line rendering. */
-export function clipToWidth(text: string, width: number): string {
-  if (width < 0) return ""; // No budget fits nothing; without this, slice(0, -1) would keep almost all of text.
-  if (text.length <= width) return text;
-  const bare = width <= 1; // No room for an ellipsis at degenerate widths.
-  let cut = bare ? width : width - 1;
-  if (cutSplitsSurrogatePair(text, cut)) cut -= 1; // Never emit a lone high surrogate.
-  return bare ? text.slice(0, cut) : `${text.slice(0, cut)}…`;
 }
 
 /** Columns allowed to shrink when the table is wider than the terminal, widest offender

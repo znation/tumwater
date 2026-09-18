@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  clipToWidth,
   compactTokens,
   collapseWhitespace,
   describeToolCall,
@@ -110,6 +111,43 @@ test("truncate with a non-positive max fits nothing and returns the empty string
   assert.equal(truncate("a much longer string than the budget", 0), "");
   assert.equal(truncate("abc", -1), "");
   assert.equal(truncate("", 0), "");
+});
+
+test("clipToWidth never exceeds the requested width, even at degenerate widths", () => {
+  const text = "a much longer line than any of these widths";
+  assert.equal(clipToWidth(text, 100), text, "shorter-than-width text is untouched");
+  assert.equal(clipToWidth("abcd", 4), "abcd", "exact-fit text is untouched");
+  for (const width of [0, 1, 2, 5, 80]) {
+    const clipped = clipToWidth(text, width);
+    assert.ok(clipped.length <= width, `width ${width} violated: ${clipped.length}`);
+  }
+  // A negative width fits nothing: without the guard, slice(0, -n) drops n trailing
+  // characters instead of keeping none, so the "never exceeds width" invariant could not
+  // even be stated for those inputs.
+  assert.equal(clipToWidth(text, -1), "");
+  assert.equal(clipToWidth("ab", -5), "");
+  assert.match(clipToWidth(text, 5), /…$/, "over-wide text ends in an ellipsis");
+});
+
+test("clipToWidth never splits a surrogate pair (no lone surrogates in clipped lines)", () => {
+  // Astral characters (emoji) are two UTF-16 code units; cutting between them would leave a
+  // lone high surrogate that terminals render as garbage. The cut backs off and drops the
+  // whole character instead, keeping the width invariant.
+  const text = "ab🎉cd ef"; // 🎉 occupies code units 2..3
+  assert.equal(clipToWidth(text, 4), "ab…"); // cut at 3 would split the pair → back off to 2
+  for (const width of [0, 1, 2, 3, 5, 8]) {
+    const clipped = clipToWidth(text, width);
+    assert.ok(clipped.length <= width, `width ${width} violated: ${clipped.length}`);
+    for (let i = 0; i < clipped.length - 1; i++) {
+      const code = clipped.charCodeAt(i);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        assert.ok(
+          clipped.charCodeAt(i + 1) >= 0xdc00 && clipped.charCodeAt(i + 1) <= 0xdfff,
+          `lone surrogate at ${i} in ${JSON.stringify(clipped)}`,
+        );
+      }
+    }
+  }
 });
 
 // compactTokens is the single home of the token display format shared by the status table's

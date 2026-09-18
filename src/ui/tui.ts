@@ -11,8 +11,8 @@ import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config.js";
 import { snapshot } from "./status.js";
-import { clipToWidth, renderStatus } from "./status-render.js";
-import { cutSplitsSurrogatePair, usdCap } from "../text.js";
+import { renderStatus } from "./status-render.js";
+import { clipToWidth, cutSplitsSurrogatePair, usdCap } from "../text.js";
 import { readTranscript } from "./transcript.js";
 import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reload.js";
 

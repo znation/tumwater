@@ -38,8 +38,8 @@ function isLowSurrogate(code: number): boolean {
 
 /** True when cutting `s` at code-unit index `i` would split a surrogate pair — leaving a lone
  * high surrogate in the kept part, which terminals render as garbage (a U+FFFD box). The display
- * clippers (truncate here and clipToWidth in status-render) back off one unit before such a cut
- * so no clipped line ever carries a lone surrogate. */
+ * clippers (truncate and clipToWidth, both here) back off one unit before such a cut so no
+ * clipped line ever carries a lone surrogate. */
 export function cutSplitsSurrogatePair(s: string, i: number): boolean {
   return i > 0 && i < s.length && isHighSurrogate(s.charCodeAt(i - 1)) && isLowSurrogate(s.charCodeAt(i));
 }
@@ -57,6 +57,22 @@ export function truncate(s: string, max: number): string {
   let cut = max - 1;
   if (cutSplitsSurrogatePair(s, cut)) cut -= 1; // Never emit a lone high surrogate.
   return `${s.slice(0, cut).trimEnd()}…`;
+}
+
+/** Clip `s` to `width` display columns with a trailing ellipsis when over — the column-budget
+ * sibling of truncate, which caps by character budget. The result never exceeds `width`
+ * characters (even at width ≤ 1), so a clipped line cannot wrap in a terminal of that many
+ * columns. A cut that would split a surrogate pair backs off one unit, so no line ever carries
+ * a lone surrogate (terminals render it as garbage). A negative width fits nothing and yields
+ * the empty string, keeping the invariant at degenerate budgets. Shared by the status table
+ * (status-render.ts) and the TUI's line rendering (tui.ts). */
+export function clipToWidth(text: string, width: number): string {
+  if (width < 0) return ""; // No budget fits nothing; without this, slice(0, -1) would keep almost all of text.
+  if (text.length <= width) return text;
+  const bare = width <= 1; // No room for an ellipsis at degenerate widths.
+  let cut = bare ? width : width - 1;
+  if (cutSplitsSurrogatePair(text, cut)) cut -= 1; // Never emit a lone high surrogate.
+  return bare ? text.slice(0, cut) : `${text.slice(0, cut)}…`;
 }
 
 /** Parse `raw` as a positive integer — the one definition of what counts as a valid count or
