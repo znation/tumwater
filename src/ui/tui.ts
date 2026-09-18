@@ -12,7 +12,7 @@ import { submitPrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config.js";
 import { snapshot } from "./status.js";
 import { clipToWidth, renderStatus } from "./status-render.js";
-import { cutSplitsSurrogatePair } from "../text.js";
+import { cutSplitsSurrogatePair, usdCap } from "../text.js";
 import { readTranscript } from "./transcript.js";
 import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reload.js";
 
@@ -502,7 +502,7 @@ export async function runTui(root: string): Promise<void> {
               flash =
                 parsed.value === 0
                   ? "budget disabled"
-                  : `budget set to $${parsed.value.toFixed(2).replace(/\.00$/, "")}`;
+                  : `budget set to ${usdCap(parsed.value)}`;
             } else {
               flash = result.error; // broken config or write failure — stay in edit mode
             }

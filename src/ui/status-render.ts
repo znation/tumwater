@@ -4,7 +4,7 @@ import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, budgetGate, dailyCost, fleetDailyCost, budgetReached } from "../state.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
-import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd } from "../text.js";
+import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd, usdCap } from "../text.js";
 
 /** Presentation layer over the status data (status.ts): human-facing labels for a loop's
  * cycle position, time/token formatters, and the width-aware table shared by
@@ -224,12 +224,6 @@ export function clipToWidth(text: string, width: number): string {
   let cut = bare ? width : width - 1;
   if (cutSplitsSurrogatePair(text, cut)) cut -= 1; // Never emit a lone high surrogate.
   return bare ? text.slice(0, cut) : `${text.slice(0, cut)}…`;
-}
-
-/** The budget cap for display: whole dollars stay bare ($50), fractional ones keep their
- * cents ($12.34) — the badge reads `· budget: $12.34/$50 today`. */
-function usdCap(n: number): string {
-  return `$${n.toFixed(2).replace(/\.00$/, "")}`;
 }
 
 /** Columns allowed to shrink when the table is wider than the terminal, widest offender

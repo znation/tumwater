@@ -102,11 +102,19 @@ export function shortSha(sha: unknown): string {
  * the cents-pinned money format shared by the event feed's budget/usage lines (event-format.ts)
  * and the status table's cost/today cells plus totals row (status-render.ts), so the decimal
  * width cannot drift per consumer. The cap variant that drops whole-dollar `.00` is a different
- * format with its own home (`usdCap` in status-render.ts, used by `budgetBadge`); the GUI's row
- * cells still format money from their own inline JS (a separate runtime that cannot import
- * TypeScript), while header badges like `budgetBadge` arrive preformatted. */
+ * format (`usdCap` below); the GUI's row cells still format money from their own inline JS (a
+ * separate runtime that cannot import TypeScript), while header badges like `budgetBadge`
+ * arrive preformatted. */
 export function usd(n: number): string {
   return `$${n.toFixed(2)}`;
+}
+
+/** A USD cap for display: whole dollars stay bare ($50), fractional ones keep their cents
+ * ($12.34) — the budget badge reads `· budget: $12.34/$50 today`, and the TUI's cap-edit
+ * confirmation reads `budget set to $25`. The single home of the drop-`.00` rule, shared by
+ * status-render's `budgetBadge` and the TUI's budget-edit flash so the two cannot drift. */
+export function usdCap(n: number): string {
+  return `$${n.toFixed(2).replace(/\.00$/, "")}`;
 }
 
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
