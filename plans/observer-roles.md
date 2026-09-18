@@ -149,30 +149,51 @@ a passing check would still grow monotonically until the cap intervened. This pl
 - `src/scheduling.ts` — no change needed beyond `DEFERRABLE_ROLES` shrinking, which `deferTick`
   already reads. Note `deferTick` now takes a fifth argument, `now: number` (`704139c`), so the
   new "returns false for every observer" tests must pass it.
-- `src/reply-contract.ts` — `extractFlow(text)`, built on the existing `labeledLine` helper that
-  already serves `SUMMARY`/`WHY`/`RISK`/`VERIFIED` and `TUMWATER_REFUSED` (2/2).
-- `src/qa-coverage.ts` (new) — read/write `.tumwater/state/qa-coverage.json`:
-  `{ flows: { <name>: { lastRunAt, lastResult, mode } } }` (2/2).
-- `src/prompt.ts` — inject the rendered coverage block into the `qa` prompt, beside the existing
-  principles injection (2/2).
-- `src/loop.ts` — record the declared flow at tick end (2/2).
+- `src/reply-contract.ts` — `extractFlow(text): { flow: string; result: "passed" | "bug" } | null`,
+  built on the existing `labeledLine` helper that already serves
+  `SUMMARY`/`WHY`/`RISK`/`VERIFIED` and `TUMWATER_REFUSED`. The line is
+  `FLOW: <name> — <passed|bug>`; a bare `FLOW: <name>` is tolerated as `passed`. The result token
+  is load-bearing: `run (real)` commits its `## Verified` note, so deriving "bug" from "the tick
+  changed files" would mislabel a passing real run (2/2).
+- `src/qa-coverage.ts` (new) — the ledger and its rendering: `readQaCoverage(root)`,
+  `recordFlow(root, flow, result, summary?, now?)`, `renderCoverageBlock(coverage, now)`, the
+  `QA_FLOWS` universe constant, and a few local age-formatting lines. Schema
+  `{ flows: { <name>: { lastRunAt: number; result: "passed" | "bug"; summary?: string } } }` at
+  `.tumwater/state/qa-coverage.json` — no `mode` field: the flow name itself distinguishes
+  `run (real)` from `run`. Reads via `readJsonFile`, writes via `writeJsonAtomic`, both in
+  `src/json-files.ts` (2/2).
+- `src/paths.ts` — `qaCoveragePath(root)` beside `statePath` (line 26):
+  `path.join(tumwaterDir(root), "state", "qa-coverage.json")` (2/2).
+- `src/prompt.ts` — `TickPromptInput` gains `coverage?: string`; `buildTickPrompt` pushes it
+  immediately after the principles block (line 169), beside that existing injection (2/2).
+- `src/loop.ts` — `tickPrompt()` (line 143) renders the block for `qa` only
+  (`this.role === "qa" ? renderCoverageBlock(readQaCoverage(this.root), Date.now()) : undefined`)
+  and passes it to `buildTickPrompt` (line 160). After the pi run (line 590), `runTick` extracts
+  the flow once; the `no_change` return (line 655) and the `queued` return (line 747) call
+  `recordFlow` before returning. Error/aborted/quiet_killed/refused paths record nothing (2/2).
 
 ### The coverage block
 
-Rendered from the ledger into the `qa` prompt, oldest-first so the stalest flow leads:
+Rendered from the ledger into the `qa` prompt, never-exercised flows first (age = ∞), then
+exercised flows oldest-first, so the stalest work leads:
 
 ```
-Flow coverage (from this fleet's own record; oldest first):
+Flow coverage (from this fleet's own record; least recently exercised first):
+  tui, logs, reset-counters, init — never exercised
   run (real)      — 6d ago, passed
   gui             — 4d ago, passed
   prompt          — 2d ago, bug filed (BUGS.md: "…")
   status          — 4h ago, passed
-  tui, logs, reset-counters, init — never exercised
 ```
 
-The instruction that goes with it is one line: exercise the flow at the top unless you have a
-concrete reason not to. That replaces a judgment call made blind with a lookup, which is what a
-mid-sized local model is reliably good at. It also makes the `run (real)` daily-cadence rule —
+The ordering is load-bearing, not cosmetic: the instruction that goes with the block is one line
+— exercise the flow at the top unless you have a concrete reason not to — so a never-exercised
+flow must sort first for the eight cheap flows to enter the rotation at all. (The original
+draft's example listed them last, which would have made its own instruction unexercisable;
+corrected here.) The age formatter is a few local lines in `qa-coverage.ts` (`6d`/`4h`/`12m`),
+not `src/ui/status-render.ts`'s `ago()` — core modules do not import the UI layer. That replaces
+a judgment call made blind with a lookup, which is what a mid-sized local model is reliably good
+at. It also makes the `run (real)` daily-cadence rule —
 today enforced through a `## Verified` line the model has to find and date-compare in BUGS.md —
 fall out of the same table, so the expensive mode is governed by the same mechanism as
 everything else rather than by a special case in the prompt.
@@ -262,3 +283,67 @@ Corrections:
 Sizing unchanged: `src/roles.ts` ~6 lines (the set, its comment, the export); `src/state.ts` ~4
 (the observer branch in the final `else`); tests ~25 across `test/state.test.ts` and
 `test/orchestrator.test.ts`. One run. No design question remains open.
+
+## Refined 2026-09-18 (plan loop) — 2/2 audit
+
+The 1/2 note above audited the scheduler half only; 2/2's anchors were never verified. Audited
+against main `a3b5138` (the README's stamp is four merges behind at `c53dba4`; the landings since
+— `8a3e6a1` merge-queue 5/5, `a3b5138` the quiet-kill bugfix, and the markdown commits — touch
+no 2/2 anchor). The capability is confirmed absent: `grep -rn 'qa-coverage\|renderCoverage\|recordFlow\|QA_FLOWS\|extractFlow' src/ test/` is empty, and `FLOW:` appears nowhere in the
+role texts.
+
+Verified on this tree:
+
+- `src/reply-contract.ts` (75 lines) — `labeledLine(text, label)` at line 28 is exactly the helper
+  the plan assumes: `^\s*<label>:\s*(.+)\s*$` with the `m` flag, returning the trimmed remainder
+  or null. `extractRefusal` (line 37) is the precedent for a thin wrapper. The `FLOW` label is
+  literal text, so there is no regex-escaping concern.
+- `src/prompt.ts` — `interface TickPromptInput` at 142 (fields
+  `role`/`initialPrompt`/`principles?`/`extraInstructions?`); `buildTickPrompt` at 163; the
+  principles push at 169 (`if (principles) parts.push(principlesBlock(principles));`). The
+  coverage push goes on the next line, before `parts.push(...role.find...)` at 170.
+- `src/loop.ts` — `tickPrompt()` at 143, its `buildTickPrompt({...})` call at 160 (where
+  `coverage` joins `extraInstructions`); `runTick` at 515, the pi run at 590
+  (`const pi = await this.runRolePi(...)`), the `no_change` return at 655, the `queued` return at
+  747. `this.root` and `this.role` are in scope at both returns, so `recordFlow` needs no new
+  plumbing and `TickOutcome` need not widen.
+- `src/paths.ts` — `tumwaterDir(root)` at 6; `statePath(root, role)` at 26 is the exact idiom
+  `qaCoveragePath` copies; the state dir already holds `orchestrator.json`/landing markers, and
+  `writeJsonAtomic` creates the parent, so no directory setup is needed.
+- `src/json-files.ts` — `readJsonFile<T>` at 15 returns null on missing/torn; `writeJsonAtomic`
+  at 43 is the per-pid tmp+rename writer. Both are what invariant 5 needs.
+- `src/roles.ts` — the `qa` role at 185; its find text currently says "prefer a flow not recently
+  exercised, as far as BUGS.md filings and Verified notes show" — the blind lookup this replaces.
+- plans/qa-role.md — line 53 fixes the ordered flow universe
+  `init → status → logs → prompt → reset-counters → gui → tui → run`, which `QA_FLOWS` mirrors;
+  `run (real)` (line 63) is the expensive variant.
+- Tests — `test/reply-contract.test.ts` (`labeledLine`/`extractRefusal` cases at 23–37),
+  `test/prompt.test.ts` (the qa prompt contract at 578), `test/paths.test.ts`, `test/loop.test.ts`
+  (the fake-pi shim loop harness), and `test/json-files.test.ts` all exist;
+  `test/qa-coverage.test.ts` is new.
+
+Pinned (open questions closed):
+
+1. **The result token.** `FLOW: <name>` alone could not distinguish a passing real run (which
+   commits its `## Verified` note) from a filed bug (which commits a BUGS.md entry) — both change
+   files. The line becomes `FLOW: <name> — <passed|bug>`; `extractFlow` splits on the final
+   em-dash/`- ` token and tolerates a bare name as `passed`. The role, not the harness, states
+   the outcome; the harness stays dumb.
+2. **The flow universe.** "Never-exercised flows listed last" needs a known list; pinned to
+   `QA_FLOWS` in `src/qa-coverage.ts`, mirroring plans/qa-role.md's ordered list plus
+   `run (real)`. The block's rows are `QA_FLOWS ∪ Object.keys(coverage)`.
+3. **Ordering corrected.** The draft's example listed never-exercised flows last while its
+   instruction said "exercise the flow at the top" — self-defeating. Pinned: never-exercised
+   first, then exercised oldest-first. The acceptance criterion is updated in PLANS.md.
+4. **The age formatter stays in core.** `src/ui/status-render.ts`'s `ago()`/`humanSeconds` are
+   the only existing age helpers, but importing UI into `src/` inverts the layering; a few local
+   lines in `qa-coverage.ts` (`6d`/`4h`/`12m`) are pinned instead.
+5. **Recording seam.** `runTick` extracts the flow once after the pi run and records it at the
+   two success returns (`no_change`, `queued`) only; `error`/`aborted`/`quiet_killed`/`refused`
+   record nothing, so an interrupted check never advances the ledger.
+
+Sizing: `src/qa-coverage.ts` ~110 lines (schema, read/record/render, age, `QA_FLOWS`);
+`src/reply-contract.ts` ~10 (`extractFlow`); `src/paths.ts` ~4; `src/prompt.ts` ~3;
+`src/loop.ts` ~8; `src/roles.ts` ~4; tests ~120 across `test/qa-coverage.test.ts` (new),
+`test/reply-contract.test.ts`, `test/prompt.test.ts`, `test/paths.test.ts`, `test/loop.test.ts`.
+One run. No design question remains open.
