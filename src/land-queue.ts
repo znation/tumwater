@@ -117,6 +117,6 @@ export function landingFor(root: string, role: string): LandingEntry[] {
  * non-terminal outcome keeps the landing ref; the retry is the role's next fresh tick, not a
  * queue re-drain). ENOENT is a no-op: a concurrent drop between listing and removal is a
  * normal race (the inbox.ts policy), not an error. */
-export function dropLanding(root: string, file: string): void {
+export function dropLanding(file: string): void {
   removeQueueFile(file);
 }

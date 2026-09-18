@@ -51,13 +51,13 @@ test("entries read back in filename order and the head advances on drop", () => 
   assert.ok(head);
   assert.equal(head.entry.role, "improve");
   assert.equal(head.entry.sha, "a".repeat(40));
-  dropLanding(repo, head.file);
+  dropLanding(head.file);
   assert.equal(headLanding(repo)!.entry.role, "organize", "the head advanced");
-  dropLanding(repo, headLanding(repo)!.file);
+  dropLanding(headLanding(repo)!.file);
   assert.equal(headLanding(repo)!.entry.sha, "c".repeat(40));
-  dropLanding(repo, headLanding(repo)!.file);
+  dropLanding(headLanding(repo)!.file);
   assert.equal(headLanding(repo), null);
-  dropLanding(repo, head.file); // ENOENT after a concurrent drop is a no-op, not an error
+  dropLanding(head.file); // ENOENT after a concurrent drop is a no-op, not an error
 });
 
 test("landingFor filters by role across queued and in-flight entries", () => {
@@ -95,7 +95,7 @@ test("a torn or foreign file is skipped, never thrown on", () => {
   const head = headLanding(repo);
   assert.ok(head, "the real entry is the head once the torn file is cleared");
   assert.equal(head.entry.role, "improve");
-  dropLanding(repo, head.file);
+  dropLanding(head.file);
   assert.equal(headLanding(repo), null, "only torn files left: an empty head, not an error");
 });
 
@@ -146,7 +146,7 @@ test("queuedLandingFiles pairs each entry with its file in queue order — the b
     assert.equal(path.dirname(f.file), landQueueDir(repo), "the file is inside the queue dir");
   }
   assert.deepEqual(files.map((f) => f.entry), queuedLandings(repo), "same order and content as the bare reader");
-  dropLanding(repo, files[0]!.file);
+  dropLanding(files[0]!.file);
   const after = queuedLandingFiles(repo);
   assert.equal(after.length, 1);
   assert.equal(after[0]!.entry.role, "organize", "a drop on the paired file advances the slice");

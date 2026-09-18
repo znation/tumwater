@@ -214,7 +214,7 @@ function writeLandingOutcome(
     ...(usage.tokens > 0 ? { tokens: usage.tokens } : {}),
     ...(usage.cost > 0 ? { costUsd: usage.cost } : {}),
   });
-  dropLanding(root, file);
+  dropLanding(file);
 }
 
 /** Land one queued entry end-to-end — the poll loop's single landing slot, exported so the
@@ -598,7 +598,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           // recovery (BUGS.md 2026-09-17).
           const stale = staleHeadFile(root);
           if (stale) {
-            dropLanding(root, stale);
+            dropLanding(stale);
             logEvent(root, {
               loop: "harness",
               type: "warning",
@@ -609,7 +609,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         }
         if (head) {
           if (await isMergedInto(root, head.entry.sha, mainBranch)) {
-            dropLanding(root, head.file);
+            dropLanding(head.file);
             // A crash between the 4/5 marker write and its removal can leave a marker with
             // no live landing — this branch runs only when the slot is free, so a marker
             // naming this entry is stale; clear it so the idle fleet reads clean. (Any
