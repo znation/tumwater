@@ -141,14 +141,27 @@ export function validateConfig(raw: unknown): void {
       problems.push(`${prefix}${key} must be ${what} (got ${show(v)})`);
   };
 
+  // Field-type validators shared by every section that carries the same kind of value: a
+  // boolean flag (autoRestart, review.enabled, roles.<id>.enabled) and a list of strings
+  // (piArgs, review.exemptPaths). Their messages cannot drift per field.
+  const checkBoolean = (obj: Record<string, unknown>, prefix: string, key: string): void => {
+    if (!(key in obj)) return;
+    const v = obj[key];
+    if (typeof v !== "boolean")
+      problems.push(`${prefix}${key} must be true or false (got ${show(v)})`);
+  };
+
+  const checkStringArray = (obj: Record<string, unknown>, prefix: string, key: string): void => {
+    if (!(key in obj)) return;
+    const v = obj[key];
+    if (!Array.isArray(v) || !v.every((s) => typeof s === "string"))
+      problems.push(`${prefix}${key} must be an array of strings (got ${show(v)})`);
+  };
+
   const r = raw; // Narrowed to an object by isPlainObject above.
   checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
   checkModelTriple(r, "");
-  if ("piArgs" in r) {
-    const v = r.piArgs;
-    if (!Array.isArray(v) || !v.every((a) => typeof a === "string"))
-      problems.push(`piArgs must be an array of strings (got ${show(v)})`);
-  }
+  checkStringArray(r, "", "piArgs");
   checkNumber(r, "", "maxConcurrent", (n) => Number.isInteger(n) && n >= 1, "an integer of at least 1");
   checkNumber(r, "", "landBatchMax", (n) => Number.isInteger(n) && n >= 1, "an integer of at least 1");
   checkNumber(r, "", "minTickIntervalSeconds", (n) => n >= 0, "a number of 0 or more");
@@ -161,8 +174,7 @@ export function validateConfig(raw: unknown): void {
   checkNumber(r, "", "thrashTurns", (n) => n >= 0, "a number of 0 or more");
   checkNumber(r, "", "thrashMinutes", (n) => n >= 0, "a number of 0 or more");
 
-  if ("autoRestart" in r && typeof r.autoRestart !== "boolean")
-    problems.push(`autoRestart must be true or false (got ${show(r.autoRestart)})`);
+  checkBoolean(r, "", "autoRestart");
 
   if ("idleBackoff" in r) {
     const b = r.idleBackoff;
@@ -184,13 +196,8 @@ export function validateConfig(raw: unknown): void {
     } else {
       const o = rv;
       checkKnownKeys(o, REVIEW_KEYS, "review", problems);
-      if ("enabled" in o && typeof o.enabled !== "boolean")
-        problems.push(`review.enabled must be true or false (got ${show(o.enabled)})`);
-      if ("exemptPaths" in o) {
-        const v = o.exemptPaths;
-        if (!Array.isArray(v) || !v.every((p) => typeof p === "string"))
-          problems.push(`review.exemptPaths must be an array of strings (got ${show(v)})`);
-      }
+      checkBoolean(o, "review.", "enabled");
+      checkStringArray(o, "review.", "exemptPaths");
       checkModelTriple(o, "review.");
     }
   }
@@ -280,8 +287,7 @@ export function validateConfig(raw: unknown): void {
         checkKnownKeys(o, ROLE_ENTRY_KEYS, `roles.${id}`, problems);
         checkString(o, `roles.${id}.`, "instructions"); // Empty is a deliberate "no extra instructions".
         checkModelTriple(o, `roles.${id}.`);
-        if ("enabled" in o && typeof o.enabled !== "boolean")
-          problems.push(`roles.${id}.enabled must be true or false (got ${show(o.enabled)})`);
+        checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(
           o,
           `roles.${id}.`,
