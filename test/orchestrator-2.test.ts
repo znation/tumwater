@@ -18,7 +18,7 @@ import { freshLoopState, loadLoopState, readOrchestratorInfo, saveLoopState, tod
 import { abortRequestPath, branchName, landQueueDir, landingRefName, landingStatePath, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { refSha, setRef } from "../src/git.js";
-import { checkMainBaseline } from "../src/build-check.js";
+import { checkMainBaseline } from "../src/main-baseline.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
 import {

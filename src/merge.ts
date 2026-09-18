@@ -13,7 +13,8 @@ import {
   unquotePorcelainPath,
 } from "./git.js";
 import { abortSync } from "./worktree.js";
-import { noteGreenBaseline, runScopedBuildCheck } from "./build-check.js";
+import { runScopedBuildCheck } from "./build-check.js";
+import { noteGreenBaseline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { ffMainTo, ffStackToMain, mergeToMain, type MergeContext } from "../src/merge.js";
-import { checkMainBaseline } from "../src/build-check.js";
+import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { aheadOfMain } from "../src/git.js";

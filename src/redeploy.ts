@@ -14,7 +14,8 @@ import {
   readBuildInfo,
   stampBuild,
 } from "./build-info.js";
-import { type BuildCheckOutcome, checkMainBaseline, clipBuildTail, resolveFromNodeModules } from "./build-check.js";
+import { type BuildCheckOutcome, clipBuildTail, resolveFromNodeModules } from "./build-check.js";
+import { checkMainBaseline } from "./main-baseline.js";
 import { ensureDir } from "./files.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { ensureDetachedWorktree } from "./worktree.js";

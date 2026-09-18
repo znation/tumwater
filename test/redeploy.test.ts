@@ -6,7 +6,7 @@ import path from "node:path";
 import type { HarnessEventInput } from "../src/events.js";
 import type { BuildStaleness } from "../src/build-info.js";
 import { readBuildInfo } from "../src/build-info.js";
-import { checkMainBaseline } from "../src/build-check.js";
+import { checkMainBaseline } from "../src/main-baseline.js";
 import {
   autoRestartRecord,
   compileStaged,
