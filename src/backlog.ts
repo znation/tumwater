@@ -25,6 +25,24 @@ export interface BacklogEntry {
   body: string;
 }
 
+/** The body lines of the `## <sectionTitle>` section of a markdown document: everything
+ * between that heading line and the next `## ` line (or EOF), neither boundary included. The
+ * single home of "where a section starts and ends" — every reader of a `## ` section (backlog
+ * entry parsing here, the usage report's Done/Fixed date scan in ui/report.ts) walks its
+ * section through this, so two independent readers can never disagree about the boundary. */
+export function sectionLines(md: string, sectionTitle: string): string[] {
+  const lines: string[] = [];
+  let inSection = false;
+  for (const line of md.split("\n")) {
+    if (line.startsWith("## ")) {
+      inSection = line.slice(3).trim() === sectionTitle;
+      continue;
+    }
+    if (inSection) lines.push(line);
+  }
+  return lines;
+}
+
 /** The entries inside one `## <sectionTitle>` section of a markdown document, each with its
  * full body: stops at the next `## ` line (so Done/Fixed entries never leak in), skips
  * non-heading placeholders like `_None yet._` and any prose before the first heading, keeps
@@ -32,7 +50,6 @@ export interface BacklogEntry {
  * entry's body at EOF as well as at the next heading. */
 export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntry[] {
   const entries: BacklogEntry[] = [];
-  let inSection = false;
   let title: string | null = null; // The open entry's heading (null = no entry open yet).
   let bodyLines: string[] = [];
   const close = (): void => {
@@ -40,13 +57,7 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
     title = null;
     bodyLines = []; // Prose before the first heading never becomes a body.
   };
-  for (const line of md.split("\n")) {
-    if (line.startsWith("## ")) {
-      close(); // A new ## section ends both the open entry's body and the section itself.
-      inSection = line.slice(3).trim() === sectionTitle;
-      continue;
-    }
-    if (!inSection) continue;
+  for (const line of sectionLines(md, sectionTitle)) {
     if (line.startsWith("### ")) {
       close();
       title = line.slice(4).trim();

@@ -4,6 +4,7 @@ import type { HarnessEvent } from "../types.js";
 import { parseEventLine } from "../events.js";
 import { eventsLogPath } from "../paths.js";
 import { forEachTailChunk } from "../files.js";
+import { sectionLines } from "../backlog.js";
 import { formatDate, usd } from "../text.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
@@ -116,15 +117,9 @@ function readMarkdown(file: string): string {
  * "done\n2026-…" matchable. Entries without a parseable date are skipped. */
 function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] {
   const dates: string[] = [];
-  let inSection = false;
-  const lines = md.split("\n");
+  const lines = sectionLines(md, sectionTitle);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    if (line.startsWith("## ")) {
-      inSection = line.slice(3).trim() === sectionTitle;
-      continue;
-    }
-    if (!inSection) continue;
     if (!line.startsWith("### ") && !line.startsWith("- ")) continue;
     const meta: string[] = [line];
     let closed = line.endsWith(")");
