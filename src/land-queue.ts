@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ensureDir } from "./files.js";
+import { listQueueFiles, queueFileName, removeQueueFile } from "./file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { landQueueDir } from "./paths.js";
 import type { LandingEntry } from "./types.js";
@@ -23,20 +24,14 @@ let seq = 0;
 export function enqueueLanding(root: string, entry: LandingEntry): void {
   const dir = landQueueDir(root);
   ensureDir(dir);
-  const name = `${entry.enqueuedAt}-${String(seq++).padStart(6, "0")}-${process.pid}.json`;
+  const name = queueFileName(entry.enqueuedAt, seq++, ".json");
   fs.writeFileSync(path.join(dir, name), JSON.stringify(entry, null, 2));
 }
 
 /** Every queue file in execution order (oldest first) — the same filename sort queuedLandings,
  * headLanding, and landingFor read. A missing queue dir reads as an empty queue. */
 function queueFiles(root: string): string[] {
-  const dir = landQueueDir(root);
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith(".json"))
-    .sort()
-    .map((f) => path.join(dir, f));
+  return listQueueFiles(landQueueDir(root), ".json");
 }
 
 /** Number of landings currently queued — a directory listing only; no file content is read.
@@ -123,9 +118,5 @@ export function landingFor(root: string, role: string): LandingEntry[] {
  * queue re-drain). ENOENT is a no-op: a concurrent drop between listing and removal is a
  * normal race (the inbox.ts policy), not an error. */
 export function dropLanding(root: string, file: string): void {
-  try {
-    fs.rmSync(file);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-  }
+  removeQueueFile(file);
 }

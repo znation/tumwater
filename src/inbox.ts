@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ensureDir } from "./files.js";
+import { listQueueFiles, queueFileName, removeQueueFile } from "./file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { logEvent } from "./events.js";
 import { inboxDir } from "./paths.js";
@@ -33,20 +34,14 @@ export function enqueuePrompt(root: string, prompt: string): string {
   const dir = inboxDir(root);
   ensureDir(dir);
   // Timestamp orders across processes; the counter orders within one; pid breaks ties.
-  const name = `${Date.now()}-${String(seq++).padStart(6, "0")}-${process.pid}.md`;
+  const name = queueFileName(Date.now(), seq++, ".md");
   const file = path.join(dir, name);
   fs.writeFileSync(file, prompt);
   return file;
 }
 
 function queuedFiles(root: string): string[] {
-  const dir = inboxDir(root);
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith(".md"))
-    .sort()
-    .map((f) => path.join(dir, f));
+  return listQueueFiles(inboxDir(root), ".md");
 }
 
 /** Number of prompts currently queued — a directory listing only; no file content is read.
@@ -108,12 +103,7 @@ export function cancelPrompt(root: string, position: number): CancelOutcome {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return { status: "gone" };
     throw err;
   }
-  try {
-    fs.rmSync(file);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { status: "gone" };
-    throw err;
-  }
+  if (!removeQueueFile(file)) return { status: "gone" };
   logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_cancelled", preview: promptPreview(text) });
   return { status: "cancelled", text };
 }
@@ -136,12 +126,7 @@ export function dequeuePrompt(root: string): string | null {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; // Cancelled mid-listing.
     throw err;
   }
-  try {
-    fs.rmSync(oldest);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; // A concurrent cancel won the race — do not run a cancelled prompt.
-    throw err;
-  }
+  if (!removeQueueFile(oldest)) return null; // A concurrent cancel won the race — do not run a cancelled prompt.
   return text;
 }
 
