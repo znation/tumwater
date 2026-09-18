@@ -981,6 +981,44 @@ test("the budget badge is plain text on an all-free fleet and a link otherwise",
   assert.match(wrap.innerHTML, /<a href='#' id='budgetbadge'>/, "disabled fleet: the badge is still the edit affordance");
 });
 
+// A browser-rejected <input type=number> (the operator typed "$25" or "5,000") reports value
+// "" exactly like a deliberately cleared field — and "" means "no cap" (post 0), so without a
+// guard a typo silently DISABLES the spend cap. The budget-edit block runs in the page's script
+// scope; evaling it against a minimal DOM stub pins the guard behaviorally.
+test("the budget editor refuses browser-rejected number text instead of silently disabling the cap", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const block = GUI_PAGE.split("// budget-edit:start")[1]!.split("// budget-edit:end")[0]!;
+  const input = { value: "", validity: { badInput: true }, focus() {}, select() {} };
+  const flash = { textContent: "" };
+  const document = {
+    getElementById: (id: string) =>
+      id === "budgetinput" ? input : id === "flash" ? flash : { innerHTML: "", textContent: "" },
+    addEventListener: () => {},
+  };
+  const posts: unknown[] = [];
+  const fetch = async (_url: string, opts: { body: string }) => {
+    posts.push(JSON.parse(opts.body));
+    return { ok: true };
+  };
+  const { saveBudget } = new Function(
+    "document",
+    "esc",
+    "fetch",
+    "setTimeout",
+    block + "\nreturn { saveBudget };",
+  )(document, (s: string) => s, fetch, () => {}) as { saveBudget: () => Promise<void> };
+
+  await saveBudget();
+  assert.equal(posts.length, 0, "rejected text must not POST a cap change");
+  assert.match(flash.textContent, /budget must be a number of 0 or more/, "the operator sees why nothing saved");
+
+  // A genuinely cleared field still means "no cap" (0), unchanged by the guard.
+  input.validity.badInput = false;
+  input.value = "";
+  await saveBudget();
+  assert.deepEqual(posts, [{ maxDailyCostUsd: 0 }], "clear field still disables the cap");
+});
+
 test("a paused fleet's idle role loops read budget paused in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget pause test");

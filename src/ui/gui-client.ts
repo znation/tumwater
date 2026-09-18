@@ -275,7 +275,15 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   async function saveBudget() {
     const input = document.getElementById("budgetinput");
     if (!input) return;
-    // Empty means "no cap" (0 disables); a number input yields "" for rejected text.
+    // A type=number input reports value "" both for a field the operator cleared on purpose
+    // (post 0 = no cap, below) and for text the browser rejected ("$25", "5,000") — the two
+    // look identical through .value. validity.badInput tells them apart, so a typo flashes an
+    // error instead of silently disabling the spend cap; stay in edit mode so it can be fixed.
+    if (input.validity && input.validity.badInput) {
+      showFlash("budget must be a number of 0 or more (clear the field for no cap)");
+      return;
+    }
+    // Empty means "no cap" (0 disables).
     const value = input.value === "" ? 0 : Number(input.value);
     try {
       const r = await fetch("/api/budget", { method: "POST", headers: { "content-type": "application/json" },
