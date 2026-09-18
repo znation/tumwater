@@ -59,13 +59,13 @@ Open items:
 - Planned: harness-level merge queue — 5/5 (coalesce the build check across queued landings)
   is the remaining sub-plan, refined 2026-09-16.
 - Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13,
-  refined 2026-09-15).
+  refined 2026-09-17).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
 - Open bugs: none.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`4879cc3`): build clean, suite 1021/1021.
+Current main (`e76c5d5`): build clean, suite 1021/1021.
 <!-- tumwater:status:end -->
 
 ## How it works
