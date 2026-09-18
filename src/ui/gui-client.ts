@@ -344,6 +344,13 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   async function refresh() {
     try {
       const r = await fetch("/api/status");
+      // Same guard as the panel fetches below: the server's own 500 catch sends a JSON
+      // {error} body. Without this check that body would be assigned to lastStatus and the
+      // frame would render from an error object ("orchestrator not running", empty loops)
+      // before throwing — and the budget editor would prefill from it. Throwing before the
+      // assignment keeps lastStatus at the last good payload and lands in the catch below,
+      // which reports the honest "connection lost" and keeps the last good frame.
+      if (!r.ok) throw await apiError("/api/status", r);
       const d = await r.json();
       lastStatus = d;
       // A newer serving build means this page is stale: reload before painting a frame. The

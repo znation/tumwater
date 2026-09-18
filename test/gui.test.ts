@@ -771,6 +771,22 @@ test("the dashboard page checks r.ok before parsing both on-demand panel fetches
   assert.match(GUI_PAGE, /report unavailable" \+ \(e && e\.message/);
 });
 
+test("the dashboard status poll checks r.ok before parsing", async () => {
+  // Regression: refresh() parsed /api/status without an ok check. The server's 500 catch
+  // sends a JSON {error} body, so on a failed poll that object was assigned to lastStatus
+  // and the frame rendered from it ("orchestrator not running", no loops) before the render
+  // throw landed in the catch — and the budget editor prefilled from the error object.
+  // Throwing before the assignment keeps the last good payload and reports "connection lost".
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const region = GUI_PAGE.match(/fetch\("\/api\/status"\);([\s\S]*?)await r\.json\(\)/);
+  assert.ok(region, "the status fetch is in the page");
+  assert.match(
+    region[1]!,
+    /if \(!r\.ok\) throw await apiError\("\/api\/status", r\);/,
+    "the status poll checks r.ok before parsing (a JSON {error} body is not fleet state)",
+  );
+});
+
 test("the dashboard page escapes backlog entry bodies before innerHTML", async () => {
   // Regression: the detail panel used to splice d.body — model-written markdown from
   // PLANS/BUGS/QUESTIONS.md, edited by loops — straight into innerHTML while every other
