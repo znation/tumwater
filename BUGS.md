@@ -7,6 +7,22 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### The TUI prompt's arrow keys land the cursor inside an emoji; backspace/delete then leave a lone surrogate (found by bugfix loop 2026-09-18, fixed 2026-09-18)
+
+**Symptom:** `applyKey` moved the cursor one UTF-16 code unit at a time, so `left`/`right` could park it between the two halves of an astral character (emoji, U+1F600 is `\uD83D\uDE00`). Once there, the surrogate-pair guards in backspace/delete did not match — they test the units on the far side of the cursor — so backspace deleted only the high half (leaving a lone low surrogate) and delete removed only the low half (leaving a lone high surrogate). Terminals render either as a U+FFFD box; the text itself is corrupted. The function's doc comment promises "no lone surrogate … is ever left behind".
+
+**Repro:** type `😀` into the TUI prompt (cursor lands at 2), press `left` (cursor moves to 1, inside the pair), press `backspace`: the line becomes the lone low surrogate `\uDE00`. With `delete` instead it becomes the lone high surrogate `\uD83D`. A scratch script against `dist/src/ui/tui.js` prints both results.
+
+**Expected:** the cursor only ever sits on a character boundary, so no edit can cut a pair in half: `left`/`right` step over a whole astral character, and a cursor handed in mid-pair is snapped to the pair's start.
+
+**Suspected cause:** `left`/`right` used `c ± 1` on the code-unit index while backspace/delete alone knew about pairs, so the two halves of the same invariant disagreed about where the cursor may be. No test moved the cursor with an arrow key before editing.
+
+**Fix:** in `applyKey`, snap a mid-pair cursor to the pair's start after the range clamp, and make `left`/`right` step one more unit when the landing index would sit inside a pair (via the existing `cutSplitsSurrogatePair`). Backspace/delete then run against a boundary cursor as before.
+
+**Files:** src/ui/tui.ts (`applyKey`); test/tui.test.ts ("applyKey never strands the cursor inside a surrogate pair").
+
+**Related:** the original surrogate-safety fix covered only direct backspace/delete after typing an emoji (test "applyKey backspace/delete remove a whole astral character"); this closes the arrow-key path into the same invariant.
+
 ### The restart drain's p75 sampled a tick's semaphore queue wait as its run time (found by bugfix loop 2026-09-18, fixed 2026-09-18)
 
 **Symptom:** the adaptive drain window landed in 5c365ac measured the wrong span. The orchestrator stamped `tickStartedAt = Date.now()` when it created the task, before `semaphore.acquire`, so a role tick's recorded duration included every millisecond it spent parked waiting for a `maxConcurrent` permit. The p75 of those durations is what `poll` uses as the drain window. On a fleet with a backlog and `maxConcurrent: 3`, queue waits of tens of minutes are routine, so the window was inflated well past the actual run time of the ticks the drain waits on — holding the fleet idle longer than the fix intended, which is the cost the adaptive window exists to bound.

@@ -37,19 +37,30 @@ interface KeyLike {
  * the edit. Backspace/delete remove a whole character: when the unit they would cut is one
  * half of a surrogate pair (an astral character such as emoji), both units go together so no
  * lone surrogate — which terminals render as garbage — is ever left behind (the same
- * surrogate-safe rule truncate in text.ts applies to display clipping). */
+ * surrogate-safe rule truncate in text.ts applies to display clipping). The cursor itself
+ * only ever sits on a character boundary: a stale mid-pair cursor is snapped to the pair's
+ * start, and left/right step over a whole astral character rather than into the middle of
+ * its pair (which would otherwise let backspace/delete cut the pair in half). */
 export function applyKey(
   text: string,
   cursor: number,
   str: string | undefined,
   key: KeyLike,
 ): { text: string; cursor: number } {
-  const c = Math.max(0, Math.min(cursor, text.length));
+  const clamp = Math.max(0, Math.min(cursor, text.length));
+  // Snap a cursor that sits between a pair's halves to the pair's start, so no edit can cut
+  // the pair in half.
+  const c = cutSplitsSurrogatePair(text, clamp) ? clamp - 1 : clamp;
   switch (key.name) {
-    case "left":
-      return { text, cursor: Math.max(0, c - 1) };
-    case "right":
-      return { text, cursor: Math.min(text.length, c + 1) };
+    case "left": {
+      const n = Math.max(0, c - 1);
+      // A cut at n would land inside a pair: step over the whole astral character instead.
+      return { text, cursor: cutSplitsSurrogatePair(text, n) ? n - 1 : n };
+    }
+    case "right": {
+      const n = Math.min(text.length, c + 1);
+      return { text, cursor: cutSplitsSurrogatePair(text, n) ? n + 1 : n };
+    }
     case "backspace":
       if (c === 0) return { text, cursor: 0 };
       // The character before the cursor is a surrogate pair [c-2, c-1]: delete both units.

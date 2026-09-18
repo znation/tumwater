@@ -78,6 +78,21 @@ test("applyKey backspace/delete remove a whole astral character, never a lone su
   assert.deepEqual(state, { text: "ab", cursor: 1 });
 });
 
+test("applyKey never strands the cursor inside a surrogate pair", () => {
+  const emoji = "\u{1f600}";
+  // left/right step over the whole astral character instead of into the middle of its pair:
+  // a cursor at the low half of the pair would let backspace/delete cut it in half.
+  assert.deepEqual(applyKey(emoji, 2, undefined, key("left")), { text: emoji, cursor: 0 });
+  assert.deepEqual(applyKey(emoji, 0, undefined, key("right")), { text: emoji, cursor: 2 });
+  assert.deepEqual(applyKey(`a${emoji}b`, 3, undefined, key("left")), { text: `a${emoji}b`, cursor: 1 });
+  // A cursor handed in mid-pair (stale state) is snapped to the pair's start, so neither
+  // edit direction can leave a lone surrogate behind.
+  const backspaced = applyKey(emoji, 1, undefined, key("backspace"));
+  assert.deepEqual(backspaced, { text: emoji, cursor: 0 });
+  const deleted = applyKey(emoji, 1, undefined, key("delete"));
+  assert.deepEqual(deleted, { text: "", cursor: 0 });
+});
+
 test("a typo is fixable without retyping the rest of the prompt", () => {
   // Typed "dar k mode" (stray space); meant "dark mode". Move back over it and delete.
   let state = { text: "dar k mode", cursor: 10 };
