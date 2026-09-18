@@ -1,9 +1,10 @@
 /** Parsing one line of pi's JSONL event stream — pure string functions with no subprocess or
- * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi, piArgs,
- * PiStreamParser) — because these are shared by every observer that folds raw pi log lines into
- * per-type state (progress.ts's live tail, transcript.ts's renderer), and those display modules
- * should not import from the subprocess layer for a pure parse: the same separation
- * reply-contract.ts gives the sentinel/verdict text. */
+ * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi, piArgs) and
+ * whose PiStreamParser in pi-stream.ts folds those lines into a run result — because these are
+ * shared by every observer that folds raw pi log lines into per-type state (progress.ts's live
+ * tail, transcript.ts's renderer), and those display modules should not import from the
+ * subprocess layer for a pure parse: the same separation reply-contract.ts gives the
+ * sentinel/verdict text. */
 
 /** The `type` value of one pi event line in pi's compact type-first serialization
  * (`{"type":"<event>",…}` — 100% of lines in observed logs), or null when the line does not
