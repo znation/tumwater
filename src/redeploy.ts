@@ -16,7 +16,7 @@ import {
 } from "./build-info.js";
 import { type BuildCheckOutcome, clipBuildTail, resolveFromNodeModules } from "./build-check.js";
 import { checkMainBaseline } from "./main-baseline.js";
-import { ensureDir } from "./files.js";
+import { ensureDir, removeTree } from "./files.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { autoRestartStampPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "./paths.js";
@@ -407,7 +407,7 @@ export async function compileStaged(
   if (!tsc)
     return { ok: false, detail: `typescript is not installed under node_modules at or above ${root} — cannot rebuild` };
   const staged = stagingDir(root, mainHead);
-  fs.rmSync(staged, { recursive: true, force: true });
+  removeTree(staged);
   ensureDir(staged);
   try {
     await execFileAsync(process.execPath, [tsc, "-p", mirrorWt, "--outDir", staged], {
@@ -433,7 +433,7 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
   const staged = stagingDir(root, mainHead);
   if (!fs.existsSync(staged)) throw new Error(`no staged build for ${shortSha(mainHead)}`);
   const prev = path.join(stagingRootDir(root), "dist.prev");
-  fs.rmSync(prev, { recursive: true, force: true });
+  removeTree(prev);
   const hadDist = fs.existsSync(dist);
   if (hadDist) fs.renameSync(dist, prev);
   try {
@@ -442,10 +442,10 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
     if (hadDist) fs.renameSync(prev, dist); // Put the old build back before reporting.
     throw err;
   }
-  fs.rmSync(prev, { recursive: true, force: true });
+  removeTree(prev);
   // Superseded staged builds (heads that moved on before their swap) are dead weight.
   for (const entry of fs.readdirSync(stagingRootDir(root), { withFileTypes: true })) {
-    if (entry.isDirectory()) fs.rmSync(path.join(stagingRootDir(root), entry.name), { recursive: true, force: true });
+    if (entry.isDirectory()) removeTree(path.join(stagingRootDir(root), entry.name));
   }
 }
 

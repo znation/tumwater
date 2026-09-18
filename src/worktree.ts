@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { git, gitTry } from "./git.js";
+import { removeTree } from "./files.js";
 import { branchName, worktreePath } from "./paths.js";
 
 /** Persistent-worktree lifecycle for the harness: role worktrees (one per loop, reset to main
@@ -25,7 +26,7 @@ async function isUsableWorktree(dir: string): Promise<boolean> {
 async function clearStaleWorktree(root: string, dir: string): Promise<void> {
   await gitTry(root, "worktree", "prune");
   if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
     await gitTry(root, "worktree", "prune"); // drop any registration left pointing at it
   }
 }

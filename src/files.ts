@@ -131,6 +131,16 @@ export function removeQuiet(file: string): void {
   }
 }
 
+/** Delete a directory tree, retrying the transient filesystem races (`ENOTEMPTY`/`EBUSY`/
+ * `EPERM`) that recursive `rmSync` otherwise turns into a hard failure. Node defaults
+ * `maxRetries` to 0, and on macOS an entry appearing between `rmSync`'s walk and its `rmdir`
+ * (Spotlight, `.DS_Store`) is routine — so the swap's `dist.prev` cleanup was one race away
+ * from blocking a redeploy. `force` still treats an already-absent target as success, and a
+ * failure that survives the retries still throws so the swap's error policy is unchanged. */
+export function removeTree(dir: string): void {
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+}
+
 /** Delete regular files under `dir` (recursively) older than `days` days. Walks with a plain
  * per-directory readdir instead of {recursive: true} + entry.parentPath, so it stays within the
  * Node >= 20 floor declared in package.json — parentPath landed only in v20.12, and on earlier

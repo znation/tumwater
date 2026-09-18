@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pidAlive } from "./process.js";
 import { parsePositiveInt } from "./text.js";
+import { removeTree } from "./files.js";
 
 /** How old a lock must be before we consider stealing it from a dead process. */
 const STALE_MS = 10 * 60 * 1000;
@@ -13,7 +14,7 @@ const NO_PID_GRACE_MS = 5_000;
 /** Remove the lock dir, ignoring races (it may already be gone or unremovable). */
 function rmLockDir(dir: string): void {
   try {
-    fs.rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   } catch {
     // The next acquire attempt sorts it out.
   }
@@ -91,6 +92,6 @@ export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs =
   try {
     return await fn();
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }

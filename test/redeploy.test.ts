@@ -563,6 +563,38 @@ test("swapDist throws when the staged build cannot land and leaves nothing half-
   );
 });
 
+test("swapDist retries transient directory races on dist.prev instead of aborting the redeploy", (t) => {
+  // BUGS.md 2026-09-18: a transient ENOTEMPTY on dist.prev (an entry appearing between
+  // rmSync's walk and its rmdir — Spotlight, .DS_Store) threw and blocked the restart. The
+  // fix routes the swap's recursive deletes through removeTree, which passes Node's retry
+  // options; this pins that dist.prev specifically is cleared with retries enabled.
+  const root = tmpdir();
+  const dist = path.join(root, "dist");
+  fs.mkdirSync(dist);
+  fs.writeFileSync(path.join(dist, "old.js"), "old");
+  fs.mkdirSync(stagingDir(root, HEAD_B), { recursive: true });
+  fs.writeFileSync(path.join(stagingDir(root, HEAD_B), "new.js"), "new");
+
+  const prevRemovals: fs.RmOptions[] = [];
+  const real = fs.rmSync as (p: fs.PathLike, o?: fs.RmOptions) => void;
+  t.mock.method(fs, "rmSync", ((p: fs.PathLike, opts?: fs.RmOptions) => {
+    if (String(p).endsWith("dist.prev")) prevRemovals.push(opts ?? {});
+    return real(p, opts);
+  }) as typeof fs.rmSync);
+  try {
+    swapDist(root, dist, HEAD_B);
+  } finally {
+    t.mock.restoreAll();
+  }
+
+  assert.ok(prevRemovals.length > 0, "the swap clears dist.prev");
+  for (const opts of prevRemovals) {
+    assert.ok((opts.maxRetries ?? 0) > 0, "dist.prev removal retries a transient ENOTEMPTY");
+    assert.ok((opts.retryDelay ?? 0) > 0, "retries are spaced out");
+  }
+  assert.deepEqual(fs.readdirSync(dist), ["new.js"], "the swap still lands the new build");
+});
+
 test("compileStaged compiles the mirror worktree with the project's tsc and stamps the result", async () => {
   // A tiny self-contained TS project whose node_modules borrows this repo's typescript.
   const root = makeRepo();

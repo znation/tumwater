@@ -33,7 +33,9 @@ Occupancy reconstructed from `tick_start`/`tick_end` plus `landed`/`land_failed`
 
 **Related:** the three entries above all worsen under this concurrency — the starved sessions, the 300 s check timeout, and the flaky tests' vanishing margins.
 
-### A transient `ENOTEMPTY` on `dist.prev` aborts the whole build swap: no `rmSync` in the harness passes `maxRetries` (found by log analysis 2026-09-18)
+## Fixed
+
+### A transient `ENOTEMPTY` on `dist.prev` aborts the whole build swap: no `rmSync` in the harness passed `maxRetries` (found by log analysis 2026-09-18, fixed 2026-09-18)
 
 **Symptom:** Three times in nine days the auto-restart reached the swap and failed on a directory removal: `swapping the new build into place failed: ENOTEMPTY, Directory not empty: /Users/zach/tumwater/.tumwater/build/dist.prev '/Users/zach/tumwater/.tumwater/build/dist.prev'` — 09-09 13:30:35, 09-11 00:36:11, 09-17 16:04:42. The same path appears as both operands, which rules out either `renameSync` and points at the `fs.rmSync(prev, …)` calls that bracket them (src/redeploy.ts:435 and :444). A swap error blocks the restart for that head by design, so each occurrence left the fleet running the stale build until the next episode cleared it — 32 minutes on 09-11 (00:36 → 01:08), 37 on 09-17 (16:04 → 16:41).
 
@@ -41,9 +43,11 @@ Occupancy reconstructed from `tick_start`/`tick_end` plus `landed`/`land_failed`
 
 **Expected:** a transient `ENOTEMPTY` should cost a retry, not a redeploy. Node retries `ENOTEMPTY`/`EBUSY`/`EPERM` when `maxRetries` is set, and it defaults to 0.
 
-**Suspected cause:** none of the 14 `fs.rmSync` call sites under `src/` passes `maxRetries` or `retryDelay`, so every recursive delete in the harness is one transient filesystem race away from throwing. The swap is where it hurts most, because `swapDist` is the one caller whose throw is load-bearing — it blocks the restart — but the same exposure sits in the staging cleanup loop at src/redeploy.ts:446-448 and in the scratch-dir cleanups elsewhere.
+**Suspected cause:** none of the 14 `fs.rmSync` call sites under `src/` passed `maxRetries` or `retryDelay`, so every recursive delete in the harness was one transient filesystem race away from throwing. The swap is where it hurts most, because `swapDist` is the one caller whose throw is load-bearing — it blocks the restart — but the same exposure sat in the staging cleanup loop and in the scratch-dir cleanups elsewhere.
 
-## Fixed
+**Fix:** added `removeTree(dir)` to src/files.ts — one place for recursive deletes, passing `maxRetries: 3, retryDelay: 100` so Node retries the `ENOTEMPTY`/`EBUSY`/`EPERM` class; a failure that survives the retries still throws, so `swapDist`'s error policy is unchanged. Every recursive `fs.rmSync` in the harness now routes through it: the staged-build clear, both `dist.prev` removals and the superseded-staging sweep in `swapDist` (src/redeploy.ts), the stale-worktree clear (src/worktree.ts), and both lock-dir removals (src/lock.ts). The non-recursive deletes (file cleanup, markers) keep `removeQuiet`/`fs.rmSync`, where the retry options do not apply.
+
+**Files:** src/files.ts (`removeTree`); src/redeploy.ts, src/worktree.ts, src/lock.ts (call sites); test/redeploy.test.ts (swapDist clears `dist.prev` with retries enabled).
 
 ### A landing build check that times out merges to main unverified: one skip on 2026-09-16 turned main red for five hours (found by log analysis 2026-09-18, fixed 2026-09-18)
 
