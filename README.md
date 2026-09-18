@@ -69,14 +69,13 @@ Open items:
 - Planned: Telemetry 2/2 — a `telemetry` role that reads the digest and files bugs (planned
   2026-09-17, requested by user; depends on Telemetry 1/2 and Observer roles 1/2).
 - Planned: Observer roles 1/2 — stop scheduling a passing check as an idle tick (planned
-  2026-09-17, requested by user).
+  2026-09-17, requested by user, refined 2026-09-18).
 - Planned: Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17,
-  requested by user; depends on 1/2).
+  requested by user, refined 2026-09-18; depends on 1/2).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
-- Open bugs: 4, all found by log analysis of the fleet's own event log and detailed in
+- Open bugs: 3, all found by log analysis of the fleet's own event log and detailed in
   BUGS.md's Open section —
-  - A landing build check that times out merges to main unverified (found 2026-09-18).
   - The restart drain has never once completed: 38 of 39 redeploys held the fleet the full
     30 minutes and still aborted 4–12 ticks (found 2026-09-18).
   - `maxConcurrent` no longer bounds model load — landings and the director bypass it
@@ -84,7 +83,7 @@ Open items:
   - A transient `ENOTEMPTY` on `dist.prev` aborts the whole build swap (found 2026-09-18).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`9758e04`): build clean, suite 1058/1058.
+Current main (`78ae55d`): build clean, suite 1063/1063.
 <!-- tumwater:status:end -->
 
 ## How it works
