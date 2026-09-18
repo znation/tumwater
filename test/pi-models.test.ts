@@ -3,7 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config.js";
-import { fleetModelsFree, piModelsPath } from "../src/pi-models.js";
+import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../src/pi-models.js";
 import type { TumwaterConfig } from "../src/types.js";
 import { tmpdir } from "./util.js";
 
@@ -112,4 +112,71 @@ test("rewriting models.json between polls flips the answer (stat-keyed cache sta
     JSON.stringify({ providers: { "lm-studio": { models: [{ id: "m", cost: { input: 1, output: 2 } }] } } }),
   );
   assert.equal(fleetModelsFree(cfg, file), false, "a price added after the first read is seen");
+});
+
+// --- The fallback model's freeness check (plans/fallback-model.md) ---
+
+test("fallbackModelFree engages only a configured pair pi prices at zero", () => {
+  const file = writeModels();
+  // A paid fleet — the case the fallback exists for — with a free local pair named as its
+  // fallback: both zero-cost shapes count (an absent cost field and an all-zero one).
+  const paid = fleetAt("paid", "gpt-x");
+  assert.equal(fleetModelsFree(paid, file), false, "the fleet itself is priced");
+  assert.equal(
+    fallbackModelFree({ ...paid, fallbackModel: { provider: "lm-studio", model: "qwen3.8-27b" } }, file),
+    true,
+    "an unpriced model is a cost n/a fallback",
+  );
+  assert.equal(
+    fallbackModelFree({ ...paid, fallbackModel: { provider: "lm-studio", model: "zero-cost" } }, file),
+    true,
+    "an all-zero cost is a cost n/a fallback",
+  );
+
+  // Every way of failing to verify it is free is a refusal — the gate then pauses, because a
+  // fallback that can spend would defeat the cap it exists to survive.
+  assert.equal(fallbackModelFree(paid, file), false, "no fallback configured");
+  assert.equal(
+    fallbackModelFree({ ...paid, fallbackModel: { provider: "paid", model: "gpt-x" } }, file),
+    false,
+    "a priced fallback is refused",
+  );
+  assert.equal(
+    fallbackModelFree({ ...paid, fallbackModel: { provider: "lm-studio", model: "no-such-model" } }, file),
+    false,
+    "an unknown model id is refused",
+  );
+  assert.equal(
+    fallbackModelFree({ ...paid, fallbackModel: { provider: "no-such-provider", model: "qwen3.8-27b" } }, file),
+    false,
+    "an unknown provider is refused",
+  );
+  assert.equal(
+    fallbackModelFree({ ...paid, fallbackModel: { provider: "lm-studio", model: "qwen3.8-27b" } }, path.join(file, "missing")),
+    false,
+    "a missing definitions file is refused — unverified is not free",
+  );
+});
+
+test("a fallback naming one field falls back to the top-level value for the other", () => {
+  const file = writeModels();
+  // The same precedence every other override section uses: naming only the model keeps the
+  // current provider, and naming only the provider keeps the current model.
+  assert.equal(
+    fallbackModelFree({ ...fleetAt("lm-studio", "paid-elsewhere"), fallbackModel: { model: "qwen3.8-27b" } }, file),
+    true,
+    "model-only fallback inherits the top-level provider",
+  );
+  assert.equal(
+    fallbackModelFree({ ...fleetAt("paid", "qwen3.8-27b"), fallbackModel: { provider: "lm-studio" } }, file),
+    true,
+    "provider-only fallback inherits the top-level model",
+  );
+  // With no top-level value to inherit, the pair would fall through to pi's own default —
+  // unverifiable, so refused.
+  assert.equal(
+    fallbackModelFree({ ...fleetAt(undefined, undefined), fallbackModel: { model: "qwen3.8-27b" } }, file),
+    false,
+    "a half-resolved pair is refused",
+  );
 });

@@ -54,6 +54,10 @@ their authoring run and show a `main red` state in both dashboards until main is
 consecutive error ticks on one loop raise one `warning` and that loop reads `failing` in both
 dashboards until a healthy tick. Queued landings show as `· land queue: N` in the status
 header and both dashboard headers, and the landing role's row reads `landing <elapsed>`.
+The daily cost budget has a third state: with `fallbackModel` naming a model pi prices at zero,
+reaching `maxDailyCostUsd` switches every role loop to it (`budget_fallback`; header badge
+`· fallback: <model> (cost n/a)`) instead of pausing them — the fleet degrades to free work
+rather than stopping, and only a fallback that cannot be verified as free leaves it paused.
 
 Open items:
 - Planned: harness-level merge queue — 5/5 (coalesce the build check across queued landings)
@@ -77,7 +81,9 @@ Open items:
   first idle tick (BUGS.md, found 2026-09-17).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`a99c365`): build clean, suite 1023/1023.
+Current main (`a99c365`): build clean, suite 1023/1023. Working tree adds the fallback model
+(suite 1035, four timing-sensitive pi watchdog tests flaky under parallel load — they pass when
+`test/pi.test.ts` runs alone, and fail the same way on unmodified main).
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -132,10 +138,16 @@ The fleet's autonomous spend is capped by `maxDailyCostUsd` (default $50; set 0 
 While the day's total cost has reached the cap, role loops stop starting new ticks — scheduled,
 main-moved wakes, or startup — until local midnight or a live edit raises/disables the cap;
 in-flight ticks finish and the director stays exempt (its spend still counts toward the cap).
-The operator-intent sibling is `tumwater pause` / `resume`: a persistent marker that blocks new
-role ticks (same wake reasons, same director exemption) until lifted. Each gate transition lands
-as one `budget_paused`/`budget_resumed` or `fleet_paused`/`fleet_resumed` event, visible in
-`tumwater logs`, the TUI activity pane, and the GUI feed.
+Name a free model as `fallbackModel` and they keep working instead of stopping: at the cap every
+role loop switches to that model — author runs, reviewer, conflict resolution, and any per-role
+model override alike — so the day's paid work ends but the fleet does not. Only a model pi's
+`models.json` prices at zero is ever engaged (an unknown id, a priced model, or a missing
+definitions file is refused, and the fleet pauses as it would without one), so spend cannot climb
+past the cap either way. The operator-intent sibling is `tumwater pause` / `resume`: a persistent
+marker that blocks new role ticks (same wake reasons, same director exemption) until lifted. Each
+gate transition lands as one `budget_paused`/`budget_fallback`/`budget_resumed` or
+`fleet_paused`/`fleet_resumed` event, visible in `tumwater logs`, the TUI activity pane, and the
+GUI feed.
 
 Every tick prompt also carries the project's `PRINCIPLES.md` — its design principles, the codified
 answer to "what would a senior engineer on this team always do" — so all loops share one standard of
@@ -252,9 +264,44 @@ the local day — in-flight ticks finish and the director keeps running your pro
 editable from both dashboards (TUI Ctrl+B on the prompt line; GUI header badge click-to-edit) —
 they write tumwater.json like any other edit, so it applies live within ~2s.
 
+`fallbackModel` (optional; `{ "provider": …, "model": …, "thinking": … }`, each field falling
+back to the top-level value) names the free model the role loops switch to at the cap instead of
+stopping — the budgeted model does the day's paid work, the free one keeps the fleet alive
+afterwards:
+
+```json
+"provider": "huggingface", "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+"fallbackModel": { "provider": "omlx", "model": "Qwen3.8-27B-MLX-oQ4e-mtp" }
+```
+
+The switch covers every seam that could spend — author runs, the review gate, conflict
+resolution, and any per-role `provider`/`model` override, which is dropped for the duration — and
+only a pair pi's `models.json` prices at zero is accepted, so a typo or a priced model leaves the
+fleet paused rather than quietly spending past the cap (the `budget_paused` event names the pair
+it refused). The header badge reads `· budget: $10.02/$10 today · fallback: <model> (cost n/a)`
+while the fallback is carrying the fleet, and the loops keep their ordinary state cells — they
+are working, not stopped. The director never switches: an explicit human prompt outranks the
+autonomous-spend cap. Everything is live, so crossing local midnight, raising the cap, or fixing
+a mistyped fallback id takes effect within ~2s.
+
 ## Notes on local model servers
 
-**Current backend: oMLX (MLX), since 2026-09-14.** `/Applications/oMLX.app` 0.7.0.dev2 serves
+**Current setup, since 2026-09-18: a budgeted API primary with the local server as the cost n/a
+fallback.** tumwater.json names `huggingface` / `deepseek-ai/DeepSeek-V4.1-Flash` (HF Inference
+Providers' OpenAI-compatible router at `https://router.huggingface.co/v1`) with
+`maxDailyCostUsd` 10, and `fallbackModel` `omlx` / `Qwen3.8-27B-MLX-oQ4e-mtp` — so the fleet
+spends up to $10/day on the API model and then keeps working locally for free until local
+midnight. pi 0.84.2 ships a built-in `huggingface` provider whose catalog predates V4.1-Flash, so
+`~/.pi/agent/models.json` adds just that model (declared at $0.30/$1.20 per million tokens — the
+highest rate among the providers the router auto-selects as of 2026-09-18, so the cap trips no
+later than real spend) and inherits the provider's base URL and env-based key. **The key is the
+one thing not in any config file: export `HF_TOKEN` in the environment that runs `tumwater run`**
+(`pi auth check --provider huggingface --json` reports `ready` once it is set). The two models'
+context windows differ by an order of magnitude (1,048,576 vs 126,928); ticks start a fresh pi
+session with a small prefill, so a switch mid-day is safe, but a role prompt written for the API
+model's window would not be.
+
+**Local backend: oMLX (MLX), since 2026-09-14.** `/Applications/oMLX.app` 0.7.0.dev2 serves
 `fcmeyer/Qwen3.8-27B-MLX-oQ4e-mtp` (API id `Qwen3.8-27B-MLX-oQ4e-mtp`) at `127.0.0.1:8000` — an
 imatrix-calibrated ~4.9 bpw quant that preserves the model's native MTP head, so oMLX runs
 Lightning MTP speculative decoding (2.5–3.0 tokens per backbone cycle at 68–84% draft acceptance;

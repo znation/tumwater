@@ -812,7 +812,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   await initProject(repo, "gui budget test"); // defaultConfig: maxDailyCostUsd 50 (enabled)
   let payload = statusPayload(repo) as { budget: { spentUsd: number; capUsd: number; free: boolean } | null; budgetBadge: string };
   // No provider/model configured (pi's own default) — the fleet cannot be verified as free.
-  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, free: false }, "enabled by default with no spend yet");
+  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, free: false, fallback: null }, "enabled by default with no spend yet");
   assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the TUI header string");
 
   // Today's spend is summed from the loops' persisted daily windows (a stale stamp reads $0).
@@ -831,7 +831,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
   payload = statusPayload(repo) as typeof payload;
-  assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, free: false }, "cap 0 disables the gate but keeps the data");
+  assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, free: false, fallback: null }, "cap 0 disables the gate but keeps the data");
   assert.equal(payload.budgetBadge, " · budget: $12.34 today · no cap", "disabled: standing badge with spend and no cap");
 });
 
@@ -896,7 +896,7 @@ test("a disabled cap never pauses the fleet in the phase payload", async () => {
     budgetBadge: string;
     loops: Array<{ role: string; phase: string }>;
   };
-  assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, free: false });
+  assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, free: false, fallback: null });
   assert.equal(payload.budgetBadge, " · budget: $500.00 today · no cap");
   // No loop reads budget paused — the gate is off by definition while the cap is 0.
   for (const l of payload.loops) {
@@ -956,15 +956,15 @@ test("the budget badge is plain text on an all-free fleet and a link otherwise",
     block + "\nreturn { renderBudgetBadge };",
   )(document, esc) as { renderBudgetBadge: (d: object) => void };
 
-  renderBudgetBadge({ budget: { spentUsd: 0, capUsd: 50, free: true }, budgetBadge: " · budget: n/a" });
+  renderBudgetBadge({ budget: { spentUsd: 0, capUsd: 50, free: true, fallback: null }, budgetBadge: " · budget: n/a" });
   assert.doesNotMatch(wrap.innerHTML, /<a[^>]*id='budgetbadge'/, "free fleet: no clickable badge");
   assert.doesNotMatch(wrap.innerHTML, /<input/, "free fleet: no editor in sight");
   assert.match(wrap.innerHTML, /· budget: n\/a/, "free fleet: the n/a text still shows");
 
-  renderBudgetBadge({ budget: { spentUsd: 1.5, capUsd: 50, free: false }, budgetBadge: " · budget: $1.50/$50 today" });
+  renderBudgetBadge({ budget: { spentUsd: 1.5, capUsd: 50, free: false, fallback: null }, budgetBadge: " · budget: $1.50/$50 today" });
   assert.match(wrap.innerHTML, /<a href='#' id='budgetbadge'>/, "priced fleet: the badge stays a link");
 
-  renderBudgetBadge({ budget: { spentUsd: 2, capUsd: 0, free: false }, budgetBadge: " · budget: $2.00 today · no cap" });
+  renderBudgetBadge({ budget: { spentUsd: 2, capUsd: 0, free: false, fallback: null }, budgetBadge: " · budget: $2.00 today · no cap" });
   assert.match(wrap.innerHTML, /<a href='#' id='budgetbadge'>/, "disabled fleet: the badge is still the edit affordance");
 });
 

@@ -1,6 +1,11 @@
 {
-  "provider": "omlx",
-  "model": "Qwen3.8-27B-MLX-oQ4e-mtp",
+  "provider": "huggingface",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "fallbackModel": {
+    "provider": "omlx",
+    "model": "Qwen3.8-27B-MLX-oQ4e-mtp"
+  },
+  "maxDailyCostUsd": 10,
   "piArgs": [],
   "maxConcurrent": 3,
   "minTickIntervalSeconds": 20,

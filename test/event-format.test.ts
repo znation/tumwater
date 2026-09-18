@@ -231,6 +231,31 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   // A torn or hand-edited event line could carry no payloads; the fallback must still render.
   const bare = formatEvent({ ts: 0, loop: "harness", type: "budget_paused" } as never);
   assert.match(bare, /budget paused — \$0\.00 of \$0\.00 daily cost reached/);
+
+  // The cost n/a fallback (plans/fallback-model.md): a switch names the model that took over,
+  // and a pause names a configured fallback the gate refused — the operator's next action.
+  const fallback = formatEvent({
+    ts: Date.UTC(2026, 0, 2, 3, 4, 5),
+    loop: "harness",
+    type: "budget_fallback",
+    spentUsd: 10.5,
+    capUsd: 10,
+    provider: "omlx",
+    model: "local-free",
+  } as never);
+  assert.match(
+    fallback,
+    /harness\s+budget fallback — \$10\.50 of \$10\.00 daily cost reached; role loops continue on omlx\/local-free \(cost n\/a\)/,
+  );
+  const refused = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_paused",
+    spentUsd: 10.5,
+    capUsd: 10,
+    fallbackRejected: "omlx/typo",
+  } as never);
+  assert.match(refused, /budget paused — \$10\.50 of \$10\.00 daily cost reached \(fallback omlx\/typo is not a cost n\/a model in pi's models\.json\)/);
 });
 
 // The live concurrency-cap change event (PLANS.md, Live maxConcurrent): a routine state

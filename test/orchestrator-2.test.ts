@@ -479,6 +479,149 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
   }
 });
 
+// --- The cost n/a fallback model (plans/fallback-model.md): the budget gate's third state.
+// Where the fleet used to stop at its cap, a configured free model takes over instead. ---
+
+/** pi's model definitions as the fallback tests need them: one priced provider (what the
+ * fleet spends its budget on) and one zero-cost provider (what it falls back to). */
+function writeFallbackModels(): string {
+  const file = path.join(tmpdir(), "models.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      providers: {
+        paid: { models: [{ id: "big-paid", cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 } }] },
+        local: { models: [{ id: "local-free", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] },
+      },
+    }),
+  );
+  return file;
+}
+
+test("a reached cap switches role loops to the free fallback model instead of stopping them", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "budget fallback e2e test");
+  // Tiny cap: exactly one fake run's cost, so clean's startup tick closes the gate.
+  const config = fastConfig(["clean", "director"]);
+  config.maxDailyCostUsd = 0.5;
+  config.provider = "paid";
+  config.model = "big-paid";
+  config.fallbackModel = { provider: "local", model: "local-free" };
+  // A role pinned to its own paid model: the switch must drop that override too, or the cap
+  // would keep being exceeded by exactly the loop that opted out of the default model.
+  config.roles.clean = { enabled: true, model: "also-paid" };
+  saveConfig(repo, config);
+  const argsFile = path.join(tmpdir(), "argv.log");
+  const restore = recordingFakePi(argsFile, { cost: 1 });
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
+  const runs = (): string[] => {
+    try {
+      return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
+    } catch {
+      return [];
+    }
+  };
+  try {
+    // The startup tick runs on the budgeted pair — including clean's own paid override — and
+    // spends $1 >= $0.50.
+    await waitFor(() => runs().length >= 1, "the startup tick's pi run");
+    assert.match(runs()[0] ?? "", /model=also-paid provider=paid/, "the budgeted model does the paid work");
+
+    // One transition event naming the pair that took over: the operator must be able to tell
+    // this from a pause.
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "a budget_fallback event");
+    const fallback = readEvents(repo).filter((e) => e.type === "budget_fallback");
+    assert.equal(fallback.length, 1, "one transition event per switch");
+    assert.equal(fallback[0]?.loop, "harness");
+    assert.equal(fallback[0]?.capUsd, 0.5);
+    assert.equal(fallback[0]?.spentUsd, 1);
+    assert.equal(fallback[0]?.provider, "local");
+    assert.equal(fallback[0]?.model, "local-free");
+    assert.ok(!readEvents(repo).some((e) => e.type === "budget_paused"), "the fleet degraded, it did not stop");
+
+    // And the fleet keeps working: clean's next tick runs on the free pair, with its paid
+    // role override dropped. (clean is deferrable and did nothing last tick, so work supplies
+    // the wake — the same as every other budget test.)
+    landWork(repo);
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 2 && !loadLoopState(repo, "clean").running,
+      "a role tick after the cap was reached",
+    );
+    assert.match(
+      runs().find((l) => l.includes("session=tumwater-clean-2")) ?? "",
+      /model=local-free provider=local/,
+      "the role loop keeps ticking, on the cost n/a fallback",
+    );
+
+    // The director is outside the gate in both directions: an explicit human prompt outranks
+    // the autonomous-spend cap, so it keeps the budgeted model.
+    enqueuePrompt(repo, "steer me after the budget is spent");
+    await waitFor(
+      () => loadLoopState(repo, "director").ticks >= 1 && !loadLoopState(repo, "director").running,
+      "the director to tick after the switch",
+    );
+    assert.match(
+      runs().find((l) => l.includes("session=tumwater-director-1")) ?? "",
+      /model=big-paid provider=paid/,
+      "the director keeps the budgeted model",
+    );
+
+    // Raising the cap live switches back within a poll — resume is stateless, exactly as it
+    // is for the pause.
+    const raised = { ...config, maxDailyCostUsd: 100 };
+    saveConfig(repo, raised);
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_resumed"), "a budget_resumed event");
+    landWork(repo);
+    await waitFor(
+      () => runs().some((l) => l.includes("session=tumwater-clean-3")),
+      "a role tick after the cap was raised",
+    );
+    assert.match(
+      runs().find((l) => l.includes("session=tumwater-clean-3")) ?? "",
+      /model=also-paid provider=paid/,
+      "back on the budgeted model, role override restored",
+    );
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a fallback pi cannot price at zero is refused and the fleet pauses as before", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "budget fallback refusal test");
+  const config = fastConfig(["clean"]);
+  config.maxDailyCostUsd = 0.5;
+  config.provider = "paid";
+  config.model = "big-paid";
+  // Names a model pi's definitions do not list: unverifiable, so it must never engage — a
+  // fallback that can spend would defeat the cap it exists to survive.
+  config.fallbackModel = { provider: "local", model: "typo-free" };
+  saveConfig(repo, config);
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
+  try {
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "the startup tick to finish",
+    );
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
+    // The event names the refused pair: why the fleet stopped instead of switching is the one
+    // thing the operator can act on.
+    const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
+    assert.equal(paused[0]?.fallbackRejected, "local/typo-free");
+    assert.ok(!readEvents(repo).some((e) => e.type === "budget_fallback"));
+
+    // And it really is paused: several poll cycles past its schedule, no second tick.
+    landWork(repo);
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "a refused fallback leaves the fleet paused");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
 // --- Operator pause gate (PLANS.md, fleet-pause plan): the budget gate's sibling with a
 // human-intent trigger — a persistent marker (`tumwater pause` writes it, `resume` removes
 // it) that blocks every NEW role tick for any reason while the director keeps running. The

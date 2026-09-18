@@ -2,7 +2,7 @@ import { openBugs, openQuestions, plannedPlans } from "../backlog.js";
 import { readEvents } from "../events.js";
 import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
-import { budgetReached, dailyCost } from "../state.js";
+import { budgetGate, budgetReached, dailyCost } from "../state.js";
 import { snapshot } from "./status.js";
 import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForRole, loopPhase } from "./status-render.js";
 
@@ -13,10 +13,12 @@ import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForR
  * phase/metrics fields come from the same status-render helpers the TUI table uses. */
 export function statusPayload(root: string): object {
   const snap = snapshot(root);
-  // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
-  // reached the cap, every idle role loop's phase reads `budget paused` — one flag covers
-  // both dashboards through loopPhase.
-  const budgetPausedNow = budgetReached(snap.budget);
+  // The budget gate is fleet-wide (plans/daily-cost-budget.md) and three-valued since
+  // plans/fallback-model.md: only `paused` (the cap reached with no usable free fallback)
+  // stops the loops, so only it makes an idle role loop's phase read `budget paused` — under
+  // `fallback` they keep ticking on the free model. One flag covers both dashboards through
+  // loopPhase, derived exactly as renderStatus derives it.
+  const budgetPausedNow = budgetGate(budgetReached(snap.budget), snap.budget.fallback !== null) === "paused";
   return {
     running: snap.running,
     pid: snap.pid,

@@ -2,8 +2,8 @@ import type { LoopState, TumwaterConfig } from "../types.js";
 import type { BuildStatus } from "../build-info.js";
 import type { LandingInFlight } from "../state.js";
 import { openQuestions } from "../backlog.js";
-import { defaultConfig, enabledRoleIds, isCustomRole, loadConfigCached } from "../config.js";
-import { fleetModelsFree, piModelsPath } from "../pi-models.js";
+import { defaultConfig, enabledRoleIds, fallbackPair, isCustomRole, loadConfigCached } from "../config.js";
+import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../pi-models.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { promptPreview, queuedPrompts } from "../inbox.js";
 import { statePath } from "../paths.js";
@@ -44,8 +44,16 @@ export interface StatusSnapshot {
    * boundary — exactly like the cost column. `free` is true when every model the fleet could
    * use resolves to an unpriced or zero-cost entry in pi's models.json (src/pi-models.ts):
    * spend can never accumulate against a cap that cannot be reached, so both dashboards read
-   * `· budget: n/a` instead of a dollar figure. */
-  budget: { spentUsd: number; capUsd: number; free: boolean };
+   * `· budget: n/a` instead of a dollar figure. `fallback` is the cost-free model role loops
+   * switch to once the cap is reached (plans/fallback-model.md) — non-null ONLY when one is
+   * configured AND pi's definitions price it at zero, i.e. exactly when the gate would engage
+   * it rather than pausing, so the dashboards' three-valued gate matches the scheduler's. */
+  budget: {
+    spentUsd: number;
+    capUsd: number;
+    free: boolean;
+    fallback: { provider?: string; model?: string } | null;
+  };
   /** True while the operator has paused the fleet (`tumwater pause` marker present): every
    * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
    * because a 2-second-stale pause flag would mislead an operator mid-resume. */
@@ -150,6 +158,10 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
       spentUsd: fleetDailyCost(loops),
       capUsd: cfg.maxDailyCostUsd,
       free: fleetModelsFree(cfg, modelsPath),
+      // Null unless the gate could actually engage it (configured AND priced at zero): a
+      // fallback the scheduler would refuse must not be advertised as one that will save the
+      // fleet. Same stat-cached read of models.json as `free` above.
+      fallback: fallbackModelFree(cfg, modelsPath) ? (fallbackPair(cfg) ?? null) : null,
     },
     paused: isFleetPaused(root),
     landQueue,

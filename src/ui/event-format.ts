@@ -107,9 +107,19 @@ export function formatEvent(e: HarnessEvent): string {
       // review gate, the red-main baseline check of main itself, or the merge lock's
       // post-rebase re-check of the tree about to land).
       return `${time} ${loop} build check (${e.scope}): npm ${e.script} ${e.status}${elapsed(e.durationMs)}`;
-    case "budget_paused":
-      // Routine state change, like counters_reset — no warning prefix.
-      return `${time} ${loop} budget paused — ${budgetPhrase(e)} daily cost reached`;
+    case "budget_paused": {
+      // Routine state change, like counters_reset — no warning prefix. A configured fallback
+      // the gate refused is named here: it is the whole reason the fleet stopped instead of
+      // switching over, and an operator reading the feed must be able to act on it.
+      const refused = e.fallbackRejected
+        ? ` (fallback ${e.fallbackRejected} is not a cost n/a model in pi's models.json)`
+        : "";
+      return `${time} ${loop} budget paused — ${budgetPhrase(e)} daily cost reached${refused}`;
+    }
+    case "budget_fallback":
+      // The cap is spent but the fleet keeps working: name the free model it switched to, the
+      // one fact that distinguishes this from a pause.
+      return `${time} ${loop} budget fallback — ${budgetPhrase(e)} daily cost reached; role loops continue on ${e.provider ?? "pi's default provider"}/${e.model ?? "pi's default model"} (cost n/a)`;
     case "budget_resumed":
       return `${time} ${loop} budget resumed (${budgetPhrase(e)} today)`;
     case "fleet_paused":

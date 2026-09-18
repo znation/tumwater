@@ -22,7 +22,7 @@ function writePiLog(root: string, role: string, lines: string[]): string {
 // The default is the default config's enabled cap with no spend — the badge renders in
 // every render now (standing information + edit affordance), and 0 < 50 keeps budgetReached
 // false so phase assertions are unaffected by the default.
-const DEFAULT_BUDGET: StatusSnapshot["budget"] = { spentUsd: 0, capUsd: 50, free: false };
+const DEFAULT_BUDGET: StatusSnapshot["budget"] = { spentUsd: 0, capUsd: 50, free: false, fallback: null };
 
 function snapshotWith(
   loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string; custom?: boolean }>,
@@ -364,7 +364,7 @@ test("the totals row's today cell sums the loops' daily windows like the header 
   c.dayStamp = todayStamp(Date.now() - 86_400_000);
   c.dayCostUsd = 9.99;
   // ...and the badge carries the same sum (status.ts derives both from the loops).
-  const snap = snapshotWith([a, b, c], { spentUsd: fleetDailyCost([a, b, c]), capUsd: 50, free: false });
+  const snap = snapshotWith([a, b, c], { spentUsd: fleetDailyCost([a, b, c]), capUsd: 50, free: false, fallback: null });
   const lines = renderStatus(tmpdir(), snap).split("\n");
   const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length);
   const cellAt = (row: string, i: number): string => {
@@ -652,14 +652,14 @@ test("work items survive narrow-terminal clipping at the head of the state cell"
 test("the status header carries a budget badge in every cap state", () => {
   const enabled = renderStatus(
     tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50, free: false }),
+    snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50, free: false, fallback: null }),
   ).split("\n")[0] ?? "";
   assert.match(enabled, /· budget: \$12\.34\/\$50 today$/);
 
   // Fractional caps keep their cents; whole-dollar spent values stay two-decimal like the cost column.
   const fractional = renderStatus(
     tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 12.34, free: false }),
+    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 12.34, free: false, fallback: null }),
   ).split("\n")[0] ?? "";
   assert.match(fractional, /· budget: \$0\.00\/\$12\.34 today$/);
 
@@ -667,7 +667,7 @@ test("the status header carries a budget badge in every cap state", () => {
   // spend plus `no cap` instead of a $X/$Y figure.
   const disabled = renderStatus(
     tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 3.25, capUsd: 0, free: false }),
+    snapshotWith([{ role: "clean" }], { spentUsd: 3.25, capUsd: 0, free: false, fallback: null }),
   ).split("\n")[0] ?? "";
   assert.match(disabled, /· budget: \$3\.25 today · no cap$/);
 });
@@ -677,14 +677,14 @@ test("the status header carries a budget badge in every cap state", () => {
 test("the status header budget badge reads n/a for an all-free fleet", () => {
   const free = renderStatus(
     tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: true }),
+    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: true, fallback: null }),
   ).split("\n")[0] ?? "";
   assert.match(free, /· budget: n\/a$/);
 
   // The dollar form is untouched for a fleet that can spend (byte-identical to before).
   const paid = renderStatus(
     tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: false }),
+    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: false, fallback: null }),
   ).split("\n")[0] ?? "";
   assert.match(paid, /· budget: \$0\.00\/\$50 today$/);
 });
@@ -791,7 +791,7 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
   // Spend below the cap: ordinary labels.
   const under = renderStatus(
     root,
-    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 10, capUsd: 50, free: false }), running: true },
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 10, capUsd: 50, free: false, fallback: null }), running: true },
   );
   assert.match(under, /feature\s+queued/);
   assert.doesNotMatch(under, /budget paused/);
@@ -799,7 +799,7 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
   // Spend at the cap: idle role loops read `budget paused`; the director keeps its own phase.
   const reached = renderStatus(
     root,
-    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 50, capUsd: 50, free: false }), running: true },
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 50, capUsd: 50, free: false, fallback: null }), running: true },
   );
   assert.match(reached, /feature\s+budget paused/);
   assert.match(reached, /director\s+waiting for prompts/);
@@ -816,7 +816,7 @@ test("renderStatus never reads budget paused while the cap is disabled, even pas
   // Cap disabled (0) with today's spend far above zero: the gate is off by definition.
   const out = renderStatus(
     root,
-    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 999, capUsd: 0, free: false }), running: true },
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 999, capUsd: 0, free: false, fallback: null }), running: true },
   );
   assert.doesNotMatch(out, /budget paused/, "no loop reads budget paused with the cap disabled");
   assert.match(out, /feature\s+queued/);
@@ -890,7 +890,7 @@ test("renderStatus shows paused in idle role loops' state cells ahead of budget 
     {
       ...snapshotWith(
         [{ role: "feature", lastResult: "main_red" }, { role: "director" }],
-        { spentUsd: 50, capUsd: 50, free: false },
+        { spentUsd: 50, capUsd: 50, free: false, fallback: null },
         true,
       ),
       running: true,
@@ -927,11 +927,58 @@ test("budgetBadge renders the standing daily-cost rule in every cap state", () =
   // disabled free fleet still cannot accumulate spend), $X/$Y while enabled with priced
   // models, `· no cap` when disabled. Whole-dollar caps stay bare ($50); fractional ones
   // keep their cents ($12.34).
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, free: true }), " · budget: n/a", "all-free fleet reads n/a");
-  assert.equal(budgetBadge({ spentUsd: 12.34, capUsd: 50, free: false }), " · budget: $12.34/$50 today", "whole-dollar cap stays bare");
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, free: false }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
-  assert.equal(budgetBadge({ spentUsd: 7.5, capUsd: 0, free: false }), " · budget: $7.50 today · no cap", "disabled: spend shown, gate off");
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, free: true }), " · budget: n/a", "free outranks disabled too");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, free: true, fallback: null }), " · budget: n/a", "all-free fleet reads n/a");
+  assert.equal(budgetBadge({ spentUsd: 12.34, capUsd: 50, free: false, fallback: null }), " · budget: $12.34/$50 today", "whole-dollar cap stays bare");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, free: false, fallback: null }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
+  assert.equal(budgetBadge({ spentUsd: 7.5, capUsd: 0, free: false, fallback: null }), " · budget: $7.50 today · no cap", "disabled: spend shown, gate off");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, free: true, fallback: null }), " · budget: n/a", "free outranks disabled too");
+});
+
+// The cost n/a fallback model (plans/fallback-model.md): while it carries the fleet the badge
+// names it, and the loops keep their ordinary state cells — they are working, not stopped.
+test("budgetBadge names the fallback model only while it is carrying the fleet", () => {
+  const fallback = { provider: "omlx", model: "local-free" };
+  assert.equal(
+    budgetBadge({ spentUsd: 50, capUsd: 50, free: false, fallback }),
+    " · budget: $50.00/$50 today · fallback: local-free (cost n/a)",
+    "at the cap with a usable fallback: the badge says what the fleet is running on now",
+  );
+  assert.equal(
+    budgetBadge({ spentUsd: 10, capUsd: 50, free: false, fallback }),
+    " · budget: $10.00/$50 today",
+    "under the cap the fallback is not engaged, so the badge is byte-identical to before",
+  );
+  assert.equal(
+    budgetBadge({ spentUsd: 50, capUsd: 50, free: false, fallback: null }),
+    " · budget: $50.00/$50 today",
+    "at the cap with no usable fallback: the fleet is paused, nothing to name",
+  );
+  // A fallback naming only a provider still identifies itself.
+  assert.equal(
+    budgetBadge({ spentUsd: 50, capUsd: 50, free: false, fallback: { provider: "omlx" } }),
+    " · budget: $50.00/$50 today · fallback: omlx (cost n/a)",
+  );
+});
+
+test("renderStatus keeps role loops working under the fallback and pauses them without one", () => {
+  const root = tmpdir();
+  const loops = [{ role: "feature" }, { role: "director" }];
+  // At the cap WITH a usable free fallback: the loops keep ticking on it, so no row reads
+  // `budget paused` — the header badge is where the operator learns the cap is spent.
+  const degraded = renderStatus(root, {
+    ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, free: false, fallback: { provider: "omlx", model: "local-free" } }),
+    running: true,
+  });
+  assert.doesNotMatch(degraded, /budget paused/, "a fallback fleet is not a stopped fleet");
+  assert.match(degraded, /feature\s+queued/);
+  assert.match(degraded.split("\n")[0] ?? "", /· budget: \$50\.00\/\$50 today · fallback: local-free \(cost n\/a\)$/);
+
+  // The same spend with no usable fallback pauses the role loops, exactly as before.
+  const stopped = renderStatus(root, {
+    ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, free: false, fallback: null }),
+    running: true,
+  });
+  assert.match(stopped, /feature\s+budget paused/);
 });
 
 // Merge queue 4/5 — the land queue's one payload field, three renderers: the header badge,

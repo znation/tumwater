@@ -49,6 +49,21 @@ interface ReviewConfig {
   thinking?: string;
 }
 
+/** The free ("cost n/a") model the fleet falls back to once the daily cost budget is spent
+ * (plans/fallback-model.md). Each field falls back to the top-level value, exactly like a
+ * role's or the reviewer's overrides — so naming only `model` keeps the current provider.
+ * The pair is engaged ONLY when pi's models.json prices it at zero; an unknown, unpriced-by-
+ * absence, or paid pair is refused and the fleet pauses as it did before, because a fallback
+ * that can spend would defeat the cap it is meant to survive. */
+export interface FallbackModelConfig {
+  /** pi provider for fallback runs; falls back to the top-level value. */
+  provider?: string;
+  /** pi model for fallback runs; falls back to the top-level value. */
+  model?: string;
+  /** pi thinking level for fallback runs; falls back to the top-level value. */
+  thinking?: string;
+}
+
 /** Idle backoff: how long a loop sleeps after a tick that changed nothing. */
 export interface BackoffConfig {
   /** Seconds to sleep after the first no-change tick. */
@@ -93,6 +108,14 @@ export interface TumwaterConfig {
    * local midnight or a live edit raises/disables it (0 disables). The director is exempt — an
    * explicit human prompt outranks the autonomous-spend cap. See plans/daily-cost-budget.md. */
   maxDailyCostUsd: number;
+  /** The free model role loops switch to when `maxDailyCostUsd` is reached, instead of
+   * stopping for the rest of the local day (plans/fallback-model.md). With one configured and
+   * verifiable as cost-free in pi's models.json, the budget gate degrades the fleet to free
+   * work rather than pausing it: spend cannot advance, so the cap still holds. Absent (the
+   * default) — or present but not verifiably free — the gate pauses role loops exactly as
+   * before. The director is outside both behaviors: it keeps the budgeted model, because an
+   * explicit human prompt outranks the autonomous-spend cap. */
+  fallbackModel?: FallbackModelConfig;
   /** Friction threshold in assistant turns: a changed tick using MORE than this many turns is
    * flagged high-friction (Friction trailer line on its commit, warning event, and extra review
    * scrutiny) — difficulty is a signal that the work may not fit. See plans/refusal-and-thrash.md.
@@ -246,7 +269,8 @@ export interface HarnessEvent {
     | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
     | "review_failed"
     | "build_check" // the project's declared check ran: scope gate|baseline|landing (the merge lock's post-rebase re-check), status, script, durationMs
-    | "budget_paused" // fleet daily spend reached maxDailyCostUsd; role loops stop starting ticks
+    | "budget_paused" // fleet daily spend reached maxDailyCostUsd with no usable free fallback; role loops stop starting ticks
+    | "budget_fallback" // fleet daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
     | "fleet_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
     | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again

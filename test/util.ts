@@ -171,15 +171,17 @@ export async function waitFor(fn: () => boolean, what: string, ms = 20_000): Pro
   }
 }
 
-/** A fake pi that records each run's --provider/--model flags to argsFile and declares
- * nothing-to-do (so no commit happens). */
-export function recordingFakePi(argsFile: string): () => void {
+/** A fake pi that records each run's --provider/--model flags — and its session name, which
+ * carries the role — to argsFile and declares nothing-to-do (so no commit happens). `cost`
+ * makes each run report that many dollars of spend, for tests that drive the daily budget
+ * gate while watching which model each run used. */
+export function recordingFakePi(argsFile: string, opts: { cost?: number } = {}): () => void {
   return fakePi(
     [
-      `m=""; p=""`,
-      `while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; --provider) p="$2";; esac; shift; done`,
-      `echo "run: model=$m provider=$p" >> "${argsFile}"`,
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `m=""; p=""; n=""`,
+      `while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; --provider) p="$2";; -n) n="$2";; esac; shift; done`,
+      `echo "run: model=$m provider=$p session=$n" >> "${argsFile}"`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: opts.cost ?? 0 })}'`,
     ].join("\n"),
   );
 }
@@ -202,6 +204,7 @@ export function fastConfig(roles: string[], model?: string): TumwaterConfig {
 export function startLiveOrchestrator(
   repo: string,
   pollMs?: number,
+  modelsPath?: string,
 ): { done: Promise<unknown>; stop: () => Promise<void> } {
   const controller = new AbortController();
   const done = runOrchestrator({
@@ -210,6 +213,9 @@ export function startLiveOrchestrator(
     mainBranch: "main",
     signal: controller.signal,
     pollMs,
+    // pi's model definitions, for the budget gate's fallback check (plans/fallback-model.md):
+    // tests that exercise it write their own catalog instead of reading the real ~/.pi one.
+    ...(modelsPath ? { modelsPath } : {}),
   });
   return {
     done,

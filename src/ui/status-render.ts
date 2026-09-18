@@ -2,7 +2,7 @@ import path from "node:path";
 import { DIRECTOR_ROLE } from "../roles.js";
 import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
-import { ERROR_STREAK_WARN, dailyCost, fleetDailyCost, budgetReached } from "../state.js";
+import { ERROR_STREAK_WARN, budgetGate, dailyCost, fleetDailyCost, budgetReached } from "../state.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd } from "../text.js";
 
@@ -270,7 +270,17 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
  * string. */
 export function budgetBadge(budget: StatusSnapshot["budget"]): string {
   if (budget.free) return " · budget: n/a";
-  if (budget.capUsd > 0) return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today`;
+  // Only while the fallback is actually carrying the fleet (plans/fallback-model.md): the cap
+  // is spent, so the dollar figure alone would read like a stopped fleet. Naming the model
+  // answers the operator's next question — what is it running on now? Its cost is n/a by
+  // construction (the gate engages nothing else), so no second figure is shown. Off-gate the
+  // badge is byte-identical to before.
+  const fallback =
+    budgetGate(budgetReached(budget), budget.fallback !== null) === "fallback"
+      ? ` · fallback: ${budget.fallback?.model ?? budget.fallback?.provider ?? "pi default"} (cost n/a)`
+      : "";
+  if (budget.capUsd > 0)
+    return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today${fallback}`;
   return ` · budget: ${usd(budget.spentUsd)} today · no cap`;
 }
 
@@ -306,10 +316,12 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // save. It renders whether or not the cap is enabled: spend observability does not depend
   // on it.
   const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last result"];
-  // The budget gate is fleet-wide (plans/daily-cost-budget.md): when today's spend has
-  // reached the cap, every idle role loop shows `budget paused` in its state cell. The
-  // operator pause is fleet-wide too (`tumwater pause` marker present) and outranks it.
-  const budgetPausedNow = budgetReached(snap.budget);
+  // The budget gate is fleet-wide (plans/daily-cost-budget.md) and three-valued since
+  // plans/fallback-model.md: only `paused` — the cap reached with no usable free fallback —
+  // stops the loops, so only it turns an idle role row into `budget paused`. Under `fallback`
+  // the loops keep ticking (on the free model, which the header badge names), so their rows
+  // read their normal state. The operator pause is fleet-wide too and outranks both.
+  const budgetPausedNow = budgetGate(budgetReached(snap.budget), snap.budget.fallback !== null) === "paused";
   const userPausedNow = snap.paused;
   // One live tail read per running loop per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on

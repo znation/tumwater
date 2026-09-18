@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
-import { configForRole, enabledRoleIds, reviewConfig } from "./config.js";
+import { configForRole, enabledRoleIds, fallbackPair, reviewConfig } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 
 /** pi's model definitions — the custom providers and models they serve, with each model's
@@ -85,13 +85,39 @@ function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> | null {
   );
 }
 
+/** True when `provider`/`model` names a model pi's definitions price at zero — a "(cost n/a)"
+ * pair. Anything unresolvable counts as NOT free: an omitted provider or model (pi's own
+ * default), a missing or malformed definitions file, an unknown provider, or a model id the
+ * file does not list. An unverified model may well be paid, and no caller here may treat
+ * "I could not check" as "it is free" — the badge would lie, and the fallback would defeat
+ * the very cap it exists to survive. */
+function pairFree(
+  providers: Map<string, PiModelDef[]> | null,
+  provider: string | undefined,
+  model: string | undefined,
+): boolean {
+  if (!providers || !provider || !model) return false;
+  const def = providers.get(provider)?.find((m) => m.id === model);
+  return def !== undefined && costIsFree(def.cost);
+}
+
+/** True when the configured fallback model (plans/fallback-model.md) is one the budget gate may
+ * actually engage: configured at all, resolvable to a provider/model pair, and priced at zero in
+ * pi's definitions. False for every other case — no fallback, a half-named pair that would fall
+ * through to pi's own default, an unknown id, or a priced one — and the gate then pauses role
+ * loops exactly as it did before this feature. */
+export function fallbackModelFree(config: TumwaterConfig, modelsPath = piModelsPath()): boolean {
+  const pair = fallbackPair(config);
+  if (!pair) return false;
+  return pairFree(readPiProviders(modelsPath), pair.provider, pair.model);
+}
+
 /** True when every model the fleet could use is free: each enabled role's effective
  * provider/model (configForRole — the director included, it is a catalog role) plus the
- * reviewer's while review is on. Any unresolvable pair — omitted values (pi's own default),
- * missing or malformed definitions file, unknown provider or model id — counts as NOT free:
- * an unverified model may well be paid, and the badge must never read n/a while spend it is
- * tracking could still reach the cap. With no enabled roles and review off there are no
- * pairs at all, so the fleet cannot spend and the answer is true. */
+ * reviewer's while review is on. Every pair is judged by pairFree above, so an unresolvable one
+ * counts as NOT free — the badge must never read n/a while spend it is tracking could still
+ * reach the cap. With no enabled roles and review off there are no pairs at all, so the fleet
+ * cannot spend and the answer is true. */
 export function fleetModelsFree(config: TumwaterConfig, modelsPath = piModelsPath()): boolean {
   const pairs: Array<[string | undefined, string | undefined]> = [];
   for (const role of enabledRoleIds(config)) {
@@ -106,11 +132,5 @@ export function fleetModelsFree(config: TumwaterConfig, modelsPath = piModelsPat
   // construction — no definitions file to consult.
   if (pairs.length === 0) return true;
   const providers = readPiProviders(modelsPath);
-  if (!providers) return false;
-  for (const [provider, model] of pairs) {
-    if (!provider || !model) return false; // pi's own default — cannot verify it is free
-    const def = providers.get(provider)?.find((m) => m.id === model);
-    if (def === undefined || !costIsFree(def.cost)) return false;
-  }
-  return true;
+  return pairs.every(([provider, model]) => pairFree(providers, provider, model));
 }

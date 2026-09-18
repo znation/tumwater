@@ -43,6 +43,7 @@ const TOP_LEVEL_KEYS = [
   "logMaxBytes",
   "sessionRetentionDays",
   "maxDailyCostUsd",
+  "fallbackModel",
   "thrashTurns",
   "thrashMinutes",
   "idleBackoff",
@@ -61,6 +62,9 @@ const ROLE_ENTRY_KEYS = [
   "minTickIntervalSeconds",
 ];
 const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking"];
+/** The fallback model's keys (plans/fallback-model.md): the same provider/model/thinking
+ * triple every other model-override section uses, so one mental model covers them all. */
+const FALLBACK_MODEL_KEYS = ["provider", "model", "thinking"];
 const CUSTOM_LOOP_KEYS = ["name", "task"];
 /** A custom loop's name becomes a worktree dir and a git ref, so it is validated strictly:
  * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */
@@ -165,6 +169,22 @@ export function validateConfig(raw: unknown): void {
           problems.push(`review.exemptPaths must be an array of strings (got ${show(v)})`);
       }
       for (const key of ["provider", "model", "thinking"]) checkString(o, "review.", key);
+    }
+  }
+
+  // The free fallback model (plans/fallback-model.md): shape only — whether the named pair is
+  // actually cost-free is a question about pi's models.json, not about this file, so it is
+  // answered at run time (src/pi-models.ts) rather than failing a load here. An empty object is
+  // rejected: it names nothing, so it would silently never engage.
+  if ("fallbackModel" in r) {
+    const fb = r.fallbackModel;
+    if (!isPlainObject(fb)) {
+      problems.push(`fallbackModel must be an object (got ${show(fb)})`);
+    } else {
+      checkKnownKeys(fb, FALLBACK_MODEL_KEYS, "fallbackModel", problems);
+      for (const key of FALLBACK_MODEL_KEYS) checkString(fb, "fallbackModel.", key);
+      if (!("provider" in fb) && !("model" in fb))
+        problems.push(`fallbackModel must name a provider or a model (got ${show(fb)})`);
     }
   }
 

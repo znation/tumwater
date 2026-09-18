@@ -153,7 +153,7 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   let snap = snapshot(repo);
   // No provider/model is configured (pi's own default), so the fleet cannot be verified as
   // free — the dollar badge stays.
-  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, free: false });
+  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, free: false, fallback: null });
 
   // Disabling the cap (0) keeps the budget object — spend is still reported and the badge
   // is the affordance for setting a cap again; only its display changes (`· no cap`).
@@ -161,7 +161,7 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
   snap = snapshot(repo);
-  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, free: false });
+  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, free: false, fallback: null });
 });
 
 // The free-fleet case (BUGS.md: budget badge on local LLM fleets): when every model the
@@ -198,6 +198,48 @@ test("snapshot marks the budget free when every fleet model is unpriced", async 
   saveConfig(repo, cfg);
   snap = snapshot(repo, modelsFile);
   assert.equal(snap.budget?.free, false, "one paid model keeps the dollar figure");
+});
+
+// The cost n/a fallback model (plans/fallback-model.md): the snapshot carries it only when the
+// budget gate could actually engage it, so the dashboards' three-valued gate matches the
+// scheduler's — advertising a fallback the scheduler would refuse would be a lie about what
+// happens when the cap is reached.
+test("snapshot carries the fallback model only when pi prices it at zero", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "fallback snapshot test");
+  const dir = tmpdir("status-fallback-");
+  fs.mkdirSync(dir, { recursive: true });
+  const modelsFile = path.join(dir, "models.json");
+  fs.writeFileSync(
+    modelsFile,
+    JSON.stringify({
+      providers: {
+        local: { models: [{ id: "local-free", cost: { input: 0, output: 0 } }] },
+        paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
+      },
+    }),
+  );
+
+  const cfg = loadConfig(repo);
+  cfg.provider = "paid";
+  cfg.model = "gpt-x";
+  saveConfig(repo, cfg);
+  assert.equal(snapshot(repo, modelsFile).budget.fallback, null, "none configured");
+
+  cfg.fallbackModel = { provider: "local", model: "local-free" };
+  saveConfig(repo, cfg);
+  assert.deepEqual(
+    snapshot(repo, modelsFile).budget.fallback,
+    { provider: "local", model: "local-free" },
+    "a zero-priced fallback is what the gate would engage",
+  );
+  // The fleet itself is still priced: the fallback does not make the budget n/a, it only says
+  // what happens when the cap is reached.
+  assert.equal(snapshot(repo, modelsFile).budget.free, false);
+
+  cfg.fallbackModel = { provider: "paid", model: "gpt-x" };
+  saveConfig(repo, cfg);
+  assert.equal(snapshot(repo, modelsFile).budget.fallback, null, "a priced fallback is refused");
 });
 
 test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {

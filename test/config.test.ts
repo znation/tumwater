@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  applyFallbackModel,
   configForRole,
   customLoopNames,
+  fallbackPair,
   defaultConfig,
   isCustomRole,
   knownRoleIds,
@@ -666,4 +668,88 @@ test("customLoopNames, isCustomRole, and knownRoleIds are the one source of trut
   const empty = defaultConfig();
   assert.deepEqual(customLoopNames(empty), []);
   assert.deepEqual(knownRoleIds(empty), allRoleIds());
+});
+
+// --- The cost n/a fallback model (plans/fallback-model.md) ---
+
+test("fallbackModel is an optional validated key, absent by default", () => {
+  // Absent by default: the harness cannot know which model on a given machine is free, so a
+  // fleet that names none keeps the pause behavior it had before this feature.
+  assert.equal(defaultConfig().fallbackModel, undefined);
+  assert.doesNotThrow(() => validateConfig({ fallbackModel: { provider: "omlx", model: "q" } }));
+  assert.doesNotThrow(() => validateConfig({ fallbackModel: { model: "q" } }));
+
+  // A typo'd key would be silently ignored — the fleet would pause where the operator meant
+  // it to keep working — so the key list must fail it, like every other section.
+  assert.match(
+    validationError({ fallbackModell: { model: "q" } }),
+    /unknown key "fallbackModell" in tumwater\.json \(valid keys: .*fallbackModel.*\)/,
+  );
+  assert.match(
+    validationError({ fallbackModel: { modell: "q" } }),
+    /unknown key "modell" in fallbackModel \(valid keys: provider, model, thinking\)/,
+  );
+  assert.match(validationError({ fallbackModel: "omlx" }), /fallbackModel must be an object/);
+  assert.match(validationError({ fallbackModel: { model: 7 } }), /fallbackModel\.model must be a string/);
+  // An empty object names nothing, so it would silently never engage — reject it outright.
+  assert.match(validationError({ fallbackModel: {} }), /fallbackModel must name a provider or a model/);
+});
+
+test("fallbackPair resolves the fallback over the top-level values", () => {
+  const config = defaultConfig();
+  config.provider = "hf";
+  config.model = "big-paid";
+  config.thinking = "high";
+  assert.equal(fallbackPair(config), null, "no fallback configured");
+
+  // Each field falls back to the top-level value — the same precedence a role's overrides use.
+  assert.deepEqual(fallbackPair({ ...config, fallbackModel: { model: "local-free" } }), {
+    provider: "hf",
+    model: "local-free",
+    thinking: "high",
+  });
+  assert.deepEqual(
+    fallbackPair({ ...config, fallbackModel: { provider: "omlx", model: "local-free", thinking: "off" } }),
+    { provider: "omlx", model: "local-free", thinking: "off" },
+  );
+});
+
+test("applyFallbackModel installs the free pair and drops every model override", () => {
+  const config = defaultConfig();
+  config.provider = "hf";
+  config.model = "big-paid";
+  config.fallbackModel = { provider: "omlx", model: "local-free" };
+  // A role pinned to its own paid model and a strong paid reviewer: both would keep spending
+  // past the cap if the switch only replaced the top-level values.
+  config.roles.feature = { enabled: true, provider: "hf", model: "even-bigger-paid", instructions: "keep me" };
+  config.review = { ...config.review, provider: "hf", model: "reviewer-paid" };
+
+  const fb = applyFallbackModel(config);
+  assert.equal(configForRole(fb, "feature").provider, "omlx");
+  assert.equal(configForRole(fb, "feature").model, "local-free");
+  assert.equal(reviewConfig(fb).provider, "omlx");
+  assert.equal(reviewConfig(fb).model, "local-free");
+  // Only the model seams move: everything else the gate keeps re-evaluating against is intact.
+  assert.equal(fb.roles.feature?.instructions, "keep me");
+  assert.equal(fb.maxDailyCostUsd, config.maxDailyCostUsd);
+  assert.deepEqual(fb.review.exemptPaths, config.review.exemptPaths);
+  // The source config is untouched — the orchestrator keeps using it for the director.
+  assert.equal(configForRole(config, "feature").model, "even-bigger-paid");
+  // No fallback configured: the same object back, so the non-fallback path costs nothing.
+  const plain = defaultConfig();
+  assert.equal(applyFallbackModel(plain), plain);
+});
+
+test("loadConfig round-trips fallbackModel and owns its object", () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.fallbackModel = { provider: "omlx", model: "local-free" };
+  saveConfig(dir, config);
+  const loaded = loadConfig(dir);
+  assert.deepEqual(loaded.fallbackModel, { provider: "omlx", model: "local-free" });
+  // Two loads must not share the object: a caller mutating one result cannot poison the other
+  // (the contract every other section already keeps).
+  const again = loadConfigCached(dir).config;
+  assert.notEqual(again?.fallbackModel, loaded.fallbackModel);
+  assert.deepEqual(again?.fallbackModel, loaded.fallbackModel);
 });

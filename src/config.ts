@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { TumwaterConfig, RoleConfig } from "./types.js";
+import type { FallbackModelConfig, TumwaterConfig, RoleConfig } from "./types.js";
 import { allRoleIds } from "./roles.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { configPath } from "./paths.js";
@@ -81,6 +81,9 @@ export function loadConfig(root: string): TumwaterConfig {
     idleBackoff: { ...base.idleBackoff, ...(cfg.idleBackoff ?? {}) },
     review: { ...base.review, ...(cfg.review ?? {}) },
     piArgs: cfg.piArgs ?? base.piArgs,
+    // Own the parsed object like every other section, so a caller mutating its result cannot
+    // reach back into the parse. Absent stays absent: no fallback = today's pause behavior.
+    ...(cfg.fallbackModel ? { fallbackModel: { ...cfg.fallbackModel } } : {}),
     customLoops: (cfg.customLoops ?? []).map((c) => ({ ...c })),
     roles: { ...base.roles },
   };
@@ -129,6 +132,7 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
     piArgs: [...c.piArgs],
     idleBackoff: { ...c.idleBackoff },
     review: { ...c.review },
+    ...(c.fallbackModel ? { fallbackModel: { ...c.fallbackModel } } : {}),
     customLoops: c.customLoops.map((cl) => ({ ...cl })),
     roles: Object.fromEntries(Object.entries(c.roles).map(([id, rc]) => [id, { ...rc }])),
   };
@@ -255,4 +259,44 @@ export function configForRole(config: TumwaterConfig, role: string): TumwaterCon
  * (unknown role id) and, if accepted, spawn a runner with no catalog prompt. */
 export function reviewConfig(config: TumwaterConfig): TumwaterConfig {
   return withModelOverrides(config, config.review);
+}
+
+/** The provider/model pair a configured fallback resolves to — its own fields over the
+ * top-level ones, the same precedence every other override section uses — or null when no
+ * fallback is configured. One definition so the freeness check (src/pi-models.ts), the
+ * dashboards' badge, and applyFallbackModel below cannot disagree about WHICH model the
+ * budget gate would engage. */
+export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null {
+  const fb = config.fallbackModel;
+  if (!fb) return null;
+  return {
+    ...(fb.provider ?? config.provider ? { provider: fb.provider ?? config.provider } : {}),
+    ...(fb.model ?? config.model ? { model: fb.model ?? config.model } : {}),
+    ...(fb.thinking ?? config.thinking ? { thinking: fb.thinking ?? config.thinking } : {}),
+  };
+}
+
+/** The config as seen by a role loop running on the free fallback model
+ * (plans/fallback-model.md): the fallback's provider/model/thinking installed as the top-level
+ * values AND every per-role and reviewer model override dropped, so that EVERY seam that could
+ * otherwise reach a priced model — an author run, its reviewer, a conflict resolver — resolves
+ * to the one free pair. Dropping the overrides is the point: a role pinned to a paid model in
+ * tumwater.json must not keep spending after the cap is reached. Everything else (intervals,
+ * thresholds, exempt paths, the cap itself) is untouched, so the gate keeps re-evaluating
+ * against the same numbers. Returns `config` unchanged when no fallback is configured. */
+export function applyFallbackModel(config: TumwaterConfig): TumwaterConfig {
+  const pair = fallbackPair(config);
+  if (!pair) return config;
+  const stripModel = <T extends { provider?: string; model?: string; thinking?: string }>(o: T): T => {
+    const { provider: _p, model: _m, thinking: _t, ...rest } = o;
+    return rest as T;
+  };
+  return {
+    ...config,
+    provider: pair.provider,
+    model: pair.model,
+    thinking: pair.thinking,
+    review: stripModel(config.review),
+    roles: Object.fromEntries(Object.entries(config.roles).map(([id, rc]) => [id, stripModel(rc)])),
+  };
 }

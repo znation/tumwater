@@ -120,6 +120,24 @@ export function budgetPaused(states: LoopState[], config: TumwaterConfig, now = 
   return budgetReached(cap > 0 ? { spentUsd: fleetDailyCost(states, now), capUsd: cap } : null);
 }
 
+/** What the daily cost budget is doing to role loops right now (plans/fallback-model.md):
+ * `open` while spend is under the cap, `fallback` once it is reached with a usable free model
+ * configured — loops keep ticking, on that model — and `paused` once it is reached with none.
+ * Three values instead of a boolean because "the cap is reached" and "the loops are stopped"
+ * stopped being the same fact: only `paused` blocks a tick. */
+export type BudgetGate = "open" | "fallback" | "paused";
+
+/** The budget gate from its two inputs: whether spend has reached the cap (budgetReached for
+ * observers, budgetPaused for the scheduler) and whether a cost-free fallback model is ready
+ * to take over (src/pi-models.ts's fallbackModelFree — kept as a parameter so this module
+ * stays free of pi's model catalog, the same one-way dependency rule that put budgetPaused
+ * here). The single definition of the gate: the orchestrator enforces it and both dashboards
+ * display it, so what an operator sees is what the scheduler is doing. */
+export function budgetGate(reached: boolean, fallbackReady: boolean): BudgetGate {
+  if (!reached) return "open";
+  return fallbackReady ? "fallback" : "paused";
+}
+
 /** True while the operator has paused the fleet (`tumwater pause` wrote its marker). The
  * marker is persistent state, not a one-shot request: presence means paused until `resume`
  * removes it — pausing before startup starts an already-paused fleet. Never throws (a missing

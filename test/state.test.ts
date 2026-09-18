@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   applyLandingOutcome,
   applyTickOutcome,
+  budgetGate,
   budgetPaused,
   budgetReached,
   clearBackoff,
@@ -299,6 +300,17 @@ test("budgetPaused is false at cap 0 (disabled) and below the cap, true at/above
   recordDailyCost(other, 100, dayB);
   cfg.maxDailyCostUsd = 1;
   assert.equal(budgetPaused([other], cfg, dayA), false);
+});
+
+test("budgetGate: reached with a free fallback keeps loops running, without one pauses them", () => {
+  // The two facts the gate is made of (plans/fallback-model.md). Under the cap nothing else
+  // matters — a configured fallback does not take over while there is budget left.
+  assert.equal(budgetGate(false, false), "open");
+  assert.equal(budgetGate(false, true), "open");
+  // At the cap the fallback decides whether the fleet degrades or stops. Only "paused" blocks
+  // a tick, which is why this had to stop being a boolean.
+  assert.equal(budgetGate(true, true), "fallback");
+  assert.equal(budgetGate(true, false), "paused");
 });
 
 test("budgetReached is false for a disabled (null) or under-cap view, true at/above the cap", () => {

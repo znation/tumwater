@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LandingEntry, TickResult, TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
-import { enabledRoleIds, loadConfigCached } from "./config.js";
+import { applyFallbackModel, enabledRoleIds, fallbackPair, loadConfigCached } from "./config.js";
 import {
   deferTick,
   dueForPrune,
@@ -11,7 +11,9 @@ import {
   workLanded,
 } from "./scheduling.js";
 import {
+  budgetGate,
   budgetPaused,
+  type BudgetGate,
   fleetDailyCost,
   isFleetPaused,
   readLandingMarker,
@@ -27,6 +29,7 @@ import { logEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { inboxSize } from "./inbox.js";
+import { fallbackModelFree, piModelsPath } from "./pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import {
   abortRequestPath,
@@ -76,6 +79,9 @@ interface RunOptions {
   /** Self-redeploy policy (src/redeploy.ts) for a self-hosting fleet; null/absent when the
    * running dist carries no build stamp. Consulted every poll with main's head. */
   redeploy?: Redeployer | null;
+  /** pi's model definitions (default ~/.pi/agent/models.json), read to decide whether the
+   * configured fallback model is actually cost-free — a test seam, like status.ts's. */
+  modelsPath?: string;
 }
 
 /** How runOrchestrator ended: `restart` means dist/ now holds a newer build and the caller should
@@ -273,6 +279,7 @@ interface InFlightLanding {
 export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExit> {
   const { root, config, mainBranch, signal: externalSignal } = opts;
   const pollMs = opts.pollMs ?? POLL_MS;
+  const modelsPath = opts.modelsPath ?? piModelsPath();
   const enabled = enabledRoleIds(config);
   if (enabled.length === 0) throw new Error("no roles enabled in tumwater.json");
 
@@ -324,8 +331,16 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // one-shot enable/disable transition warnings).
   let lastConfigError: string | null = null;
   let prevEnabled = new Set<string>(enabled);
-  // The previous poll's budget-paused state, for one-shot pause/resume transition events.
-  let prevBudgetPaused = false;
+  // The previous poll's budget gate, for one-shot transition events. Three-valued since
+  // plans/fallback-model.md: open → fallback → paused are distinct states, and every crossing
+  // between two of them is worth exactly one event.
+  let prevGate: BudgetGate = "open";
+  // The live config the last successful reload produced (last-known-good while the file is
+  // broken) and, derived from it, the view role loops run under while the fallback gate holds
+  // — recomputed only when the config object itself changes.
+  let liveConfig = config;
+  let fallbackFrom: TumwaterConfig | null = null;
+  let fallbackConfig: TumwaterConfig = config;
   // Same bookkeeping for the operator pause (the marker file), so each pause/resume logs
   // exactly one event instead of once per ~2s poll.
   let prevUserPaused = false;
@@ -381,6 +396,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // Unchanged files are served from a stat-keyed cache (one stat per poll, no read).
       const reloaded = loadConfigCached(root);
       if (reloaded.config) {
+        liveConfig = reloaded.config;
         for (const r of runners) r.config = reloaded.config;
         // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute
         // concurrently within this poll — no restart. Growing admits already-queued ticks;
@@ -415,7 +431,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // per day so a never-restarted fleet still honors its window. Both paths log the startup
       // warning shape only when files were actually deleted — quiet polls stay silent. The live
       // config (last-known-good while the file is broken) drives both checks, like the budget gate.
-      const retention = (runners[0]?.config ?? config).sessionRetentionDays;
+      const retention = liveConfig.sessionRetentionDays;
       if (retention !== lastRetention || dueForPrune(lastPruneAt, Date.now(), retention)) {
         // A change to a positive window prunes immediately even inside the daily window — an
         // operator tightening the window wants it applied now, not at tomorrow's pass. Every
@@ -447,25 +463,48 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const inboxCount = inboxSize(root);
       const now = Date.now();
 
-      // Daily cost budget gate (plans/daily-cost-budget.md): while the fleet's spend for the
-      // local day has reached maxDailyCostUsd, role loops start no new ticks — scheduled,
-      // main-moved wake, or startup. The director is exempt: an explicit human prompt outranks
-      // the autonomous-spend cap. In-flight ticks finish; only NEW ticks are blocked. Resume is
-      // live and stateless — raising/disabling the cap (live-reloaded above) or crossing local
-      // midnight flips this on the next poll, so nothing can get stuck. All runners share one
-      // config object (the initial one until a reload replaces it), so any runner's copy is
-      // the live config.
+      // Daily cost budget gate (plans/daily-cost-budget.md, plans/fallback-model.md): once the
+      // fleet's spend for the local day has reached maxDailyCostUsd, role loops either switch
+      // to the configured cost-free fallback model and keep working, or — with no usable one —
+      // start no new ticks at all (scheduled, main-moved wake, or startup). The director is
+      // outside both: an explicit human prompt outranks the autonomous-spend cap, so it keeps
+      // its budgeted model and keeps ticking. In-flight ticks finish; only NEW ticks are
+      // gated. Resume is live and stateless — raising/disabling the cap (live-reloaded above),
+      // fixing the fallback, or crossing local midnight re-evaluates this on the next poll, so
+      // nothing can get stuck.
       const states = runners.map((r) => r.state);
-      const budgetPausedNow = budgetPaused(states, runners[0]?.config ?? config, now);
-      if (budgetPausedNow !== prevBudgetPaused) {
+      // Whether the fallback is usable is a live question too: models.json is stat-cached
+      // inside pi-models.ts, so an unchanged catalog costs one stat per poll, and an operator
+      // who fixes a mistyped model id sees the fleet switch over within a cycle.
+      const gate = budgetGate(budgetPaused(states, liveConfig, now), fallbackModelFree(liveConfig, modelsPath));
+      if (gate !== prevGate) {
+        const pair = fallbackPair(liveConfig);
         logEvent(root, {
           loop: "harness",
-          type: budgetPausedNow ? "budget_paused" : "budget_resumed",
+          type: gate === "open" ? "budget_resumed" : gate === "fallback" ? "budget_fallback" : "budget_paused",
           spentUsd: fleetDailyCost(states, now),
-          capUsd: (runners[0]?.config ?? config).maxDailyCostUsd,
+          capUsd: liveConfig.maxDailyCostUsd,
+          // On the way into a gate the fallback's identity is the operator's answer to "why
+          // this and not the other one": which free pair took over, or which configured pair
+          // was refused because pi's definitions do not price it at zero.
+          ...(gate === "fallback" ? { provider: pair?.provider, model: pair?.model } : {}),
+          ...(gate === "paused" && pair
+            ? { fallbackRejected: `${pair.provider ?? "?"}/${pair.model ?? "?"}` }
+            : {}),
         });
-        prevBudgetPaused = budgetPausedNow;
+        prevGate = gate;
       }
+      // While the fallback holds, every role loop runs under the derived view — the free pair
+      // installed top-level and every per-role/reviewer model override dropped, so no seam can
+      // reach a priced model. The director keeps the live config. Assigned every poll (not only
+      // on transitions) so a runner created mid-gate, or one left behind by a broken-file poll
+      // that skipped the reload, can never tick on the wrong model.
+      if (gate === "fallback" && fallbackFrom !== liveConfig) {
+        fallbackFrom = liveConfig;
+        fallbackConfig = applyFallbackModel(liveConfig);
+      }
+      const roleConfig = gate === "fallback" ? fallbackConfig : liveConfig;
+      for (const r of runners) r.config = r.role === DIRECTOR_ROLE ? liveConfig : roleConfig;
 
       // Operator pause (`tumwater pause`): the budget gate's sibling with a different trigger —
       // human intent instead of spend. The marker is persistent state (presence means paused
@@ -493,7 +532,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         const action = await redeploy.poll(
           mainHead,
           { roleInFlight: roleInFlight.size, directorInFlight: directorInFlight.size },
-          (runners[0]?.config ?? config).autoRestart,
+          liveConfig.autoRestart,
           now,
         );
         const build = redeploy.status(now);
@@ -559,7 +598,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             // save on. Both share the live config, like every runner.
             const author =
               runners.find((r) => r.role === head.entry.role) ??
-              new LoopRunner(root, head.entry.role, config, mainBranch, signal);
+              new LoopRunner(
+                root,
+                head.entry.role,
+                head.entry.role === DIRECTOR_ROLE ? liveConfig : roleConfig,
+                mainBranch,
+                signal,
+              );
             const landing: InFlightLanding = {
               promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
               controller: new AbortController(),
@@ -572,7 +617,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
             landing.promise = (async () => {
               try {
-                await landQueuedEntry(root, head.entry, head.file, author, config, mainBranch, landing.controller.signal);
+                // The authoring loop's own config, so the reviewer run obeys the same gate its
+                // author did — under the fallback a budgeted reviewer would spend past the cap.
+                await landQueuedEntry(root, head.entry, head.file, author, author.config, mainBranch, landing.controller.signal);
               } finally {
                 if (landing.userAborted) {
                   // A deliberate stop discards the pinned work — the landing's counterpart to
@@ -601,7 +648,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const reasons = new Map<LoopRunner, string | undefined>();
       for (const runner of runners) {
         if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
-        if ((budgetPausedNow || userPaused) && runner.role !== DIRECTOR_ROLE)
+        if ((gate === "paused" || userPaused) && runner.role !== DIRECTOR_ROLE)
           continue; // no new role ticks while either gate holds
         const { run, reason } = isEligible(runner, now, mainHead, inboxCount);
         if (!run) {
