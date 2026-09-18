@@ -681,7 +681,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             !workBacklogOpen && s.lastMainHead !== ""
               ? await workLandedSince(s.lastMainHead, mainHead)
               : true;
-          const deferredNow = deferTick(s, runner.role, landed, workBacklogOpen);
+          const deferredNow = deferTick(s, runner.role, landed, workBacklogOpen, now);
           if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
             if (deferredNow)
               logEvent(root, { loop: runner.role, type: "tick_deferred" });

@@ -109,48 +109,17 @@ Occupancy reconstructed from `tick_start`/`tick_end` plus `landed`/`land_failed`
 
 **Suspected cause:** none of the 14 `fs.rmSync` call sites under `src/` passes `maxRetries` or `retryDelay`, so every recursive delete in the harness is one transient filesystem race away from throwing. The swap is where it hurts most, because `swapDist` is the one caller whose throw is load-bearing — it blocks the restart — but the same exposure sits in the staging cleanup loop at src/redeploy.ts:446-448 and in the scratch-dir cleanups elsewhere.
 
-### A deferred tick preserves the `no_change` that causes it: five maintenance roles have been permanently off since their first idle tick (found by log analysis 2026-09-17)
-
-**Symptom:** Five of the nine deferrable roles have not run a single tick in days, while the fleet landed normally around them. From the authoritative state files (`.tumwater/state/<role>.json`, read 2026-09-17):
-
-| role | lastResult | last tick |
-| --- | --- | ---: |
-| `qa` | `no_change` | 120 h ago |
-| `perf` | `no_change` | 120 h ago |
-| `clean` | `no_change` | 121 h ago |
-| `organize` | `no_change` | 69 h ago |
-| `improve` | `no_change` | 60 h ago |
-
-The pattern is exact and has no exceptions: **every** deferrable role whose `lastResult` is `no_change` is dead, and **every** deferrable role whose `lastResult` is anything else is still ticking normally (`coverage` `rejected` 3.4 h ago, `dry` `rejected` 4.4 h ago, `readme` `changed` 2.1 h ago, `steward` `changed` 0.6 h ago). Those four are each one idle tick away from the same state. Tick counts per role across the 2026-09-12 boundary confirm the mechanism — `qa`/`perf`/`clean` each ended on `no_change` on 2026-09-12 and stopped there; `organize` and `improve` survived a further two days only because errors, aborts, `main_red` and `rejected` results kept overwriting `lastResult`, and both died on the first `no_change` that followed (2026-09-15 00:23 and 10:03 respectively).
-
-`qa` is the worst case: it is the only role that exercises the built product end to end, and it has now been off for five days while the fleet landed several hundred commits.
-
-**Repro:** deterministic, no timing involved.
-
-1. Ensure PLANS.md `## Planned` (or BUGS.md `## Open`) is non-empty, so `workBacklogOpen` is true — the normal state of a healthy project, since the `plan` role's charter is to keep `Planned` stocked.
-2. Let any role in `DEFERRABLE_ROLES` complete one tick returning `no_change`.
-3. That role never ticks again. Confirm in `.tumwater/log/events.jsonl`: no further `tick_end` for it, and a `tick_deferred` event roughly once per orchestrator process.
-
-Neither operator lever recovers it. `tumwater wake` clears `backoffSeconds` and pulls `nextRunAt` to now, which makes the tick *due* with reason `"scheduled"` — and src/orchestrator.ts:610 applies the deferral to exactly the `"scheduled"` and `"main moved"` reasons, so the woken tick is deferred on the same poll. Restarting the fleet does not help either: loop state is reloaded from disk with `lastResult` intact. The only escapes are `"resume"` (which requires an interrupted tick, so the role must tick first) and emptying the entire backlog.
-
-**Expected:** a deferral must not be able to preserve the very condition that causes it. A role that has been deferred N times in a row should tick regardless, or `workBacklogOpen` should stop being sufficient on its own — either breaks the cycle. Deferral is meant to skip a tick that would find nothing, not to remove a role from the fleet.
-
-**Suspected cause:** `deferTick` in src/scheduling.ts:
-
-```
-DEFERRABLE_ROLES.has(role) && s.lastResult === "no_change" && s.lastMainHead !== ""
-  && (workBacklogOpen || !workLandedSinceLast)
-```
-
-Two properties combine into a latch. First, a deferred tick does not run, so nothing updates `lastResult` — the predicate's own precondition is frozen by the predicate's effect. Second, `workBacklogOpen` alone is sufficient to defer (the `||` short-circuits before the landed-work term is even consulted; src/orchestrator.ts:615-618 skips the git range check entirely in that case), and it is true whenever PLANS.md `## Planned` or BUGS.md `## Open` is non-empty — which for a healthy project is permanent. The result is that the first `no_change` after backlog-aware deferral landed is terminal.
-
-The backlog-open clause landed 2026-09-12 (see "Maintenance roles tick on their normal clock while planned features or open bugs wait — deferral is reactive, not backlog-aware" in Fixed below); before it, deferral required `!workLandedSinceLast`, which a busy fleet cleared constantly, so the cycle could not close. All five dead roles last ticked on or after that date.
-
-**Why it went unnoticed for five days:** the deferral logs one `tick_deferred` event per *episode* (`deferredDue` in src/orchestrator.ts, an in-memory map), so a permanently dead role emits roughly one event per orchestrator process rather than one per suppressed poll — about two a day. `loopPhase` has no state for "deferred indefinitely", so `tumwater status`, the TUI and the GUI all render these roles as ordinary sleeping loops. This is the same observability failure as "Repeated tick failures raise no alarm: 44 errors across all 13 loops looked exactly like a quiet fleet" (Fixed, 2026-09-15): the fleet is visibly idle and invisibly broken. A fix should consider whether a role deferred past some threshold deserves a distinct state cell and a once-per-episode warning, as that entry established for error streaks.
-
-**Related:** structurally the same defect as the two latching-verdict bugs fixed on 2026-09-15/16 ("A broken toolchain is reported as 'main is red', and the verdict then latches until main moves" and "A rejected `mainGreen` latches a false 'main is red'…") — in each case a provisional observation is cached as a permanent verdict with no path to re-evaluate it. `plans/observer-roles.md` (PLANS.md, `Observer roles 1/2`) depends on this being fixed first and explicitly must not be merged as a substitute: removing `qa` from `DEFERRABLE_ROLES` would rescue that one role and leave the other four dead with the trap still armed for the rest of the set.
-
 ## Fixed
+
+### A deferred tick preserves the `no_change` that causes it: five maintenance roles were permanently off after their first idle tick (found by log analysis 2026-09-17, fixed 2026-09-18)
+
+**Symptom:** Five of the nine deferrable roles had not run a single tick in days — `qa` for 120 h, `perf` 120 h, `clean` 121 h, `organize` 69 h, `improve` 60 h — while the fleet landed normally around them. The pattern had no exceptions: every deferrable role whose `lastResult` was `no_change` was dead; every one whose last result was anything else still ticked. `qa` was the worst case, off for five days while the fleet landed several hundred commits.
+
+**Cause:** `deferTick` (src/scheduling.ts) keyed off `lastResult === "no_change"`, which only a completed tick updates — so a deferred tick froze the predicate's own precondition. With `workBacklogOpen` (PLANS.md `## Planned` or BUGS.md `## Open` non-empty, permanent for a healthy project) sufficient to defer on its own, the first `no_change` after backlog-aware deferral landed was terminal. Neither `tumwater wake` nor a restart escaped: the woken tick was deferred on the same poll, and a restart reloaded `lastResult` from disk.
+
+**Fix:** `deferTick` takes `now` and refuses to defer once `deferralExpired` reports the due tick has waited past `DEFER_MAX_MS` (3 h). The reference is `nextRunAt`, which a deferred tick leaves untouched and which is persisted — so `now - nextRunAt` measures the deferral across restarts and does not fire for a `main moved` wake that arrives before the role's own clock. The forced tick refreshes `lastResult` and starts a new deferral episode, so maintenance roles now tick at least once per 3 h window even with a permanently open backlog, while the backlog-aware intent (queued feature/bugfix work outranks idle maintenance) is preserved. A never-scheduled role (`nextRunAt` 0) is never expired.
+
+**Files:** src/scheduling.ts (`DEFER_MAX_MS`, `deferralExpired`, `deferTick`'s new `now` parameter + docs); src/orchestrator.ts (passes `now`); test/orchestrator.test.ts (unit pins for the cap boundary and the never-scheduled case; e2e regression "a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an open backlog", which seeds a long-deferred `no_change` state and asserts the role ticks).
 
 ### A torn land-queue head file clogs the landing slot forever: the live entry behind it never lands, and its role's interlock pins its ticks (found by bugfix loop 2026-09-17, fixed 2026-09-17)
 

@@ -87,28 +87,50 @@ export function workLanded(subjects: string[]): boolean {
   );
 }
 
+/** How long a due maintenance tick may stay deferred before it is forced to run anyway. The
+ * deferral predicate keys off `lastResult`, which only a completed tick updates, so without a
+ * bound an open backlog (permanently true for a healthy project) plus one `no_change` tick
+ * defers a role forever — the predicate's precondition is frozen by its own effect. This cap
+ * breaks that latch: a deferred role ticks at least once per window, which refreshes
+ * `lastResult` and lets the next deferral episode start. Three hours is a compromise between
+ * the backlog-aware intent (queued feature/bugfix work outranks idle maintenance) and
+ * liveness (five roles had been off for days; BUGS.md 2026-09-17). */
+export const DEFER_MAX_MS = 3 * 3600 * 1000;
+
+/** Has a due tick been deferred past DEFER_MAX_MS? `nextRunAt` is the reference: a deferred
+ * tick leaves it untouched, so `now - nextRunAt` measures how long the tick has been waiting
+ * past its scheduled time, survives an orchestrator restart (it is persisted state), and does
+ * not fire for a `main moved` wake that arrives before the role's own clock (nextRunAt is
+ * still in the future). A never-scheduled role (nextRunAt 0) is never expired. */
+export function deferralExpired(s: LoopState, now: number): boolean {
+  return s.nextRunAt > 0 && now - s.nextRunAt >= DEFER_MAX_MS;
+}
+
 /** Should a due maintenance tick be deferred? (Need-based prioritization.) All must hold: the
  * role is one of the nine deferrable built-ins — work roles and unknown/custom never defer, the
  * harness cannot judge what an arbitrary custom role needs; its last tick did nothing; it has
- * seen main before (a never-ticked role always runs its first tick); and either the backlog is
+ * seen main before (a never-ticked role always runs its first tick); either the backlog is
  * open — PLANS.md `## Planned` or BUGS.md `## Open` non-empty, so queued feature/bugfix work
  * outranks idle maintenance regardless of what landed — or no feature/bugfix/director/human
- * commit landed since that head. Only `no_change` defers: every other outcome carries pending
- * business (retry an error, address recorded review-rejection reasons, recover a merge failure)
- * that must not stall until unrelated work lands. A permanently blocked backlog keeps
- * maintenance deferred — intended; clearing or revising the entry lifts it on the next poll.
+ * commit landed since that head; and the deferral has not outlasted DEFER_MAX_MS. Only
+ * `no_change` defers: every other outcome carries pending business (retry an error, address
+ * recorded review-rejection reasons, recover a merge failure) that must not stall until
+ * unrelated work lands. A blocked backlog keeps maintenance deferred until the cap, then a
+ * forced tick resets the episode; clearing or revising the entry lifts it on the next poll.
  */
 export function deferTick(
   s: LoopState,
   role: string,
   workLandedSinceLast: boolean,
   workBacklogOpen: boolean,
+  now: number,
 ): boolean {
   return (
     DEFERRABLE_ROLES.has(role) &&
     s.lastResult === "no_change" &&
     s.lastMainHead !== "" &&
-    (workBacklogOpen || !workLandedSinceLast)
+    (workBacklogOpen || !workLandedSinceLast) &&
+    !deferralExpired(s, now)
   );
 }
 

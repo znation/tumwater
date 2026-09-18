@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { runOrchestrator } from "../src/orchestrator.js";
-import { deferTick, dueForPrune, fairOrder, isEligible, workLanded } from "../src/scheduling.js";
+import { DEFER_MAX_MS, deferTick, dueForPrune, fairOrder, isEligible, workLanded } from "../src/scheduling.js";
 import { ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
@@ -220,48 +220,67 @@ test("workLanded: feature/bugfix/director and human subjects count; other roles 
 });
 
 test("deferTick: only a deferrable no_change role that has seen main and got no work defers", () => {
+  const NOW = Date.now();
   const base = freshLoopState("organize");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
-  assert.equal(deferTick(base, "organize", false, false), true);
+  assert.equal(deferTick(base, "organize", false, false, NOW), true);
 
   // Each condition flipped → no deferral.
   const workLandedSinceLast = { ...base };
-  assert.equal(deferTick(workLandedSinceLast, "organize", true, false), false); // work landed
+  assert.equal(deferTick(workLandedSinceLast, "organize", true, false, NOW), false); // work landed
   const changed = { ...base, lastResult: "changed" as const };
-  assert.equal(deferTick(changed, "organize", false, false), false);
+  assert.equal(deferTick(changed, "organize", false, false, NOW), false);
   for (const result of ["rejected", "error", "refused", "merge_conflict"] as const) {
-    assert.equal(deferTick({ ...base, lastResult: result }, "organize", false, false), false);
+    assert.equal(deferTick({ ...base, lastResult: result }, "organize", false, false, NOW), false);
   }
   const unseen = { ...base, lastMainHead: "" };
-  assert.equal(deferTick(unseen, "organize", false, false), false); // never ticked → first tick runs
+  assert.equal(deferTick(unseen, "organize", false, false, NOW), false); // never ticked → first tick runs
 
   // Work-tier roles and unknown/custom roles never defer, even with no_change + no work.
   for (const role of ["feature", "bugfix", "plan", "director", "my-custom-loop"]) {
-    assert.equal(deferTick(base, role, false, false), false);
+    assert.equal(deferTick(base, role, false, false, NOW), false);
   }
 });
 
 test("deferTick: an open backlog defers idle maintenance even when work landed; pending business never defers", () => {
+  const NOW = Date.now();
   const base = freshLoopState("organize");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   // Backlog open → deferred regardless of the work-landed verdict.
-  assert.equal(deferTick(base, "organize", true, true), true);
-  assert.equal(deferTick(base, "organize", false, true), true);
+  assert.equal(deferTick(base, "organize", true, true, NOW), true);
+  assert.equal(deferTick(base, "organize", false, true, NOW), true);
 
   // Pending business (any non-no_change outcome) never defers, backlog open or not — a loop's
   // own unfinished work must not stall behind the fleet's.
   for (const result of ["changed", "rejected", "error", "refused", "merge_conflict"] as const) {
-    assert.equal(deferTick({ ...base, lastResult: result }, "organize", true, true), false);
-    assert.equal(deferTick({ ...base, lastResult: result }, "organize", false, true), false);
+    assert.equal(deferTick({ ...base, lastResult: result }, "organize", true, true, NOW), false);
+    assert.equal(deferTick({ ...base, lastResult: result }, "organize", false, true, NOW), false);
   }
 
   // Never-ticked roles and work/custom roles are unaffected by the backlog.
-  assert.equal(deferTick({ ...base, lastMainHead: "" }, "organize", true, true), false);
+  assert.equal(deferTick({ ...base, lastMainHead: "" }, "organize", true, true, NOW), false);
   for (const role of ["feature", "bugfix", "plan", "director", "my-custom-loop"]) {
-    assert.equal(deferTick(base, role, true, true), false);
+    assert.equal(deferTick(base, role, true, true, NOW), false);
   }
+});
+
+test("deferTick: a deferral that outlasts DEFER_MAX_MS stops deferring (the latch)", () => {
+  const base = freshLoopState("organize");
+  base.lastResult = "no_change";
+  base.lastMainHead = "abc123";
+  base.nextRunAt = 1_000_000;
+  // Just due: deferred (backlog open, no work landed).
+  assert.equal(deferTick(base, "organize", false, true, 1_000_000), true);
+  // Still inside the window: deferred.
+  assert.equal(deferTick(base, "organize", false, true, 1_000_000 + DEFER_MAX_MS - 1), true);
+  // Past the window: the due tick runs regardless, refreshing lastResult and breaking the
+  // no_change → defer → no_change cycle. This is the regression for the permanent latch.
+  assert.equal(deferTick(base, "organize", false, true, 1_000_000 + DEFER_MAX_MS), false);
+  assert.equal(deferTick(base, "organize", true, true, 1_000_000 + DEFER_MAX_MS), false);
+  // A never-scheduled role (nextRunAt 0) is never expired by the cap.
+  assert.equal(deferTick({ ...base, nextRunAt: 0 }, "organize", false, true, 1_000_000 + DEFER_MAX_MS), true);
 });
 
 test("backoff grows by the factor and caps at max", () => {
@@ -516,6 +535,43 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
     // none on exit.
     const deferred = readEvents(repo).filter((e) => e.type === "tick_deferred");
     assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an open backlog", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "deferral cap test");
+  saveConfig(repo, fastConfig(["organize"]));
+  // Open the backlog: the deferral predicate's backlog term holds permanently, which before
+  // the cap froze `lastResult` at no_change and silenced the role forever.
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "seed the backlog");
+
+  // Seed the loop exactly as a long-deferred no_change tick looks on disk: its scheduled time
+  // is already past the cap. The fix must let it run; the pre-fix predicate deferred it forever.
+  const state = freshLoopState("organize");
+  state.ticks = 1;
+  state.lastResult = "no_change";
+  state.lastMainHead = sh(repo, "git", "rev-parse", "HEAD");
+  state.lastTickEndedAt = Date.now() - 60_000;
+  state.nextRunAt = Date.now() - DEFER_MAX_MS - 60_000;
+  saveLoopState(repo, state);
+
+  const argsFile = path.join(tmpdir(), "pi-args.txt");
+  const restore = recordingFakePi(argsFile);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => loadLoopState(repo, "organize").ticks >= 2 && !loadLoopState(repo, "organize").running,
+      "the cap-forced tick to run",
+    );
   } finally {
     restore();
     await orch.stop();
