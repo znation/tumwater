@@ -6,6 +6,13 @@ import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBui
 import { STALE_INPUTS_LABEL } from "./redeploy.js";
 import { findOnPath } from "./files.js";
 import { GIT_MISSING_MESSAGE, currentBranch, gitTry, hasCommits, isGitRepo } from "./git.js";
+import {
+  DETACHED_HEAD_MESSAGE,
+  NOT_A_REPO_MESSAGE,
+  NOT_INITIALIZED_MESSAGE,
+  NO_COMMITS_MESSAGE,
+  PI_MISSING_MESSAGE,
+} from "./readiness.js";
 import { classifyLock, readLockPid } from "./lock.js";
 import { STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./state.js";
@@ -70,12 +77,10 @@ export function checkGitBinary(pathEnv: string = process.env.PATH ?? ""): CheckO
 /** Repo ready — the git.ts predicates in requireReadyRepo's order, so doctor and the
  * readiness gate cannot drift: not a git repo → no commits yet → detached HEAD. */
 export async function checkRepo(root: string): Promise<CheckOutcome> {
-  if (!(await isGitRepo(root))) return { level: "fail", detail: "not a git repository (run `git init` first)" };
-  if (!(await hasCommits(root)))
-    return { level: "fail", detail: "the repo has no commits yet; `tumwater init` creates the first one" };
+  if (!(await isGitRepo(root))) return { level: "fail", detail: NOT_A_REPO_MESSAGE };
+  if (!(await hasCommits(root))) return { level: "fail", detail: NO_COMMITS_MESSAGE };
   const branch = await currentBranch(root);
-  if (branch === null)
-    return { level: "fail", detail: "the repo's primary checkout is detached; check out your main branch first" };
+  if (branch === null) return { level: "fail", detail: DETACHED_HEAD_MESSAGE };
   return { level: "ok", detail: `on branch ${branch}` };
 }
 
@@ -83,8 +88,7 @@ export async function checkRepo(root: string): Promise<CheckOutcome> {
  * detail carries the thrown message verbatim: it already holds validateConfig's full problem
  * list, so one edit can fix them all. */
 export function checkInit(root: string): CheckOutcome {
-  if (!fs.existsSync(configPath(root)))
-    return { level: "fail", detail: "not initialized (run `tumwater init <prompt>` first)" };
+  if (!fs.existsSync(configPath(root))) return { level: "fail", detail: NOT_INITIALIZED_MESSAGE };
   try {
     const config = loadConfig(root);
     return { level: "ok", detail: `${enabledRoleIds(config).length} roles enabled` };
@@ -100,7 +104,7 @@ export function checkPiBinary(pathEnv: string = process.env.PATH ?? ""): CheckOu
     ? { level: "ok", detail: found }
     : {
         level: "fail",
-        detail: "pi not found on PATH — install it (https://github.com/badlogic/pi-mono) or add its bin directory to your PATH",
+        detail: PI_MISSING_MESSAGE,
       };
 }
 

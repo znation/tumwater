@@ -15,6 +15,13 @@ import { clearBackoff, loadLoopState, orchestratorAlive, saveLoopState, zeroCoun
 import { createTranscriptRenderer } from "./ui/transcript.js";
 import { readTranscriptTail } from "./ui/transcript-tail.js";
 import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
+import {
+  DETACHED_HEAD_MESSAGE,
+  NOT_A_REPO_MESSAGE,
+  NOT_INITIALIZED_MESSAGE,
+  NO_COMMITS_MESSAGE,
+  PI_MISSING_MESSAGE,
+} from "./readiness.js";
 import { initProject } from "./init.js";
 import {
   type CancelOutcome,
@@ -77,7 +84,7 @@ off while the project is quiet and wake when main moves. Everything is local: no
 
 async function resolveMainBranch(root: string): Promise<string> {
   const branch = await currentBranch(root);
-  if (!branch) fail("the repo's primary checkout is detached; check out your main branch first");
+  if (!branch) fail(DETACHED_HEAD_MESSAGE);
   return branch;
 }
 
@@ -85,11 +92,11 @@ async function requireReadyRepo(root: string): Promise<void> {
   // Fail fast on a missing binary: without this, the probe below reads as "not a git
   // repository" — pointing at the wrong fix for a machine with no git installed.
   if (!findOnPath("git")) fail(GIT_MISSING_MESSAGE);
-  if (!(await isGitRepo(root))) fail("not a git repository (run `git init` first)");
+  if (!(await isGitRepo(root))) fail(NOT_A_REPO_MESSAGE);
   if (!fs.existsSync(path.join(root, "tumwater.json"))) {
-    fail("not initialized (run `tumwater init <prompt>` first)");
+    fail(NOT_INITIALIZED_MESSAGE);
   }
-  if (!(await hasCommits(root))) fail("the repo has no commits yet; `tumwater init` creates the first one");
+  if (!(await hasCommits(root))) fail(NO_COMMITS_MESSAGE);
 }
 
 async function cmdInit(root: string, args: string[]): Promise<void> {
@@ -110,7 +117,7 @@ async function cmdRun(root: string): Promise<void> {
   await requireReadyRepo(root);
   // Fail fast instead of starting loops whose every tick dies with "spawn pi ENOENT".
   if (!findOnPath("pi")) {
-    fail("pi not found on PATH — install it (https://github.com/badlogic/pi-mono) or add its bin directory to your PATH");
+    fail(PI_MISSING_MESSAGE);
   }
   if (orchestratorAlive(root)) fail("an orchestrator is already running for this repo");
   if (!process.env[SUPERVISED_ENV]) {
