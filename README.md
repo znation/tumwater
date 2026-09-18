@@ -62,10 +62,22 @@ Open items:
   refined 2026-09-17).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
-- Open bugs: none.
+- Planned: Telemetry 1/2 — `tumwater report --failures`, a deterministic failure digest over
+  the fleet's own event log (planned 2026-09-17, requested by user).
+- Planned: Telemetry 2/2 — a `telemetry` role that reads the digest and files bugs (planned
+  2026-09-17, requested by user; depends on Telemetry 1/2 and Observer roles 1/2).
+- Planned: Observer roles 1/2 — stop scheduling a passing check as an idle tick (planned
+  2026-09-17, requested by user; must follow the deferral-latch fix, the open bug below).
+- Planned: Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17,
+  requested by user; depends on 1/2).
+- Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
+  2026-09-17, requested by user).
+- Open bugs: 1 — the deferral latch: a deferred tick preserves the `no_change` that causes it,
+  so five maintenance roles (qa, perf, clean, organize, improve) have been off since their
+  first idle tick (BUGS.md, found 2026-09-17).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`e76c5d5`): build clean, suite 1021/1021.
+Current main (`a99c365`): build clean, suite 1023/1023.
 <!-- tumwater:status:end -->
 
 ## How it works
