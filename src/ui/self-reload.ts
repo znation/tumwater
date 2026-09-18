@@ -57,7 +57,7 @@ export function reexecSelf(spawnImpl: ReloadSpawn = spawn): void {
 /** Everything createReloadWatch needs; all seams injectable so tests need no real timers, git,
  * or dist. `readDisk` defaults to this process's own dist (`readBuildInfo`), which a redeploy
  * swap or a manual `npm run build` replaces in place. */
-export interface ReloadWatchOptions {
+interface ReloadWatchOptions {
   root: string;
   startupInfo: BuildInfo | null;
   readDisk?: () => BuildInfo | null;
@@ -66,7 +66,7 @@ export interface ReloadWatchOptions {
   onTrigger: () => void;
 }
 
-export interface ReloadWatch {
+interface ReloadWatch {
   /** Resolves once the one-time gate settles: a stampless startup or a non-self-hosted install
    * never starts the interval (and `stop` is then a no-op); only a self-hosted process polls. */
   start(): Promise<void>;
