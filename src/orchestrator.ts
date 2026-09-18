@@ -132,6 +132,21 @@ interface InFlightLanding {
   userAborted: boolean;
 }
 
+/** Discard the pinned landing refs of every role in a deliberately-aborted landing.
+ * `tumwater abort --role` throws the committed work away, and the pin is what would otherwise
+ * recover it, so the ref must go; a shutdown abort leaves `userAborted` unset and every ref
+ * survives for recovery. Shared by the single-landing and batch-landing finally blocks so
+ * their discard semantics cannot drift. A ref that is already gone is not an error. */
+async function discardPinnedRefs(root: string, roles: string[]): Promise<void> {
+  for (const role of roles) {
+    try {
+      await deleteRef(root, landingRefName(role));
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
 /** Run all enabled loops until the signal aborts — or until a pending self-redeploy has drained
  * the fleet and swapped the new build into dist/ (then `restart` is true). */
 export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExit> {
@@ -514,20 +529,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
                 try {
                   await landQueuedEntry(root, head.entry, head.file, author, author.config, mainBranch, landing.controller.signal);
                 } finally {
-                  if (landing.userAborted) {
-                    // A deliberate stop discards the pinned work — the landing's counterpart
-                    // to the pre-3/5 mid-review user abort (loop.ts's `this.userAborted`
-                    // branch); a shutdown abort leaves the flag unset and the ref survives
-                    // for recovery. (One role in this slot's roles list; the batch slot
-                    // loops the same way over its whole batch.)
-                    for (const role of landing.roles) {
-                      try {
-                        await deleteRef(root, landingRefName(role));
-                      } catch {
-                        /* already gone */
-                      }
-                    }
-                  }
+                  if (landing.userAborted) await discardPinnedRefs(root, landing.roles);
                   landingInFlight = null;
                 }
               });
@@ -628,20 +630,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
                   saveLoopState(root, author.state);
                 } finally {
                   removeQuiet(landingStatePath(root));
-                  if (landing.userAborted) {
-                    // A deliberate stop discards the batch's pinned work — the single
-                    // path's counterpart, extended over every batched role (the batch is
-                    // one slot unit; leaving the other refs queued would sit them behind
-                    // work nobody drains); a shutdown abort leaves the flag unset and
-                    // every ref survives for recovery.
-                    for (const role of landing.roles) {
-                      try {
-                        await deleteRef(root, landingRefName(role));
-                      } catch {
-                        /* already gone */
-                      }
-                    }
-                  }
+                  if (landing.userAborted) await discardPinnedRefs(root, landing.roles);
                   landingInFlight = null;
                 }
               });
