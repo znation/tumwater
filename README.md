@@ -38,7 +38,7 @@ locally and keep all project state within the git repo.
 <!-- tumwater:status:start -->
 v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
 `status` (`--json`), `report` (`--days N`; Markdown usage report, default 14 days),
-`doctor` (pre-flight check of git, repo, config, pi, locks, and build — read-only,
+`doctor` (pre-flight check of node, git, repo, config, pi, locks, and build — read-only,
 exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` /
 `prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`,
 `wake [--role <id>]` (clears a backed-off fleet's sleep — the named roles, or all of them,
@@ -70,13 +70,10 @@ Open items:
   requested by user, refined 2026-09-18; depends on 1/2, which has landed).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
-- Open bugs: 1, found by log analysis of the fleet's own event log and detailed in BUGS.md's
-  Open section —
-  - The restart drain has never once completed: 38 of 39 redeploys held the fleet the full
-    30 minutes and still aborted 4–12 ticks (found 2026-09-18).
+- Open bugs: none.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`fb34aa9`): build clean, suite 1094/1094.
+Current main (`8fd6a85`): build clean, suite 1101/1101.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -224,7 +221,7 @@ tumwater gui --all-interfaces      # serve the dashboard to the whole network (s
 tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)
 tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days; --days bounded to the GUI's shared 1–90 window)
-tumwater doctor       # pre-flight check: git, repo, config, pi, locks, build (read-only; exit 0/1)
+tumwater doctor       # pre-flight check: node, git, repo, config, pi, locks, build (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
 tumwater prompt "prefer no third-party deps"
