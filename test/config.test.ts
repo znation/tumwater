@@ -448,6 +448,38 @@ test("setDailyBudgetUsd persists only the cap, atomically, and rejects invalid v
   assert.equal(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8"), "{ still editing");
 });
 
+// The write-side failure path: when the config directory cannot take a new file (disk full,
+// permissions), the error surfaces as a string instead of throwing, the old file is left
+// byte-for-byte intact, and the atomic writer's tmp file does not linger. Skipped under root,
+// where chmod cannot stop the write (the success path already covers the ordinary case).
+test("setDailyBudgetUsd reports a failed write and leaves the config untouched", (t) => {
+  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  if (asRoot) {
+    t.skip("chmod cannot stop a root process");
+    return;
+  }
+  const dir = tmpdir();
+  const base = defaultConfig();
+  base.maxDailyCostUsd = 7;
+  saveConfig(dir, base);
+  const file = path.join(dir, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  fs.chmodSync(dir, 0o555); // readable and searchable, not writable — the tmp write fails
+  try {
+    const r = setDailyBudgetUsd(dir, 25);
+    assert.equal(r.ok, false, "a failed write is surfaced, never thrown");
+    if (!r.ok) assert.ok(r.error.length > 0, "a non-empty error string for the UI to flash");
+    assert.equal(fs.readFileSync(file, "utf8"), before, "the old config is untouched");
+    assert.deepEqual(
+      fs.readdirSync(dir).filter((f) => f.startsWith("tumwater.json.tmp-")),
+      [],
+      "the failed write leaves no tmp remnant",
+    );
+  } finally {
+    fs.chmodSync(dir, 0o755); // restore so temp-dir cleanup can remove it
+  }
+});
+
 // --- loadConfigCached: the stat-keyed cache behind every poll's config reload ---
 
 test("an unchanged tumwater.json is served from the stat-keyed cache without re-reading", () => {
