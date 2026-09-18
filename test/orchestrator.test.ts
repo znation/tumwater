@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runOrchestrator } from "../src/orchestrator.js";
+import { runOrchestrator, runTimedRoleTick } from "../src/orchestrator.js";
 import { DEFER_MAX_MS, deferTick, dueForPrune, fairOrder, isEligible, workLanded } from "../src/scheduling.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
@@ -44,6 +44,76 @@ const FAST_POLL_MS = 100;
 function runner(role: string): LoopRunner {
   return new LoopRunner(makeRepo(), role, defaultConfig(), "main");
 }
+
+test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {
+  // BUGS.md 2026-09-18: the restart drain's p75 sample spans `tick_start`..`tick_end`, so the
+  // clock must start after the maxConcurrent permit is granted — a tick parked in the queue
+  // must not have that wait counted as its run time (which would overstate how long an
+  // in-flight tick still has and hold the drain open longer than needed). The fake clock
+  // advances 500ms inside acquire and 30ms inside tick; the sample must read 30, not 530.
+  let t = 1000;
+  const now = () => t;
+  const duration = await runTimedRoleTick(
+    new AbortController().signal,
+    async () => {
+      t += 500; // parked waiting for a permit
+    },
+    () => {},
+    async () => {
+      t += 30; // the tick's actual run
+      return { result: "changed" };
+    },
+    now,
+  );
+  assert.equal(duration, 30);
+
+  // A cut-off tick yields no sample: its short length must not drag the p75 down.
+  const aborted = await runTimedRoleTick(
+    new AbortController().signal,
+    async () => {},
+    () => {},
+    async () => {
+      t += 5;
+      return { result: "aborted" };
+    },
+    now,
+  );
+  assert.equal(aborted, null);
+
+  // A tick the harness never starts (already stopping) also yields no sample.
+  const stopping = new AbortController();
+  stopping.abort();
+  let ran = false;
+  const never = await runTimedRoleTick(
+    stopping.signal,
+    async () => {},
+    () => {},
+    async () => {
+      ran = true;
+      return { result: "changed" };
+    },
+    now,
+  );
+  assert.equal(never, null);
+  assert.equal(ran, false, "the tick does not run once the signal is aborted");
+
+  // The permit is always released, even when the tick throws.
+  let released = false;
+  await assert.rejects(
+    runTimedRoleTick(
+      new AbortController().signal,
+      async () => {},
+      () => {
+        released = true;
+      },
+      async () => {
+        throw new Error("tick blew up");
+      },
+      now,
+    ),
+  );
+  assert.equal(released, true);
+});
 
 test("a fresh loop is eligible at startup", () => {
   const r = runner("clean");

@@ -7,6 +7,22 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### The restart drain's p75 sampled a tick's semaphore queue wait as its run time (found by bugfix loop 2026-09-18, fixed 2026-09-18)
+
+**Symptom:** the adaptive drain window landed in 5c365ac measured the wrong span. The orchestrator stamped `tickStartedAt = Date.now()` when it created the task, before `semaphore.acquire`, so a role tick's recorded duration included every millisecond it spent parked waiting for a `maxConcurrent` permit. The p75 of those durations is what `poll` uses as the drain window. On a fleet with a backlog and `maxConcurrent: 3`, queue waits of tens of minutes are routine, so the window was inflated well past the actual run time of the ticks the drain waits on — holding the fleet idle longer than the fix intended, which is the cost the adaptive window exists to bound.
+
+**Repro:** with a full land queue and several due roles, compare the `tick_start`..`tick_end` span in `events.jsonl` against the durations fed to `p75TickDurationMs`; the in-memory sample is the larger because it includes the semaphore wait. A scratch read of the code confirms it: `const tickStartedAt = Date.now();` sits above `if (usesSlot) await semaphore.acquire(roleTier(runner.role));`.
+
+**Expected:** the sample spans the same interval the bug's own measurement used — `tick_start` (logged inside `runner.tick()`, after the permit is granted) to `tick_end` — so queue wait is excluded. The drain waits on ticks that are already running; their remaining time is bounded by their run time, not by the wait they already finished.
+
+**Suspected cause:** the timing wrapper was written inline around the existing acquire/try/finally, and the clock read was left where the task object was built rather than where the tick begins. Nothing asserted the span, so the mismatch between the documented measurement and the sampled one was invisible.
+
+**Fix:** extracted `runTimedRoleTick(signal, acquire, release, tick, now?)` in src/orchestrator.ts — it acquires the permit, then reads the clock, runs the tick, and returns the elapsed run time (null when the tick never started or was aborted, preserving the exclusion). The orchestrator's task calls it, so the start timestamp is taken after the permit is granted and queue wait can never enter the ring. `now` is a test seam.
+
+**Files:** src/orchestrator.ts (`runTimedRoleTick`, the role-tick task); test/orchestrator.test.ts ("runTimedRoleTick measures the tick, not its semaphore queue wait").
+
+**Related:** the adaptive window itself (5c365ac) and the landing permit (`withLandingSlot`, 2eee180) both date from the same day; this corrects the sample that feeds the window.
+
 ### The restart drain has never once completed: 38 of 39 redeploys held the fleet a full 30 minutes and then aborted 4–12 ticks anyway (found by log analysis 2026-09-18, fixed 2026-09-18)
 
 **Symptom:** `RESTART_DRAIN_MAX_MS` is 30 minutes on the stated premise that most ticks finish inside it (src/redeploy.ts:52-56: "Median ticks run ~35 min on local hardware; a half-hour drain lets most of them finish while bounding how long the fleet keeps executing stale code"). Of the 39 `restart` events in `events.jsonl` since 2026-09-08, **38 carry `drainedMs` at or past the cap** (1 801 272 – 2 267 835 ms) and each aborted 4–12 in-flight ticks. The single exception — 09-15 09:44:03, `drainedMs` 48 074, `abortedTicks` 0 — is the recovery restart after the Xcode-license outage, when every loop was already asleep. The drain has never once done what it exists to do on a working fleet.

@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { TumwaterConfig } from "./types.js";
+import type { TickOutcome, TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
 import { applyFallbackModel, enabledRoleIds, fallbackPair, loadConfigCached } from "./config.js";
 import {
@@ -48,6 +48,33 @@ const POLL_MS = 2000;
  * work whose author the interlock has already blocked jumps ahead of parked role waiters
  * rather than starving behind them (BUGS.md 2026-09-18). */
 const LANDING_TIER = -1;
+
+/** Run one role tick under the concurrency semaphore and return how long the tick itself ran,
+ * in ms — null when it never started (the harness is already stopping) or was cut off by an
+ * abort. This is the restart drain's p75 sample (BUGS.md 2026-09-18). The clock starts only
+ * once the permit is granted, so time a tick spends parked in the semaphore queue is not
+ * counted as work: the drain waits on ticks that are already running, and folding queue wait
+ * into the window would overstate how long they have left (the `tick_start`..`tick_end` span
+ * the window was sized against excludes it too). Aborted ticks return null so their short
+ * cut-off lengths cannot drag the window down. `now` is a test seam. */
+export async function runTimedRoleTick(
+  signal: AbortSignal,
+  acquire: () => Promise<void>,
+  release: () => void,
+  tick: () => Promise<TickOutcome>,
+  now: () => number = Date.now,
+): Promise<number | null> {
+  await acquire();
+  try {
+    if (signal.aborted) return null;
+    const startedAt = now();
+    const outcome = await tick();
+    if (outcome.result === "aborted" || outcome.result === "user_aborted") return null;
+    return now() - startedAt;
+  } finally {
+    release();
+  }
+}
 
 /** Sleep up to ms, but wake immediately when `signal` aborts — so shutdown (SIGTERM →
  * abort) is prompt instead of waiting out the current poll cycle. The listener is removed
@@ -691,26 +718,23 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // across polls too: a work-role arrival jumps ahead of maintenance ticks that queued
         // in an earlier poll (in-flight ticks always run to completion).
         const usesSlot = runner.role !== DIRECTOR_ROLE;
-        const tickStartedAt = Date.now();
-        // Whether this tick finished on its own rather than being cut off by a shutdown/restart
-        // abort: only the former's duration is a drain-window sample.
-        let recordDuration = false;
+        // The tick's own run time (null when it never ran or was cut off): the drain-window
+        // sample is taken only for a tick that finished on its own.
+        let durationMs: number | null = null;
         const task = (async () => {
-          if (usesSlot) await semaphore.acquire(roleTier(runner.role));
-          try {
-            if (signal.aborted) return;
-            const outcome = await runner.tick();
-            recordDuration = outcome.result !== "aborted" && outcome.result !== "user_aborted";
-          } finally {
-            if (usesSlot) semaphore.release();
-          }
+          durationMs = await runTimedRoleTick(
+            signal,
+            usesSlot ? () => semaphore.acquire(roleTier(runner.role)) : async () => {},
+            usesSlot ? () => semaphore.release() : () => {},
+            () => runner.tick(),
+          );
         })();
         const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
         bucket.add(task);
         void task.finally(() => {
           bucket.delete(task);
-          if (bucket === roleInFlight && recordDuration) {
-            roleTickDurationsMs.push(Date.now() - tickStartedAt);
+          if (bucket === roleInFlight && durationMs !== null) {
+            roleTickDurationsMs.push(durationMs);
             if (roleTickDurationsMs.length > ROLE_TICK_DURATION_SAMPLES) roleTickDurationsMs.shift();
           }
         });
