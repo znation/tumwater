@@ -278,7 +278,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       if (reloaded.config) {
         liveConfig = reloaded.config;
         for (const r of runners) r.config = reloaded.config;
-        liveConfig = reloaded.config;
         // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute
         // concurrently within this poll — no restart. Growing admits already-queued ticks;
         // shrinking never preempts in-flight work, it only caps future grants.
