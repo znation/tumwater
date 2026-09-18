@@ -43,6 +43,11 @@ import type { Redeployer } from "./redeploy.js";
 
 const POLL_MS = 2000;
 
+/** The semaphore tier a landing's pi runs acquire at, below every roleTier (0/1): committed
+ * work whose author the interlock has already blocked jumps ahead of parked role waiters
+ * rather than starving behind them (BUGS.md 2026-09-18). */
+const LANDING_TIER = -1;
+
 /** Sleep up to ms, but wake immediately when `signal` aborts — so shutdown (SIGTERM →
  * abort) is prompt instead of waiting out the current poll cycle. The listener is removed
  * on either exit path so long-running orchestrators don't accumulate one per poll. */
@@ -245,6 +250,21 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   let runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
 
+  // The landing slot's pi runs — a reviewer, or a batch's per-change gates — cost the backend
+  // what an author run costs, so they take the same maxConcurrent permit role ticks do
+  // (BUGS.md 2026-09-18). Exempting them let total load float to maxConcurrent + landing +
+  // director on a single-GPU backend, where the extra stream is what starves sessions into the
+  // quiet watchdog's kills. The landing's wait is bounded by one in-flight tick, and a queued
+  // landing that is aborted while parked still aborts (with its ref rules) once a slot frees.
+  const withLandingSlot = async <T>(run: () => Promise<T>): Promise<T> => {
+    await semaphore.acquire(LANDING_TIER);
+    try {
+      return await run();
+    } finally {
+      semaphore.release();
+    }
+  };
+
   const infoFile = orchestratorStatePath(root);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
   if (redeploy) info.build = redeploy.status();
@@ -270,8 +290,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // In-flight tasks, split by who requested them: the redeploy drain caps role ticks at its
   // window but waits for a director tick without one — an explicit human prompt outranks the
   // self-redeploy (BUGS.md 2026-09-08). The landing slot is deliberately OUTSIDE this split:
-  // it is a single in-process task (no semaphore, one at a time) that graceful shutdown still
-  // awaits — an aborted landing keeps its ref and drops its entry, recovering on next start.
+  // it is a single in-process task (one at a time, since 2026-09-18 under the same maxConcurrent
+  // permit as role ticks) that graceful shutdown still awaits — an aborted landing keeps its ref
+  // and drops its entry, recovering on next start.
   const roleInFlight = new Set<Promise<void>>();
   const directorInFlight = new Set<Promise<void>>();
   let landingInFlight: InFlightLanding | null = null;
@@ -576,7 +597,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               // flagged userAborted — the two differ only in what happens to the pinned
               // ref after.
               signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
-              landing.promise = (async () => {
+              landing.promise = withLandingSlot(async () => {
                 try {
                   await landQueuedEntry(root, head.entry, head.file, author, author.config, mainBranch, landing.controller.signal);
                 } finally {
@@ -596,7 +617,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
                   }
                   landingInFlight = null;
                 }
-              })();
+              });
               landingInFlight = landing;
             } else {
               // The batch slot: land `batch` as ONE stack through the shared landBatch —
@@ -619,7 +640,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               // too, flagged userAborted — the two differ only in what happens to the
               // pinned refs after.
               signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
-              landing.promise = (async () => {
+              landing.promise = withLandingSlot(async () => {
                 const startedAt = Date.now();
                 writeJsonFile(landingStatePath(root), {
                   role: first.entry.role,
@@ -710,7 +731,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
                   }
                   landingInFlight = null;
                 }
-              })();
+              });
               landingInFlight = landing;
             }
           }

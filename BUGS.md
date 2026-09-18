@@ -19,7 +19,9 @@ The cost is paid twice. Nothing new starts during a hold (src/orchestrator.ts's 
 
 **Suspected cause:** a constant calibrated by hand against an earlier backend, never re-derived. Nothing in the harness measures tick duration and compares it to the drain window, so the premise in the doc comment has no way to be falsified by the running fleet — the `restart` event records `drainedMs` and `abortedTicks`, which is exactly the evidence needed, and no surface reads it.
 
-### `maxConcurrent` stopped bounding model load when landings moved off the author semaphore: 4 concurrent pi streams for a quarter of the day (found by log analysis 2026-09-18)
+## Fixed
+
+### `maxConcurrent` stopped bounding model load when landings moved off the author semaphore: 4 concurrent pi streams for a quarter of the day (found by log analysis 2026-09-18, fixed 2026-09-18)
 
 **Symptom:** `maxConcurrent` is the fleet's only lever over a single-GPU backend, and it no longer means what it says. The author semaphore is acquired in exactly one place (src/orchestrator.ts:662) and two pi-bearing paths bypass it: the land-queue drain starts its landing outside the semaphore entirely (src/orchestrator.ts:524-590 — deliberate, so authors keep ticking behind it), and the director skips the slot by `usesSlot`. The real ceiling is `maxConcurrent + 1 landing + 1 director`.
 
@@ -31,9 +33,11 @@ Occupancy reconstructed from `tick_start`/`tick_end` plus `landed`/`land_failed`
 
 **Suspected cause:** the exemption is documented at src/orchestrator.ts:512-523 and reasoned entirely about *fairness* — not pausing committed work behind the budget and user-pause gates — with no consideration of aggregate backend load, because when it was written the review gate ran inside the author's tick and therefore inside the semaphore. Moving the gate to the landing slot (merge queue 3/5) moved one pi stream out from under the cap without anything noticing.
 
-**Related:** the three entries above all worsen under this concurrency — the starved sessions, the 300 s check timeout, and the flaky tests' vanishing margins.
+**Fix:** the landing drain now acquires the same `maxConcurrent` permit role ticks do before its reviewer (or a batch's per-change gates) runs — `withLandingSlot` in src/orchestrator.ts. The permit is taken at `LANDING_TIER` (-1, below every `roleTier`), so a queued landing — committed work whose author the interlock has already blocked — jumps ahead of parked role waiters instead of starving behind them, while authors keep ticking on the remaining slots. The landing's wait is bounded by one in-flight tick, and a landing aborted while parked still aborts (and follows its ref-discard rule) once a slot frees. The director's bypass is unchanged and deliberate: an explicit human prompt outranks the autonomous cap, so the ceiling is now `maxConcurrent + 1 director` instead of `maxConcurrent + 1 landing + 1 director`.
 
-## Fixed
+**Files:** src/orchestrator.ts (`LANDING_TIER`, `withLandingSlot`, both landing-promise sites); test/orchestrator.test.ts ("a landing's reviewer run takes the same maxConcurrent permit as a role tick").
+
+**Related:** the restart-drain and build-check findings from 2026-09-18 all worsen under this concurrency — the starved sessions, the 300 s check timeout, and the flaky tests' vanishing margins.
 
 ### A transient `ENOTEMPTY` on `dist.prev` aborts the whole build swap: no `rmSync` in the harness passed `maxRetries` (found by log analysis 2026-09-18, fixed 2026-09-18)
 

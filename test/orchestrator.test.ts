@@ -916,6 +916,63 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   }
 });
 
+test("a landing's reviewer run takes the same maxConcurrent permit as a role tick", async () => {
+  // BUGS.md 2026-09-18: the landing drain ran its reviewer outside the author semaphore, so
+  // maxConcurrent + 1 landing + 1 director was the real ceiling and a single-GPU backend saw
+  // four streams. With one permit, a landing in flight and a role tick must never overlap.
+  const repo = makeRepo();
+  await initProject(repo, "landing shares the maxConcurrent cap");
+  const cfg = fastConfig(["clean", "bugfix"]);
+  cfg.maxConcurrent = 1;
+  saveConfig(repo, cfg);
+  const runDir = tmpdir();
+  // Each run records how many pi processes were already in flight when it started. clean's
+  // author makes a change (so its landing's reviewer actually runs and holds the slot ~3s);
+  // bugfix keeps ticking every ~1s and declares nothing-to-do. Without the permit the reviewer
+  // and a bugfix tick overlap; the 3s reviewer sleep makes that window unmissable.
+  const restore = fakePi(
+    [
+      `d="${runDir}/runs"; mkdir -p "$d"`,
+      `f=$(mktemp "$d/run.XXXXXX")`,
+      `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
+      `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
+      `case "$PWD" in`,
+      `*_land-clean*)`,
+      `  sleep 3`,
+      `  printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
+      `  ;;`,
+      `*clean*)`,
+      `  echo change >> clean-change.txt`,
+      `  sleep 1`,
+      `  printf '%s\\n' '${assistantLine("clean work\nSUMMARY: add clean change")}'`,
+      `  ;;`,
+      `*)`,
+      `  sleep 1.5`,
+      `  printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `  ;;`,
+      `esac`,
+      `rm -f "$f"`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(() => readSamples(runDir).length >= 5, "several pi runs across the landing and role ticks");
+    const samples = readSamples(runDir);
+    assert.ok(
+      samples.every((n) => n <= 1),
+      `a landing and a role tick never share the backend at maxConcurrent 1 (samples: ${samples})`,
+    );
+    // The contention was real: clean's change landed through its reviewer while bugfix ticked.
+    assert.ok(
+      readEvents(repo).some((e) => e.type === "landed" && e.loop === "clean"),
+      "clean's change landed through the reviewer",
+    );
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
 test("a work-role tick that becomes due later jumps ahead of maintenance waiters parked in an earlier poll", async () => {
   // Cross-poll slot inversion (BUGS.md 2026-09-12): with one slot, the startup poll admits
   // bugfix first and parks clean + dry behind it. When bugfix becomes due again (~1s idle
