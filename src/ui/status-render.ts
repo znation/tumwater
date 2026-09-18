@@ -2,7 +2,8 @@ import path from "node:path";
 import { DIRECTOR_ROLE } from "../roles.js";
 import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, budgetGate, dailyCost, fleetDailyCost, budgetReached } from "../state.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../state.js";
+import { budgetGate, dailyCost, fleetDailyCost, budgetReached } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd, usdCap } from "../text.js";
 

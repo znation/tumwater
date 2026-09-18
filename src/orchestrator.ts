@@ -10,13 +10,10 @@ import {
   workLanded,
 } from "./scheduling.js";
 import {
-  budgetGate,
-  budgetPaused,
-  type BudgetGate,
-  fleetDailyCost,
   isFleetPaused,
   readLandingMarker,
 } from "./state.js";
+import { budgetGate, budgetPaused, type BudgetGate, fleetDailyCost } from "./budget.js";
 import { applyLandingOutcome, saveLoopState } from "./state.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";

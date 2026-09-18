@@ -2,7 +2,7 @@ import { openBugs, openQuestions, plannedPlans } from "../backlog.js";
 import { readEvents } from "../events.js";
 import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
-import { budgetGate, budgetReached, dailyCost } from "../state.js";
+import { budgetGate, budgetReached, dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
 import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForRole, loopPhase } from "./status-render.js";
 

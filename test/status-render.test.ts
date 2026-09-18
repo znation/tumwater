@@ -5,7 +5,8 @@ import path from "node:path";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress.js";
 import { budgetBadge, buildBadge, clipToWidth, lastTickCell, landingBadge, loopPhase, renderStatus, workingDetail } from "../src/ui/status-render.js";
 import type { StatusSnapshot } from "../src/ui/status.js";
-import { fleetDailyCost, freshLoopState, todayStamp } from "../src/state.js";
+import { freshLoopState } from "../src/state.js";
+import { fleetDailyCost, todayStamp } from "../src/budget.js";
 import { piLogPath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
 

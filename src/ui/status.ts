@@ -8,7 +8,6 @@ import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { promptPreview, queuedPrompts } from "../inbox.js";
 import { statePath } from "../paths.js";
 import {
-  fleetDailyCost,
   freshLoopState,
   isFleetPaused,
   loadLoopState,
@@ -16,6 +15,7 @@ import {
   readLandingMarker,
   readOrchestratorInfo,
 } from "../state.js";
+import { fleetDailyCost } from "../budget.js";
 import { queuedLandings } from "../land-queue.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
