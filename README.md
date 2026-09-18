@@ -70,15 +70,13 @@ Open items:
   requested by user, refined 2026-09-18; depends on 1/2, which has landed).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
-- Open bugs: 2, both found by log analysis of the fleet's own event log and detailed in
-  BUGS.md's Open section —
+- Open bugs: 1, found by log analysis of the fleet's own event log and detailed in BUGS.md's
+  Open section —
   - The restart drain has never once completed: 38 of 39 redeploys held the fleet the full
     30 minutes and still aborted 4–12 ticks (found 2026-09-18).
-  - `maxConcurrent` no longer bounds model load — landings and the director bypass it
-    (found 2026-09-18).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`2ab6f0d`): build clean, suite 1091/1091.
+Current main (`fb34aa9`): build clean, suite 1094/1094.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -98,7 +96,9 @@ one loop per enabled role. Every loop tick:
    sha by `refs/tumwater/landing/<role>`, and enqueues a landing in `.tumwater/land-queue/` —
    then the tick ENDS: it holds no slot through review, and the role's branch resets to main
    the moment its commit exists. The orchestrator drains the queue on a single serial landing
-   slot, outside the author semaphore — an adversarial review gate over the full ahead-of-main
+   slot that takes the same `maxConcurrent` permit as a role tick (at a higher-priority tier,
+   so a queued landing jumps ahead of parked role waiters while authors keep ticking on the
+   remaining slots) — an adversarial review gate over the full ahead-of-main
    diff, in a harness-owned worktree (`_land-<role>`) off the pinned ref: first a deterministic
    build pre-check (the project's declared verify script: `npm test` when declared, else
    typecheck/build; failure rejects without spending a model run), then a fresh-session
