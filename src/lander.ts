@@ -247,9 +247,12 @@ export interface BatchRoleWiring {
  * One entry per request comes back in order; `result === undefined` means "unattempted — the
  * drain keeps that queue entry" (a failed Phase-A gate or a fallback early stop), and a
  * defined result drops its entry through the drain's write-back. Never throws for a failed
- * landing: per-change landChange failures degrade to "error" results; git-level failures
- * from the assembly/ff plumbing propagate like any other tick failure (the drain's catch
- * keeps every entry for re-drain). */
+ * landing: per-change landChange failures degrade to "error" results, and a Phase-A checkout
+ * that cannot resolve the pinned sha (the queue entry outlived its commit) also degrades to
+ * a terminal "error" so the drain drops that entry and the queue advances — exactly the
+ * single path's catch-all (landQueuedEntry). Remaining git-level failures from the
+ * assembly/ff plumbing still propagate like any other tick failure (the drain's catch keeps
+ * every entry for re-drain). */
 export async function landBatch(
   ctx: BatchContext,
   requests: LandRequest[],
@@ -290,7 +293,21 @@ export async function landBatch(
   for (let i = 0; i < requests.length; i++) {
     const req = requests[i]!;
     const w = wiringForRole(req.role);
-    const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
+    let wt: string;
+    try {
+      wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
+    } catch (err) {
+      // The queue entry outlived its pinned commit — the land queue outlives the ref by design
+      // (a crash between pin and drop, or an outside gc), so a checkout of `req.sha` can fail
+      // with the commit gone. Degrade to a terminal "error" for this request so the drain
+      // drops its entry and the queue advances; the single path's landQueuedEntry catch-all
+      // does exactly this. Without it the throw escapes to the drain, which keeps EVERY entry
+      // — a lost head pin would then starve the healthy queue forever. The rest stay
+      // unattempted (entry + ref intact), like a mid-batch review_error.
+      results[i]!.result = "error";
+      w.state.lastError = errorMessage(err);
+      break;
+    }
     // The shared gate, verdict persisted immediately (the drain's write-back happens only
     // in-process at batch completion, so a mid-batch crash must not lose what the batch earned).
     const outcome = await reviewPinnedChange({

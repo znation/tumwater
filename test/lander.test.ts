@@ -592,6 +592,46 @@ test("a failed gate stops the batch: the later requests stay unattempted with en
   }
 });
 
+test("a lost pin degrades its request to a terminal error instead of starving the queue", async () => {
+  // The queue entry can outlive its commit (a crash between pin and drop, or an outside gc):
+  // its sha no longer resolves, so Phase A's checkout throws. The batch must degrade that
+  // request to a terminal "error" — the drain's write-back then drops its entry and the next
+  // healthy head advances — rather than let the throw escape: the drain's catch keeps EVERY
+  // entry, so a permanently uncheckable head would re-fail on every poll and starve the queue
+  // forever. The single path's landQueuedEntry catch-all already self-heals this exact case.
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+    sh(root, "git", "update-ref", "-d", landingRefName("alpha")); // the pin is gone
+    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
+    const { wiringFor, folded } = makeWiring(states);
+    const lost = "0".repeat(40); // a sha git cannot check out
+
+    const results = await landBatch(
+      makeBatchCtx(root),
+      [request(lost, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
+      wiringFor,
+    );
+
+    assert.equal(results[0]!.result, "error", "the uncheckable pin is terminal, so the drain drops its entry");
+    assert.ok(states.alpha.lastError, "the git failure is recorded where the next tick's prompt reads it");
+    assert.equal(results[1]!.result, undefined, "the healthy sibling stays queued with its ref intact");
+    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+    assert.equal(folded.get("beta"), undefined, "no reviewer run for the unattempted request");
+    assert.equal(folded.get("alpha"), undefined, "and none for the uncheckable pin");
+    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0);
+
+    // The next drain now sees the healthy head alone and lands it — the queue advanced.
+    const next = await landBatch(makeBatchCtx(root), [request(shas.beta!, { role: "beta" })], wiringFor);
+    assert.deepEqual(next.map((r) => r.result), ["changed"], "the previously starved head lands on the next drain");
+    assert.equal(await refSha(root, landingRefName("beta")), null, "and its ref is gone after landing");
+  } finally {
+    restore();
+  }
+});
+
 test("an abort mid-batch routes every request without a terminal outcome to aborted, refs kept", async () => {
   const restore = fakePi(`exec sleep 30`); // never reached: the signal is already aborted
   try {
