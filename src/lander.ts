@@ -184,9 +184,9 @@ export interface BatchRoleWiring {
  * is what makes landBatchMax=1 reproduce 3/5 exactly.
  *
  * |S| >= 2 — assemble the stack in S[0]'s lander worktree, checked out detached at main's
- * CURRENT tip, then cherry-pick every S sha in queue order onto it (head included) —
- * one check over the combined tree, one fast-forward through the captured post-pick shas.
- * capturing each post-pick sha. ONE scope-`batch` runScopedBuildCheck over the combined tree
+ * CURRENT tip, then cherry-pick every S sha in queue order onto it (head included),
+ * capturing each post-pick sha — one check over the combined tree, one fast-forward through
+ * those captured shas. ONE scope-`batch` runScopedBuildCheck over the combined tree
  * — the expensive, deterministic half the batch shares (the model review already ran per
  * change in Phase A, because an adversarial review of a stack would blur which change a
  * criticism applies to). null (no declared check) → land directly; "failed" → abandon;
