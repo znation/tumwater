@@ -71,7 +71,7 @@ Open items:
 - Planned: Telemetry 2/2 — a `telemetry` role that reads the digest and files bugs (planned
   2026-09-17, requested by user; depends on Telemetry 1/2 and Observer roles 1/2).
 - Planned: Observer roles 1/2 — stop scheduling a passing check as an idle tick (planned
-  2026-09-17, requested by user; must follow the deferral-latch fix, the open bug below).
+  2026-09-17, requested by user).
 - Planned: Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17,
   requested by user; depends on 1/2).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
@@ -86,7 +86,7 @@ Open items:
   - A transient `ENOTEMPTY` on `dist.prev` aborts the whole build swap (found 2026-09-18).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`c53dba4`): build clean, suite 1031/1035.
+Current main (`bb8dc26`): build clean, suite 1040/1040.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -195,9 +195,10 @@ process you started, which runs the orchestrator as a child — respawns it on t
 Completed auto-restarts are rate-limited to at most one per 12 h: inside that cooldown STALE
 stays visible with a `restart BLOCKED: cooldown until …` deadline and ticks continue on the stale
 build, so sustained churn cannot halt the fleet for a drain over and over. A green
-verdict is reused fleet-wide; a red one is re-run in the mirror first, because a suite can fail
-for reasons that belong to a worktree rather than to the tree. A red main or a failed compile
-leaves the old build running until main moves again — a warning event, and `restart BLOCKED:
+verdict is reused fleet-wide; a red is provisional until two different worktrees have seen it,
+because a suite can fail for reasons that belong to a worktree rather than to the tree. A red
+main or a failed compile leaves the old build running until main moves again — a warning event,
+and `restart BLOCKED:
 <reason>` in both dashboard headers and `tumwater doctor`, so a restart that will never happen
 does not look like one that is seconds away.
 
