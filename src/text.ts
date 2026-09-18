@@ -7,8 +7,7 @@ import path from "node:path";
  * decimal integer parsing, and zero-padded local date/time parts. Presentation only:
  * depends on node built-ins alone, so any layer (harness or observer) can import it without
  * reaching into another module's internals — and the collapse/truncation/compaction/
- * abbreviation semantics live in exactly one
- * place instead of drifting per consumer. */
+ * abbreviation semantics live in exactly one place instead of drifting per consumer. */
 
 /** Collapse every run of whitespace to a single space and trim both ends — the shape every
  * one-line label takes before display (multi-line pi text, command strings, error messages). */
@@ -52,7 +51,7 @@ export function cutSplitsSurrogatePair(s: string, i: number): boolean {
  * fits nothing — not even the ellipsis — and yields the empty string, so the length
  * invariant holds at degenerate budgets too. */
 export function truncate(s: string, max: number): string {
-  if (max <= 0) return ""; // No budget fits nothing; without this, slice(0, -1) would keep almost all of s.
+  if (max <= 0) return ""; // A non-positive max fits nothing; without this, slice(0, -1) would keep almost all of s.
   if (s.length <= max) return s;
   let cut = max - 1;
   if (cutSplitsSurrogatePair(s, cut)) cut -= 1; // Never emit a lone high surrogate.
@@ -67,7 +66,7 @@ export function truncate(s: string, max: number): string {
  * the empty string, keeping the invariant at degenerate budgets. Shared by the status table
  * (status-render.ts) and the TUI's line rendering (tui.ts). */
 export function clipToWidth(text: string, width: number): string {
-  if (width < 0) return ""; // No budget fits nothing; without this, slice(0, -1) would keep almost all of text.
+  if (width < 0) return ""; // A negative width fits nothing; without this, slice(0, -1) would keep almost all of text.
   if (text.length <= width) return text;
   const bare = width <= 1; // No room for an ellipsis at degenerate widths.
   let cut = bare ? width : width - 1;
