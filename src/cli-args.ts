@@ -9,6 +9,9 @@ import { errorMessage, parsePositiveInt } from "./text.js";
  * and gui.ts's query-param validation, so one definition of a valid count/position covers both
  * input surfaces without the UI layer importing this module. */
 
+/** The single uniform failure exit for CLI flag/argument validation and command preflight:
+ * write a `tumwater: <message>` line to stderr and exit 1. Declared `never` because every
+ * caller relies on it stopping execution — code after a fail() call is unreachable. */
 export function fail(message: string): never {
   process.stderr.write(`tumwater: ${message}\n`);
   process.exit(1);
