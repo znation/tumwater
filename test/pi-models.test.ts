@@ -91,6 +91,23 @@ test("missing or malformed definitions files count as not free, never throw", ()
   assert.equal(fleetModelsFree(cfg, writeModels(JSON.stringify({ models: [] }))), false, "no providers key");
 });
 
+test("an unreadable definitions file exists but cannot be read: not free, never throws, and recovers", () => {
+  const cfg = fleetAt("lm-studio", "qwen3.8-27b");
+  // A directory at the models.json path stats fine — so the reader must actually attempt the
+  // read — but readFileSync fails with EISDIR for every user (unlike a chmod-based fixture,
+  // which a root test run would bypass). The failure must take the same safe direction as a
+  // missing file: unverifiable is NOT free, and it must not throw into the status poll.
+  const file = path.join(tmpdir("pi-models-dir-"), "models.json");
+  fs.mkdirSync(file);
+  assert.doesNotThrow(() => fleetModelsFree(cfg, file), "an unreadable file must not throw");
+  assert.equal(fleetModelsFree(cfg, file), false, "unreadable is not free");
+  // Recovery: the failed read is never cached, so once the path holds real definitions the
+  // very next poll reads them and the answer flips.
+  fs.rmdirSync(file);
+  fs.writeFileSync(file, MODELS_JSON);
+  assert.equal(fleetModelsFree(cfg, file), true, "recovers once the file is readable");
+});
+
 test("a malformed cost shape is unresolvable — never free, never throws", () => {
   const cfg = fleetAt("p", "m");
   // A non-object cost previously read as free (property access off a string/number yields
