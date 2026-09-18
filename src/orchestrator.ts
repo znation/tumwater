@@ -221,6 +221,39 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const ROLE_TICK_DURATION_SAMPLES = 50;
   const roleTickDurationsMs: number[] = [];
   let landingInFlight: InFlightLanding | null = null;
+
+  /** Start one in-flight landing: build the slot's record (its roles, its own abort controller,
+   * the `userAborted` flag), wire harness shutdown to abort it, run `body` on the single landing
+   * slot, and tear the record down — clearing the pinned refs when the abort was a deliberate
+   * `tumwater abort` (a shutdown leaves them for recovery) and freeing the slot. Both drain
+   * paths (the single landing and the coalesced batch) share this frame; they differ only in the
+   * body, which holds the per-role wiring, and the batch adds its own marker cleanup.
+   * Returns the record for the caller to store in `landingInFlight`. */
+  const startLanding = (
+    roles: string[],
+    body: (landing: InFlightLanding) => Promise<void>,
+  ): InFlightLanding => {
+    const landing: InFlightLanding = {
+      promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
+      controller: new AbortController(),
+      roles,
+      userAborted: false,
+    };
+    // Harness shutdown aborts the landing through the per-landing controller (the lander
+    // watches it); `tumwater abort --role` for any of its roles aborts it too, flagged
+    // userAborted — the two differ only in what happens to the pinned refs after.
+    signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
+    landing.promise = withLandingSlot(async () => {
+      try {
+        await body(landing);
+      } finally {
+        if (landing.userAborted) await discardPinnedRefs(root, landing.roles);
+        landingInFlight = null;
+      }
+    });
+    return landing;
+  };
+
   // Live-reload bookkeeping: the last config error already warned about (a broken file must
   // warn once per distinct text, not every poll), and the previous cycle's enabled set (for
   // one-shot enable/disable transition warnings).
@@ -514,26 +547,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
                   mainBranch,
                   signal,
                 );
-              const landing: InFlightLanding = {
-                promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
-                controller: new AbortController(),
-                roles: [head.entry.role],
-                userAborted: false,
-              };
-              // Harness shutdown aborts the landing through the per-landing controller (the
-              // lander watches it); `tumwater abort --role` for this role aborts it too,
-              // flagged userAborted — the two differ only in what happens to the pinned
-              // ref after.
-              signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
-              landing.promise = withLandingSlot(async () => {
-                try {
-                  await landQueuedEntry(root, head.entry, head.file, author, author.config, mainBranch, landing.controller.signal);
-                } finally {
-                  if (landing.userAborted) await discardPinnedRefs(root, landing.roles);
-                  landingInFlight = null;
-                }
+              landingInFlight = startLanding([head.entry.role], async (landing) => {
+                await landQueuedEntry(root, head.entry, head.file, author, author.config, mainBranch, landing.controller.signal);
               });
-              landingInFlight = landing;
             } else {
               // The batch slot: land `batch` as ONE stack through the shared landBatch —
               // per-change review gates, one shared build check over the stacked tree, one
@@ -544,18 +560,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               // its author, and usage accumulates per role (a reviewer's run charges to its
               // change's authoring role, like landQueuedEntry).
               const first = batch[0]!;
-              const landing: InFlightLanding = {
-                promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
-                controller: new AbortController(),
-                roles: batch.map((b) => b.entry.role),
-                userAborted: false,
-              };
-              // Harness shutdown aborts the batch through the per-landing controller (the
-              // lander watches it); `tumwater abort --role` for ANY batched role aborts it
-              // too, flagged userAborted — the two differ only in what happens to the
-              // pinned refs after.
-              signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
-              landing.promise = withLandingSlot(async () => {
+              landingInFlight = startLanding(batch.map((b) => b.entry.role), async (landing) => {
                 const startedAt = Date.now();
                 writeJsonFile(landingStatePath(root), {
                   role: first.entry.role,
@@ -630,11 +635,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
                   saveLoopState(root, author.state);
                 } finally {
                   removeQuiet(landingStatePath(root));
-                  if (landing.userAborted) await discardPinnedRefs(root, landing.roles);
-                  landingInFlight = null;
                 }
               });
-              landingInFlight = landing;
             }
           }
         }
