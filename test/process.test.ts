@@ -58,3 +58,13 @@ test("pidAlive reads an impossible pid as NOT alive without throwing", () => {
   // the signal-0 fails with EINVAL/ESRCH, and "any error" must read as not alive.
   assert.equal(pidAlive(2_000_000_000), false);
 });
+
+test("pidAlive reads a non-positive or fractional pid as NOT alive", () => {
+  // signal 0 treats pid 0 as the caller's own process group and a negative pid as another
+  // group — both probes succeed, so without the positive-integer guard a corrupt state or
+  // lock file (pid 0, -1) would report a phantom holder alive. Fractional ids are likewise
+  // never real pids.
+  assert.equal(pidAlive(0), false);
+  assert.equal(pidAlive(-1), false);
+  assert.equal(pidAlive(1.5), false);
+});
