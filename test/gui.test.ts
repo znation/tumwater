@@ -285,6 +285,20 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
   }
 });
 
+test("the prompt form checks its response before clearing the box and claiming queued", async () => {
+  // Regression: the submit handler ignored the response entirely — a network failure or a
+  // 4xx/5xx still cleared the input and flashed "queued", silently losing the operator's
+  // prompt. It must guard r.ok like saveBudget and the poll fetches, and keep the text on
+  // failure. Asserted against the served page, where the handler actually lives.
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  assert.match(GUI_PAGE, /if \(!r\.ok\) throw await apiError\("\/api\/prompt", r\)/);
+  const handler = GUI_PAGE.match(/promptform"\)\.addEventListener\("submit"[\s\S]*?\n {2}\}\);/)?.[0] ?? "";
+  assert.ok(handler, "prompt submit handler found");
+  assert.ok(handler.includes("showFlash(\"error: \" + e.message)"), "failure flashes the error");
+  assert.ok(handler.includes('showFlash("queued")'), "success path flashes queued");
+  assert.ok(!handler.includes('flash.textContent = "queued"'), "no unconditional queued flash");
+});
+
 test("status payload combines persisted + live token metrics for running loops only", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui metrics test");

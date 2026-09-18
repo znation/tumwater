@@ -447,12 +447,19 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     const input = document.getElementById("prompt");
     const text = input.value.trim();
     if (!text) return;
-    await fetch("/api/prompt", { method: "POST", headers: { "content-type": "application/json" },
-                                 body: JSON.stringify({ text }) });
+    // Same response guard as saveBudget and the poll fetches: a network failure or the
+    // server's 4xx/5xx must not clear the box and claim "queued" for a prompt that was
+    // never accepted — flash the error and keep the operator's text so it can be resubmitted.
+    try {
+      const r = await fetch("/api/prompt", { method: "POST", headers: { "content-type": "application/json" },
+                                               body: JSON.stringify({ text }) });
+      if (!r.ok) throw await apiError("/api/prompt", r);
+    } catch (e) {
+      showFlash("error: " + e.message);
+      return;
+    }
     input.value = "";
-    const flash = document.getElementById("flash");
-    flash.textContent = "queued";
-    setTimeout(() => (flash.textContent = ""), 3000);
+    showFlash("queued");
     refresh();
   });
   attachReportTip();
