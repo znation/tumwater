@@ -31,6 +31,32 @@ export function makeRepo(dir = tmpdir()): string {
   return dir;
 }
 
+/** Scratch project for the build-check tests (build-check.test.ts and review.test.ts's gate
+ * integration): `root` has package.json + a fake toolchain in node_modules/.bin; `wt` sits
+ * INSIDE it at the real worktree location (`.tumwater/worktrees/improve`) with its own tracked
+ * package.json and no install — so root is an ancestor, as detectBuildCheck requires. */
+export function buildCheckFixture(): { root: string; wt: string } {
+  const base = tmpdir("buildcheck-");
+  const root = path.join(base, "project");
+  const binDir = path.join(root, "node_modules", ".bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  const tool = path.join(binDir, "buildcheck-tool");
+  fs.writeFileSync(tool, "#!/bin/sh\necho buildcheck-ok\n");
+  fs.chmodSync(tool, 0o755);
+
+  const wt = path.join(root, ".tumwater", "worktrees", "improve");
+  fs.mkdirSync(wt, { recursive: true });
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  return { root, wt };
+}
+
 /** Install a fake `pi` executable at the front of PATH for the duration of a test.
  * The script runs with the worktree as cwd. Returns a restore function. */
 export function fakePi(script: string): () => void {

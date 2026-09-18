@@ -9,7 +9,7 @@ import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
-import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import { assistantLine, buildCheckFixture, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 // Regression coverage for the 2026-08-27 build break (BUGS.md): src/review.ts shipped with a
 // syntax error and latent type errors and had zero tests, so nothing caught it. The pure
@@ -451,32 +451,6 @@ test("clipBuildTail yields no lines for empty or whitespace-only output", () => 
   assert.deepEqual(clipBuildTail(""), []);
   assert.deepEqual(clipBuildTail("\n   \n\t\n"), []);
 });
-
-/** Scratch project mirroring the fixture in build-check.test.ts (the check's unit home):
- * `root` has package.json + a fake toolchain in node_modules/.bin; `wt` sits inside it at the
- * real worktree location with its own tracked package.json and no install — so root is an
- * ancestor, as detectBuildCheck requires. */
-function buildCheckFixture(): { root: string; wt: string } {
-  const base = tmpdir("buildcheck-");
-  const root = path.join(base, "project");
-  const binDir = path.join(root, "node_modules", ".bin");
-  fs.mkdirSync(binDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
-  );
-  const tool = path.join(binDir, "buildcheck-tool");
-  fs.writeFileSync(tool, "#!/bin/sh\necho buildcheck-ok\n");
-  fs.chmodSync(tool, 0o755);
-
-  const wt = path.join(root, ".tumwater", "worktrees", ROLE);
-  fs.mkdirSync(wt, { recursive: true });
-  fs.writeFileSync(
-    path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
-  );
-  return { root, wt };
-}
 
 test("runBuildCheck skips (not fails closed) when npm is missing from PATH", async () => {
   const { root, wt } = buildCheckFixture();
