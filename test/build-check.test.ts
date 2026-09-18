@@ -233,12 +233,34 @@ test("detectBuildCheck tolerates a malformed or scriptless package.json without 
   fs.writeFileSync(path.join(root, "package.json"), "{ not json ");
   assert.equal(detectBuildCheck(root), null);
 
+  // Valid JSON that is not an object must not throw: reading `.scripts` off the null from
+  // JSON.parse("null") would otherwise escape detection, which callers rely on never throwing.
+  for (const raw of ["null", "true", '"proj"', "[1,2]"]) {
+    fs.writeFileSync(path.join(root, "package.json"), raw);
+    assert.equal(detectBuildCheck(root), null, `non-object package.json ${raw} must not throw`);
+  }
+
   // A scripts object with neither a usable test, typecheck, nor build (empty string / non-string) is no check.
   fs.writeFileSync(
     path.join(root, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "", build: "", typecheck: null } }),
   );
   assert.equal(detectBuildCheck(root), null);
+
+  // Whitespace-only scripts are empty in effect — `npm run test` on one is a no-op that exits 0,
+  // so honoring it would report a false green. All blank → no check.
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "   ", build: "\t\n" } }),
+  );
+  assert.equal(detectBuildCheck(root), null);
+
+  // A blank test still lets a real build be used: the preference order is preserved, not skipped.
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "  ", build: "echo ok" } }),
+  );
+  assert.deepEqual(detectBuildCheck(root), { rootDir: root, script: "build" });
 });
 
 test("detectBuildCheck honors the maxLevels bound and terminates at the filesystem root", () => {

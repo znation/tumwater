@@ -75,13 +75,28 @@ function buildCheckFrom(dir: string): BuildCheck | null {
   } catch {
     return null; // Missing/unreadable/malformed — no check.
   }
+  // JSON.parse("null") SUCCEEDS and yields null, and reading `.scripts` off null throws a
+  // TypeError straight out of detection — which every caller's contract (detectBuildCheck,
+  // checkMainBaseline, runScopedBuildCheck) promises cannot happen. A scalar or array is the
+  // same "not a package.json" case: it declares no scripts either way.
+  if (typeof pkg !== "object" || pkg === null || Array.isArray(pkg)) return null;
   const scripts = (pkg as { scripts?: unknown }).scripts;
-  if (!scripts || typeof scripts !== "object") return null;
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return null;
   const s = scripts as Record<string, unknown>;
-  if (typeof s.test === "string" && s.test) return { rootDir: dir, script: "test" };
-  if (typeof s.typecheck === "string" && s.typecheck) return { rootDir: dir, script: "typecheck" };
-  if (typeof s.build === "string" && s.build) return { rootDir: dir, script: "build" };
+  if (isCheckScript(s, "test")) return { rootDir: dir, script: "test" };
+  if (isCheckScript(s, "typecheck")) return { rootDir: dir, script: "typecheck" };
+  if (isCheckScript(s, "build")) return { rootDir: dir, script: "build" };
   return null;
+}
+
+/** True when `s[key]` names a runnable check script: a string with non-whitespace content.
+ * A whitespace-only value passes a bare string check but is NOT a usable check — `npm run
+ * <script>` executes it as a no-op that exits 0, so the deterministic pre-check would read
+ * "passed" on a tree it never verified (a false green at both the review gate and the red-main
+ * baseline). Blank values fall through to the next script, exactly like the empty-string case. */
+function isCheckScript(s: Record<string, unknown>, key: string): boolean {
+  const v = s[key];
+  return typeof v === "string" && v.trim() !== "";
 }
 
 /** Walk UP from `startDir` — at most `maxLevels` ancestors, starting with `startDir`
