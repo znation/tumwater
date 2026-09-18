@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { LandingEntry, LoopState, TickResult, TumwaterConfig } from "./types.js";
+import type { LandingEntry, LoopState, PiRunResult, TickResult, TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
 import { applyFallbackModel, enabledRoleIds, fallbackPair, loadConfigCached } from "./config.js";
 import {
@@ -124,6 +124,29 @@ function writeLandingOutcome(
   dropLanding(file);
 }
 
+/** One landing's own spend (reviewer + conflict resolution), accumulated across its pi runs. */
+type LandingUsage = { tokens: number; cost: number };
+
+/** A fresh usage accumulator for one landing plus the foldUsage callback that charges each of
+ * its pi runs to BOTH the authoring runner's live state (foldLandingUsage: reviewer and
+ * conflict-resolution spend belongs to the authoring role) and the landing's own accumulator
+ * (the landed/land_failed event's usage). The single path and the 5/5 batch slot build their
+ * wiring through this, so the accounting — and any future change to it — lives in one place. */
+function landingUsage(author: LoopRunner): {
+  usage: LandingUsage;
+  foldUsage: (run: PiRunResult) => void;
+} {
+  const usage: LandingUsage = { tokens: 0, cost: 0 };
+  return {
+    usage,
+    foldUsage: (run) => {
+      author.foldLandingUsage(run);
+      usage.tokens += run.outputTokens;
+      usage.cost += run.costUsd;
+    },
+  };
+}
+
 /** Land one queued entry end-to-end — the poll loop's single landing slot, exported so the
  * loop-level tests can drive one landing without standing up the whole orchestrator (the drain
  * calls it exactly once per queue head, per poll): run the pinned sha through the shared
@@ -157,7 +180,7 @@ export async function landQueuedEntry(
     summary: entry.summary,
     startedAt,
   });
-  const usage = { tokens: 0, cost: 0 };
+  const { usage, foldUsage } = landingUsage(author);
   let result: TickResult;
   try {
     result = await landChange(
@@ -167,11 +190,7 @@ export async function landQueuedEntry(
         config,
         state: author.state,
         runPi: (w, p, s) => author.runLandingPi(w, p, s),
-        foldUsage: (run) => {
-          author.foldLandingUsage(run);
-          usage.tokens += run.outputTokens;
-          usage.cost += run.costUsd;
-        },
+        foldUsage,
         signal: () => signal,
       },
       {
@@ -638,15 +657,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
                     })),
                     (role) => {
                       const author = authors.get(role)!;
-                      const usage = { tokens: 0, cost: 0 };
+                      const { usage, foldUsage } = landingUsage(author);
                       usages.set(role, usage);
                       return {
                         state: author.state,
-                        foldUsage: (run) => {
-                          author.foldLandingUsage(run);
-                          usage.tokens += run.outputTokens;
-                          usage.cost += run.costUsd;
-                        },
+                        foldUsage,
                         runPi: (w, p, s) => author.runLandingPi(w, p, s),
                       };
                     },
