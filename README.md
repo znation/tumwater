@@ -67,7 +67,7 @@ Open items:
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
 - Planned: Telemetry 1/2 — `tumwater report --failures`, a deterministic failure digest over
-  the fleet's own event log (planned 2026-09-17, requested by user).
+  the fleet's own event log (planned 2026-09-17, requested by user, refined 2026-09-17).
 - Planned: Telemetry 2/2 — a `telemetry` role that reads the digest and files bugs (planned
   2026-09-17, requested by user; depends on Telemetry 1/2 and Observer roles 1/2).
 - Planned: Observer roles 1/2 — stop scheduling a passing check as an idle tick (planned
@@ -92,10 +92,7 @@ Open items:
     idle tick (found 2026-09-17).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`7ab1275`): build clean, suite 1031/1035 — the fallback model (cost n/a budget
-state) is now part of main, and the four failures are timing-sensitive pi watchdog tests that are
-flaky under parallel load (they pass when `test/pi.test.ts` runs alone, and fail the same way on
-unmodified main).
+Current main (`c53dba4`): build clean, suite 1031/1035.
 <!-- tumwater:status:end -->
 
 ## How it works
