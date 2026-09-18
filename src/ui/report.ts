@@ -4,7 +4,7 @@ import type { HarnessEvent } from "../types.js";
 import { parseEventLine } from "../events.js";
 import { eventsLogPath } from "../paths.js";
 import { forEachTailChunk } from "../files.js";
-import { formatDate } from "../text.js";
+import { formatDate, usd } from "../text.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
  * --days and /api/report?days=N): 14-day default, at most 90 days. A longer window only
@@ -232,7 +232,7 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push("");
   const t = data.totals;
   lines.push(
-    `**Totals:** ${formatTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · $${t.costUsd.toFixed(2)} · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed`,
+    `**Totals:** ${formatTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)} · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed`,
   );
   lines.push("");
   lines.push("| day | tokens out | ticks | commits | cost |");
@@ -242,7 +242,7 @@ export function renderReportMarkdown(data: ReportData): string {
     const ticks = Object.values(d.ticksByRole).reduce((a, b) => a + b, 0);
     const w = maxTokens > 0 ? barWidth(d.tokensOut, maxTokens) : 0;
     const bar = w > 0 ? ` ${"█".repeat(w)}` : ""; // Zero days carry no bar (and no stray space).
-    lines.push(`| ${d.date.slice(5)} | ${formatTokens(d.tokensOut)}${bar} | ${ticks} | ${d.commits} | $${d.costUsd.toFixed(2)} |`);
+    lines.push(`| ${d.date.slice(5)} | ${formatTokens(d.tokensOut)}${bar} | ${ticks} | ${d.commits} | ${usd(d.costUsd)} |`);
   }
   const byRole = new Map<string, number>();
   for (const d of data.series) {

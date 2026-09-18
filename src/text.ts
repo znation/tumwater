@@ -100,8 +100,9 @@ export function shortSha(sha: unknown): string {
 
 /** A USD amount with its dollar sign and exactly two decimals ($12.34) — the single home of
  * the cents-pinned money format shared by the event feed's budget/usage lines (event-format.ts)
- * and the status table's cost/today cells plus totals row (status-render.ts), so the decimal
- * width cannot drift per consumer. The cap variant that drops whole-dollar `.00` is a different
+ * the status table's cost/today cells plus totals row (status-render.ts), and the usage
+ * report's totals line plus per-day cost column (report.ts), so the decimal width cannot
+ * drift per consumer. The cap variant that drops whole-dollar `.00` is a different
  * format (`usdCap` below); the GUI's row cells still format money from their own inline JS (a
  * separate runtime that cannot import TypeScript), while header badges like `budgetBadge`
  * arrive preformatted. */
