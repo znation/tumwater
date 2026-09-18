@@ -205,6 +205,20 @@ export function clipBuildTail(output: string): string[] {
   return lines.slice(-10).map(clipReason);
 }
 
+/** The line of a failure tail worth putting in a one-line warning. clipBuildTail keeps the LAST
+ * ten meaningful lines, so a check that died on an unhandled rejection ends mid-stack and the
+ * tail's FIRST line is a frame: every red-main warning logged before 2026-09-18 read
+ * "main <sha> is red (test: at process.processTicksAndRejections (node:internal/...))" — where,
+ * never what, which is why a false red that blocked the fleet for hours could not be diagnosed
+ * from the event feed at all (BUGS.md). Prefer the first line that is not a stack frame; fall
+ * back to the tail's first line when every line is one, so a caller always has something to
+ * print. Frames are the only thing skipped — an assertion diff, a compiler error and a bare
+ * "1) test name" all read as the headline they are. */
+export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
+  if (!tail?.length) return undefined;
+  return tail.find((line) => !/^at\s/.test(line)) ?? tail[0];
+}
+
 /** Probe the toolchain (see probeToolchain), then run `npm run <script>` in the worktree
  * (cwd = wt), capturing combined output with a hard timeout. Never throws: every outcome is
  * classified per BuildCheckOutcome. Running a local
@@ -339,9 +353,14 @@ interface MainBaseline {
   sha: string;
   /** Red only: the script that failed. */
   script?: string;
-  /** Red only: clipped failure tail (clipBuildTail) — its first line goes into the warning
-   * event so an operator sees what broke without opening a transcript. */
+  /** Red only: clipped failure tail (clipBuildTail) — failureHeadline picks the line that goes
+   * into the warning event so an operator sees what broke without opening a transcript. */
   outputTail?: string[];
+  /** Red only: the worktrees that have independently observed this red. A red seen in ONE
+   * worktree is provisional evidence about the environment as much as the tree, so it is
+   * re-verified elsewhere before it blocks the fleet; two distinct worktrees agreeing makes it
+   * authoritative. Never set on a green — a green is authoritative wherever it was observed. */
+  redFrom?: string[];
 }
 
 /** checkMainBaseline's result. `baseline` is null when nothing blocks authoring: either no
@@ -371,7 +390,10 @@ interface MainBaselineCheck {
  * node_modules). On 2026-09-08 exactly that happened — a role worktree's environmental red
  * became the fleet-wide verdict that blocked the harness's own restart (BUGS.md) — so a caller
  * whose false block is expensive may re-verify a red in its own worktree (`reverifyRed`), and a
- * green from that run promotes the SHA for everyone. */
+ * green from that run promotes the SHA for everyone. Since 2026-09-18 that re-verification is
+ * not opt-in only: a red carries the worktrees that observed it (`redFrom`) and is re-run by the
+ * next DIFFERENT worktree to consult it, so a single environmental red can no longer block every
+ * role until main moves — see shouldRerunRed. */
 const baselineCache = new Map<string, MainBaseline>();
 
 /** In-flight dedup: concurrent ticks on the same not-yet-cached SHA (a fresh main move wakes
@@ -379,6 +401,26 @@ const baselineCache = new Map<string, MainBaseline>();
  * SHA for ordinary checks; a re-verification adds its worktree, because joining another
  * worktree's run would observe the wrong environment — the one thing it exists to re-test. */
 const baselineInFlight = new Map<string, Promise<MainBaselineCheck>>();
+
+/** Should a cached RED be re-run here instead of trusted? A red says as much about the
+ * environment the check ran in as about the tree — a worktree mid-install, or a machine under
+ * the load the fleet deliberately creates starving a timing-sensitive test (BUGS.md's
+ * load-sensitive tests entry). The role loops consult this fleet-shared cache and, before
+ * 2026-09-18, trusted a red forever: one environmental red blocked every code role until main
+ * moved, and main could not move, because blocking the code roles is exactly what stops it —
+ * a deadlock broken only by restarting the orchestrator, since the cache is per-process.
+ *
+ * So a red is provisional until two DIFFERENT worktrees have seen it. The second observer pays
+ * one extra suite run and a green from it promotes the SHA fleet-wide; a second red makes the
+ * verdict authoritative for everyone. The cost is bounded at ONE confirmation run per SHA, not
+ * one per role. `reverifyRed` still forces a run unconditionally for the redeploy gate, whose
+ * false block is expensive enough to always pay for its own opinion. */
+function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean): boolean {
+  if (cached.status !== "red") return false;
+  if (reverifyRed) return true;
+  const seen = cached.redFrom ?? [];
+  return seen.length < 2 && !seen.includes(wt);
+}
 
 /** Record a green baseline verdict for `sha` WITHOUT running anything. The sole caller is the
  * landing path (src/merge.ts's verifyLanding), which calls it with the POST-rebase head — the
@@ -418,8 +460,10 @@ export async function checkMainBaseline(
   const sha = await gitTry(wt, "rev-parse", "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
   const cached = baselineCache.get(sha);
-  if (cached && !(reverifyRed && cached.status === "red")) return { baseline: cached };
-  const key = reverifyRed ? `${sha}\u0000${wt}` : sha;
+  if (cached && !shouldRerunRed(cached, wt, reverifyRed)) return { baseline: cached };
+  // A re-run of a red keys the in-flight map by worktree: joining another worktree's run would
+  // observe the environment this run exists to re-test.
+  const key = cached?.status === "red" ? `${sha}\u0000${wt}` : sha;
   let pending = baselineInFlight.get(key);
   if (!pending) {
     pending = (async () => {
@@ -433,10 +477,18 @@ export async function checkMainBaseline(
         // never cache red for a skip.
         return { baseline: null, skipReason: outcome.skipReason };
       }
+      const prior = baselineCache.get(sha);
+      const priorRedFrom = prior?.status === "red" ? (prior.redFrom ?? []) : [];
       const baseline: MainBaseline =
         outcome.status === "passed"
           ? { status: "green", sha }
-          : { status: "red", sha, script: outcome.script, outputTail: outcome.outputTail };
+          : {
+              status: "red",
+              sha,
+              script: outcome.script,
+              outputTail: outcome.outputTail,
+              redFrom: priorRedFrom.includes(wt) ? priorRedFrom : [...priorRedFrom, wt],
+            };
       // A green always lands (promoting a provisional red); a red never overwrites a green —
       // a concurrent run may have promoted this SHA while this one was still going.
       if (baselineCache.get(sha)?.status !== "green") baselineCache.set(sha, baseline);

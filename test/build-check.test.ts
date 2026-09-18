@@ -6,6 +6,7 @@ import {
   checkMainBaseline,
   clipBuildTail,
   detectBuildCheck,
+  failureHeadline,
   noteGreenBaseline,
   resolveFromNodeModules,
   runBuildCheck,
@@ -328,6 +329,68 @@ function runsOf(counter: string): number {
   return fs.readFileSync(counter, "utf8").trim().split("\n").length;
 }
 
+/** A second linked worktree on the same repo at main: same immutable tree, different
+ * environment — the case a provisional red has to distinguish. */
+function addWorktree(root: string, role: string): string {
+  const wt = path.join(root, ".tumwater", "worktrees", role);
+  sh(root, "git", "worktree", "add", "-b", `tumwater/${role}`, wt, "main");
+  return wt;
+}
+
+test("failureHeadline names what broke, not the frame it broke in", () => {
+  // clipBuildTail keeps the LAST ten lines, so an unhandled rejection's tail opens mid-stack.
+  assert.equal(
+    failureHeadline([
+      "at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+      "at async Promise.all (index 0)",
+      "AssertionError [ERR_ASSERTION]: actual: 'quiet_killed', expected: 'no_change'",
+    ]),
+    "AssertionError [ERR_ASSERTION]: actual: 'quiet_killed', expected: 'no_change'",
+  );
+  assert.equal(failureHeadline(["at a (f:1:1)", "at b (f:2:2)"]), "at a (f:1:1)", "all frames: print something");
+  assert.equal(failureHeadline([]), undefined);
+  assert.equal(failureHeadline(undefined), undefined);
+});
+
+test("a red in one worktree is re-verified by the next, and a green there promotes the SHA", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  // Fails only where an untracked marker sits: identical tree, different environment.
+  const { root, wt } = await baselineFixture(
+    `echo run >> ${counter}; if [ -f ./RED_MARKER ]; then echo env-failure; exit 1; fi; echo ok`,
+  );
+  fs.writeFileSync(path.join(wt, "RED_MARKER"), "");
+  const other = addWorktree(root, "dry");
+
+  assert.equal((await checkMainBaseline(wt)).baseline?.status, "red", "the first worktree sees red");
+  assert.equal(
+    (await checkMainBaseline(other)).baseline?.status,
+    "green",
+    "the next worktree re-runs a single-worktree red instead of trusting it",
+  );
+  assert.equal(runsOf(counter), 2);
+  // The promotion is what unblocks the fleet: even the worktree that produced the false red
+  // now reads green, without main having to move.
+  assert.equal((await checkMainBaseline(wt)).baseline?.status, "green");
+  assert.equal(runsOf(counter), 2, "a green is authoritative — nothing re-ran");
+});
+
+test("a red confirmed by a second worktree is authoritative: a third trusts the cache", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root, wt } = await baselineFixture(`echo run >> ${counter}; echo real-failure; exit 1`);
+  const second = addWorktree(root, "dry");
+  const third = addWorktree(root, "clean");
+
+  assert.equal((await checkMainBaseline(wt)).baseline?.status, "red");
+  assert.equal((await checkMainBaseline(second)).baseline?.status, "red");
+  assert.equal(runsOf(counter), 2, "one confirmation run, paid by the second worktree");
+  assert.equal((await checkMainBaseline(third)).baseline?.status, "red");
+  assert.equal(runsOf(counter), 2, "two agreeing worktrees settle it — no run per role");
+  // What the flag still buys: the redeploy gate pays for its own opinion even on a red two
+  // worktrees already agree on, because stranding the fleet on a stale build costs more.
+  assert.equal((await checkMainBaseline(third, undefined, true)).baseline?.status, "red");
+  assert.equal(runsOf(counter), 3, "reverifyRed always runs");
+});
+
 test("checkMainBaseline reports a red main with the failing script and clipped tail", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = await baselineFixture(`echo baseline-failure; echo run >> ${counter}; exit 1`);
@@ -453,27 +516,30 @@ test("checkMainBaseline dedups concurrent checks of one new SHA into a single ru
   assert.equal(runsOf(counter), 1, "one npm run for concurrent callers of the same SHA");
 });
 
-test("a red is provisional: reverifyRed re-runs it in the caller's own worktree and a pass promotes the SHA", async () => {
+test("a red is provisional: the next worktree re-runs it unasked, and a pass promotes the SHA", async () => {
   // The 2026-09-08 shape: one worktree's environment, not the tree, produced the red — here a
   // `marker` file standing in for the missing node_modules — and it became the fleet's verdict.
+  // Since 2026-09-18 no caller has to ASK for that second opinion: the role loops never passed
+  // the flag, so one environmental red blocked every code role until main moved — which it could
+  // not, because blocking the code roles is what stops main moving (BUGS.md).
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = await baselineFixture(
     `echo run >> ${counter}; node -e "process.exit(require('fs').existsSync('marker') ? 0 : 1)"`,
   );
   assert.equal((await checkMainBaseline(wt)).baseline?.status, "red");
-  assert.equal((await checkMainBaseline(wt)).baseline?.status, "red", "and it is cached for ordinary callers");
+  assert.equal((await checkMainBaseline(wt)).baseline?.status, "red", "the worktree that saw it does not re-run it");
   assert.equal(runsOf(counter), 1);
 
   // A second worktree of the same SHA where the check passes.
   const other = path.join(root, ".tumwater", "worktrees", "other");
   sh(root, "git", "worktree", "add", "-q", "--detach", other, "main");
   fs.writeFileSync(path.join(other, "marker"), "");
-  assert.equal((await checkMainBaseline(other)).baseline?.status, "red", "without the flag it inherits the red");
-  assert.equal(runsOf(counter), 1, "…and runs nothing");
-
-  const reverified = await checkMainBaseline(other, undefined, true);
-  assert.equal(reverified.baseline?.status, "green");
-  assert.equal(runsOf(counter), 2, "the re-verification ran the suite here");
+  assert.equal(
+    (await checkMainBaseline(other)).baseline?.status,
+    "green",
+    "the next worktree re-verifies a one-worktree red without being asked",
+  );
+  assert.equal(runsOf(counter), 2, "…paying exactly one confirmation run");
   assert.equal(
     (await checkMainBaseline(wt)).baseline?.status,
     "green",

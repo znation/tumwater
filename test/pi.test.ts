@@ -335,8 +335,10 @@ test("a start without toolName still names the command (or 'tool') in the open-c
 test("a stalled call without toolName warns with the bare command named", async () => {
   const dir = tmpdir();
   const config = defaultConfig();
-  config.quietTimeoutSeconds = 2; // the watchdog checks every second and kills after ~2 s of silence
-  config.toolCallStallSeconds = 1; // warn after just one second of call silence (test speed)
+  // 5s/2s: the warning must land before the kill, and a 1s gap loses that ordering to jitter
+  // under concurrent suites (BUGS.md 2026-09-18).
+  config.quietTimeoutSeconds = 5;
+  config.toolCallStallSeconds = 2;
   const warnings: string[] = [];
   const restore = fakePi(
     [
@@ -380,8 +382,10 @@ test("toolUpdateHasContent sees real text, not empty or content-less updates", (
 test("a stalled tool call warns once with the command named", async () => {
   const dir = tmpdir();
   const config = defaultConfig();
-  config.quietTimeoutSeconds = 2; // the watchdog checks every second and kills after ~2 s of silence
-  config.toolCallStallSeconds = 1; // warn after just one second of call silence (test speed)
+  // 5s/2s: see the sibling above — the one-warning-per-call invariant needs the warning to fire
+  // while the run is still alive, which a 1s margin cannot guarantee under load.
+  config.quietTimeoutSeconds = 5;
+  config.toolCallStallSeconds = 2;
   const warnings: string[] = [];
   const restore = fakePi(
     [
@@ -410,7 +414,9 @@ test("a stalled tool call warns once with the command named", async () => {
 test("no stall warning when the tool call ends before the threshold", async () => {
   const dir = tmpdir();
   const config = defaultConfig();
-  config.quietTimeoutSeconds = 2;
+  // 5s: this run completes instead of hanging, so the window is only a ceiling — but at 2s it
+  // could expire during process spawn under load and quiet-kill a run that asserts ok (BUGS.md).
+  config.quietTimeoutSeconds = 5;
   // The real default: nothing this fast can trip it.
   assert.equal(config.toolCallStallSeconds, 300);
   const warnings: string[] = [];

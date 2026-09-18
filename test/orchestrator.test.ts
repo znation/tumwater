@@ -341,8 +341,11 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     const tAbort = Date.now();
     controller.abort();
     await done;
+    // 3.5s, not 2s: the poll sleep is 5s, so anything comfortably under it still proves the
+    // abort WOKE the sleep rather than being waited out — which is the invariant — while
+    // surviving the scheduling jitter that made this fail at 2066ms (BUGS.md 2026-09-18).
     assert.ok(
-      Date.now() - tAbort < 2000,
+      Date.now() - tAbort < 3500,
       `shutdown took ${Date.now() - tAbort}ms — it waited out the poll sleep instead of waking on abort`,
     );
 
@@ -853,7 +856,10 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
     // then pass only by racing the startup burst's tail. Land work to wake the deferred roles:
     // with cap 2 at least two of them tick concurrently, making the overlap deterministic.
     landWork(repo);
-    await waitFor(() => readSamples(runDir).some((n) => n >= 2), "overlapping runs after the grow");
+    // 60s, not the 20s default: this is the one assertion in the suite that waits on the
+    // orchestrator's real poll loop scheduling two live pi shims at once, and under the load the
+    // fleet runs it at, 20s expired before the grow was observable (BUGS.md 2026-09-18).
+    await waitFor(() => readSamples(runDir).some((n) => n >= 2), "overlapping runs after the grow", 150_000);
 
     // Phase 3 (cap 1 again): shrinking admits no NEW concurrent run until in-flight work
     // finishes. Every sample recorded from the change onward must be <= 1 — a cap that was

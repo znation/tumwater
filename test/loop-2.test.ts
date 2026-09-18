@@ -80,7 +80,10 @@ test("a transient timeout that also hits the harness timeout is not retried", as
   );
   try {
     const config = defaultConfig();
-    config.tickTimeoutSeconds = 1;
+    // 3s, not 1s: the shim sleeps 30s, so anything well under that still fires the harness
+    // timeout while pi is mid-run — but a 1s budget could expire during process spawn under
+    // load, before the shim printed its error line at all (BUGS.md 2026-09-18).
+    config.tickTimeoutSeconds = 3;
     const runner = new LoopRunner(repo, "clean", config, "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
@@ -120,7 +123,10 @@ test("a pi run that goes silent is killed as hung and never commits partial work
   );
   try {
     const config = defaultConfig();
-    config.quietTimeoutSeconds = 1;
+    // 3s, not 1s: the kill still comes from the watchdog (the shim sleeps 60), but the shim
+    // needs to reach `echo partial` first — at 1s the watchdog could fire during shell startup
+    // under load and the "partial edit survives" assertion measured scheduling (BUGS.md).
+    config.quietTimeoutSeconds = 3;
     config.tickTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
     const runner = new LoopRunner(repo, "improve", config, "main");
     const before = sh(repo, "git", "rev-parse", "main");
@@ -158,8 +164,10 @@ test("a stalled tool call warns in the event feed with the command named", async
   );
   try {
     const config = defaultConfig();
-    config.quietTimeoutSeconds = 2; // the watchdog still owns the kill...
-    config.toolCallStallSeconds = 1; // ...but the warning lands a second after the call goes silent
+    // 5s/2s rather than 2s/1s: the ORDER is what this pins — warning first, kill second — and a
+    // 1s gap is thinner than the jitter on a machine running two suites at once (BUGS.md).
+    config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
+    config.toolCallStallSeconds = 2; // ...but the warning lands first, 3s ahead of it
     const runner = new LoopRunner(repo, "improve", config, "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "quiet_killed");
@@ -175,13 +183,18 @@ test("a stalled tool call warns in the event feed with the command named", async
 
 test("a slow but talkative pi run is not killed by the quiet watchdog", async () => {
   const repo = await initializedRepo();
-  // Streams a line every ~300ms for ~1.2s — always slower than the 1s quiet window would
-  // allow if it were measuring total runtime, but never silent longer than the window.
-  const chatter = Array.from({ length: 4 }, () => `sleep 0.3\nprintf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`);
+  // Streams a line every ~1s for ~4s — always slower than the 3s quiet window would allow if
+  // it were measuring total runtime, but never silent longer than the window. The ratio is what
+  // this pins; the ABSOLUTE numbers buy a ~2s per-gap margin on purpose (BUGS.md 2026-09-18).
+  // The watchdog reads the real wall clock on a real interval (src/pi.ts) so a test clock cannot
+  // fake it out, and the fleet runs this suite on a machine it deliberately saturates — at the
+  // old 0.3s/1s sizing the 700ms of slack was thinner than ordinary scheduler jitter, so the
+  // assertion measured machine load rather than the watchdog.
+  const chatter = Array.from({ length: 4 }, () => `sleep 1\nprintf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`);
   const restore = fakePi([...chatter, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"));
   try {
     const config = defaultConfig();
-    config.quietTimeoutSeconds = 1;
+    config.quietTimeoutSeconds = 3;
     const runner = new LoopRunner(repo, "improve", config, "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "run completed despite taking longer than the quiet window");

@@ -50,27 +50,6 @@ The gate scope fails open the same way (`proceeding to model review`): `organize
 
 **Related:** "`maxConcurrent` stopped bounding model load…" below — the concurrency that makes a 300 s suite run plausible.
 
-### Two load-sensitive tests reject whatever commit is being gated: five unrelated commits lost in three days (found by log analysis and reproduced 2026-09-18)
-
-**Symptom:** Five landing rejections on 09-16/17/18 carry a byte-identical assertion failure — `actual: 'quiet_killed', expected: 'no_change'` — across three roles and five unrelated commits: `dry` `f5b9d77b` (09-16 01:02), `coverage` `88d4c011` (09-16 22:31), `coverage` `52542d66` (09-17 18:26), `dry` `e6778e03` (09-17 21:51), `dry` `23308c30` (09-18 00:01). None of those diffs touch the watchdog. Exactly one test in the suite asserts `no_change` against a live quiet watchdog: test/loop-2.test.ts:176, "a slow but talkative pi run is not killed by the quiet watchdog". It sets `quietTimeoutSeconds = 1` and drives a fake pi that prints a line every ~300 ms, leaving ~700 ms of slack per gap against a 1000 ms kill window (checked every 500 ms) — on a machine the fleet deliberately saturates. Work that already passed authoring and model review is discarded because the gate cannot keep a shell script's `sleep 0.3` under one second.
-
-**Repro:** reproduced on the first attempt on 2026-09-18 by running two full suites concurrently, exactly as two overlapping landings do:
-
-```
-suite A: fail 2  ✖ a slow but talkative pi run is not killed by the quiet watchdog (2362ms)
-                     actual: 'quiet_killed', expected: 'no_change'
-                 ✖ a transient timeout that also hits the harness timeout is not retried (2177ms)
-suite B: fail 0  ✔ a slow but talkative pi run is not killed by the quiet watchdog (2987ms)
-```
-
-Solo on an idle machine the same test passes 30/30 at ~1.6 s. Suite B passing at 2987 ms shows the margin is gone even when it survives. The same run flaked a second test, test/loop-2.test.ts:69 ("a transient timeout that also hits the harness timeout is not retried", `quietTimeoutSeconds = 2`). A third, test/orchestrator.test.ts:760 ("a live maxConcurrent edit resizes the cap without a restart"), caused three further rejections in the week with `Error: timed out waiting for overlapping runs after the grow` at 26 s.
-
-**Expected:** a test that asserts the watchdog does *not* fire must leave a margin the loaded fleet cannot eat. The kill window is what the test controls; raising `quietTimeoutSeconds` for these cases (or shortening the shim's silent gaps in proportion) restores the invariant being pinned — "progress, however slow, is not a hang" — without depending on scheduler luck. The live-orchestrator resize test needs the same treatment for its `waitFor` budget.
-
-**Suspected cause:** the three tests encode absolute wall-clock assumptions that were true when the fleet ran two concurrent pi streams and one suite at a time. The quiet watchdog is checked against the wall clock on a real interval by design (src/pi.ts:337-350, so it fires after a machine sleep), so it cannot be faked out by a test clock; the margin is the only lever. Precedent: "Flaky test: 'a resumed tick continues the interrupted session' fails with no_change under parallel load" (Fixed, 2026-08-27) is the same failure on the mirror-image assertion.
-
-**Related:** "`maxConcurrent` stopped bounding model load…" below — the load that eats the margin. This entry is independently fixable and is the cheapest of the set.
-
 ### The restart drain has never once completed: 38 of 39 redeploys held the fleet a full 30 minutes and then aborted 4–12 ticks anyway (found by log analysis 2026-09-18)
 
 **Symptom:** `RESTART_DRAIN_MAX_MS` is 30 minutes on the stated premise that most ticks finish inside it (src/redeploy.ts:52-56: "Median ticks run ~35 min on local hardware; a half-hour drain lets most of them finish while bounding how long the fleet keeps executing stale code"). Of the 39 `restart` events in `events.jsonl` since 2026-09-08, **38 carry `drainedMs` at or past the cap** (1 801 272 – 2 267 835 ms) and each aborted 4–12 in-flight ticks. The single exception — 09-15 09:44:03, `drainedMs` 48 074, `abortedTicks` 0 — is the recovery restart after the Xcode-license outage, when every loop was already asleep. The drain has never once done what it exists to do on a working fleet.
@@ -120,6 +99,47 @@ Occupancy reconstructed from `tick_start`/`tick_end` plus `landed`/`land_failed`
 **Fix:** `deferTick` takes `now` and refuses to defer once `deferralExpired` reports the due tick has waited past `DEFER_MAX_MS` (3 h). The reference is `nextRunAt`, which a deferred tick leaves untouched and which is persisted — so `now - nextRunAt` measures the deferral across restarts and does not fire for a `main moved` wake that arrives before the role's own clock. The forced tick refreshes `lastResult` and starts a new deferral episode, so maintenance roles now tick at least once per 3 h window even with a permanently open backlog, while the backlog-aware intent (queued feature/bugfix work outranks idle maintenance) is preserved. A never-scheduled role (`nextRunAt` 0) is never expired.
 
 **Files:** src/scheduling.ts (`DEFER_MAX_MS`, `deferralExpired`, `deferTick`'s new `now` parameter + docs); src/orchestrator.ts (passes `now`); test/orchestrator.test.ts (unit pins for the cap boundary and the never-scheduled case; e2e regression "a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an open backlog", which seeds a long-deferred `no_change` state and asserts the role ticks).
+
+### A red main latched by a single worktree deadlocks the fleet, and the warning that reports it names a stack frame instead of the failure (found by human investigation 2026-09-18, fixed 2026-09-18)
+
+**Symptom:** On 2026-09-18 every code role ticked `main_red` — "code merges blocked until main is green" — against a main whose suite passed 1035/1035 in an isolated worktree, five runs straight. Two defects compound into a deadlock. First, `baselineCache` keyed a RED verdict by SHA and `mainRedGate` trusted it forever: `src/redeploy.ts` passed `reverifyRed` but `src/main-red.ts` never did, so one worktree's environmental red — the load-sensitive tests above, firing under the load the fleet itself creates — became the fleet-wide verdict. The cache is per-process and only a new SHA evicts it, but a new SHA needs a merge, and merges are exactly what the red blocks: the fleet could not clear its own false verdict, and 47 `main_red` ticks accumulated. Second, the warning built its reason from `red.outputTail?.[0]`, and `clipBuildTail` keeps the LAST ten lines — so a check that died on an unhandled rejection ends mid-stack and every warning in the log read `main c53dba4e is red (test: at process.processTicksAndRejections (node:internal/process/task_queues:104:5))`. The one surface that could have named the failing test named the event loop instead, which is why an intermittent red (18 of 132 baseline checks) went undiagnosed for ten days.
+
+**Repro:** two worktrees of one SHA where the check passes in one and fails in the other (an untracked marker file stands in for the environment difference). Before the fix the second worktree inherited the first's red and ran nothing; only an explicit `reverifyRed` — which no role loop passes — could re-check it.
+
+**Fix:** a red is now provisional until two DIFFERENT worktrees have seen it. `MainBaseline` carries `redFrom`, the worktrees that observed the red; `shouldRerunRed` re-runs a cached red for any worktree not already in that list while fewer than two are, and the in-flight key gains the worktree so a re-verification never joins the run whose environment it exists to re-test. A green at any point promotes the SHA fleet-wide exactly as before — which is what unblocks the role loops without main having to move — and a second red makes the verdict authoritative for everyone. The cost is bounded at ONE confirmation run per SHA, never one per role; `reverifyRed` still forces a run unconditionally for the redeploy gate, whose false block is expensive enough to always pay for its own opinion. Separately, `failureHeadline` picks the first line of a tail that is not a stack frame (falling back to the first line when they all are), and `mainRedGate` uses it — an assertion diff, a compiler error, or a bare test name now reaches the event feed.
+
+**Note:** this is the third latching-verdict bug in the same family — "A broken toolchain is reported as 'main is red'…" (fixed 2026-09-15) and "A rejected `mainGreen` latches a false 'main is red'…" (fixed 2026-09-16) — and the first where the latch survived a correct classification: nothing here was misread as environmental, a genuinely-run check simply produced a red that one flaky test had earned and no path existed to re-evaluate it.
+
+**Files:** src/build-check.ts (`failureHeadline`, `MainBaseline.redFrom`, `shouldRerunRed`, the cache-hit and cache-write paths, `baselineCache` doc); src/main-red.ts (uses `failureHeadline`); test/build-check.test.ts (the existing provisional-red test now pins automatic re-verification instead of "without the flag it inherits the red", plus: a headline unit test, a green-promotes-fleet-wide regression, and an authoritative-after-two-worktrees test that also pins `reverifyRed` still forcing a run past it).
+
+### Two load-sensitive tests reject whatever commit is being gated: five unrelated commits lost in three days (found by log analysis and reproduced 2026-09-18, fixed 2026-09-18)
+
+**Symptom:** Five landing rejections on 09-16/17/18 carry a byte-identical assertion failure — `actual: 'quiet_killed', expected: 'no_change'` — across three roles and five unrelated commits: `dry` `f5b9d77b` (09-16 01:02), `coverage` `88d4c011` (09-16 22:31), `coverage` `52542d66` (09-17 18:26), `dry` `e6778e03` (09-17 21:51), `dry` `23308c30` (09-18 00:01). None of those diffs touch the watchdog. Exactly one test in the suite asserts `no_change` against a live quiet watchdog: test/loop-2.test.ts:176, "a slow but talkative pi run is not killed by the quiet watchdog". It sets `quietTimeoutSeconds = 1` and drives a fake pi that prints a line every ~300 ms, leaving ~700 ms of slack per gap against a 1000 ms kill window (checked every 500 ms) — on a machine the fleet deliberately saturates. Work that already passed authoring and model review is discarded because the gate cannot keep a shell script's `sleep 0.3` under one second.
+
+**Repro:** reproduced on the first attempt on 2026-09-18 by running two full suites concurrently, exactly as two overlapping landings do:
+
+```
+suite A: fail 2  ✖ a slow but talkative pi run is not killed by the quiet watchdog (2362ms)
+                     actual: 'quiet_killed', expected: 'no_change'
+                 ✖ a transient timeout that also hits the harness timeout is not retried (2177ms)
+suite B: fail 0  ✔ a slow but talkative pi run is not killed by the quiet watchdog (2987ms)
+```
+
+Solo on an idle machine the same test passes 30/30 at ~1.6 s. Suite B passing at 2987 ms shows the margin is gone even when it survives. The same run flaked a second test, test/loop-2.test.ts:69 ("a transient timeout that also hits the harness timeout is not retried", `quietTimeoutSeconds = 2`). A third, test/orchestrator.test.ts:760 ("a live maxConcurrent edit resizes the cap without a restart"), caused three further rejections in the week with `Error: timed out waiting for overlapping runs after the grow` at 26 s.
+
+**Expected:** a test that asserts the watchdog does *not* fire must leave a margin the loaded fleet cannot eat. The kill window is what the test controls; raising `quietTimeoutSeconds` for these cases (or shortening the shim's silent gaps in proportion) restores the invariant being pinned — "progress, however slow, is not a hang" — without depending on scheduler luck. The live-orchestrator resize test needs the same treatment for its `waitFor` budget.
+
+**Suspected cause:** the three tests encode absolute wall-clock assumptions that were true when the fleet ran two concurrent pi streams and one suite at a time. The quiet watchdog is checked against the wall clock on a real interval by design (src/pi.ts:337-350, so it fires after a machine sleep), so it cannot be faked out by a test clock; the margin is the only lever. Precedent: "Flaky test: 'a resumed tick continues the interrupted session' fails with no_change under parallel load" (Fixed, 2026-08-27) is the same failure on the mirror-image assertion.
+
+**Related:** "`maxConcurrent` stopped bounding model load…" below — the load that eats the margin. This entry is independently fixable and is the cheapest of the set.
+
+**Fix:** every absolute wall-clock margin in the affected tests was widened, preserving the RATIO each one pins rather than the numbers. The three named above: the talkative-run test streams a line every 1 s for 4 s against a 3 s quiet window (was 0.3 s/1.2 s against 1 s), so the run is still longer than the window while no single gap approaches it; the harness-timeout test gets `tickTimeoutSeconds` 3 rather than 1, still far inside the shim's 30 s sleep but no longer expirable during process spawn; the live-resize test's "overlapping runs after the grow" wait gets 150 s.
+
+Re-running the entry's own two-concurrent-suites repro against that fix surfaced seven MORE tests of the same shape, none of them in the original analysis — all absolute windows of 1–2 s: the hung-run kill and quiet-killed-keeps-edits tests (the watchdog fired before the shim's shell wrote the file the assertion looks for), the four tool-call stall tests (a 1 s warn threshold against a 2 s kill window, an ordering a loaded machine inverts), and the orchestrator shutdown bound (2000 ms, observed at 2066 ms; now 3500 ms, still well under the 5 s poll sleep it must beat to prove the abort WOKE the sleep). `waitFor`'s default deadline went 20 s → 60 s for the same reason: it is a deadline, not a sleep — it returns the moment its condition holds, so a generous budget costs nothing on the success path and buys only slower reporting of a real hang.
+
+**Verified:** the entry's repro — two full suites concurrently — went from `fail 5` / `fail 4` to `fail 0` / `fail 0` at 1038 tests each, across four rounds of widening (each round's survivors were the next round's targets). Solo: 1038/1038.
+
+**Files:** test/loop-2.test.ts (talkative chatter + quiet window, tick timeout, hung-run quiet window, stall pair); test/loop.test.ts (quiet-killed-keeps-edits window); test/pi.test.ts (three tool-call stall tests); test/orchestrator.test.ts (resize wait budget, shutdown bound); test/util.ts (`waitFor` default + a doc comment saying why the budget is generous).
 
 ### A torn land-queue head file clogs the landing slot forever: the live entry behind it never lands, and its role's interlock pins its ticks (found by bugfix loop 2026-09-17, fixed 2026-09-17)
 

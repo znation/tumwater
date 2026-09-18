@@ -1,6 +1,6 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles.js";
 import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
-import { BUILD_CHECK_TIMEOUT_MS, checkMainBaseline } from "./build-check.js";
+import { BUILD_CHECK_TIMEOUT_MS, checkMainBaseline, failureHeadline } from "./build-check.js";
 import { logEvent } from "./events.js";
 import type { TickOutcome } from "./types.js";
 import { shortSha } from "./text.js";
@@ -65,7 +65,7 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
     const red = baseline.baseline;
     if (lastMainRedSha !== red.sha) {
       lastMainRedSha = red.sha;
-      const firstLine = red.outputTail?.[0];
+      const firstLine = failureHeadline(red.outputTail);
       logEvent(root, {
         loop: "harness",
         type: "warning",

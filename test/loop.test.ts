@@ -554,7 +554,10 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
 test("a quiet-killed tick keeps its edits and resumes promptly instead of discarding", async () => {
   const repo = await initializedRepo();
   const config = defaultConfig();
-  config.quietTimeoutSeconds = 2;
+  // 5s, not 2s: the shim sleeps 30 so the watchdog still owns the kill, but it must not fire
+  // before the shell writes kept.txt — at 2s waitForFile timed out under concurrent suites and
+  // the test measured scheduling rather than the kill's non-destructiveness (BUGS.md).
+  config.quietTimeoutSeconds = 5;
   const argsFile = path.join(tmpdir(), "argv.log");
   let restore = fakePi(
     [
