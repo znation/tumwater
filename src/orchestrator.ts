@@ -39,7 +39,7 @@ import {
   sessionsRootDir,
 } from "./paths.js";
 import { errorMessage } from "./text.js";
-import type { Redeployer } from "./redeploy.js";
+import { p75TickDurationMs, type Redeployer } from "./redeploy.js";
 
 const POLL_MS = 2000;
 
@@ -295,6 +295,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // and drops its entry, recovering on next start.
   const roleInFlight = new Set<Promise<void>>();
   const directorInFlight = new Set<Promise<void>>();
+  // The restart drain's window tracks the fleet's real tick duration (BUGS.md 2026-09-18): the
+  // durations of recent COMPLETED role ticks feed a p75 that poll uses in place of the
+  // cold-start constant. Bounded so a long-running fleet's memory stays flat; aborted ticks are
+  // excluded — their short cut-off durations would drag the window down and cause more aborts.
+  const ROLE_TICK_DURATION_SAMPLES = 50;
+  const roleTickDurationsMs: number[] = [];
   let landingInFlight: InFlightLanding | null = null;
   // Live-reload bookkeeping: the last config error already warned about (a broken file must
   // warn once per distinct text, not every poll), and the previous cycle's enabled set (for
@@ -502,7 +508,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       if (redeploy) {
         const action = await redeploy.poll(
           mainHead,
-          { roleInFlight: roleInFlight.size, directorInFlight: directorInFlight.size },
+          {
+            roleInFlight: roleInFlight.size,
+            directorInFlight: directorInFlight.size,
+            roleTickP75Ms: p75TickDurationMs(roleTickDurationsMs),
+          },
           liveConfig.autoRestart,
           now,
         );
@@ -804,18 +814,29 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // across polls too: a work-role arrival jumps ahead of maintenance ticks that queued
         // in an earlier poll (in-flight ticks always run to completion).
         const usesSlot = runner.role !== DIRECTOR_ROLE;
+        const tickStartedAt = Date.now();
+        // Whether this tick finished on its own rather than being cut off by a shutdown/restart
+        // abort: only the former's duration is a drain-window sample.
+        let recordDuration = false;
         const task = (async () => {
           if (usesSlot) await semaphore.acquire(roleTier(runner.role));
           try {
             if (signal.aborted) return;
-            await runner.tick();
+            const outcome = await runner.tick();
+            recordDuration = outcome.result !== "aborted" && outcome.result !== "user_aborted";
           } finally {
             if (usesSlot) semaphore.release();
           }
         })();
         const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
         bucket.add(task);
-        void task.finally(() => bucket.delete(task));
+        void task.finally(() => {
+          bucket.delete(task);
+          if (bucket === roleInFlight && recordDuration) {
+            roleTickDurationsMs.push(Date.now() - tickStartedAt);
+            if (roleTickDurationsMs.length > ROLE_TICK_DURATION_SAMPLES) roleTickDurationsMs.shift();
+          }
+        });
       }
 
       await sleepInterruptible(pollMs, signal);

@@ -49,12 +49,33 @@ const execFileAsync = promisify(execFile);
  * distinct from success (0), fail() (1) and a forced Ctrl+C (130). */
 export const RESTART_EXIT_CODE = 75;
 
-/** How long a pending restart waits for in-flight ROLE ticks before aborting them (they resume
- * on the new build). Median ticks run ~35 min on local hardware; a half-hour drain lets most of
- * them finish while bounding how long the fleet keeps executing stale code. Measured across the
- * whole unbroken hold, not per head — see Redeployer.drainSince. Director ticks are exempt:
- * an in-flight human prompt extends the hold without any cap (see poll). */
+/** The COLD-START drain window: how long a pending restart waits for in-flight ROLE ticks before
+ * aborting them (they resume on the new build) when the orchestrator has too few completed-tick
+ * samples to derive one. Measured across the whole unbroken hold, not per head — see
+ * Redeployer.drainSince. Director ticks are exempt: an in-flight human prompt extends the hold
+ * without any cap (see poll).
+ *
+ * The live window tracks the fleet's real tick duration: the orchestrator passes the p75 of
+ * recent completed role ticks (InFlightCounts.roleTickP75Ms) and poll uses it in place of this
+ * constant once it has enough samples (BUGS.md 2026-09-18). The hand-set 30 minutes had not been
+ * re-derived since an earlier backend; measured p50 was 46 min and p75 82 min, so the drain
+ * timed out on 60% of ticks — paying the full idle cost of waiting plus the interruption cost of
+ * not waiting. */
 const RESTART_DRAIN_MAX_MS = 30 * 60_000;
+
+/** How many completed role-tick samples the p75 needs before it is trusted as the drain window.
+ * Below this the orchestrator reports no p75 and poll keeps the cold-start constant. */
+const DRAIN_P75_MIN_SAMPLES = 10;
+
+/** The p75 of completed role-tick durations (ms), or null when there are too few samples to
+ * trust. The orchestrator's half of the adaptive drain window (BUGS.md 2026-09-18): a tick that
+ * finishes inside it is waited for, a longer one is aborted resumably. Exported for its unit
+ * test; the p75 is the statistic the bug's expected fix names. */
+export function p75TickDurationMs(durations: readonly number[]): number | null {
+  if (durations.length < DRAIN_P75_MIN_SAMPLES) return null;
+  const sorted = [...durations].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.75))] ?? null;
+}
 
 /** How often a COMPLETED auto-restart may land — at most once per this window (BUGS.md
  * 2026-09-11): under sustained main churn every stale head would otherwise drive a full
@@ -74,6 +95,10 @@ type RedeployAction = "none" | "hold" | "restart";
 interface InFlightCounts {
   roleInFlight: number;
   directorInFlight: number;
+  /** p75 of recent completed role-tick durations (ms), or null/absent when too few samples: the
+   * drain window tracks the fleet's real tick duration instead of the cold-start constant
+   * (BUGS.md 2026-09-18). */
+  roleTickP75Ms?: number | null;
 }
 
 export type { BuildStatus } from "./build-info.js";
@@ -157,6 +182,11 @@ export class Redeployer {
    * Nothing new starts during a hold, so the ticks a drain waits on can only be the ones it
    * began with — one window is all they are owed. */
   private drainSince = 0;
+  /** The drain window captured when the current hold began: the fleet's observed p75 tick
+   * duration when the orchestrator has enough samples, else the cold-start RESTART_DRAIN_MAX_MS.
+   * Captured once per unbroken hold so a sample change mid-episode cannot move a deadline that
+   * is already running (see drainSince). */
+  private drainWindowMs = 0;
   private green: Tracked<boolean> | null = null;
   private compiled: Tracked<{ ok: boolean; detail: string }> | null = null;
   /** A head whose restart was blocked (red main, compile failure, swap error): no retry until
@@ -185,8 +215,8 @@ export class Redeployer {
     readonly selfHosted: boolean,
     private readonly deps: RedeployDeps,
     private readonly log: (event: RedeployEvent) => void,
-    /** How long to wait for in-flight ticks before aborting them (default RESTART_DRAIN_MAX_MS);
-     * a test seam. */
+    /** Cold-start drain window (default RESTART_DRAIN_MAX_MS): the fallback poll uses until the
+     * orchestrator supplies enough observed tick durations; a test seam. */
     private readonly drainMaxMs: number = RESTART_DRAIN_MAX_MS,
     /** The completed-auto-restart record (see AutoRestartRecord) — production reads it from its
      * state file at construction via autoRestartRecord(root), tests inject one. */
@@ -278,7 +308,13 @@ export class Redeployer {
       this.pendingHead = mainHead;
       // Only when the fleet was not already being held: a superseded head hands its drain over
       // to the new one rather than starting a fresh window (see drainSince).
-      if (!this.drainSince) this.drainSince = now;
+      if (!this.drainSince) {
+        this.drainSince = now;
+        // Capture the window with the hold: the observed p75 when the orchestrator has it,
+        // otherwise the cold-start constant.
+        const p75 = inFlight.roleTickP75Ms;
+        this.drainWindowMs = typeof p75 === "number" && p75 > 0 ? p75 : this.drainMaxMs;
+      }
       this.green = track(this.deps.mainGreen(mainHead));
       this.compiled = null;
       return "hold";
@@ -333,7 +369,7 @@ export class Redeployer {
     // time cap: no swap and no abort until it finishes. The per-tick watchdogs already bound how
     // long one run can take, so this cannot hang the fleet beyond what a single tick can do.
     if (inFlight.directorInFlight > 0) return "hold";
-    if (inFlight.roleInFlight > 0 && now - this.drainSince < this.drainMaxMs) return "hold";
+    if (inFlight.roleInFlight > 0 && now - this.drainSince < this.drainWindowMs) return "hold";
     try {
       this.deps.swap(mainHead);
     } catch (err) {
@@ -361,6 +397,7 @@ export class Redeployer {
       to: mainHead,
       drainedMs: now - this.drainSince,
       abortedTicks: inFlight.roleInFlight,
+      drainWindowMs: this.drainWindowMs,
     });
     return "restart";
   }

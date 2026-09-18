@@ -11,6 +11,7 @@ import {
   autoRestartRecord,
   compileStaged,
   mainIsGreen,
+  p75TickDurationMs,
   type AutoRestartRecord,
   type RedeployDeps,
   Redeployer,
@@ -181,6 +182,33 @@ test("the drain cap aborts in-flight ticks: restart anyway, counting them", asyn
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 600)), "restart", "past it: the caller aborts them");
   assert.equal(events.at(-1)!.abortedTicks, 3);
   assert.equal(events.at(-1)!.drainedMs, 1110);
+  assert.equal(events.at(-1)!.drainWindowMs, 1000, "no observed samples: the cold-start constant bounds the drain");
+});
+
+test("the drain window tracks the observed p75 tick duration, not the cold-start constant", async () => {
+  const f = fakeDeps();
+  // Cold-start fallback 1000 ms; the fleet's observed p75 is 5000 ms.
+  const { r, events } = harness(f.deps, true, 1000);
+  const inFlight = { roleInFlight: 3, directorInFlight: 0, roleTickP75Ms: 5000 };
+  let now = 200_000;
+  assert.equal(await r.poll(HEAD_B, inFlight, true, now), "hold");
+  f.green(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, inFlight, true, (now += 10)), "hold");
+  f.compiled(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, inFlight, true, (now += 1200)), "hold", "past the cold-start constant but inside the observed p75");
+  assert.equal(await r.poll(HEAD_B, inFlight, true, (now += 4000)), "restart", "past the observed p75: the caller aborts them");
+  assert.equal(events.at(-1)!.drainWindowMs, 5000);
+  assert.equal(events.at(-1)!.abortedTicks, 3);
+});
+
+test("p75TickDurationMs: null below the sample floor, then the p75 of the samples", () => {
+  assert.equal(p75TickDurationMs([]), null);
+  assert.equal(p75TickDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9]), null, "nine samples is below the floor");
+  // Ten samples 1..10: floor(10 * 0.75) = 7 -> the 8th value, 8.
+  assert.equal(p75TickDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), 8);
+  assert.equal(p75TickDurationMs([10, 1, 9, 2, 8, 3, 7, 4, 6, 5]), 8, "order-independent");
 });
 
 test("a director tick in flight holds past the drain window without a cap; the swap lands once it clears", async () => {

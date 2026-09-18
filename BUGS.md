@@ -5,7 +5,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The restart drain has never once completed: 38 of 39 redeploys held the fleet a full 30 minutes and then aborted 4–12 ticks anyway (found by log analysis 2026-09-18)
+## Fixed
+
+### The restart drain has never once completed: 38 of 39 redeploys held the fleet a full 30 minutes and then aborted 4–12 ticks anyway (found by log analysis 2026-09-18, fixed 2026-09-18)
 
 **Symptom:** `RESTART_DRAIN_MAX_MS` is 30 minutes on the stated premise that most ticks finish inside it (src/redeploy.ts:52-56: "Median ticks run ~35 min on local hardware; a half-hour drain lets most of them finish while bounding how long the fleet keeps executing stale code"). Of the 39 `restart` events in `events.jsonl` since 2026-09-08, **38 carry `drainedMs` at or past the cap** (1 801 272 – 2 267 835 ms) and each aborted 4–12 in-flight ticks. The single exception — 09-15 09:44:03, `drainedMs` 48 074, `abortedTicks` 0 — is the recovery restart after the Xcode-license outage, when every loop was already asleep. The drain has never once done what it exists to do on a working fleet.
 
@@ -19,7 +21,9 @@ The cost is paid twice. Nothing new starts during a hold (src/orchestrator.ts's 
 
 **Suspected cause:** a constant calibrated by hand against an earlier backend, never re-derived. Nothing in the harness measures tick duration and compares it to the drain window, so the premise in the doc comment has no way to be falsified by the running fleet — the `restart` event records `drainedMs` and `abortedTicks`, which is exactly the evidence needed, and no surface reads it.
 
-## Fixed
+**Fix:** the drain window now tracks the fleet's real tick duration. The orchestrator records every completed role tick's duration (aborted and user-aborted ticks excluded — their cut-off lengths would drag the window down) in a bounded 50-sample ring and passes its p75 to `Redeployer.poll`; once 10 samples exist the hold's window is that p75, otherwise it falls back to the cold-start `RESTART_DRAIN_MAX_MS` (30 min). The window is captured once per unbroken hold, so a mid-episode sample change cannot move a running deadline, and the `restart` event now carries `drainWindowMs` beside `drainedMs`/`abortedTicks` so the evidence the log analysis reads is on the surface. The cold-start fallback keeps a fresh process safe; the 12 h cooldown between completed restarts guarantees enough ticks accumulate before the next adaptive drain.
+
+**Files:** src/redeploy.ts (`DRAIN_P75_MIN_SAMPLES`, `p75TickDurationMs`, `InFlightCounts.roleTickP75Ms`, `Redeployer.drainWindowMs`); src/orchestrator.ts (the completed-role-tick duration ring and the p75 passed to `poll`); test/redeploy.test.ts ("the drain window tracks the observed p75 tick duration…" and the `p75TickDurationMs` unit test); README.md (the redeploy paragraph).
 
 ### `maxConcurrent` stopped bounding model load when landings moved off the author semaphore: 4 concurrent pi streams for a quarter of the day (found by log analysis 2026-09-18, fixed 2026-09-18)
 

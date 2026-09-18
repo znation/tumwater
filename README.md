@@ -188,7 +188,8 @@ itself: it verifies main is green (a green verdict seeded by the landing path �
 check at merge time, or one run of the suite in a detached `_main` worktree), compiles main into
 `.tumwater/build/<sha>` with the project's own
 tsc — borrowed from the nearest ancestor install, since no worktree has one of its own — stops
-starting new ticks while in-flight ones finish (role ticks up to 30 minutes, counted across the
+starting new ticks while in-flight ones finish (role ticks up to the fleet's observed p75 tick
+duration — a 30-minute cold-start fallback until enough ticks have completed — counted across the
 whole hold even when main moves again meanwhile, after which they are aborted resuably; an in-flight
 director tick is waited for without a cap — a human prompt outranks the redeploy), swaps the compiled tree into `dist/`, and exits so the `tumwater run` supervisor — the
 process you started, which runs the orchestrator as a child — respawns it on the new code.
