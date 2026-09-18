@@ -17,7 +17,7 @@ import { defaultConfig } from "../src/config.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import type { LoopState, PiRunResult, TumwaterConfig } from "../src/types.js";
-import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import { assistantLine, fakePi, makeRepo, sh } from "./util.js";
 
 // Unit coverage for src/lander.ts's landChange — the harness-owned review-and-land of a pinned
 // commit in _land-<role> (merge queue 2/5). The reviewer run is a real pi subprocess behind the

@@ -55,7 +55,6 @@ test("writeJsonAtomic rethrows a failed write, removes its tmp, and leaves the t
   const dir = tmpdir();
   const file = path.join(dir, "state.json");
   writeJsonAtomic(file, { ticks: 1 });
-  const before = fs.readFileSync(file, "utf8");
 
   // A non-empty directory squatting on the target path makes the rename fail
   // (EISDIR/ENOTEMPTY) — deterministically, for any user including root, with the

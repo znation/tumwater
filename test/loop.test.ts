@@ -33,27 +33,6 @@ async function waitForFile(file: string, timeoutMs = 30_000): Promise<void> {
   }
 }
 
-/** Poll until `ref` exists (bounded). Times an abort to land AFTER the tick's commit is
- * pinned by its landing ref and BEFORE/IN the review gate's run — a fixed sleep would race the
- * pin under parallel load. Since merge queue 2/5 the role branch resets to main immediately
- * after the pin, so "branch ahead of main" can no longer mark that window; the ref is what
- * survives it. */
-async function waitForLandingRef(repo: string, role: string, timeoutMs = 10_000): Promise<string> {
-  const start = Date.now();
-  for (;;) {
-    let sha: string | null = null;
-    try {
-      sha = sh(repo, "git", "rev-parse", "--verify", landingRefName(role)).trim() || null;
-    } catch {
-      // Ref not pinned yet — keep polling.
-    }
-    if (sha) return sha;
-    if (Date.now() - start > timeoutMs)
-      throw new Error(`timed out waiting for ${landingRefName(role)} to be pinned`);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-}
-
 test("a tick that changes files commits and merges to main", async () => {
   const repo = await initializedRepo();
   const restore = fakePi(
