@@ -60,8 +60,6 @@ reaching `maxDailyCostUsd` switches every role loop to it (`budget_fallback`; he
 rather than stopping, and only a fallback that cannot be verified as free leaves it paused.
 
 Open items:
-- Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13,
-  refined 2026-09-17).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
 - Planned: Telemetry 1/2 — `tumwater report --failures`, a deterministic failure digest over
@@ -74,16 +72,15 @@ Open items:
   requested by user, refined 2026-09-18; depends on 1/2).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
-- Open bugs: 3, all found by log analysis of the fleet's own event log and detailed in
+- Open bugs: 2, both found by log analysis of the fleet's own event log and detailed in
   BUGS.md's Open section —
   - The restart drain has never once completed: 38 of 39 redeploys held the fleet the full
     30 minutes and still aborted 4–12 ticks (found 2026-09-18).
   - `maxConcurrent` no longer bounds model load — landings and the director bypass it
     (found 2026-09-18).
-  - A transient `ENOTEMPTY` on `dist.prev` aborts the whole build swap (found 2026-09-18).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`78ae55d`): build clean, suite 1063/1063.
+Current main (`7ea40c9`): build clean, suite 1073/1073.
 <!-- tumwater:status:end -->
 
 ## How it works
