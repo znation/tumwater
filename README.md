@@ -66,10 +66,8 @@ Open items:
   the fleet's own event log (planned 2026-09-17, requested by user, refined 2026-09-17).
 - Planned: Telemetry 2/2 — a `telemetry` role that reads the digest and files bugs (planned
   2026-09-17, requested by user; depends on Telemetry 1/2 and Observer roles 1/2).
-- Planned: Observer roles 1/2 — stop scheduling a passing check as an idle tick (planned
-  2026-09-17, requested by user, refined 2026-09-18).
 - Planned: Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17,
-  requested by user, refined 2026-09-18; depends on 1/2).
+  requested by user, refined 2026-09-18; depends on 1/2, which has landed).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
 - Open bugs: 2, both found by log analysis of the fleet's own event log and detailed in
@@ -80,7 +78,7 @@ Open items:
     (found 2026-09-18).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`7ea40c9`): build clean, suite 1073/1073.
+Current main (`2ab6f0d`): build clean, suite 1091/1091.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -118,22 +116,23 @@ one loop per enabled role. Every loop tick:
    itself (a deliberate stop discards the pin; a shutdown keeps it — every interrupted landing
    re-lands through the same gate on the next tick). The drain runs even while the fleet is
    paused: a queued landing is committed work, not a new tick. If pi found nothing to do, the
-   loop backs off (exponentially, capped) and sleeps; a failed tick retries on a shorter
-   error ladder (capped at ten minutes) instead, so a broken toolchain parks a loop for
+   loop backs off (exponentially, capped) and sleeps; an observer (`qa`) instead treats a
+   `no_change` as a passing check and re-ticks at its interval. A failed tick retries on a
+   shorter error ladder (capped at ten minutes) instead, so a broken toolchain parks a loop for
    minutes, not hours.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
 
 Scheduling is need-aware: a maintenance role's due tick (scheduled or main-moved) is deferred —
 one `tick_deferred` event per episode in logs, TUI, and GUI — while its last tick did nothing
 and no feature/bugfix/director/human commit has landed on main since; it starts within one poll
-of such work landing. While PLANS.md's Planned section or BUGS.md's Open section is non-empty,
-idle maintenance ticks stay deferred regardless of landings — queued feature/bugfix work
-outranks them until the backlog drains. Slot allocation orders the work roles (feature, bugfix,
-plan) ahead of
-every maintenance role, least-recently-ticked first within a tier — and the same tier order
-holds for ticks already waiting on a slot across polls: a work-role tick that becomes due later
-jumps ahead of maintenance ticks parked from an earlier poll (in-flight ticks always run to
-completion).
+of such work landing. Observer roles (`qa`) are never deferred — an unmoved tree says nothing
+about whether the running product has something new to report. While PLANS.md's Planned section
+or BUGS.md's Open section is non-empty, idle maintenance ticks stay deferred regardless of
+landings — queued feature/bugfix work outranks them until the backlog drains. Slot allocation
+orders the work roles (feature, bugfix, plan) ahead of every maintenance role,
+least-recently-ticked first within a tier — and the same tier order holds for ticks already
+waiting on a slot across polls: a work-role tick that becomes due later jumps ahead of
+maintenance ticks parked from an earlier poll (in-flight ticks always run to completion).
 
 The fleet's autonomous spend is capped by `maxDailyCostUsd` (default $50; set 0 to disable).
 While the day's total cost has reached the cap, role loops stop starting new ticks — scheduled,
