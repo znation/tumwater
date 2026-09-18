@@ -252,3 +252,38 @@ test/roles.test.ts:50's `exempt` set (the assertion is exact) and the observer m
 to test/config.test.ts:47's `continue` list. (5) Tests: test/roles.test.ts, test/prompt.test.ts,
 test/config.test.ts; BUGS.md-only diffs are already exempt via `"*.md"`, and the generic
 no-backoff behavior needs no loop test. No design question remains open.
+
+## Landed 2026-09-18 (feature loop) — 1/2 only; 2/2 still planned
+
+The digest and the CLI flag are in. `src/failure-report.ts` (core) holds
+`collectFailureReport` / `renderFailureMarkdown` / `normalizeClusterKey` /
+`TELEMETRY_DIGEST_DAYS = 1`; `src/event-window.ts` (core) holds the moved windowed tail read
+and the `REPORT_*_DAYS` bounds, now returning `{ events, coversFullWindow }`; `src/ui/report.ts`
+imports the reader and re-exports the constants; `src/cli.ts` adds the valueless `--failures`
+flag. `test/failure-report.test.ts` is new. `npm test`: 1,118 pass.
+
+Five decisions the implementation pinned, recorded so the plan matches the code:
+
+1. **`coversFullWindow` means "the retained log reaches back before the window."** That is the
+   early stop *or*, when the whole log fit in one chunk, the file's own oldest line — because
+   `oldestCompleteLine` always discards the earliest chunk's first line, a one-chunk log would
+   otherwise read as uncovered. The reader's and the interface's docs say exactly this.
+2. **Caps tightened to hold invariant 2.** Measured on the live log: 5,554 bytes at the default
+   14 days, 5,562 at `--days 90`. To keep that under 6 KB the caps are 7 error clusters (not 10),
+   7 warning clusters (not 10), 5 rejections, 10 landed commits (not 20), examples trimmed
+   120 chars / landed summaries 100, cluster role lists at 4 names plus `+N more`, and dates as
+   `MM-DD`. The output therefore does not grow with how bad the window was.
+3. **No combined failure-result set.** Section 3's delta line reports the three named metrics
+   (error rate, quiet kills, rejections) directly, so no set's doc comment can drift from its
+   behavior. This supersedes the draft's `FAILURE_RESULTS`, whose comment had said operator
+   kills counted while the set excluded `user_aborted` and included the shutdown `aborted`.
+4. **The result vocabulary is closed by the type checker.** `RESULT_ORDER` is a
+   `Record<TickResult, number>`, so adding a `TickResult` without a column is a compile error;
+   `queued`, `skipped`, `user_aborted` and the rest are present.
+5. **Rejections cluster on `(role, reasons[0])`**, keyed on the role plus the normalized message,
+   so two distinct rejection reasons from one role stay separate rows — the same
+   `reasons[0]` the event feed renders.
+
+Three header states, not two: `no events retained` (an empty/torn log), `no events in the last
+N days` (the retained log reaches back before the read span but holds nothing in it), and
+`partial: retained log starts <date>` (the window begins before the retained log does).

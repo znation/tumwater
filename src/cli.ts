@@ -40,6 +40,7 @@ import { ensureParentDir, findOnPath, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { followFile } from "./ui/tail.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport, renderReportMarkdown } from "./ui/report.js";
+import { collectFailureReport, renderFailureMarkdown } from "./failure-report.js";
 import { snapshot } from "./ui/status.js";
 import { renderStatus } from "./ui/status-render.js";
 import { runTui } from "./ui/tui.js";
@@ -63,6 +64,8 @@ Usage:
   tumwater status [--json]         One-shot status table (--json prints machine-readable
                                    fleet state — same payload as the GUI's /api/status)
   tumwater report [--days N]       Markdown usage report — tokens/ticks/commits per day (default 14 days)
+  tumwater report --failures [--days N]
+                                   Markdown failure digest — tick outcomes, deltas, and clustered errors (default 14 days)
   tumwater doctor                  Pre-flight check: git, repo, config, pi, locks (exit 0/1)
   tumwater logs [-f] [-n N]        Show (and follow) harness events
   tumwater logs --role <id> [-f] [-n N]
@@ -400,7 +403,10 @@ async function main(): Promise<void> {
     case "report": {
       // No requireReadyRepo gate: the report aggregates files that degrade to zeros when
       // missing, so it runs (and prints an all-zero window) in any directory.
-      rejectUnknownArgs("report", args, [{ names: ["--days"], value: true, valueName: "<n>" }]);
+      rejectUnknownArgs("report", args, [
+        { names: ["--days"], value: true, valueName: "<n>" },
+        { names: ["--failures"] },
+      ]);
       const daysFlag = args.indexOf("--days");
       let days = REPORT_DEFAULT_DAYS;
       if (daysFlag >= 0) {
@@ -412,7 +418,11 @@ async function main(): Promise<void> {
         if (days > REPORT_MAX_DAYS)
           fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(args[daysFlag + 1])})`);
       }
-      process.stdout.write(renderReportMarkdown(collectReport(root, days)) + "\n");
+      process.stdout.write(
+        (args.includes("--failures")
+          ? renderFailureMarkdown(collectFailureReport(root, days))
+          : renderReportMarkdown(collectReport(root, days))) + "\n",
+      );
       break;
     }
     case "doctor": {
