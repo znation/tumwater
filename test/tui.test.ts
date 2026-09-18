@@ -12,6 +12,7 @@ import {
   applyKey,
   backlogLines,
   entryBodyWindow,
+  inputViewWindow,
   moveEntrySelection,
   parseBudgetInput,
   renderInputView,
@@ -19,7 +20,7 @@ import {
   stepEntryScroll,
   tuiTerminalError,
 } from "../src/ui/tui.js";
-import { formatDate } from "../src/text.js";
+import { cutSplitsSurrogatePair, formatDate } from "../src/text.js";
 import { makeRepo, tmpdir } from "./util.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
@@ -152,6 +153,39 @@ test("the rendered prompt line never exceeds the terminal width", () => {
     for (const cursor of [0, 5, Math.floor(text.length / 2), text.length]) {
       const line = "> " + renderInputView(text, cursor, width);
       assert.ok(line.length <= width, `width ${width}, cursor ${cursor}: ${line.length} cols`);
+    }
+  }
+});
+
+test("renderInputView windows astral text without a lone surrogate or a hidden cursor", () => {
+  // Regression: a pair straddling the tail window's left edge used to leave a lone low
+  // surrogate *and* start the window past the cursor. The two-emoji line fits whole once the
+  // window is allowed to floor to index 0 (no ellipsis column is spent).
+  assert.equal(renderInputView("\u{1f600}\u{1f600}", 4, 6), "\u{1f600}\u{1f600}");
+  // Cursor at the end of a four-emoji line: re-anchor to the cursor rather than dropping
+  // the tail. The window is one whole emoji at the right edge.
+  assert.equal(renderInputView("\u{1f600}".repeat(4), 8, 6), "…\u{1f600}");
+
+  const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  const samples = ["a".repeat(40), "\u{1f600}".repeat(8), "x\u{1f600}y\u00e9\u{1f600}z".repeat(3)];
+  for (const text of samples) {
+    for (let width = 4; width <= 24; width++) {
+      const room = Math.max(1, width - 3);
+      for (let cursor = 0; cursor <= text.length; cursor++) {
+        // Mid-pair cursors are not editable states (applyKey snaps them); the boundary ones
+        // are what the window must keep visible.
+        if (cutSplitsSurrogatePair(text, cursor)) continue;
+        const where = `width ${width}, cursor ${cursor}`;
+        const view = renderInputView(text, cursor, width);
+        assert.ok(!loneSurrogate.test(view), `${where}: ${JSON.stringify(view)} has a lone surrogate`);
+        assert.ok(("> " + view).length <= width, `${where}: ${JSON.stringify(view)} exceeds the width`);
+        // The window must keep the (clamped) cursor inside it — the property the rejected
+        // fix broke: it dropped tail units so the cursor fell off the right edge.
+        const { start, end } = inputViewWindow(text, cursor, room);
+        const c = Math.max(0, Math.min(cursor, text.length));
+        assert.ok(start <= c && c <= end, `${where}: window [${start},${end}) hides the cursor`);
+        assert.equal((start > 0 ? "…" : "") + text.slice(start, end), view, `${where}: window/render drift`);
+      }
     }
   }
 });

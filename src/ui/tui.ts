@@ -108,15 +108,42 @@ export function parseBudgetInput(
 }
 
 /** The visible slice of the prompt line for a terminal `width` columns: the whole text
- * when it fits, otherwise a window that keeps the cursor at (or near) the right edge so
- * mid-text edits stay visible. With the "> " prefix the rendered line never exceeds
- * `width` columns for width >= 4, preserving the one-logical-line-per-visual-line invariant.
+ * when it fits, otherwise a window that keeps the cursor inside it (at or near the right
+ * edge) so mid-text edits stay visible. Both window edges fall on character boundaries, so
+ * the displayed line never carries a lone surrogate (terminals render it as garbage) — the
+ * display-side sibling of the edit-side rule applyKey enforces. With the "> " prefix the
+ * rendered line never exceeds `width` columns for width >= 4, preserving the
+ * one-logical-line-per-visual-line invariant.
  */
 export function renderInputView(text: string, cursor: number, width: number): string {
   const room = Math.max(1, width - 3); // headroom for the "> " prefix and a leading ellipsis
   if (text.length <= room) return text;
-  const start = Math.max(0, Math.min(cursor - (room - 1), text.length - room));
-  return (start > 0 ? "…" : "") + text.slice(start, start + room);
+  const { start, end } = inputViewWindow(text, cursor, room);
+  return (start > 0 ? "…" : "") + text.slice(start, end);
+}
+
+/** The code-unit window `[start, end)` renderInputView shows for a prompt line longer than
+ * `room` units. The cursor is clamped into the text and snapped to the start of any
+ * surrogate pair it lands inside, then the window is placed with the cursor at its right
+ * edge (or left of it when the cursor is near the start). An edge that would split a
+ * surrogate pair is nudged to the nearest boundary: the start is floored over the pair only
+ * when the wider window still fits (it lands at 0, where the ellipsis column is free),
+ * otherwise stepped forward over the pair while the right edge stays anchored; the end is
+ * backed off the pair. Either way the window contains the cursor (a cursor inside a pair is
+ * first snapped to that pair's start), so the edit point is always visible. Pure, so it is
+ * unit-testable without a TTY. */
+export function inputViewWindow(
+  text: string,
+  cursor: number,
+  room: number,
+): { start: number; end: number } {
+  const clamp = Math.max(0, Math.min(cursor, text.length));
+  const c = cutSplitsSurrogatePair(text, clamp) ? clamp - 1 : clamp;
+  const start0 = Math.max(0, Math.min(c - (room - 1), text.length - room));
+  const start = cutSplitsSurrogatePair(text, start0) ? (start0 === 1 ? 0 : start0 + 1) : start0;
+  const end0 = Math.min(text.length, start0 + room);
+  const end = cutSplitsSurrogatePair(text, end0) ? end0 - 1 : end0;
+  return { start, end };
 }
 
 /** The project-status body lines for the TUI: a `plans (N):` subheader with one line per plan,

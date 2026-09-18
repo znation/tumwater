@@ -7,6 +7,22 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### The TUI prompt window split emoji into lone surrogates and could re-anchor past the cursor (found by bugfix loop 2026-09-18, fixed 2026-09-18)
+
+**Symptom:** `renderInputView` chose the visible window of a long prompt line by slicing `text` at raw UTF-16 code-unit indices (`text.slice(start, start + room)`). When an astral character (emoji) straddled either window edge only one of its two units was kept, so the rendered line carried a lone surrogate, which terminals paint as a U+FFFD box — the display-side half of the lone-surrogate invariant the arrow-key fix closed on the edit side. A naive nudge of the window edge can also move the right edge past the cursor, hiding the very position the window exists to keep visible: a first attempt floored the start over a straddled pair but then recomputed the end from the already-floored start, returning `"😀"` for `renderInputView("😀😀", 4, 6)` — no lone surrogate, but cursor 4 sat outside the visible window `[0,2)`.
+
+**Repro:** `renderInputView("😀😀", 4, 6)` (pre-fix) starts the window at unit 1 — the low half of the first pair — and returns `"\uDE00😀"`, a lone low surrogate; `renderInputView("😀".repeat(4), 8, 6)` returns `"…\uDE00😀"` for the same reason. A scratch script against `dist/src/ui/tui.js` printed both, and the width-only test passed on them because it used ASCII.
+
+**Expected:** neither window edge cuts a surrogate pair, and the cursor (snapped to a pair boundary if it lands inside one) always stays inside the window.
+
+**Suspected cause:** the width arithmetic was written for a one-unit-per-character world; `cutSplitsSurrogatePair` (already used by `truncate`, `clipToWidth`, and `applyKey`) guarded the edit path but not the render path. The existing window tests used ASCII only, so no multi-unit character ever crossed a window edge, and nothing asserted cursor containment.
+
+**Fix:** extract `inputViewWindow(text, cursor, room)`, which clamps the cursor into the text, snaps it to the start of any pair it lands inside, and chooses `[start, end)` on pair boundaries: the start is floored over a straddled pair only when the wider window still fits (it lands at 0, where the ellipsis column is free), otherwise stepped forward over the pair while the right edge stays anchored; the end is backed off a straddled pair. `renderInputView` renders that window. The window always contains the (snapped) cursor, and `"> " + (ellipsis?) + window` still fits `width` columns for width >= 4.
+
+**Files:** src/ui/tui.ts (`renderInputView`, `inputViewWindow`); test/tui.test.ts ("renderInputView windows astral text without a lone surrogate or a hidden cursor").
+
+**Related:** "The TUI prompt's arrow keys land the cursor inside an emoji…" below — the same lone-surrogate invariant on the edit side; this closes the display side.
+
 ### The TUI prompt's arrow keys land the cursor inside an emoji; backspace/delete then leave a lone surrogate (found by bugfix loop 2026-09-18, fixed 2026-09-18)
 
 **Symptom:** `applyKey` moved the cursor one UTF-16 code unit at a time, so `left`/`right` could park it between the two halves of an astral character (emoji, U+1F600 is `\uD83D\uDE00`). Once there, the surrogate-pair guards in backspace/delete did not match — they test the units on the far side of the cursor — so backspace deleted only the high half (leaving a lone low surrogate) and delete removed only the low half (leaving a lone high surrogate). Terminals render either as a U+FFFD box; the text itself is corrupted. The function's doc comment promises "no lone surrogate … is ever left behind".
