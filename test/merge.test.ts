@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { ffMainTo, mergeToMain, type MergeContext } from "../src/merge.js";
+import { ffMainTo, ffStackToMain, mergeToMain, type MergeContext } from "../src/merge.js";
 import { checkMainBaseline } from "../src/build-check.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
@@ -516,4 +516,67 @@ test("a conflict resolution is re-verified inside the lock before landing", asyn
   // The second rebase is a no-op, but its bytes (pi's resolution) were never checked — the
   // pre-merge head captured before the FIRST rebase is what makes this run.
   assert.equal(landingChecks.length, 1, "the post-resolution tree was re-verified");
+});
+
+// ── ffStackToMain (merge queue 5/5) ──────────────────────────────────────────────────────
+
+/** A repo with main at its seed commit and a two-commit stack built off it (a.txt, then
+ * b.txt on top), detached — the shape landBatch's assembly leaves before the ff. */
+async function stackFixture(): Promise<{ root: string; shaA: string; shaB: string }> {
+  const root = makeRepo();
+  // The merge lock's parent dir — withLock mkdir's <root>/.tumwater/merge.lock without
+  // creating its parent, and a bare makeRepo has no .tumwater yet.
+  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
+  sh(root, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(root, "a.txt"), "a\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "work A");
+  const shaA = sh(root, "git", "rev-parse", "HEAD").trim();
+  fs.writeFileSync(path.join(root, "b.txt"), "b\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "work B");
+  const shaB = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+  return { root, shaA, shaB };
+}
+
+test("ffStackToMain fast-forwards main through the whole stack in one ff with per-change events", async () => {
+  const { root, shaA, shaB } = await stackFixture();
+  const stack = [
+    { role: "alpha", sha: shaA, summary: "A" },
+    { role: "beta", sha: shaB, summary: "B" },
+  ];
+
+  assert.equal(await ffStackToMain(root, "main", stack), "changed");
+  assert.equal(sh(root, "git", "rev-parse", "main"), shaB, "main fast-forwarded to the stacked tip");
+  const merged = readEvents(root).filter((e) => e.type === "merged");
+  assert.equal(merged.length, 2, "one merged event per change, in queue order");
+  assert.equal(merged[0]!.loop, "alpha");
+  assert.equal(merged[0]!.commit, shaA, "the head's own sha");
+  assert.equal(merged[1]!.loop, "beta");
+  assert.equal(merged[1]!.commit, shaB, "the stacked tip");
+
+  // An empty stack is a no-op: nothing to fast-forward, nothing logged.
+  assert.equal(await ffStackToMain(root, "main", []), "changed");
+  assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 2, "the empty stack logged nothing");
+});
+
+test("ffStackToMain returns merge_blocked when main diverged under the stack, with no events", async () => {
+  const { root, shaA, shaB } = await stackFixture();
+  // A human commit on main from the same base: the stack and main have diverged, so the
+  // fast-forward cannot succeed.
+  fs.writeFileSync(path.join(root, "c.txt"), "c\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "human work");
+  const mainAfter = sh(root, "git", "rev-parse", "main");
+
+  assert.equal(
+    await ffStackToMain(root, "main", [
+      { role: "alpha", sha: shaA, summary: "A" },
+      { role: "beta", sha: shaB, summary: "B" },
+    ]),
+    "merge_blocked",
+  );
+  assert.equal(sh(root, "git", "rev-parse", "main"), mainAfter, "main is untouched");
+  assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0, "no events on a blocked ff");
 });

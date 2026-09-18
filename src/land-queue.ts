@@ -66,15 +66,23 @@ function readEntry(file: string): LandingEntry | null {
   }, (e) => ({ ...e }));
 }
 
+/** Every queued landing in execution order (oldest first) paired with the file to drop on
+ * completion. The batch drain (merge queue 5/5) reads this slice because `dropLanding` needs
+ * the file, which the bare-entry readers never return. A missing queue directory reads as an
+ * empty queue. */
+export function queuedLandingFiles(root: string): { entry: LandingEntry; file: string }[] {
+  const out: { entry: LandingEntry; file: string }[] = [];
+  for (const file of queueFiles(root)) {
+    const entry = readEntry(file);
+    if (entry) out.push({ entry, file });
+  }
+  return out;
+}
+
 /** All queued landings in execution order (oldest first). A missing queue directory reads as
  * an empty queue. */
 export function queuedLandings(root: string): LandingEntry[] {
-  const out: LandingEntry[] = [];
-  for (const f of queueFiles(root)) {
-    const entry = readEntry(f);
-    if (entry) out.push(entry);
-  }
-  return out;
+  return queuedLandingFiles(root).map((q) => q.entry);
 }
 
 /** The head of the queue — the single entry the orchestrator's landing slot drains per poll —

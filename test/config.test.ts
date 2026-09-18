@@ -28,6 +28,8 @@ test("defaultConfig enables every role including director", () => {
     assert.equal(config.roles[id]?.enabled, true, `role ${id} should default enabled`);
   }
   assert.ok(config.maxConcurrent >= 1);
+  // Merge queue 5/5: the batch cap defaults to 3 — the fleet's realistic concurrent-role count.
+  assert.equal(config.landBatchMax, 3);
   assert.ok(config.idleBackoff.maxSeconds >= config.idleBackoff.initialSeconds);
 });
 
@@ -212,6 +214,18 @@ test("validateConfig accepts defaults and fully valid overrides", () => {
       roles: { feature: { enabled: false, model: "big", instructions: "be careful" } },
     }),
   );
+});
+
+test("landBatchMax is validated like maxConcurrent: a positive integer", () => {
+  // 0 would disable the drain, a fraction would slice an empty batch, a string is a typo —
+  // all of them must fail the same validation their sibling does.
+  assert.match(validationError({ landBatchMax: 0 }), /landBatchMax must be an integer of at least 1 \(got 0\)/);
+  assert.match(validationError({ landBatchMax: -1 }), /landBatchMax must be an integer of at least 1 \(got -1\)/);
+  assert.match(validationError({ landBatchMax: 2.5 }), /landBatchMax must be an integer of at least 1 \(got 2\.5\)/);
+  assert.match(validationError({ landBatchMax: "3" }), /landBatchMax must be an integer of at least 1 \(got "3"\)/);
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), landBatchMax: 1 }));
+  // A typo'd cap must not silently disable coalescing: unknown top-level keys fail validation.
+  assert.match(validationError({ landBatchmax: 1 }), /landBatchmax/);
 });
 
 test("validateConfig reports every invalid value in one error", () => {

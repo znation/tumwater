@@ -36,6 +36,7 @@ const TOP_LEVEL_KEYS = [
   "thinking",
   "piArgs",
   "maxConcurrent",
+  "landBatchMax",
   "minTickIntervalSeconds",
   "tickTimeoutSeconds",
   "quietTimeoutSeconds",
@@ -128,6 +129,7 @@ export function validateConfig(raw: unknown): void {
       problems.push(`piArgs must be an array of strings (got ${show(v)})`);
   }
   checkNumber(r, "", "maxConcurrent", (n) => Number.isInteger(n) && n >= 1, "an integer of at least 1");
+  checkNumber(r, "", "landBatchMax", (n) => Number.isInteger(n) && n >= 1, "an integer of at least 1");
   checkNumber(r, "", "minTickIntervalSeconds", (n) => n >= 0, "a number of 0 or more");
   checkNumber(r, "", "tickTimeoutSeconds", (n) => n > 0, "a number greater than 0");
   checkNumber(r, "", "quietTimeoutSeconds", (n) => n >= 0, "a number of 0 or more (0 disables)");

@@ -13,6 +13,7 @@ import {
   headLanding,
   landingFor,
   queueDepth,
+  queuedLandingFiles,
   queuedLandings,
   staleHeadFile,
 } from "../src/land-queue.js";
@@ -128,4 +129,25 @@ test("the stat-keyed cache serves repeated reads and re-reads a changed file", (
   // The result is a copy: mutating it must not poison the cached value.
   (headLanding(repo)!.entry as { summary: string }).summary = "mutated";
   assert.equal(headLanding(repo)!.entry.summary, "rewritten");
+});
+
+test("queuedLandingFiles pairs each entry with its file in queue order — the batch drain's reader", () => {
+  // Merge queue 5/5: the batch slot reads this slice because dropLanding needs the file,
+  // which the bare-entry readers never return.
+  const repo = makeRepo();
+  enqueueLanding(repo, entry("improve", "a".repeat(40)));
+  enqueueLanding(repo, entry("organize", "b".repeat(40)));
+  const files = queuedLandingFiles(repo);
+  assert.equal(files.length, 2, "both entries, oldest first");
+  assert.equal(files[0]!.entry.role, "improve");
+  assert.equal(files[1]!.entry.role, "organize");
+  for (const f of files) {
+    assert.ok(fs.existsSync(f.file), `the paired file exists: ${f.file}`);
+    assert.equal(path.dirname(f.file), landQueueDir(repo), "the file is inside the queue dir");
+  }
+  assert.deepEqual(files.map((f) => f.entry), queuedLandings(repo), "same order and content as the bare reader");
+  dropLanding(repo, files[0]!.file);
+  const after = queuedLandingFiles(repo);
+  assert.equal(after.length, 1);
+  assert.equal(after[0]!.entry.role, "organize", "a drop on the paired file advances the slice");
 });

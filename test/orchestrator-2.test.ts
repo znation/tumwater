@@ -17,6 +17,8 @@ import { logEvent, readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, readOrchestratorInfo, saveLoopState, todayStamp, clearBackoff } from "../src/state.js";
 import { abortRequestPath, branchName, landQueueDir, landingRefName, landingStatePath, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
+import { refSha, setRef } from "../src/git.js";
+import { checkMainBaseline } from "../src/build-check.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
 import {
@@ -1368,5 +1370,247 @@ test("a failed compile leaves the fleet running the old build", async () => {
     controller.abort();
     await done.catch(() => undefined);
     restore();
+  }
+});
+
+// ── Merge queue 5/5 — the batch slot ─────────────────────────────────────────────────────
+
+/** Seed the land queue with one pinned single-commit entry per role (queue order = argument
+ * order), built the way pinAndReset leaves them: a commit off main under the landing ref.
+ * Pre-seeding — instead of letting the roles tick the entries in — makes the drain's batch
+ * deterministic: the slot sees BOTH entries on its first poll, before any tick can race it. */
+async function seedLandQueue(
+  repo: string,
+  ...args: string[]
+): Promise<void> {
+  // An optional leading "2" tag distinguishes a role's second change (the cap test's phase 2
+  // re-seeds the same roles on a moved main): same file + same content would be an empty commit.
+  let roles = args;
+  let tag = "";
+  if (args.length > 1 && args[0] === "2") {
+    tag = "2";
+    roles = args.slice(1);
+  }
+  // The seed commits must not swallow the live config: initProject's initial commit tracks
+  // tumwater.json, and any `reset --hard main` in the seed loop below resurrects the committed
+  // copy over a live user edit — the cap test saves a new config between phases and would
+  // silently read the old one. Untrack it on main (commit the deletion) and ignore it, the
+  // way real projects keep a live config out of the tree; the untrack must land on main
+  // BEFORE the loop, since a bare `rm --cached` would be undone by the first reset --hard.
+  const gi = path.join(repo, ".gitignore");
+  const existing = fs.existsSync(gi) ? fs.readFileSync(gi, "utf8") : "";
+  if (!existing.split("\n").includes("tumwater.json")) {
+    fs.writeFileSync(gi, existing + "tumwater.json\n");
+  }
+  try {
+    // Commit the .gitignore alongside the untrack: if main tracks the ignore rule, every later
+    // checkout/reset round trip keeps it in the worktree, and the live config stays an ignored
+    // untracked file instead of being deleted (checkout drops a tracked .gitignore on a branch
+    // that lacks it, un-ignoring and then removing the file it guarded).
+    sh(repo, "git", "add", ".gitignore");
+    sh(repo, "git", "rm", "--cached", "tumwater.json");
+    sh(repo, "git", "commit", "-m", "untrack live config");
+  } catch {
+    // Not tracked — the gitignore line above still keeps future `add -A`s from swallowing it.
+  }
+  sh(repo, "git", "checkout", "--detach");
+  for (const role of roles) {
+    // Each pin stands alone on main: the two queued landings are independent changes.
+    sh(repo, "git", "reset", "--hard", "main");
+    fs.writeFileSync(path.join(repo, `${role}${tag}.txt`), `${role}${tag}\n`);
+    sh(repo, "git", "add", "-A");
+    sh(repo, "git", "commit", "-m", `${role}${tag} work`);
+    const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+    await setRef(repo, landingRefName(role), sha);
+    enqueueLanding(repo, { role, sha, tick: 1, summary: `${role}${tag} work`, enqueuedAt: Date.now() });
+  }
+  sh(repo, "git", "checkout", "main");
+}
+
+test("the drain coalesces two queued landings into one batch: one shared check, one fast-forward", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "batch drain e2e test");
+  saveConfig(repo, fastConfig(["clean", "dry"]));
+  await seedLandQueue(repo, "clean", "dry");
+  // The project's declared check, counting its runs — the batching proof: a coalesced batch
+  // runs gate, gate, BATCH (3 runs). Two sequential single landings would run gate, gate,
+  // LANDING (the second landing's in-lock re-check after main moved under it).
+  const count = path.join(tmpdir(), "batch-checkcount");
+  const tool = path.join(repo, "node_modules", ".bin", "buildcheck-tool");
+  fs.mkdirSync(path.dirname(tool), { recursive: true });
+  fs.writeFileSync(tool, `#!/bin/sh\necho $(( $(cat ${count} 2>/dev/null || echo 0) + 1 )) > ${count}\necho ok\n`);
+  fs.chmodSync(tool, 0o755);
+  fs.writeFileSync(
+    path.join(repo, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool" } }),
+  );
+  // Review runs: approve. Author runs (after the landing frees the roles): nothing to do.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    const seed = sh(repo, "git", "rev-parse", "main");
+    await waitFor(
+      () =>
+        loadLoopState(repo, "clean").lastResult === "changed" && loadLoopState(repo, "dry").lastResult === "changed",
+      "both batched changes to land",
+      60_000,
+    );
+    assert.equal(sh(repo, "git", "rev-list", "--count", `${seed}..main`), "2", "both changes are on main");
+    assert.equal(queueDepth(repo), 0, "both entries drained");
+    assert.equal(await refSha(repo, landingRefName("clean")), null, "clean's ref went");
+    assert.equal(await refSha(repo, landingRefName("dry")), null, "dry's ref went");
+    const landed = readEvents(repo).filter((e) => e.type === "landed");
+    assert.equal(landed.length, 2, "one landed event per change");
+    assert.equal(readEvents(repo).filter((e) => e.type === "merged").length, 2);
+    const checks = readEvents(repo).filter((e) => e.type === "build_check");
+    // The orchestrator also seeds the green baseline (scope "baseline") somewhere in the
+    // middle, so assert counts, not positions: the coalescing proof is that there is ONE
+    // shared "batch" check and NO per-landing in-lock "landing" re-check — two sequential
+    // single landings would have produced one.
+    assert.equal(checks.filter((e) => e.scope === "gate").length, 2, "one gate pre-check per change");
+    assert.equal(checks.filter((e) => e.scope === "batch").length, 1, "ONE shared batch check over the stacked tree");
+    assert.equal(checks.filter((e) => e.scope === "landing").length, 0, "no in-lock per-landing re-check");
+    assert.ok(checks.every((e) => e.status === "passed"));
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("an abort for a NON-HEAD batched role kills the whole batch and discards every pinned ref", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "batch abort e2e test");
+  // A long minimum interval: nothing re-ticks while the test asserts the aftermath.
+  const cfg = fastConfig(["clean", "dry"]);
+  cfg.minTickIntervalSeconds = 300;
+  saveConfig(repo, cfg);
+  await seedLandQueue(repo, "clean", "dry");
+  // The head's reviewer run touches the marker and then hangs — the batch stays in flight
+  // until the abort kills it.
+  const marker = path.join(tmpdir(), "batch-reviewing");
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${marker}'; exec sleep 30;; esac; done`,
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(() => fs.existsSync(marker), "the batch's head reviewer run to be in flight", 60_000);
+    // What `tumwater abort --role dry` does from the CLI side: a marker for the SECOND
+    // batched role — the one that has never even started its gate. Before 5/5 this request
+    // could only match the head's landing; now it matches ANY batched role and kills the
+    // whole slot unit.
+    const markerFile = abortRequestPath(repo, "dry");
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
+
+    await waitFor(
+      () =>
+        loadLoopState(repo, "clean").lastResult === "aborted" && loadLoopState(repo, "dry").lastResult === "aborted",
+      "the aborted batch to settle",
+      60_000,
+    );
+    assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
+    assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed on main");
+    assert.equal(queueDepth(repo), 0, "both entries were dropped");
+    for (const role of ["clean", "dry"]) {
+      let gone = false;
+      try {
+        sh(repo, "git", "rev-parse", "--verify", landingRefName(role));
+      } catch {
+        gone = true;
+      }
+      assert.ok(gone, `${role}'s pinned commit was discarded — dry's only goes in the batch's ref-discard loop`);
+    }
+    const failed = readEvents(repo).filter((e) => e.type === "land_failed");
+    assert.equal(failed.length, 2, "one land_failed per batched change");
+    assert.ok(failed.every((e) => e.result === "aborted"));
+    assert.equal(readEvents(repo).filter((e) => e.type === "tick_aborted").length, 0, "no tick was running");
+    assert.equal(loadLoopState(repo, "clean").ticks, 0, "the interlock held: no tick ever started");
+    assert.equal(loadLoopState(repo, "dry").ticks, 0);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("landBatchMax caps the stack and live-reloads: five queue as 3+2 batches, then singles at cap 1", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "batch cap e2e test");
+  const cfg = fastConfig(["feature", "bugfix", "clean", "dry", "perf"]);
+  cfg.minTickIntervalSeconds = 300; // landings never tick; the seeded-queue drive needs no author runs
+  saveConfig(repo, cfg);
+  await seedLandQueue(repo, "feature", "bugfix", "clean", "dry", "perf");
+  const count = path.join(tmpdir(), "cap-checkcount");
+  const tool = path.join(repo, "node_modules", ".bin", "buildcheck-tool");
+  fs.mkdirSync(path.dirname(tool), { recursive: true });
+  fs.writeFileSync(tool, `#!/bin/sh\necho $(( $(cat ${count} 2>/dev/null || echo 0) + 1 )) > ${count}\necho ok\n`);
+  fs.chmodSync(tool, 0o755);
+  fs.writeFileSync(
+    path.join(repo, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool" } }),
+  );
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const scopeCounts = () => {
+    const checks = readEvents(repo).filter((e) => e.type === "build_check");
+    return {
+      gate: checks.filter((e) => e.scope === "gate").length,
+      batch: checks.filter((e) => e.scope === "batch").length,
+      landing: checks.filter((e) => e.scope === "landing").length,
+      merged: readEvents(repo).filter((e) => e.type === "merged").length,
+    };
+  };
+  try {
+    // Phase 1: the default cap 3 lands five queued changes as two batches (3 + 2).
+    // Count the landed events, not lastResult: the roles' first ticks (minTick 300 defers
+    // only the second) run right after the landing and overwrite lastResult with no_change.
+    await waitFor(
+      () => readEvents(repo).filter((e) => e.type === "landed").length >= 5 && queueDepth(repo) === 0,
+      "all five to land",
+      60_000,
+    );
+    let s = scopeCounts();
+    assert.equal(s.batch, 2, "cap 3: one shared check per batch, two batches");
+    assert.equal(s.gate, 5, "one gate pre-check per change, in both batches");
+    assert.equal(s.landing, 0, "the batch path never re-checks per landing");
+    assert.equal(s.merged, 5, "one merged event per change");
+    // The acceptance criterion: the batch-landed tip is green-seeded, so a baseline check
+    // against the new main is a cache hit, not another script run. (The single path's
+    // in-lock check seeds too — but no single has landed yet, and the ticks are deferred, so
+    // this hit can only come from the batch's noteGreenBaseline.)
+    const runsBefore = Number(fs.readFileSync(count, "utf8"));
+    await checkMainBaseline(repo);
+    assert.equal(Number(fs.readFileSync(count, "utf8")), runsBefore, "the stacked tip is green-seeded: no re-run");
+
+    // Phase 2: cap 1, LIVE — no restart: the next drain reads the reloaded config and takes
+    // the single path, where each landing re-checks in lock (main moved under every pin).
+    saveConfig(repo, { ...cfg, landBatchMax: 1 });
+    await seedLandQueue(repo, "2", "feature", "bugfix", "clean");
+    await waitFor(
+      () => readEvents(repo).filter((e) => e.type === "landed").length >= 8 && queueDepth(repo) === 0,
+      "the singles to land",
+      60_000,
+    );
+    s = scopeCounts();
+    assert.equal(s.batch, 2, "cap 1: the new landings took the single path — no third batch check");
+    assert.equal(s.gate, 8, "the singles each gated");
+    // The first single's pin sits directly on current main: its rebase is a no-op, its check
+    // is skipped, and it ff-lands for free — the cheap path the single flow gives a change
+    // whose turn arrived while main was already at its base. Singles 2-3 are behind the moved
+    // main: real rebase, re-check in lock.
+    assert.equal(s.landing, 2, "each single behind main re-checked in lock");
+    assert.equal(s.merged, 8);
+  } finally {
+    restore();
+    await orch.stop();
   }
 });

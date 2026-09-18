@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { LandingEntry, TickResult, TumwaterConfig } from "./types.js";
+import type { LandingEntry, LoopState, TickResult, TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
 import { applyFallbackModel, enabledRoleIds, fallbackPair, loadConfigCached } from "./config.js";
 import {
@@ -23,8 +23,8 @@ import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
-import { landChange } from "./lander.js";
-import { dropLanding, headLanding, landingFor, staleHeadFile } from "./land-queue.js";
+import { landBatch, landChange } from "./lander.js";
+import { dropLanding, headLanding, landingFor, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
@@ -150,7 +150,12 @@ function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
  * marker's presence IS the request, removing it acknowledges. Since merge queue 3/5 a role's
  * in-flight work is often a LANDING rather than a tick, so the landing's controller is passed
  * in: an abort for the role landing right now kills that too (the drain's task sees
- * `userAborted` and discards the pinned ref when the landing ends). */
+ * `userAborted` and discards the pinned ref when the landing ends). Since merge queue 5/5 the
+ * in-flight unit can be a whole BATCH, so the request matches ANY batched role — `roles`
+ * is every role the slot is landing right now, and a stop for one of them kills the whole
+ * batch: the lander cannot split it (abandoning mid-batch would leave the pinned refs of the
+ * not-yet-processed changes for one-at-a-time recovery, which is already the fallback).
+ * The drain's task discards every batched ref when a userAborted batch ends. */
 function consumeAbortRequests(
   root: string,
   runners: LoopRunner[],
@@ -163,7 +168,7 @@ function consumeAbortRequests(
       if (!m) continue;
       const role = m[1]!;
       const runner = runners.find((r) => r.role === role);
-      if (landing && landing.role === role) {
+      if (landing && landing.roles.includes(role)) {
         landing.userAborted = true;
         landing.controller.abort();
       }
@@ -178,18 +183,52 @@ function consumeAbortRequests(
   }
 }
 
+/** Fold one landing's outcome into its role's state and drop its queue entry — the 3/5
+ * write-back shared by the single path (landQueuedEntry) and the 5/5 batch slot: apply the
+ * result to the live state object, persist it, log landed/land_failed with the landing's own
+ * duration and usage (omitted when zero — the 4/5 idiom, so review-exempt landings render
+ * bare; for a batched change that is the batch's wall clock and its own role's spend), and
+ * drop the entry: EVERY defined result drops. The 4/5 marker is each caller's own concern —
+ * landQueuedEntry writes/removes it around this call, the batch slot writes it for its head
+ * and removes it in its finally. */
+function writeLandingOutcome(
+  root: string,
+  entry: LandingEntry,
+  state: LoopState,
+  result: TickResult,
+  durationMs: number,
+  usage: { tokens: number; cost: number },
+  file: string,
+): void {
+  applyLandingOutcome(state, result);
+  saveLoopState(root, state);
+  // `merged` still fires from merge.ts itself — these events mark the QUEUE's bookkeeping:
+  // the slot picked the entry up (land_queued, logged at enqueue) and finished with or
+  // without landing.
+  logEvent(root, {
+    loop: entry.role,
+    type: result === "changed" ? "landed" : "land_failed",
+    commit: entry.sha,
+    result,
+    durationMs,
+    ...(usage.tokens > 0 ? { tokens: usage.tokens } : {}),
+    ...(usage.cost > 0 ? { costUsd: usage.cost } : {}),
+  });
+  dropLanding(root, file);
+}
+
 /** Land one queued entry end-to-end — the poll loop's single landing slot, exported so the
  * loop-level tests can drive one landing without standing up the whole orchestrator (the drain
  * calls it exactly once per queue head, per poll): run the pinned sha through the shared
  * lander (review gate, rebase, ff-merge) with the authoring runner's wiring — its live state
  * object, runLandingPi (harness-shutdown signal only), foldLandingUsage (reviewer and
  * conflict-resolution spend charge to the AUTHORING role) — then fold the outcome into that
- * state (applyLandingOutcome), save it, log landed/land_failed with the landing's own
- * duration and usage, and drop the entry: EVERY outcome drops. Non-terminal outcomes keep
- * the landing ref, so the retry is the role's next fresh tick through leftover recovery —
- * normal cadence, same gate, same strike cap — never a queue re-drain. Never rejects:
- * landChange already degrades its own failures to TickResult values; an unexpected throw
- * lands as an "error" outcome (the ref survives for next-tick recovery). */
+ * state, save it, log landed/land_failed with the landing's own duration and usage, and drop
+ * the entry (writeLandingOutcome): EVERY outcome drops. Non-terminal outcomes keep the
+ * landing ref, so the retry is the role's next fresh tick through leftover recovery — normal
+ * cadence, same gate, same strike cap — never a queue re-drain. Never rejects: landChange
+ * already degrades its own failures to TickResult values; an unexpected throw lands as an
+ * "error" outcome (the ref survives for next-tick recovery). */
 export async function landQueuedEntry(
   root: string,
   entry: LandingEntry,
@@ -241,22 +280,7 @@ export async function landQueuedEntry(
     result = "error";
     author.state.lastError = errorMessage(err);
   }
-  applyLandingOutcome(author.state, result);
-  saveLoopState(root, author.state);
-  // `merged` still fires from merge.ts itself — these events mark the QUEUE's bookkeeping:
-  // the slot picked the entry up (land_queued, logged at enqueue) and finished with or
-  // without landing. The usage fields are the landing's own spend (reviewer + conflict
-  // resolution), omitted when zero so review-exempt landings render bare.
-  logEvent(root, {
-    loop: entry.role,
-    type: result === "changed" ? "landed" : "land_failed",
-    commit: entry.sha,
-    result,
-    durationMs: Date.now() - startedAt,
-    ...(usage.tokens > 0 ? { tokens: usage.tokens } : {}),
-    ...(usage.cost > 0 ? { costUsd: usage.cost } : {}),
-  });
-  dropLanding(root, file);
+  writeLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);
   // The outcome is fully applied (state saved, event logged, entry dropped): clear the 4/5
   // marker. Between the drop and this removal a poll may briefly see depth 0 with no
   // inFlight — the landing is done, so nothing is misdisplayed.
@@ -265,12 +289,14 @@ export async function landQueuedEntry(
 }
 
 /** The single in-flight landing the drain owns (merge queue 3/5): its task, the controller
- * that aborts it (harness shutdown OR `tumwater abort --role`), and whether the abort was a
- * deliberate user stop — which decides what happens to the pinned ref when it ends. */
+ * that aborts it (harness shutdown OR `tumwater abort --role` for any of its roles), and
+ * whether the abort was a deliberate user stop — which decides what happens to the pinned
+ * refs when it ends. Since merge queue 5/5 `roles` is every role the slot is landing: one for
+ * the single path, up to landBatchMax for a batch. */
 interface InFlightLanding {
   promise: Promise<void>;
   controller: AbortController;
-  role: string;
+  roles: string[];
   userAborted: boolean;
 }
 
@@ -398,6 +424,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       if (reloaded.config) {
         liveConfig = reloaded.config;
         for (const r of runners) r.config = reloaded.config;
+        liveConfig = reloaded.config;
         // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute
         // concurrently within this poll — no restart. Growing admits already-queued ticks;
         // shrinking never preempts in-flight work, it only caps future grants.
@@ -591,50 +618,182 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             const marker = readLandingMarker(root);
             if (marker && marker.sha === head.entry.sha) removeQuiet(landingStatePath(root));
           } else {
-            // Resolve the authoring runner when it exists (runners are never removed from the
-            // array on disable — only a warning event fires); a role disabled before this
-            // process started has no runner, so a throwaway one supplies the same wiring
-            // (loopPiOpts, runLandingPi, foldLandingUsage) and a disk-loaded state to fold and
-            // save on. Both share the live config, like every runner.
-            const author =
-              runners.find((r) => r.role === head.entry.role) ??
-              new LoopRunner(
-                root,
-                head.entry.role,
-                head.entry.role === DIRECTOR_ROLE ? liveConfig : roleConfig,
-                mainBranch,
-                signal,
-              );
-            const landing: InFlightLanding = {
-              promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
-              controller: new AbortController(),
-              role: head.entry.role,
-              userAborted: false,
-            };
-            // Harness shutdown aborts the landing through the per-landing controller (the
-            // lander watches it); `tumwater abort --role` for this role aborts it too, flagged
-            // userAborted — the two differ only in what happens to the pinned ref after.
-            signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
-            landing.promise = (async () => {
-              try {
-                // The authoring loop's own config, so the reviewer run obeys the same gate its
-                // author did — under the fallback a budgeted reviewer would spend past the cap.
-                await landQueuedEntry(root, head.entry, head.file, author, author.config, mainBranch, landing.controller.signal);
-              } finally {
-                if (landing.userAborted) {
-                  // A deliberate stop discards the pinned work — the landing's counterpart to
-                  // the pre-3/5 mid-review user abort (loop.ts's `this.userAborted` branch);
-                  // a shutdown abort leaves the flag unset and the ref survives for recovery.
-                  try {
-                    await deleteRef(root, landingRefName(landing.role));
-                  } catch {
-                    /* already gone */
+            // Merge queue 5/5 — read the whole batch the slot will land: the queue head plus
+            // up to landBatchMax-1 more entries in queue order. Length 1 IS today's single
+            // path (the slice agrees with `head` — the only entry dropper is this arm's own
+            // write-back, which runs while the slot is busy, and this arm runs only when it
+            // is free); length >= 2 is the coalesced batch through landBatch.
+            const batch = queuedLandingFiles(root).slice(0, liveConfig.landBatchMax);
+            if (batch.length === 0) {
+              // The head's file vanished between the two queue reads (no in-process writer
+              // does that — defensive): nothing to land this poll.
+            } else if (batch.length === 1) {
+              // Resolve the authoring runner when it exists (runners are never removed from
+              // the array on disable — only a warning event fires); a role disabled before
+              // this process started has no runner, so a throwaway one supplies the same
+              // wiring (loopPiOpts, runLandingPi, foldLandingUsage) and a disk-loaded state
+              // to fold and save on. Both share the live config, like every runner.
+              const author =
+                runners.find((r) => r.role === head.entry.role) ??
+                new LoopRunner(
+                  root,
+                  head.entry.role,
+                  head.entry.role === DIRECTOR_ROLE ? liveConfig : roleConfig,
+                  mainBranch,
+                  signal,
+                );
+              const landing: InFlightLanding = {
+                promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
+                controller: new AbortController(),
+                roles: [head.entry.role],
+                userAborted: false,
+              };
+              // Harness shutdown aborts the landing through the per-landing controller (the
+              // lander watches it); `tumwater abort --role` for this role aborts it too,
+              // flagged userAborted — the two differ only in what happens to the pinned
+              // ref after.
+              signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
+              landing.promise = (async () => {
+                try {
+                  await landQueuedEntry(root, head.entry, head.file, author, author.config, mainBranch, landing.controller.signal);
+                } finally {
+                  if (landing.userAborted) {
+                    // A deliberate stop discards the pinned work — the landing's counterpart
+                    // to the pre-3/5 mid-review user abort (loop.ts's `this.userAborted`
+                    // branch); a shutdown abort leaves the flag unset and the ref survives
+                    // for recovery. (One role in this slot's roles list; the batch slot
+                    // loops the same way over its whole batch.)
+                    for (const role of landing.roles) {
+                      try {
+                        await deleteRef(root, landingRefName(role));
+                      } catch {
+                        /* already gone */
+                      }
+                    }
                   }
+                  landingInFlight = null;
                 }
-                landingInFlight = null;
-              }
-            })();
-            landingInFlight = landing;
+              })();
+              landingInFlight = landing;
+            } else {
+              // The batch slot: land `batch` as ONE stack through the shared landBatch —
+              // per-change review gates, one shared build check over the stacked tree, one
+              // fast-forward. The 4/5 marker names the HEAD request (the cross-check needs
+              // a queued entry to validate its sha against, and batch[0] stays queued until
+              // the batch completes); the other batched roles show their queued state in the
+              // queue itself. Per-role wiring is resolved exactly as the single path resolves
+              // its author, and usage accumulates per role (a reviewer's run charges to its
+              // change's authoring role, like landQueuedEntry).
+              const first = batch[0]!;
+              const landing: InFlightLanding = {
+                promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
+                controller: new AbortController(),
+                roles: batch.map((b) => b.entry.role),
+                userAborted: false,
+              };
+              // Harness shutdown aborts the batch through the per-landing controller (the
+              // lander watches it); `tumwater abort --role` for ANY batched role aborts it
+              // too, flagged userAborted — the two differ only in what happens to the
+              // pinned refs after.
+              signal.addEventListener("abort", () => landing.controller.abort(), { once: true });
+              landing.promise = (async () => {
+                const startedAt = Date.now();
+                writeJsonFile(landingStatePath(root), {
+                  role: first.entry.role,
+                  sha: first.entry.sha,
+                  summary: first.entry.summary,
+                  startedAt,
+                });
+                const authors = new Map(
+                  batch.map((b) => [
+                    b.entry.role,
+                    runners.find((r) => r.role === b.entry.role) ??
+                      new LoopRunner(
+                        root,
+                        b.entry.role,
+                        b.entry.role === DIRECTOR_ROLE ? liveConfig : roleConfig,
+                        mainBranch,
+                        signal,
+                      ),
+                  ]),
+                );
+                const usages = new Map<string, { tokens: number; cost: number }>();
+                try {
+                  const outcomes = await landBatch(
+                    { root, mainBranch, config: roleConfig, signal: () => landing.controller.signal },
+                    batch.map((b) => ({
+                      role: b.entry.role,
+                      sha: b.entry.sha,
+                      tick: b.entry.tick,
+                      summary: b.entry.summary,
+                      body: b.entry.body,
+                      highFriction: b.entry.highFriction,
+                    })),
+                    (role) => {
+                      const author = authors.get(role)!;
+                      const usage = { tokens: 0, cost: 0 };
+                      usages.set(role, usage);
+                      return {
+                        state: author.state,
+                        foldUsage: (run) => {
+                          author.foldLandingUsage(run);
+                          usage.tokens += run.outputTokens;
+                          usage.cost += run.costUsd;
+                        },
+                        runPi: (w, p, s) => author.runLandingPi(w, p, s),
+                      };
+                    },
+                  );
+                  // One slot unit landed: the batch's wall time is every change's
+                  // durationMs, each change's event carries its own role's spend. A
+                  // `result === undefined` means unattempted (an early stop ran before it)
+                  // — its entry and ref stay queued, so the write-back skips it.
+                  const durationMs = Date.now() - startedAt;
+                  outcomes.forEach((outcome, i) => {
+                    if (outcome.result === undefined) return;
+                    const b = batch[i]!;
+                    writeLandingOutcome(
+                      root,
+                      b.entry,
+                      authors.get(b.entry.role)!.state,
+                      outcome.result,
+                      durationMs,
+                      usages.get(b.entry.role) ?? { tokens: 0, cost: 0 },
+                      b.file,
+                    );
+                  });
+                } catch (err) {
+                  // An unexpected throw escapes the batch (git plumbing — landBatch degrades
+                  // failed LANDINGS to results): the 3/5 semantics keep EVERY entry for
+                  // re-drain (none was dropped — the write-back runs after landBatch
+                  // returns), with the error on the head role's state. Re-drain is bounded
+                  // and self-terminating: the gate short-circuits the already-approved
+                  // heads (its persisted verdict), and a fast-forward that already happened
+                  // re-lands as no-ops through each change's own gate + in-lock check.
+                  const author = authors.get(first.entry.role)!;
+                  author.state.lastError = errorMessage(err);
+                  saveLoopState(root, author.state);
+                } finally {
+                  removeQuiet(landingStatePath(root));
+                  if (landing.userAborted) {
+                    // A deliberate stop discards the batch's pinned work — the single
+                    // path's counterpart, extended over every batched role (the batch is
+                    // one slot unit; leaving the other refs queued would sit them behind
+                    // work nobody drains); a shutdown abort leaves the flag unset and
+                    // every ref survives for recovery.
+                    for (const role of landing.roles) {
+                      try {
+                        await deleteRef(root, landingRefName(role));
+                      } catch {
+                        /* already gone */
+                      }
+                    }
+                  }
+                  landingInFlight = null;
+                }
+              })();
+              landingInFlight = landing;
+            }
           }
         }
       }

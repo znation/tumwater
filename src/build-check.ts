@@ -280,19 +280,23 @@ export async function runBuildCheck(
  * names its own ("baseline") from main-red.ts, because the one-run-per-SHA cache and in-flight
  * dedup live in checkMainBaseline — the event there is logged by the paying role via the onRun
  * hook. */
-export type BuildCheckScope = "gate" | "landing";
+export type BuildCheckScope = "gate" | "landing" | "batch";
 
-/** Per-scope wording for the environmental-skip warning. The two call sites' current messages
+/** Per-scope wording for the environmental-skip warning. The call sites' current messages
  * are identical apart from these words, so keying them on the scope keeps each surface's feed
  * line byte-for-byte what it is today. */
 const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }> = {
   gate: { label: "build check", proceeding: "proceeding to model review" },
   landing: { label: "landing build check", proceeding: "proceeding to merge" },
+  // The batch's next step after the check is the fast-forward — the same phrase the landing
+  // scope uses (gate says "proceeding to model review" because its next step is the reviewer).
+  batch: { label: "batch build check", proceeding: "proceeding to merge" },
 };
 
 /** Run the project's declared check for a named scope — the detect → run → build_check
- * event → skip-warning sequence the review gate's pre-check (scope "gate") and the landing
- * path's in-lock re-check (scope "landing") previously each ran inline, kept in one place so
+ * event → skip-warning sequence the review gate's pre-check (scope "gate"), the landing
+ * path's in-lock re-check (scope "landing"), and the batch lander's one check over the whole
+ * stacked tree (scope "batch") previously each ran inline, kept in one place so
  * the event's shape and the skip warning cannot drift between the two surfaces. Every run is
  * an event with its cost: the deterministic checks are where the fleet's compute goes after
  * the authoring run, and "how long does npm test take per merge" must be answerable from the
@@ -422,11 +426,14 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
   return seen.length < 2 && !seen.includes(wt);
 }
 
-/** Record a green baseline verdict for `sha` WITHOUT running anything. The sole caller is the
- * landing path (src/merge.ts's verifyLanding), which calls it with the POST-rebase head — the
- * exact SHA about to become main — in two cases: its own in-lock re-check just ran this
- * project's declared check green on that tree, or the rebase was a no-op so the review gate's
- * pre-check (which runs outside the merge lock) had already run green on exactly this tree.
+/** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the
+ * landing path (src/merge.ts's verifyLanding) and the batch lander (src/lander.ts' landBatch) —
+ * both call it only after their fast-forward SUCCEEDED, with the exact SHA that just became
+ * main: verifyLanding with the POST-rebase head in two cases — its own in-lock re-check just ran
+ * this project's declared check green on that tree, or the rebase was a no-op so the review
+ * gate's pre-check (which runs outside the merge lock) had already run green on exactly this
+ * tree — and landBatch with the stacked tip when the batch's one scope-`batch` check ran green
+ * on it (a skipped check seeds nothing, and a merge_blocked stack seeds nothing either).
  * Seeding here means that once the merge lands — main now points at this very SHA — the next
  * fresh tick's checkMainBaseline is a cache hit instead of re-running the full suite on an
  * already-verified tree: for tumwater itself that saves one redundant `npm test` (~1 min) per

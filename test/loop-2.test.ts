@@ -25,8 +25,10 @@ async function initializedRepo(): Promise<string> {
 }
 
 /** Poll until `file` exists (bounded), so a test can act only after the fake pi run has
- * done its work — a fixed sleep races process startup when the suite runs in parallel. */
-async function waitForFile(file: string, timeoutMs = 10_000): Promise<void> {
+ * done its work — a fixed sleep races process startup when the suite runs in parallel.
+ * 30s: the landing gate runs the whole suite concurrently on a saturated machine, where
+ * worktree setup plus fake-pi startup can blow a 10s budget (BUGS.md load-sensitive tests). */
+async function waitForFile(file: string, timeoutMs = 30_000): Promise<void> {
   const start = Date.now();
   while (!fs.existsSync(file)) {
     if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${file}`);

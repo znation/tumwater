@@ -30,6 +30,9 @@ export function defaultConfig(): TumwaterConfig {
   return {
     piArgs: [],
     maxConcurrent: 6,
+    // Three is the fleet's realistic concurrent-role count: a busy queue coalesces the
+    // common case (a few roles land in the same poll) while the worst case stays bounded.
+    landBatchMax: 3,
     minTickIntervalSeconds: 20,
     tickTimeoutSeconds: 1800,
     quietTimeoutSeconds: 1800,
