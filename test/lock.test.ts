@@ -2,8 +2,29 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withLock } from "../src/lock.js";
+import { readLockPid, withLock } from "../src/lock.js";
 import { tmpdir } from "./util.js";
+
+test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
+  const dir = path.join(tmpdir(), "pid-read.lock");
+  fs.mkdirSync(dir);
+  const write = (content: string) => fs.writeFileSync(path.join(dir, "pid"), content);
+
+  write("12345");
+  assert.equal(readLockPid(dir), 12345);
+  write(" 12345\n"); // Surrounding whitespace is tolerated (a foreign writer may add a newline).
+  assert.equal(readLockPid(dir), 12345);
+
+  // parseInt would read each of these as a number (123, 1, -5, 16, 0); only the last two are
+  // also non-positive, so the first three are the latch pidAlive's guards cannot catch.
+  for (const bad of ["123abc", "1.9", "-5", "0x10", "0", "", "  ", "12 34"]) {
+    write(bad);
+    assert.equal(readLockPid(dir), null, `expected ${JSON.stringify(bad)} to be unreadable`);
+  }
+
+  fs.rmSync(path.join(dir, "pid"));
+  assert.equal(readLockPid(dir), null, "a missing pid file is unreadable");
+});
 
 test("withLock serializes critical sections", async () => {
   const lock = path.join(tmpdir(), "x.lock");

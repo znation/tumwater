@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pidAlive } from "./process.js";
+import { parsePositiveInt } from "./text.js";
 
 /** How old a lock must be before we consider stealing it from a dead process. */
 const STALE_MS = 10 * 60 * 1000;
@@ -25,14 +26,19 @@ function rmLockDir(dir: string): void {
 type LockState = "absent" | "live" | "stale";
 
 /** Read the lock's pid file: the holder's pid, or null when it is missing, unreadable, or
- * not a finite integer. The one reader of withLock's pid-file convention (the `pid` filename
- * and its plain-decimal content), shared by classifyLock here and doctor's merge-lock check —
- * so what counts as a readable pid cannot drift between the breaker that acts on it and the
- * reporter that displays it. */
+ * not plain-decimal digits naming a positive integer. The one reader of withLock's pid-file
+ * convention (the `pid` filename and its plain-decimal content), shared by classifyLock here
+ * and doctor's merge-lock check — so what counts as a readable pid cannot drift between the
+ * breaker that acts on it and the reporter that displays it. parsePositiveInt enforces the
+ * documented plain-decimal rule: parseInt would accept trailing junk and a fractional or
+ * signed prefix ("123abc" → 123, "1.9" → 1, "-5" → -5), so a torn or foreign pid file could
+ * name an unrelated live process and latch a dead holder as live — the same latch pidAlive's
+ * own guards close on the probe side. Surrounding whitespace is trimmed (a foreign writer may
+ * add a newline), but embedded non-digits make the file unreadable, so classifyLock falls back
+ * to the no-pid grace and eventually breaks it. */
 export function readLockPid(dir: string): number | null {
   try {
-    const parsed = parseInt(fs.readFileSync(path.join(dir, "pid"), "utf8"), 10);
-    return Number.isFinite(parsed) ? parsed : null;
+    return parsePositiveInt(fs.readFileSync(path.join(dir, "pid"), "utf8").trim());
   } catch {
     return null; // No readable pid file.
   }
