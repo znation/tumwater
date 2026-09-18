@@ -161,7 +161,7 @@ export function nextBackoffSeconds(current: number, ladder: BackoffConfig): numb
  * climbs this short ladder, capped in minutes: one broken `git` must not park a fleet for the
  * idle ladder's 10-hour sleep (BUGS.md, the 2026-09-15 outage). One ladder, one sensible
  * default, no knob: the cap is the point. */
-export const ERROR_BACKOFF: BackoffConfig = { initialSeconds: 30, factor: 2, maxSeconds: 600 };
+const ERROR_BACKOFF: BackoffConfig = { initialSeconds: 30, factor: 2, maxSeconds: 600 };
 
 /** Consecutive failed ticks after which the loop raises a harness warning and its state
  * cell reads "failing" (BUGS.md 2026-09-15: every loop failing identically looked like a

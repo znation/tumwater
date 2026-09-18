@@ -20,7 +20,7 @@ export interface RoleConfig {
  * (plans/user-defined-loops.md): each entry becomes a full-citizen loop — persistent worktree +
  * branch, tick lifecycle, review gate, merge to main. Only the director may write this key; every
  * other role's prompt keeps the blanket tumwater.json ban. */
-export interface CustomLoop {
+interface CustomLoop {
   /** The loop id: worktree dir, branch suffix (`tumwater/<name>`), and status row.
    * Validated at load against /^[a-z0-9][a-z0-9_-]{0,31}$/ — it becomes a filesystem path
    * and a git ref — with no collision with any catalog id (including the director) and unique

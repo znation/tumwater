@@ -102,7 +102,7 @@ export const DEFER_MAX_MS = 3 * 3600 * 1000;
  * past its scheduled time, survives an orchestrator restart (it is persisted state), and does
  * not fire for a `main moved` wake that arrives before the role's own clock (nextRunAt is
  * still in the future). A never-scheduled role (nextRunAt 0) is never expired. */
-export function deferralExpired(s: LoopState, now: number): boolean {
+function deferralExpired(s: LoopState, now: number): boolean {
   return s.nextRunAt > 0 && now - s.nextRunAt >= DEFER_MAX_MS;
 }
 

@@ -18,7 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** What selectTestFiles decided: which compiled files to run (and their source-style names for
  * messages), or why nothing could be selected. */
-export interface TestFileSelection {
+interface TestFileSelection {
   /** Basenames with the .js swapped for .ts — what a developer sees in test/ and types as a filter. */
   names: string[];
   /** Absolute paths of the compiled files to hand to node --test, sorted by name. */

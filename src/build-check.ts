@@ -40,7 +40,7 @@ export function clipReason(r: string): string {
 
 /** The project's declared deterministic check: an npm script name plus the directory whose
  * package.json declares it (the walk-up target holding both package.json and node_modules). */
-export interface BuildCheck {
+interface BuildCheck {
   /** Directory holding the qualifying package.json + node_modules. */
   rootDir: string;
   /** The npm script to run — `test` preferred, then `typecheck`, else `build`. */
@@ -280,7 +280,7 @@ export async function runBuildCheck(
  * names its own ("baseline") from main-red.ts, because the one-run-per-SHA cache and in-flight
  * dedup live in checkMainBaseline — the event there is logged by the paying role via the onRun
  * hook. */
-export type BuildCheckScope = "gate" | "landing" | "batch";
+type BuildCheckScope = "gate" | "landing" | "batch";
 
 /** Per-scope wording for the environmental-skip warning. The call sites' current messages
  * are identical apart from these words, so keying them on the scope keeps each surface's feed
