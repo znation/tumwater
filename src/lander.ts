@@ -2,7 +2,7 @@ import { COMMIT_IDENT, deleteRef, gitTry, headOf } from "./git.js";
 import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { ffStackToMain, mergeToMain } from "./merge.js";
-import { reviewAheadOfMain } from "./review.js";
+import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { runScopedBuildCheck } from "./build-check.js";
 import { noteGreenBaseline } from "./main-baseline.js";
 import { saveLoopState } from "./state.js";
@@ -56,6 +56,72 @@ export interface LanderContext {
   signal(): AbortSignal;
 }
 
+/** A gate invocation's outcome: `gate` when the change is approved/exempt and may be landed,
+ * `result` when it is already terminal (aborted, rejected, or review_error). */
+type GateOutcome = { kind: "gate"; gate: GateResult } | { kind: "result"; result: TickResult };
+
+/** Run one pinned change through the review gate in its lander worktree `wt` and handle the
+ * immediate bookkeeping both landing paths otherwise copy — the single-change path (landChange)
+ * and the batch's Phase A. Persists the verdict at once, folds the reviewer's usage, and routes
+ * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-lands it),
+ * rejected (ref deleted — final for this sha), and failed (ref kept under the failure cap; past
+ * the cap the gate reset the worktree off the pin, so a HEAD that moved away from `req.sha`
+ * means the commit was discarded and the ref goes too — an unreadable head keeps it). Returns
+ * the gate result only when the change may be landed. */
+async function reviewPinnedChange(args: {
+  root: string;
+  mainBranch: string;
+  config: TumwaterConfig;
+  role: string;
+  wt: string;
+  req: LandRequest;
+  state: LoopState;
+  signal: AbortSignal;
+  foldUsage(run: PiRunResult): void;
+}): Promise<GateOutcome> {
+  const { root, mainBranch, config, role, wt, req, state, signal, foldUsage } = args;
+  const ref = landingRefName(role);
+  const gate = await reviewAheadOfMain(
+    { root, role, wt, mainBranch, config, tick: req.tick, sessionSuffix: req.sessionSuffix, signal },
+    state,
+    req.summary,
+    req.body,
+    req.highFriction,
+  );
+  // Persist the verdict immediately, not at the tick's end save: the gate's bookkeeping is
+  // cross-tick memory (a persisted "reject" injects a "your previous change was rejected"
+  // note into the next prompt), and this tick's tail — the landing plus the still-to-come
+  // authoring run — can outlive a sudden death by hours. A mid-run crash (power loss,
+  // kill -9) would otherwise roll the state file back to the last tick-boundary snapshot
+  // and re-inject a superseded rejection even though its replacement is already on main.
+  saveLoopState(root, state);
+  if (gate.run) foldUsage(gate.run);
+
+  // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-lands it.
+  // The caller routes "aborted" through its own abort handling (which discards the pin too when
+  // the abort was a deliberate user stop).
+  if (gate.aborted) return { kind: "result", result: "aborted" };
+
+  if (gate.decision === "rejected") {
+    // The gate already reset this worktree to main; the verdict is final for this sha.
+    await deleteRef(root, ref);
+    return { kind: "result", result: "rejected" };
+  }
+
+  if (gate.decision === "failed") {
+    state.lastError = `review failed: ${gate.detail}`;
+    // Strike-cap discard is invisible in GateResult — the same shape as an under-cap failure.
+    // The tell is the worktree itself: past REVIEW_FAILURE_LIMIT the gate reset it off the pin,
+    // so a HEAD that moved away from req.sha means the commit was discarded and the ref goes too.
+    // An unreadable head keeps the ref (fail closed): the next tick re-lands through this gate.
+    const head = await headOf(wt, "HEAD").catch(() => null);
+    if (head !== null && head !== req.sha) await deleteRef(root, ref);
+    return { kind: "result", result: "review_error" };
+  }
+
+  return { kind: "gate", gate };
+}
+
 /** Review and land `req.sha` in this role's lander worktree, returning the same TickResult
  * values a tick returns today — so state.ts, the dashboards, and the event feed need no change.
  * Owns the landing ref's full lifecycle: deleted on every terminal outcome (landed, rejected,
@@ -69,52 +135,22 @@ export async function landChange(ctx: LanderContext, req: LandRequest): Promise<
   // this detached checkout holds exactly the pinned tree for review and rebase.
   const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
 
-  const gate = await reviewAheadOfMain(
-    {
-      root: ctx.root,
-      role: req.role,
-      wt,
-      mainBranch: ctx.mainBranch,
-      config: ctx.config,
-      tick: req.tick,
-      sessionSuffix: req.sessionSuffix,
-      signal: ctx.signal(),
-    },
-    ctx.state,
-    req.summary,
-    req.body,
-    req.highFriction,
-  );
-  // Persist the verdict immediately, not at the tick's end save: the gate's bookkeeping is
-  // cross-tick memory (a persisted "reject" injects a "your previous change was rejected"
-  // note into the next prompt), and this tick's tail — the landing plus the still-to-come
-  // authoring run — can outlive a sudden death by hours. A mid-run crash (power loss,
-  // kill -9) would otherwise roll the state file back to the last tick-boundary snapshot
-  // and re-inject a superseded rejection even though its replacement is already on main.
-  saveLoopState(ctx.root, ctx.state);
-  if (gate.run) ctx.foldUsage(gate.run);
-
-  // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-lands it.
-  // The caller routes "aborted" through its own abort handling (which discards the pin too when
-  // the abort was a deliberate user stop).
-  if (gate.aborted) return "aborted";
-
-  if (gate.decision === "rejected") {
-    // The gate already reset this worktree to main; the verdict is final for this sha.
-    await deleteRef(ctx.root, ref);
-    return "rejected";
-  }
-
-  if (gate.decision === "failed") {
-    ctx.state.lastError = `review failed: ${gate.detail}`;
-    // Strike-cap discard is invisible in GateResult — the same shape as an under-cap failure.
-    // The tell is the worktree itself: past REVIEW_FAILURE_LIMIT the gate reset it off the pin,
-    // so a HEAD that moved away from req.sha means the commit was discarded and the ref goes too.
-    // An unreadable head keeps the ref (fail closed): the next tick re-lands through this gate.
-    const head = await headOf(wt, "HEAD").catch(() => null);
-    if (head !== null && head !== req.sha) await deleteRef(ctx.root, ref);
-    return "review_error";
-  }
+  const outcome = await reviewPinnedChange({
+    root: ctx.root,
+    mainBranch: ctx.mainBranch,
+    config: ctx.config,
+    role: req.role,
+    wt,
+    req,
+    state: ctx.state,
+    signal: ctx.signal(),
+    foldUsage: ctx.foldUsage,
+  });
+  // A terminal outcome (aborted / rejected / review_error) is already handled: the helper kept
+  // or deleted the ref per policy. The caller routes "aborted" through its own abort handling
+  // (which discards the pin too when the abort was a deliberate user stop).
+  if (outcome.kind === "result") return outcome.result;
+  const gate = outcome.gate;
 
   // Approved or exempt: land it. verifiedHead is the tree this gate's pre-check just ran green
   // on — when the rebase turns out to be a no-op it names the exact tree about to land, so the
@@ -255,51 +291,30 @@ export async function landBatch(
     const req = requests[i]!;
     const w = wiringForRole(req.role);
     const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
-    // The same context object landChange builds (review.ts' ReviewContext is module-private):
-    // the structural literal, including req.tick, and the slot's signal.
-    const gate = await reviewAheadOfMain(
-      {
-        root: ctx.root,
-        role: req.role,
-        wt,
-        mainBranch: ctx.mainBranch,
-        config: ctx.config,
-        tick: req.tick,
-        sessionSuffix: req.sessionSuffix,
-        signal: ctx.signal(),
-      },
-      w.state,
-      req.summary,
-      req.body,
-      req.highFriction,
-    );
-    // Persist the verdict immediately, mirroring landChange's a3501fb write: the drain's
-    // write-back happens only in-process at batch completion, so a mid-batch crash must not
-    // lose the verdicts (a rejection's reasons, lastApprovedHead, unreviewFailures) — the
-    // re-landing would re-run the reviewer on already-approved changes otherwise.
-    saveLoopState(ctx.root, w.state);
-    if (gate.run) w.foldUsage(gate.run);
-    if (gate.aborted) {
+    // The shared gate, verdict persisted immediately (the drain's write-back happens only
+    // in-process at batch completion, so a mid-batch crash must not lose what the batch earned).
+    const outcome = await reviewPinnedChange({
+      root: ctx.root,
+      mainBranch: ctx.mainBranch,
+      config: ctx.config,
+      role: req.role,
+      wt,
+      req,
+      state: w.state,
+      signal: ctx.signal(),
+      foldUsage: w.foldUsage,
+    });
+    if (outcome.kind === "gate") {
+      stack.push(i); // approved or exempt
+      continue;
+    }
+    if (outcome.result === "aborted") {
       aborted = true;
       break; // the rest get "aborted" via finishAborted; refs kept
     }
-    if (gate.decision === "rejected") {
-      // The gate already reset this worktree to main; the verdict is final for this sha.
-      await deleteRef(ctx.root, landingRefName(req.role));
-      results[i]!.result = "rejected";
-      continue;
-    }
-    if (gate.decision === "failed") {
-      w.state.lastError = `review failed: ${gate.detail}`;
-      // landChange's strike-cap tell, byte-for-byte: past the cap the gate reset the
-      // worktree off the pin, so a HEAD that moved away from req.sha means the commit was
-      // discarded and the ref goes; an unreadable head keeps the ref (fail closed).
-      const head = await headOf(wt, "HEAD").catch(() => null);
-      if (head !== null && head !== req.sha) await deleteRef(ctx.root, landingRefName(req.role));
-      results[i]!.result = "review_error";
-      break; // stop: the unattempted changes keep entry + ref with no result
-    }
-    stack.push(i); // approved or exempt
+    results[i]!.result = outcome.result;
+    if (outcome.result === "review_error") break; // stop: the unattempted keep entry + ref
+    // "rejected": terminal for this sha — the gate already reset its worktree to main.
   }
   finishAborted();
   if (aborted || stack.length === 0) return results;
