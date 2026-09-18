@@ -111,8 +111,13 @@ depends on 1/2 of that series for the scheduling half).
   `FailureReportData`, and `renderFailureMarkdown(data)` → string. Sibling to `report.ts` (which
   keeps usage: tokens, cost, commits) rather than an extension of it — different question,
   different shape, and `report.ts` is already ~250 lines.
-- `src/ui/report.ts` — export the existing private `readWindowEvents` (invariant 3). No other
-  change.
+- `src/ui/report.ts` — export the existing private `readWindowEvents` (invariant 3) and widen
+  its return to `{ events: HarnessEvent[]; coversFullWindow: boolean }`: the flag is true when
+  the backwards scan early-stopped on a line older than the window (proof the retained log
+  reaches back past the window's start) and false when it consumed the file's start. The caller
+  cannot otherwise tell "the log was rotated inside the window" from "the fleet was idle that
+  week" — both leave the oldest returned event later than the window start. `collectReport`'s
+  single call site adapts with a destructure (one line); nothing else in report.ts changes.
 - `src/cli.ts` — `tumwater report --failures [--days N]`, sharing `REPORT_DEFAULT_DAYS` /
   `REPORT_MAX_DAYS` with the usage report so both surfaces bound the window identically.
 - `src/roles.ts` — the `telemetry` role, placed after `qa` in catalog order (both are observers);
@@ -127,27 +132,44 @@ Ordered so the most actionable material is first, since a model reads top-down a
 the bottom of the page:
 
 1. **Header** — window bounds, total ticks, and the source file (`events.jsonl`, rotated at
-   16 MB — a window longer than the retained log is reported as partial, never silently short).
+   16 MB). A window longer than the retained log is reported as partial, never silently short:
+   when `coversFullWindow` is false and events exist, one header line reads
+   `partial: retained log starts <oldest event's local date>` (the date from the returned events'
+   minimum `ts`); an empty log reads `no events retained` instead, and is not called partial —
+   there is nothing to compare against.
 2. **Outcome table** — `tick_end` results per role, the exact tally quoted above. One row per
-   role, one column per result that occurred in the window.
+   role, one column per result that occurred in the window. Fields: `tick_end.loop` (the role,
+   `"?"` when empty — `collectReport`'s guard) and `tick_end.result`.
 3. **Deltas vs. the preceding window of equal length** — error rate, quiet-kill count, rejection
    count, per role. This is what makes a *regression* visible; a static 16% error rate reads as
    normal, while "4% → 16% since Tuesday" names a cause. A role absent from the prior window is
-   reported as new, not as an infinite increase.
-4. **Error clusters** — `tick_end.error` strings normalized and grouped: count, roles affected,
-   first and last seen, one verbatim example. Top 10 by count.
-5. **Warning clusters** — `warning` events grouped the same way.
-6. **Review rejections** — `review_rejected` reasons by role, top 5.
-7. **What landed in the window** — `merged` event summaries, newest first, capped at 20, so a
-   cluster that starts on a date can be correlated with the commit that starts it. This is the
-   single most important field for the role's charter: it turns "errors spiked" into "errors
-   spiked right after this commit".
+   reported as new, not as an infinite increase. **One scan, not two**: read the 2× window once —
+   `readWindowEvents(root, formatDate(dayAt(2 * days - 1)))`, the same local-midnight `dayAt`
+   idiom (`setDate` arithmetic) and `formatDate` (src/text.ts) `collectReport` uses — and
+   partition in memory by local date: the current window is `date >= formatDate(dayAt(days - 1))`,
+   the preceding window is the earlier dates in that same read. A second call would double the
+   tail I/O invariant 3 exists to bound.
+4. **Error clusters** — `tick_end.error` strings (a string, absent on ticks that set no error —
+   skip those) normalized and grouped: count, roles affected, first and last seen, one verbatim
+   example. Top 10 by count.
+5. **Warning clusters** — `warning.message` grouped the same way (harness-scoped warnings carry
+   `loop: "harness"`; no special case needed).
+6. **Review rejections** — `review_rejected.reasons` by role, top 5, clustered on `reasons[0]`
+   (the same field the event feed renders, src/ui/event-format.ts), so a digest line reads like a
+   `tumwater logs` line.
+7. **What landed in the window** — `merged.summary` (with its `commit`) newest first by `ts`,
+   capped at 20, so a cluster that starts on a date can be correlated with the commit that starts
+   it. This is the single most important field for the role's charter: it turns "errors spiked" into
+   "errors spiked right after this commit".
 
 ### Cluster normalization
 
-The interesting engineering. A cluster key is the error string with the volatile parts replaced:
-hex shas (`[0-9a-f]{7,40}`), absolute paths, standalone integers, ISO timestamps, and durations
-(`\d+(\.\d+)?(ms|s|m)\b`) each collapse to a placeholder; the result is trimmed to 120 chars.
+The interesting engineering. A cluster key is the error string with the volatile parts replaced,
+rules applied in this order: hex shas (`[0-9a-f]{7,40}`), absolute paths, ISO timestamps,
+durations (`\d+(\.\d+)?(ms|s|m)\b`), then standalone integers — each collapses to a
+placeholder; the result is trimmed to 120 chars. The integer rule carries one exception, or it
+would erase the very distinction the next sentence requires: `\b\d+\b` collapses with a
+negative lookbehind, `/(?<!exited\s)\b\d+\b/g`, so the exit status after `exited ` survives.
 `pi exited null` and `pi exited 1` stay distinct (the exit code is semantic); `ENOENT
 /Users/zach/tumwater/.tumwater/worktrees/dry/foo.ts` and the same under `clean/` collapse to one.
 Deliberately conservative: over-clustering hides a real second failure mode, while

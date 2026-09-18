@@ -235,7 +235,7 @@ Sizing unchanged: self-reload.ts ~100 lines; tui.ts ~10; gui.ts ~5; gui-page.ts 
 
 **Critical path.** 1/7 → 2/7 → 3/7 → 4/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
-### Telemetry 1/2 — a deterministic failure digest over the fleet's own event log (planned 2026-09-17, requested by user)
+### Telemetry 1/2 — a deterministic failure digest over the fleet's own event log (planned 2026-09-17, requested by user, refined 2026-09-17)
 
 **Full plan: plans/telemetry-role.md** — the shared problem statement, the decided design and rationale, invariants, the digest's contents and cluster-normalization rules, and the sequencing for both sub-plans live there.
 
@@ -243,9 +243,23 @@ Sizing unchanged: self-reload.ts ~100 lines; tui.ts ~10; gui.ts ~5; gui-page.ts 
 
 **Why.** The fleet reads its own source and never watches itself run: `grep -n "events.jsonl\|tumwater logs" src/roles.ts src/prompt.ts` returns nothing. Meanwhile 8 of the 55 bugs ever recorded in BUGS.md were found by a human reading that log — including four of the most valuable (the latching false `main is red`, the 44 silent tick failures, the 200 ms failure climbing the idle ladder, the rejected `mainGreen`). Zero came from a loop. Over 2026-08-20 → 2026-09-17 the log holds 1,804 `tick_end` events of which 295 are `error`, 164 `aborted` and 41 `quiet_killed`, and no loop has ever filed a bug about any of it.
 
-**Files touched.** `src/ui/failure-report.ts` (new: `collectFailureReport`, `renderFailureMarkdown`), `src/ui/report.ts` (export the existing private `readWindowEvents` — one home for the windowed backwards scan), `src/cli.ts` (flag + help), `test/failure-report.test.ts` (new; cluster normalization gets the real 2026-09 error strings as fixtures).
+**Files touched.** `src/ui/failure-report.ts` (new: `collectFailureReport`, `renderFailureMarkdown`), `src/ui/report.ts` (export the existing private `readWindowEvents` — one home for the windowed backwards scan — widening its return to `{ events, coversFullWindow }`; `collectReport`'s single call site adapts with a destructure), `src/cli.ts` (flag + help), `test/failure-report.test.ts` (new; cluster normalization gets the real 2026-09 error strings as fixtures).
 
 **Acceptance criteria.** `tumwater report --failures` prints the digest for the default 14-day window and honours `--days N` under the shared `REPORT_MAX_DAYS` bound; the outcome table reproduces a hand-run tally of `tick_end` results per role; two error strings differing only in sha, path, integer, timestamp or duration cluster together while differing exit codes stay distinct; rendered output stays under 6 KB on the current log; a window longer than the retained log is reported as partial rather than silently short; no model run and no subprocess on any path.
+
+**Refined 2026-09-17 (plan loop) — audited against main `e76c5d5` (README stamps build clean, suite 1021/1021; the entry was created the same day by 9d679ad and had never been audited). Every anchor verified on this tree; four implementation questions the plan left open are pinned in plans/telemetry-role.md and the files bullet is corrected in place. 1/2 has no scheduling dependency, so it is landable now — only its sibling 2/2 waits on the deferral-latch fix via observer roles 1/2.**
+
+Verified as written: src/ui/report.ts is 256 lines (the doc's "~250"), `readWindowEvents(root, fromKey)` is private at line 76 — the windowed backwards scan over `eventsLogPath(root)` (src/paths.ts:81) with the early stop on the oldest complete line's date, returning only events with `formatDate(ts) >= fromKey`; `collectReport(root, days)` (line 152) establishes the `dayAt`/`formatDate` (src/text.ts:122) local-midnight idiom and the `ev.loop`-with-"?" guard the digest reuses; `REPORT_DEFAULT_DAYS`/`REPORT_MAX_DAYS` are exported and imported by cli.ts:35; `parseEventLine` (src/events.ts:81) is the shared parser; events.jsonl rotates at 16 MB (`EVENTS_MAX_BYTES`, src/events.ts:23), so "partial" is reachable; the cli report case (src/cli.ts:393) runs `rejectUnknownArgs` (src/cli-args.ts:72; `FlagSpec` at 57) with the `--days` spec then `parseCountFlag` + the `> REPORT_MAX_DAYS` fail-fast, so a valueless `--failures` spec and `args.includes("--failures")` slot in with no new parsing; `tick_end`'s payload (src/loop.ts:493) is `{ loop, tick, result, summary, error: s.lastError }` plus optional tokens/costUsd; `review_rejected` (src/review.ts:131) carries `{ head, reasons: string[], durationMs? }` and event-format.ts renders `reasons[0]`; `warning` carries `message` (src/loop.ts:325, harness-scoped at src/orchestrator.ts:310); `merged` carries `{ loop, commit, summary }`; the doc's "no role reads the log" claim re-verified (`grep -n "events.jsonl\|tumwater logs" src/roles.ts src/prompt.ts` empty); test/report.test.ts and test/cli.test.ts exist as the neighbouring test homes.
+
+Corrections (pinned in plans/telemetry-role.md):
+1. **Partial-window detection had no mechanism.** `readWindowEvents` returns only events, so "window longer than the retained log" is indistinguishable from an idle stretch by the returned dates alone — both leave the oldest event later than the window start. Pinned: the reader's return widens to `{ events, coversFullWindow }` (true iff the scan early-stopped on a line older than the window), `collectReport`'s one call site destructures, and the digest renders `partial: retained log starts <oldest event date>` when the flag is false and events exist; an empty log says `no events retained` and is not partial.
+2. **The delta window is one scan, not two.** Pinned: read the 2× window once with the existing `dayAt`/`formatDate` idiom and partition in memory; a second call would double the tail I/O invariant 3 exists to bound.
+3. **The integer normalization rule contradicted the exit-code criterion.** "Standalone integers collapse" would erase the `exited 1` vs `exited 0` distinction the same paragraph requires. Pinned: `/(?<!exited\s)\b\d+\b/g`, with the rule order (sha → path → timestamp → duration → integer) fixed.
+4. **Per-section payload fields were unnamed.** Pinned the exact fields the implementer must read: `tick_end.loop`/`.result`/`.error`, `warning.message`, `review_rejected.reasons[0]`, `merged.summary`/`.commit` sorted by `ts` desc.
+
+The files bullet is corrected in place: report.ts is no longer "export only" — the return widening and its one-line caller adaptation are part of the change.
+
+Sizing: failure-report.ts ~200 lines (collect, render, normalization), report.ts ~10, cli.ts ~8, test/failure-report.test.ts ~180. One run. No design question remains open.
 
 ### Telemetry 2/2 — a `telemetry` role that reads the digest and files bugs (planned 2026-09-17, requested by user)
 
