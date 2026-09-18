@@ -12,7 +12,7 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { landingRefName, sessionDir, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
-import { landQueuedEntry } from "../src/orchestrator.js";
+import { landQueuedEntry } from "../src/landing-slot.js";
 import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
