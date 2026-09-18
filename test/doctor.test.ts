@@ -8,6 +8,7 @@ import {
   checkGitBinary,
   checkInit,
   checkMergeLock,
+  checkNodeVersion,
   checkPiBinary,
   checkRepo,
   checkStateDir,
@@ -45,6 +46,25 @@ function readyRepo(): string {
   writeConfig(root, {});
   return root;
 }
+
+test("checkNodeVersion reports this runtime as ok and warns below the declared floor", () => {
+  const current = checkNodeVersion();
+  assert.equal(current.level, "ok");
+  assert.equal(current.detail, `v${process.versions.node}`);
+
+  const old = checkNodeVersion("18.20.4");
+  assert.equal(old.level, "warn");
+  assert.match(old.detail, /v18\.20\.4 is below the v20 minimum/);
+  assert.match(old.detail, /upgrade Node/);
+
+  const atFloor = checkNodeVersion("20.0.0");
+  assert.equal(atFloor.level, "ok");
+
+  // An unparseable version string is a warning, never a thrown failure.
+  const odd = checkNodeVersion("not-a-version");
+  assert.equal(odd.level, "warn");
+  assert.match(odd.detail, /unrecognized Node version/);
+});
 
 test("checkGitBinary resolves git from the given PATH and fails with the shared message when absent", () => {
   const ok = checkGitBinary(process.env.PATH ?? "");
@@ -198,9 +218,15 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["git binary", "repo", "init", "pi binary", "state dir", "merge lock", "build check", "build"],
+    ["node", "git binary", "repo", "init", "pi binary", "state dir", "merge lock", "build check", "build"],
   );
-  for (const c of report.checks) assert.equal(c.level, "ok", `${c.name}: ${c.detail}`);
+  // The node check reflects the runtime running the suite, which is at or above the declared
+  // floor in practice; assert it is never a failure rather than pinning CI's Node version.
+  for (const c of report.checks)
+    if (c.name !== "node") assert.equal(c.level, "ok", `${c.name}: ${c.detail}`);
+  const nodeCheck = report.checks.find((c) => c.name === "node");
+  assert.ok(nodeCheck, "the node check is part of the report");
+  assert.notEqual(nodeCheck.level, "fail");
   assert.equal(report.verdict, "ready to run");
 
   // Read-only guarantee: a full doctor run changes nothing under .tumwater/.

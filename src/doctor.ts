@@ -37,6 +37,28 @@ interface DoctorReport {
   verdict: string;
 }
 
+/** The Node.js major version this harness supports — the floor declared in package.json's
+ * `engines` (">=20"). The build targets ES2023 and the code deliberately stays off Node
+ * 20.12-only APIs (files.ts), so an older runtime may still work, but it is outside what the
+ * project declares and tests. */
+const MIN_NODE_MAJOR = 20;
+
+/** Node runtime — warn when this process runs below the declared floor. Takes the version
+ * string (defaulting to process.versions.node) so the below-floor branch is unit-testable
+ * without swapping the runtime. A warning, not a failure: doctor reports the mismatch so the
+ * operator can decide, and a runtime that usually still works does not block a scripted
+ * pre-flight. */
+export function checkNodeVersion(version: string = process.versions.node): CheckOutcome {
+  const major = Number.parseInt(version, 10);
+  if (!Number.isInteger(major) || major <= 0)
+    return { level: "warn", detail: `unrecognized Node version ${JSON.stringify(version)}` };
+  if (major >= MIN_NODE_MAJOR) return { level: "ok", detail: `v${version}` };
+  return {
+    level: "warn",
+    detail: `v${version} is below the v${MIN_NODE_MAJOR} minimum declared in package.json engines — upgrade Node`,
+  };
+}
+
 /** git binary — fail with the shared GIT_MISSING_MESSAGE so every entry point reports the
  * same fix for a machine without git installed. Takes an explicit PATH so tests can exercise
  * the missing branch by passing "" (no PATH mutation, no spawning). */
@@ -179,6 +201,7 @@ export async function runDoctor(root: string, pathEnv: string = process.env.PATH
       ? `tumwater doctor — harness running (pid ${info.pid}${info.build ? `, build ${shortSha(info.build.sha)}${info.build.stale ? " — STALE" : ""}${info.build.restartBlocked ? " (restart blocked)" : ""}` : ""})`
       : "tumwater doctor — harness not running";
   const checks: DoctorReport["checks"] = [
+    { name: "node", ...checkNodeVersion() },
     { name: "git binary", ...checkGitBinary(pathEnv) },
     { name: "repo", ...(await checkRepo(root)) },
     { name: "init", ...checkInit(root) },
