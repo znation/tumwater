@@ -15,7 +15,7 @@ import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { logEvent, readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, readOrchestratorInfo, saveLoopState, todayStamp, clearBackoff } from "../src/state.js";
-import { abortRequestPath, branchName, landingRefName, landingStatePath, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
+import { abortRequestPath, branchName, landQueueDir, landingRefName, landingStatePath, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
@@ -853,6 +853,65 @@ test("an entry whose sha main already holds is dropped at the drain without a la
       readEvents(repo).filter((e) => e.type === "land_failed").length,
       0,
       "the dedup drop logs no failure",
+    );
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a torn queue-head file is dropped at the drain so the queue drains", async () => {
+  // Seeds exactly what a hard crash mid-enqueueLanding leaves behind: a truncated queue
+  // file that sorts before a live entry. headLanding reads null for the torn head and
+  // nothing else drops it, so before the fix the live entry behind it never landed and
+  // its role's interlock (a non-empty landingFor) held the role's ticks forever.
+  const repo = makeRepo();
+  await initProject(repo, "torn head drain e2e test");
+  saveConfig(repo, fastConfig(["clean"]));
+  // The review run approves; the role's own ticks never start — the interlock holds from
+  // the first poll, because the entry is queued before the orchestrator starts.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  // One real commit ahead of main (a child of main's head, full tree plus one file),
+  // pinned and queued — the same construction the restart-drain test uses.
+  const gitIn = (args: string[], input: string) =>
+    execFileSync("git", args, { cwd: repo, encoding: "utf8", input }).trim();
+  const blob = gitIn(["hash-object", "-w", "--stdin"], "torn survivor\n");
+  const parentTree = sh(repo, "git", "ls-tree", "HEAD");
+  const tree = gitIn(["mktree"], `${parentTree}\n100644 blob ${blob}\ttorn.txt\n`);
+  const sha = gitIn(
+    ["commit-tree", tree, "-p", sh(repo, "git", "rev-parse", "HEAD"), "-m", "tumwater(feature): torn survivor"],
+    "",
+  );
+  sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
+  sh(repo, "git", "update-ref", landingRefName("clean"), sha);
+  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "torn survivor", enqueuedAt: Date.now() });
+  // The torn file sorts BEFORE the live entry: an interrupted write of the same shape.
+  fs.writeFileSync(path.join(landQueueDir(repo), "0000000000-000000-1.json"), '{"role": "clean", "sha": "abc');
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => queueDepth(repo) === 0 && fs.existsSync(path.join(repo, "torn.txt")),
+      "the live entry to drain behind the torn head",
+    );
+    assert.equal(
+      readEvents(repo).filter((e) => e.type === "landed").length,
+      1,
+      "the live change landed through the gate",
+    );
+    assert.equal(
+      readEvents(repo).filter((e) => e.type === "land_failed").length,
+      0,
+      "no failed landing",
+    );
+    assert.equal(
+      readEvents(repo).filter((e) => e.type === "warning" && /land queue/.test(String(e.message))).length,
+      1,
+      "one harness warning for the torn head drop",
     );
   } finally {
     restore();

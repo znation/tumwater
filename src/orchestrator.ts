@@ -22,7 +22,7 @@ import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
 import { landChange } from "./lander.js";
-import { dropLanding, headLanding, landingFor } from "./land-queue.js";
+import { dropLanding, headLanding, landingFor, staleHeadFile } from "./land-queue.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
@@ -522,7 +522,25 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // idiom); a crash mid-review leaves both entry and ref, so the drain re-runs landChange —
       // re-reviews — the established crash semantics.
       if (!holdForRestart && landingInFlight === null) {
-        const head = headLanding(root);
+        let head = headLanding(root);
+        if (!head) {
+          // A torn head (a hard crash mid enqueueLanding write, or a foreign file) makes
+          // headLanding read null forever — nothing else drops it, stranding every live entry
+          // behind it and pinning their authors' ticks via the interlock. Drop it with one
+          // warning; a healthy head surfacing behind it drains in the same poll. The crashed
+          // entry's commit, if any, still rides its landing ref into next-tick leftover
+          // recovery (BUGS.md 2026-09-17).
+          const stale = staleHeadFile(root);
+          if (stale) {
+            dropLanding(root, stale);
+            logEvent(root, {
+              loop: "harness",
+              type: "warning",
+              message: `land queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue can drain`,
+            });
+            head = headLanding(root);
+          }
+        }
         if (head) {
           if (await isMergedInto(root, head.entry.sha, mainBranch)) {
             dropLanding(root, head.file);

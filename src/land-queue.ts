@@ -87,6 +87,20 @@ export function headLanding(root: string): { entry: LandingEntry; file: string }
   return entry ? { entry, file } : null;
 }
 
+/** The oldest queue file when the queue is non-empty but its head is unreadable — torn (a
+ * hard crash mid enqueueLanding write) or foreign — i.e. when headLanding reads null while
+ * the queue holds files; null when the queue is empty or its head is healthy. The drain
+ * drops this file with a warning so the queue can drain: headLanding reads null for it
+ * forever and nothing else will remove it, stranding every live entry behind it (each
+ * author's interlock, landingFor, pins its ticks along with them). The crashed entry's
+ * commit, if any, still lives in its landing ref — next-tick leftover recovery re-lands
+ * it — so the drop loses nothing recoverable from the file (BUGS.md 2026-09-16). */
+export function staleHeadFile(root: string): string | null {
+  const file = queueFiles(root)[0];
+  if (!file) return null;
+  return readEntry(file) === null ? file : null;
+}
+
 /** Every queued entry owned by `role` — queued AND in-flight, since the entry stays in the
  * queue until its landing completes and drops it. The orchestrator's interlock skips a tick
  * whenever this is non-empty: that is what keeps `state.lastReview`'s rejection reasons ahead

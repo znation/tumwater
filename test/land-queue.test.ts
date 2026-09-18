@@ -14,6 +14,7 @@ import {
   landingFor,
   queueDepth,
   queuedLandings,
+  staleHeadFile,
 } from "../src/land-queue.js";
 import { landQueueDir } from "../src/paths.js";
 import type { LandingEntry } from "../src/types.js";
@@ -85,7 +86,9 @@ test("a torn or foreign file is skipped, never thrown on", () => {
   assert.equal(entries.length, 1, "unparseable files never surface");
   assert.equal(entries[0]!.role, "improve");
   // The torn file at the head holds the slot (the inbox.ts idiom): the head reads null, not
-  // an error, until it is cleared — then the real entry surfaces.
+  // an error, until it is cleared — the orchestrator's drain does that clearing (one warning
+  // per torn file), which lands the real entry (pinned in the orchestrator's drain e2e);
+  // here the test clears it by hand. Then the real entry surfaces.
   assert.equal(headLanding(repo), null, "a torn head holds the slot without throwing");
   fs.rmSync(path.join(dir, "0000000000-000000-1.json"));
   const head = headLanding(repo);
@@ -93,6 +96,21 @@ test("a torn or foreign file is skipped, never thrown on", () => {
   assert.equal(head.entry.role, "improve");
   dropLanding(repo, head.file);
   assert.equal(headLanding(repo), null, "only torn files left: an empty head, not an error");
+});
+
+test("staleHeadFile names the unreadable head for the drain to drop, null otherwise", () => {
+  const repo = makeRepo();
+  assert.equal(staleHeadFile(repo), null, "an empty queue has no stale head");
+  enqueueLanding(repo, entry("improve", "a".repeat(40)));
+  assert.equal(staleHeadFile(repo), null, "a healthy head is not stale");
+  // A torn file that sorts BEFORE the real entry (an interrupted write of the same shape):
+  // the drain's repair target is its path, so it can drop it and move on.
+  const dir = landQueueDir(repo);
+  const torn = path.join(dir, "0000000000-000000-1.json");
+  fs.writeFileSync(torn, '{"role": "improve", "sha": "');
+  assert.equal(staleHeadFile(repo), torn, "the torn head is named");
+  fs.rmSync(torn);
+  assert.equal(staleHeadFile(repo), null, "healthy again once the tear is cleared");
 });
 
 test("the stat-keyed cache serves repeated reads and re-reads a changed file", () => {
