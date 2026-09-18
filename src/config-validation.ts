@@ -63,9 +63,10 @@ const ROLE_ENTRY_KEYS = [
   "minTickIntervalSeconds",
 ];
 const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking"];
-/** The fallback model's keys (plans/fallback-model.md): the same provider/model/thinking
- * triple every other model-override section uses, so one mental model covers them all. */
-const FALLBACK_MODEL_KEYS = ["provider", "model", "thinking"];
+/** The provider/model/thinking triple every model-override section shares — top level,
+ * `review`, `fallbackModel` (plans/fallback-model.md), and each `roles.<id>` entry — so one
+ * mental model and one validator cover them all. */
+const MODEL_TRIPLE_KEYS = ["provider", "model", "thinking"];
 const CUSTOM_LOOP_KEYS = ["name", "task"];
 /** A custom loop's name becomes a worktree dir and a git ref, so it is validated strictly:
  * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */
@@ -119,6 +120,14 @@ export function validateConfig(raw: unknown): void {
       problems.push(`${prefix}${key} must not be empty (got ${show(v)})`);
   };
 
+  // Every model-override section validates the same provider/model/thinking triple the same
+  // way: empty strings are rejected because pi.ts skips them when building flags and
+  // fallbackPair drops an empty fallbackModel field, so an empty value would be silently
+  // ignored rather than honored.
+  const checkModelTriple = (obj: Record<string, unknown>, prefix: string): void => {
+    for (const key of MODEL_TRIPLE_KEYS) checkString(obj, prefix, key, false);
+  };
+
   const checkNumber = (
     obj: Record<string, unknown>,
     prefix: string,
@@ -134,7 +143,7 @@ export function validateConfig(raw: unknown): void {
 
   const r = raw; // Narrowed to an object by isPlainObject above.
   checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
-  for (const key of ["provider", "model", "thinking"]) checkString(r, "", key, false);
+  checkModelTriple(r, "");
   if ("piArgs" in r) {
     const v = r.piArgs;
     if (!Array.isArray(v) || !v.every((a) => typeof a === "string"))
@@ -182,7 +191,7 @@ export function validateConfig(raw: unknown): void {
         if (!Array.isArray(v) || !v.every((p) => typeof p === "string"))
           problems.push(`review.exemptPaths must be an array of strings (got ${show(v)})`);
       }
-      for (const key of ["provider", "model", "thinking"]) checkString(o, "review.", key, false);
+      checkModelTriple(o, "review.");
     }
   }
 
@@ -195,8 +204,8 @@ export function validateConfig(raw: unknown): void {
     if (!isPlainObject(fb)) {
       problems.push(`fallbackModel must be an object (got ${show(fb)})`);
     } else {
-      checkKnownKeys(fb, FALLBACK_MODEL_KEYS, "fallbackModel", problems);
-      for (const key of FALLBACK_MODEL_KEYS) checkString(fb, "fallbackModel.", key, false);
+      checkKnownKeys(fb, MODEL_TRIPLE_KEYS, "fallbackModel", problems);
+      checkModelTriple(fb, "fallbackModel.");
       if (!("provider" in fb) && !("model" in fb))
         problems.push(`fallbackModel must name a provider or a model (got ${show(fb)})`);
     }
@@ -270,7 +279,7 @@ export function validateConfig(raw: unknown): void {
         const o = rc;
         checkKnownKeys(o, ROLE_ENTRY_KEYS, `roles.${id}`, problems);
         checkString(o, `roles.${id}.`, "instructions"); // Empty is a deliberate "no extra instructions".
-        for (const key of ["provider", "model", "thinking"]) checkString(o, `roles.${id}.`, key, false);
+        checkModelTriple(o, `roles.${id}.`);
         if ("enabled" in o && typeof o.enabled !== "boolean")
           problems.push(`roles.${id}.enabled must be true or false (got ${show(o.enabled)})`);
         checkNumber(
