@@ -105,17 +105,25 @@ on compression, which is the same deliberate lossiness the existing compression 
 ## Shape
 
 - `src/roles.ts`
-  - a `VALIDATION_GAP_TAGS` constant and a shared `VALIDATION_GAP_GUIDANCE` fragment (the same
-    define-once pattern as `DECOMPOSITION_GUIDANCE` and `PLAN_SIZING`, which two role texts
-    already embed).
-  - `bugfix.find` — the Fixed-entry instruction gains the required line.
-  - `steward.find` — the BUGS.md compression rule gains the `gap:` suffix clause, and the
-    curation-move list gains gap promotion.
-- `src/init.ts` — `BUGS_TEMPLATE`'s guidance line mentions the field, so a fresh project starts
-  with the convention rather than acquiring it.
-- `test/roles.test.ts` — assert both role texts embed the shared constant, and that every tag in
-  the vocabulary appears in the guidance.
-- README — one sentence in the how-it-works description of the bugfix/steward pair.
+  - an exported `VALIDATION_GAP_TAGS` (readonly array of the seven tag strings) and a shared
+    `VALIDATION_GAP_GUIDANCE` fragment rendering each tag with its meaning (the same define-once
+    pattern as `DECOMPOSITION_GUIDANCE` and `PLAN_SIZING`, which two role texts already embed).
+  - `bugfix.find` — the Fixed-entry instruction (line 79) gains the required
+    `**Validation gap:** <tag> — <one sentence>` line via the shared constant.
+  - `steward.find` — the BUGS.md compression rule (the one-line form at line 244, the no-commit
+    clause at line 254) gains the `gap:` suffix clause, and the curation-move list (lines
+    213–216) gains gap promotion.
+- `src/init.ts` — `BUGS_TEMPLATE`'s guidance line (line 26) mentions the field, so a fresh
+  project starts with the convention rather than acquiring it.
+- `test/prompt.test.ts` — assert the `bugfix` prompt embeds the shared constant and names the
+  line, that every tag in the vocabulary appears in the guidance, and that the steward's Fixed
+  form carries the suffix; update the line-711 one-line-form assertion. (test/roles.test.ts pins
+  catalog shape only.)
+- `test/init.test.ts` — one assertion over the seeded BUGS.md, so the template mention cannot
+  silently drop.
+
+The README status Open item is maintained by the `readme` loop after this lands, not by the
+feature loop.
 
 No source behavior changes: this is prompt and template work, plus the tests that pin it. That is
 what makes it one run.
@@ -141,3 +149,70 @@ bug in that area cheaper to confirm.
   modules named in `no-fake` / `no-repro` traces, but that should wait until there are enough
   traces to point at anything. Recording first, consuming second.
 - **A `gap:` tally on the dashboards.** A grep is enough until it is not.
+
+## Refined 2026-09-18 (plan loop) — first audit, against main `9758e04`
+
+The entry was written 2026-09-17 and had never been audited; this is its first. Every
+load-bearing claim verified on this tree, with the corrections below pinned in place. Capability
+absence re-confirmed: no `Validation gap`, `VALIDATION_GAP`, or `gap:` string exists anywhere in
+src/ or test/ (`grep -rn 'Validation gap\|VALIDATION_GAP\|gap: ' src/ test/` is empty).
+
+**Verified as written.** src/roles.ts is 326 lines and import-free. `DECOMPOSITION_GUIDANCE`
+(line 17) and `PLAN_SIZING` (line 26) are exported template literals, and the two role texts embed
+them by interpolation — the define-once pattern this plan copies: `bugfix.find` (role at line 75)
+embeds `${DECOMPOSITION_GUIDANCE}` at line 81, and `plan.find` embeds `${PLAN_SIZING}` /
+`${DECOMPOSITION_GUIDANCE}` at lines 100–101. The `bugfix.find` Fixed sentence is at line 79
+("… and update BUGS.md to mark it fixed (move it to a Fixed section with the date)."), and the
+`steward` role (line 207) carries the BUGS.md Fixed compression paragraph at lines 242–259, whose
+exact one-line form is at line 244 and whose no-commit clause is at line 254. src/init.ts's
+`BUGS_TEMPLATE` (line 23) has its guidance line at line 26, and no test pins its content.
+`highFriction` exists as the problem statement says (src/loop.ts:693, stamped by
+commit-message.ts:84) and attaches to the commit, not the bug.
+
+**Corrections (pinned in place).**
+
+1. **The new tests belong in test/prompt.test.ts, not test/roles.test.ts.** test/roles.test.ts's
+   own comment states the split: "prompt.test.ts pins each role's find-text content; these tests
+   pin the catalog's shape." Every existing shared-guidance test already lives there — the
+   `DECOMPOSITION_GUIDANCE`/`PLAN_SIZING` content at test/prompt.test.ts:319–349, the steward's
+   Fixed-curation contract at 686–760. Pinned: the new assertions go in test/prompt.test.ts
+   (`bugfix` prompt includes `VALIDATION_GAP_GUIDANCE` and names the `**Validation gap:**` line;
+   every tag in `VALIDATION_GAP_TAGS` appears in the guidance; the steward's Fixed one-line form
+   carries the `gap:` suffix and the `none` omission). test/roles.test.ts is not touched.
+2. **The constants are exported and the tag list is one source of truth.** Pinned:
+   `export const VALIDATION_GAP_TAGS` (a `readonly` array of the seven tag strings) and
+   `export const VALIDATION_GAP_GUIDANCE` (a template literal rendering each tag with its
+   meaning), both from src/roles.ts — the same export shape as `DECOMPOSITION_GUIDANCE`. The
+   guidance hardcodes the table and a test asserts every `VALIDATION_GAP_TAGS` entry appears in
+   it, which is the existing constant-vs-copy guard.
+3. **The steward's exact one-line form changes, and an existing test pins the old one.**
+   test/prompt.test.ts:711 asserts the current form verbatim
+   (`` `- <symptom headline> (<the heading's own date clause>; commit <sha>)` ``), and line 751
+   pins the no-commit clause. Pinned: the form becomes
+   `` `- <symptom headline> (<the heading's own date clause>; commit <sha>; gap: <tag>)` ``, with
+   the `gap:` suffix omitted when the tag is `none` (so the common case stays byte-identical to
+   today) and the no-commit variant reading
+   `- <symptom headline> (<date clause>; gap: <tag>)` (and plain `(<date clause>)` when both are
+   absent). The line-711 assertion is updated in place and a sibling asserts the suffix rule.
+4. **The steward's move list gains the promotion as a fifth move.** The first paragraph's move
+   list (src/roles.ts:213–216) currently names four moves (prune plans, flag drift, tighten a
+   principle, record a structural risk). Pinned: one clause is appended for "promote a recurring
+   non-`none` gap tag (three or more retained Fixed entries) into a PLANS.md entry for the
+   infrastructure that would retire it", and the Fixed paragraph (after the no-commit sentence at
+   line 254) carries the suffix rule. The plan's existing "one curation move per tick still
+   holds" sentence already covers the fifth move.
+5. **The template mention is testable and needs one init assertion.** Pinned: src/init.ts:26's
+   guidance line adds the `**Validation gap:** <tag> — <one sentence>` field, and
+   test/init.test.ts gains one string assertion over the seeded BUGS.md (mirroring the existing
+   seeded-PRINCIPLES test at test/init.test.ts:32) so the convention cannot silently drop.
+6. **README is not the feature loop's file.** The plan named "one sentence in the how-it-works
+   description of the bugfix/steward pair", but no such paragraph exists — role charters live in
+   prompts, and the README status Open item (lines 75–76) is maintained by the `readme` loop,
+   which syncs the Status section after every landing. Pinned: README is dropped from Files
+   touched; the `readme` loop updates the status entry after this lands, as it does for every
+   planned feature.
+
+**Sizing.** Unchanged and still one run: src/roles.ts ~35 lines (two exported constants, one
+fragment embedded in two places, one move-list clause), src/init.ts ~2, test/prompt.test.ts ~40
+(three assertions plus the one updated form), test/init.test.ts ~5. No source behavior changes, no
+new state, no new file. No design question remains open.

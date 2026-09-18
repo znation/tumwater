@@ -106,9 +106,23 @@ Sizing: failure-report.ts ~200 lines (collect, render, normalization), report.ts
 
 **Design (decided).** A closed vocabulary — `none`, `no-repro`, `no-fake`, `real-run-needed`, `no-observability`, `slow-check`, `unclear-invariant` — plus free text after the em dash. The tag makes a hundred entries countable (`grep -o 'gap: [a-z-]*' BUGS.md | sort | uniq -c` is the whole query surface); the sentence makes one entry actionable. `none` is mandatory rather than an omitted line, so the denominator stays honest. `bugfix` only records; the steward promotes, as one more move in its existing curation list. Compression keeps the suffix — otherwise a tag has a ten-entry shelf life, shorter than the interval over which a pattern becomes visible — and omits it entirely when the tag is `none`.
 
-**Files touched.** `src/roles.ts` (a `VALIDATION_GAP_TAGS` constant and shared guidance fragment, the same define-once pattern as `DECOMPOSITION_GUIDANCE`/`PLAN_SIZING`; `bugfix.find` and `steward.find` embed it), `src/init.ts` (`BUGS_TEMPLATE`), README, `test/roles.test.ts`. No source behavior changes — prompt and template work plus the tests that pin it, which is what makes it one run.
+**Files touched.** `src/roles.ts` (exported `VALIDATION_GAP_TAGS` + `VALIDATION_GAP_GUIDANCE`, the same define-once pattern as `DECOMPOSITION_GUIDANCE`/`PLAN_SIZING`; `bugfix.find` and `steward.find` embed it), `src/init.ts` (`BUGS_TEMPLATE`), `test/prompt.test.ts` (the role find-text contract tests; test/roles.test.ts pins catalog shape only), `test/init.test.ts` (one seeded-template assertion). No source behavior changes — prompt and template work plus the tests that pin it, which is what makes it one run.
 
 **Acceptance criteria.** Both role texts embed the shared constant rather than restating the vocabulary; every tag in `VALIDATION_GAP_TAGS` appears in the guidance text; the steward's compression rule states the `gap:` suffix and its `none` omission; `BUGS_TEMPLATE` mentions the field so a fresh project starts with the convention; the full suite stays green.
+
+**Refined 2026-09-18 (plan loop) — first audit, against main `9758e04` (build clean, suite 1058/1058; the entry was created 2026-09-17 and had never been audited). Every anchor verified on this tree; six implementation questions the write left open are pinned in plans/repair-traces.md, and the files bullet is corrected in place. Landable now — no dependency.**
+
+Verified as written: src/roles.ts (326 lines, import-free) exports `DECOMPOSITION_GUIDANCE` (line 17) and `PLAN_SIZING` (line 26), embedded verbatim by interpolation in the role texts — the define-once pattern this entry copies; `bugfix.find`'s Fixed sentence is at line 79 and the `steward` role's Fixed compression paragraph (exact one-line form at line 244, no-commit clause at line 254) at lines 242–259; `highFriction` exists (src/loop.ts:693) and attaches to the commit, not the bug, as the problem statement says. Capability absence re-confirmed: `grep -rn 'Validation gap\|VALIDATION_GAP\|gap: ' src/ test/` is empty.
+
+Corrections (pinned in plans/repair-traces.md):
+1. **Tests go in test/prompt.test.ts, not test/roles.test.ts.** That split is explicit in roles.test.ts's own comment, and every shared-guidance test already lives in prompt.test.ts (lines 319–349 for `DECOMPOSITION_GUIDANCE`/`PLAN_SIZING`, 686–760 for the steward's Fixed contract).
+2. **The constants are exported and the tag list is one source of truth.** `VALIDATION_GAP_TAGS` (readonly array) + `VALIDATION_GAP_GUIDANCE` (renders each tag with its meaning), both exported from src/roles.ts; a test asserts every tag appears in the guidance — the existing constant-vs-copy guard.
+3. **An existing test pins the old one-line form.** test/prompt.test.ts:711 asserts `` `- <symptom headline> (<the heading's own date clause>; commit <sha>)` `` verbatim; the new form adds `; gap: <tag>`, omits the suffix when the tag is `none`, and has a pinned no-commit variant — the line-711 assertion is updated.
+4. **The steward's four-move list gains the promotion clause** (src/roles.ts:213–216), with the suffix rule added after the no-commit sentence at line 254.
+5. **The template mention gains one init assertion** (test/init.test.ts, mirroring its seeded-PRINCIPLES test) so the convention cannot silently drop.
+6. **README is dropped from Files touched** — no bugfix/steward charter paragraph exists, and the `readme` loop maintains the Status Open item after landing.
+
+Sizing unchanged: src/roles.ts ~35 lines, src/init.ts ~2, test/prompt.test.ts ~40, test/init.test.ts ~5. No design question remains open.
 
 ## Done
 
