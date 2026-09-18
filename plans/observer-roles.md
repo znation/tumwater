@@ -4,7 +4,9 @@ Planned 2026-09-17, requested by the user, after
 https://blog.detail.dev/posts/towards-self-driving-codebases/ (the blind spots an agent cannot
 see are where the bugs live, so the roles that look into them are the ones that most deserve
 budget). Shared architecture for the two `Observer roles N/2` entries in PLANS.md; each is
-independently landable and cross-references this document.
+independently landable and cross-references this document. Refined 2026-09-18 (plan loop): the
+deferral latch this series was ordered behind is fixed (`704139c`), so 1/2 is landable now — see
+the refined note at the end.
 
 ## The problem
 
@@ -97,16 +99,22 @@ a large diff to express a property of the *role*, not of the tick. The role-set 
 one predicate next to the two existing ones (`DEFERRABLE_ROLES`, `BASELINE_BLOCKED_ROLES`) that
 already carve roles by charter, and reads the same way.
 
-### Relationship to the deferral latch
+### Relationship to the deferral latch — resolved, this plan is landable now
 
-The latch is a live defect with its own BUGS.md entry and its own fix (the minimal one: a
-deferral must not be able to preserve the very `lastResult` that causes it — e.g. a bounded
-deferral count per role, after which the role ticks regardless, or making `workBacklogOpen`
-insufficient on its own). **This plan is not that fix and must not be merged as a substitute for
-it.** Removing three roles from `DEFERRABLE_ROLES` would rescue `qa` while leaving `perf` and
-`clean` dead, and would leave the trap armed for every role still in the set. The ordering is:
-fix the latch first, then land this. Both are needed — the latch is why observers are at zero
-today, and this plan is why they would still be under-scheduled once it is fixed.
+The latch was a live defect with its own BUGS.md entry; it is **fixed** (bugfix tick `704139c`,
+2026-09-18: `DEFER_MAX_MS = 3 h` and `deferralExpired(s, now)` in `src/scheduling.ts` force a due
+tick to run once it has been deferred past the cap, so a deferred role ticks at least once per
+window and `lastResult` can no longer freeze its own precondition). The ordering this section
+used to impose — fix the latch first — is therefore satisfied; the two were never substitutes and
+both were needed. `perf`, `clean` and the rest of `DEFERRABLE_ROLES` are alive again under the
+cap, which is what makes removing `qa` from the set a safe, independent change rather than a
+rescue of one role at the others' cost.
+
+The cap is a liveness floor, not the cadence this plan wants. With it, a deferrable role still
+climbs the idle ladder toward the 10 h cap on `no_change` and is merely forced to run every 3 h:
+`qa` would tick roughly 8×/day, not the ~12×/day its 2 h interval expresses, and its sleep after
+a passing check would still grow monotonically until the cap intervened. This plan is what makes
+`minTickIntervalSeconds` the honest cadence for a role whose `no_change` is a success.
 
 ## Invariants
 
@@ -131,12 +139,16 @@ today, and this plan is why they would still be under-scheduled once it is fixed
 
 ## Shape
 
-- `src/roles.ts` — `OBSERVER_ROLES`; `qa` removed from `DEFERRABLE_ROLES`; the `qa` find text
-  gains the `FLOW:` contract line (2/2).
+- `src/roles.ts` — `OBSERVER_ROLES` (exported); `qa` removed from `DEFERRABLE_ROLES` and the
+  set's doc comment updated (it currently says "exactly the nine deferrable built-ins"); the `qa`
+  find text gains the `FLOW:` contract line (2/2).
 - `src/state.ts` — `applyTickOutcome` takes the observer predicate into account in its final
-  `else`: observers schedule at `minTickIntervalSeconds` and leave `backoffSeconds` at 0.
+  `else`: observers schedule at `minTickIntervalSeconds` and leave `backoffSeconds` at 0. The
+  `user_aborted` arm (a deliberate operator stop, not a passing check) keeps its idle backoff for
+  every role — the predicate is scoped to the final `else` only.
 - `src/scheduling.ts` — no change needed beyond `DEFERRABLE_ROLES` shrinking, which `deferTick`
-  already reads. Worth an explicit test that `deferTick` returns false for every observer.
+  already reads. Note `deferTick` now takes a fifth argument, `now: number` (`704139c`), so the
+  new "returns false for every observer" tests must pass it.
 - `src/reply-contract.ts` — `extractFlow(text)`, built on the existing `labeledLine` helper that
   already serves `SUMMARY`/`WHY`/`RISK`/`VERIFIED` and `TUMWATER_REFUSED` (2/2).
 - `src/qa-coverage.ts` (new) — read/write `.tumwater/state/qa-coverage.json`:
@@ -193,3 +205,60 @@ because the role has not been given the chance to be wrong.
   needs no coverage memory of its own.
 - **Changing the qa flow list itself.** What `qa` exercises is a separate question from how often
   it gets to.
+
+## Refined 2026-09-18 (plan loop)
+
+Audited against main `bb8dc26` (the README's stamp is one merge behind at `c53dba4`; the two
+landings since are `704139c` — the deferral-latch fix this series was ordered behind — and
+`bb8dc26`, the red-main-latch fix, neither of which touches 2/2's anchors). No audit had run since
+`9d679ad` wrote this document on 2026-09-17, and the latch fix landed in between. The capability is
+confirmed absent: `grep -rn OBSERVER src/ test/` is empty, and `qa` is still in
+`DEFERRABLE_ROLES`.
+
+Verified on this tree:
+
+- `src/roles.ts` — `DEFERRABLE_ROLES` at line 272 (`qa` at 279), the doc comment above it reading
+  "exactly the nine deferrable built-ins"; `WORK_ROLES` at 268; `BASELINE_BLOCKED_ROLES` at 300
+  (does not contain `qa`); the `qa` role at 185, whose find text already tells the model to
+  "prefer a flow not recently exercised, as far as BUGS.md filings and Verified notes show" —
+  exactly the blind lookup 2/2 replaces.
+- `src/state.ts` — `applyTickOutcome` at 185; its final `else` (the idle branch) at 268–270 is
+  `nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff)` then `nextRunAt = now + backoff`, which
+  is what observers must bypass. `state.ts` already imports from `roles.js` (`DIRECTOR_ROLE`, line
+  4), so `OBSERVER_ROLES` joins that import with no new edge and no cycle.
+- `src/scheduling.ts` — `deferTick` at 121 now takes a fifth argument, `now: number` (`704139c`),
+  and ANDs `!deferralExpired(s, now)`; `DEFER_MAX_MS` (98) and `deferralExpired` (105) are the
+  latch fix. The single production caller is `src/orchestrator.ts:684`. No change is needed here
+  beyond `DEFERRABLE_ROLES` shrinking, as the Shape bullet says — but every new `deferTick` test
+  must pass `now`.
+- `src/config.ts` — `roles.qa = { enabled: true, minTickIntervalSeconds: 7200 }` at line 21, so
+  the plan's ~12-checks/day premise holds.
+- Tests — `deferTick`'s unit tests live in `test/orchestrator.test.ts` (222, 246, and the new
+  `DEFER_MAX_MS` regression at 269), **not** in a `test/scheduling.test.ts` — that file does not
+  exist. `applyTickOutcome`'s tests are in `test/state.test.ts` (332 onward); the baseline-exempt
+  assertion is `test/roles.test.ts` 46–48. Files touched is corrected in PLANS.md accordingly.
+
+Corrections:
+1. **The ordering gate is satisfied; the section above now records the latch as fixed.** The old
+   text told the implementer to land the latch first, which reads as a blocker on a fix that
+   already landed. Rewritten to record `704139c` and to state what this plan still adds on top of
+   it: the cap forces a run every 3 h but leaves the idle ladder and the deferral episode intact,
+   so `minTickIntervalSeconds` is still not the honest cadence for an observer.
+2. **The test file was wrong.** `test/scheduling.test.ts` does not exist; the `deferTick` cases
+   belong in `test/orchestrator.test.ts` beside the existing ones. The acceptance criterion's
+   "returns false for every observer under every input" becomes one more case in the existing
+   loops there (which already assert non-deferral for `feature`/`bugfix`/`plan`/`director`/custom)
+   plus `qa`, passing `now`.
+3. **`deferTick`'s signature gained `now` (`704139c`).** Pinned so the new tests pass it; the
+   plan's scheduling shape is otherwise unchanged.
+4. **The `DEFERRABLE_ROLES` doc comment must move with the set.** It says "exactly the nine
+   deferrable built-ins" and lists the roles; removing `qa` makes it eight. One-line edit in
+   `src/roles.ts`.
+5. **The observer predicate is scoped to the final `else` only.** The `user_aborted` arm also
+   schedules on the idle ladder, but it is a deliberate operator stop rather than a passing
+   check; it is left unchanged for every role. This closes the only place a literal reading of
+   "observers do not climb the idle ladder" could over-reach.
+
+Sizing unchanged: `src/roles.ts` ~6 lines (the set, its comment, the export); `src/state.ts` ~4
+(the observer branch in the final `else`); tests ~25 across `test/state.test.ts` and
+`test/orchestrator.test.ts`. One run. No design question remains open.
