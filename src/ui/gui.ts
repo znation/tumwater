@@ -13,6 +13,7 @@ import { allRoleIds } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "./report.js";
 import { statusPayload } from "./status-payload.js";
 import { readTranscript } from "./transcript.js";
+import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reload.js";
 import { errorMessage, parseNonNegativeInt, parsePositiveInt } from "../text.js";
 
 /** Send a JSON response with the given status code and body. Every /api endpoint answers
@@ -231,6 +232,9 @@ function requestPathname(req: http.IncomingMessage): string | null {
  * available to the whole network. There is no authentication; exposing it is the caller's
  * deliberate choice. Resolves once it is listening. */
 export function startGui(root: string, port: number, allInterfaces = false): Promise<http.Server> {
+  // The serving process's own startup stamp: added to every /api/status payload so the page can
+  // notice a newer server (a redeploy or manual build re-execs this process) and reload itself.
+  const startupBuild = captureStartupBuild();
   const server = http.createServer(async (req, res) => {
     try {
       const pathname = requestPathname(req);
@@ -238,7 +242,7 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(GUI_PAGE);
       } else if (req.method === "GET" && pathname === "/api/status") {
-        sendJson(res, 200, statusPayload(root));
+        sendJson(res, 200, { ...statusPayload(root), serverBuildSha: startupBuild?.sha ?? null });
       } else if (req.method === "GET" && pathname === "/api/report") {
         handleReport(req, res, root);
       } else if (req.method === "GET" && pathname === "/api/transcript") {
@@ -298,6 +302,18 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
       sendJson(res, 500, { error: errorMessage(err) });
     }
   });
+  // Reload onto a newer compiled tree: close the server, then re-exec. The page's own poll sees
+  // the new process's changed serverBuildSha and reloads; failed polls while the port is down
+  // are swallowed by its existing catch.
+  const reloadWatch = createReloadWatch({
+    root,
+    startupInfo: startupBuild,
+    onTrigger: () => {
+      server.close();
+      reexecSelf();
+    },
+  });
+  void reloadWatch.start();
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     if (allInterfaces) server.listen(port, () => resolve(server));

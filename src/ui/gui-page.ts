@@ -299,6 +299,9 @@ export const GUI_PAGE = `<!doctype html>
   // can fix it. lastStatus is the latest /api/status payload, kept so cancel can restore the
   // badge without waiting for the next poll.
   let lastStatus = null;
+  // The serving process's startup build sha, remembered from the first successful poll so a
+  // later change (a redeploy re-execs the server) reloads this page onto the new code.
+  let serverBuildSha = null;
   let budgetEditing = false;
   function renderBudgetBadge(d) {
     if (budgetEditing) return; // keep the editor until set/cancel decides
@@ -391,6 +394,16 @@ export const GUI_PAGE = `<!doctype html>
       const r = await fetch("/api/status");
       const d = await r.json();
       lastStatus = d;
+      // A newer serving build means this page is stale: reload before painting a frame. The
+      // first non-null sha is remembered; the failed-poll catch below never touches it, so it
+      // survives the gap while the old server closes and the new one binds the port.
+      if (d.serverBuildSha) {
+        if (serverBuildSha === null) serverBuildSha = d.serverBuildSha;
+        else if (d.serverBuildSha !== serverBuildSha) {
+          location.reload();
+          return;
+        }
+      }
       const qn = (d.questions || []).length;
       // The build badge arrives pre-formatted from the payload — status-render's buildBadge,
       // the same string the TUI/status header renders, so the two surfaces cannot drift.

@@ -1141,6 +1141,18 @@ test("the dashboard header takes its build badge pre-formatted from the payload"
   assert.doesNotMatch(GUI_PAGE, /restart BLOCKED/);
 });
 
+test("the dashboard page reloads itself when the serving build sha changes", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  // The serving process's own startup sha is remembered beside lastStatus (first non-null wins).
+  assert.match(GUI_PAGE, /let lastStatus = null;[\s\S]{0,200}let serverBuildSha = null;/);
+  // A later successful poll whose sha differs reloads before any render; the failed-poll catch
+  // never touches the variable, so it survives the gap while the server restarts.
+  assert.match(
+    GUI_PAGE,
+    /lastStatus = d;[\s\S]{0,500}d\.serverBuildSha !== serverBuildSha[\s\S]{0,60}location\.reload\(\)/,
+  );
+});
+
 // The operator pause on the GUI surface (PLANS.md, fleet-pause plan): /api/status — and
 // therefore `status --json`, same payload — carries `paused` while the marker exists, and a
 // paused fleet's idle role loops read `paused` in their phase payload ahead of budget paused.

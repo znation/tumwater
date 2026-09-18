@@ -14,6 +14,7 @@ import { snapshot } from "./status.js";
 import { clipToWidth, renderStatus } from "./status-render.js";
 import { cutSplitsSurrogatePair } from "../text.js";
 import { readTranscript } from "./transcript.js";
+import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reload.js";
 
 const CLEAR = "\x1b[2J\x1b[H";
 const DIM = "\x1b[2m";
@@ -199,6 +200,24 @@ export async function runTui(root: string): Promise<void> {
     throw new Error(tuiTerminalError(Boolean(process.stdin.isTTY), Boolean(process.stdout.isTTY)));
   }
 
+  // Auto-reload onto a newer compiled tree as soon as one lands on disk (redeploy's dist swap
+  // or a manual build). The watch's trigger takes the same teardown path Ctrl+C does, then
+  // re-execs after the terminal is restored. Arming it only after the TTY guard matters: a
+  // non-TTY start throws, and a process about to throw must not re-exec into the same error.
+  // It is armed in the background (not awaited) so the keypress handler still registers
+  // synchronously; `reloadRequested` closes the trigger-before-await race either way.
+  let reloadRequested = false;
+  let resolveMain: (() => void) | null = null;
+  const reloadWatch = createReloadWatch({
+    root,
+    startupInfo: captureStartupBuild(),
+    onTrigger: () => {
+      reloadRequested = true;
+      resolveMain?.();
+    },
+  });
+  void reloadWatch.start();
+
   let input = "";
   let cursor = 0;
   // Ctrl+B budget-edit mode on the prompt line: while set, the line edits the daily cost cap
@@ -372,6 +391,10 @@ export async function runTui(root: string): Promise<void> {
   render();
 
   await new Promise<void>((resolve) => {
+    resolveMain = resolve;
+    // The reload trigger may have fired between `start()` and this await; the executor
+    // resolves immediately in that case so both orderings reach the same teardown.
+    if (reloadRequested) resolve();
     process.stdin.on("keypress", (str: string | undefined, key: readline.Key) => {
       if (key.ctrl && key.name === "c") {
         resolve();
@@ -508,4 +531,6 @@ export async function runTui(root: string): Promise<void> {
   process.stdin.setRawMode(false);
   process.stdin.pause();
   process.stdout.write("\n");
+  reloadWatch.stop();
+  if (reloadRequested) reexecSelf();
 }
