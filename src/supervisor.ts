@@ -19,6 +19,9 @@ export const RESPAWN_WINDOW_MS = 60_000;
  * build that restarts itself in a tight loop must not spin forever unattended. */
 export const MAX_RAPID_RESPAWNS = 5;
 
+/** The exit of one supervised child generation: node's `child.on("exit")` pair, carried
+ * together to exitCodeOf and the respawn decision. `code` is the exit status and is null when
+ * the child died from a signal, which `signal` names (null on a normal exit). */
 export interface ChildExit {
   code: number | null;
   signal: NodeJS.Signals | null;
