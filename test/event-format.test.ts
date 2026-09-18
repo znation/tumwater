@@ -368,6 +368,36 @@ test("formatEvent renders tick_aborted plainly under the role's loop", () => {
   assert.ok(!line.includes("warning"), `a user-initiated abort is routine, not a warning: ${line}`);
 });
 
+// Need-based scheduling (src/scheduling.ts): a maintenance tick held back because its last
+// tick did nothing and no work has landed since. Routine state, not a warning — but the line
+// must name the loop and its cause, since it is the only signal that a role is being deferred.
+test("formatEvent renders tick_deferred plainly with the no-work reason", () => {
+  const line = formatEvent({ ts: 0, loop: "clean", type: "tick_deferred" } as never);
+  assert.match(
+    line,
+    /clean\s+deferred — no work landed since last tick$/,
+    `the deferral must name the loop and its cause: ${line}`,
+  );
+  assert.ok(!line.includes("warning"), `a deferral is routine, not a warning: ${line}`);
+});
+
+// Operator-intent gate (src/orchestrator.ts): `tumwater pause`/`resume` log these once per
+// transition. Both are routine state changes an operator reads at a glance; the paused line
+// states the scope and the director exemption, the resumed line says role ticks are back.
+test("formatEvent renders the fleet pause and resume events plainly", () => {
+  const paused = formatEvent({ ts: 0, loop: "harness", type: "fleet_paused" } as never);
+  assert.match(
+    paused,
+    /harness\s+fleet paused — role loops stop starting new ticks \(director keeps running\)$/,
+    `the pause must state its scope and the director exemption: ${paused}`,
+  );
+  assert.ok(!paused.includes("warning"), `a deliberate pause is routine, not a warning: ${paused}`);
+
+  const resumed = formatEvent({ ts: 0, loop: "harness", type: "fleet_resumed" } as never);
+  assert.match(resumed, /harness\s+fleet resumed — role loops tick again$/, `resume line: ${resumed}`);
+  assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
+});
+
 test("formatEvent renders a user_aborted tick_end with its result verbatim", () => {
   // "user_aborted" (deliberate stop) must stay distinct from "aborted" (harness shutdown):
   // the result word is what tells them apart in the feed. The aborted outcome carries no
