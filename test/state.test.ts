@@ -25,6 +25,7 @@ import {
 import type { LoopState, TumwaterConfig } from "../src/types.js";
 import { orchestratorStatePath, statePath } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
+import { OBSERVER_ROLES } from "../src/roles.js";
 import { tmpdir } from "./util.js";
 
 /** Every field a fresh state has must hold its default value (extra junk keys are allowed). */
@@ -527,6 +528,44 @@ test("applyTickOutcome: other unproductive outcomes grow the idle backoff and cl
   s2.lastSummary = "previous";
   applyTickOutcome(s2, cfg, "feature", { result: "no_change" });
   assert.equal(s2.lastSummary, "previous");
+});
+
+test("applyTickOutcome: an observer's no_change schedules at its interval without climbing the idle ladder", () => {
+  // plans/observer-roles.md 1/2: qa's no_change means "checked, all well", so it must not be
+  // punished with a doubling sleep. The interval is the only cadence knob left for it.
+  const cfg = testConfig(); // minTickIntervalSeconds: 20
+  for (const role of OBSERVER_ROLES) {
+    const s = freshLoopState(role);
+    s.backoffSeconds = 300; // a grown backoff from an earlier episode — must reset, not build on it
+    const before = Date.now();
+    applyTickOutcome(s, cfg, role, { result: "no_change" });
+    assert.equal(s.backoffSeconds, 0, `${role}: a passing check leaves no backoff`);
+    assert.ok(
+      s.nextRunAt >= before + 20_000 && s.nextRunAt <= Date.now() + 20_000,
+      `${role}: scheduled at minTickIntervalSeconds, not the idle ladder`,
+    );
+  }
+  // A non-observer's no_change still climbs the idle ladder, byte-identical to before.
+  const s = freshLoopState("organize");
+  s.backoffSeconds = 30;
+  applyTickOutcome(s, cfg, "organize", { result: "no_change" });
+  assert.equal(s.backoffSeconds, 60);
+});
+
+test("applyTickOutcome: an observer still climbs the error ladder and idles on a user-abort", () => {
+  // The idle branch is the only one the observer predicate reaches: a broken toolchain and a
+  // deliberate operator stop keep the ordinary backoff (invariant 1 of plans/observer-roles.md).
+  const cfg = testConfig();
+  for (const role of OBSERVER_ROLES) {
+    const err = freshLoopState(role);
+    applyTickOutcome(err, cfg, role, { result: "error", summary: "git is broken" });
+    assert.equal(err.backoffSeconds, 30, `${role}: a broken toolchain still parks it`);
+    assert.ok(err.nextRunAt <= Date.now() + 31_000, `${role}: retries on the short error ladder`);
+
+    const aborted = freshLoopState(role);
+    applyTickOutcome(aborted, cfg, role, { result: "user_aborted" });
+    assert.equal(aborted.backoffSeconds, 30, `${role}: a deliberate stop still backs off`);
+  }
 });
 
 // --- Error ladder: a failed tick retries in minutes, never the idle ladder's cap

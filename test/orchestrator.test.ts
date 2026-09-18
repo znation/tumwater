@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { DEFER_MAX_MS, deferTick, dueForPrune, fairOrder, isEligible, workLanded } from "../src/scheduling.js";
-import { ROLES } from "../src/roles.js";
+import { OBSERVER_ROLES, ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
@@ -240,6 +240,26 @@ test("deferTick: only a deferrable no_change role that has seen main and got no 
   // Work-tier roles and unknown/custom roles never defer, even with no_change + no work.
   for (const role of ["feature", "bugfix", "plan", "director", "my-custom-loop"]) {
     assert.equal(deferTick(base, role, false, false, NOW), false);
+  }
+});
+
+test("deferTick: observers never defer, under every input", () => {
+  // plans/observer-roles.md 1/2: an observer's input is the running product or the event log,
+  // neither a function of whether main moved, so deferral's premise does not hold.
+  const NOW = Date.now();
+  for (const role of OBSERVER_ROLES) {
+    const s = freshLoopState(role);
+    s.lastResult = "no_change";
+    s.lastMainHead = "abc123";
+    for (const work of [false, true]) {
+      for (const backlog of [false, true]) {
+        assert.equal(
+          deferTick(s, role, work, backlog, NOW),
+          false,
+          `${role} (work=${work}, backlog=${backlog}) never defers`,
+        );
+      }
+    }
   }
 });
 

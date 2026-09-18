@@ -264,11 +264,21 @@ You edit only markdown — never source.`,
  * never deferred and slot allocation always orders them ahead of maintenance. */
 const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
 
-/** Maintenance-tier roles (need-based prioritization): exactly the nine built-ins whose due
+/** Observer roles (plans/observer-roles.md 1/2): a role whose product is an observation, not
+ * a commit, and for which `no_change` means "checked, all well" rather than "found nothing to
+ * do". The idle ladder's premise — a loop that keeps finding nothing stops burning model time
+ * — does not hold for these, so their no_change tick schedules at `minTickIntervalSeconds` and
+ * leaves `backoffSeconds` at 0 (src/state.ts). The error ladder still applies in full, and they
+ * are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
+ * event log for `telemetry`) is not a function of whether main moved. */
+export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa"]);
+
+/** Maintenance-tier roles (need-based prioritization): exactly the eight built-ins whose due
  * ticks are deferrable while no feature/bugfix/director/human commit has landed on main since
  * their last tick and that tick did nothing. Unknown/custom roles are deliberately NOT in this
  * set — the harness cannot judge what an arbitrary custom role needs, so they never defer (they
- * still sort into tier 1 for fairOrder via roleTier). */
+ * still sort into tier 1 for fairOrder via roleTier). Observers are excluded: an unmoved tree
+ * says nothing about whether the product or the event log has something new to report. */
 export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
   "readme",
   "organize",
@@ -276,7 +286,6 @@ export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
   "clean",
   "dry",
   "perf",
-  "qa",
   "improve",
   "steward",
 ]);

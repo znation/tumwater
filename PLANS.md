@@ -64,22 +64,6 @@ Sizing: failure-report.ts ~200 lines (collect, render, normalization), report.ts
 
 **Acceptance criteria.** A `telemetry` tick prompt contains the rendered digest and the principles, and never contains a raw event dump; the role appears on both dashboards and in `tumwater status`; its diffs touching only BUGS.md are review-exempt; `deferTick` returns false for it under every input; a `no_change` tick leaves `backoffSeconds` at 0; a filed entry names a harness-response defect and cites the cluster and the correlated commit.
 
-### Observer roles 1/2 — stop scheduling a passing check as an idle tick (planned 2026-09-17, requested by user, refined 2026-09-18)
-
-**Full plan: plans/observer-roles.md** — the evidence, the decided design, why a role-set predicate beats a new tick result, and the relationship to the deferral latch.
-
-**Goal.** Name the category the scheduler is missing: an **observer role**, whose product is an observation rather than a commit and for which `no_change` means "checked, all well". Observers do not climb the idle-backoff ladder and do not defer; their `minTickIntervalSeconds` becomes the sole, honest expression of how often they should look.
-
-**Why.** `qa` is the only role that exercises the built product, and it has filed 1 of the 55 bugs ever recorded. The cause is scheduling, not the role. Its charter makes `no_change` a *success* — the flow ran and the product was fine — but `applyTickOutcome`'s final `else` treats it identically to a `clean` tick that found no mess and doubles the sleep toward the 10 h `idleBackoff` cap, so after ~8 consecutive passing checks `qa` sleeps ten hours. The role is punished, monotonically, for the product being healthy. The same holds for `telemetry`, whose input is the event log rather than the tree.
-
-**Design (decided).** `OBSERVER_ROLES` in `src/roles.ts` (`qa`, plus `telemetry` when it lands); the idle branch of `applyTickOutcome` schedules observers at `minTickIntervalSeconds` with `backoffSeconds` left at 0; observers leave `DEFERRABLE_ROLES`. The **error** ladder is untouched — a broken toolchain must still park an observer, which is what `ERROR_BACKOFF` is for, and the 2026-09-15 outage is what that protects against. A new `TickOutcome` result (`"checked"`) was considered and rejected: it would ripple into the dashboards, report counting, `deferTick`, status cells and every test enumerating results, to express a property of the *role* rather than of the tick.
-
-**Ordering — satisfied; landable now.** The deferral latch this plan was ordered behind is **fixed** (bugfix tick `704139c`, 2026-09-18: `DEFER_MAX_MS`/`deferralExpired` force a due tick to run once deferred past 3 h, so `lastResult` can no longer freeze its own precondition). `perf`, `clean` and the rest of `DEFERRABLE_ROLES` are alive again, so removing `qa` from the set is an independent change rather than a rescue at their cost. The cap is a liveness floor, not this plan's cadence: a deferrable role still climbs the idle ladder toward the 10 h cap and is merely forced to run every 3 h, so `qa` would tick ~8×/day rather than the ~12×/day its 2 h interval expresses. See plans/observer-roles.md's "Relationship to the deferral latch" section.
-
-**Files touched.** `src/roles.ts`, `src/state.ts` (`applyTickOutcome`'s idle branch), `test/state.test.ts`, `test/orchestrator.test.ts` (the `deferTick` unit tests; there is no `test/scheduling.test.ts`).
-
-**Acceptance criteria.** A `no_change` tick from an observer sets `nextRunAt` to `minTickIntervalSeconds` ahead and leaves `backoffSeconds` 0, while a non-observer's is unchanged; an `error` tick from an observer still climbs `ERROR_BACKOFF`; `deferTick` (now taking `now: number`) returns false for every observer under every input, asserted in `test/orchestrator.test.ts` beside the existing cases; non-observer scheduling is byte-identical to today under the existing tests.
-
 ### Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17, requested by user, refined 2026-09-18)
 
 **Full plan: plans/observer-roles.md.** Depends on 1/2.
@@ -125,6 +109,12 @@ Corrections (pinned in plans/repair-traces.md):
 Sizing unchanged: src/roles.ts ~35 lines, src/init.ts ~2, test/prompt.test.ts ~40, test/init.test.ts ~5. No design question remains open.
 
 ## Done
+
+### Observer roles 1/2 — stop scheduling a passing check as an idle tick (planned 2026-09-17, requested by user, refined 2026-09-18, done 2026-09-18)
+
+**Landed 2026-09-18 (feature loop).** As planned; all acceptance criteria met. `src/roles.ts` gains the exported `OBSERVER_ROLES` set (`qa` today; `telemetry` joins it when it lands) beside `WORK_ROLES`/`DEFERRABLE_ROLES`, `qa` leaves `DEFERRABLE_ROLES` (whose doc comment now reads "exactly the eight"), and `src/state.ts` imports the predicate so `applyTickOutcome`'s final `else` schedules an observer at `minTickIntervalSeconds` with `backoffSeconds` reset to 0. The `error` and `user_aborted` arms are untouched, so a broken toolchain still climbs `ERROR_BACKOFF` and a deliberate operator stop still idles for every role. Tests: `test/state.test.ts` gains an observer case (a grown 300 s backoff resets, `nextRunAt` lands one interval out, a non-observer's `no_change` still doubles) and a rails case (error → 30 s, user_aborted → 30 s, for every observer); `test/orchestrator.test.ts` asserts `deferTick` returns false for every observer under all four work/backlog combinations; `test/roles.test.ts` pins every observer as a catalog role excluded from `DEFERRABLE_ROLES`. `src/scheduling.ts`'s `deferTick` doc comment updated nine → eight.
+
+**Goal.** Name the category the scheduler is missing: an **observer role**, whose product is an observation rather than a commit and for which `no_change` means "checked, all well". Observers do not climb the idle-backoff ladder and do not defer; their `minTickIntervalSeconds` becomes the sole, honest expression of how often they should look.
 
 ### TUI/GUI auto-reload when a newer build lands on disk (planned 2026-09-13, requested by user, refined 2026-09-17)
 

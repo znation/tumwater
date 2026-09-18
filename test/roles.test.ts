@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   BASELINE_BLOCKED_ROLES,
+  DEFERRABLE_ROLES,
   DIRECTOR_ROLE,
+  OBSERVER_ROLES,
   ROLES,
   allRoleIds,
   roleById,
@@ -56,6 +58,16 @@ test("BASELINE_BLOCKED_ROLES is exactly the code-producing catalog roles", () =>
   // the deepEqual above catches it, but say so explicitly for the failure message.
   for (const id of BASELINE_BLOCKED_ROLES) {
     assert.ok(roleById(id), `blocked role ${JSON.stringify(id)} exists in the catalog`);
+  }
+});
+
+test("OBSERVER_ROLES are catalog roles excluded from DEFERRABLE_ROLES", () => {
+  // plans/observer-roles.md 1/2: observers schedule on their interval rather than the idle
+  // ladder, so they must not also be deferrable — the two carve roles by the same charter.
+  assert.ok(OBSERVER_ROLES.size > 0, "at least one observer (qa) is defined");
+  for (const id of OBSERVER_ROLES) {
+    assert.ok(roleById(id), `observer ${JSON.stringify(id)} exists in the catalog`);
+    assert.ok(!DEFERRABLE_ROLES.has(id), `${id} is an observer, so it never defers`);
   }
 });
 

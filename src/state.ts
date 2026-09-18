@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import type { TumwaterConfig, LoopState, TickOutcome, TickResult, BackoffConfig } from "./types.js";
 import type { BuildStatus } from "./build-info.js";
-import { DIRECTOR_ROLE } from "./roles.js";
+import { DIRECTOR_ROLE, OBSERVER_ROLES } from "./roles.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { pidAlive } from "./process.js";
 import { formatDate } from "./text.js";
@@ -287,6 +287,14 @@ export function applyTickOutcome(
     // would cycle forever, so after CUT_OFF_RESUME_LIMIT resumes the loop gives up on it
     // and falls back to a fresh tick with normal backoff (its prompt carrying the streak).
     s.resumePending = true;
+    s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
+  } else if (OBSERVER_ROLES.has(role)) {
+    // An observer's no_change is a success ("checked, all well"), not an idle verdict: it must
+    // not climb the idle ladder, which would punish the role monotonically for the product
+    // being healthy. With no ladder, minTickIntervalSeconds is the sole, honest cadence
+    // (plans/observer-roles.md). The error/user_aborted arms above are untouched — a broken
+    // toolchain and a deliberate operator stop still back off like any other role.
+    s.backoffSeconds = 0;
     s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
   } else {
     s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff);
