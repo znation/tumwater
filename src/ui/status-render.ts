@@ -82,22 +82,6 @@ export function workingDetail(root: string, s: LoopState, live?: LiveProgress | 
   return inFlightDetail(s, "working", p);
 }
 
-/** Human label of where a loop is in its cycle (stopped / working / waiting for prompts /
- * paused / budget paused / main red / failing / sleeping / queued). Pass `root` so an in-flight tick expands into live detail
- * (elapsed · turn · ctx · tool); without it a working loop shows plain "working".
- * `budgetPaused` marks the fleet's daily cost budget as reached: idle role loops show
- * `budget paused` instead of their sleep/queue state — that is why they are not ticking.
- * `userPaused` marks an operator pause (`tumwater pause` marker present): idle role loops
- * show `paused`, checked before the budget gate because user intent is more specific than
- * spend state — while both hold, "paused" tells the operator what to do (`resume`).
- * `live`, when given, is the frame's precomputed tail (see workingDetail) — it skips the log
- * read; without it an in-flight tick reads on its own.
- * `landing`, when given for this role, is the snapshot's in-flight landing record — the
- * authoring role's tick already ended "queued" before its landing ran, so it is NOT running
- * here and no phase can carry the label: the marker-driven record does, and renders
- * `landing <elapsed>` (elapsed from the marker's startedAt) ahead of every other idle state.
- * Build it with landingForRole so the marker's role filter lives in one place. */
-
 /** The snapshot's in-flight landing record (merge queue 4/5) filtered to one role: the
  * record when this role's change is landing, null otherwise. The single home of the
  * "is this role landing" filter — every phase call site derives its `landing` argument
@@ -111,6 +95,23 @@ export function landingForRole(
     : null;
 }
 
+/** The loop's state label — the one precedence ladder shared by the status table and both
+ * dashboards (renderStatus, statusPayload). First match wins: a stopped harness; an in-flight
+ * landing (the role's tick already ended "queued" while its change lands, so the marker
+ * supplies the label); a running tick ("working", or "reviewing" while the review gate holds
+ * it — in-flight work finishes through both fleet gates); the director's "waiting for
+ * prompts" (exempt from those gates); user pause; budget pause; a red main ("main red"); an
+ * error or quiet-kill streak at its threshold ("failing"); sleep; then "queued".
+ * Pass `root` so an in-flight tick expands into live detail (elapsed · turn · ctx · tool);
+ * without it a working loop shows plain "working". `live`, when given, is the frame's
+ * precomputed tail (see workingDetail) — it skips the log read; without it an in-flight tick
+ * reads on its own. `budgetPaused` marks the fleet's daily cost budget as reached: idle role
+ * loops show `budget paused` instead of their sleep/queue state — that is why they are not
+ * ticking. `userPaused` marks an operator pause (`tumwater pause` marker present): idle role
+ * loops show `paused`, checked before the budget gate because user intent is more specific
+ * than spend state — while both hold, "paused" tells the operator what to do (`resume`).
+ * `landing`, when given for this role, is the snapshot's in-flight landing record — build it
+ * with landingForRole so the marker's role filter lives in one place. */
 export function loopPhase(
   s: LoopState,
   orchestratorRunning: boolean,
