@@ -97,8 +97,9 @@ depends on 1/2 of that series for the scheduling half).
    was — top-N clusters, capped example strings, no raw event dump. The tick prompt is ~8k tokens
    today; the digest must remain a rounding error against it, not a second window filler.
 3. **One backwards scan, one home.** The windowed, early-stopping backwards read of events.jsonl
-   already exists as `readWindowEvents` in `src/ui/report.ts`. The failure digest imports it
-   rather than re-deriving it — one reader of the log's tail, as `parseEventLine` is one parser.
+   exists today as `readWindowEvents` in `src/ui/report.ts` and moves to core `src/event-window.ts`
+   (Refined 2026-09-18). Both the usage report and the failure digest import it rather than
+   re-deriving it — one reader of the log's tail, as `parseEventLine` is one parser.
 4. **The role writes only BUGS.md**, and only its `## Open` section (plus the normal `_None yet._`
    placeholder handling every filing role performs).
 5. **No duplicate filings.** The role checks BUGS.md `## Open` and its own recent commits
@@ -107,23 +108,34 @@ depends on 1/2 of that series for the scheduling half).
 
 ## Shape
 
-- `src/ui/failure-report.ts` — new module: `collectFailureReport(root, days)` →
-  `FailureReportData`, and `renderFailureMarkdown(data)` → string. Sibling to `report.ts` (which
-  keeps usage: tokens, cost, commits) rather than an extension of it — different question,
-  different shape, and `report.ts` is already ~250 lines.
-- `src/ui/report.ts` — export the existing private `readWindowEvents` (invariant 3) and widen
-  its return to `{ events: HarnessEvent[]; coversFullWindow: boolean }`: the flag is true when
-  the backwards scan early-stopped on a line older than the window (proof the retained log
-  reaches back past the window's start) and false when it consumed the file's start. The caller
-  cannot otherwise tell "the log was rotated inside the window" from "the fleet was idle that
-  week" — both leave the oldest returned event later than the window start. `collectReport`'s
-  single call site adapts with a destructure (one line); nothing else in report.ts changes.
+- `src/failure-report.ts` — new **core** module (not `src/ui/`): `collectFailureReport(root, days)` →
+  `FailureReportData`, `renderFailureMarkdown(data)` → string, and `TELEMETRY_DIGEST_DAYS = 1`
+  (the role's window; the CLI keeps 14). It is core because a core consumer — `tickPrompt()` in
+  `src/loop.ts` — injects it into the role's prompt, and the README's layering rule (`src/ui/`
+  "imported only by each other and `cli.ts`") plus the codebase's zero core→ui imports
+  (`grep -rn 'from "./ui/' src/*.ts` names only `cli.ts`) make a core→ui import a violation.
+- `src/event-window.ts` — new **core** module: `readWindowEvents` and its `oldestCompleteLine`
+  helper move here from `src/ui/report.ts`, along with `REPORT_DEFAULT_DAYS` / `REPORT_MAX_DAYS`,
+  and `readWindowEvents`'s return widens to `{ events: HarnessEvent[]; coversFullWindow: boolean }`:
+  the flag is true when the backwards scan early-stopped on a line older than the window (proof
+  the retained log reaches back past the window's start) and false when it consumed the file's
+  start. The caller cannot otherwise tell "the log was rotated inside the window" from "the fleet
+  was idle that week" — both leave the oldest returned event later than the window start.
+  `src/ui/report.ts` imports the reader and re-exports the two constants (so `cli.ts`'s and the
+  tests' imports are unchanged); `collectReport`'s single call site adapts with a destructure (one
+  line). Invariant 3's one reader is preserved and both the usage report and the digest share it.
 - `src/cli.ts` — `tumwater report --failures [--days N]`, sharing `REPORT_DEFAULT_DAYS` /
   `REPORT_MAX_DAYS` with the usage report so both surfaces bound the window identically.
-- `src/roles.ts` — the `telemetry` role, placed after `qa` in catalog order (both are observers);
-  excluded from `DEFERRABLE_ROLES` and from `BASELINE_BLOCKED_ROLES`.
-- `src/prompt.ts` — digest injection for the `telemetry` role, beside the existing principles
-  injection.
+- `src/roles.ts` — the `telemetry` role, placed after `qa` in catalog order (both are observers)
+  and before `improve`; `OBSERVER_ROLES` gains `"telemetry"`. `DEFERRABLE_ROLES` and
+  `BASELINE_BLOCKED_ROLES` already exclude it by construction — no code change — but
+  `test/roles.test.ts`'s `exempt` set and observer message must be updated.
+- `src/prompt.ts` — `TickPromptInput` gains `digest?: string`; `buildTickPrompt` renders it as a
+  `<failure-digest>` block beside the `<principles>` block.
+- `src/loop.ts` — `tickPrompt()` computes the digest via `collectFailureReport` +
+  `renderFailureMarkdown` only when `this.role === "telemetry"`, reading `this.root` (the project
+  root where `events.jsonl` lives, not the worktree); a throw omits the block and never fails the
+  tick.
 - `src/config.ts` — `roles.telemetry = { enabled: true, minTickIntervalSeconds: 7200 }`.
 
 ### What the digest contains
@@ -208,3 +220,35 @@ acquired a sense it did not have.
   it diagnosed would bypass the division that makes both trustworthy.
 - **Alerting.** The harness already warns on an error streak (`ERROR_STREAK_WARN`). Turning digest
   clusters into live events is a plausible follow-on and not part of this.
+
+## Refined 2026-09-18 (plan loop) — 2/2 audited against main `833cabf`
+
+The entry was created 2026-09-17 and had never been audited (1/2 was refined that day; the tree
+is now `833cabf` and none of the landings since the README's stamp touches this plan's anchors).
+The audit found one design defect and pinned five seams; the Shape bullets above are corrected in
+place. Verified anchors: `TickPromptInput` at src/prompt.ts:142 and
+`buildTickPrompt` at :163; `tickPrompt()` at src/loop.ts:144, which reads `readPrinciples` from
+core prompt.ts (so a core digest function is the only clean injection); the `qa` catalog entry at
+src/roles.ts:185–195 with `improve` at :196; `OBSERVER_ROLES` at src/roles.ts:274;
+`DEFERRABLE_ROLES` at :282 and `BASELINE_BLOCKED_ROLES` at :312; `roles.qa`'s clock at
+src/config.ts:21; the observer no-backoff arm at src/state.ts:217; `"*.md"` in
+`review.exemptPaths` at src/config.ts:61; the exact-set catalog assertion and `exempt` set at
+test/roles.test.ts:44–62; the slow-clock assertion and its `continue` list at
+test/config.test.ts:36–52.
+
+**Defect.** 2/2 injects the digest in `tickPrompt()`, which is core; 1/2 placed the digest in
+`src/ui/failure-report.ts` and left the reader in `src/ui/report.ts`. Core→ui has no precedent
+(only `cli.ts` imports `src/ui/`), so the injection as written would either violate the
+presentation-layer boundary or duplicate the log reader. Resolved by the core placement in the
+Shape section above.
+
+**Pinned seams.** (1) Injection: `TickPromptInput.digest?: string`, a `<failure-digest>` block in
+`buildTickPrompt`, set only for `this.role === "telemetry"` from `this.root`, inside a try/catch
+(a corrupt log omits the block, never fails the tick). (2) Window: `TELEMETRY_DIGEST_DAYS = 1`
+for the role, distinct from the CLI's 14 — a two-week block re-surfaces the same clusters every
+tick. (3) Catalog: insert after `qa`/before `improve`, add to `OBSERVER_ROLES`; update
+test/roles.test.ts:50's `exempt` set (the assertion is exact) and the observer message at :67.
+(4) Config: assign `roles.telemetry` beside `roles.qa` (src/config.ts:21) and add `"telemetry"`
+to test/config.test.ts:47's `continue` list. (5) Tests: test/roles.test.ts, test/prompt.test.ts,
+test/config.test.ts; BUGS.md-only diffs are already exempt via `"*.md"`, and the generic
+no-backoff behavior needs no loop test. No design question remains open.
