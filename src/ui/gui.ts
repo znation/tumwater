@@ -34,8 +34,12 @@ function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, r
   const role = q.get("role");
   const { config } = loadConfigCached(root);
   const validIds = config ? knownRoleIds(config) : allRoleIds();
-  if (!role || !validIds.includes(role)) {
-    sendJson(res, 400, { error: `unknown or missing role (valid ids: ${validIds.join(", ")})` });
+  if (role === null) {
+    sendJson(res, 400, { error: `role required (valid ids: ${validIds.join(", ")})` });
+    return;
+  }
+  if (!validIds.includes(role)) {
+    sendJson(res, 400, { error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})` });
     return;
   }
   let n = 50;
@@ -60,12 +64,16 @@ function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, r
 function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
   const q = new URL(req.url ?? "", "http://localhost").searchParams;
   const file = q.get("file");
+  if (file === null) {
+    sendJson(res, 400, { error: `file required (valid values: plans, bugs, questions)` });
+    return;
+  }
   let entries: BacklogEntry[] | null = null;
   if (file === "plans") entries = plannedPlanEntries(root);
   else if (file === "bugs") entries = openBugEntries(root);
   else if (file === "questions") entries = openQuestionEntries(root);
   if (!entries) {
-    sendJson(res, 400, { error: `unknown or missing file (valid values: plans, bugs, questions)` });
+    sendJson(res, 400, { error: `unknown file ${JSON.stringify(file)} (valid values: plans, bugs, questions)` });
     return;
   }
   const indexRaw = q.get("index");
@@ -80,7 +88,7 @@ function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root
   }
   const entry = entries[index];
   if (!entry) {
-    sendJson(res, 400, { error: `index out of range (${entries.length} ${file})` });
+    sendJson(res, 400, { error: `index ${index} out of range (${file} has ${entries.length} open entries)` });
     return;
   }
   sendJson(res, 200, { title: entry.title, body: entry.body });

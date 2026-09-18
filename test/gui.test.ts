@@ -191,11 +191,16 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
     assert.ok(ok.lines.includes("  did the thing"));
     assert.ok(ok.lines.includes("→ read PLANS.md"));
 
-    // Validation: unknown role, missing role, and bad n all → 400.
+    // Validation: unknown role, missing role, and bad n all → 400. Each 400 names the
+    // offending value (or says it is required) so a client can tell which input was bad.
     for (const url of ["/api/transcript?role=nosuch", "/api/transcript", "/api/transcript?role=feature&n=abc", "/api/transcript?role=feature&n=0"]) {
       const res = await fetch(base + url);
       assert.equal(res.status, 400, url);
     }
+    const unknownRole = (await (await fetch(base + "/api/transcript?role=nosuch")).json()) as { error: string };
+    assert.match(unknownRole.error, /unknown role "nosuch"/);
+    const missingRole = (await (await fetch(base + "/api/transcript")).json()) as { error: string };
+    assert.match(missingRole.error, /role required/);
 
     // Routing is by exact path: a path merely prefixing /api/transcript is not that route —
     // the old startsWith on the raw URL answered these with 200 transcript data.
@@ -687,6 +692,14 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
       assert.equal(r.status, 400, url);
       assert.match(((await r.json()) as { error: string }).error, /\S/, `${url} carries an error message`);
     }
+    // The 400s name the offending value (or say the input is required), so a client can tell
+    // a missing file from an unknown one and see which index was out of range.
+    const unknownFile = (await (await fetch(base + "/api/backlog?file=notes&index=0")).json()) as { error: string };
+    assert.match(unknownFile.error, /unknown file "notes"/);
+    const missingFile = (await (await fetch(base + "/api/backlog?index=0")).json()) as { error: string };
+    assert.match(missingFile.error, /file required/);
+    const outOfRange = (await (await fetch(base + "/api/backlog?file=plans&index=2")).json()) as { error: string };
+    assert.match(outOfRange.error, /index 2 out of range/);
 
     // Routing is by exact path: a path merely prefixing /api/backlog is not that route.
     for (const url of ["/api/backlogs?file=plans&index=0", "/api/backlogx"]) {
