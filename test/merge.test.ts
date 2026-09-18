@@ -580,3 +580,50 @@ test("ffStackToMain returns merge_blocked when main diverged under the stack, wi
   assert.equal(sh(root, "git", "rev-parse", "main"), mainAfter, "main is untouched");
   assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0, "no events on a blocked ff");
 });
+
+test("ffStackToMain emits question_posted for questions the stack adds, not pre-existing ones", async () => {
+  // Mirror the single-change question_posted test: a batch's new Open headings must surface
+  // as events so the dashboards and report see questions the same way whether one change or a
+  // stack landed them. Seed an existing question so the diff is exercised, not just the empty
+  // `before` list.
+  const root = makeRepo();
+  // withLock mkdir's <root>/.tumwater/merge.lock without creating its parent.
+  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
+  const existing =
+    "# Questions\n\n## Open\n\n### Existing question (asked by improve)\n\nBody.\n\n## Answered\n\n_None yet._\n";
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), existing);
+  sh(root, "git", "add", "QUESTIONS.md");
+  sh(root, "git", "commit", "-m", "seed questions");
+
+  sh(root, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(root, "a.txt"), "a\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "work A");
+  const shaA = sh(root, "git", "rev-parse", "HEAD").trim();
+  fs.writeFileSync(
+    path.join(root, "QUESTIONS.md"),
+    existing.replace(
+      "\n## Answered",
+      "\n### New question (asked by improve)\n\nBody.\n\n## Answered",
+    ),
+  );
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "post a question");
+  const shaB = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+
+  assert.equal(
+    await ffStackToMain(root, "main", [
+      { role: "alpha", sha: shaA, summary: "A" },
+      { role: "beta", sha: shaB, summary: "B" },
+    ]),
+    "changed",
+  );
+  const posted = readEvents(root).filter((e) => e.type === "question_posted");
+  assert.deepEqual(
+    posted.map((e) => e.question),
+    ["New question (asked by improve)"],
+    "exactly one event for the added heading — the pre-existing entry is not re-posted",
+  );
+  assert.equal(posted[0]!.loop, "alpha", "attributed to the batch's first change, like the single-change path");
+});
