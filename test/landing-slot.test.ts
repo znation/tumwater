@@ -1,0 +1,118 @@
+/** Unit coverage for src/landing-slot.ts's usage accounting — the seam that charges a landing's
+ * own pi runs (reviewer + conflict resolution) to the AUTHORING role's live state and records
+ * them on the landed/land_failed event. The full landing flow is pinned end-to-end through
+ * landQueuedEntry in the loop and orchestrator tests, but those drive a fake pi that reports no
+ * usage, so the nonzero-usage branches were never exercised: a landing whose reviewer burns
+ * tokens and cost is exactly what feeds `tumwater report` and the daily budget cap, and a broken
+ * fold there would silently lose that spend. These pin the accounting branches directly. */
+import test from "node:test";
+import assert from "node:assert/strict";
+import { landingUsage, writeLandingOutcome } from "../src/landing-slot.js";
+import { freshLoopState, loadLoopState } from "../src/state.js";
+import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
+import { readEvents } from "../src/events.js";
+import type { LoopRunner } from "../src/loop.js";
+import type { LandingEntry, PiRunResult } from "../src/types.js";
+import { makeRepo } from "./util.js";
+
+/** A minimal successful pi run carrying the given usage — only the fields the fold reads matter,
+ * but PiRunResult is fully required, so the rest are neutral defaults. */
+function piRun(outputTokens: number, costUsd: number): PiRunResult {
+  return {
+    ok: true,
+    finalText: "",
+    nothingToDo: false,
+    refused: false,
+    outputTokens,
+    peakContextTokens: 0,
+    turns: 1,
+    costUsd,
+    timedOut: false,
+    aborted: false,
+    quietKilled: false,
+    contextExceeded: false,
+    transientServerTimeout: false,
+    transientPiCrash: false,
+    finalMessageContentless: false,
+    compacted: false,
+  };
+}
+
+/** Queue one landing in a fresh repo and return its entry plus the file a drop removes. */
+function queued(root: string, role = "improve"): { entry: LandingEntry; file: string } {
+  const entry: LandingEntry = { role, sha: "a".repeat(40), tick: 3, summary: "add a thing", enqueuedAt: Date.now() };
+  enqueueLanding(root, entry);
+  const head = headLanding(root);
+  assert.ok(head, "fixture sanity: the landing is queued");
+  return head;
+}
+
+test("landingUsage charges each run to both the authoring role and the landing's own accumulator", () => {
+  const folded: PiRunResult[] = [];
+  const author = { foldLandingUsage: (run: PiRunResult) => folded.push(run) } as unknown as LoopRunner;
+  const { usage, foldUsage } = landingUsage(author);
+
+  foldUsage(piRun(120, 0.5));
+  foldUsage(piRun(80, 0.5));
+
+  assert.deepEqual(
+    folded.map((r) => r.outputTokens),
+    [120, 80],
+    "every landing pi run reaches the authoring role's fold",
+  );
+  assert.equal(usage.tokens, 200, "and the landing's own accumulator sums its tokens");
+  assert.equal(usage.cost, 1, "…and its cost");
+});
+
+test("a landing's nonzero usage rides its landed event and the entry is dropped", () => {
+  const root = makeRepo();
+  const { entry, file } = queued(root);
+  const state = freshLoopState("improve");
+  state.phase = "review"; // an in-flight landing marker from the tick lifecycle
+  state.ticks = entry.tick;
+
+  writeLandingOutcome(root, entry, state, "changed", 1234, { tokens: 320, cost: 0.42 }, file);
+
+  const landed = readEvents(root, 10).find((e) => e.type === "landed");
+  assert.ok(landed, "the landing logged a landed event");
+  assert.equal(landed.loop, "improve");
+  assert.equal(landed.commit, entry.sha);
+  assert.equal(landed.result, "changed");
+  assert.equal(landed.durationMs, 1234);
+  assert.equal(landed.tokens, 320, "the landing's own tokens are on the event");
+  assert.equal(landed.costUsd, 0.42, "…and its own cost");
+  assert.equal(state.lastResult, "changed");
+  assert.equal(state.commits, 1, "a landed change counts a commit");
+  assert.equal(state.phase, undefined, "a non-aborted outcome ends the in-flight phase");
+  assert.equal(loadLoopState(root, "improve").commits, 1, "the folded state is persisted");
+  assert.equal(queueDepth(root), 0, "the entry drops after its outcome");
+});
+
+test("a review-exempt landing (zero usage) omits the usage fields instead of logging zeros", () => {
+  const root = makeRepo();
+  const { entry, file } = queued(root, "organize");
+  const state = freshLoopState("organize");
+
+  writeLandingOutcome(root, entry, state, "changed", 5, { tokens: 0, cost: 0 }, file);
+
+  const landed = readEvents(root, 10).find((e) => e.type === "landed");
+  assert.ok(landed, "the landing logged a landed event");
+  assert.ok(!("tokens" in landed), `no tokens key on a zero-usage event: ${JSON.stringify(landed)}`);
+  assert.ok(!("costUsd" in landed), `no costUsd key on a zero-usage event: ${JSON.stringify(landed)}`);
+});
+
+test("a failed landing logs land_failed with its usage and counts no commit", () => {
+  const root = makeRepo();
+  const { entry, file } = queued(root);
+  const state = freshLoopState("improve");
+
+  writeLandingOutcome(root, entry, state, "merge_conflict", 900, { tokens: 12, cost: 0.01 }, file);
+
+  const failed = readEvents(root, 10).find((e) => e.type === "land_failed");
+  assert.ok(failed, "a non-changed outcome logs land_failed, not landed");
+  assert.equal(failed.result, "merge_conflict");
+  assert.equal(failed.tokens, 12, "spend on a failed landing is still recorded");
+  assert.equal(state.lastResult, "merge_conflict");
+  assert.equal(state.commits, 0, "a non-changed outcome is not a commit");
+  assert.equal(queueDepth(root), 0, "every outcome drops the entry — retry rides the pin, not the queue");
+});
