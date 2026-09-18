@@ -60,8 +60,6 @@ reaching `maxDailyCostUsd` switches every role loop to it (`budget_fallback`; he
 rather than stopping, and only a fallback that cannot be verified as free leaves it paused.
 
 Open items:
-- Planned: harness-level merge queue — 5/5 (coalesce the build check across queued landings)
-  is the remaining sub-plan, refined 2026-09-16.
 - Planned: TUI/GUI auto-reload onto newer builds when they land on disk (planned 2026-09-13,
   refined 2026-09-17).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
@@ -86,7 +84,7 @@ Open items:
   - A transient `ENOTEMPTY` on `dist.prev` aborts the whole build swap (found 2026-09-18).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`bb8dc26`): build clean, suite 1040/1040.
+Current main (`9758e04`): build clean, suite 1058/1058.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -112,7 +110,11 @@ one loop per enabled role. Every loop tick:
    typecheck/build; failure rejects without spending a model run), then a fresh-session
    reviewer against PRINCLES.md that replies `VERDICT: approve|reject` (md-only diffs are
    exempt); rejects reset the branch with reasons injected into the author's next tick,
-   failures keep the commit for re-review under a 3-strike discard cap. Approved work rebases
+   failures keep the commit for re-review under a 3-strike discard cap. When several landings are
+   queued, the drain reviews each change individually but stacks the approved ones in one lander
+   worktree, runs the declared check once over the combined tree, and fast-forwards main through
+   the whole stack (`landBatchMax`, default 3, caps a batch); a red or un-assemblable stack falls
+   back to one-at-a-time landings, each re-verified by its own gate. Approved work rebases
    onto main (so main's history stays linear), re-runs the declared check on the rebased tree
    when main moved under it, and fast-forwards under the merge lock — the only code that ever
    holds it, so other roles keep ticking behind an in-flight landing. A role with a queued or
@@ -172,7 +174,10 @@ Stopping the harness (Ctrl+C) mid-tick loses nothing: the interrupted loop's pi 
 worktree's uncommitted edits stay in place, and on the next `tumwater run` that loop resumes the
 same session (`--continue`) with a short bridge prompt and finishes the task it was on. A run the
 quiet watchdog kills for lack of progress (tick result `quiet_killed`) is recovered the same way,
-with the bridge prompt naming the hang instead of claiming a restart. A crash
+with the bridge prompt naming the hang instead of claiming a restart — but only up to 3
+consecutive kills, after which the loop drops the starved session, raises one `warning`, reads
+`failing` in both dashboards, and takes a fresh tick on the idle backoff ladder instead of
+re-sending the session the backend could not schedule. A crash
 (power loss, kill -9) is recovered the same way — except an interruption during the review gate,
 where the work is already committed and the next launch recovers and re-reviews it via a fresh
 tick instead of resuming the author session. The director is the exception: its interrupted
@@ -259,7 +264,7 @@ readme on 30 min and plan on 1 h — the bookkeeping roles batch a burst of land
 instead of restamping after every merge), and tune backoff in
 `tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
 within ~2s — every setting applies live: enabling/disabling roles, per-role provider/model/
-thinking/instructions, tick intervals, backoff, the `maxConcurrent` cap, `autoRestart`, and
+thinking/instructions, tick intervals, backoff, the `maxConcurrent` cap and `landBatchMax` batch size, `autoRestart`, and
 `sessionRetentionDays` (a mid-run edit re-prunes immediately). User-defined loops (`customLoops` entries in tumwater.json) can be added, removed, or rearranged by prompting the director ("add a loop named X that does Y") or by hand-editing the file (live within ~2 s); they act like any other loop and are marked with `*` beside their name on both dashboards.
 
 Spend is capped by `maxDailyCostUsd` in tumwater.json (default 50; set 0 to disable): once the
