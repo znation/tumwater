@@ -9,7 +9,7 @@ test("readJsonFile treats missing or torn files as no data, not errors", () => {
   const dir = tmpdir();
   const file = path.join(dir, "state.json");
 
-  assert.equal(readJsonFile<unknown>(file), null); // missing — no throw
+  assert.equal(readJsonFile<Record<string, unknown>>(file), null); // missing — no throw
 
   fs.writeFileSync(file, JSON.stringify({ ticks: 3 }));
   assert.deepEqual(readJsonFile<{ ticks: number }>(file), { ticks: 3 });
@@ -17,7 +17,19 @@ test("readJsonFile treats missing or torn files as no data, not errors", () => {
   // A torn write (crash mid-write by another process) must not throw — observers polling
   // these files every second would die on it.
   fs.writeFileSync(file, '{"ticks": ');
-  assert.equal(readJsonFile<unknown>(file), null);
+  assert.equal(readJsonFile<Record<string, unknown>>(file), null);
+});
+
+test("readJsonFile treats a valid JSON non-object as no data", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "state.json");
+  // A state file that parses cleanly but is not an object is still not data: unchecked, the
+  // cast would leak a lie (loadLoopState spreads a string's characters; readOrchestratorInfo
+  // reads .pid off an array). Same no-data policy as a torn write.
+  for (const body of ["[1, 2]", "[]", "5", '"name"', "true", "null"]) {
+    fs.writeFileSync(file, body);
+    assert.equal(readJsonFile<Record<string, unknown>>(file), null, `${body} is not a state object`);
+  }
 });
 
 test("writeJsonFile creates parent dirs and writes pretty-printed JSON (overwriting)", () => {

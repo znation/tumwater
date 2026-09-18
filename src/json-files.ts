@@ -7,14 +7,21 @@ import { ensureParentDir } from "./files.js";
  * because this is one self-contained convention with its own error policy (a missing or torn
  * file is "no data", never an error) shared by every reader and writer of those files. */
 
-/** Read and parse a JSON file, returning null when it does not exist or cannot be read or
- * parsed. The harness's state files (loop state, orchestrator info, the reset-counters
- * marker) are written by other processes and may be missing or torn mid-write — readers
- * treat that as "no data" rather than an error, so a crash in one process can never take
- * down the observers polling these files. */
-export function readJsonFile<T>(file: string): T | null {
+/** Read and parse a JSON *object* file, returning null when it does not exist, cannot be read
+ * or parsed, or parses to a valid JSON value that is not a plain object (a scalar, `null`, or
+ * an array). The harness's state/marker/info files (loop state, orchestrator info, landing
+ * marker, reset/wake/abort markers, restart stamp, build stamp) are all objects written by
+ * other processes and may be missing or torn mid-write — readers treat that as "no data"
+ * rather than an error, so a crash in one process can never take down the observers polling
+ * them. A wrong-shaped file reads the same way: casting a scalar/array to `T` would hand
+ * callers a value that looks like data but is not (loadLoopState would spread a string's
+ * characters into the loop's state, readOrchestratorInfo's `pid` would read undefined off an
+ * array), so the object check is part of the no-data policy, not an extra one. */
+export function readJsonFile<T extends object>(file: string): T | null {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as T;
+    const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null; // Not a state object — no data.
+    return parsed as T;
   } catch {
     return null; // Missing or torn — no data.
   }
