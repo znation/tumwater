@@ -235,6 +235,79 @@ Sizing unchanged: self-reload.ts ~100 lines; tui.ts ~10; gui.ts ~5; gui-page.ts 
 
 **Critical path.** 1/7 → 2/7 → 3/7 → 4/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
+### Telemetry 1/2 — a deterministic failure digest over the fleet's own event log (planned 2026-09-17, requested by user)
+
+**Full plan: plans/telemetry-role.md** — the shared problem statement, the decided design and rationale, invariants, the digest's contents and cluster-normalization rules, and the sequencing for both sub-plans live there.
+
+**Goal.** `tumwater report --failures [--days N]`: a bounded Markdown digest of what went wrong in a window — tick outcomes per role, deltas against the preceding window, clustered error and warning strings, review rejections, and the commits that landed alongside them. Pure functions over `events.jsonl`, no model run, rendered under ~6 KB so a mid-sized local model can read it in one go. Lands alone with no role attached: the operator gets the tool they have been approximating by hand, and the functions are fully tested before anything consumes them.
+
+**Why.** The fleet reads its own source and never watches itself run: `grep -n "events.jsonl\|tumwater logs" src/roles.ts src/prompt.ts` returns nothing. Meanwhile 8 of the 55 bugs ever recorded in BUGS.md were found by a human reading that log — including four of the most valuable (the latching false `main is red`, the 44 silent tick failures, the 200 ms failure climbing the idle ladder, the rejected `mainGreen`). Zero came from a loop. Over 2026-08-20 → 2026-09-17 the log holds 1,804 `tick_end` events of which 295 are `error`, 164 `aborted` and 41 `quiet_killed`, and no loop has ever filed a bug about any of it.
+
+**Files touched.** `src/ui/failure-report.ts` (new: `collectFailureReport`, `renderFailureMarkdown`), `src/ui/report.ts` (export the existing private `readWindowEvents` — one home for the windowed backwards scan), `src/cli.ts` (flag + help), `test/failure-report.test.ts` (new; cluster normalization gets the real 2026-09 error strings as fixtures).
+
+**Acceptance criteria.** `tumwater report --failures` prints the digest for the default 14-day window and honours `--days N` under the shared `REPORT_MAX_DAYS` bound; the outcome table reproduces a hand-run tally of `tick_end` results per role; two error strings differing only in sha, path, integer, timestamp or duration cluster together while differing exit codes stay distinct; rendered output stays under 6 KB on the current log; a window longer than the retained log is reported as partial rather than silently short; no model run and no subprocess on any path.
+
+### Telemetry 2/2 — a `telemetry` role that reads the digest and files bugs (planned 2026-09-17, requested by user)
+
+**Full plan: plans/telemetry-role.md.** Depends on 1/2, and on `Observer roles 1/2` for scheduling.
+
+**Goal.** A `telemetry` role whose tick prompt carries the rendered digest and whose only write is BUGS.md. It correlates failure clusters to the commits that landed beside them and files one reproducible entry per tick, or declares nothing-to-do.
+
+**Design (decided, with rationale).**
+- **The harness injects the digest; the role never fetches it.** A role runs in `.tumwater/worktrees/<role>` while the live event log sits at the project root one level outside it, and the CLI resolves its root from `process.cwd()` — so a role running the digest command in its own worktree would find no log, and reaching up to the root checkout would break the rule that a role touches nothing outside its worktree. Injection also costs the role zero tool calls to acquire its evidence, beside the existing `PRINCIPLES.md` injection.
+- **A cluster is a bug only when the harness's RESPONSE to it is wrong**, never merely because the underlying failure happened. Derived from the four human-found log bugs rather than invented: none of them is "pi crashed", each is "something failed and tumwater handled it wrongly — no alarm, wrong state, wrong ladder, latched verdict". Without this rule the role files "the model server was slow" every tick and the backlog fills with noise no `bugfix` run can act on.
+- **BUGS.md is its only write** — the markdown-only charter `qa` already has, so its diffs are review-exempt, it stays unblocked while main is red (not in `BASELINE_BLOCKED_ROLES`), and it never grades its own homework.
+- **It never defers and never idle-backs-off.** Its input is the event log, which grows whether or not main moves; a fleet failing while landing nothing is exactly when it most needs reading. That is the `OBSERVER_ROLES` property from `Observer roles 1/2`.
+- **No duplicate filings**: it checks BUGS.md `## Open` and `git log --grep="tumwater(telemetry)"` before filing — the same cross-tick memory idiom `searchGuidance` gives the backlog-free roles.
+
+**Files touched.** `src/roles.ts` (the role, after `qa` in catalog order; `OBSERVER_ROLES` membership; excluded from `DEFERRABLE_ROLES` and `BASELINE_BLOCKED_ROLES`), `src/prompt.ts` (digest injection), `src/config.ts` (`roles.telemetry`, `minTickIntervalSeconds` 7200), README, `test/roles.test.ts`, `test/prompt.test.ts`.
+
+**Acceptance criteria.** A `telemetry` tick prompt contains the rendered digest and the principles, and never contains a raw event dump; the role appears on both dashboards and in `tumwater status`; its diffs touching only BUGS.md are review-exempt; `deferTick` returns false for it under every input; a `no_change` tick leaves `backoffSeconds` at 0; a filed entry names a harness-response defect and cites the cluster and the correlated commit.
+
+### Observer roles 1/2 — stop scheduling a passing check as an idle tick (planned 2026-09-17, requested by user)
+
+**Full plan: plans/observer-roles.md** — the evidence, the decided design, why a role-set predicate beats a new tick result, and the relationship to the deferral latch.
+
+**Goal.** Name the category the scheduler is missing: an **observer role**, whose product is an observation rather than a commit and for which `no_change` means "checked, all well". Observers do not climb the idle-backoff ladder and do not defer; their `minTickIntervalSeconds` becomes the sole, honest expression of how often they should look.
+
+**Why.** `qa` is the only role that exercises the built product, and it has filed 1 of the 55 bugs ever recorded. The cause is scheduling, not the role. Its charter makes `no_change` a *success* — the flow ran and the product was fine — but `applyTickOutcome`'s final `else` treats it identically to a `clean` tick that found no mess and doubles the sleep toward the 10 h `idleBackoff` cap, so after ~8 consecutive passing checks `qa` sleeps ten hours. The role is punished, monotonically, for the product being healthy. The same holds for `telemetry`, whose input is the event log rather than the tree.
+
+**Design (decided).** `OBSERVER_ROLES` in `src/roles.ts` (`qa`, plus `telemetry` when it lands); the idle branch of `applyTickOutcome` schedules observers at `minTickIntervalSeconds` with `backoffSeconds` left at 0; observers leave `DEFERRABLE_ROLES`. The **error** ladder is untouched — a broken toolchain must still park an observer, which is what `ERROR_BACKOFF` is for, and the 2026-09-15 outage is what that protects against. A new `TickOutcome` result (`"checked"`) was considered and rejected: it would ripple into the dashboards, report counting, `deferTick`, status cells and every test enumerating results, to express a property of the *role* rather than of the tick.
+
+**Ordering — read this first.** This plan is **not** a substitute for fixing the deferral latch (its own BUGS.md entry): three roles — `qa`, `perf`, `clean` — have ticked **zero** times since 2026-09-13 because `deferTick` preserves the very `lastResult === "no_change"` that causes the deferral while `workBacklogOpen` alone keeps deferring. Landing this alone would rescue `qa` and leave `perf` and `clean` dead with the trap still armed for the rest of `DEFERRABLE_ROLES`. Fix the latch first, then land this.
+
+**Files touched.** `src/roles.ts`, `src/state.ts` (`applyTickOutcome`'s idle branch), `test/state.test.ts`, `test/scheduling.test.ts`.
+
+**Acceptance criteria.** A `no_change` tick from an observer sets `nextRunAt` to `minTickIntervalSeconds` ahead and leaves `backoffSeconds` 0, while a non-observer's is unchanged; an `error` tick from an observer still climbs `ERROR_BACKOFF`; `deferTick` returns false for every observer under every input; non-observer scheduling is byte-identical to today under the existing tests.
+
+### Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17, requested by user)
+
+**Full plan: plans/observer-roles.md.** Depends on 1/2.
+
+**Goal.** Give `qa` a memory of which flows it has exercised, so flow selection is a lookup rather than a blind guess, without any write that moves main.
+
+**Why.** plans/qa-role.md anticipated this and settled for a weak answer: every tick is a fresh session, so the prompt tells the model to prefer "a flow not recently exercised as far as your BUGS.md filings and Verified notes show". But a cheap flow that *passes* deliberately leaves no record — a note commit per check would move main and wake every sleeping loop. So the only flows a fresh session can see evidence of are the ones that failed, plus the one expensive real-mode run that writes a `## Verified` line; for the eight cheap flows the model chooses blind every time and converges on the top of the list.
+
+**Design (decided).** The `qa` reply ends with a `FLOW: <name>` line, parsed through `reply-contract.ts`'s existing `labeledLine` helper (which already serves `SUMMARY`/`WHY`/`RISK`/`VERIFIED` and `TUMWATER_REFUSED`). The harness — not pi — records it in `.tumwater/state/qa-coverage.json` (runtime, gitignored, never moves main), and `src/prompt.ts` injects a rendered oldest-first coverage block into the next `qa` prompt. The `run (real)` daily-cadence rule then falls out of the same table instead of needing the model to find and date-compare a `## Verified` line. A missing or corrupt ledger degrades to today's behavior — an observer must never fail a tick because a bookkeeping file was unreadable.
+
+**Files touched.** `src/qa-coverage.ts` (new), `src/reply-contract.ts` (`extractFlow`), `src/prompt.ts` (injection), `src/loop.ts` (record at tick end), `src/roles.ts` (`qa` find text gains the contract line and the lookup instruction), `test/qa-coverage.test.ts` (new), `test/reply-contract.test.ts`.
+
+**Acceptance criteria.** A `qa` tick declaring `FLOW: status` records that flow with its timestamp and result; the next `qa` prompt carries the coverage block oldest-first with never-exercised flows listed last; a missing, empty or malformed ledger yields no block and no error; nothing under `.tumwater/state/` is ever committed; a tick with no `FLOW:` line records nothing and still completes normally.
+
+### Repair traces — record what made each bug hard to validate (planned 2026-09-17, requested by user)
+
+**Full plan: plans/repair-traces.md** — the tag vocabulary with its definitions, the compression-survival design, and the steward's promotion rule.
+
+**Goal.** Add one required line to the BUGS.md Fixed-entry template — `**Validation gap:** <tag> — <one sentence>` — written by `bugfix` at the moment it has the knowledge, preserved through steward compression as a short `gap: <tag>` suffix, and harvested by the steward into PLANS.md test-infrastructure entries once a tag recurs.
+
+**Why.** A Fixed entry records the symptom, cause and fix, and never what made the bug hard to *confirm*. That missing field is the only evidence that would say where the project's own testability is weakest, so the fleet's investment in it is guesswork: `coverage` picks its target by structural proxy (a module with no test file, or the most uncovered lines) — reasonable priors, but blind to a module with 95% line coverage and no way to exercise its concurrent path, which is the shape of this harness's hardest bugs. `highFriction` already flags that a tick was expensive but carries no diagnosis and attaches to the commit rather than the bug. This is the post's third bootstrap step, which tumwater currently discards.
+
+**Design (decided).** A closed vocabulary — `none`, `no-repro`, `no-fake`, `real-run-needed`, `no-observability`, `slow-check`, `unclear-invariant` — plus free text after the em dash. The tag makes a hundred entries countable (`grep -o 'gap: [a-z-]*' BUGS.md | sort | uniq -c` is the whole query surface); the sentence makes one entry actionable. `none` is mandatory rather than an omitted line, so the denominator stays honest. `bugfix` only records; the steward promotes, as one more move in its existing curation list. Compression keeps the suffix — otherwise a tag has a ten-entry shelf life, shorter than the interval over which a pattern becomes visible — and omits it entirely when the tag is `none`.
+
+**Files touched.** `src/roles.ts` (a `VALIDATION_GAP_TAGS` constant and shared guidance fragment, the same define-once pattern as `DECOMPOSITION_GUIDANCE`/`PLAN_SIZING`; `bugfix.find` and `steward.find` embed it), `src/init.ts` (`BUGS_TEMPLATE`), README, `test/roles.test.ts`. No source behavior changes — prompt and template work plus the tests that pin it, which is what makes it one run.
+
+**Acceptance criteria.** Both role texts embed the shared constant rather than restating the vocabulary; every tag in `VALIDATION_GAP_TAGS` appears in the guidance text; the steward's compression rule states the `gap:` suffix and its `none` omission; `BUGS_TEMPLATE` mentions the field so a fresh project starts with the convention; the full suite stays green.
+
 ## Done
 
 ### Merge queue 4/5 — surface the land queue on status and both dashboards (planned 2026-09-08, requested by user, refined 2026-09-13, done 2026-09-15)
