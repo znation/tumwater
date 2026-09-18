@@ -13,24 +13,30 @@ export function piModelsPath(): string {
   return path.join(os.homedir(), ".pi", "agent", "models.json");
 }
 
-/** One model's declared cost in pi's definitions; an absent field means unpriced (free). */
-interface ModelCost {
-  input?: number;
-  output?: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-}
-
 interface PiModelDef {
   id: string;
-  cost?: ModelCost;
+  /** The model's declared cost — whatever the user's models.json holds, so read as unknown
+   * and checked component by component rather than trusted. An absent field means unpriced. */
+  cost?: unknown;
 }
 
-/** A model is free when it declares no cost at all, or a cost whose every component is zero. */
-function costIsFree(cost: ModelCost | undefined): boolean {
+/** The cost components pi's models.json may declare. */
+const COST_KEYS = ["input", "output", "cacheRead", "cacheWrite"] as const;
+
+/** A model is free when it declares no cost at all, or a cost object whose every present
+ * component is exactly zero. Anything else — a non-object cost (a string, a number, an array,
+ * or null), or a present component that is not a finite number — is unresolvable and counts as
+ * NOT free, the same safe direction pairFree takes for an unknown model: the badge must never
+ * read "n/a" while a model it cannot price is in use, and reading a component off a null cost
+ * would otherwise throw straight into the status poll. */
+function costIsFree(cost: unknown): boolean {
   if (cost === undefined) return true;
-  const parts = [cost.input, cost.output, cost.cacheRead, cost.cacheWrite];
-  return parts.every((p) => p === undefined || p <= 0);
+  if (typeof cost !== "object" || cost === null || Array.isArray(cost)) return false;
+  const c = cost as Record<string, unknown>;
+  return COST_KEYS.every((key) => {
+    const p = c[key];
+    return p === undefined || (typeof p === "number" && Number.isFinite(p) && p === 0);
+  });
 }
 
 /** Per-poll cache of the parsed definitions, keyed by models path: both dashboards poll

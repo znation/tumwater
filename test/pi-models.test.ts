@@ -91,6 +91,32 @@ test("missing or malformed definitions files count as not free, never throw", ()
   assert.equal(fleetModelsFree(cfg, writeModels(JSON.stringify({ models: [] }))), false, "no providers key");
 });
 
+test("a malformed cost shape is unresolvable — never free, never throws", () => {
+  const cfg = fleetAt("p", "m");
+  // A non-object cost previously read as free (property access off a string/number yields
+  // undefined), and a null one threw a TypeError straight into the status poll. Each must now
+  // take the safe direction: unverifiable is not free.
+  for (const cost of [null, "free", 0, [], { input: "0" }, { input: null }, { input: -1 }, { output: Number.NaN }]) {
+    const file = writeModels(JSON.stringify({ providers: { p: { models: [{ id: "m", cost }] } } }));
+    assert.doesNotThrow(() => fleetModelsFree(cfg, file), `cost ${JSON.stringify(cost)} must not throw`);
+    assert.equal(fleetModelsFree(cfg, file), false, `cost ${JSON.stringify(cost)} is not free`);
+  }
+  // The zero shapes still read free: an empty cost object and explicitly-zero components.
+  assert.equal(
+    fleetModelsFree(cfg, writeModels(JSON.stringify({ providers: { p: { models: [{ id: "m", cost: {} }] } } }))),
+    true,
+    "an empty cost object declares no components — free",
+  );
+  assert.equal(
+    fleetModelsFree(
+      cfg,
+      writeModels(JSON.stringify({ providers: { p: { models: [{ id: "m", cost: { input: 0, output: 0 } }] } } })),
+    ),
+    true,
+    "explicit zeros stay free",
+  );
+});
+
 test("a fleet with no enabled roles and review off cannot spend — free by construction", () => {
   const cfg = defaultConfig();
   for (const id of Object.keys(cfg.roles)) cfg.roles[id]!.enabled = false;
