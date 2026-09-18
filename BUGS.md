@@ -5,6 +5,110 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### `quiet_killed` is the only tick outcome with no strike cap, no backoff and no alarm: hour-long empty retries consumed 44% of the fleet over two days (found by log analysis 2026-09-18)
+
+**Symptom:** A tick killed by the quiet watchdog retries immediately, on the same pi session, forever. From `events.jsonl`: `quiet_killed` did not occur once before 2026-09-16, then 23 times on 09-16 and 16 times on 09-17. The 41 kills consumed **69.7 h of slot time**, 62.7 h of it on those two days — **44% of the 3-slot fleet's 144 slot-hours**. The shape is a tight loop, not scattered bad luck: on 09-17 `feature` ticks 179–183 and `plan` ticks 175–179 each died at 60–66 min carrying no token count at all, back to back from 05:59 to 15:09. Ten ticks, nine hours, zero output, and the only `warning` logged fleet-wide in that window was an unrelated `dry` build-check timeout. Session size predicts the damage almost exactly (`.tumwater/sessions/<role>`): `plan` 16 MB → 11 kills, `feature` 15 MB → 13, `bugfix` 14 MB → 5, `dry` 5.2 MB → 1, `coverage` 4.0 MB → 1, `readme` 2.6 MB → 5, `steward` 2.5 MB → 4.
+
+The backend is not down while this happens. `~/.omlx/logs/server.log.2026-09-17` shows completions landing continuously through the whole window (45–142 s each), and 17 of that day's 19 `[vlm_stream_generate] Aborting request` lines match a quiet-kill timestamp to the second — the harness aborting, not the server failing. The starved request leaves no other trace: `e5c0fd95-f6bd-4b67-8654-cf35ac5f6e66` (the 05:59:31 `feature` kill) appears in the server log **only** in its abort line — never a prefix-cache restore, never a `Chat completion`. It was accepted and never scheduled. The retry then re-sends the same, now slightly larger, session and starves the same way.
+
+**Repro:** deterministic once a role's session is large enough that the backend defers it past `quietTimeoutSeconds`; the fleet reproduced it ten times in a row on 09-17. Without the backend, the scheduling half alone is enough: drive any role to a `quiet_killed` outcome (test/loop-2.test.ts:216's zombie-stream shim does this in ~1 s) and read `.tumwater/state/<role>.json` — `nextRunAt` is now, `backoffSeconds` is untouched, `consecutiveErrors` is 0, and no `warning` event was logged. Repeat indefinitely; nothing changes.
+
+**Expected:** a bounded number of consecutive quiet kills, then escalation. Every sibling outcome already has a brake and this one has none:
+
+| outcome | backoff | strike cap | alarm |
+| --- | --- | --- | --- |
+| `error` | `ERROR_BACKOFF` ladder | `consecutiveErrors` | warns at `ERROR_STREAK_WARN` |
+| cut-off | min interval | `CUT_OFF_RESUME_LIMIT` | — |
+| `quiet_killed` | none | none | none |
+
+The cut-off branch is the closest precedent and the right model: after N resumes it gives up on the session and falls back to a fresh tick with normal backoff, precisely so "a task that outruns the ceiling every single time" cannot cycle forever (src/state.ts:241-247). A quiet-kill streak should likewise drop the session — the documented self-heal that already exists for context overflow and two consecutive `error` ticks — and raise one warning per episode, as the error streak does.
+
+**Suspected cause:** two independent gaps in src/state.ts. First, `applyTickOutcome`'s `quiet_killed` branch (src/state.ts:216-225) sets `resumePending = true` and `nextRunAt = Date.now()` and nothing else: no ladder, no streak field, no limit. The resume then reuses the same session — `resumableSession` at src/loop.ts:513 feeds `continueSession: resume` at src/loop.ts:317 — so each attempt re-sends the input that caused the previous kill. Second, src/state.ts:182 resets `consecutiveErrors` to 0 on *any* non-`error` result, so a quiet-kill streak does not merely fail to raise the 2026-09-15 error-streak alarm, it actively disarms it: a loop alternating `error` and `quiet_killed` never reaches `ERROR_STREAK_WARN` (src/loop.ts:478). `loopPhase`'s `failing` label keys off the same counter, so status/TUI/GUI render a loop in this state as an ordinary sleeping loop.
+
+**Why it went unnoticed:** the same observability failure as the two entries it most resembles — "Repeated tick failures raise no alarm" (Fixed, 2026-09-15) and the deferral latch below. A loop burning an hour per tick and producing nothing is indistinguishable, on every surface the harness offers, from a loop with nothing to do.
+
+**Related:** "`maxConcurrent` stopped bounding model load…" below is the likely trigger — the extra concurrent stream is what pushes a large session past the point where the backend schedules it — but the two are separately fixable, and this entry is what turns a transient starvation into a nine-hour loop.
+
+### A landing build check that times out merges to main unverified: one skip on 2026-09-16 turned main red for five hours (found by log analysis 2026-09-18)
+
+**Symptom:** `runScopedBuildCheck` classifies a timeout as an environmental `skipped` and the caller proceeds — at `landing` scope that means "proceeding to merge", so a commit whose post-rebase suite never finished lands on main with no verification at all. This happened once in the observed week and the consequence was immediate. From `events.jsonl` on 2026-09-16:
+
+- `02:04:43` `build_check coverage scope:landing status:skipped`, warning `landing build check timed out after 300s; proceeding to merge`, then `merged` + `landed` for "Unit-test writeJsonAtomic's success and failure paths in json-files".
+- `02:04:46` `plan` merges an md-only re-audit on top; main head is now `d3652c43`.
+- `03:27:14` the next code tick's baseline check runs: `build_check dry status:failed`, warning `main d3652c43 is red`.
+- `03:27` → `08:35` every code tick returns `main_red` — six `tick_end result:main_red` events across `dry` and `coverage`, "code merges blocked until main is green" — until an md-only `readme` merge at 13:03.
+
+The only code change in that range is the unverified one: `plan`'s commit is md-only and review-exempt, so it cannot fail a suite. The landing check is the in-lock *post-rebase* re-check — the one run whose entire purpose is to catch a semantic conflict with whatever landed while the author was working — and skipping it is exactly how such a conflict reaches main.
+
+The gate scope fails open the same way (`proceeding to model review`): `organize` 09-11 05:59:13, `perf` 09-11 06:17:56, `dry` 09-17 11:30:10. So does the red-main baseline (src/main-red.ts:60, `proceeding with authoring unverified`): `dry` and `coverage` both at 09-16 12:09:11. Six fail-open skips in the week.
+
+**Repro:** make the declared check exceed `BUILD_CHECK_TIMEOUT_MS` (src/build-check.ts:141, 300 s) at landing scope — in production, run it while the fleet is at full concurrency — and watch the merge proceed on a `skipped` outcome.
+
+**Expected:** a timeout is not an environmental skip. "npm is missing from PATH" and "the toolchain is broken" are genuine environment verdicts that say nothing about the tree; "the suite did not finish in 300 s" says the tree is unverified, which at landing scope is the one place the harness has already decided not to fail open — `mainGreen`'s doc states "Nothing here is fail-open", and a red landing check rejects. At minimum the landing scope should treat a timeout as a deterministic reject (the author retries; nothing is lost but one tick), or the timeout should scale with observed suite duration rather than being a constant.
+
+**Suspected cause:** src/build-check.ts:310 folds all three skip reasons into one branch — "Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every code tick into the 3-strike discard (gate) or every landing behind the merge lock." The reasoning is sound for `no-npm` and `toolchain` and for the gate scope, and it predates the landing scope sharing this helper. The constant is also calibrated for a quieter fleet: observed landing checks run 46–65 s (`build_check` durations 65 368 / 64 392 / 46 847 ms on 09-18), so a 300 s ceiling is ~5x headroom on paper, but it is the *tail* under concurrent suites that matters and two full suites run side by side already take ~66 s each.
+
+**Related:** "`maxConcurrent` stopped bounding model load…" below — the concurrency that makes a 300 s suite run plausible.
+
+### Two load-sensitive tests reject whatever commit is being gated: five unrelated commits lost in three days (found by log analysis and reproduced 2026-09-18)
+
+**Symptom:** Five landing rejections on 09-16/17/18 carry a byte-identical assertion failure — `actual: 'quiet_killed', expected: 'no_change'` — across three roles and five unrelated commits: `dry` `f5b9d77b` (09-16 01:02), `coverage` `88d4c011` (09-16 22:31), `coverage` `52542d66` (09-17 18:26), `dry` `e6778e03` (09-17 21:51), `dry` `23308c30` (09-18 00:01). None of those diffs touch the watchdog. Exactly one test in the suite asserts `no_change` against a live quiet watchdog: test/loop-2.test.ts:176, "a slow but talkative pi run is not killed by the quiet watchdog". It sets `quietTimeoutSeconds = 1` and drives a fake pi that prints a line every ~300 ms, leaving ~700 ms of slack per gap against a 1000 ms kill window (checked every 500 ms) — on a machine the fleet deliberately saturates. Work that already passed authoring and model review is discarded because the gate cannot keep a shell script's `sleep 0.3` under one second.
+
+**Repro:** reproduced on the first attempt on 2026-09-18 by running two full suites concurrently, exactly as two overlapping landings do:
+
+```
+suite A: fail 2  ✖ a slow but talkative pi run is not killed by the quiet watchdog (2362ms)
+                     actual: 'quiet_killed', expected: 'no_change'
+                 ✖ a transient timeout that also hits the harness timeout is not retried (2177ms)
+suite B: fail 0  ✔ a slow but talkative pi run is not killed by the quiet watchdog (2987ms)
+```
+
+Solo on an idle machine the same test passes 30/30 at ~1.6 s. Suite B passing at 2987 ms shows the margin is gone even when it survives. The same run flaked a second test, test/loop-2.test.ts:69 ("a transient timeout that also hits the harness timeout is not retried", `quietTimeoutSeconds = 2`). A third, test/orchestrator.test.ts:760 ("a live maxConcurrent edit resizes the cap without a restart"), caused three further rejections in the week with `Error: timed out waiting for overlapping runs after the grow` at 26 s.
+
+**Expected:** a test that asserts the watchdog does *not* fire must leave a margin the loaded fleet cannot eat. The kill window is what the test controls; raising `quietTimeoutSeconds` for these cases (or shortening the shim's silent gaps in proportion) restores the invariant being pinned — "progress, however slow, is not a hang" — without depending on scheduler luck. The live-orchestrator resize test needs the same treatment for its `waitFor` budget.
+
+**Suspected cause:** the three tests encode absolute wall-clock assumptions that were true when the fleet ran two concurrent pi streams and one suite at a time. The quiet watchdog is checked against the wall clock on a real interval by design (src/pi.ts:337-350, so it fires after a machine sleep), so it cannot be faked out by a test clock; the margin is the only lever. Precedent: "Flaky test: 'a resumed tick continues the interrupted session' fails with no_change under parallel load" (Fixed, 2026-08-27) is the same failure on the mirror-image assertion.
+
+**Related:** "`maxConcurrent` stopped bounding model load…" below — the load that eats the margin. This entry is independently fixable and is the cheapest of the set.
+
+### The restart drain has never once completed: 38 of 39 redeploys held the fleet a full 30 minutes and then aborted 4–12 ticks anyway (found by log analysis 2026-09-18)
+
+**Symptom:** `RESTART_DRAIN_MAX_MS` is 30 minutes on the stated premise that most ticks finish inside it (src/redeploy.ts:52-56: "Median ticks run ~35 min on local hardware; a half-hour drain lets most of them finish while bounding how long the fleet keeps executing stale code"). Of the 39 `restart` events in `events.jsonl` since 2026-09-08, **38 carry `drainedMs` at or past the cap** (1 801 272 – 2 267 835 ms) and each aborted 4–12 in-flight ticks. The single exception — 09-15 09:44:03, `drainedMs` 48 074, `abortedTicks` 0 — is the recovery restart after the Xcode-license outage, when every loop was already asleep. The drain has never once done what it exists to do on a working fleet.
+
+Measured over 323 completed (non-aborted) ticks since 09-11: p50 **46 min**, p75 82 min, p90 144 min, mean 68 min, max 749 min. **60% of ticks run longer than the drain window.** The premise is off by a factor that grew with the model and the workload, not by a rounding error.
+
+The cost is paid twice. Nothing new starts during a hold (src/orchestrator.ts's `holdForRestart` skips every runner and the land-queue drain), so the week's restarts held the fleet idle for roughly 19.5 h; and at the end of each hold 4–12 ticks are aborted anyway.
+
+**Repro:** read the `restart` events: `grep '"type":"restart"' .tumwater/log/events.jsonl` — every `drainedMs` on a fleet with work in flight is the cap.
+
+**Expected:** either the window should track observed tick duration (a p75 of completed ticks would drain ~82 min and actually let most ticks finish), or the fleet should accept that ticks outlive redeploys and stop paying for a wait that never pays off — abort promptly and lean on the resume machinery the doc already trusts ("Every tick a restart interrupts resumes on the new build … so a restart loses no work"). The current setting buys the worst of both: the full idle cost of waiting plus the full interruption cost of not waiting.
+
+**Suspected cause:** a constant calibrated by hand against an earlier backend, never re-derived. Nothing in the harness measures tick duration and compares it to the drain window, so the premise in the doc comment has no way to be falsified by the running fleet — the `restart` event records `drainedMs` and `abortedTicks`, which is exactly the evidence needed, and no surface reads it.
+
+### `maxConcurrent` stopped bounding model load when landings moved off the author semaphore: 4 concurrent pi streams for a quarter of the day (found by log analysis 2026-09-18)
+
+**Symptom:** `maxConcurrent` is the fleet's only lever over a single-GPU backend, and it no longer means what it says. The author semaphore is acquired in exactly one place (src/orchestrator.ts:662) and two pi-bearing paths bypass it: the land-queue drain starts its landing outside the semaphore entirely (src/orchestrator.ts:524-590 — deliberate, so authors keep ticking behind it), and the director skips the slot by `usesSlot`. The real ceiling is `maxConcurrent + 1 landing + 1 director`.
+
+Occupancy reconstructed from `tick_start`/`tick_end` plus `landed`/`land_failed` durations, with `maxConcurrent: 3`: on 09-16 and 09-17 the fleet ran **4 concurrent pi-bearing runs 25–36% of the time** and 3 for most of the remainder; peak 4, with a director prompt able to make 5. For contrast, 09-11 → 09-13 (cap 2) never exceeded the cap at all, and 09-15 sat at 4 only 5% of the time. The land queue went live with the 09-15 22:14 restart (`bdec4f1`); the first full day on that build is 09-16, which is also the day `quiet_killed` went from never-observed to 23 occurrences.
+
+**Repro:** run the fleet with a full land queue and count overlapping intervals in `events.jsonl`; or watch `.tumwater/worktrees/` during a queue drain — two `_land-<role>` suites plus the role worktrees run at once (observed 09-18 00:00:45–00:01:53, `feature` and `dry` gate checks overlapping).
+
+**Expected:** one number that bounds concurrent model load, whatever the work is called. A landing's reviewer run costs the backend exactly what an author's run costs; exempting it from the cap because it is "COMMITTED work awaiting completion" is a scheduling-priority argument, not a capacity argument. A separate landing permit, or a shared cap with the landing taking priority within it, would keep the interlock's intent (authors keep ticking) without letting total load float.
+
+**Suspected cause:** the exemption is documented at src/orchestrator.ts:512-523 and reasoned entirely about *fairness* — not pausing committed work behind the budget and user-pause gates — with no consideration of aggregate backend load, because when it was written the review gate ran inside the author's tick and therefore inside the semaphore. Moving the gate to the landing slot (merge queue 3/5) moved one pi stream out from under the cap without anything noticing.
+
+**Related:** the three entries above all worsen under this concurrency — the starved sessions, the 300 s check timeout, and the flaky tests' vanishing margins.
+
+### A transient `ENOTEMPTY` on `dist.prev` aborts the whole build swap: no `rmSync` in the harness passes `maxRetries` (found by log analysis 2026-09-18)
+
+**Symptom:** Three times in nine days the auto-restart reached the swap and failed on a directory removal: `swapping the new build into place failed: ENOTEMPTY, Directory not empty: /Users/zach/tumwater/.tumwater/build/dist.prev '/Users/zach/tumwater/.tumwater/build/dist.prev'` — 09-09 13:30:35, 09-11 00:36:11, 09-17 16:04:42. The same path appears as both operands, which rules out either `renameSync` and points at the `fs.rmSync(prev, …)` calls that bracket them (src/redeploy.ts:435 and :444). A swap error blocks the restart for that head by design, so each occurrence left the fleet running the stale build until the next episode cleared it — 32 minutes on 09-11 (00:36 → 01:08), 37 on 09-17 (16:04 → 16:41).
+
+**Repro:** not reproduced directly — it is a race, three occurrences in nine days. `fs.rmSync` with `recursive: true` walks the tree and then `rmdir`s; any entry appearing between the walk and the `rmdir` raises `ENOTEMPTY`, which on macOS is routine (Spotlight, `.DS_Store`) and is precisely the class Node's `maxRetries` exists for. `force: true` does not help: it swallows `ENOENT` only.
+
+**Expected:** a transient `ENOTEMPTY` should cost a retry, not a redeploy. Node retries `ENOTEMPTY`/`EBUSY`/`EPERM` when `maxRetries` is set, and it defaults to 0.
+
+**Suspected cause:** none of the 14 `fs.rmSync` call sites under `src/` passes `maxRetries` or `retryDelay`, so every recursive delete in the harness is one transient filesystem race away from throwing. The swap is where it hurts most, because `swapDist` is the one caller whose throw is load-bearing — it blocks the restart — but the same exposure sits in the staging cleanup loop at src/redeploy.ts:446-448 and in the scratch-dir cleanups elsewhere.
+
 ### A deferred tick preserves the `no_change` that causes it: five maintenance roles have been permanently off since their first idle tick (found by log analysis 2026-09-17)
 
 **Symptom:** Five of the nine deferrable roles have not run a single tick in days, while the fleet landed normally around them. From the authoritative state files (`.tumwater/state/<role>.json`, read 2026-09-17):
