@@ -175,6 +175,14 @@ export const ERROR_STREAK_WARN = 3;
  * of model time on local hardware. The streak itself keeps counting (LoopState.cutOffStreak). */
 const CUT_OFF_RESUME_LIMIT = 3;
 
+/** Resumes granted to one quiet-kill streak before the loop abandons the starved pi session
+ * and takes a fresh tick on the idle ladder. A session the backend defers past the quiet
+ * watchdog every attempt would otherwise re-send the same input immediately and forever,
+ * burning an hour of slot time per retry with no output (BUGS.md 2026-09-18: 41 quiet kills
+ * consumed 44% of the fleet over two days). Mirrors CUT_OFF_RESUME_LIMIT; the streak itself
+ * keeps counting (LoopState.quietKillStreak) so one warning per episode can be raised. */
+export const QUIET_KILL_RESUME_LIMIT = 3;
+
 /** Record a finished tick on the loop's state and schedule its next run from the outcome.
  * Split out of LoopRunner.tick() (loop.ts) so the scheduling policy — which outcomes retry
  * promptly, which back off and on which ladder, how cut-off resumes are bounded — sits with
@@ -198,6 +206,10 @@ export function applyTickOutcome(
   // warning when the streak crosses ERROR_STREAK_WARN — once per episode, since the
   // reset re-arms it — and the dashboards read "failing" from the same field.
   s.consecutiveErrors = outcome.result === "error" ? (s.consecutiveErrors ?? 0) + 1 : 0;
+  // The quiet-kill streak counts consecutive watchdog kills; any other result resets it.
+  // loop.ts warns once when it crosses QUIET_KILL_RESUME_LIMIT, and the branch below uses
+  // it to bound how many times a starved session is resumed (BUGS.md 2026-09-18).
+  s.quietKillStreak = outcome.result === "quiet_killed" ? (s.quietKillStreak ?? 0) + 1 : 0;
   // The review gate persists phase="review" around its run so a dashboard mid-review shows
   // "reviewing". A completed tick clears it so the label never lingers — except an aborted
   // one: there the interruption hit mid-review, and the next launch must recover (and
@@ -236,11 +248,22 @@ export function applyTickOutcome(
     // the worktree's uncommitted edits intact, so resume them promptly like an interruption.
     // The cause is named in state so the bridge prompt tells the resumed session its run died
     // on a stalled tool call (director ticks never resume — their prompt was re-queued fresh).
-    if (role !== DIRECTOR_ROLE) {
+    // Bounded like a cut-off streak: past QUIET_KILL_RESUME_LIMIT resumes the session is
+    // abandoned — the backend has refused to schedule it every attempt, so re-sending it only
+    // starves the slot again — and the loop takes a fresh tick on the idle ladder instead
+    // (BUGS.md 2026-09-18).
+    if (role !== DIRECTOR_ROLE && s.quietKillStreak <= QUIET_KILL_RESUME_LIMIT) {
       s.resumePending = true;
       s.resumeCause = "hung-tool";
+      s.nextRunAt = Date.now();
+    } else if (role !== DIRECTOR_ROLE) {
+      s.resumePending = false;
+      s.resumeCause = undefined;
+      s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff);
+      s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
+    } else {
+      s.nextRunAt = Date.now();
     }
-    s.nextRunAt = Date.now();
   } else if (outcome.result === "user_aborted") {
     // A deliberate stop, not an interruption: the worktree was already reset to main and a
     // director prompt deliberately dropped, so there is nothing to resume — schedule like an

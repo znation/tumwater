@@ -5,30 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### `quiet_killed` is the only tick outcome with no strike cap, no backoff and no alarm: hour-long empty retries consumed 44% of the fleet over two days (found by log analysis 2026-09-18)
-
-**Symptom:** A tick killed by the quiet watchdog retries immediately, on the same pi session, forever. From `events.jsonl`: `quiet_killed` did not occur once before 2026-09-16, then 23 times on 09-16 and 16 times on 09-17. The 41 kills consumed **69.7 h of slot time**, 62.7 h of it on those two days — **44% of the 3-slot fleet's 144 slot-hours**. The shape is a tight loop, not scattered bad luck: on 09-17 `feature` ticks 179–183 and `plan` ticks 175–179 each died at 60–66 min carrying no token count at all, back to back from 05:59 to 15:09. Ten ticks, nine hours, zero output, and the only `warning` logged fleet-wide in that window was an unrelated `dry` build-check timeout. Session size predicts the damage almost exactly (`.tumwater/sessions/<role>`): `plan` 16 MB → 11 kills, `feature` 15 MB → 13, `bugfix` 14 MB → 5, `dry` 5.2 MB → 1, `coverage` 4.0 MB → 1, `readme` 2.6 MB → 5, `steward` 2.5 MB → 4.
-
-The backend is not down while this happens. `~/.omlx/logs/server.log.2026-09-17` shows completions landing continuously through the whole window (45–142 s each), and 17 of that day's 19 `[vlm_stream_generate] Aborting request` lines match a quiet-kill timestamp to the second — the harness aborting, not the server failing. The starved request leaves no other trace: `e5c0fd95-f6bd-4b67-8654-cf35ac5f6e66` (the 05:59:31 `feature` kill) appears in the server log **only** in its abort line — never a prefix-cache restore, never a `Chat completion`. It was accepted and never scheduled. The retry then re-sends the same, now slightly larger, session and starves the same way.
-
-**Repro:** deterministic once a role's session is large enough that the backend defers it past `quietTimeoutSeconds`; the fleet reproduced it ten times in a row on 09-17. Without the backend, the scheduling half alone is enough: drive any role to a `quiet_killed` outcome (test/loop-2.test.ts:216's zombie-stream shim does this in ~1 s) and read `.tumwater/state/<role>.json` — `nextRunAt` is now, `backoffSeconds` is untouched, `consecutiveErrors` is 0, and no `warning` event was logged. Repeat indefinitely; nothing changes.
-
-**Expected:** a bounded number of consecutive quiet kills, then escalation. Every sibling outcome already has a brake and this one has none:
-
-| outcome | backoff | strike cap | alarm |
-| --- | --- | --- | --- |
-| `error` | `ERROR_BACKOFF` ladder | `consecutiveErrors` | warns at `ERROR_STREAK_WARN` |
-| cut-off | min interval | `CUT_OFF_RESUME_LIMIT` | — |
-| `quiet_killed` | none | none | none |
-
-The cut-off branch is the closest precedent and the right model: after N resumes it gives up on the session and falls back to a fresh tick with normal backoff, precisely so "a task that outruns the ceiling every single time" cannot cycle forever (src/state.ts:241-247). A quiet-kill streak should likewise drop the session — the documented self-heal that already exists for context overflow and two consecutive `error` ticks — and raise one warning per episode, as the error streak does.
-
-**Suspected cause:** two independent gaps in src/state.ts. First, `applyTickOutcome`'s `quiet_killed` branch (src/state.ts:216-225) sets `resumePending = true` and `nextRunAt = Date.now()` and nothing else: no ladder, no streak field, no limit. The resume then reuses the same session — `resumableSession` at src/loop.ts:513 feeds `continueSession: resume` at src/loop.ts:317 — so each attempt re-sends the input that caused the previous kill. Second, src/state.ts:182 resets `consecutiveErrors` to 0 on *any* non-`error` result, so a quiet-kill streak does not merely fail to raise the 2026-09-15 error-streak alarm, it actively disarms it: a loop alternating `error` and `quiet_killed` never reaches `ERROR_STREAK_WARN` (src/loop.ts:478). `loopPhase`'s `failing` label keys off the same counter, so status/TUI/GUI render a loop in this state as an ordinary sleeping loop.
-
-**Why it went unnoticed:** the same observability failure as the two entries it most resembles — "Repeated tick failures raise no alarm" (Fixed, 2026-09-15) and the deferral latch below. A loop burning an hour per tick and producing nothing is indistinguishable, on every surface the harness offers, from a loop with nothing to do.
-
-**Related:** "`maxConcurrent` stopped bounding model load…" below is the likely trigger — the extra concurrent stream is what pushes a large session past the point where the backend schedules it — but the two are separately fixable, and this entry is what turns a transient starvation into a nine-hour loop.
-
 ### A landing build check that times out merges to main unverified: one skip on 2026-09-16 turned main red for five hours (found by log analysis 2026-09-18)
 
 **Symptom:** `runScopedBuildCheck` classifies a timeout as an environmental `skipped` and the caller proceeds — at `landing` scope that means "proceeding to merge", so a commit whose post-rebase suite never finished lands on main with no verification at all. This happened once in the observed week and the consequence was immediate. From `events.jsonl` on 2026-09-16:
@@ -89,6 +65,46 @@ Occupancy reconstructed from `tick_start`/`tick_end` plus `landed`/`land_failed`
 **Suspected cause:** none of the 14 `fs.rmSync` call sites under `src/` passes `maxRetries` or `retryDelay`, so every recursive delete in the harness is one transient filesystem race away from throwing. The swap is where it hurts most, because `swapDist` is the one caller whose throw is load-bearing — it blocks the restart — but the same exposure sits in the staging cleanup loop at src/redeploy.ts:446-448 and in the scratch-dir cleanups elsewhere.
 
 ## Fixed
+
+### `quiet_killed` is the only tick outcome with no strike cap, no backoff and no alarm: hour-long empty retries consumed 44% of the fleet over two days (found by log analysis 2026-09-18, fixed 2026-09-18)
+
+**Symptom:** A tick killed by the quiet watchdog retries immediately, on the same pi session, forever. From `events.jsonl`: `quiet_killed` did not occur once before 2026-09-16, then 23 times on 09-16 and 16 times on 09-17. The 41 kills consumed **69.7 h of slot time**, 62.7 h of it on those two days — **44% of the 3-slot fleet's 144 slot-hours**. The shape is a tight loop, not scattered bad luck: on 09-17 `feature` ticks 179–183 and `plan` ticks 175–179 each died at 60–66 min carrying no token count at all, back to back from 05:59 to 15:09. Ten ticks, nine hours, zero output, and the only `warning` logged fleet-wide in that window was an unrelated `dry` build-check timeout. Session size predicts the damage almost exactly (`.tumwater/sessions/<role>`): `plan` 16 MB → 11 kills, `feature` 15 MB → 13, `bugfix` 14 MB → 5, `dry` 5.2 MB → 1, `coverage` 4.0 MB → 1, `readme` 2.6 MB → 5, `steward` 2.5 MB → 4.
+
+The backend is not down while this happens. `~/.omlx/logs/server.log.2026-09-17` shows completions landing continuously through the whole window (45–142 s each), and 17 of that day's 19 `[vlm_stream_generate] Aborting request` lines match a quiet-kill timestamp to the second — the harness aborting, not the server failing. The starved request leaves no other trace: `e5c0fd95-f6bd-4b67-8654-cf35ac5f6e66` (the 05:59:31 `feature` kill) appears in the server log **only** in its abort line — never a prefix-cache restore, never a `Chat completion`. It was accepted and never scheduled. The retry then re-sends the same, now slightly larger, session and starves the same way.
+
+**Repro:** deterministic once a role's session is large enough that the backend defers it past `quietTimeoutSeconds`; the fleet reproduced it ten times in a row on 09-17. Without the backend, the scheduling half alone is enough: drive any role to a `quiet_killed` outcome (test/loop-2.test.ts:216's zombie-stream shim does this in ~1 s) and read `.tumwater/state/<role>.json` — `nextRunAt` is now, `backoffSeconds` is untouched, `consecutiveErrors` is 0, and no `warning` event was logged. Repeat indefinitely; nothing changes.
+
+**Expected:** a bounded number of consecutive quiet kills, then escalation. Every sibling outcome already has a brake and this one has none:
+
+| outcome | backoff | strike cap | alarm |
+| --- | --- | --- | --- |
+| `error` | `ERROR_BACKOFF` ladder | `consecutiveErrors` | warns at `ERROR_STREAK_WARN` |
+| cut-off | min interval | `CUT_OFF_RESUME_LIMIT` | — |
+| `quiet_killed` | none | none | none |
+
+The cut-off branch is the closest precedent and the right model: after N resumes it gives up on the session and falls back to a fresh tick with normal backoff, precisely so "a task that outruns the ceiling every single time" cannot cycle forever (src/state.ts:241-247). A quiet-kill streak should likewise drop the session — the documented self-heal that already exists for context overflow and two consecutive `error` ticks — and raise one warning per episode, as the error streak does.
+
+**Suspected cause:** two independent gaps in src/state.ts. First, `applyTickOutcome`'s `quiet_killed` branch (src/state.ts:216-225) sets `resumePending = true` and `nextRunAt = Date.now()` and nothing else: no ladder, no streak field, no limit. The resume then reuses the same session — `resumableSession` at src/loop.ts:513 feeds `continueSession: resume` at src/loop.ts:317 — so each attempt re-sends the input that caused the previous kill. Second, src/state.ts:182 resets `consecutiveErrors` to 0 on *any* non-`error` result, so a quiet-kill streak does not merely fail to raise the 2026-09-15 error-streak alarm, it actively disarms it: a loop alternating `error` and `quiet_killed` never reaches `ERROR_STREAK_WARN` (src/loop.ts:478). `loopPhase`'s `failing` label keys off the same counter, so status/TUI/GUI render a loop in this state as an ordinary sleeping loop.
+
+**Why it went unnoticed:** the same observability failure as the two entries it most resembles — "Repeated tick failures raise no alarm" (Fixed, 2026-09-15) and the deferral latch below. A loop burning an hour per tick and producing nothing is indistinguishable, on every surface the harness offers, from a loop with nothing to do.
+
+**Related:** "`maxConcurrent` stopped bounding model load…" below is the likely trigger — the extra concurrent stream is what pushes a large session past the point where the backend schedules it — but the two are separately fixable, and this entry is what turns a transient starvation into a nine-hour loop.
+
+**Fix:** `quiet_killed` now has the brake its siblings have. `applyTickOutcome` counts
+consecutive quiet kills in `LoopState.quietKillStreak` (reset by any other outcome) and
+resumes the starved session only while the streak is at or under
+`QUIET_KILL_RESUME_LIMIT` (3); past the limit it clears `resumePending` and takes a fresh
+tick on the idle backoff ladder, so the backend is not asked to schedule the same large
+session again and the loop sleeps instead of retrying immediately. `loop.ts` raises one
+`warning` when the streak crosses the limit (once per episode, like the error streak), and
+the status/TUI/GUI state cell reads `failing` from the same field, so an hour-per-tick empty
+loop no longer looks like a sleeping one. The director keeps its existing prompt re-queue and
+immediate retry: its prompts run fresh and a human is watching.
+
+**Files:** src/types.ts (`quietKillStreak`); src/state.ts (`QUIET_KILL_RESUME_LIMIT`, streak
+counting, bounded resume/give-up branch); src/loop.ts (one warning per episode);
+src/ui/status-render.ts (`failing` label); test/state.test.ts (streak/resume/backoff pins);
+test/loop.test.ts (warning + give-up e2e); test/status-render.test.ts (`failing` label).
 
 ### A deferred tick preserves the `no_change` that causes it: five maintenance roles were permanently off after their first idle tick (found by log analysis 2026-09-17, fixed 2026-09-18)
 

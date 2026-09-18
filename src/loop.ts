@@ -33,7 +33,7 @@ import { configForRole } from "./config.js";
 import { landChange, type LandRequest } from "./lander.js";
 import { enqueueLanding } from "./land-queue.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
-import { ERROR_STREAK_WARN, applyTickOutcome, clearBackoff, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, recordDailyCost, saveLoopState, zeroCounters } from "./state.js";
 import { recoverLeftover } from "./leftover.js";
 import { mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./merge.js";
@@ -480,6 +480,17 @@ export class LoopRunner {
         loop: this.role,
         type: "warning",
         message: `${s.consecutiveErrors} consecutive tick failures: ${s.lastError ?? "unknown error"}`,
+      });
+    }
+    // One warning per quiet-kill episode (BUGS.md 2026-09-18): a loop burning an hour per
+    // tick with no output must not look like a sleeping loop. applyTickOutcome grows the
+    // streak on each kill and resets it on any other result, so the crossing fires once;
+    // the give-up (fresh session + backoff) follows on the next kill.
+    if ((s.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
+      logEvent(this.root, {
+        loop: this.role,
+        type: "warning",
+        message: `${s.quietKillStreak} consecutive quiet kills (no progress): ${s.lastError ?? "unknown hang"}`,
       });
     }
     // Per-tick usage (PLANS.md, per-tick-usage plan): the event feed is where operators see

@@ -346,6 +346,40 @@ test("consecutive error ticks raise one warning per episode, not one per tick", 
   }
 });
 
+test("consecutive quiet kills raise one warning per episode, then drop the starved session", async () => {
+  // BUGS.md 2026-09-18: quiet_killed was the only outcome with no cap, no backoff and no
+  // alarm. The streak crossing warns once; the kill past the limit abandons the session
+  // (fresh tick) and backs off instead of retrying the starved session immediately forever.
+  const repo = await initializedRepo();
+  // One line, then silence — the quiet watchdog kills the run as hung.
+  const restore = fakePi(
+    [`printf '%s\n' '${assistantLine("starting work")}'`, `exec sleep 60`].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.quietTimeoutSeconds = 1;
+    config.tickTimeoutSeconds = 3600;
+    const runner = new LoopRunner(repo, "improve", config, "main");
+    const warnings = () => readEvents(repo).filter((e) => e.type === "warning");
+    // Two prior kills: this one crosses the threshold.
+    runner.state.quietKillStreak = 2;
+    assert.equal((await runner.tick()).result, "quiet_killed");
+    assert.equal(runner.state.quietKillStreak, 3);
+    assert.equal(warnings().length, 1, "one warning at the threshold");
+    assert.match(String(warnings()[0]?.message), /3 consecutive quiet kills \(no progress\)/);
+    // Past the limit: no resume, and the loop climbs the idle ladder rather than retrying now.
+    runner.state.quietKillStreak = 3;
+    runner.state.resumePending = false;
+    assert.equal((await runner.tick()).result, "quiet_killed");
+    assert.equal(runner.state.quietKillStreak, 4);
+    assert.equal(runner.state.resumePending, false, "the starved session is abandoned");
+    assert.ok(runner.state.backoffSeconds > 0, "the give-up backs off on the idle ladder");
+    assert.equal(warnings().length, 1, "the warning is once per episode, not once per kill");
+  } finally {
+    restore();
+  }
+});
+
 // tick() promises to never throw: runTick's own error paths RETURN an "error" outcome, but
 // any unexpected exception (a bug in a new code path, a failed git call, …) must be caught
 // by tick()'s defensive branch and degrade the same way. Without it the rejection would

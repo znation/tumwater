@@ -76,20 +76,14 @@ Open items:
   requested by user; depends on 1/2).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
-- Open bugs: 7, all found by log analysis of the fleet's own event log and detailed in
+- Open bugs: 4, all found by log analysis of the fleet's own event log and detailed in
   BUGS.md's Open section —
-  - `quiet_killed` is the only tick outcome with no strike cap, no backoff, and no alarm
-    (found 2026-09-18).
   - A landing build check that times out merges to main unverified (found 2026-09-18).
-  - Load-sensitive watchdog tests reject whatever commit is being gated (found 2026-09-18).
   - The restart drain has never once completed: 38 of 39 redeploys held the fleet the full
     30 minutes and still aborted 4–12 ticks (found 2026-09-18).
   - `maxConcurrent` no longer bounds model load — landings and the director bypass it
     (found 2026-09-18).
   - A transient `ENOTEMPTY` on `dist.prev` aborts the whole build swap (found 2026-09-18).
-  - The deferral latch: a deferred tick preserves the `no_change` that causes it, so five
-    maintenance roles (qa, perf, clean, organize, improve) have been off since their first
-    idle tick (found 2026-09-17).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
 Current main (`c53dba4`): build clean, suite 1031/1035.

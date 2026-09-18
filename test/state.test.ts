@@ -471,6 +471,43 @@ test("applyTickOutcome: cut-off ticks resume the compacted session until the str
   assert.equal(s.cutOffStreak, 4);
 });
 
+test("applyTickOutcome: quiet kills resume the starved session until the streak limit, then back off", () => {
+  const cfg = testConfig();
+  // Under the limit (3): each consecutive kill resumes promptly and grows the streak.
+  for (let streak = 0; streak < 3; streak++) {
+    const s = freshLoopState("feature");
+    s.quietKillStreak = streak;
+    applyTickOutcome(s, cfg, "feature", { result: "quiet_killed" });
+    assert.equal(s.resumePending, true, `quiet kill ${streak + 1} resumes`);
+    assert.equal(s.resumeCause, "hung-tool");
+    assert.equal(s.quietKillStreak, streak + 1);
+    assert.equal(s.backoffSeconds, 0, "a quiet kill is not idleness");
+    assert.ok(s.nextRunAt <= Date.now() + 1_000, "resumes promptly");
+  }
+  // Past the limit: abandon the starved session and take a fresh tick on the idle ladder
+  // (BUGS.md 2026-09-18). Before the fix the branch resumed forever with no backoff.
+  const s = freshLoopState("feature");
+  s.quietKillStreak = 3;
+  applyTickOutcome(s, cfg, "feature", { result: "quiet_killed" });
+  assert.equal(s.resumePending, false, "no resume — the next tick starts fresh");
+  assert.equal(s.resumeCause, undefined);
+  assert.equal(s.backoffSeconds, 30); // idle initial
+  assert.equal(s.quietKillStreak, 4, "the streak keeps counting for the warning note");
+});
+
+test("applyTickOutcome: any non-quiet-kill outcome resets the quiet-kill streak", () => {
+  const cfg = testConfig();
+  const s = freshLoopState("feature");
+  s.quietKillStreak = 2;
+  applyTickOutcome(s, cfg, "feature", { result: "no_change" });
+  assert.equal(s.quietKillStreak, 0);
+  // The error streak and the quiet-kill streak stay independent: an error resets one
+  // without arming the other.
+  applyTickOutcome(s, cfg, "feature", { result: "error" });
+  assert.equal(s.quietKillStreak, 0);
+  assert.equal(s.consecutiveErrors, 1);
+});
+
 test("applyTickOutcome: other unproductive outcomes grow the idle backoff and clear the cut-off streak", () => {
   const cfg = testConfig();
   const s = freshLoopState("feature");

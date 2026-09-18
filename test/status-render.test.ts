@@ -775,6 +775,24 @@ test("loopPhase shows failing for idle loops stuck on an error streak, not sleep
   assert.match(out, /feature\s+failing/);
 });
 
+test("loopPhase shows failing for a quiet-kill streak at the give-up threshold", () => {
+  // BUGS.md 2026-09-18: a loop stuck retrying a session the backend will not schedule looked
+  // exactly like a sleeping loop while it burned an hour of slot time per tick.
+  const s = freshLoopState("feature");
+  s.lastResult = "quiet_killed";
+  s.quietKillStreak = 3;
+  s.nextRunAt = Date.now() + 1_800_000;
+  assert.equal(loopPhase(s, true), "failing", "the streak at the threshold outranks sleep");
+
+  // Below the threshold the loop keeps its ordinary label — a couple of transients are
+  // retryable, not a health state.
+  const shallow = freshLoopState("feature");
+  shallow.lastResult = "quiet_killed";
+  shallow.quietKillStreak = 2;
+  shallow.nextRunAt = Date.now() + 1_800_000;
+  assert.match(loopPhase(shallow, true), /^sleeping/);
+});
+
 test("renderStatus shows the main-red blockage in a blocked loop's state cell and last-result line", () => {
   const snap = snapshotWith([
     { role: "feature", lastResult: "main_red", lastSummary: "code merges blocked until main is green" },

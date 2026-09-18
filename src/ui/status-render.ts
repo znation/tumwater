@@ -2,7 +2,7 @@ import path from "node:path";
 import { DIRECTOR_ROLE } from "../roles.js";
 import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
-import { ERROR_STREAK_WARN, budgetGate, dailyCost, fleetDailyCost, budgetReached } from "../state.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, budgetGate, dailyCost, fleetDailyCost, budgetReached } from "../state.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { compactTokens, cutSplitsSurrogatePair, formatTime, pad2, shortSha, usd } from "../text.js";
 
@@ -149,6 +149,10 @@ export function loopPhase(
   // the first non-error tick resets the streak, and each retry re-records "error" while the
   // environment stays broken.
   if (s.lastResult === "error" && (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN) return "failing";
+  // A quiet-kill streak at the give-up threshold reads "failing" too (BUGS.md 2026-09-18):
+  // the loop is retrying a session the backend will not schedule, and before this it looked
+  // exactly like a sleeping loop while it burned an hour of slot time per tick.
+  if (s.lastResult === "quiet_killed" && (s.quietKillStreak ?? 0) >= QUIET_KILL_RESUME_LIMIT) return "failing";
   if (s.nextRunAt > Date.now()) {
     // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
     // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder

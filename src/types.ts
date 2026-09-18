@@ -209,6 +209,12 @@ export interface LoopState {
   /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
    * past the limit the loop abandons the runaway task and falls back to a fresh tick. */
   cutOffStreak?: number;
+  /** Consecutive ticks ended by the quiet watchdog (`quiet_killed`). Bounds quiet-kill
+   * resumes: while at or under the limit the loop resumes the starved session promptly,
+   * past it the loop abandons the session and takes a fresh tick on the idle ladder, so a
+   * session the backend will not schedule cannot retry immediately forever (BUGS.md
+   * 2026-09-18). Reset by any non-quiet-kill outcome. */
+  quietKillStreak?: number;
   /** Consecutive ticks that ended in `error`. While at or past the warning threshold
    * (state.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
    * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
