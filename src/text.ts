@@ -83,7 +83,7 @@ export function parseNonNegativeInt(raw: string): number | null {
 /** Compact token count for display: one-decimal `k` at ≥10,000 (`12.3k`), bare integer
  * below. The single home of this format — the status table's gen/peak-ctx columns and the
  * commit trailer's ctx field both render through it, so they cannot drift. (The GUI renders
- * the same rule from its own JS copy in gui-page.ts: a separate runtime that cannot import
+ * the same rule from its own JS copy in gui-client.ts: a separate runtime that cannot import
  * TypeScript.) */
 export function compactTokens(n: number): string {
   return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
