@@ -28,6 +28,12 @@ alone: a handful of files, at most a few hundred lines of change including tests
 question left open for the implementer. Anything larger is split into independently landable
 sub-plans that cross-reference each other, each with its own acceptance criteria.`;
 
+/** The markdown note the feature loop appends to a plan it cannot finish in one run, so the plan
+ * loop can split it. Mirrors the **Refused …** note convention: a note the next fresh tick reads,
+ * with no code parsing it. Defined once so the feature and plan texts and the director's routing
+ * clause cannot drift. */
+export const NEEDS_REVIEW_NOTE = `**Needs review <YYYY-MM-DD> by feature: too large for one run**`;
+
 /** How a role with no backlog (organize, clean, dry, perf, improve) finds its one task. Written
  * against the observed failure: with nothing to point at, a local model reads the codebase file
  * by file — thirty whole-file reads, ~300 KB of tool output — and then either fills its window or
@@ -64,9 +70,12 @@ implemented (prefer ones marked ready or with a written plan). List the entries 
 entry's line range and the code it names. Implement it completely: code, tests, and any docs.
 The reviewer checks your diff against the entry's files-touched list and acceptance criteria, so
 land everything the entry promises, or update the entry to say what changed and why. A plan too
-large to finish in this run is split before implementing: rewrite its entry into independent
-sub-entries that cross-reference each other, then implement one of them completely. Then update
-PLANS.md to mark it done (move it to a Done section with the date). A plan that resists
+large to finish in this run is not split by you: append the note
+${NEEDS_REVIEW_NOTE}
+under its heading, skip it, and implement the next available plan that fits — you may mark
+several oversized entries while scanning, but land exactly one plan. Skip entries already
+carrying a **Needs review …** note, alongside the Refused-note skip. Then update PLANS.md to mark
+the plan you implemented done (move it to a Done section with the date). A plan that resists
 implementation is a finding: refuse it with the objection recorded rather than forcing it. Skip
 plans whose entry carries a Refused note. If PLANS.md is empty or everything is done, there is
 nothing to do.`,
@@ -99,8 +108,10 @@ already exist and that no Planned or Done entry already covers it (\`grep -n '^#
 lists every entry; read only the ones whose headings look related). Ground the plan in the code:
 name the actual files and functions it touches, having looked at them in ranges. ${PLAN_SIZING}
 ${DECOMPOSITION_GUIDANCE}
-If PLANS.md already has several unimplemented plans, prefer
-refining the weakest existing plan over adding another.`,
+A plan carrying a ${NEEDS_REVIEW_NOTE} note outranks refining the weakest existing plan: split it
+into independently landable sub-plans that cross-reference each other (per PLAN_SIZING, each with
+its own acceptance criteria), then remove the note. Otherwise, if PLANS.md already has several
+unimplemented plans, prefer refining the weakest existing plan over adding another.`,
   },
   {
     id: "readme",

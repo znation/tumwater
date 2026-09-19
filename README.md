@@ -157,7 +157,8 @@ no backlog to point at (`organize`, `clean`, `dry`, `perf`, `improve`) carry a s
 search procedure — cheap signals such as recent churn, size outliers, and targeted grep, with their
 own recent commits as the memory of what they already did — instead of surveying the codebase file
 by file, which is what filled the window on half of all ticks before. Plans are sized to one
-implementation run so the feature loop can land them whole, and the reviewer works through a
+implementation run so the feature loop can land them whole — a plan too large for one run is
+marked and handed to the plan loop to split, not split inline — and the reviewer works through a
 five-point checklist and is told when the gate's deterministic pre-check already passed, so it
 spends its run on what a green suite cannot show rather than re-running it.
 

@@ -17,7 +17,7 @@ import {
 import { parseVerdict } from "../src/review.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
-import { customRole, DECOMPOSITION_GUIDANCE, PLAN_SIZING, ROLES, roleById, searchGuidance } from "../src/roles.js";
+import { customRole, DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, ROLES, roleById, searchGuidance } from "../src/roles.js";
 import { tmpdir } from "./util.js";
 
 test("readInitialPrompt extracts the managed block", () => {
@@ -1002,13 +1002,38 @@ test("the coverage role locates gaps from evidence, not by reading every module"
   assert.match(find, /then read only that file and its existing tests/);
 });
 
-test("the feature role maps PLANS.md by heading, matches the reviewer's plan check, and splits oversized plans", () => {
+test("the feature role maps PLANS.md by heading, matches the reviewer's plan check, and hands oversized plans to the plan loop", () => {
   const find = oneLine(roleById("feature")!.find);
   assert.match(find, /`grep -n '\^##' PLANS\.md` gives every heading with its line number/);
   assert.match(find, /read only the chosen entry's line range and the code it names/);
   assert.match(find, /The reviewer checks your diff against the entry's files-touched list and acceptance criteria/);
-  assert.match(find, /A plan too large to finish in this run is split before implementing/);
-  assert.match(find, /then implement one of them completely/);
+  assert.match(find, /A plan too large to finish in this run is not split by you/);
+  assert.ok(find.includes(NEEDS_REVIEW_NOTE), "feature embeds the marker");
+  assert.match(find, /append the note .* under its heading, skip it, and implement the next available plan that fits/);
+  assert.match(find, /land exactly one plan/);
+  assert.match(find, /Skip entries already carrying a \*\*Needs review …\*\* note/);
+  assert.ok(!/split before implementing/.test(find), "the inline-split instruction is gone");
+});
+
+test("the plan role prioritizes a Needs review plan and clears the note after splitting", () => {
+  const find = oneLine(roleById("plan")!.find);
+  assert.ok(find.includes(NEEDS_REVIEW_NOTE), "plan embeds the marker");
+  assert.match(find, /outranks refining the weakest existing plan/);
+  assert.match(find, /split it into independently landable sub-plans that cross-reference each other/);
+  assert.match(find, /then remove the note/);
+});
+
+test("the Needs review marker is embedded in the feature, plan, and director prompts", () => {
+  assert.ok(oneLine(roleById("feature")!.find).includes(NEEDS_REVIEW_NOTE));
+  assert.ok(oneLine(roleById("plan")!.find).includes(NEEDS_REVIEW_NOTE));
+  assert.ok(oneLine(buildDirectorPrompt("split plan X", "a project")).includes(NEEDS_REVIEW_NOTE));
+});
+
+test("the director routes a user ruling on a marked plan", () => {
+  const prompt = oneLine(buildDirectorPrompt("split plan X", "a project"));
+  assert.match(prompt, /A decision about a marked plan/);
+  assert.match(prompt, /split it into independently landable sub-plans per PLAN_SIZING/);
+  assert.match(prompt, /or clear the \*\*Needs review <YYYY-MM-DD> by feature: too large for one run\*\* note/);
 });
 
 test("the bugfix role bounds its latent-bug hunt and demands a reproduction", () => {

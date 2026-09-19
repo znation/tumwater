@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { DECOMPOSITION_GUIDANCE, PLAN_SIZING, type Role } from "./roles.js";
+import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, type Role } from "./roles.js";
 import { NOTHING_TO_DO, REFUSED_SENTINEL } from "./reply-contract.js";
 
 /** Prompt construction for every kind of pi run the harness starts (tick, director, resume,
@@ -215,6 +215,9 @@ work yourself:
 - A decision about a refused entry (e.g. "clear the refusal on plan X", "reconsider plan Y"):
   clear its **Refused …** note from PLANS.md/BUGS.md — or revise the entry per the user's
   direction — so loops can pick it up again.
+- A decision about a marked plan (e.g. "split plan X", "keep plan X whole"): split it into
+  independently landable sub-plans per PLAN_SIZING, or clear the ${NEEDS_REVIEW_NOTE} note, per
+  the user's direction.
 - A request to manage user-defined loops ("add a loop named X that does Y", "remove X",
   "move X before Y"): execute it by editing tumwater.json's customLoops array — add appends
   { "name", "task" } with a name in [a-z0-9_-] no built-in role uses and a task written as the
