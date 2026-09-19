@@ -1,7 +1,7 @@
 import { applyToolExecutionEvent, parsePiEventLine, type OpenToolCall } from "../pi-event-line.js";
 import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
 import { defaultConfig, loadConfigCached } from "../config.js";
-import { statRoleLog, TailState, withTail } from "./tail.js";
+import { statRoleLog, type TailState, withTail } from "./tail.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
  * The log is append-only across ticks; each tick's pi run starts with a `session` event,
