@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { logEvent, readEvents, subscribeEvents } from "../src/events.js";
+import { logEvent, parseEventLine, readEvents, subscribeEvents } from "../src/events.js";
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./util.js";
 
@@ -22,6 +22,24 @@ test("readEvents skips corrupt lines", () => {
   fs.appendFileSync(eventsLogPath(dir), "{torn\n");
   logEvent(dir, { loop: "x", type: "warning", message: "after" });
   assert.equal(readEvents(dir).length, 2);
+});
+
+// A line of valid JSON that is not an event object (a scalar, null, or array) is just as
+// corrupt as a torn one: it must read as no data, not as a truthy non-object the feed would
+// render as garbage.
+test("parseEventLine treats valid-JSON non-object lines as no data", () => {
+  for (const line of ["null", "123", '"text"', "[1,2]", "true"]) {
+    assert.equal(parseEventLine(line), null, line);
+  }
+  assert.deepEqual(parseEventLine('{"loop":"x","type":"warning"}'), { loop: "x", type: "warning" });
+});
+
+test("readEvents skips a valid-JSON non-object line", () => {
+  const dir = tmpdir();
+  logEvent(dir, { loop: "x", type: "warning", message: "ok" });
+  fs.appendFileSync(eventsLogPath(dir), "123\n");
+  logEvent(dir, { loop: "x", type: "warning", message: "after" });
+  assert.deepEqual(readEvents(dir).map((e) => e.message), ["ok", "after"]);
 });
 
 // A crash or power loss mid-append leaves the last line without its newline. Without

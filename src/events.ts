@@ -75,10 +75,16 @@ function terminateTornTail(file: string): void {
  * (a crash mid-append leaves a partial final line without its newline). The single home of
  * the skip-without-failing policy every consumer of events.jsonl applies — readEvents here,
  * report.ts's window scan, and `tumwater logs -f`'s follow branch all parse through it instead
- * of repeating the try/catch per reader. */
+ * of repeating the try/catch per reader. A valid-JSON scalar, `null`, or array is not an event
+ * object either: the log is one JSON object per line, so anything else is corrupt (or foreign)
+ * and reads as no data — the same object check readJsonFile applies to the harness's state
+ * files. Without it, `readEvents` pushes the truthy non-object into the feed and `formatEvent`
+ * renders it as an `Invalid Date undefined` line. */
 export function parseEventLine(line: string): HarnessEvent | null {
   try {
-    return JSON.parse(line) as HarnessEvent;
+    const parsed: unknown = JSON.parse(line);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null; // Not an event object.
+    return parsed as HarnessEvent;
   } catch {
     return null; // Skip partial/corrupt lines (e.g. torn writes).
   }
