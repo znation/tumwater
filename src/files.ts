@@ -22,6 +22,18 @@ export function statOrNull(file: string): fs.Stats | null {
   }
 }
 
+/** Open `file` for reading, or null when it vanished between a prior stat and this open — the
+ * shared race-handling step for the incremental/tail log readers (forEachTailChunk,
+ * terminateTornTail, readCompleteLines, readTranscriptTail), all of which treat a rotated-away
+ * file as "no data" rather than an error. The caller owns the returned fd and closes it. */
+export function openForRead(file: string): number | null {
+  try {
+    return fs.openSync(file, "r");
+  } catch {
+    return null; // Vanished (rotated) between stat and open — no data.
+  }
+}
+
 /** Locate an executable on PATH the same way spawn() would resolve it: a regular file
  * with the execute bit in some PATH directory. Returns its absolute path, or null when
  * missing (or not executable), so callers can fail fast with a clear message instead of
@@ -82,12 +94,8 @@ export function forEachTailChunk(file: string, onChunk: (chunk: Buffer) => boole
     }
     return;
   }
-  let fd: number;
-  try {
-    fd = fs.openSync(file, "r");
-  } catch {
-    return; // Vanished (rotated) between stat and open — nothing to deliver.
-  }
+  const fd = openForRead(file);
+  if (fd === null) return; // Vanished (rotated) between stat and open — nothing to deliver.
   try {
     // fstat on the opened inode stays correct even if rotation renames the file mid-read.
     size = fs.fstatSync(fd).size;

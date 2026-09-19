@@ -5,6 +5,7 @@ import { formatDate } from "./text.js";
 import {
   ensureParentDir,
   forEachTailChunk,
+  openForRead,
   rotateIfLarge,
   statOrNull,
 } from "./files.js";
@@ -56,12 +57,8 @@ export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
 function terminateTornTail(file: string): void {
   const st = statOrNull(file);
   if (!st || st.size === 0) return; // No log yet.
-  let fd: number;
-  try {
-    fd = fs.openSync(file, "r");
-  } catch {
-    return; // Vanished between stat and open — nothing to terminate.
-  }
+  const fd = openForRead(file);
+  if (fd === null) return; // Vanished between stat and open — nothing to terminate.
   try {
     const size = fs.fstatSync(fd).size; // fstat on the opened inode: correct even if rotation renamed the file mid-check.
     if (size === 0) return;

@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { statOrNull } from "../files.js";
+import { openForRead, statOrNull } from "../files.js";
 import { formatTranscript, type TranscriptEntry } from "./transcript.js";
 import { readCompleteLines } from "./tail.js";
 
@@ -67,10 +67,8 @@ export function readTranscriptTail(file: string, limit: number): TranscriptWindo
   const st = statOrNull(file);
   if (!st || st.size === 0) return null;
 
-  let fd: number;
-  try {
-    fd = fs.openSync(file, "r");
-  } catch {
+  const fd = openForRead(file);
+  if (fd === null) {
     // Rotation renamed the file away between stat and open — no data, same as missing.
     return null;
   }
