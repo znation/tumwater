@@ -7,6 +7,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### The pi-log parser returned valid-JSON non-object lines as if they were events (found by bugfix loop 2026-09-19, fixed 2026-09-19)
+
+**Symptom:** `parsePiEventLine` (src/pi-event-line.ts) is documented to return "an event object, or null when there is nothing for a consumer acting on `types`", but it returned `JSON.parse(trimmed) as T` with no shape check, so a stray scalar, `null`, or array line came back as an event. pi's stream is one JSON object per line, so those lines are torn or foreign noise — the same class of input the pi-stream parser was hardened against (fixed 2026-09-19) and the harness event log already rejects. The `as T` cast is unsound: it hands callers a value with no event fields. Today's two callers (progress.ts's live tail, transcript.ts's renderer) happen to survive because they guard with `!event` and read only `.type` — undefined on a scalar, so they fall through — but any future consumer that trusts the declared event type reads fields off a number, string, or array.
+
+**Repro:** Deterministic, no model needed: `parsePiEventLine("5", new Set(["session"]))` returned `5`, `"noise"` for `'"noise"'`, `[1,2]` for `[1,2]` (pre-fix) — all `!== null` while carrying no event fields.
+
+**Expected:** A line that parses to a non-object is not an event and must read as null, exactly as `parseEventLine` (src/events.ts) already does for the harness event log and `PiStreamParser.feedLine` (src/pi-stream.ts) does for pi's stdout.
+
+**Suspected cause:** The object check was added to `parseEventLine` and to `PiStreamParser.feedLine` but never to their sibling `parsePiEventLine`, so the three parsers of the same one-JSON-object-per-line shape disagreed: two rejected scalars/arrays, one passed them through the `as T` cast.
+
+**Fix:** After `JSON.parse`, return null when the result is not a plain object (`typeof !== "object"`, `null`, or an array) before the cast — the identical guard the other two parsers apply.
+
+**Files:** src/pi-event-line.ts (`parsePiEventLine` object check + doc); test/pi-event-line.test.ts ("parsePiEventLine skips valid-JSON non-object lines instead of returning them as events").
+
 ### A qa tick cut off before declaring its outcome still advanced the flow-coverage rotation (found by bugfix loop 2026-09-19, fixed 2026-09-19)
 
 **Symptom:** The `qa` flow-coverage ledger (plans/observer-roles.md 2/2) exists so the observer rotates through every flow instead of re-picking the cheapest. `recordFlow` is called from the `no_change` success return, but that return is also the cut-off path: a run truncated at the context ceiling (no `TUMWATER_NOTHING_TO_DO` sentinel, a contentless final message) falls through the same code. If such a run had emitted its `FLOW:` line mid-stream, the flow was recorded as exercised even though the check never finished, so the next prompt deprioritized a flow the fleet never actually verified. The code comment above the extraction states the intent plainly — "an interrupted or failed tick must not advance the rotation" — and the cut-off branch is exactly that.

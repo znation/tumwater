@@ -20,15 +20,16 @@ export function piEventType(line: string): string | null {
 }
 
 /** Parse one raw pi log line into an event object, or null when there is nothing for a consumer
- * acting on `types`: blank lines, torn/non-JSON lines, and lines whose compact type-first prefix
- * verifiably names a type outside `types` (the piEventType fast path) all yield null. A line
- * whose prefix does not match pi's compact shape still gets a full parse — the pre-filter can only
- * ever skip lines whose type is verifiably uninteresting, never lose output. Shared by every
- * observer that folds raw pi log lines into per-type state (progress.ts's live tail,
- * transcript.ts's renderer), so the trim → pre-filter → parse preamble and its skip-without-
- * failing policy live in one place instead of drifting between consumers of the identical log —
- * worth it because pi logs are ~97% streaming delta lines (message_update) that every consumer
- * discards after parsing them. */
+ * acting on `types`: blank lines, torn/non-JSON lines, valid-JSON non-objects (a scalar, `null`,
+ * or an array — pi's stream is one JSON object per line, so those are torn or foreign noise, not
+ * events), and lines whose compact type-first prefix verifiably names a type outside `types` (the
+ * piEventType fast path) all yield null. A line whose prefix does not match pi's compact shape
+ * still gets a full parse — the pre-filter can only ever skip lines whose type is verifiably
+ * uninteresting, never lose output. Shared by every observer that folds raw pi log lines into
+ * per-type state (progress.ts's live tail, transcript.ts's renderer), so the trim → pre-filter →
+ * parse preamble and its skip-without-failing policy live in one place instead of drifting
+ * between consumers of the identical log — worth it because pi logs are ~97% streaming delta
+ * lines (message_update) that every consumer discards after parsing them. */
 export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -37,7 +38,14 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
   const type = piEventType(trimmed);
   if (type !== null && !types.has(type)) return null;
   try {
-    return JSON.parse(trimmed) as T;
+    const parsed: unknown = JSON.parse(trimmed);
+    // pi's stream is one JSON object per line: a valid-JSON scalar, `null`, or array is torn or
+    // foreign noise, not an event. Without this check the `as T` cast below hands a consumer a
+    // value with no event fields (returned `5`, `"noise"`, `[1,2]`) — the same object check
+    // parseEventLine applies to the harness event log and PiStreamParser.feedLine applies to
+    // pi's stdout.
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    return parsed as T;
   } catch {
     return null; // Torn or non-JSON line — skip without failing.
   }

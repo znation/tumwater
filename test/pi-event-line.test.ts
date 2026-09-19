@@ -27,6 +27,17 @@ test("parsePiEventLine skips blank lines and torn or non-JSON noise without fail
   assert.equal(parsePiEventLine("not json at all", types), null);
 });
 
+test("parsePiEventLine skips valid-JSON non-object lines instead of returning them as events", () => {
+  // pi's stream is one JSON object per line. A stray scalar, `null`, or array is torn or
+  // foreign noise, not an event: the `as T` cast must not hand a consumer a value with no
+  // event fields (it used to return 5 / "noise" / [1,2]). The same object check parseEventLine
+  // applies to the harness event log and PiStreamParser.feedLine applies to pi's stdout.
+  const types = new Set(["session"]);
+  for (const line of ["null", "5", '"noise"', "[]", "[1,2]"]) {
+    assert.equal(parsePiEventLine(line, types), null, `expected ${line} to be skipped`);
+  }
+});
+
 test("parsePiEventLine skips the parse when the compact prefix names a type outside `types`", () => {
   const types = new Set(["message_end"]);
   // The fast path must skip even lines that would otherwise parse fine.
