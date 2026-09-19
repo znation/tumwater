@@ -152,6 +152,45 @@ test("deltas report new roles as absent, not an infinite increase", () => {
   assert.match(md, /\| bugfix \| 2 → — \| 0% → — \|/);
 });
 
+test("deltas count quiet kills and rejections per role, both windows", () => {
+  // The delta table has dedicated quiet-kills and rejections columns but no fixture ever fed
+  // roleStats a quiet_killed or rejected tick_end, so those counters read 0 however bad the
+  // window was — the one regression an operator reading the digest could not notice.
+  const root = tmpdir();
+  writeEvents(root, [
+    // Preceding window (yesterday): feature had a quiet kill, a rejection, an error, a pass.
+    { ts: at(1), loop: "feature", type: "tick_end", result: "quiet_killed" },
+    { ts: at(1), loop: "feature", type: "tick_end", result: "rejected" },
+    { ts: at(1), loop: "feature", type: "tick_end", result: "error" },
+    { ts: at(1), loop: "feature", type: "tick_end", result: "changed" },
+    // Current window (today): feature again, and bugfix appears for the first time.
+    { ts: at(0), loop: "feature", type: "tick_end", result: "quiet_killed" },
+    { ts: at(0), loop: "feature", type: "tick_end", result: "rejected" },
+    { ts: at(0), loop: "bugfix", type: "tick_end", result: "quiet_killed" },
+    { ts: at(0), loop: "bugfix", type: "tick_end", result: "rejected" },
+  ]);
+  const data = collectFailureReport(root, 1);
+
+  const feature = data.deltas.find((d) => d.role === "feature")!;
+  assert.equal(feature.prevTicks, 4);
+  assert.equal(feature.ticks, 2);
+  assert.equal(feature.prevQuietKills, 1);
+  assert.equal(feature.quietKills, 1);
+  assert.equal(feature.prevRejections, 1);
+  assert.equal(feature.rejections, 1);
+
+  // A role absent from the preceding window carries its current counts, with "—" on the
+  // previous side of every column rather than an infinite increase.
+  const bugfix = data.deltas.find((d) => d.role === "bugfix")!;
+  assert.equal(bugfix.prevTicks, 0);
+  assert.equal(bugfix.quietKills, 1);
+  assert.equal(bugfix.rejections, 1);
+
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /\| feature \| 4 → 2 \| 25% → 0% \| 1 → 1 \| 1 → 1 \|/);
+  assert.match(md, /\| bugfix \| — → 2 \| — → 0% \| — → 1 \| — → 1 \|/);
+});
+
 test("the digest renders under 6 KB however bad the window was", () => {
   const root = tmpdir();
   const lines: unknown[] = [];
