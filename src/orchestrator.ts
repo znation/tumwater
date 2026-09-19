@@ -9,10 +9,7 @@ import {
   isEligible,
   workLanded,
 } from "./scheduling.js";
-import {
-  isFleetPaused,
-  readLandingMarker,
-} from "./state.js";
+import { isFleetPaused } from "./state.js";
 import { budgetGate, budgetPaused, type BudgetGate, fleetDailyCost } from "./budget.js";
 import { saveLoopState } from "./state.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
@@ -20,7 +17,7 @@ import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
 import { landBatch } from "./lander.js";
-import { landQueuedEntry, landingUsage, writeLandingOutcome } from "./landing-slot.js";
+import { landQueuedEntry, landingUsage, readLandingMarker, writeLandingMarker, writeLandingOutcome } from "./landing-slot.js";
 import { dropLanding, headLanding, landingFor, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
 import { logEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
@@ -562,7 +559,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               const first = batch[0]!;
               landingInFlight = startLanding(batch.map((b) => b.entry.role), async (landing) => {
                 const startedAt = Date.now();
-                writeJsonFile(landingStatePath(root), {
+                writeLandingMarker(root, {
                   role: first.entry.role,
                   sha: first.entry.sha,
                   summary: first.entry.summary,

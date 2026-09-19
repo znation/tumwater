@@ -4,7 +4,7 @@ import type { BuildStatus } from "./build-info.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "./roles.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { pidAlive } from "./process.js";
-import { landingStatePath, orchestratorStatePath, pausedPath, statePath } from "./paths.js";
+import { orchestratorStatePath, pausedPath, statePath } from "./paths.js";
 
 /** A new LoopState for one role, before its first tick. */
 export function freshLoopState(role: string): LoopState {
@@ -274,24 +274,4 @@ export function orchestratorAlive(root: string, info?: OrchestratorInfo | null):
   const i = info ?? readOrchestratorInfo(root);
   if (!i) return false;
   return pidAlive(i.pid);
-}
-
-/** The in-flight landing's marker (plans/merge-queue.md 4/5): which change is landing right
- * now, and since when. The orchestrator's drain task writes it before a landing starts and
- * removes it after every outcome, so the separate-process observers (status, TUI, GUI) can
- * show the landing without depending on the scheduler module — the OrchestratorInfo
- * precedent. snapshot() cross-checks it with a matching queue entry and the orchestrator's
- * liveness, so a stale marker from any crash ordering never displays. */
-export interface LandingInFlight {
-  role: string;
-  sha: string;
-  summary: string;
-  startedAt: number;
-}
-
-/** Read the in-flight landing marker; null when missing or unreadable. Never throws —
- * observers poll it every second, and a torn write (a crash mid-write) must not take them
- * down (the readOrchestratorInfo precedent). */
-export function readLandingMarker(root: string): LandingInFlight | null {
-  return readJsonFile<LandingInFlight>(landingStatePath(root));
 }

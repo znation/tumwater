@@ -1,6 +1,5 @@
 import type { LoopState, TumwaterConfig } from "../types.js";
 import type { BuildStatus } from "../build-info.js";
-import type { LandingInFlight } from "../state.js";
 import { openQuestions } from "../backlog.js";
 import { defaultConfig, enabledRoleIds, fallbackPair, isCustomRole, loadConfigCached } from "../config.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../pi-models.js";
@@ -12,9 +11,9 @@ import {
   isFleetPaused,
   loadLoopState,
   orchestratorAlive,
-  readLandingMarker,
   readOrchestratorInfo,
 } from "../state.js";
+import { readLandingMarker, type LandingInFlight } from "../landing-slot.js";
 import { fleetDailyCost } from "../budget.js";
 import { queuedLandings } from "../land-queue.js";
 

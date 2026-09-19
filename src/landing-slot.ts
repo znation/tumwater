@@ -3,7 +3,7 @@ import { applyLandingOutcome, saveLoopState } from "./state.js";
 import { logEvent } from "./events.js";
 import { dropLanding } from "./land-queue.js";
 import { landChange } from "./lander.js";
-import { writeJsonFile } from "./json-files.js";
+import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { removeQuiet } from "./files.js";
 import { landingStatePath } from "./paths.js";
 import { errorMessage } from "./text.js";
@@ -16,6 +16,32 @@ import type { LoopRunner } from "./loop.js";
  * per-landing usage accounting, and the write-back that folds every outcome into the authoring
  * role's state and drops its queue entry. A landing's pi runs charge to the authoring runner
  * (foldLandingUsage); orchestrator.ts drives this module once per queue head, per poll. */
+
+/** The in-flight landing's marker (plans/merge-queue.md 4/5): which change is landing right
+ * now, and since when. The slot writes it before a landing starts and removes it after every
+ * outcome, so the separate-process observers (status, TUI, GUI) can show the landing without
+ * depending on the scheduler module — the OrchestratorInfo precedent. snapshot() cross-checks
+ * it with a matching queue entry and the orchestrator's liveness, so a stale marker from any
+ * crash ordering never displays. */
+export interface LandingInFlight {
+  role: string;
+  sha: string;
+  summary: string;
+  startedAt: number;
+}
+
+/** Publish the in-flight landing marker — the one place its shape is constructed, so the
+ * interface is enforced here rather than at each caller's inline `writeJsonFile`. */
+export function writeLandingMarker(root: string, marker: LandingInFlight): void {
+  writeJsonFile(landingStatePath(root), marker);
+}
+
+/** Read the in-flight landing marker; null when missing or unreadable. Never throws —
+ * observers poll it every second, and a torn write (a crash mid-write) must not take them
+ * down (the readOrchestratorInfo precedent). */
+export function readLandingMarker(root: string): LandingInFlight | null {
+  return readJsonFile<LandingInFlight>(landingStatePath(root));
+}
 
 /** Fold one landing's outcome into its role's state and drop its queue entry — the 3/5
  * write-back shared by the single path (landQueuedEntry) and the 5/5 batch slot: apply the
@@ -101,7 +127,7 @@ export async function landQueuedEntry(
   // landing runs, removed on EVERY outcome below (the catch-all turns even an unexpected
   // throw into an outcome, so the removal always runs). A crash in between leaves a stale
   // marker that the cross-check self-heals — no cleanup pass needed.
-  writeJsonFile(landingStatePath(root), {
+  writeLandingMarker(root, {
     role: entry.role,
     sha: entry.sha,
     summary: entry.summary,
