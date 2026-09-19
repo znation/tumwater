@@ -2,8 +2,8 @@
 
 Planned 2026-09-14, requested by the user; audited against main `1384eeb` on 2026-09-15, 1/7
 re-audited against `00501fa` on 2026-09-16, 2/7 against `e76c5d5` on 2026-09-17, 6/7 against
-`94562d8` on 2026-09-18 (3/7–5/7 remain on `1384eeb`; 7/7 re-audited against `5a99627` on
-2026-09-18). Full plan
+`94562d8` on 2026-09-18, 3/7 against `44a037c` on 2026-09-18 (4/7–5/7 remain on `1384eeb`; 7/7
+re-audited against `5a99627` on 2026-09-18). Full plan
 for the `Portability & packaging` entry in PLANS.md: seven independently landable sub-plans, each
 with its own goal, design rationale, approach, files touched, and acceptance criteria. The problem
 statement, invariants, and sequencing below are shared by all seven.
@@ -340,6 +340,74 @@ test/prompt.test.ts, test/event-format.test.ts.
 - The request file never appears in a commit, a diff, or a review prompt.
 - `review.exemptPaths` no longer lists `tumwater.json`, and the existing user-defined-loop tests
   pass with only the documented changes.
+
+**Refined 2026-09-18 (plan loop) — 3/7 audited against main `44a037c` (HEAD; the README stamp is
+behind at `dcce4f2`; this sub-plan's last audit was the series write `1384eeb` on 2026-09-15, the
+oldest in the series, and ~40 landings have happened since). Every anchor verified on this tree;
+one real implementation gap and four seams pinned. Landable after 2/7; no dependency on 4/7.**
+
+Verified as written: `setDailyBudgetUsd` (src/config.ts:185) is the idiom and it is on
+`writeJsonAtomic` (src/json-files.ts:50) — the call is `writeJsonAtomic(file, { ...cfg,
+maxDailyCostUsd: value }, true)` at src/config.ts:200. `defaultConfig().review.exemptPaths` still
+lists `"tumwater.json"` (src/config.ts:61), and this repo's own `tumwater.json` sets no `review`
+key, so the default governs and dropping the entry takes effect here. The director-only exception
+is verbatim at src/prompt.ts:223–226 and the custom-loop routing bullet at src/prompt.ts:210–215;
+COMMON_RULES' "Never touch the .tumwater directory or tumwater.json" is src/prompt.ts:84 (resume
+variant :318). `HarnessEvent["type"]` is src/types.ts:258–294 with the index signature, and
+src/ui/event-format.ts is a `switch (e.type)` ending at `default:` :156. `validateConfig` is
+exported (src/config-validation.ts:99) and already validates `customLoops` (name regex, collision,
+uniqueness, task cap) at :227–263. `isDirty` is `git status --porcelain` (src/git.ts:185) and
+`commitAll` is `git add -A` (src/git.ts:361); `DIRECTOR_ROLE` is src/roles.ts:11. `.gitignore`
+lists only `.tumwater/`, `node_modules/`, `dist/`, so `.tumwater-config-request.json` at the
+worktree root is NOT ignored — `git status` reports it and `git add -A` stages it.
+
+Pinned seams (all on this tree):
+
+1. **The consume seam, and why "after the pi run" needs a line.** In `runTick` the pi run is
+   src/loop.ts:591; the branches that follow are `aborted` (:595, returns and discards),
+   `pendingUserPrompt = null` (:596), `quietKilled` (:597), `timedOut` (:606), `refused` (:616,
+   `handleRefusal` → `merge` → `git add -A`), `isDirty` (:629), and `commitAll` (:713). Call
+   `applyConfigRequest(this.root, wt)` immediately after `:596` and before the `quietKilled`
+   branch. Rationale: (a) it must precede `isDirty`, or the untracked request file alone makes the
+   worktree dirty and the tick takes the commit path; (b) it must precede `refused`/`commitAll`
+   because both stage the worktree; (c) placing it after the `aborted` return means a deliberate
+   `tumwater abort` still discards an unfulfilled request (matching abort's "work discarded"),
+   while a quiet-kill/timeout/refusal applies the request pi wrote before returning. The call is
+   guarded by `this.role === DIRECTOR_ROLE`, so role ticks pay one boolean.
+2. **The orphaned `roles.<id>` entry — the plan's one real gap.** `validateConfig` cross-checks
+   every `roles.<id>` key against `allRoleIds()` ∪ the request's `customLoops` names and rejects an
+   id that is neither (src/config-validation.ts:273–278). `loadConfig` seeds `merged.roles[c.name]`
+   for each current custom loop (src/config.ts:98–99), and the merged object is what gets written,
+   so a removal that leaves the old loop's `roles` entry behind fails validation and the removal
+   never applies. `applyConfigRequest` must delete `candidate.roles[name]` for every name in the
+   old `customLoops` array and absent from the request, before validating. Adding a loop needs no
+   roles edit: `loadConfig` seeds it enabled.
+3. **Validation and deletion.** Build `candidate = { ...loadConfig(root), customLoops:
+   request.customLoops }`, strip orphaned role entries (pin 2), then `validateConfig(candidate)`.
+   On failure write nothing, log one `warning` naming the problems, and delete the request anyway
+   (the plan's no-retry-forever rule). Deletion is unconditional and attempted on every path — a
+   failed unlink is itself logged, or the file survives to be committed by `commitAll`. On
+   success, log `config_changed` with the applied names; the orchestrator's ~2 s reload starts the
+   loop, so no in-process config mutation is needed.
+4. **Permitted-key filtering is structural.** Read the request as `unknown`; if it is not a plain
+   object or `customLoops` is not an array, reject into the `{ error }` shape. Collect every other
+   top-level key into `ignored` and drop it before building the candidate, so "accepts
+   `customLoops` and nothing else" holds by construction and the warning names the ignored keys.
+5. **The prompt rewrite has two sites, not one.** Replace the exception paragraph
+   (src/prompt.ts:223–226) with the request-file contract — path,
+   `{ "customLoops": [ { name, task } ] }` shape, "write it and stop; the harness consumes and
+   deletes it; the array replaces the current one" — and change the routing bullet
+   (src/prompt.ts:210–215) from "execute it by editing tumwater.json's customLoops array" to
+   "write `.tumwater-config-request.json` in your worktree". COMMON_RULES is unchanged: the file
+   sits at the worktree root, so both "never touch tumwater.json" and "never write above your
+   worktree" still hold and now bind the director too.
+
+Files correction: no change to the plan's list; `test/prompt.test.ts` is the home of the
+director-prompt contract tests (the split 6/7 and 7/7 pinned).
+
+Sizing unchanged and still one run: config.ts ~55 lines (the function + the orphan strip),
+loop.ts ~12, prompt.ts ~20, paths.ts ~5, types.ts ~2, event-format.ts ~4, tests ~150 across the
+four named files.
 
 ---
 
