@@ -47,6 +47,20 @@ function seedCounters(repo: string, ...roles: string[]): void {
   }
 }
 
+/** Does `role`'s pinned landing ref still exist? `git rev-parse --verify` exits nonzero once
+ * the ref is gone, so its absence is the postcondition the abort tests assert. Waiting on the
+ * abort outcome alone races the discard: a deliberate stop's `discardPinnedRefs` runs in the
+ * landing slot's `finally`, AFTER `writeLandingOutcome` has already recorded `lastResult`
+ * (the load-sensitive-test class in BUGS.md, 2026-09-18). */
+function landingRefExists(repo: string, role: string): boolean {
+  try {
+    sh(repo, "git", "rev-parse", "--verify", landingRefName(role));
+    return true;
+  } catch {
+    return false; // a missing ref makes rev-parse --verify exit nonzero
+  }
+}
+
 test("a multi-role reset request zeroes every listed runner and logs one harness-level event", async () => {
   const repo = makeRepo();
   await initProject(repo, "multi role reset test");
@@ -828,19 +842,13 @@ test("a user abort during a landing kills it and discards the pinned ref", async
     // the pinned ref: a deliberate stop kills the work under review, the landing's
     // counterpart of the pre-3/5 mid-review user abort. (A shutdown abort keeps the ref.)
     await waitFor(
-      () => loadLoopState(repo, "clean").lastResult === "aborted",
-      "the aborted landing to settle",
+      () => loadLoopState(repo, "clean").lastResult === "aborted" && !landingRefExists(repo, "clean"),
+      "the aborted landing to settle and discard its pinned ref",
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
     assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
     assert.equal(queueDepth(repo), 0, "the entry was dropped after the aborted landing");
-    let refGone = false;
-    try {
-      sh(repo, "git", "rev-parse", "--verify", landingRefName("clean"));
-    } catch {
-      refGone = true; // a missing ref makes rev-parse --verify exit nonzero
-    }
-    assert.ok(refGone, "the pinned commit was discarded with the deliberate stop");
+    assert.ok(!landingRefExists(repo, "clean"), "the pinned commit was discarded with the deliberate stop");
 
     // The landing, not the tick, was aborted: one land_failed, no tick_aborted, no second tick.
     const failed = readEvents(repo).filter((e) => e.type === "land_failed");
@@ -1511,21 +1519,21 @@ test("an abort for a NON-HEAD batched role kills the whole batch and discards ev
 
     await waitFor(
       () =>
-        loadLoopState(repo, "clean").lastResult === "aborted" && loadLoopState(repo, "dry").lastResult === "aborted",
-      "the aborted batch to settle",
+        loadLoopState(repo, "clean").lastResult === "aborted" &&
+        loadLoopState(repo, "dry").lastResult === "aborted" &&
+        !landingRefExists(repo, "clean") &&
+        !landingRefExists(repo, "dry"),
+      "the aborted batch to settle and discard every pinned ref",
       60_000,
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
     assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed on main");
     assert.equal(queueDepth(repo), 0, "both entries were dropped");
     for (const role of ["clean", "dry"]) {
-      let gone = false;
-      try {
-        sh(repo, "git", "rev-parse", "--verify", landingRefName(role));
-      } catch {
-        gone = true;
-      }
-      assert.ok(gone, `${role}'s pinned commit was discarded — dry's only goes in the batch's ref-discard loop`);
+      assert.ok(
+        !landingRefExists(repo, role),
+        `${role}'s pinned commit was discarded — dry's only goes in the batch's ref-discard loop`,
+      );
     }
     const failed = readEvents(repo).filter((e) => e.type === "land_failed");
     assert.equal(failed.length, 2, "one land_failed per batched change");
