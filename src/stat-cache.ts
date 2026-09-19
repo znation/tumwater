@@ -4,8 +4,10 @@ import { statOrNull } from "./files.js";
  * file per poll instead of re-reading and re-parsing data that grows without bound. Split out
  * of files.ts — which keeps the generic file operations — because this is a self-contained
  * memoization primitive with its own data model (StatKeyedValue) and safety cap, shared by
- * every observer that polls a slowly-changing file (backlog.ts's markdown sections, inbox.ts's
- * prompt contents, status.ts's loop states). Any write invalidates via dev/ino/mtime/size —
+ * every observer and loader that polls a slowly-changing file — backlog.ts's markdown sections,
+ * inbox.ts's prompt contents, status.ts's loop states, config.ts's live-reloaded tumwater.json,
+ * pi-models.ts's models.json, and land-queue.ts's entry contents. Any write invalidates via
+ * dev/ino/mtime/size —
  * the same freshness check as tail.ts's incremental log readers. */
 
 /** One entry of a stat-keyed cache: the file's identity and freshness at read time plus the
