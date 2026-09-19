@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureDir } from "./files.js";
+import { ensureDir, readTextOrNull } from "./files.js";
 import { listQueueFiles, queueFileName, removeQueueFile } from "./file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { logEvent } from "./events.js";
@@ -67,13 +67,8 @@ const promptCache = new Map<string, StatKeyedValue<string>>();
 export function queuedPrompts(root: string): string[] {
   const out: string[] = [];
   for (const f of queuedFiles(root)) {
-    const text = cachedByStat(promptCache, f, f, () => {
-      try {
-        return fs.readFileSync(f, "utf8");
-      } catch {
-        return null; // Vanished mid-listing — skip it.
-      }
-    }, (t) => t); // Strings are immutable — no copy needed.
+    // Strings are immutable — no copy needed; a file that vanished mid-listing reads null.
+    const text = cachedByStat(promptCache, f, f, () => readTextOrNull(f), (t) => t);
     if (text !== null) out.push(text);
   }
   return out;

@@ -1,5 +1,5 @@
-import fs from "node:fs";
 import path from "node:path";
+import { readTextOrNull } from "./files.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 
 /** The project backlog data shown on both dashboards: planned features (PLANS.md), open bugs
@@ -93,13 +93,8 @@ function sectionEntries(root: string, fileName: string, sectionTitle: string): B
       `${file}\u0000${sectionTitle}`,
       file,
       () => {
-        let md: string;
-        try {
-          md = fs.readFileSync(file, "utf8");
-        } catch {
-          return null; // Unreadable — no data.
-        }
-        return parseEntryDetails(md, sectionTitle);
+        const md = readTextOrNull(file); // Missing or unreadable — no data.
+        return md === null ? null : parseEntryDetails(md, sectionTitle);
       },
       (entries) => entries.map((e) => ({ ...e })), // A copy: callers may treat the result as their own.
     ) ?? []

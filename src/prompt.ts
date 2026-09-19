@@ -1,5 +1,5 @@
-import fs from "node:fs";
 import path from "node:path";
+import { readTextOrNull } from "./files.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, type Role } from "./roles.js";
 import { NOTHING_TO_DO, REFUSED_SENTINEL } from "./reply-contract.js";
 
@@ -120,13 +120,7 @@ ${SUMMARY_RULE}`;
  * string when the file is missing or unreadable — prompt building must never throw on it. */
 export function readPrinciples(root: string): string {
   const file = path.join(root, "PRINCIPLES.md");
-  if (!fs.existsSync(file)) return "";
-  let text: string;
-  try {
-    text = fs.readFileSync(file, "utf8").trim();
-  } catch {
-    return "";
-  }
+  let text = readTextOrNull(file)?.trim() ?? "";
   if (text.length > PRINCIPLES_MAX_CHARS) {
     text = `${text.slice(0, PRINCIPLES_MAX_CHARS)}\n…[PRINCIPLES.md truncated at ${PRINCIPLES_MAX_CHARS} chars]`;
   }

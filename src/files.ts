@@ -34,6 +34,20 @@ export function openForRead(file: string): number | null {
   }
 }
 
+/** Read a text file whole, or null when it does not exist (or cannot be read) — the harness's
+ * "missing is no data" policy for the markdown and prompt text a render or prompt-building
+ * path must never throw on: the backlog's PLANS/BUGS/QUESTIONS, the principles injected into
+ * every tick prompt, the usage report's sources, and a queued prompt that vanished mid-
+ * listing. The single home of that read-and-swallow step; callers pick their empty value
+ * (`?? ""` when a blank default reads better than null). */
+export function readTextOrNull(file: string): string | null {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return null; // Missing or unreadable — no data.
+  }
+}
+
 /** Locate an executable on PATH the same way spawn() would resolve it: a regular file
  * with the execute bit in some PATH directory. Returns its absolute path, or null when
  * missing (or not executable), so callers can fail fast with a clear message instead of

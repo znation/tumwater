@@ -1,5 +1,5 @@
-import fs from "node:fs";
 import path from "node:path";
+import { readTextOrNull } from "../files.js";
 import { readWindowEvents } from "../event-window.js";
 import { eventDayKey, eventRole } from "../events.js";
 import { sectionLines } from "../backlog.js";
@@ -42,11 +42,7 @@ export interface ReportData {
 
 /** A file's text, or "" when missing/unreadable — a report degrades to zeros, never throws. */
 function readMarkdown(file: string): string {
-  try {
-    return fs.readFileSync(file, "utf8");
-  } catch {
-    return "";
-  }
+  return readTextOrNull(file) ?? "";
 }
 
 /** The completion dates ("YYYY-MM-DD") of the entries inside one `## <sectionTitle>` section.
