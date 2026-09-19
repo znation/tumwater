@@ -42,7 +42,7 @@ const RESULT_ORDER: Record<TickResult, number> = {
 };
 
 /** A normalized cluster of like error/warning/rejection strings. */
-export interface Cluster {
+interface Cluster {
   key: string; // the normalized form, the grouping key
   count: number;
   roles: string[]; // unique, sorted
@@ -52,14 +52,14 @@ export interface Cluster {
 }
 
 /** One `tick_end` result tally, per role. */
-export interface OutcomeRow {
+interface OutcomeRow {
   role: string;
   counts: Partial<Record<TickResult, number>>;
 }
 
 /** One role's current-vs-preceding-window metrics. A zero side means the role had no ticks
  * there ("new" for a role absent from the preceding window). */
-export interface DeltaRow {
+interface DeltaRow {
   role: string;
   prevTicks: number;
   ticks: number;
@@ -72,7 +72,7 @@ export interface DeltaRow {
 }
 
 /** A commit that landed (a `merged` event) inside the window. */
-export interface LandedCommit {
+interface LandedCommit {
   ts: number;
   commit: string;
   summary: string;
@@ -80,7 +80,7 @@ export interface LandedCommit {
 
 /** The digest's collected evidence — a pure function of the event log plus a clock; the
  * render step below is a pure function of this. */
-export interface FailureReportData {
+interface FailureReportData {
   days: number;
   from: string; // current window start, local day key
   to: string; // today

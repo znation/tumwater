@@ -14,7 +14,7 @@ export const REPORT_DEFAULT_DAYS = 14;
 export const REPORT_MAX_DAYS = 90;
 
 /** What one windowed read of events.jsonl yielded. */
-export interface EventWindow {
+interface EventWindow {
   /** Events whose local day is on or after the `fromKey` the read was asked for, oldest first. */
   events: HarnessEvent[];
   /** True iff the retained log reaches back before `fromKey` — either the backwards scan
