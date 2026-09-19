@@ -37,8 +37,9 @@ locally and keep all project state within the git repo.
 
 <!-- tumwater:status:start -->
 v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
-`status` (`--json`), `report` (`--days N`; Markdown usage report, default 14 days),
-`doctor` (pre-flight check of node, git, repo, config, pi, locks, and build — read-only,
+`status` (`--json`), `report` (`--days N`; Markdown usage report, default 14 days) and
+`report --failures` (Markdown failure digest — tick outcomes, deltas, and clustered errors,
+default 14 days), `doctor` (pre-flight check of node, git, repo, config, pi, locks, and build — read-only,
 exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` /
 `prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`,
 `wake [--role <id>]` (clears a backed-off fleet's sleep — the named roles, or all of them,
@@ -60,6 +61,8 @@ reaching `maxDailyCostUsd` switches every role loop to it (`budget_fallback`; he
 rather than stopping, and only a fallback that cannot be verified as free leaves it paused.
 
 Open items:
+- Planned: feature loop hands oversized plans to the plan loop instead of splitting them inline
+  (planned 2026-09-18, requested by user; marker + prompt handoff, no code behavior change).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
 - Planned: Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17,
@@ -69,7 +72,7 @@ Open items:
 - Open bugs: none.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`6057f17`): build clean, suite 1109/1109.
+Current main (`159fb71`): build clean, suite 1123/1123.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -217,6 +220,7 @@ tumwater gui --all-interfaces      # serve the dashboard to the whole network (s
 tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)
 tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days; --days bounded to the GUI's shared 1–90 window)
+tumwater report --failures [--days N]   # Markdown failure digest — tick outcomes, deltas, and clustered errors (default 14 days)
 tumwater doctor       # pre-flight check: node, git, repo, config, pi, locks, build (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
