@@ -99,6 +99,28 @@ test("a torn or foreign file is skipped, never thrown on", () => {
   assert.equal(headLanding(repo), null, "only torn files left: an empty head, not an error");
 });
 
+test("an entry missing a required field is skipped like a torn one", () => {
+  const repo = makeRepo();
+  enqueueLanding(repo, entry("improve", "a".repeat(40)));
+  const dir = landQueueDir(repo);
+  // role and sha are present — the whole check the reader used to apply — but tick, summary,
+  // and enqueuedAt are not: casting it as a LandingEntry handed the drain `undefined` for
+  // each, which surfaced as a `tumwater-feature-undefined-review` session and an undefined
+  // summary in the reviewer's prompt. It must read as no entry instead: the head is held (not
+  // landed), the drain is told to drop it as an unreadable head, and the real entry behind it
+  // still surfaces.
+  const partial = path.join(dir, "0000000000-000000-1.json");
+  fs.writeFileSync(partial, JSON.stringify({ role: "feature", sha: "b".repeat(40) }));
+  assert.equal(queueDepth(repo), 2, "depth counts files, not parseable entries");
+  assert.equal(headLanding(repo), null, "the partial head holds the slot without throwing");
+  assert.equal(staleHeadFile(repo), partial, "the drain is told to drop it");
+  assert.deepEqual(
+    queuedLandings(repo).map((e) => e.role),
+    ["improve"],
+    "the real entry still surfaces",
+  );
+});
+
 test("staleHeadFile names the unreadable head for the drain to drop, null otherwise", () => {
   const repo = makeRepo();
   assert.equal(staleHeadFile(repo), null, "an empty queue has no stale head");

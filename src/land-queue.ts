@@ -45,16 +45,37 @@ export function queueDepth(root: string): number {
 // the same write-once discipline the inbox caches for prompts.
 const entryCache = new Map<string, StatKeyedValue<LandingEntry>>();
 
+/** True when `v` carries every field a LandingEntry requires, with the right type. The land
+ * queue is one JSON object per file, so a file that parses to anything else — a scalar, an
+ * array, an object missing a required field — is foreign or torn and reads as no entry.
+ * Checking only `role` and `sha` left the `as LandingEntry` cast unsound: a foreign file that
+ * happened to carry those two fields was handed downstream with `tick` and `summary`
+ * undefined, which surface as bogus session names (`tumwater-<role>-undefined-review`) and
+ * `undefined` in the reviewer's prompt. Optional fields are checked only when present. */
+function isLandingEntry(v: unknown): v is LandingEntry {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const e = v as Record<string, unknown>;
+  return (
+    typeof e.role === "string" &&
+    typeof e.sha === "string" &&
+    typeof e.tick === "number" &&
+    typeof e.summary === "string" &&
+    typeof e.enqueuedAt === "number" &&
+    (e.body === undefined || typeof e.body === "string") &&
+    (e.highFriction === undefined || typeof e.highFriction === "boolean")
+  );
+}
+
 /** Read one queue file through the stat-keyed cache: null when it vanishes mid-listing (a
- * concurrent drop — the inbox.ts race policy), is unreadable, or fails to parse (a foreign or
- * torn file is skipped, never thrown on). A shallow copy out: the entry's fields are all
- * scalars and callers treat the result as read-only. */
+ * concurrent drop — the inbox.ts race policy), is unreadable, or fails to parse or to carry
+ * every required LandingEntry field (a foreign or torn file is skipped, never thrown on). A
+ * shallow copy out: the entry's fields are all scalars and callers treat the result as
+ * read-only. */
 function readEntry(file: string): LandingEntry | null {
   return cachedByStat(entryCache, file, file, () => {
     try {
-      const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<LandingEntry>;
-      if (typeof parsed.role !== "string" || typeof parsed.sha !== "string") return null;
-      return parsed as LandingEntry;
+      const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+      return isLandingEntry(parsed) ? parsed : null;
     } catch {
       return null; // Vanished mid-listing (or unreadable) — skip it.
     }
