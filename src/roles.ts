@@ -193,6 +193,30 @@ When something is broken, confusing, or diverges from the docs, record ONE repro
 Safety rails for anything you launch: every process gets a hard time limit and an explicit kill; servers bind ephemeral high ports, never the product's documented default port; no listening process may outlive your tick. When a flow starts long-running or model-backed processes, prefer a deterministic offline mode (a fake/shim) if the project documents one; otherwise do ONE real bounded run — constrain it to minimal scope (an agent harness: exactly one enabled role and maxConcurrent 1), wall-cap it (~10 min including prefill), background it, and kill its whole process tree when done. Use that expensive real mode only when the newest Verified note for the flow is older than a day; after a successful real run append one line under a ## Verified section at the end of BUGS.md (e.g. "- 2026-08-28 run (real): init + one tick landed; status/logs confirm").`,
   },
   {
+    id: "telemetry",
+    title: "runtime telemetry reader",
+    find: `Read the <failure-digest> block in your prompt: a deterministic digest of this harness's own
+event log over the last day (per-role outcome counts, normalized error and warning clusters,
+review rejections, and what landed). It is your entire evidence base — do not go looking for the
+event log or per-role transcripts yourself; the harness injects the digest because the live log
+lives outside your worktree.
+
+File ONE bug in BUGS.md's ## Open section per tick, or declare nothing-to-do. A cluster is a bug
+ONLY when the harness's RESPONSE to it is wrong — a failure that raised no alarm, drove the wrong
+state or backoff ladder, latched a stale verdict, or hid itself from the operator. A mere
+infrastructure failure (the model server was slow, pi exited non-zero) is weather, not a bug:
+filing it produces an entry no bugfix run can act on. Read the digest for that wrong response —
+44 identical errors that raised no warning, a tick that failed in 200 ms then climbed the idle
+ladder, a cluster that begins on the date a specific commit landed — and cite the cluster's
+normalized key plus the correlated \`merged\` commit in the entry, so the bugfix loop can
+reproduce it.
+
+BUGS.md is your only write; never edit source, tests, or docs. Before filing, check BUGS.md's
+## Open section and \`git log --grep="tumwater(telemetry)"\` for an entry that already names this
+cluster — no duplicate filings. If every cluster is ordinary infrastructure weather or already
+filed, there is nothing to do.`,
+  },
+  {
     id: "improve",
     title: "general improver",
     find: `Find ONE concrete improvement that none of the other roles would obviously make:
@@ -271,7 +295,7 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
  * leaves `backoffSeconds` at 0 (src/state.ts). The error ladder still applies in full, and they
  * are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
  * event log for `telemetry`) is not a function of whether main moved. */
-export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa"]);
+export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "telemetry"]);
 
 /** Maintenance-tier roles (need-based prioritization): exactly the eight built-ins whose due
  * ticks are deferrable while no feature/bugfix/director/human commit has landed on main since
@@ -304,7 +328,7 @@ export function roleTier(role: string): number {
  * (human prompts outrank autonomous gates, like the budget gate), bugfix (the designated healer
  * — its tick runs the suite per "leave the project working" and can fix a red main through the
  * existing pre-merge gate; blocking it would leave only humans able to unblock the fleet), and
- * plan/readme/steward/qa (markdown-only charter — their diffs are exempt from the build
+ * plan/readme/steward/qa/telemetry (markdown-only charter — their diffs are exempt from the build
  * pre-check via review.exemptPaths, so a red main does not block them). */
 export const BASELINE_BLOCKED_ROLES: ReadonlySet<string> = new Set([
   "feature",

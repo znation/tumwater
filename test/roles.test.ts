@@ -45,9 +45,9 @@ test("BASELINE_BLOCKED_ROLES is exactly the code-producing catalog roles", () =>
   // Red-main policy (src/loop.ts): while main's own suite is red, only roles whose diff can
   // carry non-exempt (code) changes are blocked from starting an authoring run. Exempt:
   // bugfix — the designated healer; blocking it would leave only humans able to unblock a
-  // red main — and the markdown-only charter roles plan/readme/steward/qa, whose diffs are
-  // review-exempt by construction. The director is not a catalog role at all.
-  const exempt = new Set([DIRECTOR_ROLE, "bugfix", "plan", "readme", "steward", "qa"]);
+  // red main — and the markdown-only charter roles plan/readme/steward/qa/telemetry, whose
+  // diffs are review-exempt by construction. The director is not a catalog role at all.
+  const exempt = new Set([DIRECTOR_ROLE, "bugfix", "plan", "readme", "steward", "qa", "telemetry"]);
   const expected = ROLES.map((r) => r.id).filter((id) => !exempt.has(id));
   assert.deepEqual(
     [...BASELINE_BLOCKED_ROLES].sort(),
@@ -64,7 +64,9 @@ test("BASELINE_BLOCKED_ROLES is exactly the code-producing catalog roles", () =>
 test("OBSERVER_ROLES are catalog roles excluded from DEFERRABLE_ROLES", () => {
   // plans/observer-roles.md 1/2: observers schedule on their interval rather than the idle
   // ladder, so they must not also be deferrable — the two carve roles by the same charter.
-  assert.ok(OBSERVER_ROLES.size > 0, "at least one observer (qa) is defined");
+  assert.ok(OBSERVER_ROLES.size > 0, "at least one observer (qa, telemetry) is defined");
+  // Both observers ship an observation rather than a commit and so must never defer.
+  assert.ok(OBSERVER_ROLES.has("qa") && OBSERVER_ROLES.has("telemetry"), "qa and telemetry are observers");
   for (const id of OBSERVER_ROLES) {
     assert.ok(roleById(id), `observer ${JSON.stringify(id)} exists in the catalog`);
     assert.ok(!DEFERRABLE_ROLES.has(id), `${id} is an observer, so it never defers`);

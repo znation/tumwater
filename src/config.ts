@@ -7,8 +7,8 @@ import { errorMessage } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
 import { show, validateConfig } from "./config-validation.js";
 
-/** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick, qa on
- * ~2 h, readme on 30 min, plan on 1 h), with defaults for concurrency, timeouts, log size,
+/** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick, qa and
+ * telemetry on ~2 h, readme on 30 min, plan on 1 h), with defaults for concurrency, timeouts, log size,
  * retention, thrash detection, idle backoff, self-redeploy, and review settings. */
 export function defaultConfig(): TumwaterConfig {
   const roles: Record<string, RoleConfig> = {};
@@ -19,6 +19,9 @@ export function defaultConfig(): TumwaterConfig {
   roles.steward = { enabled: true, minTickIntervalSeconds: 21600 };
   // QA exercises the product like a user on a ~2 h clock: user flows change slower than code.
   roles.qa = { enabled: true, minTickIntervalSeconds: 7200 };
+  // Telemetry reads the event log on the same slow clock: the digest is a windowed view, so a
+  // tick a couple of hours apart reads a new window rather than re-filing the same cluster.
+  roles.telemetry = { enabled: true, minTickIntervalSeconds: 7200 };
   // The bookkeeping roles run on slower clocks too. In dogfood readme (95 commits, 82 of them
   // status syncs) and plan (80, 44 of them refine/re-audit notes) were 30% of every commit and
   // 20% of every tick: readme woke on every merge to restamp one line, and plan re-audited plans

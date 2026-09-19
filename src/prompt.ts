@@ -139,11 +139,20 @@ function principlesBlock(principles: string): string {
   return `Design principles this project holds — uphold them in everything you produce:\n<principles>\n${principles}\n</principles>`;
 }
 
+/** The <failure-digest> block injected into the telemetry role's prompt (plans/telemetry-role.md):
+ * the harness renders the digest from its own event log at the project root and hands it over, so
+ * the role spends no tool calls acquiring evidence and cannot read a stale or foreign log. */
+function digestBlock(digest: string): string {
+  return `Runtime failure digest of this harness's own event log — your evidence base:\n<failure-digest>\n${digest}\n</failure-digest>`;
+}
+
 interface TickPromptInput {
   role: Role;
   initialPrompt: string;
   /** PRINCIPLES.md content (see readPrinciples); omitted from the prompt when empty. */
   principles?: string;
+  /** Rendered failure digest (see failure-report.ts); telemetry only, omitted when unreadable. */
+  digest?: string;
   extraInstructions?: string;
 }
 
@@ -161,12 +170,13 @@ function sharedPreamble(initialPrompt: string): string[] {
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, extraInstructions } = input;
+  const { role, initialPrompt, principles, digest, extraInstructions } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt),
   ];
   if (principles) parts.push(principlesBlock(principles));
+  if (digest) parts.push(digestBlock(digest));
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   parts.push(COMMON_RULES.trim());

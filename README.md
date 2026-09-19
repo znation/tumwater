@@ -44,9 +44,9 @@ exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt 
 `wake [--role <id>]` (clears a backed-off fleet's sleep — the named roles, or all of them,
 tick within one poll), `abort --role <id>` (kills one loop's in-flight tick; work discarded,
 the loop keeps running), and `pause` / `resume` (operator-intent fleet gate: role loops stop
-starting new ticks while in-flight ones finish; the director keeps running). All twelve roles —
-feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h clock), improve,
-steward (~6 h clock) — plus the director are enabled by default; user-defined loops are added
+starting new ticks while in-flight ones finish; the director keeps running). All thirteen roles —
+feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h clock), telemetry
+(~2 h clock), improve, steward (~6 h clock) — plus the director are enabled by default; user-defined loops are added
 from `customLoops` in tumwater.json or by prompting the director, and act as full-citizen loops
 marked `*` on both dashboards. While main's build/test suite is red, code-producing roles skip
 their authoring run and show a `main red` state in both dashboards until main is green again
@@ -62,10 +62,6 @@ rather than stopping, and only a fallback that cannot be verified as free leaves
 Open items:
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
-- Planned: Telemetry 1/2 — `tumwater report --failures`, a deterministic failure digest over
-  the fleet's own event log (planned 2026-09-17, requested by user, refined 2026-09-17).
-- Planned: Telemetry 2/2 — a `telemetry` role that reads the digest and files bugs (planned
-  2026-09-17, requested by user; depends on Telemetry 1/2 and Observer roles 1/2).
 - Planned: Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17,
   requested by user, refined 2026-09-18; depends on 1/2, which has landed).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
@@ -251,9 +247,9 @@ box feeds the director — anyone who can reach the port can steer the fleet and
 transcript. Use it only on networks where that is acceptable.
 
 Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
-`qa`, `improve`, `steward`, `director`. Enable/disable them, pick pi's provider/model/thinking
-level, set a per-role tick interval (by default the steward runs on a ~6 h clock, qa on ~2 h,
-readme on 30 min and plan on 1 h — the bookkeeping roles batch a burst of landings into one sync
+`qa`, `telemetry`, `improve`, `steward`, `director`. Enable/disable them, pick pi's provider/model/thinking
+level, set a per-role tick interval (by default the steward runs on a ~6 h clock, qa and telemetry
+on ~2 h, readme on 30 min and plan on 1 h — the bookkeeping roles batch a burst of landings into one sync
 instead of restamping after every merge), and tune backoff in
 `tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
 within ~2s — every setting applies live: enabling/disabling roles, per-role provider/model/

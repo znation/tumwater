@@ -582,6 +582,53 @@ test("buildTickPrompt for qa carries the find text plus the shared rules", () =>
   assert.match(prompt, /TUMWATER_NOTHING_TO_DO/);
 });
 
+// Prompt contract for the telemetry role (plans/telemetry-role.md): an observer that reads the
+// harness's own event log — injected as a <failure-digest> block because the live log sits at the
+// project root, outside its worktree — and files at most one bug in BUGS.md. Every tick is a
+// fresh session, so the find text must carry the load-bearing rule (a cluster is a bug only when
+// the harness's RESPONSE to it is wrong, never merely because the failure happened) and the
+// dedup check; these assertions pin that contract.
+
+const telemetry = roleById("telemetry");
+
+test("the telemetry role exists after qa in catalog order", () => {
+  assert.ok(telemetry, "roleById('telemetry') returns a role");
+  const ids = ROLES.map((r) => r.id);
+  assert.equal(ids[ids.indexOf("qa") + 1], "telemetry", "telemetry sits right after qa (both observers)");
+  assert.equal(telemetry.title, "runtime telemetry reader");
+});
+
+test("the telemetry find text carries the harness-response rule, one bug, and the dedup check", () => {
+  const find = oneLine(telemetry!.find);
+  assert.match(find, /File ONE bug in BUGS\.md's ## Open section per tick/);
+  assert.match(find, /ONLY when the harness's RESPONSE to it is wrong/);
+  assert.match(find, /A mere infrastructure failure .* is weather, not a bug/);
+  assert.match(find, /cite the cluster's normalized key plus the correlated .* commit/);
+  assert.match(find, /BUGS\.md is your only write; never edit source, tests, or docs/);
+  assert.match(find, /git log --grep="tumwater\(telemetry\)"/);
+  assert.match(find, /no duplicate filings/);
+});
+
+test("a telemetry prompt renders the injected digest in a <failure-digest> block", () => {
+  const prompt = buildTickPrompt({
+    role: telemetry!,
+    initialPrompt: "",
+    digest: "# Failure digest\n- cluster",
+  });
+  assert.ok(prompt.includes("<failure-digest>\n# Failure digest\n- cluster\n</failure-digest>"));
+  assert.match(prompt, /your evidence base/);
+  // The block is the rendered digest, never a raw event dump.
+  assert.ok(!prompt.includes(".tumwater/log/events.jsonl"));
+});
+
+test("prompts omit the <failure-digest> block when no digest is injected", () => {
+  for (const id of ["qa", "feature"]) {
+    const role = roleById(id);
+    assert.ok(role);
+    assert.ok(!buildTickPrompt({ role, initialPrompt: "" }).includes("<failure-digest>"));
+  }
+});
+
 // Prompt contract for the steward role (plans/steward-role.md): a markdown-only curation
 // role on a slow clock. Every tick is a fresh session with no memory of earlier curation
 // moves, so the find text must carry the move list, the markdown-only restriction, and its
