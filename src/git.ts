@@ -188,8 +188,11 @@ export async function isDirty(cwd: string): Promise<boolean> {
 }
 
 /** Decode a path from `git status --porcelain` output. Git C-quotes paths containing special
- * characters (newlines, tabs, quotes, non-ASCII under core.quotePath) and escapes them — the
- * decoded form is what callers pass back to git as a real path. Unquoted paths pass through.
+ * characters (control characters, quotes, non-ASCII under core.quotePath) and escapes them —
+ * the decoded form is what callers pass back to git as a real path. Unquoted paths pass through.
+ * Control characters git short-escapes (its `sq_lookup` table) all must be decoded: `\n`, `\t`,
+ * `\r`, and the less common `\a` (BEL), `\b` (BS), `\f` (FF), `\v` (VT) — every other control
+ * byte arrives as an octal escape.
  * Non-ASCII arrives one octal escape per UTF-8 byte, so the escapes are first collected into
  * a latin1 byte string and only then reassembled as UTF-8 (decoding each escape to a character
  * on its own yields mojibake — `héllo.md` would come back as `hÃ©llo.md`). Shared by
@@ -217,6 +220,18 @@ export function unquotePorcelainPath(p: string): string {
       case "r":
         bytes += "\r";
         break;
+      case "a":
+        bytes += "\x07";
+        break;
+      case "b":
+        bytes += "\x08";
+        break;
+      case "f":
+        bytes += "\x0c";
+        break;
+      case "v":
+        bytes += "\x0b";
+        break;
       case "\\":
         bytes += "\\";
         break;
@@ -224,7 +239,7 @@ export function unquotePorcelainPath(p: string): string {
         bytes += '"';
         break;
       default:
-        // Octal escape \NNN (control characters); anything else is kept literally.
+        // Octal escape \NNN (the remaining control characters); anything else is kept literally.
         if (e >= "0" && e <= "7") {
           const chunk = p.slice(i, i + 3);
           if (/^[0-7]{3}$/.test(chunk)) {

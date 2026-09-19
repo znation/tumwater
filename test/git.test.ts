@@ -435,6 +435,27 @@ test("changedFiles decodes C-quoted carriage returns in filenames", async () => 
   assert.ok(fs.existsSync(path.join(repo, files[0] ?? "")));
 });
 
+// Git's C-quoting has short escapes for four more control characters than \n/\t/\r — BEL
+// (\a), backspace (\b), form feed (\f), and vertical tab (\v), all emitted by `git status
+// --porcelain` for a filename containing the byte. They must decode to the control byte, not
+// to the bare letter (the old default branch turned `\a` into "a", so the path no longer
+// matched the file on disk).
+test("changedFiles decodes C-quoted BEL/backspace/form-feed/vertical-tab filenames", async () => {
+  const repo = makeRepo();
+  const names = ["bell\x07here.md", "back\x08space.txt", "form\x0cfeed.txt", "vert\x0btab.txt"];
+  for (const n of names) fs.writeFileSync(path.join(repo, n), "x\n");
+
+  const files = await changedFiles(repo);
+  assert.deepEqual(files.sort(), [...names].sort());
+  for (const f of files) assert.ok(fs.existsSync(path.join(repo, f)), f);
+
+  // The escape mapping itself, independent of git's output formatting.
+  assert.equal(unquotePorcelainPath('"a\\ab"'), "a\x07b");
+  assert.equal(unquotePorcelainPath('"a\\bb"'), "a\x08b");
+  assert.equal(unquotePorcelainPath('"a\\fb"'), "a\x0cb");
+  assert.equal(unquotePorcelainPath('"a\\vb"'), "a\x0bb");
+});
+
 // Defensive branches unquotePorcelainPath keeps for input git would never emit: a missing
 // closing quote and unrecognized escapes must degrade to "keep as-is", not drop or mangle
 // the entry — changedFiles/conflictedFiles feed whatever comes back straight back to git.

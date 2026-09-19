@@ -7,6 +7,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `unquotePorcelainPath` decoded git's `\a`/`\b`/`\f`/`\v` escapes as bare letters (found by bugfix loop 2026-09-19, fixed 2026-09-19)
+
+**Symptom:** Git's C-quoting has short escapes for eight characters (its `sq_lookup` table: `\a` BEL, `\b` BS, `\t` TAB, `\n` LF, `\v` VT, `\f` FF, `\r` CR, `\\`, `\"`), but `unquotePorcelainPath` (src/git.ts) only decoded `\n`, `\t`, `\r`, `\\`, and `\"`. The four it missed fell through the default branch, which keeps an unrecognized escape's letter literally — so a filename containing BEL (0x07), backspace (0x08), form feed (0x0c), or vertical tab (0x0b) came back as `a`/`b`/`f`/`v` in place of the control byte, a path that does not exist on disk. `changedFiles` feeds the result straight back to git (loop.ts's fallback commit subject, and the refusal path's `commitPathsAndDiscardRest` / `.md` classification), so a mis-decoded path stages nothing and misclassifies the file.
+
+**Repro:** Deterministic, no model needed: `printf x > "$(printf 'a\ab')"` in a scratch repo, then `git status --porcelain` prints `?? "a\ab"` (confirmed for all four bytes). Pre-fix `unquotePorcelainPath('"a\ab"')` returned `"aab"`, `'"a\fb"'` → `"afb"`; the real on-disk name is `a` + 0x07 + `b`. No model needed.
+
+**Expected:** Every escape git can emit decodes to its byte, so the returned path equals the real on-disk name — here `"a\x07b"`, `"a\x08b"`, `"a\x0cb"`, `"a\x0bb"` — the same round-trip contract the existing `\n`/`\t`/`\r`/`\\`/`\"`/octal tests pin.
+
+**Suspected cause:** The switch was written from the common escapes only: `\n`, `\t`, `\r` were handled, and every other letter was assumed to be "not an escape" input git would never emit (the defensive test's comment even says so). But git does emit `\a`/`\b`/`\f`/`\v`, and the default branch's keep-as-is rule is only correct for genuinely unknown letters (`\x`), not for these four.
+
+**Fix:** Added the four cases to the switch (`\a` → 0x07, `\b` → 0x08, `\f` → 0x0c, `\v` → 0x0b) and updated the doc comment to name all of git's short escapes.
+
+**Files:** src/git.ts (`unquotePorcelainPath` escape cases + doc); test/git.test.ts ("changedFiles decodes C-quoted BEL/backspace/form-feed/vertical-tab filenames").
+
 ### The pi-log parser returned valid-JSON non-object lines as if they were events (found by bugfix loop 2026-09-19, fixed 2026-09-19)
 
 **Symptom:** `parsePiEventLine` (src/pi-event-line.ts) is documented to return "an event object, or null when there is nothing for a consumer acting on `types`", but it returned `JSON.parse(trimmed) as T` with no shape check, so a stray scalar, `null`, or array line came back as an event. pi's stream is one JSON object per line, so those lines are torn or foreign noise — the same class of input the pi-stream parser was hardened against (fixed 2026-09-19) and the harness event log already rejects. The `as T` cast is unsound: it hands callers a value with no event fields. Today's two callers (progress.ts's live tail, transcript.ts's renderer) happen to survive because they guard with `!event` and read only `.type` — undefined on a scalar, so they fall through — but any future consumer that trusts the declared event type reads fields off a number, string, or array.
