@@ -65,7 +65,7 @@ Usage:
   tumwater report [--days N]       Markdown usage report — tokens/ticks/commits per day (default 14 days)
   tumwater report --failures [--days N]
                                    Markdown failure digest — tick outcomes, deltas, and clustered errors (default 14 days)
-  tumwater doctor                  Pre-flight check: git, repo, config, pi, locks (exit 0/1)
+  tumwater doctor                  Pre-flight check: node, git, repo, config, pi, locks, build (read-only; exit 0/1)
   tumwater logs [-f] [-n N]        Show (and follow) harness events
   tumwater logs --role <id> [-f] [-n N]
                                    Show (and follow) that loop's pi transcript
