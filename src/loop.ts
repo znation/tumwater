@@ -29,7 +29,7 @@ import {
   readPrinciples,
 } from "./prompt.js";
 import { readInitialPrompt } from "./readme.js";
-import { collectFailureReport, renderFailureMarkdown, TELEMETRY_DIGEST_DAYS } from "./failure-report.js";
+import { telemetryDigest } from "./failure-report.js";
 import { configForRole } from "./config.js";
 import { landChange, type LandRequest } from "./lander.js";
 import { enqueueLanding } from "./land-queue.js";
@@ -159,18 +159,9 @@ export class LoopRunner {
       const custom = this.config.customLoops.find((c) => c.name === this.role);
       const role = roleById(this.role) ?? (custom ? customRole(custom.name, custom.task) : undefined);
       if (!role) throw new Error(`unknown role: ${this.role}`);
-      // The telemetry role's evidence is the harness's own event log, which lives at the project
-      // root — one level outside this worktree — so the harness renders the digest and injects it
-      // (plans/telemetry-role.md). A missing or corrupt log omits the block and never fails the
-      // tick: an observer must not break on bookkeeping.
-      let digest: string | undefined;
-      if (this.role === "telemetry") {
-        try {
-          digest = renderFailureMarkdown(collectFailureReport(this.root, TELEMETRY_DIGEST_DAYS));
-        } catch {
-          digest = undefined;
-        }
-      }
+      // The telemetry role's evidence is the harness's own event log, one level outside this
+      // worktree, so the report module renders it (telemetryDigest) and the tick injects it.
+      const digest = this.role === "telemetry" ? telemetryDigest(this.root) : undefined;
       prompt = buildTickPrompt({
         role,
         initialPrompt,

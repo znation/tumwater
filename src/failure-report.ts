@@ -9,6 +9,18 @@ import { formatDate, shortSha } from "./text.js";
  * what makes the delta line meaningful. Kept here, not in the role, so 2/2 can import it. */
 export const TELEMETRY_DIGEST_DAYS = 1;
 
+/** The `telemetry` role's tick-time evidence: the failure digest rendered over its own
+ * one-day window. A missing or corrupt log omits the block (undefined) and never fails the
+ * tick — an observer must not break on bookkeeping (plans/telemetry-role.md). The window and
+ * the swallow-errors policy live with the digest, not in the tick lifecycle that injects it. */
+export function telemetryDigest(root: string): string | undefined {
+  try {
+    return renderFailureMarkdown(collectFailureReport(root, TELEMETRY_DIGEST_DAYS));
+  } catch {
+    return undefined;
+  }
+}
+
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
  * byte bound below for what these buy. */

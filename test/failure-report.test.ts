@@ -9,6 +9,7 @@ import {
   collectFailureReport,
   normalizeClusterKey,
   renderFailureMarkdown,
+  telemetryDigest,
 } from "../src/failure-report.js";
 import { makeRepo, tmpdir } from "./util.js";
 
@@ -180,6 +181,19 @@ test("the digest renders under 6 KB however bad the window was", () => {
 
 test("TELEMETRY_DIGEST_DAYS is the role's one-day window", () => {
   assert.equal(TELEMETRY_DIGEST_DAYS, 1);
+});
+
+test("telemetryDigest renders the digest over the role's one-day window", () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "pi exited null" },
+    { ts: at(3), loop: "feature", type: "tick_end", result: "error", error: "older, out of window" },
+  ]);
+  const digest = telemetryDigest(root);
+  assert.ok(digest, "a readable log always yields a digest string");
+  assert.match(digest, /\(1 day\)/);
+  assert.match(digest, /pi exited null/);
+  assert.doesNotMatch(digest, /older, out of window/);
 });
 
 // The CLI runs main() on import, so it is tested as a child process against the built dist,
