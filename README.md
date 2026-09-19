@@ -61,18 +61,18 @@ reaching `maxDailyCostUsd` switches every role loop to it (`budget_fallback`; he
 rather than stopping, and only a fallback that cannot be verified as free leaves it paused.
 
 Open items:
-- Planned: feature loop hands oversized plans to the plan loop instead of splitting them inline
-  (planned 2026-09-18, requested by user; marker + prompt handoff, no code behavior change).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
 - Planned: Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17,
   requested by user, refined 2026-09-18; depends on 1/2, which has landed).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
-- Open bugs: none.
+- Open bug: leftover recovery re-reviews a high-friction commit without its high-friction flag,
+  so the reviewer skips the extra scrutiny the flag exists to trigger (found by telemetry loop
+  2026-09-19).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`f45684f`): build clean, suite 1127/1127.
+Current main (`5f187d2`): build clean, suite 1143/1143.
 <!-- tumwater:status:end -->
 
 ## How it works
