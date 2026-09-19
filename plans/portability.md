@@ -2,11 +2,12 @@
 
 Planned 2026-09-14, requested by the user; audited against main `1384eeb` on 2026-09-15, 1/7
 re-audited against `00501fa` on 2026-09-16, 2/7 against `e76c5d5` on 2026-09-17, 6/7 against
-`94562d8` on 2026-09-18, 3/7 against `44a037c` on 2026-09-18 (4/7–5/7 remain on `1384eeb`; 7/7
-re-audited against `5a99627` on 2026-09-18). Full plan
-for the `Portability & packaging` entry in PLANS.md: seven independently landable sub-plans, each
-with its own goal, design rationale, approach, files touched, and acceptance criteria. The problem
-statement, invariants, and sequencing below are shared by all seven.
+`94562d8` on 2026-09-18, 3/7 against `44a037c` on 2026-09-18, 4/7 against `2714022` on 2026-09-19 —
+re-audited and split into 4a/7, 4b/7 and 4c/7 (5/7 remains on `1384eeb`; 7/7 re-audited against
+`5a99627` on 2026-09-18). Full plan
+for the `Portability & packaging` entry in PLANS.md: nine independently landable sub-plans (4/7
+became three), each with its own goal, design rationale, approach, files touched, and acceptance
+criteria. The problem statement, invariants, and sequencing below are shared by all of them.
 
 ## The problem
 
@@ -54,7 +55,7 @@ Make every one of those a runtime input with a sensible default, and publish the
 series is ordered so each entry is landable and green on its own, and so nothing is untracked or
 untangled before the machinery that depends on it has moved.
 
-## Invariants (none of the seven entries may break these)
+## Invariants (none of the entries may break these)
 
 1. **No machine in any history.** Nothing committed to any repository names a machine, a model
    server, a model id, an API endpoint, or a value sized to one machine's hardware.
@@ -71,10 +72,11 @@ untangled before the machinery that depends on it has moved.
 
 ## Sequencing
 
-`1/7 → 2/7 → 3/7 → 4/7` is the critical path: 4/7 untracks the config, which silently breaks
-custom-loop management until 3/7 has taken it off the commit path. `5/7`, `6/7`, and `7/7` depend
-only on 2/7's root resolution and may land in any order after it. 1/7 is first because the other
-six all change portability-sensitive behavior and want CI watching them.
+`1/7 → 2/7 → 3/7 → 4a/7 → 4b/7` is the critical path: 4a/7 makes a new project's config untracked
+and 4b/7 untracks this repo's own, which silently breaks custom-loop management until 3/7 has
+taken it off the commit path. `4c/7` is markdown-only and independent. `5/7`, `6/7`, and `7/7`
+depend only on 2/7's root resolution and may land in any order after it. 1/7 is first because the
+rest all change portability-sensitive behavior and want CI watching them.
 
 ---
 
@@ -332,7 +334,7 @@ test/prompt.test.ts, test/event-format.test.ts.
   config and starts it ticking within ~2 s, with no commit on the target branch and no
   review-gate run.
 - The same prompt works identically when the config file is gitignored and absent from every
-  worktree — the state 4/7 makes the default.
+  worktree — the state 4a/7 makes the default.
 - A request naming `maxDailyCostUsd` changes nothing, logs a warning naming the ignored key, and
   still applies `customLoops`.
 - A request whose entry fails name/task validation writes nothing and leaves the previous config
@@ -344,7 +346,7 @@ test/prompt.test.ts, test/event-format.test.ts.
 **Refined 2026-09-18 (plan loop) — 3/7 audited against main `44a037c` (HEAD; the README stamp is
 behind at `dcce4f2`; this sub-plan's last audit was the series write `1384eeb` on 2026-09-15, the
 oldest in the series, and ~40 landings have happened since). Every anchor verified on this tree;
-one real implementation gap and four seams pinned. Landable after 2/7; no dependency on 4/7.**
+one real implementation gap and four seams pinned. Landable after 2/7; no dependency on 4a/7.**
 
 Verified as written: `setDailyBudgetUsd` (src/config.ts:185) is the idiom and it is on
 `writeJsonAtomic` (src/json-files.ts:50) — the call is `writeJsonAtomic(file, { ...cfg,
@@ -411,69 +413,168 @@ four named files.
 
 ---
 
-## 4/7 — Untrack the config; ship a template
+## 4a/7 — Seed an untracked config from a tracked template
 
-**Goal.** Take every machine- and model-specific value out of version control (invariant 1).
-Depends on 3/7: until the director is off the commit path, untracking the config silently breaks
-custom-loop management.
+**Goal.** Every project tumwater initializes gets an untracked, gitignored `tumwater.json`:
+seeded from a tracked `tumwater.example.json` when the project ships one, from `defaultConfig()`
+when it does not; `doctor` reports where the two have drifted. This repo's own config keeps its
+tracking until 4b/7 — untracking it needs 4b/7's landing fix first.
 
 **Design (decided, with rationale).**
-- **One untracked config, one tracked template.** `tumwater.json` is gitignored in every project
-  (`init`'s `ensureGitignore` adds it beside `.tumwater/`); `tumwater.example.json` is tracked and
-  is the project's shareable baseline. `tumwater init` seeds `tumwater.json` from the example when
-  one exists, else from `defaultConfig()`. **No second config file and no overlay:** with the whole
-  file per-machine there is nothing left for a `tumwater.local.json` to separate, and one file
-  means one live-reload path, one validator, one writer. (An earlier draft of this plan proposed a
-  tracked/untracked split purely to preserve the director's commit path; 3/7 removes that
-  constraint, and with it the need for the split.)
-- **The template is the project's shared config, including `customLoops`.** A team that wants
-  everyone running the same loops, review settings, and check command commits them to
-  `tumwater.example.json`; a collaborator's `init` picks them up, and their own machine keys go in
-  their untracked copy. A loop the director adds lands in the live config only — promoting it to
-  the template stays a deliberate human act, which is right: one person's experiment should not
-  become everyone's loop by accident.
-- **`doctor` reports template drift.** Keys present in `tumwater.example.json` but absent from the
-  local `tumwater.json` are reported at `warn` with their values, so a project baseline that gains
-  a `check.command` or a new custom loop is visible on every machine instead of silently missing.
-  Never auto-merged: the local file belongs to the user.
-- **The repo's own `tumwater.json` is removed from tracking** (`git rm --cached`), its generic half
-  becomes `tumwater.example.json`, and its machine half survives only in the untracked working
-  copy.
-- **README's `## Notes on local model servers` becomes `docs/backends.md`** — what tumwater needs
-  from a backend (an OpenAI-compatible endpoint pi can reach; a context window large enough for a
-  tick prompt), how to point `provider`/`model` at it, and how `fleetModelsFree()` reads pi's
-  `models.json` costs to decide the budget badge. The concrete oMLX numbers survive there as one
-  clearly labelled worked example, not as "the current backend".
+- **One untracked config, one tracked template; no overlay.** `tumwater.json` is gitignored in
+  every project (`init`'s `ensureGitignore` adds it beside `.tumwater/`); `tumwater.example.json`
+  is tracked and is the project's shareable baseline (roles, intervals, review settings, a future
+  `check.command`, `customLoops`). A collaborator's `init` picks it up; their machine keys live
+  only in their untracked copy. **No second config file and no merge:** with the whole file
+  per-machine there is nothing left for a `tumwater.local.json` to separate, and one file means
+  one live-reload path, one validator, one writer. A loop the director adds lands in the live
+  config only — promoting it to the template stays a deliberate human act, which is right: one
+  person's experiment should not become everyone's loop by accident.
+- **`init` is the only seeder.** `loadConfig` (src/config.ts:73) and `loadConfigCached`
+  (src/config.ts:154) keep returning `defaultConfig()` for a missing file; nothing seeds at run
+  time. A fresh clone of an initialized project therefore runs `tumwater init` first, and until
+  then `doctor`'s existing "init" check fails with `NOT_INITIALIZED_MESSAGE`
+  (src/readiness.ts:10) — unchanged.
+- **`seedConfig` never throws.** An example that is unparseable or fails `validateConfig` falls
+  back to `defaultConfig()`: `init` must not die on a bad template, and the user's own file is
+  what validation protects.
+- **`exampleDrift` compares top-level keys and never merges.** Keys set in the example and absent
+  from the local file are reported with the example's values. Sub-objects (`roles`, `idleBackoff`)
+  are compared whole-key only — deep diffing is a bigger design than this entry needs.
+- **`doctor` folds drift into the existing "init" check.** The report's check names are pinned
+  (test/doctor.test.ts:221) and the valid-config detail is pinned as `"N roles enabled"`
+  (test/doctor.test.ts:124), so `checkInit` keeps that detail when there is no drift and returns
+  `level: "warn"` naming the drifted keys when there is (`CheckOutcome` is `ok | warn | fail`,
+  src/doctor.ts:31; a warn never affects the exit code).
 
 **Approach.**
-- src/paths.ts — `exampleConfigPath(root)`.
-- src/config.ts — `seedConfig(root)` (example → defaults) and `exampleDrift(root)` for doctor.
-- src/init.ts — seed from the example; `ensureGitignore` also adds `tumwater.json`; the config
-  leaves the committed file list while `created` still reports it so the user sees it was made.
-- src/doctor.ts — `checkInit` reports which file seeded the config, and any drift.
-- tumwater.json (`git rm --cached`), tumwater.example.json (new), .gitignore, docs/backends.md
-  (new), README.md.
-- Tests: test/init.test.ts (seeds from the example; gitignored; never committed; falls back to
-  defaults with no example), test/config.test.ts (drift detection), test/doctor.test.ts.
+- src/paths.ts — `exampleConfigPath(root)` beside `configPath` (src/paths.ts:11).
+- src/config.ts — `seedConfig(root)` (example → defaults) and `exampleDrift(root)`.
+- src/init.ts — seed through `seedConfig`; and two traps that must be fixed together:
+  1. `ensureGitignore` (src/init.ts:66–73) returns early as soon as *one* entry matches (line 70)
+     — it must test `.tumwater/` and `tumwater.json` independently, and still return true when it
+     adds only the second.
+  2. `created` is both the commit pathspec (src/init.ts:134,139) and the `created …` line the CLI
+     prints (src/cli.ts:107–114), and `git add -- tumwater.json` **fails** on a path the
+     just-written `.gitignore` ignores. Keep `tumwater.json` in the reported list, drop it from
+     the add/commit pathspec, and skip the add/commit entirely when that leaves the list empty
+     (`git add --` with no pathspec exits 1) — a repo that only gains a config reports
+     "created tumwater.json" and stays uncommitted.
+- tumwater.example.json (new, tracked) — this repo's generic half: `piArgs`,
+  `minTickIntervalSeconds`, `landBatchMax`, `logMaxBytes`, `sessionRetentionDays`, `thrashTurns`,
+  `thrashMinutes`, `autoRestart`, `review`, `customLoops`, `roles`; it omits `provider`, `model`,
+  `fallbackModel`, `maxDailyCostUsd`, `maxConcurrent`, `tickTimeoutSeconds`,
+  `quietTimeoutSeconds`, `idleBackoff`.
+- Tests: test/init.test.ts (seeds from an example the test writes; defaults without one; an
+  invalid example falls back without throwing; `.gitignore` carries both entries; `git ls-files`
+  omits the config while `created` still reports it; the existing creation and idempotence tests
+  keep passing), test/config.test.ts (`seedConfig`, `exampleDrift`), test/doctor.test.ts (drift
+  warns and names the keys; the ok detail is unchanged; the local file is never rewritten).
 
-**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/doctor.ts, tumwater.json
-(untracked), tumwater.example.json (new), .gitignore, docs/backends.md (new), README.md,
-test/init.test.ts, test/config.test.ts, test/doctor.test.ts.
+**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/doctor.ts, tumwater.example.json
+(new), test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a
+project with no example (defaults, as today).
 
 **Acceptance criteria.**
-- `git ls-files` shows no `tumwater.json`; `git log -p` over a repo tumwater has worked in shows
-  nothing naming a machine, a server, a model, or a concurrency sized to one GPU.
-- A fresh clone with no `tumwater.json` runs `tumwater init`, gets the project's
-  `tumwater.example.json` baseline, and runs on pi's own default provider/model until the user
-  sets one.
-- Adding a custom loop through the director (3/7) works with the config gitignored and absent from
-  every worktree.
-- `doctor` warns, naming the keys, when the example has moved ahead of the local file, and never
-  rewrites the local file.
-- **Operational note for whoever lands this:** the repo's current `provider`, `model`,
-  `maxConcurrent: 3`, `tickTimeoutSeconds: 54000`, `quietTimeoutSeconds: 3600` and `idleBackoff`
-  must already be present in the untracked working copy before this lands, or the dogfood fleet's
-  ticks start timing out at the 1800 s default mid-run.
+- `init` in a fresh repo with `tumwater.example.json` seeds the local config from it; without one,
+  from defaults; with a malformed one, from defaults and no throw.
+- In the freshly initialized repo `git ls-files` lists no `tumwater.json`, `.gitignore` lists both
+  `.tumwater/` and `tumwater.json`, `git status --porcelain` is empty, and the CLI output still
+  names `tumwater.json` as created.
+- `doctor` warns naming the drifted keys when the example has moved ahead, never rewrites the local
+  file, and keeps `"N roles enabled"` + exit 0 when there is no drift.
+- Full suite green.
+
+**Refined 2026-09-19 (plan loop) — the old 4/7 re-audited against main `2714022` and split (see
+the series header).** Verified on this tree: no `exampleConfigPath`/`seedConfig`/`exampleDrift`
+and no `tumwater.example.json` anywhere (`grep -rn` empty); `initProject` writes the config with
+`saveConfig(root, defaultConfig())` (src/init.ts:122–128) and commits through the single `created`
+list (133–141); `.gitignore` is written by `ensureGitignore` (66–73) with its first-entry early
+return at line 70; `doctor`'s check names are pinned at test/doctor.test.ts:221 and `checkInit`
+(src/doctor.ts:90–99) is the "init" entry. Corrections: the two src/init.ts traps above (the old
+text said "the config leaves the committed file list while `created` still reports it" without the
+mechanism, and missed that `git add` on an ignored path fails); doctor drift folds into the pinned
+"init" check rather than adding a check entry; and the "repo's own config is removed from
+tracking" and "Operational note" halves move to 4b/7, where the landing hazard they gesture at is
+actually solved.
+
+## 4b/7 — Untrack this repo's own config without deleting it (depends on 4a/7)
+
+**Goal.** This repo stops tracking `tumwater.json`, so no future commit carries a machine, a model
+id, or a concurrency sized to one GPU (invariant 1) — and the running fleet keeps its live config
+through the landing that removes it.
+
+**Why the split, and why a code change.** The landing fast-forwards the *primary checkout's*
+working tree — `ffMainTo` (src/merge.ts:314) runs `git merge --ff-only <sha>` when the checkout is
+on main — so the commit that removes the tracked config deletes the live file out from under the
+fleet. The next ~2 s config poll then reads `defaultConfig()`: no `provider`/`model` (pi's own
+default instead of the budgeted API model), `maxConcurrent` 6 against a 3-slot server, and
+`maxDailyCostUsd` 50 instead of 10 — exactly the degradation the old "Operational note" tried to
+prevent with "keep the values in the untracked working copy before this lands", which cannot
+work: the merge deletes the tracked file regardless. No operator timing can prevent it either —
+the drain runs while the fleet is paused, so the untracking lands unattended whether a human is
+watching or not. The preserve step below makes the landing safe by construction.
+
+**Design (decided).**
+- **`ffMainTo` preserves the live config across a landing that untracks it.** Before the
+  working-tree merge: if the config file exists, is tracked in the current HEAD
+  (`git ls-files --error-unmatch`), and is absent from the incoming ref
+  (`git cat-file -e <ref>:tumwater.json`, the path from `path.relative(root, configPath(root))`),
+  read its bytes. After a successful merge, write those bytes back. `ffMainTo` is the single helper
+  both landing paths go through — the single-change path (src/merge.ts:108) and the batched stack
+  (`ffStackToMain`, :297) — so one helper covers both; the detached arm
+  (`push . <ref>:<main>`) never touches the working tree and needs nothing.
+- **The implementation deletes the file; it does not run git.** Loop prompts forbid state-changing
+  git commands, and the old text's `git rm --cached` is one: deleting `tumwater.json` in the
+  worktree is enough, because `commitAll` (src/git.ts:366–370) runs `git add -A` and stages the
+  deletion. `.gitignore` must gain `tumwater.json` in the same commit — that is what keeps the
+  restored file out of `git status` and out of the next `git add -A`.
+- **A dirty root copy keeps today's behavior.** If the root's `tumwater.json` has uncommitted edits,
+  `git merge --ff-only` refuses as it always has (merge_blocked, landing retried) and the preserve
+  step cannot run. Recovery: save the edits, `git checkout -- tumwater.json`, and the landing
+  retries; the machine values come back from HEAD's blob through the preserve step.
+- **No value is lost.** The machine half (provider, model, fallbackModel, cost cap, timeouts,
+  concurrency, idleBackoff) lives on in the restored untracked file; the generic half is
+  `tumwater.example.json` from 4a/7.
+
+**Approach.** src/merge.ts (the preserve helper plus its call in the working-tree arm),
+`.gitignore` (`tumwater.json`), `tumwater.json` (deleted in the worktree), test/merge.test.ts (a
+landing commit that deletes and ignores the config leaves the root's file byte-identical,
+untracked, ignored, and `git status --porcelain` clean; a landing that does not touch the config
+leaves it untouched; an absent config is not an error).
+
+**Files touched.** src/merge.ts, .gitignore, tumwater.json (untracked), test/merge.test.ts.
+
+**Acceptance criteria.**
+- After the landing: `git ls-files` lists no `tumwater.json`; the root file exists with the exact
+  pre-landing bytes; `.gitignore` lists it; `git status --porcelain` is empty.
+- `loadConfig(root)` after the landing still returns this fleet's `provider`, `model`,
+  `fallbackModel`, `maxConcurrent`, `tickTimeoutSeconds`, `quietTimeoutSeconds` and `idleBackoff`
+  (the test compares the parsed config before and after).
+- A landing whose tree keeps the config, and one on a repo with no config, both leave the working
+  tree untouched and `ffMainTo` still returns true.
+- Full suite green.
+
+## 4c/7 — Move README's rig notes into docs/backends.md (markdown only)
+
+**Goal.** README stops being one machine's notebook (invariant 1's documentation half): its
+`## Notes on local model servers` section becomes `docs/backends.md`, and README's `## Usage`
+gains one line naming `tumwater.example.json` as the tracked baseline an untracked
+`tumwater.json` is seeded from.
+
+**Design (decided, with rationale).** `docs/backends.md` states what tumwater needs from a backend
+(an OpenAI-compatible endpoint pi can reach; a context window large enough for a tick prompt), how
+`provider`/`model`/`fallbackModel` point at it, and how `fleetModelsFree()` reads pi's
+`models.json` costs to decide the budget badge. The concrete oMLX/LM Studio numbers move there
+verbatim as one clearly labelled worked example ("one machine's measurements, 2026-09"), not as
+"the current setup". README keeps a two-line pointer to the document.
+
+**Files touched.** README.md, docs/backends.md (new). No source or test changes — this is why it is
+independent and may land in any order.
+
+**Acceptance criteria.** No section of README names a machine path, a model id, a server URL, or a
+value sized to one GPU (the moved text is the only place they appear); README links
+`docs/backends.md`; the worked example is labelled as an example; the suite is untouched.
 
 ---
 
@@ -507,7 +608,7 @@ side are all impossible.
   `findOnPath("pi")`, and its failure names the resolved value and source.
 - src/doctor.ts — `checkPiBinary` becomes `checkAgentBinary`, printing the resolved path and
   source; the install hint stays for the default case.
-- tumwater.example.json — a commented `agentBin` entry (4/7 owns the template).
+- tumwater.example.json — a commented `agentBin` entry (4a/7 owns the template).
 - Tests: test/pi.test.ts (env beats config beats default; an absolute path bypasses PATH; the
   spawn-error message names the resolved binary), test/cli.test.ts (preflight failure text),
   test/doctor.test.ts (all three sources).
@@ -661,10 +762,10 @@ Corrections (pinned; the three stale spots are already corrected in place):
    is unverified" reason and a warning — by design, since a landing check that times out must not
    merge unverified (BUGS.md 2026-09-18). Corrected in place: gate → `skipped` + proceed; landing/
    batch → `failed` + reject, for the configured command exactly as for npm.
-6. **`tumwater.example.json` does not exist yet.** It is 4/7's deliverable and 4/7 is unlanded, so
+6. **`tumwater.example.json` does not exist yet.** It is 4a/7's deliverable and 4a/7 is unlanded, so
    6/7 cannot require it. Pinned: 6/7's required surfaces are config + validation + code + prompt +
    doctor + README; the example's `check` entry is a one-line optional edit only when the file
-   already exists (i.e. after 4/7), otherwise 4/7's template carries it. `tumwater.example.json` is
+   already exists (i.e. after 4a/7), otherwise 4a/7's template carries it. `tumwater.example.json` is
    not added to 6/7's files touched.
 7. **`BuildCheck` is private.** The plan's union replaces the private `interface BuildCheck`
    (src/build-check.ts:42, today `{ rootDir; script }`), whose only constructor is `buildCheckFrom`
@@ -858,7 +959,7 @@ naming a machine, a server, or a model.
   resumption, and the reply contract — its own plan.
 - **Windows.** 1/7 declares `engines.os` rather than pretending.
 - **One fleet across several repositories.** Everything here keeps the one-root model.
-- **Auto-merging `tumwater.example.json` into a user's live config.** 4/7 reports drift; applying
+- **Auto-merging `tumwater.example.json` into a user's live config.** 4a/7 reports drift; applying
   it stays the user's decision.
 - **Promoting a director-added custom loop into the tracked template.** A deliberate human act by
-  design (4/7).
+  design (4a/7).
