@@ -72,7 +72,7 @@ Open items:
 - Open bugs: none.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`159fb71`): build clean, suite 1123/1123.
+Current main (`f45684f`): build clean, suite 1127/1127.
 <!-- tumwater:status:end -->
 
 ## How it works
