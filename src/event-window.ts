@@ -1,8 +1,7 @@
 import type { HarnessEvent } from "./types.js";
-import { parseEventLine } from "./events.js";
+import { eventDayKey, parseEventLine } from "./events.js";
 import { eventsLogPath } from "./paths.js";
 import { forEachTailChunk } from "./files.js";
-import { formatDate } from "./text.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
  * --days, `tumwater report --failures --days`, and /api/report?days=N): 14-day default, at most
@@ -69,7 +68,8 @@ export function readWindowEvents(root: string, fromKey: string): EventWindow {
     const oldest = oldestCompleteLine(parts);
     if (oldest !== null) {
       const ev = parseEventLine(oldest);
-      if (ev && typeof ev.ts === "number" && formatDate(new Date(ev.ts)) < fromKey) {
+      const day = ev ? eventDayKey(ev) : null;
+      if (day !== null && day < fromKey) {
         coversFullWindow = true;
         return true; // Window passed: everything older is irrelevant to this read.
       }
@@ -82,7 +82,9 @@ export function readWindowEvents(root: string, fromKey: string): EventWindow {
   for (const line of text.split("\n")) {
     if (!line) continue;
     const ev = parseEventLine(line); // A torn leading line fails to parse and is skipped.
-    if (ev && typeof ev.ts === "number" && formatDate(new Date(ev.ts)) >= fromKey) events.push(ev);
+    if (!ev) continue;
+    const day = eventDayKey(ev);
+    if (day !== null && day >= fromKey) events.push(ev);
   }
   // oldestCompleteLine always discards the earliest chunk's first line, so a read that reached
   // the file start without early-stopping has not yet checked the file's own oldest line. On a
@@ -91,7 +93,8 @@ export function readWindowEvents(root: string, fromKey: string): EventWindow {
   if (!coversFullWindow) {
     const first = text.split("\n", 1)[0] ?? "";
     const ev = parseEventLine(first);
-    coversFullWindow = !!(ev && typeof ev.ts === "number" && formatDate(new Date(ev.ts)) < fromKey);
+    const day = ev ? eventDayKey(ev) : null;
+    coversFullWindow = day !== null && day < fromKey;
   }
   return { events, coversFullWindow };
 }

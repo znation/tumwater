@@ -1,5 +1,6 @@
 import type { HarnessEvent, TickResult } from "./types.js";
 import { readWindowEvents } from "./event-window.js";
+import { eventDayKey, eventRole } from "./events.js";
 import { formatDate, shortSha } from "./text.js";
 
 /** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
@@ -174,7 +175,7 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   const byRole = new Map<string, RoleStats>();
   for (const ev of events) {
     if (ev.type !== "tick_end") continue;
-    const role = roleOf(ev);
+    const role = eventRole(ev);
     const stats = byRole.get(role) ?? { ticks: 0, errors: 0, quietKills: 0, rejections: 0 };
     stats.ticks++;
     if (ev.result === "error") stats.errors++;
@@ -183,15 +184,6 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
     byRole.set(role, stats);
   }
   return byRole;
-}
-
-/** The loop id of an event, or "?" when empty — the same guard the usage report applies. */
-function roleOf(ev: HarnessEvent): string {
-  return typeof ev.loop === "string" && ev.loop !== "" ? ev.loop : "?";
-}
-
-function dayOf(ts: number): string {
-  return formatDate(new Date(ts));
 }
 
 /** Collect the digest over the last `days` local calendar days, reading a 2×-long window once
@@ -209,8 +201,8 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   const current: HarnessEvent[] = [];
   const prior: HarnessEvent[] = [];
   for (const ev of events) {
-    if (typeof ev.ts !== "number") continue; // Unreachable: the reader filters on ts.
-    const day = dayOf(ev.ts);
+    const day = eventDayKey(ev);
+    if (day === null) continue; // Unreachable: the reader filters on ts.
     if (day >= from && day <= to) current.push(ev);
     else if (day >= priorFrom) prior.push(ev);
   }
@@ -220,7 +212,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   // Outcome table: one row per role, counts per result that occurred.
   const outcomeMap = new Map<string, Partial<Record<TickResult, number>>>();
   for (const ev of tickEvents) {
-    const role = roleOf(ev);
+    const role = eventRole(ev);
     const counts = outcomeMap.get(role) ?? {};
     const result = ev.result as TickResult;
     counts[result] = (counts[result] ?? 0) + 1;
@@ -261,13 +253,13 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   const errorClusters = clusterMessages(
     tickEvents
       .filter((ev) => typeof ev.error === "string" && ev.error !== "")
-      .map((ev) => ({ message: ev.error as string, role: roleOf(ev), ts: ev.ts })),
+      .map((ev) => ({ message: ev.error as string, role: eventRole(ev), ts: ev.ts })),
     ERROR_TOP,
   );
   const warningClusters = clusterMessages(
     current
       .filter((ev) => ev.type === "warning" && typeof ev.message === "string" && ev.message !== "")
-      .map((ev) => ({ message: ev.message as string, role: roleOf(ev), ts: ev.ts })),
+      .map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })),
     WARNING_TOP,
   );
   // Rejections cluster on (role, reasons[0]) — the field the event feed renders — so two
@@ -278,7 +270,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
       .map((ev) => {
         const reasons = ev.reasons as unknown[];
         const first = typeof reasons[0] === "string" ? (reasons[0] as string) : "no reasons given";
-        return { message: first, role: roleOf(ev), ts: ev.ts, keyPrefix: `${roleOf(ev)}\u0000` };
+        return { message: first, role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
       }),
     REJECTION_TOP,
   );
@@ -294,7 +286,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     .slice(0, LANDED_TOP);
 
   const hasEvents = events.length > 0;
-  const oldestEventDate = hasEvents ? dayOf(events[0]!.ts) : null;
+  const oldestEventDate = hasEvents ? eventDayKey(events[0]!) : null;
   // Complete when the log reaches back before the current window (either the early-stop proved
   // it, or the oldest retained event predates the window start). Only then can a short window be
   // trusted as idle rather than truncated by rotation.
@@ -445,5 +437,5 @@ function roleCell(role: string): string {
  * most REPORT_MAX_DAYS), so the year is redundant on the line and the bytes are better spent
  * on the top-N budget. */
 function dayShort(ts: number): string {
-  return dayOf(ts).slice(5);
+  return formatDate(new Date(ts)).slice(5);
 }

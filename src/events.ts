@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
+import { formatDate } from "./text.js";
 import {
   ensureParentDir,
   forEachTailChunk,
@@ -84,6 +85,19 @@ export function parseEventLine(line: string): HarnessEvent | null {
   } catch {
     return null; // Skip partial/corrupt lines (e.g. torn writes).
   }
+}
+
+/** The local calendar-day key ("YYYY-MM-DD") of an event's `ts`, or null when it carries no
+ * numeric timestamp. The one day-bucketing rule the windowed reader (event-window.ts) and the
+ * usage/failure reports all apply, so they agree on what counts as one day. */
+export function eventDayKey(ev: HarnessEvent): string | null {
+  return typeof ev.ts === "number" ? formatDate(new Date(ev.ts)) : null;
+}
+
+/** The loop id an event is filed under, or "?" when absent or empty — the guard the usage
+ * report and the failure digest both apply when grouping by role. */
+export function eventRole(ev: HarnessEvent): string {
+  return typeof ev.loop === "string" && ev.loop !== "" ? ev.loop : "?";
 }
 
 /** Read the last `limit` events (best-effort; skips malformed lines).

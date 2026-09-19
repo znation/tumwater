@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readWindowEvents } from "../event-window.js";
+import { eventDayKey, eventRole } from "../events.js";
 import { sectionLines } from "../backlog.js";
 import { formatDate, usd } from "../text.js";
 
@@ -107,11 +108,11 @@ export function collectReport(root: string, days: number): ReportData {
   for (const d of series) byDate.set(d.date, d);
 
   for (const ev of readWindowEvents(root, from).events) {
-    if (typeof ev.ts !== "number") continue; // Unreachable: the reader filters on ts.
-    const day = byDate.get(formatDate(new Date(ev.ts)));
+    const dayKey = eventDayKey(ev);
+    const day = dayKey === null ? undefined : byDate.get(dayKey);
     if (!day) continue; // Outside [from, to] — also guards future-dated events.
     if (ev.type === "tick_end") {
-      const role = typeof ev.loop === "string" && ev.loop !== "" ? ev.loop : "?";
+      const role = eventRole(ev);
       day.ticksByRole[role] = (day.ticksByRole[role] ?? 0) + 1;
       day.tokensOut += typeof ev.tokens === "number" ? ev.tokens : 0;
       day.costUsd += typeof ev.costUsd === "number" ? ev.costUsd : 0;
