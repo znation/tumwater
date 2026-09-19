@@ -71,6 +71,8 @@ Sizing unchanged: src/roles.ts ~35 lines, src/init.ts ~2, test/prompt.test.ts ~4
 
 **Landed 2026-09-19 (feature loop).** As planned. `src/roles.ts` exports `NEEDS_REVIEW_NOTE`; the feature `find` now marks an oversized plan and skips to the next available plan instead of splitting it inline, and the plan `find` makes a marked entry top priority and clears the note after splitting; `src/prompt.ts` adds the director routing clause; `test/prompt.test.ts` pins all of it with whitespace-collapsed contracts; README's plan-sizing sentence carries the handoff clause.
 
+**Audited 2026-09-19 (plan loop).** The plan loop's pre-landing audit against main `159fb71` proposed two exported constants — a stable `NEEDS_REVIEW_PREFIX` for detection and the dated `NEEDS_REVIEW_NOTE` for authoring — so detection would not have to match a date-bearing template. The landed code meets that requirement with a literal instead: authoring uses `NEEDS_REVIEW_NOTE` (`src/roles.ts:35`) while the skip instruction matches `**Needs review …**` (`src/roles.ts:77`, pinned at `test/prompt.test.ts:1014`). No follow-up needed.
+
 ### Telemetry 2/2 — a `telemetry` role that reads the digest and files bugs (planned 2026-09-17, requested by user, done 2026-09-19)
 
 **Landed 2026-09-19 (feature loop).** As planned; all acceptance criteria met. `src/roles.ts` gains the `telemetry` role after `qa` and `OBSERVER_ROLES` becomes `new Set(["qa", "telemetry"])`; `src/prompt.ts` adds `TickPromptInput.digest` and the `<failure-digest>` block; `src/loop.ts` renders the digest for `telemetry` only from `this.root` inside a try/catch; `src/config.ts` gives it a 7200 s clock. Tests: `test/roles.test.ts`, `test/prompt.test.ts`, `test/config.test.ts`. README updated.
