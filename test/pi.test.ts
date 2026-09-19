@@ -158,6 +158,17 @@ test("parser handles chunked lines and ignores noise", () => {
   assert.equal(parser.peakContextTokens, 5);
 });
 
+test("parser skips valid-JSON non-object lines without throwing or counting progress", () => {
+  // pi's stream is one JSON object per line. A stray `null` used to throw a TypeError out of
+  // feed() (reading `.errorMessage` off null), and a scalar passed the truthy check and was
+  // counted as forward progress — resetting the hang watchdog for a line that proves nothing.
+  const parser = new PiStreamParser();
+  parser.feed("null\n5\n[]\n\"noise\"\n");
+  assert.equal(parser.progressCount, 0, "non-object lines are not forward progress");
+  parser.feed(JSON.stringify({ type: "turn_start" }) + "\n");
+  assert.equal(parser.progressCount, 1, "a real event still counts");
+});
+
 test("parser records error messages and clears them after a later success", () => {
   const parser = new PiStreamParser();
   parser.feed(

@@ -16,6 +16,20 @@ interface PiMessage {
   errorMessage?: string;
 }
 
+/** The fields feedLine reads off one parsed pi event line. pi's stream is one JSON object per
+ * line, so anything that is not an object (a scalar, `null`, or an array) is torn or foreign
+ * noise — see the object check in feedLine. */
+interface PiStreamEvent {
+  type?: string;
+  message?: PiMessage;
+  errorMessage?: string;
+  finalError?: string;
+  toolCallId?: string;
+  toolName?: string;
+  args?: unknown;
+  partialResult?: unknown;
+}
+
 /** Extract the concatenated text blocks of a pi message. */
 function messageText(msg: PiMessage): string {
   return (msg.content ?? [])
@@ -129,18 +143,17 @@ export class PiStreamParser {
     // events around them). Skip even parsing them.
     if (piEventType(line) === "message_update") return;
 
-    let event: {
-      type?: string;
-      message?: PiMessage;
-      errorMessage?: string;
-      finalError?: string;
-      toolCallId?: string;
-      toolName?: string;
-      args?: unknown;
-      partialResult?: unknown;
-    };
+    let event: PiStreamEvent;
     try {
-      event = JSON.parse(line);
+      const parsed: unknown = JSON.parse(line);
+      // pi's stream is one JSON object per line: a valid-JSON scalar, `null`, or array is torn
+      // or foreign noise, not an event. Reading fields off it throws on `null` — escaping this
+      // try and crashing the whole parse — and a stray scalar would otherwise pass the truthy
+      // check below and be counted as forward progress, resetting the hang watchdog for a line
+      // that proves nothing. Skip it: the same object check parseEventLine applies to the
+      // harness event log.
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return;
+      event = parsed as PiStreamEvent;
     } catch {
       return; // Non-JSON noise on stdout; ignore.
     }
