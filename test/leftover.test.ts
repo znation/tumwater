@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { recoverLeftover, type LeftoverContext } from "../src/leftover.js";
+import { commitTrailer } from "../src/commit-message.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
 import { eventsLogPath, landingRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
@@ -17,24 +18,27 @@ import { makeRepo, sh, tmpdir } from "./util.js";
 
 const ROLE = "improve";
 
-/** A LeftoverContext whose land records every call and returns `landResult`. */
+/** A LeftoverContext whose land records every call (sha + recovered metadata) and returns
+ * `landResult`. */
 function makeCtx(
   root: string,
   wt: string,
   landResult: TickResult = "changed",
-): { ctx: LeftoverContext; landed: string[] } {
+): { ctx: LeftoverContext; landed: string[]; metas: Array<{ body?: string; highFriction?: boolean }> } {
   const landed: string[] = [];
+  const metas: Array<{ body?: string; highFriction?: boolean }> = [];
   const ctx: LeftoverContext = {
     root,
     role: ROLE,
     mainBranch: "main",
     wt,
-    land: async (sha) => {
+    land: async (sha, meta) => {
       landed.push(sha);
+      metas.push(meta);
       return landResult;
     },
   };
-  return { ctx, landed };
+  return { ctx, landed, metas };
 }
 
 /** A repo with one commit NOT contained in main, pinned by the landing ref — the leftover to
@@ -64,10 +68,50 @@ test("no landing ref and nothing ahead of main: no-op without calling the lander
 test("a pinned commit not in main is re-landed through the lander", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main"); // branch at main: only the pin matters
-  const { ctx, landed } = makeCtx(root, wt);
+  const { ctx, landed, metas } = makeCtx(root, wt);
 
   assert.equal(await recoverLeftover(ctx), "changed", "the lander's outcome passes through");
   assert.deepEqual(landed, [sha], "the lander gets exactly the pinned sha");
+  assert.deepEqual(metas, [{ body: undefined, highFriction: undefined }], "a routine commit carries no recovered metadata");
+});
+
+// BUGS.md 2026-09-19: recovery re-landed a high-friction commit without its flag (and its
+// body), so the reviewer skipped the extra scrutiny the flag exists to trigger. Both are
+// already durable in the commit message the harness stamped; recovery reads them back.
+test("recovery reads the pinned commit's body and high-friction flag back out of its message", async () => {
+  const root = makeRepo();
+  sh(root, "git", "checkout", "-b", "stray");
+  fs.appendFileSync(path.join(root, "seed.txt"), "leftover change\n");
+  sh(root, "git", "add", "-A");
+  sh(
+    root,
+    "git",
+    "commit",
+    "-m",
+    [
+      "tumwater(improve): slow but worthwhile",
+      "",
+      "WHY: the fix was fiddly",
+      "RISK: touches the landing path",
+      "VERIFIED: npm test, all pass",
+      "",
+      commitTrailer("improve", 5, 44, 20_000, 4.2),
+    ].join("\n"),
+  );
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+  await setRef(root, landingRefName(ROLE), sha);
+  const wt = await ensureWorktree(root, ROLE, "main");
+  const { ctx, landed, metas } = makeCtx(root, wt);
+
+  assert.equal(await recoverLeftover(ctx), "changed");
+  assert.deepEqual(landed, [sha]);
+  assert.equal(metas[0]?.highFriction, true, "the Friction trailer sets the review flag");
+  assert.equal(
+    metas[0]?.body,
+    "WHY: the fix was fiddly\nRISK: touches the landing path\nVERIFIED: npm test, all pass",
+    "the commit body rides into the review gate",
+  );
 });
 
 test("a stale ref already contained in main is deleted without a landing run", async () => {

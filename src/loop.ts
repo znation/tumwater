@@ -581,12 +581,14 @@ export class LoopRunner {
         role: this.role,
         mainBranch: this.mainBranch,
         wt,
-        land: (sha) =>
+        land: (sha, meta) =>
           this.land({
             role: this.role,
             sha,
             tick: s.ticks,
             summary: `recovered leftover work from ${this.role}`,
+            body: meta.body,
+            highFriction: meta.highFriction,
             sessionSuffix: "-recovery",
           }),
       });

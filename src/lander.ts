@@ -29,8 +29,9 @@ export interface LandRequest {
   /** Current tick number, for the unique per-run session names (review + conflict resolution). */
   tick: number;
   summary: string;
-  /** The author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff. Absent
-   * on recovery landings: the original run is gone. */
+  /** The author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff. On a
+   * recovery landing these are read back from the pinned commit's message (the authoring run
+   * is gone); a hand-made or pre-contract commit has none. */
   body?: string;
   highFriction?: boolean;
   /** Suffix for the review session name — recovery landings pass "-recovery" so a tick's own

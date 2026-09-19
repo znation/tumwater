@@ -1259,6 +1259,58 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
   }
 });
 
+// BUGS.md 2026-09-19: recovery re-landed a high-friction commit without its flag (and its body),
+// so the reviewer skipped the extra scrutiny the flag exists to trigger. Both are already stamped
+// into the pinned commit's message; recovery must read them back and present them to the same
+// gate a fresh tick uses.
+test("a recovered high-friction commit reaches the reviewer with its flag and body", async () => {
+  const repo = await initializedRepo();
+  // Simulate the crash: a pinned commit whose message carries the harness's Friction trailer and
+  // the author's WHY/RISK/VERIFIED, with the role branch back at main.
+  sh(repo, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(repo, "recovered.txt"), "work\n");
+  sh(repo, "git", "add", "-A");
+  sh(
+    repo,
+    "git",
+    "commit",
+    "-m",
+    [
+      "tumwater(improve): slow but worthwhile",
+      "",
+      "WHY: the fix was fiddly",
+      "RISK: touches the landing path",
+      "VERIFIED: npm test, all pass",
+      "",
+      "Tick: improve #3 · turns 44 · ctx 20.0k",
+      "Friction: high (44 turns / 4m)",
+    ].join("\n"),
+  );
+  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+  sh(repo, "git", "checkout", "main");
+  await setRef(repo, landingRefName("improve"), sha);
+
+  const reviewArgs = path.join(tmpdir(), "recovery-review-args");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change", "the tick's own authoring run found nothing to do");
+
+    // The re-review carried both the flag and the author's reasoning, reconstructed from the pin.
+    const prompt = fs.readFileSync(reviewArgs, "utf8");
+    assert.match(prompt, /HIGH-FRICTION/, "the recovered commit is flagged for extra scrutiny");
+    assert.match(prompt, /WHY: the fix was fiddly/, "the recovered body rides into the gate");
+    assert.equal(sh(repo, "git", "rev-parse", "main"), sha, "the recovered commit landed");
+  } finally {
+    restore();
+  }
+});
+
 // The user-abort sibling of the crash-pin test above: a `tumwater abort` that lands in the
 // leftover-recovery window (the pin exists BEFORE the tick starts) must discard the pinned work
 // exactly like an abort in the tick's own landing path — keeping it would let next-tick recovery

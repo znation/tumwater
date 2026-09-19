@@ -293,6 +293,11 @@ export async function subjectsBetween(
   return out.split("\n").filter(Boolean);
 }
 
+/** The full commit message (subject, body, trailer) of `sha`; null when it cannot be read. */
+export async function commitMessage(cwd: string, sha: string): Promise<string | null> {
+  return gitTry(cwd, "log", "-1", "--format=%B", sha);
+}
+
 /** Commits ahead of main on the worktree's branch. */
 export async function aheadOfMain(wt: string, mainBranch: string): Promise<number> {
   const out = await git(wt, "rev-list", "--count", `${mainBranch}..HEAD`);

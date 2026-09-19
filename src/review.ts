@@ -198,8 +198,8 @@ export async function reviewAheadOfMain(
   // merge on local hardware is a fleet-level cost an operator must be able to see.
   const reviewStartedAt = Date.now();
   // The author's claimed WHY/RISK/VERIFIED ride along when present — checking those claims
-  // against the actual diff is exactly the adversarial angle (recovery re-reviews pass none:
-  // the original run is gone).
+  // against the actual diff is exactly the adversarial angle (recovery landings reconstruct
+  // them from the pinned commit's message).
   const pi = await runPi({
     cwd: wt,
     prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction, verifiedByHarness),

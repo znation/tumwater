@@ -7,6 +7,8 @@ import {
   extractSummary,
   fallbackSummary,
   formatCommitBody,
+  hasFrictionTrailer,
+  parseCommitMetadata,
 } from "../src/commit-message.js";
 
 test("extractSummary finds the SUMMARY line anywhere in the reply", () => {
@@ -132,4 +134,41 @@ test("fallbackSummary names the changed paths, counts the rest, and keeps the ba
   const long = fallbackSummary(["x".repeat(80), "y".repeat(80), "z".repeat(80)], "dry", 7);
   assert.ok(long.length <= 100, "capped like a real summary");
   assert.ok(long.endsWith("…"));
+});
+
+// The recovery readback (BUGS.md 2026-09-19): a pinned leftover commit's message is the only
+// surviving record of its high-friction flag and its author's body, since the authoring run is
+// gone. A parse bug would silently downgrade the review gate on exactly the risky changes the
+// flag exists to mark.
+
+test("hasFrictionTrailer matches only the harness-stamped Friction line", () => {
+  assert.equal(hasFrictionTrailer("Tick: improve #5 · turns 44 · ctx 20.0k\nFriction: high (44 turns / 4m)"), true);
+  assert.equal(hasFrictionTrailer("Tick: improve #5 · turns 2 · ctx 20.0k"), false);
+  // Prose that merely mentions friction mid-line is not the trailer.
+  assert.equal(hasFrictionTrailer("Friction: high (44 turns / 4m) is what the digest said"), false);
+  assert.equal(hasFrictionTrailer(""), false);
+});
+
+test("parseCommitMetadata reconstructs the body and friction flag from a stamped message", () => {
+  const message = buildCommitMessage(
+    "tumwater(improve): slow but worthwhile",
+    { why: "the fix was fiddly", risk: "touches landing", verified: "npm test" },
+    commitTrailer("improve", 5, 44, 20_000, 4.2),
+  );
+  assert.deepEqual(parseCommitMetadata(message), {
+    body: "WHY: the fix was fiddly\nRISK: touches landing\nVERIFIED: npm test",
+    highFriction: true,
+  });
+});
+
+test("parseCommitMetadata yields an empty object for a message with neither body nor trailer", () => {
+  assert.deepEqual(parseCommitMetadata("interrupted tick's commit"), {
+    body: undefined,
+    highFriction: undefined,
+  });
+  // A routine harness commit: the Tick trailer alone still carries no friction flag.
+  assert.deepEqual(
+    parseCommitMetadata(buildCommitMessage("tumwater(clean): tidy", null, commitTrailer("clean", 1, 3, 500))),
+    { body: undefined, highFriction: undefined },
+  );
 });

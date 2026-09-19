@@ -89,6 +89,36 @@ export function commitTrailer(
     : `${base}\nFriction: high (${turns} turns / ${Math.round(highFrictionMinutes)}m)`;
 }
 
+/** The high-friction trailer line a flagged tick's commit carries (see commitTrailer) — the
+ * durable record recovery reads back. Anchored to the whole line so prose that merely mentions
+ * friction cannot set the flag. */
+const FRICTION_TRAILER = /^Friction: high \(\d+ turns \/ \d+m\)$/m;
+
+/** True when a commit message carries the harness-stamped high-friction trailer. */
+export function hasFrictionTrailer(message: string): boolean {
+  return FRICTION_TRAILER.test(message);
+}
+
+/** The fields a landing request needs that a commit message can supply: the author's body
+ * (WHY/RISK/VERIFIED, reformatted) and whether the tick was high-friction. */
+export interface CommitMetadata {
+  body?: string;
+  highFriction?: boolean;
+}
+
+/** Reconstruct the review-gate metadata from a commit message the harness stamped itself.
+ * Leftover recovery has no authoring run to read from, so the pinned commit's message is the
+ * only source of truth: without this a recovered high-friction change loses both its flag and
+ * its WHY/RISK/VERIFIED and is reviewed as if it were routine. Empty object when the message
+ * carries neither (e.g. a hand-made or non-compliant commit). */
+export function parseCommitMetadata(message: string): CommitMetadata {
+  const body = extractCommitBody(message);
+  return {
+    body: body ? formatCommitBody(body) : undefined,
+    highFriction: hasFrictionTrailer(message) || undefined,
+  };
+}
+
 /** Assemble a tick's full commit message — the single place that builds one. The subject is
  * the existing "tumwater(<role>): <summary>" line; the author's body (omitted when absent)
  * and the harness-stamped trailer follow as separate paragraphs. Refusal commits will route

@@ -1,4 +1,5 @@
-import { aheadOfMain, deleteRef, headOf, isMergedInto, refSha, setRef } from "./git.js";
+import { aheadOfMain, commitMessage, deleteRef, headOf, isMergedInto, refSha, setRef } from "./git.js";
+import { parseCommitMetadata, type CommitMetadata } from "./commit-message.js";
 import { logEvent } from "./events.js";
 import { landingRefName } from "./paths.js";
 import { shortSha } from "./text.js";
@@ -26,8 +27,10 @@ export interface LeftoverContext {
   mainBranch: string;
   /** The role's worktree — read for the no-pin fallback only. */
   wt: string;
-  /** Land `sha` through the shared lander (review gate, rebase, ff-merge). */
-  land(sha: string): Promise<TickResult>;
+  /** Land `sha` through the shared lander (review gate, rebase, ff-merge). `meta` carries the
+   *  recovered commit's body + high-friction flag, read back from its message because the
+   *  authoring run that set them is gone. */
+  land(sha: string, meta: CommitMetadata): Promise<TickResult>;
 }
 
 /** Re-land a commit a previous tick left unlanded. Entry condition: the landing ref exists and
@@ -71,5 +74,15 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<TickResult 
       });
     }
   }
-  return await ctx.land(sha);
+  return await ctx.land(sha, await recoveredMetadata(ctx.root, sha));
+}
+
+/** The review-gate metadata a pinned leftover commit carries in its own message: its
+ *  high-friction flag and author's body, or an empty object when the commit predates the
+ *  contract or the message cannot be read. Recovery lands through the same gate as a fresh
+ *  tick, so it must present those fields the same way — otherwise a flagged change is silently
+ *  reviewed as routine (BUGS.md 2026-09-19). */
+async function recoveredMetadata(root: string, sha: string): Promise<CommitMetadata> {
+  const message = await commitMessage(root, sha);
+  return message ? parseCommitMetadata(message) : {};
 }
