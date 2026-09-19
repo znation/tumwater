@@ -5,6 +5,31 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Feature loop hands oversized plans to the plan loop instead of splitting them inline (planned 2026-09-18, requested by user)
+
+**Why.** The feature loop is one mid-sized model in one run; the current prompt tells it that a plan too large to finish is split inline — rewrite the entry into sub-entries, then implement one. That is planning work done by the wrong role in the wrong context: it burns the feature run on bookkeeping, and a rushed inline split can be worse than the original entry. The plan loop exists for exactly this and has the room to do it properly, so the handoff should be explicit rather than the feature loop silently rewriting the backlog.
+
+**Goal.** When the feature loop meets a plan too large for one run, it marks the entry for plan-loop review and moves on to the next available plan instead of splitting it. The plan loop treats a marked entry as its top priority, breaks it into independently landable sub-plans, and clears the mark.
+
+**Approach.** Prompt-only change, mirroring the existing `**Refused …**` note convention — a markdown note the next fresh tick reads, with no code parsing it. Define the marker once in `src/roles.ts` as an exported constant (e.g. `NEEDS_REVIEW_NOTE = \`**Needs review <YYYY-MM-DD> by feature: too large for one run**\``) so the feature and plan texts cannot drift, and embed it in both role `find` texts:
+- **Feature:** replace the "A plan too large to finish in this run is split before implementing: …" sentence with: when the chosen plan is too large for one run, append the marker under its heading, skip it, and implement the next available plan that fits; skip entries already carrying a `**Needs review …**` note (alongside the existing Refused-note skip). It may mark several oversized entries while scanning, but still lands exactly one plan.
+- **Plan:** an entry carrying a `**Needs review …**` note outranks "refine the weakest existing plan": split it into independently landable sub-plans that cross-reference each other (per `PLAN_SIZING`, each with its own acceptance criteria), then remove the note.
+- **Director:** one routing clause in the existing refusal-decision bullet's shape — a user ruling on a marked plan ("split plan X", "keep plan X whole") is applied by splitting it or clearing the note.
+
+**Files touched.**
+- `src/roles.ts` — the new exported marker constant, the feature `find`, the plan `find`.
+- `src/prompt.ts` — one director routing clause for clearing the note.
+- `test/prompt.test.ts` — whitespace-collapsed contract tests (see acceptance criteria).
+- `README.md` — the plan-sizing sentence in "How it works" gains the handoff clause.
+
+**Acceptance criteria.**
+- The feature prompt no longer instructs the feature loop to split a plan itself; it instructs the mark-and-skip handoff and skips `**Needs review …**` entries.
+- The plan prompt names a `**Needs review …**` entry as top priority and clears the note after splitting.
+- The director prompt routes a user ruling on a marked plan by clearing the note.
+- The marker text is defined once and embedded in all three prompts.
+- `test/prompt.test.ts` asserts the above with whitespace collapsed and fails if the old "split before implementing" sentence returns.
+- `npm test` green.
+
 ### Portability & packaging — run tumwater anywhere, against anything (planned 2026-09-14, requested by user, refined 2026-09-17)
 
 **Full plan: plans/portability.md** — seven independently landable sub-plans, each with its own goal, design rationale, approach, files touched, and acceptance criteria; the shared problem statement, invariants, and sequencing live at the top of that document. Kept there rather than inline because the series spans packaging, config, git, prompts, and init, and the detail would crowd out every other entry here.
