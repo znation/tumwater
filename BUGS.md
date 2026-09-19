@@ -7,6 +7,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### A qa tick cut off before declaring its outcome still advanced the flow-coverage rotation (found by bugfix loop 2026-09-19, fixed 2026-09-19)
+
+**Symptom:** The `qa` flow-coverage ledger (plans/observer-roles.md 2/2) exists so the observer rotates through every flow instead of re-picking the cheapest. `recordFlow` is called from the `no_change` success return, but that return is also the cut-off path: a run truncated at the context ceiling (no `TUMWATER_NOTHING_TO_DO` sentinel, a contentless final message) falls through the same code. If such a run had emitted its `FLOW:` line mid-stream, the flow was recorded as exercised even though the check never finished, so the next prompt deprioritized a flow the fleet never actually verified. The code comment above the extraction states the intent plainly — "an interrupted or failed tick must not advance the rotation" — and the cut-off branch is exactly that.
+
+**Repro:** A fake pi run that prints `FLOW: status — passed` and then a thinking-only final message (the cut-off signature: `thinkingOnlyLine`, no sentinel) produced a `no_change` tick whose `.tumwater/state/qa-coverage.json` contained `status: { result: "passed" }` (pre-fix). Deterministic — no model needed.
+
+**Expected:** Only a tick that actually declared its outcome records a flow. A cut-off run (`diagnosis.cutOff`) is unfulfilled — it resumes next tick — so it must leave the ledger untouched and let the flow stay at the top of the coverage block.
+
+**Suspected cause:** `recordFlow` in the `no_change` branch was gated only on `flow` being non-null, not on `diagnosis.cutOff`, even though the same block already used `diagnosis.cutOff` to decide the return value and whether to re-queue the prompt.
+
+**Fix:** Guard the `no_change` `recordFlow` call with `!diagnosis.cutOff`, so a truncated run records nothing and the flow is retried. The changed/queued return is unaffected (there the run did land work).
+
+**Files:** src/loop.ts (the `no_change` branch's `recordFlow` guard); test/loop.test.ts ("a qa tick cut off before declaring its outcome does not advance the flow rotation").
+
 ### Leftover recovery re-reviews a high-friction commit without its high-friction flag (found by telemetry loop 2026-09-19, fixed 2026-09-19)
 
 **Symptom:** The failure digest's top warning cluster was `high-friction tick: 41 turns in 5 min (thresholds: 40 turns / 60 min)`, 3× across `clean`, `coverage`, and `improve` (2026-09-19). The alarm itself was correct, but its follow-through was lost on the one landing path that re-reviews an already-committed change: leftover recovery. `recoverLeftover` called `this.land({ role, sha, tick, summary, sessionSuffix: "-recovery" })` and never set `highFriction` or `body`, so `reviewPinnedChange` (src/lander.ts:89) passed `undefined` into `reviewAheadOfMain` → `buildReviewPrompt`, which omitted the "This change was flagged HIGH-FRICTION … apply extra scrutiny to whether the change should exist at all" paragraph (src/prompt.ts:353). The flag was already durable on the commit — `commitTrailer` stamps a `Friction: high (<turns> turns / <minutes>m)` line (src/commit-message.ts:86) — but nothing read it back. Correlated commit **831a8bc** carried `Friction: high (44 turns / 4m)` and was landed as "recovered leftover work from coverage" with the reviewer seeing neither the flag nor the author's WHY/RISK/VERIFIED.

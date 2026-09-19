@@ -678,7 +678,10 @@ export class LoopRunner {
       // to the inbox to rerun fresh; a role loop resumes the just-compacted session
       // next tick (see the cutOff handling in tick()).
       if (diagnosis.cutOff) this.requeueUnfulfilledPrompt(userPrompt);
-      if (flow)
+      // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
+      // line it left mid-stream is not a finished verdict, so recording it would advance the
+      // rotation past a check that did not complete. Only a run that was not cut off records.
+      if (flow && !diagnosis.cutOff)
         recordFlow(
           this.root,
           flow.flow,

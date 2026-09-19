@@ -195,6 +195,24 @@ test("a qa tick with no FLOW line records nothing and still completes", async ()
   }
 });
 
+test("a qa tick cut off before declaring its outcome does not advance the flow rotation", async () => {
+  const repo = await initializedRepo();
+  // Mid-run FLOW line, then a thinking-only final message (the cut-off signature) with no
+  // nothing-to-do sentinel: the run never declared its outcome, so the flow must NOT be
+  // recorded — the rotation must not skip a check that did not finish.
+  const restore = fakePi(
+    `printf '%s\n' '${assistantLine("checking status\nFLOW: status — passed")}'\n` +
+      `printf '%s\n' '${thinkingOnlyLine("status looks", { output: 16 })}'`,
+  );
+  try {
+    const runner = new LoopRunner(repo, "qa", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    assert.deepEqual(readQaCoverage(repo), {});
+  } finally {
+    restore();
+  }
+});
+
 test("a qa tick that files a bug records the bug result and its headline", async () => {
   const repo = await initializedRepo();
   const restore = fakePi(
