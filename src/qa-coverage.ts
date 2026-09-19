@@ -27,18 +27,18 @@ export const QA_FLOWS: readonly string[] = [
 /** How a flow went: `passed` (the flow worked as documented) or `bug` (a BUGS.md entry was
  * filed). The result token is load-bearing: `run (real)` commits a `## Verified` note on a
  * passing run, so "the tick changed files" cannot stand in for "a bug was found". */
-export type QaFlowResult = "passed" | "bug";
+type QaFlowResult = "passed" | "bug";
 
 /** One flow's last exercise. `summary` is the bug headline for a `bug` result, shown in the
  * next coverage block so the model can see what was already reported. */
-export interface QaFlowEntry {
+interface QaFlowEntry {
   lastRunAt: number;
   result: QaFlowResult;
   summary?: string;
 }
 
 /** The ledger: flow name → its last exercise. */
-export type QaCoverage = Record<string, QaFlowEntry>;
+type QaCoverage = Record<string, QaFlowEntry>;
 
 function isResult(value: unknown): value is QaFlowResult {
   return value === "passed" || value === "bug";

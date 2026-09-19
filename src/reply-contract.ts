@@ -39,7 +39,7 @@ export function extractRefusal(text: string): string | null {
 }
 
 /** The result of one `qa` flow check: which flow, and how it went. */
-export interface FlowResult {
+interface FlowResult {
   flow: string;
   result: "passed" | "bug";
 }
