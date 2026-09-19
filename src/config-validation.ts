@@ -94,6 +94,26 @@ function checkKnownKeys(
   }
 }
 
+/** The numeric shapes a tumwater.json field must satisfy, each bundled with the wording its
+ * violation reports — one definition per shape, so a predicate and the text explaining it
+ * cannot drift apart across the fields that share it. */
+interface NumberRule {
+  ok: (n: number) => boolean;
+  what: string;
+}
+
+const NON_NEGATIVE: NumberRule = { ok: (n) => n >= 0, what: "a number of 0 or more" };
+const NON_NEGATIVE_OR_DISABLED: NumberRule = {
+  ok: (n) => n >= 0,
+  what: "a number of 0 or more (0 disables)",
+};
+const POSITIVE: NumberRule = { ok: (n) => n > 0, what: "a number greater than 0" };
+const POSITIVE_INTEGER: NumberRule = {
+  ok: (n) => Number.isInteger(n) && n >= 1,
+  what: "an integer of at least 1",
+};
+const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of at least 1" };
+
 /** Validate user-supplied tumwater.json values before defaults are filled in, so a typo
  * fails fast with an actionable message instead of misbehaving at runtime — e.g. a
  * non-numeric tickTimeoutSeconds becomes NaN and kills every pi run instantly, a
@@ -137,13 +157,12 @@ export function validateConfig(raw: unknown): void {
     obj: Record<string, unknown>,
     prefix: string,
     key: string,
-    ok: (n: number) => boolean,
-    what: string,
+    rule: NumberRule,
   ): void => {
     if (!(key in obj)) return;
     const v = obj[key];
-    if (typeof v !== "number" || !Number.isFinite(v) || !ok(v))
-      problems.push(`${prefix}${key} must be ${what} (got ${show(v)})`);
+    if (typeof v !== "number" || !Number.isFinite(v) || !rule.ok(v))
+      problems.push(`${prefix}${key} must be ${rule.what} (got ${show(v)})`);
   };
 
   // Field-type validators shared by every section that carries the same kind of value: a
@@ -167,17 +186,17 @@ export function validateConfig(raw: unknown): void {
   checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
   checkModelTriple(r, "");
   checkStringArray(r, "", "piArgs");
-  checkNumber(r, "", "maxConcurrent", (n) => Number.isInteger(n) && n >= 1, "an integer of at least 1");
-  checkNumber(r, "", "landBatchMax", (n) => Number.isInteger(n) && n >= 1, "an integer of at least 1");
-  checkNumber(r, "", "minTickIntervalSeconds", (n) => n >= 0, "a number of 0 or more");
-  checkNumber(r, "", "tickTimeoutSeconds", (n) => n > 0, "a number greater than 0");
-  checkNumber(r, "", "quietTimeoutSeconds", (n) => n >= 0, "a number of 0 or more (0 disables)");
-  checkNumber(r, "", "toolCallStallSeconds", (n) => n >= 0, "a number of 0 or more (0 disables)");
-  checkNumber(r, "", "logMaxBytes", (n) => n > 0, "a number greater than 0");
-  checkNumber(r, "", "sessionRetentionDays", (n) => n >= 0, "a number of 0 or more (0 disables)");
-  checkNumber(r, "", "maxDailyCostUsd", (n) => n >= 0, "a number of 0 or more (0 disables)");
-  checkNumber(r, "", "thrashTurns", (n) => n >= 0, "a number of 0 or more");
-  checkNumber(r, "", "thrashMinutes", (n) => n >= 0, "a number of 0 or more");
+  checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
+  checkNumber(r, "", "landBatchMax", POSITIVE_INTEGER);
+  checkNumber(r, "", "minTickIntervalSeconds", NON_NEGATIVE);
+  checkNumber(r, "", "tickTimeoutSeconds", POSITIVE);
+  checkNumber(r, "", "quietTimeoutSeconds", NON_NEGATIVE_OR_DISABLED);
+  checkNumber(r, "", "toolCallStallSeconds", NON_NEGATIVE_OR_DISABLED);
+  checkNumber(r, "", "logMaxBytes", POSITIVE);
+  checkNumber(r, "", "sessionRetentionDays", NON_NEGATIVE_OR_DISABLED);
+  checkNumber(r, "", "maxDailyCostUsd", NON_NEGATIVE_OR_DISABLED);
+  checkNumber(r, "", "thrashTurns", NON_NEGATIVE);
+  checkNumber(r, "", "thrashMinutes", NON_NEGATIVE);
 
   checkBoolean(r, "", "autoRestart");
 
@@ -188,9 +207,9 @@ export function validateConfig(raw: unknown): void {
     } else {
       const o = b;
       checkKnownKeys(o, BACKOFF_KEYS, "idleBackoff", problems);
-      checkNumber(o, "idleBackoff.", "initialSeconds", (n) => n >= 0, "a number of 0 or more");
-      checkNumber(o, "idleBackoff.", "factor", (n) => n >= 1, "a number of at least 1");
-      checkNumber(o, "idleBackoff.", "maxSeconds", (n) => n >= 0, "a number of 0 or more");
+      checkNumber(o, "idleBackoff.", "initialSeconds", NON_NEGATIVE);
+      checkNumber(o, "idleBackoff.", "factor", AT_LEAST_ONE);
+      checkNumber(o, "idleBackoff.", "maxSeconds", NON_NEGATIVE);
     }
   }
 
@@ -300,13 +319,7 @@ export function validateConfig(raw: unknown): void {
           );
         checkModelTriple(o, `roles.${id}.`);
         checkBoolean(o, `roles.${id}.`, "enabled");
-        checkNumber(
-          o,
-          `roles.${id}.`,
-          "minTickIntervalSeconds",
-          (n) => n >= 0,
-          "a number of 0 or more",
-        );
+        checkNumber(o, `roles.${id}.`, "minTickIntervalSeconds", NON_NEGATIVE);
       }
     }
   }
