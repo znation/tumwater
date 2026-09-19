@@ -75,6 +75,11 @@ const CUSTOM_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
  * unbounded text would be a standing per-tick cost. */
 const CUSTOM_TASK_MAX_CHARS = 4096;
 
+/** A role's extra instructions ride into every one of that role's tick prefills, so they are
+ * capped like a custom loop's task: unbounded text would be a standing per-tick cost (and
+ * could crowd the prompt toward the model's context ceiling). */
+const ROLE_INSTRUCTIONS_MAX_CHARS = 4096;
+
 /** Collect the keys present in `obj` but not in `known` into problems, naming where they
  * were found and listing what is valid so one edit fixes them. */
 function checkKnownKeys(
@@ -285,7 +290,14 @@ export function validateConfig(raw: unknown): void {
         }
         const o = rc;
         checkKnownKeys(o, ROLE_ENTRY_KEYS, `roles.${id}`, problems);
-        checkString(o, `roles.${id}.`, "instructions"); // Empty is a deliberate "no extra instructions".
+        // Empty is a deliberate "no extra instructions". A non-empty value rides into every
+        // one of this role's tick prefills, so it is capped like a custom loop's task.
+        checkString(o, `roles.${id}.`, "instructions");
+        const instructions = o.instructions;
+        if (typeof instructions === "string" && instructions.length > ROLE_INSTRUCTIONS_MAX_CHARS)
+          problems.push(
+            `roles.${id}.instructions is ${instructions.length} chars — shorten it to at most ${ROLE_INSTRUCTIONS_MAX_CHARS}: it rides into every tick's prefill`,
+          );
         checkModelTriple(o, `roles.${id}.`);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(

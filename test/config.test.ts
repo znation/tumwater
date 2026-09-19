@@ -239,6 +239,19 @@ test("model-triple fields reject empty strings but instructions may be empty", (
   assert.doesNotThrow(() => validateConfig({ roles: { feature: { instructions: "" } } }));
 });
 
+test("role instructions are capped like a custom loop's task", () => {
+  // Both strings ride into every tick's prefill, so both must be bounded: an unbounded
+  // instructions string is a standing per-tick cost, not just a one-off prompt edit.
+  const long = "x".repeat(4097);
+  assert.match(
+    validationError({ roles: { feature: { instructions: long } } }),
+    /roles\.feature\.instructions is 4097 chars — shorten it to at most 4096/,
+  );
+  // The 4096-char boundary and the empty case both pass.
+  assert.doesNotThrow(() => validateConfig({ roles: { feature: { instructions: "x".repeat(4096) } } }));
+  assert.doesNotThrow(() => validateConfig({ roles: { feature: { instructions: "" } } }));
+});
+
 test("landBatchMax is validated like maxConcurrent: a positive integer", () => {
   // 0 would disable the drain, a fraction would slice an empty batch, a string is a typo —
   // all of them must fail the same validation their sibling does.
