@@ -49,6 +49,26 @@ Corrections (pinned in plans/repair-traces.md):
 
 Sizing unchanged: src/roles.ts ~35 lines, src/init.ts ~2, test/prompt.test.ts ~40, test/init.test.ts ~5. No design question remains open.
 
+### Show the exact prompt each run received — `tumwater logs --role <id> --prompt` (planned 2026-09-19)
+
+**Goal.** Make the composed tick prompt observable. The prompt is the product ("you only write the initial prompt") and is assembled dynamically per tick — a role's find-text plus PRINCIPLES.md plus injected blocks (the telemetry failure digest, the qa flow-coverage block, a rejected change's reasons, the leftover-recovery note). Today there is no way to see what a loop was actually asked: `tumwater logs --role <id>` renders the pi transcript with user messages deliberately suppressed (src/ui/transcript.ts:94,138 — "the multi-KB tick prompt sent each run — are never rendered"), the pi sessions are not a documented surface, and nothing else writes the prompt.
+
+**Why now.** The prompt already reaches the raw pi log: pi emits the prompt as a `message_end` event with `message.role === "user"`, and tests already seed exactly that shape (test/cli.test.ts:1005,1020). The data is on disk; only a reader is missing. This is the last gap in "observable by gui/tui/log" for the thing that most determines what the fleet does, and it is the tool a human (or the plan/telemetry loops) needs to debug a misbehaving tick.
+
+**Approach.** Add an opt-in flag threaded through the existing transcript renderer, so the default never changes and the two surfaces share one renderer (no second parser).
+- `src/ui/transcript.ts` — `createTranscriptRenderer(opts?: { includePrompts?: boolean })`; in the `message_end` `role === "user"` branch, after stamping `runTime`, when `includePrompts` return `[...emitSeparator(), ...promptLines]` where `promptLines` joins the `content` array's `type === "text"` blocks (split on `\n`; empty content yields just the separator). `emitSeparator()` runs here for the first time in the run, so the assistant's later call returns `[]` — no duplicate separator. `formatTranscript(lines, opts?)` forwards the option; `readTranscript` keeps the default (dashboards stay unchanged).
+- `src/ui/transcript-tail.ts` — `readTranscriptTail(file, limit, opts?)`: `isEntryCandidate(line, opts)` also accepts a user `message_end` line when `includePrompts`; pass `opts` to both `formatTranscript` calls (the boundary scan and the `entries.length < limit` whole-file fallback). The backward-scan boundary stays `agent_start`/the preceding `tumwater_run` marker; the user message follows its `agent_start`, inside the window, and the separator carries the marker's label (`── review @ <ts> ──`).
+- `src/cli.ts` — add `{ names: ["--prompt"] }` to the `logs` `rejectUnknownArgs` spec and a help line; in `cmdLogs`, after parsing `--role`, `if (args.includes("--prompt") && role === null) fail("logs --prompt needs --role <id>")`; thread a `showPrompts` flag into `cmdLogsTranscript`, which passes it to `readTranscriptTail` and to the follow-path `createTranscriptRenderer`. `-n N` keeps its meaning (last N entries) and now counts a prompt as one entry; `-f` keeps working (a new prompt prints when its `message_end` lands).
+- `README.md` — extend the `tumwater logs --role` Usage block with `--prompt`.
+
+**Files touched.** `src/ui/transcript.ts`, `src/ui/transcript-tail.ts`, `src/cli.ts`, `README.md`; `test/transcript.test.ts`, `test/transcript-tail.test.ts`, `test/cli.test.ts`. No storage, path, or config changes; the prompt is read from the raw log it already lands in. Dashboards (TUI/GUI) are deliberately out of scope — the polled renderer keeps the compact, prompt-free transcript.
+
+**Acceptance criteria.**
+- `tumwater logs --role clean --prompt` prints each run's exact prompt text under its run separator (`── run @ <ts> ──`, `── review @ <ts> ──` for a labeled run); the default `tumwater logs --role clean` still prints none (the existing "must not appear" assertions stay green).
+- `logs --role clean --prompt -n 1` prints only the newest run's prompt; `--prompt` without `--role` exits 1 with `logs --prompt needs --role <id>`.
+- The tail window is exact: `readTranscriptTail(file, n, { includePrompts: true })` equals `formatTranscript(wholeFile, { includePrompts: true }).slice(-n)` (the existing pin in test/transcript-tail.test.ts), including when the newest entry is a prompt.
+- The full suite stays green; `readTranscript`/dashboards and every default-path transcript test are unchanged.
+
 ## Done
 
 ### Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17, requested by user, refined 2026-09-18, done 2026-09-19)
