@@ -13,6 +13,19 @@ import { DIRECTOR_ROLE } from "./roles.js";
  * in one place. Every command here is deliberately usable without a live harness except
  * `abort`, which has nothing to consume its one-shot marker when no fleet is up. */
 
+/** How a marker command reports when its marker takes effect, derived from one liveness
+ * check: `when` is the " within ~2s" a live fleet will pick it up in, and `tail` names the
+ * fallback ("takes effect on the next `tumwater run`") while no harness is running. `pause`
+ * and `resume` share this so neither can promise a timing the other denies — the one place
+ * that user-facing contract lives. */
+function markerApplyNote(root: string): { when: string; tail: string } {
+  const live = orchestratorAlive(root);
+  return {
+    when: live ? " within ~2s" : "",
+    tail: live ? "" : "; no harness is running, so it takes effect on the next `tumwater run`",
+  };
+}
+
 /** `tumwater reset-counters [--role <id>]`: zero the per-loop counters shown in the
  * dashboards so a fresh observation window can begin. Zeroes each target's state file
  * directly (works while the harness is not running) and drops a marker that a running fleet
@@ -84,9 +97,7 @@ export async function cmdPause(root: string): Promise<void> {
   }
   ensureParentDir(marker); // A fresh repo has no .tumwater/ yet.
   writeJsonFile(marker, { at: Date.now() });
-  const live = orchestratorAlive(root);
-  const when = live ? " within ~2s" : "";
-  const tail = live ? "" : "; no harness is running, so it takes effect on the next `tumwater run`";
+  const { when, tail } = markerApplyNote(root);
   process.stdout.write(
     `fleet paused — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${tail}\n`,
   );
@@ -102,8 +113,6 @@ export async function cmdResume(root: string): Promise<void> {
     return;
   }
   removeQuiet(marker);
-  const live = orchestratorAlive(root);
-  const when = live ? " within ~2s" : "";
-  const tail = live ? "" : "; no harness is running, so it takes effect on the next `tumwater run`";
+  const { when, tail } = markerApplyNote(root);
   process.stdout.write(`fleet resumed — role loops tick again${when}${tail}\n`);
 }
