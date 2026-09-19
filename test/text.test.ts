@@ -4,9 +4,12 @@ import {
   clipToWidth,
   compactTokens,
   collapseWhitespace,
+  dayAt,
+  dayLabel,
   describeToolCall,
   parseNonNegativeInt,
   parsePositiveInt,
+  reportWindow,
   truncate,
 } from "../src/text.js";
 
@@ -238,3 +241,37 @@ test("describeToolCall falls back to the bare tool name for non-object or non-st
   assert.equal(describeToolCall("grep", { pattern: ["a"] }), "grep");
   assert.equal(describeToolCall("edit", { unrelated: "/a/b.ts" }), "edit");
 });
+
+test("dayAt returns local midnight offset from the given instant, rolling month/year edges", () => {
+  const now = new Date(2026, 2, 1, 14, 30, 5); // 2026-03-01 14:30 local
+  assert.equal(formatDateOf(dayAt(0, now)), "2026-03-01");
+  assert.equal(formatDateOf(dayAt(1, now)), "2026-02-28"); // crosses the month edge
+  assert.equal(formatDateOf(dayAt(3, now)), "2026-02-26");
+  // The time of day of `now` is discarded (midnight), so day-key arithmetic is stable.
+  assert.equal(dayAt(0, now).getHours(), 0);
+  assert.equal(dayAt(0, now).getMinutes(), 0);
+  assert.equal(dayAt(0, now).getSeconds(), 0);
+});
+
+test("dayLabel is singular at one day and plural otherwise", () => {
+  assert.equal(dayLabel(1), "1 day");
+  assert.equal(dayLabel(2), "2 days");
+  assert.equal(dayLabel(14), "14 days");
+});
+
+test("reportWindow renders one shared header line, singular at one day", () => {
+  assert.equal(
+    reportWindow("2026-08-29", "2026-09-11", 14),
+    "Window: 2026-08-29 → 2026-09-11 (14 days) · source: events.jsonl (rotated at 16 MB)",
+  );
+  assert.equal(
+    reportWindow("2026-09-11", "2026-09-11", 1),
+    "Window: 2026-09-11 → 2026-09-11 (1 day) · source: events.jsonl (rotated at 16 MB)",
+  );
+});
+
+/** Local `YYYY-MM-DD` of a Date — test-local so the assertion is independent of text's
+ * formatDate (which text.test.ts does not otherwise cover). */
+function formatDateOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}

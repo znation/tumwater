@@ -3,7 +3,7 @@ import path from "node:path";
 import { readWindowEvents } from "../event-window.js";
 import { eventDayKey, eventRole } from "../events.js";
 import { sectionLines } from "../backlog.js";
-import { formatDate, usd } from "../text.js";
+import { dayAt, formatDate, reportWindow, usd } from "../text.js";
 
 // The windowed tail read (and the REPORT_*_DAYS bounds it serves) moved to core
 // event-window.ts so the failure digest can share it without a core→ui import. Re-exported
@@ -86,16 +86,14 @@ function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] 
  * log (tick_end/merged) and the backlog history files (PLANS.md ## Done, BUGS.md ## Fixed). */
 export function collectReport(root: string, days: number): ReportData {
   const now = new Date();
-  // Local midnight of each day in the window; setDate arithmetic handles month/year edges.
-  const dayAt = (offsetFromToday: number) =>
-    new Date(now.getFullYear(), now.getMonth(), now.getDate() - offsetFromToday);
-  const from = formatDate(dayAt(days - 1));
-  const to = formatDate(dayAt(0));
+  // One captured instant for the whole window, so every day key derives from the same day.
+  const from = formatDate(dayAt(days - 1, now));
+  const to = formatDate(dayAt(0, now));
 
   const series: ReportDay[] = [];
   for (let i = days - 1; i >= 0; i--) {
     series.push({
-      date: formatDate(dayAt(i)),
+      date: formatDate(dayAt(i, now)),
       tokensOut: 0,
       ticksByRole: {},
       commits: 0,
@@ -164,7 +162,7 @@ export function renderReportMarkdown(data: ReportData): string {
   const lines: string[] = [];
   lines.push("# tumwater usage report");
   lines.push("");
-  lines.push(`Window: ${data.from} → ${data.to} (${data.days} days) · source: events.jsonl (rotated at 16 MB)`);
+  lines.push(reportWindow(data.from, data.to, data.days));
   lines.push("");
   const t = data.totals;
   lines.push(

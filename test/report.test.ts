@@ -236,6 +236,19 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   assert.equal(lines[12], "**Ticks by role:** feature — 5 · bugfix — 1");
 });
 
+test("renderReportMarkdown shows a one-day window as one whole day, matching the failure digest", () => {
+  const data: ReportData = {
+    days: 1,
+    from: "2026-09-10",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+    ],
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+  };
+  assert.match(renderReportMarkdown(data), /^Window: 2026-09-10 → 2026-09-10 \(1 day\) · source: events\.jsonl \(rotated at 16 MB\)$/m);
+});
+
 test("renderReportMarkdown shows no bars for an all-zero window and min width 1 above zero", () => {
   const data = collectReport(tmpdir(), 3); // every source missing → all zeros
   const md = renderReportMarkdown(data);

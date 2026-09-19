@@ -1,7 +1,7 @@
 import type { HarnessEvent, TickResult } from "./types.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
-import { formatDate, shortSha } from "./text.js";
+import { dayAt, dayLabel, formatDate, reportWindow, shortSha } from "./text.js";
 
 /** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
  * The CLI keeps the usage report's 14-day default; the role reads one day so a cluster
@@ -203,11 +203,9 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
  * second tail read. */
 export function collectFailureReport(root: string, days: number): FailureReportData {
   const now = new Date();
-  const dayAt = (offsetFromToday: number) =>
-    new Date(now.getFullYear(), now.getMonth(), now.getDate() - offsetFromToday);
-  const from = formatDate(dayAt(days - 1));
-  const to = formatDate(dayAt(0));
-  const priorFrom = formatDate(dayAt(days * 2 - 1));
+  const from = formatDate(dayAt(days - 1, now));
+  const to = formatDate(dayAt(0, now));
+  const priorFrom = formatDate(dayAt(days * 2 - 1, now));
 
   const { events, coversFullWindow } = readWindowEvents(root, priorFrom);
   const current: HarnessEvent[] = [];
@@ -328,11 +326,6 @@ function total(counts: Partial<Record<TickResult, number>>): number {
   return n;
 }
 
-/** `N days`, singular at 1 — the digest is read at both the CLI's 14 and the role's 1. */
-function dayLabel(days: number): string {
-  return `${days} day${days === 1 ? "" : "s"}`;
-}
-
 /** The result columns that occurred, in RESULT_ORDER. */
 function columns(outcomes: OutcomeRow[]): TickResult[] {
   const present = new Set<TickResult>();
@@ -367,7 +360,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   lines.push("# tumwater failure digest");
   lines.push("");
   lines.push(
-    `Window: ${data.from} → ${data.to} (${dayLabel(data.days)}) · source: events.jsonl (rotated at 16 MB) · ${data.ticks} ticks`,
+    `${reportWindow(data.from, data.to, data.days)} · ${data.ticks} ticks`,
   );
   if (data.emptyLog) lines.push("no events retained");
   else if (!data.hasEvents) lines.push(`no events in the last ${dayLabel(data.days)}`);

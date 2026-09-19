@@ -157,6 +157,27 @@ export function formatTime(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
+/** Local midnight of the day `offsetFromToday` days before `now` (0 = today): the day-count
+ * arithmetic the usage report and the failure digest share, so their windows select the same
+ * calendar days. The Date constructor handles month/year edges; `now` is passed explicitly so
+ * every day in one window derives from the same instant. */
+export function dayAt(offsetFromToday: number, now: Date): Date {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - offsetFromToday);
+}
+
+/** `N days`, singular at 1 — the window label both report headers render, so a one-day window
+ * reads the same on either surface. */
+export function dayLabel(days: number): string {
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
+/** The report header both renderers print: the window's day-key bounds, its length in days
+ * (singular at 1), and the event log it was read from. The failure digest appends its own tick
+ * count. */
+export function reportWindow(from: string, to: string, days: number): string {
+  return `Window: ${from} → ${to} (${dayLabel(days)}) · source: events.jsonl (rotated at 16 MB)`;
+}
+
 /** One-line description of a tool call from its name and args — shared by live progress data
  * collection (LiveProgress.lastTool), transcript rendering, and the harness's stalled-tool-call
  * warning (src/pi.ts names the hung command through it). Path-like keys reduce to the file
