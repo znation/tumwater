@@ -101,8 +101,6 @@ interface InFlightCounts {
   roleTickP75Ms?: number | null;
 }
 
-export type { BuildStatus } from "./build-info.js";
-
 /** The effects the redeploy policy drives, injectable so the policy is testable without git,
  * tsc, or a real fleet. Production wiring is createRedeployer below. */
 export interface RedeployDeps {
