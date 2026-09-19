@@ -80,19 +80,23 @@ export function clipToWidth(text: string, width: number): string {
  * ("1e3" → 1000), signed, and whitespace-padded forms, none of which a user typing a count or
  * position meant. Null when it isn't one (non-decimal, fractional, zero); each caller keeps its
  * own missing-value check and failure mode (fail vs HTTP 400), and bounded variants like --port
- * add their upper limit. */
+ * add their upper limit. A digit run too long for Number() to represent exactly (it overflows
+ * to Infinity, or lands above Number.MAX_SAFE_INTEGER) is null too: there is no honest count to
+ * return, and passing the overflow on let `logs -n <40 digits>` read the whole log. */
 export function parsePositiveInt(raw: string): number | null {
   if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or padding.
   const n = Number(raw);
-  return n >= 1 ? n : null;
+  return Number.isSafeInteger(n) && n >= 1 ? n : null;
 }
 
 /** Parse `raw` as a non-negative integer — zero-based positions (like /api/backlog's index,
  * where the first entry is 0), unlike parsePositiveInt's counts and 1-based positions, for
- * which 0 is invalid. Same plain-decimal rule: hex/scientific/signed/padded spellings are null. */
+ * which 0 is invalid. Same plain-decimal rule: hex/scientific/signed/padded spellings are null,
+ * as is a digit run too long for Number() to represent exactly (Number.isSafeInteger). */
 export function parseNonNegativeInt(raw: string): number | null {
   if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or padding.
-  return Number(raw);
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : null;
 }
 
 /** Compact token count for display: one-decimal `k` at ≥10,000 (`12.3k`), bare integer

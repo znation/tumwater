@@ -172,6 +172,13 @@ test("parsePositiveInt accepts plain decimal only — hex, scientific, signed, a
   for (const raw of ["0x10", "1e3", "+5", "-5", " 5", "5 ", "", "abc", "2.5", "0"]) {
     assert.equal(parsePositiveInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
   }
+  // A digit run Number() cannot represent exactly must not read as a valid count. 400 nines
+  // overflow to Infinity (the old `n >= 1` guard let it through as an unbounded count);
+  // 1e16 is finite but above MAX_SAFE_INTEGER, so its integer value is a lie.
+  for (const raw of ["9".repeat(400), "1".repeat(17), String(Number.MAX_SAFE_INTEGER + 1)]) {
+    assert.equal(parsePositiveInt(raw), null, `expected over-long ${raw.slice(0, 8)}… to be rejected`);
+  }
+  assert.equal(parsePositiveInt(String(Number.MAX_SAFE_INTEGER)), Number.MAX_SAFE_INTEGER);
 });
 
 test("parseNonNegativeInt accepts plain decimal only and allows zero", () => {
@@ -179,6 +186,9 @@ test("parseNonNegativeInt accepts plain decimal only and allows zero", () => {
   assert.equal(parseNonNegativeInt("42"), 42);
   for (const raw of ["0x10", "1e3", "+5", "-5", "-0", " 5", "", "abc"]) {
     assert.equal(parseNonNegativeInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
+  }
+  for (const raw of ["9".repeat(400), "1".repeat(17)]) {
+    assert.equal(parseNonNegativeInt(raw), null, `expected over-long ${raw.slice(0, 8)}… to be rejected`);
   }
 });
 
