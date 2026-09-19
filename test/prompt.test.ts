@@ -149,6 +149,16 @@ test("readPrinciples reads PRINCIPLES.md; empty when missing", () => {
   assert.equal(readPrinciples(dir), "# Principles\n- prefer small changes");
 });
 
+test("readPrinciples is empty, not thrown, when PRINCIPLES.md exists but cannot be read", () => {
+  // The other half of the "missing or unreadable → ''" contract: a directory where the file is
+  // expected stats fine, so existsSync is true, but readFileSync throws (EISDIR). Every tick
+  // and director prompt injects this file, so a throw here would fail the whole tick; the
+  // reader must degrade to no principles exactly like a missing file.
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, "PRINCIPLES.md"));
+  assert.equal(readPrinciples(dir), "");
+});
+
 test("readPrinciples clips a runaway file at the cap with a note", () => {
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), `# Principles\n${"x".repeat(5000)}`);
