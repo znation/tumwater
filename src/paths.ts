@@ -32,6 +32,13 @@ export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
 
+/** The `qa` flow-coverage ledger (qa-coverage.ts): which flow each observer tick exercised
+ * and how it went. Runtime state under .tumwater/state/, never committed — a passing check
+ * must leave the repo untouched, or every cheap pass would move main and wake the fleet. */
+export function qaCoveragePath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "qa-coverage.json");
+}
+
 /** The in-flight landing marker (state.ts, merge queue 4/5): the orchestrator's drain task
  * writes it when a landing starts and removes it after every outcome — the observers
  * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,

@@ -10,6 +10,7 @@ import { readEvents } from "../src/events.js";
 import { setRef } from "../src/git.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { landingRefName, sessionDir, worktreePath } from "../src/paths.js";
+import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
 import { landQueuedEntry } from "../src/landing-slot.js";
@@ -155,6 +156,78 @@ test("a nothing-to-do tick backs off without committing", async () => {
       config.idleBackoff.initialSeconds * config.idleBackoff.factor,
     );
     assert.ok(runner.state.nextRunAt > Date.now());
+  } finally {
+    restore();
+  }
+});
+
+// The qa observer's coverage ledger (plans/observer-roles.md 2/2): every tick is a fresh
+// session, so the only memory of which flow it last exercised is the runtime file the harness
+// writes from the reply's FLOW line. A passing cheap check changes no files, so it must still
+// record; a tick with no FLOW line records nothing and completes normally.
+
+test("a qa no_change tick records the FLOW line it emitted", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    `printf '%s\n' '${assistantLine("checked status\nFLOW: status — passed\nTUMWATER_NOTHING_TO_DO")}'`,
+  );
+  try {
+    const runner = new LoopRunner(repo, "qa", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    const coverage = readQaCoverage(repo);
+    assert.equal(coverage.status?.result, "passed");
+    assert.equal(typeof coverage.status?.lastRunAt, "number");
+    assert.deepEqual(Object.keys(coverage), ["status"]);
+  } finally {
+    restore();
+  }
+});
+
+test("a qa tick with no FLOW line records nothing and still completes", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  try {
+    const runner = new LoopRunner(repo, "qa", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    assert.deepEqual(readQaCoverage(repo), {});
+  } finally {
+    restore();
+  }
+});
+
+test("a qa tick that files a bug records the bug result and its headline", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${assistantLine("found one\nSUMMARY: status --json omits the fallback badge\nFLOW: status — bug")}'`,
+      `printf '%s\n' '- status --json omits the fallback badge' >> BUGS.md`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "qa", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "queued");
+    const coverage = readQaCoverage(repo);
+    assert.equal(coverage.status?.result, "bug");
+    assert.equal(coverage.status?.summary, "status --json omits the fallback badge");
+  } finally {
+    restore();
+  }
+});
+
+test("a qa tick's prompt carries the rendered coverage block from the ledger", async () => {
+  const repo = await initializedRepo();
+  // Seed a ledger so the block has content; the shim only emits a FLOW line when it sees the
+  // rendered block in its own arguments, so a tick whose prompt omitted it would record nothing.
+  recordFlow(repo, "status", "passed", undefined, Date.now() - 4 * 60 * 60 * 1000);
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"least recently exercised first"*) ` +
+      `printf '%s\n' '${assistantLine("checked logs\nFLOW: logs — passed\nTUMWATER_NOTHING_TO_DO")}'; exit 0;; esac; done\n` +
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+  );
+  try {
+    const runner = new LoopRunner(repo, "qa", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal(readQaCoverage(repo).logs?.result, "passed", "the coverage block reached the qa prompt");
   } finally {
     restore();
   }

@@ -553,11 +553,13 @@ test("the qa prompt picks one flow per tick from the README usage menu, cheap fi
   assert.match(find, /pick ONE per tick/);
 });
 
-test("the qa prompt varies across ticks and leaves no record for passing cheap flows", () => {
+test("the qa prompt rotates through the coverage block and carries the FLOW contract", () => {
   const find = qa!.find;
-  assert.match(find, /prefer a flow not recently exercised/);
-  assert.match(find, /BUGS\.md filings and Verified notes show/);
-  assert.match(find, /leaves NO record — declare nothing-to-do/);
+  assert.match(find, /Flow coverage block from the fleet's own record/);
+  assert.match(find, /exercise the flow at the top of that list/);
+  assert.match(find, /leaves NO record in the repo — declare nothing-to-do/);
+  assert.match(find, /FLOW: <name> — <passed\|bug>/);
+  assert.match(find, /bare `FLOW: <name>` counts as passed/);
 });
 
 test("the qa prompt guards the expensive real run: constrained, capped, once per day", () => {
@@ -580,6 +582,21 @@ test("buildTickPrompt for qa carries the find text plus the shared rules", () =>
   assert.match(prompt, /"qa" loop \(product QA\)/);
   assert.ok(prompt.includes(qa!.find.trim()), "the full find text is embedded");
   assert.match(prompt, /TUMWATER_NOTHING_TO_DO/);
+});
+
+test("buildTickPrompt renders the coverage block only when one is passed", () => {
+  const withCoverage = buildTickPrompt({
+    role: qa!,
+    initialPrompt: "",
+    coverage: "Flow coverage (from this fleet's own record; least recently exercised first):\n  init — never exercised",
+  });
+  assert.ok(withCoverage.includes("Flow coverage (from this fleet's own record"));
+  assert.match(withCoverage, /init — never exercised/);
+  const without = buildTickPrompt({ role: qa!, initialPrompt: "" });
+  assert.ok(!without.includes("least recently exercised first"), "no coverage block when none is supplied");
+  // The injection is qa-scoped by the caller, so a non-qa prompt must not carry it either.
+  const improve = buildTickPrompt({ role: roleById("improve")!, initialPrompt: "" });
+  assert.ok(!improve.includes("least recently exercised first"));
 });
 
 // Prompt contract for the telemetry role (plans/telemetry-role.md): an observer that reads the

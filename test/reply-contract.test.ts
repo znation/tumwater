@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   NOTHING_TO_DO,
   REFUSED_SENTINEL,
+  extractFlow,
   extractRefusal,
   hasVerdictLine,
   isNothingToDo,
@@ -111,4 +112,30 @@ test("verdictLines returns every verdict line in order with positions", () => {
 
 test("verdictLines is empty when no line matches", () => {
   assert.deepEqual(verdictLines("mentions VERDICT: approve inline"), []);
+});
+
+// The `qa` observer ends each tick with a result-carrying FLOW line (plans/observer-roles.md
+// 2/2); the harness parses it to rotate the flow menu. Anchored at line start through
+// labeledLine, so a mid-sentence mention cannot advance the ledger, and a bare name is a pass
+// (the result token is optional).
+
+test("extractFlow parses a result-carrying FLOW line", () => {
+  assert.deepEqual(extractFlow("ran the flow\nFLOW: status — passed"), { flow: "status", result: "passed" });
+  assert.deepEqual(extractFlow("FLOW: prompt - bug"), { flow: "prompt", result: "bug" });
+  assert.deepEqual(extractFlow("FLOW: run (real) — passed"), { flow: "run (real)", result: "passed" });
+});
+
+test("extractFlow tolerates a bare name as passed and keeps hyphens in the name", () => {
+  assert.deepEqual(extractFlow("FLOW: status"), { flow: "status", result: "passed" });
+  assert.deepEqual(extractFlow("FLOW: reset-counters"), { flow: "reset-counters", result: "passed" });
+  assert.deepEqual(extractFlow("FLOW: reset-counters — passed"), {
+    flow: "reset-counters",
+    result: "passed",
+  });
+});
+
+test("extractFlow returns null when absent, empty, or only mid-sentence", () => {
+  assert.equal(extractFlow("no flow line here\nSUMMARY: did it"), null);
+  assert.equal(extractFlow("FLOW:"), null);
+  assert.equal(extractFlow("I considered FLOW: status but did not run it"), null);
 });

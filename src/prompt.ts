@@ -153,6 +153,8 @@ interface TickPromptInput {
   principles?: string;
   /** Rendered failure digest (see failure-report.ts); telemetry only, omitted when unreadable. */
   digest?: string;
+  /** Rendered flow-coverage block (see qa-coverage.ts); qa only, omitted when unreadable. */
+  coverage?: string;
   extraInstructions?: string;
 }
 
@@ -170,12 +172,13 @@ function sharedPreamble(initialPrompt: string): string[] {
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, extraInstructions } = input;
+  const { role, initialPrompt, principles, digest, coverage, extraInstructions } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt),
   ];
   if (principles) parts.push(principlesBlock(principles));
+  if (coverage) parts.push(coverage);
   if (digest) parts.push(digestBlock(digest));
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);

@@ -41,6 +41,8 @@ import { mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
+import { extractFlow } from "./reply-contract.js";
+import { readQaCoverage, recordFlow, renderCoverageBlock } from "./qa-coverage.js";
 import { landingRefName, piLogPath, sessionDir } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
 
@@ -162,11 +164,23 @@ export class LoopRunner {
       // The telemetry role's evidence is the harness's own event log, one level outside this
       // worktree, so the report module renders it (telemetryDigest) and the tick injects it.
       const digest = this.role === "telemetry" ? telemetryDigest(this.root) : undefined;
+      // The `qa` observer's flow rotation needs a memory of what it last exercised; every tick
+      // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
+      // runtime state, and a missing or unreadable one degrades to no block (plans/observer-roles.md 2/2).
+      let coverage: string | undefined;
+      if (this.role === "qa") {
+        try {
+          coverage = renderCoverageBlock(readQaCoverage(this.root));
+        } catch {
+          coverage = undefined;
+        }
+      }
       prompt = buildTickPrompt({
         role,
         initialPrompt,
         principles,
         digest,
+        coverage,
         extraInstructions: this.config.roles[this.role]?.instructions,
       });
     }
@@ -594,6 +608,10 @@ export class LoopRunner {
 
     const piStartedAt = Date.now();
     const pi = await this.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming);
+    // The `qa` observer's reply ends with a result-carrying `FLOW:` line (plans/observer-roles.md
+    // 2/2). Extracted once here, recorded only at the success returns below — an interrupted or
+    // failed tick must not advance the rotation. The harness records it, never pi.
+    const flow = this.role === "qa" ? extractFlow(pi.finalText) : null;
 
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.
@@ -658,6 +676,13 @@ export class LoopRunner {
       // to the inbox to rerun fresh; a role loop resumes the just-compacted session
       // next tick (see the cutOff handling in tick()).
       if (diagnosis.cutOff) this.requeueUnfulfilledPrompt(userPrompt);
+      if (flow)
+        recordFlow(
+          this.root,
+          flow.flow,
+          flow.result,
+          flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
+        );
       return { result: "no_change", cutOff: diagnosis.cutOff || undefined };
     }
 
@@ -750,6 +775,7 @@ export class LoopRunner {
     const finalSummary = highFriction
       ? `${summary} (high friction: ${authoringTurns} turns / ${Math.round(minutes)}m)`
       : summary;
+    if (flow) recordFlow(this.root, flow.flow, flow.result, flow.result === "bug" ? summary : undefined);
     return { result: "queued", summary: finalSummary, commit, highFriction };
   }
 }

@@ -38,6 +38,25 @@ export function extractRefusal(text: string): string | null {
   return labeledLine(text, REFUSED_SENTINEL);
 }
 
+/** The result of one `qa` flow check: which flow, and how it went. */
+export interface FlowResult {
+  flow: string;
+  result: "passed" | "bug";
+}
+
+/** Extract the `qa` tick's result-carrying `FLOW: <name> — <passed|bug>` line (plans/observer-
+ * roles.md 2/2); null when absent. Built on `labeledLine`, so the label is anchored at line
+ * start and a mid-sentence mention is ignored. A bare `FLOW: <name>` is tolerated as `passed`
+ * (the result token is optional; the flow name is not). Splits on the final dash/em-dash token
+ * before the result so a name that itself contains a hyphen (`reset-counters`) stays intact. */
+export function extractFlow(text: string): FlowResult | null {
+  const value = labeledLine(text, "FLOW");
+  if (!value) return null;
+  const match = value.match(/^(.*)\s*[—-]\s*(passed|bug)\s*$/i);
+  if (match?.[1]) return { flow: match[1].trim(), result: match[2]!.toLowerCase() as "passed" | "bug" };
+  return { flow: value, result: "passed" };
+}
+
 // The review gate's verdict line as stated in buildReviewPrompt (prompt.ts): the reviewer
 // ends with exactly `VERDICT: approve` or `VERDICT: reject`. Anchored at line start so prose
 // that merely mentions "VERDICT:" mid-sentence cannot set the outcome. One source of truth,

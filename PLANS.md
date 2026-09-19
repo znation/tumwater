@@ -21,22 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Critical path.** 1/7 → 2/7 → 3/7 → 4/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
-### Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17, requested by user, refined 2026-09-18)
-
-**Full plan: plans/observer-roles.md.** Depends on 1/2.
-
-**Goal.** Give `qa` a memory of which flows it has exercised, so flow selection is a lookup rather than a blind guess, without any write that moves main.
-
-**Why.** plans/qa-role.md anticipated this and settled for a weak answer: every tick is a fresh session, so the prompt tells the model to prefer "a flow not recently exercised as far as your BUGS.md filings and Verified notes show". But a cheap flow that *passes* deliberately leaves no record — a note commit per check would move main and wake every sleeping loop. So the only flows a fresh session can see evidence of are the ones that failed, plus the one expensive real-mode run that writes a `## Verified` line; for the eight cheap flows the model chooses blind every time and converges on the top of the list.
-
-**Design (decided).** The `qa` reply ends with a result-carrying `FLOW: <name> — <passed|bug>` line, parsed by `reply-contract.ts`'s new `extractFlow` on the existing `labeledLine` helper (which already serves `SUMMARY`/`WHY`/`RISK`/`VERIFIED` and `TUMWATER_REFUSED`); a bare `FLOW: <name>` is tolerated as `passed`. The result token is load-bearing: `run (real)` commits its `## Verified` note, so deriving "bug" from "the tick changed files" would mislabel a passing real run. The harness — not pi — records `{ lastRunAt, result, summary? }` per flow in `.tumwater/state/qa-coverage.json` (runtime, gitignored, never moves main) via `paths.ts`'s new `qaCoveragePath` and `json-files.ts`'s existing `readJsonFile`/`writeJsonAtomic`, and `src/prompt.ts` injects a rendered coverage block into the next `qa` prompt through a new `TickPromptInput.coverage` field beside the principles injection. The block orders never-exercised flows first (age = ∞), then exercised flows oldest-first, so the one-line instruction "exercise the flow at the top" actually drives rotation — the draft's "never-exercised listed last" contradicted its own instruction and is corrected. The flow universe is `QA_FLOWS` in `src/qa-coverage.ts`, mirroring plans/qa-role.md's ordered list (`init, status, logs, prompt, reset-counters, gui, tui, run`) plus the expensive `run (real)`. The `run (real)` daily-cadence rule then falls out of the same table instead of needing the model to find and date-compare a `## Verified` line. A missing or corrupt ledger degrades to today's behavior — an observer must never fail a tick because a bookkeeping file was unreadable.
-
-**Files touched.** `src/qa-coverage.ts` (new: `readQaCoverage`, `recordFlow`, `renderCoverageBlock`, `QA_FLOWS`, a local age formatter), `src/reply-contract.ts` (`extractFlow`), `src/paths.ts` (`qaCoveragePath`), `src/prompt.ts` (`TickPromptInput.coverage` + push), `src/loop.ts` (render for `qa` in `tickPrompt()`; extract after the pi run and record at the `no_change`/`queued` returns), `src/roles.ts` (`qa` find text gains the contract line and the lookup instruction), `test/qa-coverage.test.ts` (new), `test/reply-contract.test.ts`, `test/prompt.test.ts`, `test/paths.test.ts`, `test/loop.test.ts`.
-
-**Acceptance criteria.** `extractFlow` parses `FLOW: status — passed` and `FLOW: prompt — bug`, tolerates a bare `FLOW: status` as passed, and returns null when absent or mid-sentence; a `qa` tick whose reply carries `FLOW: status — passed` writes `{ lastRunAt, result: "passed" }` to `.tumwater/state/qa-coverage.json` while a tick with no `FLOW:` line records nothing and still completes normally; the next `qa` prompt carries the rendered block (never-exercised first, then oldest-first, with age and `passed` / `bug filed (BUGS.md: "<summary>")`) and a non-`qa` prompt never carries it; a missing, empty or malformed ledger yields no block and no error; nothing under `.tumwater/state/` is ever committed.
-
-**Refined 2026-09-18 (plan loop) — 2/2 audited against main `a3b5138`; the README stamp is four merges behind at `c53dba4`, and the landings since touch no 2/2 anchor. Every anchor verified, five open implementation questions pinned (the result token, the `QA_FLOWS` universe, the ordering contradiction, the age formatter's home, the recording seam), and the acceptance criteria made testable. Details in plans/observer-roles.md's 2/2 refine note.**
-
 ### Repair traces — record what made each bug hard to validate (planned 2026-09-17, requested by user)
 
 **Full plan: plans/repair-traces.md** — the tag vocabulary with its definitions, the compression-survival design, and the steward's promotion rule.
@@ -66,6 +50,10 @@ Corrections (pinned in plans/repair-traces.md):
 Sizing unchanged: src/roles.ts ~35 lines, src/init.ts ~2, test/prompt.test.ts ~40, test/init.test.ts ~5. No design question remains open.
 
 ## Done
+
+### Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17, requested by user, refined 2026-09-18, done 2026-09-19)
+
+**Landed 2026-09-19 (feature loop).** As planned; all acceptance criteria met. `src/qa-coverage.ts` is new (`QA_FLOWS`, `readQaCoverage`, `recordFlow`, `renderCoverageBlock`, and a local `12m`/`4h`/`6d` age formatter); `src/reply-contract.ts` gains `extractFlow` on the shared `labeledLine` helper (a result-carrying `FLOW: <name> — <passed|bug>` line, a bare name read as `passed`); `src/paths.ts` gains `qaCoveragePath`; `src/prompt.ts` gains `TickPromptInput.coverage`, pushed beside the principles block; `src/loop.ts` renders the coverage block for `qa` in `tickPrompt()` inside a try/catch (an unreadable ledger never fails a tick) and records the parsed flow at the `no_change`/`queued` returns only — error, aborted, quiet-killed, and refused ticks record nothing; the `qa` find text carries the coverage lookup instruction and the `FLOW:` contract. Tests: `test/qa-coverage.test.ts` (new), `test/reply-contract.test.ts`, `test/prompt.test.ts`, `test/paths.test.ts`, `test/loop.test.ts` (the no_change, bug-filing, and prompt-render paths). `npm test`: 1,154 pass.
 
 ### Feature loop hands oversized plans to the plan loop instead of splitting them inline (planned 2026-09-18, requested by user, done 2026-09-19)
 
