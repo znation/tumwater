@@ -63,8 +63,6 @@ rather than stopping, and only a fallback that cannot be verified as free leaves
 Open items:
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
-- Planned: Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17,
-  requested by user, refined 2026-09-18; depends on 1/2, which has landed).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
 - Open bug: leftover recovery re-reviews a high-friction commit without its high-friction flag,
@@ -72,7 +70,7 @@ Open items:
   2026-09-19).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`5f187d2`): build clean, suite 1143/1143.
+Current main (`2714022`): build clean, suite 1164/1164.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -113,7 +111,9 @@ one loop per enabled role. Every loop tick:
    re-lands through the same gate on the next tick). The drain runs even while the fleet is
    paused: a queued landing is committed work, not a new tick. If pi found nothing to do, the
    loop backs off (exponentially, capped) and sleeps; an observer (`qa`) instead treats a
-   `no_change` as a passing check and re-ticks at its interval. A failed tick retries on a
+   `no_change` as a passing check and re-ticks at its interval, rotating through the documented
+   flows via a gitignored coverage ledger and ending its tick with a `FLOW: <name> — passed|bug`
+   line so its next tick can see what it last exercised. A failed tick retries on a
    shorter error ladder (capped at ten minutes) instead, so a broken toolchain parks a loop for
    minutes, not hours.
 4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
