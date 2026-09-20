@@ -44,8 +44,9 @@ exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`, `--prompt
 `prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`,
 `wake [--role <id>]` (clears a backed-off fleet's sleep — the named roles, or all of them,
 tick within one poll), `abort --role <id>` (kills one loop's in-flight tick; work discarded,
-the loop keeps running), and `pause` / `resume` (operator-intent fleet gate: role loops stop
-starting new ticks while in-flight ones finish; the director keeps running). All thirteen roles —
+the loop keeps running), `pause` / `resume` (operator-intent fleet gate: role loops stop
+starting new ticks while in-flight ones finish; the director keeps running), and `help` / `version`.
+All thirteen roles —
 feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h clock), telemetry
 (~2 h clock), improve, steward (~6 h clock) — plus the director are enabled by default; user-defined loops are added
 from `customLoops` in tumwater.json or by prompting the director, and act as full-citizen loops
@@ -67,11 +68,17 @@ Open items:
   three ways on 2026-09-19).
 - Planned: live config-change event — one `config_changed` event naming the tumwater.json keys a
   live edit changed (planned 2026-09-19).
+- Planned: failure digest in the GUI — a `failures` tab and `/api/failures` endpoint beside
+  `report` (planned 2026-09-19).
 - Open bug: `inputViewWindow` collapses to an empty window, blanking the TUI prompt line at narrow
   widths with adjacent astral characters (filed 2026-09-19).
+- Open bug: `status --json` is documented as "the same payload as the GUI's /api/status", but the
+  served payload adds `serverBuildSha` (filed 2026-09-19).
+- Open bug: the restart-cooldown deferral warning fires once per landed head instead of once per
+  cooldown episode — one warning per merge across a 12 h cooldown (filed 2026-09-19).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`b4781e8`): build clean, suite 1224/1224.
+Current main (`fe4816f`): build clean, suite 1231/1231.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -236,6 +243,8 @@ tumwater wake [--role feature]     # wake a backed-off fleet — the named roles
 tumwater abort --role feature      # kill that loop's in-flight tick now (work discarded; the loop keeps running)
 tumwater pause                     # stop role loops starting new ticks (in-flight finish; the director keeps running)
 tumwater resume                    # lift a fleet pause
+tumwater help                      # print the command reference
+tumwater version                   # print the harness version
 ```
 
 `reset-counters` starts a fresh observation window (e.g. "cost since today") without touching
