@@ -17,14 +17,16 @@ import { readTranscript } from "./transcript.js";
 import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reload.js";
 import {
   applyKey,
+  parseBudgetInput,
+  renderInputView,
+  tuiTerminalError,
+} from "./tui-input.js";
+import {
   backlogLines,
   entryBodyWindow,
   moveEntrySelection,
-  parseBudgetInput,
-  renderInputView,
   stepEntryScroll,
-  tuiTerminalError,
-} from "./tui-input.js";
+} from "./tui-backlog.js";
 
 const CLEAR = "\x1b[2J\x1b[H";
 const DIM = "\x1b[2m";

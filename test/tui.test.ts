@@ -11,15 +11,17 @@ import { enqueueLanding } from "../src/land-queue.js";
 import { runTui } from "../src/ui/tui.js";
 import {
   applyKey,
-  backlogLines,
-  entryBodyWindow,
   inputViewWindow,
-  moveEntrySelection,
   parseBudgetInput,
   renderInputView,
-  stepEntryScroll,
   tuiTerminalError,
 } from "../src/ui/tui-input.js";
+import {
+  backlogLines,
+  entryBodyWindow,
+  moveEntrySelection,
+  stepEntryScroll,
+} from "../src/ui/tui-backlog.js";
 import { cutSplitsSurrogatePair, formatDate } from "../src/text.js";
 import { makeRepo, tmpdir } from "./util.js";
 
