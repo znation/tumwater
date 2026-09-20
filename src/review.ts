@@ -215,7 +215,7 @@ export async function reviewAheadOfMain(
     sessionDir: reviewSessionDir(root, role),
     sessionName: `tumwater-review-${role}-${ctx.tick}${ctx.sessionSuffix ?? ""}`,
     rawLogFile: piLogPath(root, role),
-    // Label this run in the shared transcript (src/transcript.ts renders it as
+    // Label this run in the shared transcript (src/ui/transcript.ts renders it as
     // `── review @ <ts> ──`) so an operator can tell reviewer runs from author ticks.
     label: "review",
     signal: ctx.signal,
