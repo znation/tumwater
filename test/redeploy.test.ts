@@ -590,6 +590,35 @@ test("swapDist throws when the staged build cannot land and leaves nothing half-
   );
 });
 
+test("swapDist puts the old dist back when the staged rename fails after stepping it aside", (t) => {
+  // The module's invariant: dist/ is never left missing. The previous test only covers a live
+  // dist being absent; here one exists and the second rename (staged -> dist) fails, so the
+  // catch's restore branch (prev -> dist) must run before the error propagates. A rename mock
+  // fails exactly that step, the way a cross-device or permissions error would.
+  const root = tmpdir();
+  const dist = path.join(root, "dist");
+  fs.mkdirSync(dist);
+  fs.writeFileSync(path.join(dist, "old.js"), "old");
+  const staged = stagingDir(root, HEAD_B);
+  fs.mkdirSync(staged, { recursive: true });
+  fs.writeFileSync(path.join(staged, "new.js"), "new");
+
+  const real = fs.renameSync as (src: fs.PathLike, dest: fs.PathLike) => void;
+  t.mock.method(fs, "renameSync", ((src: fs.PathLike, dest: fs.PathLike) => {
+    if (path.resolve(String(src)) === path.resolve(staged)) throw new Error("EACCES: simulated rename failure");
+    return real(src, dest);
+  }) as typeof fs.renameSync);
+  try {
+    assert.throws(() => swapDist(root, dist, HEAD_B), /simulated rename failure/);
+  } finally {
+    t.mock.restoreAll();
+  }
+
+  assert.deepEqual(fs.readdirSync(dist), ["old.js"], "the old build is put back before the error propagates");
+  assert.ok(fs.existsSync(path.join(staged, "new.js")), "the staged build survives for a retry");
+  assert.ok(!fs.existsSync(path.join(stagingRootDir(root), "dist.prev")), "the stepped-aside tree is gone, not left behind");
+});
+
 test("swapDist retries transient directory races on dist.prev instead of aborting the redeploy", (t) => {
   // BUGS.md 2026-09-18: a transient ENOTEMPTY on dist.prev (an entry appearing between
   // rmSync's walk and its rmdir — Spotlight, .DS_Store) threw and blocked the restart. The
