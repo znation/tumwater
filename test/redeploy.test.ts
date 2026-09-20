@@ -9,7 +9,6 @@ import { readBuildInfo } from "../src/build-info.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
 import {
   autoRestartRecord,
-  compileStaged,
   mainIsGreen,
   p75TickDurationMs,
   type AutoRestartRecord,
@@ -17,8 +16,8 @@ import {
   Redeployer,
   RESTART_COOLDOWN_MS,
   RESTART_EXIT_CODE,
-  swapDist,
 } from "../src/redeploy.js";
+import { compileStaged, swapDist } from "../src/build-stage.js";
 import { ensureDetachedWorktree } from "../src/worktree.js";
 import { autoRestartStampPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
