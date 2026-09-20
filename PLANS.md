@@ -26,6 +26,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7; 4c/7 is markdown-only. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
+### Failure digest in the GUI — a `failures` tab beside `report` (planned 2026-09-19)
+
+**Goal.** The deterministic failure digest the `telemetry` loop feeds on and `tumwater report --failures` prints becomes a dashboard view: a `GET /api/failures?days=N` endpoint serving the same bounded Markdown, and a `failures` tab in the GUI beside `report` that renders it. An operator can see tick outcomes, per-role deltas, and clustered errors over the window without leaving the browser.
+
+**Why.** plans/telemetry-role.md landed the digest on 2026-09-18 and deliberately left "a JSON form of the digest, or a GUI tab" out of scope because its shape had not settled (its out-of-scope note, plans/telemetry-role.md:212–214); the 2026-09-19 fixes (rejection counter, red-main handoff) have since settled it. Today the one observer surface carrying the fleet's failure evidence is readable only in a terminal (`src/cli.ts:263`) or by the `telemetry` role (src/failure-report.ts:16) — while its sibling usage report already has both `/api/report` and the `report` tab. The renderer is a pure, ~6 KB-bounded function, so the work is a route, a tab, and a fetch.
+
+**Approach.**
+- `src/ui/gui.ts` — import `collectFailureReport`/`renderFailureMarkdown` from `../failure-report.js`. Add `handleFailures(req, res, root)` beside `handleReport` (:109) returning `sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, days)) })`. Extract the three `days`-parsing lines at :111–112 into one local `windowDays(req)` helper and call it from both handlers, so the two endpoints cannot drift (`REPORT_DEFAULT_DAYS` default, clamp 1..`REPORT_MAX_DAYS`, never an error). Register the route in the dispatch chain beside `/api/report` (:254): `else if (req.method === "GET" && pathname === "/api/failures") handleFailures(req, res, root);`. Reads files directly, so it works with no fleet running, like `/api/report`.
+- `src/ui/gui-page.ts` — the nav (:48) gains `<span class="muted"> | </span><a href="#" id="tab-failures">failures</a>` after the report tab; a `<div id="failures" hidden></div>` follows `<div id="report" hidden></div>` (:62). Add `#failures` to the `#transcript` CSS rule's selector list so the rendered Markdown keeps its newlines and scrolls in the same box.
+- `src/ui/gui-client.ts` — `switchView` (:65–73) accepts `"failures"`, toggles `#failures`'s `hidden` and `#tab-failures`'s `active`, and calls `fetchFailures()` on activation. Add `fetchFailures()` mirroring `fetchReport` (:219–236): `fetch("/api/failures?days=14")`, `if (!r.ok) throw await apiError("/api/failures", r)`, then `panel.innerHTML = "<span class='muted'>failure digest — last 14 days — click the tab again to refresh</span>\n" + esc(d.markdown || "(no digest)")`; on failure render `failures unavailable — <message>` like the report's catch. The `viewnav` click handler (:439) already forwards any `tab-*` id — no change there.
+- `README.md` — the GUI/dashboard paragraph names the new `failures` tab and the endpoint beside its report sibling.
+- Tests (`test/gui.test.ts`): one route test mirroring "gui /api/report serves collectReport's JSON and clamps days" (:1568) — seed a couple of `tick_end`/`merged` events, assert `/api/failures` returns 200 `{ markdown }` equal to `renderFailureMarkdown(collectFailureReport(repo, 14))`, and drive the same `days` clamp cases (`days=`, `abc`, `-5`, `1e3`, `0x10` → 14; `0` → 1; `91`/`900` → 90) by comparing against the digest rendered for the clamped day count; plus one page test mirroring "the dashboard page carries the report tab nav and its view containers" (:1636) — update that test's nav regex to include `id="tab-failures"`, and assert `<div id="failures" hidden></div>`, `fetch("/api/failures?days=14")`, and `if (v === "failures") fetchFailures()`.
+
+**Files touched.** `src/ui/gui.ts`, `src/ui/gui-page.ts`, `src/ui/gui-client.ts`, `README.md`; `test/gui.test.ts`. No core change: `collectFailureReport` / `renderFailureMarkdown` already exist.
+
+**Acceptance criteria.**
+- `GET /api/failures` returns 200 `{ markdown }` whose `markdown` equals `renderFailureMarkdown(collectFailureReport(root, 14))`; `?days=` follows `/api/report`'s exact rule (missing/non-decimal → 14; `0` → 1; `91`/`900` → 90; never an error).
+- The dashboard shows a `failures` tab; activating it renders the digest (starting with its `# tumwater failure digest` heading) and re-activating refetches; the fleet and report tabs are unchanged.
+- `GET /api/failures` works with no fleet running, and the full suite stays green.
+
+Out of scope: a TUI failures pane, a window/days selector, and a JSON form of the digest for scripts.
+
+**Grounded 2026-09-19 (plan loop)** against main `b4781e8`: `collectFailureReport` (src/failure-report.ts:214) and `renderFailureMarkdown` (:378) are exported core functions; the digest's only current surfaces are `tumwater report --failures` (src/cli.ts:263) and the telemetry prompt block (src/prompt.ts:141–149). Capability absence re-confirmed: `grep -rn 'api/failures\|tab-failures\|fetchFailures' src/ test/` is empty and no Planned/Done entry covers a dashboard failures view — plans/telemetry-role.md:212–214 explicitly deferred it. Seams pinned: `handleReport` (src/ui/gui.ts:109–113), the route chain (:254), the nav (src/ui/gui-page.ts:48), `#report` (:62), `switchView` (src/ui/gui-client.ts:65–73), `fetchReport` (:219), the `viewnav` handler (:439); tests to mirror at test/gui.test.ts:1568 and :1636. One run: one route + one shared days helper, three markup/client edits, one README sentence, and two GUI tests.
+
 ## Done
 
 ### Live config-change event — surface what a tumwater.json edit changed (planned 2026-09-19, done 2026-09-19)
