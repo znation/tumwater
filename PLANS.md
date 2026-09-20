@@ -26,6 +26,31 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7; 4c/7 is markdown-only. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
+### Live config-change event — surface what a tumwater.json edit changed (planned 2026-09-19)
+
+**Goal.** When a live edit to `tumwater.json` changes what the fleet runs, log one `config_changed` event naming the keys that changed — so the operator sees the edit was picked up, and the durable event log records when each setting took effect.
+
+**Why.** The orchestrator reloads `tumwater.json` once per ~2 s poll and applies every setting live, but only three kinds of change are surfaced: `max_concurrent_changed` (src/orchestrator.ts:330), `retention_changed` (:367), and the role enable/disable warnings (:344–347). A live edit to `provider`/`model`/`fallbackModel`, `piArgs`, `tickTimeoutSeconds`/`quietTimeoutSeconds`/`toolCallStallSeconds`, `thrashTurns`/`thrashMinutes`, `idleBackoff`, `landBatchMax`, `autoRestart`, `logMaxBytes`, `review`, or any `roles.<id>` field changes fleet behavior silently: the feed shows nothing, and answering "why did the fleet switch models / start retrying / stop reviewing at 14:03" means diffing status snapshots or the file by hand. The reload block already holds both configs — `liveConfig` before and `reloaded.config` after — so only the comparison and the event are missing.
+
+**Approach.**
+- `src/config.ts` — add `changedConfigKeys(prev, next): string[]` (pure, exported): the sorted top-level keys whose value differs, plus `roles.<id>` for each role entry that differs, comparing canonical serializations so key order in the file can never fake a change. Add a private `stableJson(value)` that recursively sorts object keys before `JSON.stringify` (arrays keep order). Skip `maxConcurrent` and `sessionRetentionDays`: each already has its own, more informative event (`max_concurrent_changed`, `retention_changed`), and naming them twice per edit is noise. `roles` is never reported whole — only its per-id entries — so adding a custom loop reports `customLoops` and `roles.<name>`, and removing one reports the same.
+- `src/orchestrator.ts` — keep `let prevLiveConfig = config` beside the other reload locals (:254–279). In the successful-reload arm (after `liveConfig = reloaded.config`, :324), compute `const keys = changedConfigKeys(prevLiveConfig, reloaded.config)`; when non-empty `logEvent(root, { loop: "harness", type: "config_changed", keys })`; assign `prevLiveConfig = reloaded.config` unconditionally. Seeded from the startup config, so the first poll of an unchanged file logs nothing. A deleted config reverts to `defaultConfig()` and reports its many changed keys — correct and worth seeing.
+- `src/types.ts` — add `config_changed` to the `HarnessEvent.type` union beside `max_concurrent_changed`/`retention_changed` (:288–289) with a one-line comment.
+- `src/ui/event-format.ts` — a `case "config_changed"` rendering `${time} ${loop} config changed: ${keys.join(", ")}` (routine state change, no warning prefix, like its two siblings at :130–137); guard a missing/empty `keys` array so a bare event reads `config changed`.
+- `README.md` — the Usage paragraph on live `tumwater.json` edits gains one sentence: a change logs one `config_changed` event naming the keys that changed (the two settings with their own events, `maxConcurrent` and `sessionRetentionDays`, keep those).
+- Tests: `test/config.test.ts` (`changedConfigKeys`: added/removed/changed top-level key; a `provider` edit reports `provider`; a `roles.feature.model` edit reports `roles.feature`, not `roles`; a key-order-only rewrite of the same content reports nothing; `idleBackoff`/`review` sub-key edits report the section name; `maxConcurrent`/`sessionRetentionDays` alone report nothing), `test/event-format.test.ts` (one line pinned, plus the missing-keys fallback), `test/orchestrator-2.test.ts` (a live edit mid-run logs exactly one `config_changed` naming it; rewriting identical bytes logs none — mirror the live-reload tests around :243–330).
+
+**Files touched.** `src/config.ts`, `src/orchestrator.ts`, `src/types.ts`, `src/ui/event-format.ts`, `README.md`; `test/config.test.ts`, `test/event-format.test.ts`, `test/orchestrator-2.test.ts`. No config shape, validation, storage, or scheduling change: the reload already produces both config objects.
+
+**Acceptance criteria.**
+- Editing `tumwater.json` mid-run (e.g. changing `thrashTurns` and `provider`) logs exactly one `config_changed` event on the next poll, naming both keys; no second event while the file is unchanged.
+- Rewriting the file with identical content (new mtime) logs nothing.
+- A `maxConcurrent`-only edit still logs only `max_concurrent_changed`; a `sessionRetentionDays`-only edit only `retention_changed`.
+- A `roles.<id>` edit reports `roles.<id>`; adding or removing a `customLoops` entry reports `customLoops` and the affected `roles.<id>`.
+- `changedConfigKeys` is a pure function with a pinned shape in `test/config.test.ts`; the full suite stays green.
+
+**Grounded 2026-09-19 (plan loop)** against main `c234057`: verified the reload block (`loadConfigCached`/`liveConfig = reloaded.config`, src/orchestrator.ts:322–351), the reload locals (:254–279), the only live-edit events (`max_concurrent_changed` :330, `retention_changed` :367, role enable/disable warnings :344–347), the event union (`max_concurrent_changed`/`retention_changed`, src/types.ts:288–289), and the formatter cases (src/ui/event-format.ts:130–137). Capability absence re-confirmed: `grep -rn 'config_changed\|changedConfigKeys' src/ test/ PLANS.md BUGS.md` is empty; no Planned or Done entry covers a config-change event. One run: `changedConfigKeys` + `stableJson` in config.ts (~30 lines), the orchestrator comparison (~8), one event type and one formatter case, one README sentence, and the three test files.
+
 ## Done
 
 ### Red-main handoff — point the bugfix loop at the failing suite when main is red (planned 2026-09-19, done 2026-09-19)
