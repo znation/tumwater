@@ -65,16 +65,14 @@ Open items:
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; nine sub-plans in plans/portability.md, 4/7 split
   three ways on 2026-09-19).
-- Planned: red-main handoff — point the bugfix loop's prompt at the failing suite when main is red
-  (planned 2026-09-19; `bugfixMainRedNote` in `src/main-red.ts` plus a `<main-red>` prompt block).
-- Open bug: the failure digest's per-role rejection counter reads 0 on the live fleet — `roleStats`
-  counts `tick_end.result === "rejected"`, a shape no landing path emits (filed 2026-09-19).
+- Planned: live config-change event — one `config_changed` event naming the tumwater.json keys a
+  live edit changed (planned 2026-09-19).
 - Open bug: friction's absolute turn threshold flags ordinary fast-model ticks — `highFriction`
   ORs `thrashTurns` (40, tuned for the local model) with wall-clock, so 41-turn/5-minute ticks get
   the full flag (filed 2026-09-19).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`f4c4d0b`): build clean, suite 1201/1201.
+Current main (`e360bd1`): build clean, suite 1210/1210.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -100,7 +98,7 @@ one loop per enabled role. Every loop tick:
    diff, in a harness-owned worktree (`_land-<role>`) off the pinned ref: first a deterministic
    build pre-check (the project's declared verify script: `npm test` when declared, else
    typecheck/build; failure rejects without spending a model run), then a fresh-session
-   reviewer against PRINCLES.md that replies `VERDICT: approve|reject` (md-only diffs are
+   reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject` (md-only diffs are
    exempt); rejects reset the branch with reasons injected into the author's next tick,
    failures keep the commit for re-review under a 3-strike discard cap. When several landings are
    queued, the drain reviews each change individually but stacks the approved ones in one lander
