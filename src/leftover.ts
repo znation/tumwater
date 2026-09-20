@@ -12,11 +12,11 @@ import type { TickResult } from "./types.js";
  * smuggles unreviewed work into main (invariant 1). A commit with NO pin — a crash in the window
  * between the tick's commit and its pin write, or a failed pin write itself — still sits on the
  * branch ahead of main; recovery adopts that tip into the pin scheme and re-lands it, so
- * invariant 1 holds whether or not the pin survived. Split out of loop.ts — which keeps the tick
- * lifecycle around it — because this is
- * a self-contained concern with its own entry condition and git surface; the only things it
- * borrows from the loop are identity, the worktree (for the no-pin fallback), and the lander
- * wiring so a recovery run folds into the same tick counters as an authoring run. */
+ * invariant 1 holds whether or not the pin survived. Split out of loop.ts — which keeps the
+ * tick lifecycle around it — because this is a self-contained concern with its own entry
+ * condition and git surface; the only things it borrows from the loop are identity, the
+ * worktree (for the no-pin fallback), and the lander wiring so a recovery run folds into the
+ * same tick counters as an authoring run. */
 
 /** What recoverLeftover needs from its owning loop: identity, the role's worktree (needed only
  * for the no-pin ahead-of-main fallback), and the lander closure that re-lands a sha through the
@@ -28,8 +28,8 @@ export interface LeftoverContext {
   /** The role's worktree — read for the no-pin fallback only. */
   wt: string;
   /** Land `sha` through the shared lander (review gate, rebase, ff-merge). `meta` carries the
-   *  recovered commit's body + high-friction flag, read back from its message because the
-   *  authoring run that set them is gone. */
+   * recovered commit's body + high-friction flag, read back from its message because the
+   * authoring run that set them is gone. */
   land(sha: string, meta: CommitMetadata): Promise<TickResult>;
 }
 
@@ -78,10 +78,10 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<TickResult 
 }
 
 /** The review-gate metadata a pinned leftover commit carries in its own message: its
- *  high-friction flag and author's body, or an empty object when the commit predates the
- *  contract or the message cannot be read. Recovery lands through the same gate as a fresh
- *  tick, so it must present those fields the same way — otherwise a flagged change is silently
- *  reviewed as routine (BUGS.md 2026-09-19). */
+ * high-friction flag and author's body, or an empty object when the commit predates the
+ * contract or the message cannot be read. Recovery lands through the same gate as a fresh
+ * tick, so it must present those fields the same way — otherwise a flagged change is silently
+ * reviewed as routine (BUGS.md 2026-09-19). */
 async function recoveredMetadata(root: string, sha: string): Promise<CommitMetadata> {
   const message = await commitMessage(root, sha);
   return message ? parseCommitMetadata(message) : {};
