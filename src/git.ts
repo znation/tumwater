@@ -195,8 +195,9 @@ export async function isDirty(cwd: string): Promise<boolean> {
  * byte arrives as an octal escape.
  * Non-ASCII arrives one octal escape per UTF-8 byte, so the escapes are first collected into
  * a latin1 byte string and only then reassembled as UTF-8 (decoding each escape to a character
- * on its own yields mojibake — `héllo.md` would come back as `hÃ©llo.md`). Shared by
- * changedFiles here and conflictedFiles in merge.ts, so the decoding lives in exactly one place. */
+ * on its own yields mojibake — `héllo.md` would come back as `hÃ©llo.md`). Used by
+ * conflictedFiles in merge.ts; changedFiles reads git's NUL-terminated `-z` format, which
+ * emits paths verbatim (no quoting), so it has no encoded path to decode. */
 export function unquotePorcelainPath(p: string): string {
   if (!p.startsWith('"')) return p;
   const end = p.lastIndexOf('"');
@@ -257,17 +258,31 @@ export function unquotePorcelainPath(p: string): string {
 }
 
 /** Repo-relative paths of every change in the worktree — modified, untracked, and deleted,
- * parsed from `git status --porcelain` (paths only). The refusal path uses this to classify
- * what a refusing run left behind: markdown notes may land, everything else is discarded. */
+ * parsed from `git status --porcelain -z` (paths only). The refusal path uses this to classify
+ * what a refusing run left behind: markdown notes may land, everything else is discarded.
+ *
+ * The `-z` format is what git recommends for machine parsing: records are NUL-terminated and
+ * paths are emitted verbatim, never C-quoted, so a path with whitespace, a quote, a control
+ * byte, or non-ASCII survives byte-for-byte without the decode `unquotePorcelainPath` would
+ * need. It also settles rename/copy entries, which the line format renders as
+ * `XY <from> -> "<to>"`: a path containing ` -> ` made that ambiguous, and decoding the whole
+ * `from -> to` field produced one path that exists nowhere (e.g. `old.txt -> new.txt`). With
+ * `-z` a rename/copy is two records — `XY <to>\0<from>\0`, destination first — so this reads
+ * the destination (the path that exists now) and skips the extra origin record. */
 export async function changedFiles(wt: string): Promise<string[]> {
-  const out = await gitTry(wt, "status", "--porcelain");
+  const out = await gitTry(wt, "status", "--porcelain", "-z");
   if (!out) return [];
   const files: string[] = [];
-  for (const line of out.split("\n")) {
-    // Porcelain v1 lines are `XY <path>` — two status chars, a space, then the path.
-    if (line.length < 4) continue;
-    const p = unquotePorcelainPath(line.slice(3));
+  const records = out.split("\0");
+  for (let i = 0; i < records.length; i++) {
+    // Porcelain v1 records are `XY <path>` — two status chars, a space, then the verbatim path.
+    const record = records[i];
+    if (record === undefined || record.length < 4) continue;
+    const p = record.slice(3);
     if (p) files.push(p);
+    // A rename/copy is followed by one extra record holding the origin path (no status
+    // prefix); consume it so its raw text is never mistaken for a status line.
+    if (record[0] === "R" || record[0] === "C") i++;
   }
   return files;
 }

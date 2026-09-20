@@ -19,6 +19,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `changedFiles` read a porcelain rename line's `from -> to` field as one non-existent path (found by bugfix loop 2026-09-19, fixed 2026-09-19)
+
+**Symptom:** `git status --porcelain` renders a staged rename/copy as one line, `XY <from> -> <to>` (git's own `git status` docs). `changedFiles` (src/git.ts) took `line.slice(3)` as the path and decoded it with `unquotePorcelainPath`, so a rename came back as the literal string `old.md -> new.md` (or, for a C-quoted non-ASCII destination, the mangled `old.md" -> "h\303\251llo.md`). That path exists nowhere on disk, so the refusal path classified the file wrongly (a renamed markdown note no longer ends the bogus string with `.md` and `git add` stages nothing) and the fallback commit subject named a path that is not real.
+
+**Repro:** Deterministic, no model needed: in a scratch repo `git mv old.txt new.txt`, then `git status --porcelain` prints `R  old.txt -> new.txt`. Pre-fix `changedFiles` returned `["old.txt -> new.txt"]`; `fs.existsSync` on it is false and `git add` with it stages nothing. Confirmed with a non-ASCII destination too (`git mv old.md héllo.md` → `R  old.md -> "h\303\251llo.md"`).
+
+**Expected:** The returned path is the one that exists on disk now — the rename's destination — so callers can feed it straight back to git, the same round-trip contract the other `changedFiles` tests pin.
+
+**Suspected cause:** The parser assumed one path per porcelain line. Rename/copy entries carry two, and the plain format is genuinely ambiguous for a path containing ` -> `; git's documented machine format (`-z`) removes both the ambiguity and the C-quoting, but the reader never asked for it.
+
+**Fix:** `changedFiles` now runs `git status --porcelain -z` and parses NUL-terminated records: paths are verbatim (no quoting to decode) and a rename/copy is two records, `XY <to>\0<from>\0` (destination first in `-z`), so it reports the destination and skips the origin record. `unquotePorcelainPath` stays for `conflictedFiles` (`git diff --name-only -z` was not needed there — `--name-only` emits no rename field).
+
+**Files:** src/git.ts (`changedFiles` + the `unquotePorcelainPath` doc note); test/git.test.ts ("changedFiles reports a staged rename by its destination path, not the `from -> to` field").
+
 ### `unquotePorcelainPath` decoded git's `\a`/`\b`/`\f`/`\v` escapes as bare letters (found by bugfix loop 2026-09-19, fixed 2026-09-19)
 
 **Symptom:** Git's C-quoting has short escapes for eight characters (its `sq_lookup` table: `\a` BEL, `\b` BS, `\t` TAB, `\n` LF, `\v` VT, `\f` FF, `\r` CR, `\\`, `\"`), but `unquotePorcelainPath` (src/git.ts) only decoded `\n`, `\t`, `\r`, `\\`, and `\"`. The four it missed fell through the default branch, which keeps an unrecognized escape's letter literally — so a filename containing BEL (0x07), backspace (0x08), form feed (0x0c), or vertical tab (0x0b) came back as `a`/`b`/`f`/`v` in place of the control byte, a path that does not exist on disk. `changedFiles` feeds the result straight back to git (loop.ts's fallback commit subject, and the refusal path's `commitPathsAndDiscardRest` / `.md` classification), so a mis-decoded path stages nothing and misclassifies the file.

@@ -435,6 +435,23 @@ test("changedFiles decodes C-quoted carriage returns in filenames", async () => 
   assert.ok(fs.existsSync(path.join(repo, files[0] ?? "")));
 });
 
+// A staged rename is one `R  <from> -> <to>` line in plain porcelain, but changedFiles must
+// report the path that exists on disk. Reading the whole field as one path returned the
+// non-existent `old.md -> "h\303\251llo.md"`, which the refusal path's `.md` filter and
+// `git add` could not use. The parse now reads git's -z format: destination first, origin in
+// the following NUL-terminated record (which must be skipped, not read as a status line).
+test("changedFiles reports a staged rename by its destination path, not the `from -> to` field", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "old.md"), "note\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "add note");
+  sh(repo, "git", "mv", "old.md", "h\u00e9llo.md");
+
+  const files = await changedFiles(repo);
+  assert.deepEqual(files, ["h\u00e9llo.md"]);
+  assert.ok(fs.existsSync(path.join(repo, files[0] ?? "")), "the reported path is on disk");
+});
+
 // Git's C-quoting has short escapes for four more control characters than \n/\t/\r — BEL
 // (\a), backspace (\b), form feed (\f), and vertical tab (\v), all emitted by `git status
 // --porcelain` for a filename containing the byte. They must decode to the control byte, not
