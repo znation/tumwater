@@ -1,6 +1,6 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles.js";
 import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
-import { BUILD_CHECK_TIMEOUT_MS } from "./build-check.js";
+import { BUILD_CHECK_TIMEOUT_MS, buildCheckSkipWarning } from "./build-check.js";
 import { checkMainBaseline, failureHeadline } from "./main-baseline.js";
 import { logEvent } from "./events.js";
 import type { TickOutcome } from "./types.js";
@@ -53,12 +53,12 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
     logEvent(root, {
       loop: role,
       type: "warning",
-      message:
-        baseline.skipReason === "no-npm"
-          ? "no npm on PATH; skipping main baseline check"
-          : baseline.skipReason === "toolchain"
-            ? "the toolchain is broken; skipping the main baseline check; proceeding with authoring unverified"
-            : `main baseline check timed out after ${BUILD_CHECK_TIMEOUT_MS / 1000}s; proceeding with authoring unverified`,
+      message: buildCheckSkipWarning(
+        baseline.skipReason,
+        "main baseline check",
+        "proceeding with authoring unverified",
+        BUILD_CHECK_TIMEOUT_MS,
+      ),
     });
     return null;
   }

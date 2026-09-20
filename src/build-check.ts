@@ -155,6 +155,12 @@ export function resolveFromNodeModules(startDir: string, rel: string, maxLevels 
  * shorten it. */
 export const BUILD_CHECK_TIMEOUT_MS = 300_000;
 
+/** Why a declared check reached no verdict: the script never finished (timeout), npm is not on
+ * PATH, or the toolchain below the project is broken. Shared with main-baseline.ts's
+ * MainBaselineCheck, whose skip is the same three-way environmental case — the string literals
+ * live in one place so a new reason can be added without two unions drifting apart. */
+export type BuildSkipReason = "timeout" | "no-npm" | "toolchain";
+
 /** What the deterministic build check concluded. "passed": proceed to the reviewer unchanged.
  * "failed": a started process exited nonzero — a deterministic REJECTION with the clipped
  * output tail as machine-generated reasons (no pi run consumed). "skipped": environmental
@@ -171,7 +177,7 @@ export interface BuildCheckOutcome {
    * npm banner excluded), each clipped to MAX_REASON_CHARS. */
   outputTail?: string[];
   /** Why no verdict was reached ("skipped"). */
-  skipReason?: "timeout" | "no-npm" | "toolchain";
+  skipReason?: BuildSkipReason;
 }
 
 /** Probe the check's environment BEFORE spending a run on it: `git --version`, unambiguous
@@ -313,6 +319,21 @@ const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }
  * stand behind it (BUGS.md: a landing build check that times out must not merge unverified). */
 const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"]);
 
+/** The one-line warning for an environmental check skip, keyed on why the check could not run.
+ * `label` names the check in the feed and `proceeding` says what happens despite the skip; the
+ * scoped check (SCOPE_WORDS above) and the red-main baseline gate (main-red.ts) differ only in
+ * those two words, so the three-way mapping lives here once instead of drifting per surface. */
+export function buildCheckSkipWarning(
+  skipReason: BuildSkipReason,
+  label: string,
+  proceeding: string,
+  timeoutMs: number,
+): string {
+  if (skipReason === "no-npm") return `no npm on PATH; skipping ${label}`;
+  if (skipReason === "toolchain") return `the toolchain is broken; skipping ${label}; ${proceeding}`;
+  return `${label} timed out after ${timeoutMs / 1000}s; ${proceeding}`;
+}
+
 /** Run the project's declared check for a named scope — the detect → run → build_check
  * event → skip-warning sequence the review gate's pre-check (scope "gate"), the landing
  * path's in-lock re-check (scope "landing"), and the batch lander's one check over the whole
@@ -364,12 +385,7 @@ export async function runScopedBuildCheck(
     logEvent(root, {
       loop: role,
       type: "warning",
-      message:
-        outcome.skipReason === "no-npm"
-          ? `no npm on PATH; skipping ${w.label}`
-          : outcome.skipReason === "toolchain"
-            ? `the toolchain is broken; skipping ${w.label}; ${w.proceeding}`
-            : `${w.label} timed out after ${timeoutMs / 1000}s; ${w.proceeding}`,
+      message: buildCheckSkipWarning(outcome.skipReason!, w.label, w.proceeding, timeoutMs),
     });
   } else if (mergeTimeout) {
     logEvent(root, {

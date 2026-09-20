@@ -1,4 +1,4 @@
-import { type BuildCheckOutcome, detectBuildCheck, runBuildCheck } from "./build-check.js";
+import { type BuildCheckOutcome, type BuildSkipReason, detectBuildCheck, runBuildCheck } from "./build-check.js";
 import { gitTry } from "./git.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
@@ -61,7 +61,7 @@ interface MainBaseline {
 interface MainBaselineCheck {
   baseline: MainBaseline | null;
   /** Set when a detected check could not be run (timeout, no npm on PATH, or a broken toolchain). */
-  skipReason?: "timeout" | "no-npm" | "toolchain";
+  skipReason?: BuildSkipReason;
 }
 
 /** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is
