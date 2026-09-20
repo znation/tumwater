@@ -357,6 +357,41 @@ test("conflictedFiles decodes C-quoted paths for non-ASCII filenames", async () 
   await resetWorktreeToMain(wt, "main");
 });
 
+// git C-quotes a path with a quote, tab, newline, carriage return, or backslash and escapes
+// each as \", \t, \n, \r, \\ — the escapes a real filename is most likely to need, and the
+// ones an operator notices when conflictedFiles hands a mangled path back to the conflict
+// resolver. The BEL/BS/FF/VT test above covers the rare control bytes; this one drives the
+// common escapes through git's own output rather than hand-built strings.
+test("conflictedFiles decodes C-quoted quote/tab/newline/CR/backslash filenames", async () => {
+  const name = 'we"ird\tna\nnd\r\\me.md';
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, name), "base\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "seed special-char file");
+  const wt = await ensureWorktree(repo, "clean", "main");
+
+  fs.writeFileSync(path.join(wt, name), "branch version\n");
+  await commitAll(wt, "branch edit");
+  fs.writeFileSync(path.join(repo, name), "main version\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "main edit");
+
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+  const files = await conflictedFiles(wt);
+  // Every escape decodes back to the byte in the real filename, so the path exists on disk.
+  assert.deepEqual(files, [name]);
+  assert.ok(fs.existsSync(path.join(wt, files[0] ?? "")));
+  assert.ok(hasConflictMarkers(wt, files), "the marker check can read the decoded path");
+  await resetWorktreeToMain(wt, "main");
+
+  // The mapping itself, spelled out so a regression names the exact escape it broke.
+  assert.equal(unquotePorcelainPath('"a\\nb"'), "a\nb");
+  assert.equal(unquotePorcelainPath('"a\\tb"'), "a\tb");
+  assert.equal(unquotePorcelainPath('"a\\rb"'), "a\rb");
+  assert.equal(unquotePorcelainPath('"a\\\\b"'), "a\\b");
+  assert.equal(unquotePorcelainPath('"a\\"b"'), 'a"b');
+});
+
 test("readBranchHead matches git rev-parse across loose and packed refs", () => {
   const repo = makeRepo();
   // Fresh init keeps the branch as a loose ref.
