@@ -30,6 +30,7 @@ import { makeRepo, sh, tmpdir } from "./util.js";
 const BUILD = { sha: "a".repeat(40), builtAt: 1, root: "/proj" };
 const HEAD_B = "b".repeat(40);
 const HEAD_C = "c".repeat(40);
+const HEAD_D = "d".repeat(40);
 
 /** A controllable deps object: each effect resolves when the test says so. */
 function fakeDeps(over: Partial<RedeployDeps> & { stale?: BuildStaleness | null } = {}) {
@@ -463,10 +464,16 @@ test("within the cooldown a second stale episode is deferred: no hold, status ca
     "the deadline is published through the restartBlocked channel",
   );
   assert.equal(status.restartPending, undefined);
-  // One warning per episode, not one per poll.
-  assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 61 * 60_000), "none");
+  // One warning per episode, not one per poll and not one per head: a landing mid-cooldown
+  // adds no new information, so a different head in the same episode stays silent
+  // (BUGS.md 2026-09-19).
+  assert.equal(
+    await r.poll(HEAD_D, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 61 * 60_000),
+    "none",
+    "a different head inside the same cooldown still defers",
+  );
   const warnings = events.filter((e) => e.type === "warning");
-  assert.equal(warnings.length, 1);
+  assert.equal(warnings.length, 1, "one warning for the whole cooldown episode, not one per head");
   assert.match(String(warnings[0]!.message), /cooldown until/);
   assert.deepEqual(types(), ["build_stale", "restart_pending", "restart", "warning"]);
 });

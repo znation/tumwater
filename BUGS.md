@@ -5,7 +5,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The restart-cooldown deferral warning fires once per landed head instead of once per cooldown episode: 58 warnings in one window, one per merge (found by telemetry loop 2026-09-19)
+## Fixed
+
+### The restart-cooldown deferral warning now fires once per cooldown episode, not once per landed head (found by telemetry loop 2026-09-19, fixed 2026-09-20)
 
 **Symptom:** The 2026-09-19 digest's top warning cluster is `auto-restart of <sha> deferred — cooldown until <ts> (at most one completed restart per 12 h)` — 58 occurrences, role `harness`, 09-19 → 09-19, example `auto-restart of 28bb40f1 deferred — cooldown until 2026-09-20T09:02:59.502Z …`. All 58 belong to one continuously-active 12 h cooldown: the deadline never moves (it is a single completed restart at 09-19T09:02:59.502Z plus 12 h), so the state is constant, yet a fresh warning is logged for every head main advances to during it — effectively once per merged commit. The latch `cooldownWarnedHead` (src/redeploy.ts:191) is keyed on the head and never cleared, so the poll's `if (this.cooldownWarnedHead !== mainHead)` (src/redeploy.ts:284) re-arms on each landing. The field's own doc comment says "one warning per episode, not one per poll" and `test/redeploy.test.ts:444` pins that contract — but only by polling the SAME head twice, so the two-different-heads case is untested and the re-arm ships. The dashboard already surfaces the same state (`restart BLOCKED: cooldown until …`, both headers), so every warning after the first adds noise, not information, and dominates the digest's warning section.
 
@@ -15,9 +17,7 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Expected:** One warning for the whole cooldown episode — the condition `now < cooldownUntil` is head-independent — while per-head staleness stays visible as `STALE: main +N` and `restart BLOCKED: cooldown until …` in both dashboard headers. Latch the warning on the episode (a boolean cleared when the deadline passes or a restart completes) rather than the head, and add a test that polls two different heads inside one cooldown and asserts one warning.
 
-**Suspected cause:** `cooldownWarnedHead` was written as a per-head latch by analogy with `blockedHead` (src/redeploy.ts:182), where per-head is correct because a new head can carry a new verdict (red main, compile failure, swap error). The cooldown verdict is identical for every head, so the analogy does not hold; the doc comment kept the intended per-episode semantics while the field name and comparison implemented the other behavior.
-
-## Fixed
+**Fix:** Replaced the per-head `cooldownWarnedHead` latch with a per-episode boolean `cooldownWarned`, set on the first deferral inside a cooldown and cleared once the deadline lapses, so a landing during a long cooldown no longer re-arms the warning. The regression test now polls two different heads inside one cooldown and asserts exactly one warning (`test/redeploy.test.ts` gained a `HEAD_D` constant); the dashboard's `STALE: main +N` and `restart BLOCKED: cooldown until …` state is unchanged.
 
 ### README promises `status --json` is "the same payload as the GUI's /api/status", but the served payload carries an extra `serverBuildSha` field (found by qa loop 2026-09-19, fixed 2026-09-19)
 

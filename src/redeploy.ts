@@ -186,11 +186,13 @@ export class Redeployer {
    * restartRecord at construction and updated when this process completes one. The cooldown is
    * measured from here on every poll (BUGS.md 2026-09-11). */
   private lastAutoRestartAt: number | null = null;
-  /** The head whose cooldown deferral was already warned about — one warning per episode, not
-   * one per poll. */
-  private cooldownWarnedHead: string | null = null;
+  /** Whether the current cooldown episode's deferral was already warned about — one warning per
+   * episode, not one per poll and not one per head: the cooldown condition is head-independent,
+   * so a landing mid-cooldown adds no new information (BUGS.md 2026-09-19). Cleared when the
+   * deadline lapses, so the next episode warns once. */
+  private cooldownWarned = false;
   /** The head whose green check already warned that it could not run (a rejection, not a red
-   * verdict) — one warning per episode, matching cooldownWarnedHead. */
+   * verdict) — one warning per episode. */
   private checkFailedHead: string | null = null;
   /** The live autoRestart flag as last seen by poll — status() publishes the cooldown reason only
    * while it is on (off means no restart will ever be attempted, so a deadline would mislead). */
@@ -281,8 +283,8 @@ export class Redeployer {
     // the same head proceeds even if main never moves again.
     const cooldownUntil = this.cooldownUntil();
     if (now < cooldownUntil) {
-      if (this.cooldownWarnedHead !== mainHead) {
-        this.cooldownWarnedHead = mainHead;
+      if (!this.cooldownWarned) {
+        this.cooldownWarned = true;
         this.log({
           loop: "harness",
           type: "warning",
@@ -291,6 +293,8 @@ export class Redeployer {
       }
       return this.endDrain();
     }
+    // The cooldown has lapsed (or never started): the next episode warns once more.
+    this.cooldownWarned = false;
 
     if (this.pendingHead === null) {
       this.pendingHead = mainHead;
