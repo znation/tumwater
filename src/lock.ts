@@ -4,7 +4,8 @@ import { pidAlive } from "./process.js";
 import { parsePositiveInt } from "./text.js";
 import { removeTree } from "./files.js";
 
-/** How old a lock must be before we consider stealing it from a dead process. */
+/** How old a lock dir must be before it is stale on age alone — regardless of whether its
+ * recorded pid still looks alive, so a reused pid cannot latch a dead holder as live. */
 const STALE_MS = 10 * 60 * 1000;
 /** A holder writes its pid file immediately after mkdir; if no readable pid exists this long
  * after the dir appeared, the holder died (or wedged) between the two calls and the lock is
