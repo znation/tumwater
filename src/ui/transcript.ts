@@ -64,6 +64,20 @@ function renderAssistantMessage(content: unknown): string[] {
   return out;
 }
 
+/** Render a completed user message into transcript lines: each `text` content block split on
+ * newlines, in order (the exact tick prompt). Only used when the renderer is opted into
+ * prompts; empty or non-text content renders nothing, leaving the run separator on its own. */
+function renderUserPrompt(content: unknown): string[] {
+  const out: string[] = [];
+  if (!Array.isArray(content)) return out;
+  for (const raw of content) {
+    const block = (raw ?? {}) as ContentBlock;
+    if (block.type !== "text") continue;
+    for (const line of String(block.text ?? "").split("\n")) out.push(line);
+  }
+  return out;
+}
+
 /** The event types createTranscriptRenderer's feed() acts on — everything else (streaming
  * deltas, tool/turn bookkeeping) renders nothing. `message_end` covers both roles: assistant
  * turns render and user messages stamp the run separator; `tumwater_run` is a harness-written
@@ -74,7 +88,7 @@ const RENDERABLE_TYPES = new Set(["agent_start", "message_end", "auto_retry_star
 
 interface TranscriptRenderer {
   /** Feed one raw JSONL line; returns the rendered lines of any entry this line completes
-   * (empty for deltas, bookkeeping events, and user messages). */
+   * (empty for deltas, bookkeeping events, and user messages unless includePrompts). */
   feed(line: string): string[];
   /** Emit a pending run separator for a run that produced no renderable event yet. */
   flush(): string[];
@@ -90,16 +104,21 @@ interface TranscriptRenderer {
  * epoch-ms timestamp), assistant `message_end` turns, and `auto_retry_start` warnings. A
  * harness-written `tumwater_run` marker renders nothing itself — it sets a pending label that
  * the next agent_start captures into its separator (`── review @ <ts> ──`). Streaming deltas
- * (`message_update`), tool-execution/turn bookkeeping, and user messages — in particular the
- * multi-KB tick prompt sent each run — are never rendered; feed() skips even parsing them via a
- * fast path over pi's compact `type`-first JSON shape.
+ * (`message_update`) and tool-execution/turn bookkeeping are never rendered; feed() skips even
+ * parsing them via a fast path over pi's compact `type`-first JSON shape.
+ *
+ * User messages (in particular the multi-KB tick prompt sent each run) are suppressed by
+ * default, but `includePrompts` opts into rendering them after their run separator — the
+ * `tumwater logs --role <id> --prompt` surface. The dashboards' polled reader
+ * (readTranscript) keeps the default.
  *
  * The renderer's cross-line state is the pending run separator plus that pending label: both
  * are reset/captured by agent_start, so readTranscriptTail (transcript-tail.ts) starts windows
  * at an agent_start — or at the marker line preceding it when one labels that run — and renders
  * identically to a full re-read. Adding another piece of cross-line state here would silently
  * break that one-shot reader — extend its stop boundary too. */
-export function createTranscriptRenderer(): TranscriptRenderer {
+export function createTranscriptRenderer(opts: { includePrompts?: boolean } = {}): TranscriptRenderer {
+  const includePrompts = opts.includePrompts === true;
   let runOpen = false; // agent_start seen for this run, separator not yet emitted
   let runTime: string | null = null;
   let runLabel: string | null = null; // label captured from the marker preceding this run's agent_start
@@ -135,7 +154,10 @@ export function createTranscriptRenderer(): TranscriptRenderer {
             if (runOpen && runTime === null && typeof message.timestamp === "number") {
               runTime = formatTimestamp(message.timestamp);
             }
-            return []; // never render user content (the tick prompt)
+            if (!includePrompts) return []; // never render user content (the tick prompt)
+            // emitSeparator() runs here for the first time in this run, so the assistant's
+            // later call returns [] — the separator is not duplicated.
+            return [...emitSeparator(), ...renderUserPrompt(message.content)];
           }
           if (message.role !== "assistant") return [];
           const turn = renderAssistantMessage(message.content);
@@ -167,8 +189,8 @@ export function createTranscriptRenderer(): TranscriptRenderer {
 
 /** Pure one-shot formatter over raw JSONL lines. Returns transcript entries (each an array of
  * rendered lines), oldest first; non-JSON/torn lines are skipped without failing. */
-export function formatTranscript(lines: string[]): TranscriptEntry[] {
-  const renderer = createTranscriptRenderer();
+export function formatTranscript(lines: string[], opts?: { includePrompts?: boolean }): TranscriptEntry[] {
+  const renderer = createTranscriptRenderer(opts);
   const entries: TranscriptEntry[] = [];
   for (const line of lines) {
     const out = renderer.feed(line);

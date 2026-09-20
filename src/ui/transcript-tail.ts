@@ -26,11 +26,14 @@ const TAIL_SCAN_CHUNK = 1024 * 1024;
 const EMPTY_BUFFER = Buffer.alloc(0);
 
 /** Cheap substring over-approximation of "this raw line produces at least one rendered entry"
- * (an assistant message_end or a retry warning). Used only to decide how far back
- * readTranscriptTail must scan — an over-count just makes it scan a little further. */
-function isEntryCandidate(line: string): boolean {
+ * (an assistant message_end, a user message_end when prompts are included, or a retry
+ * warning). Used only to decide how far back readTranscriptTail must scan — an over-count just
+ * makes it scan a little further. */
+function isEntryCandidate(line: string, includePrompts: boolean): boolean {
   return (
-    (line.includes('"message_end"') && line.includes('"assistant"')) || line.includes('"auto_retry_start"')
+    (line.includes('"message_end"') &&
+      (line.includes('"assistant"') || (includePrompts && line.includes('"user"')))) ||
+    line.includes('"auto_retry_start"')
   );
 }
 
@@ -63,7 +66,12 @@ interface TranscriptWindow {
  * lossy/invalid UTF-8 — and each complete line decodes identically to the whole-file decode
  * readCompleteLines uses. A line straddling a chunk boundary is held (tail + newline) until
  * its head arrives from an older chunk, so no line is ever decoded torn. */
-export function readTranscriptTail(file: string, limit: number): TranscriptWindow | null {
+export function readTranscriptTail(
+  file: string,
+  limit: number,
+  opts: { includePrompts?: boolean } = {},
+): TranscriptWindow | null {
+  const includePrompts = opts.includePrompts === true;
   const st = statOrNull(file);
   if (!st || st.size === 0) return null;
 
@@ -152,7 +160,7 @@ export function readTranscriptTail(file: string, limit: number): TranscriptWindo
             stoppedAtBoundary = true;
             break;
           }
-        } else if (isEntryCandidate(raw)) {
+        } else if (isEntryCandidate(raw, includePrompts)) {
           candidates += 1;
         } else if (raw.includes('"agent_start"') && candidates >= limit) {
           armed = true; // Keep walking for the marker line preceding this agent_start.
@@ -173,11 +181,11 @@ export function readTranscriptTail(file: string, limit: number): TranscriptWindo
     stoppedAtBoundary = true;
   }
 
-  let entries = formatTranscript(lines.reverse()); // Oldest first.
+  let entries = formatTranscript(lines.reverse(), opts); // Oldest first.
   if (entries.length < limit && stoppedAtBoundary) {
     // Contentless assistant turns made the rendered entries fewer than the candidate count
     // promised — re-read the whole file (the pre-optimization behavior) so slice(-limit) is exact.
-    entries = formatTranscript(readCompleteLines(file, 0, size).lines);
+    entries = formatTranscript(readCompleteLines(file, 0, size).lines, opts);
   }
   return { entries: entries.slice(-limit), end };
 }

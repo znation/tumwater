@@ -1048,6 +1048,53 @@ test("logs --role prints the rendered pi transcript and -n limits entries", asyn
   assert.ok(r.stdout.includes("  second run done"), r.stdout);
 });
 
+test("logs --role --prompt shows each run's exact prompt and -n limits to the newest", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "transcript prompt test");
+  const TS1 = 1787222691956;
+  const TS2 = TS1 + 3_600_000;
+  const file = piLogPath(repo, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    [
+      JSON.stringify({ type: "agent_start" }),
+      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "PROMPT ONE\nsecond line" }], timestamp: TS1 } }),
+      JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "turn one" }] } }),
+      JSON.stringify({ type: "agent_start" }),
+      // The newest run has no assistant turn yet: with --prompt the newest entry is its prompt.
+      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "PROMPT TWO" }], timestamp: TS2 } }),
+    ].join("\n") + "\n",
+  );
+  const p = (n: number) => String(n).padStart(2, "0");
+  const stamp = (ts: number) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  };
+
+  let r = await cli(repo, "logs", "--role", "clean", "--prompt");
+  assert.equal(r.code, 0);
+  // Each prompt lands under its run separator and before that run's assistant turn, verbatim.
+  const one = r.stdout.indexOf("PROMPT ONE\nsecond line");
+  assert.ok(one > -1, r.stdout);
+  assert.ok(r.stdout.indexOf(`── run @ ${stamp(TS1)} ──`) < one, r.stdout);
+  assert.ok(one < r.stdout.indexOf("  turn one"), r.stdout);
+  assert.ok(r.stdout.includes(`── run @ ${stamp(TS2)} ──`), r.stdout);
+  assert.ok(r.stdout.includes("PROMPT TWO"), r.stdout);
+
+  // -n counts a prompt as one entry: only the newest run's prompt remains.
+  r = await cli(repo, "logs", "--role", "clean", "--prompt", "-n", "1");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("PROMPT TWO"), r.stdout);
+  assert.ok(!r.stdout.includes("PROMPT ONE"), r.stdout);
+  assert.ok(!r.stdout.includes("  turn one"), r.stdout);
+
+  // --prompt is meaningless without --role.
+  r = await cli(repo, "logs", "--prompt");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /logs --prompt needs --role <id>/);
+});
+
 // --- doctor: pre-flight check through the real CLI entry point ---
 // runDoctor/renderDoctor and each individual check are pinned in-process in
 // test/doctor.test.ts; what is missing here is main()'s wiring — that doctor runs WITHOUT a

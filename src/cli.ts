@@ -67,8 +67,9 @@ Usage:
                                    Markdown failure digest — tick outcomes, deltas, and clustered errors (default 14 days)
   tumwater doctor                  Pre-flight check: node, git, repo, config, pi, locks, build (read-only; exit 0/1)
   tumwater logs [-f] [-n N]        Show (and follow) harness events
-  tumwater logs --role <id> [-f] [-n N]
+  tumwater logs --role <id> [-f] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
+                                   (--prompt also shows each run's exact prompt text)
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater prompt --list           Show queued prompts, numbered in execution order
   tumwater prompt --cancel <n>     Remove the Nth queued prompt (as shown by --list)
@@ -192,8 +193,10 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
   // loading it unconditionally would make a broken tumwater.json break the read-only event
   // feed too, which never needs it.
   const role = args.includes("--role") ? parseRoleFlag(args, knownRoleIds(loadConfig(root))) : null;
+  const showPrompts = args.includes("--prompt");
+  if (showPrompts && role === null) fail("logs --prompt needs --role <id>");
   if (role !== null) {
-    await cmdLogsTranscript(root, role, limit, follow);
+    await cmdLogsTranscript(root, role, limit, follow, showPrompts);
     return;
   }
   for (const e of readEvents(root, limit)) process.stdout.write(formatEvent(e) + "\n");
@@ -211,10 +214,18 @@ async function cmdLogs(root: string, args: string[]): Promise<void> {
 }
 
 /** `tumwater logs --role <id>`: print (and optionally follow) one loop's pi transcript —
- * run separators, abbreviated thinking, assistant text, and tool calls. Read-only; the raw
- * log is pi's streaming event stream, so only complete renderable events are shown. */
-async function cmdLogsTranscript(root: string, role: string, limit: number, follow: boolean): Promise<void> {
+ * run separators, abbreviated thinking, assistant text, and tool calls; with `--prompt` also
+ * each run's exact prompt text. Read-only; the raw log is pi's streaming event stream, so only
+ * complete renderable events are shown. */
+async function cmdLogsTranscript(
+  root: string,
+  role: string,
+  limit: number,
+  follow: boolean,
+  showPrompts: boolean,
+): Promise<void> {
   const file = piLogPath(root, role);
+  const opts = { includePrompts: showPrompts };
 
   const printEntry = (lines: string[]) => {
     if (lines.length > 0) process.stdout.write(lines.join("\n") + "\n");
@@ -225,7 +236,7 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
   // and its offset stops at the last complete newline, so a torn trailing line is re-read once
   // it completes instead of lost.
   let offset = 0;
-  const tail = readTranscriptTail(file, limit); // null when there's no log yet (or it's empty).
+  const tail = readTranscriptTail(file, limit, opts); // null when there's no log yet (or it's empty).
   if (!tail) {
     process.stdout.write(`no transcript yet for ${role}\n`);
   } else {
@@ -237,7 +248,7 @@ async function cmdLogsTranscript(root: string, role: string, limit: number, foll
   // Follow from where the initial window stopped, so each turn prints exactly once when its
   // message_end lands (torn trailing lines are held back by followFile). A fresh renderer:
   // readTranscriptTail's formatTranscript already flushed any pending separator for what was on disk.
-  const renderer = createTranscriptRenderer();
+  const renderer = createTranscriptRenderer(opts);
   followFile(file, offset, (lines) => {
     for (const line of lines) printEntry(renderer.feed(line));
   });
@@ -343,6 +354,7 @@ async function main(): Promise<void> {
         { names: ["-f", "--follow"] },
         { names: ["-n"], value: true, valueName: "<count>" },
         { names: ["--role"], value: true, valueName: "<id>" },
+        { names: ["--prompt"] },
       ]);
       await requireReadyRepo(root);
       await cmdLogs(root, args);

@@ -51,6 +51,45 @@ test("readTranscriptTail matches a full re-read on a small log", () => {
   }
 });
 
+test("readTranscriptTail matches a full re-read with prompts included, newest entry a prompt", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const lines: string[] = [];
+  for (let i = 1; i <= 6; i++) {
+    if (i % 2 === 0) lines.push(reviewMarker());
+    lines.push(agentStart());
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  // The newest run has its prompt but no assistant turn yet: with prompts included the newest
+  // entry IS the prompt (separator + its lines).
+  lines.push(agentStart());
+  lines.push(userLine("newest prompt\nwith two lines", FIXED_TS + 7 * 60_000));
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  const size = fs.statSync(file).size;
+  const full = formatTranscript(readCompleteLines(file, 0, size).lines, { includePrompts: true });
+  for (const limit of [1, 2, 3, 50]) {
+    assert.deepEqual(
+      readTranscriptTail(file, limit, { includePrompts: true })?.entries,
+      full.slice(-limit),
+      `limit ${limit}`,
+    );
+  }
+  const newest = readTranscriptTail(file, 1, { includePrompts: true });
+  assert.deepEqual(newest?.entries[0], [
+    `── run @ ${expectedTimestamp(FIXED_TS + 7 * 60_000)} ──`,
+    "newest prompt",
+    "with two lines",
+  ]);
+  // The default path still suppresses prompts (no opts).
+  assert.ok(
+    !readTranscriptTail(file, 50)?.entries.flat().some((l) => l.includes("newest prompt")),
+    "prompts stay out without includePrompts",
+  );
+});
+
 test("readTranscriptTail matches a full re-read on a multi-MB log and reads only the tail", (t) => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
@@ -94,6 +133,11 @@ test("readTranscriptTail matches a full re-read on a multi-MB log and reads only
   assert.deepEqual(tail.entries, full.slice(-50));
   assert.equal(tail.end, readCompleteLines(file, 0, size).end);
   assert.ok(bytesRead < size / 2, `expected a bounded read (got ${bytesRead} of ${size})`);
+
+  // With prompts opted in, user message_end lines become entry candidates too; the backward
+  // scan must stay exact across the multi-chunk log.
+  const fullWithPrompts = formatTranscript(readCompleteLines(file, 0, size).lines, { includePrompts: true });
+  assert.deepEqual(readTranscriptTail(file, 3, { includePrompts: true })?.entries, fullWithPrompts.slice(-3));
 });
 
 test("readTranscriptTail re-reads fully when contentless turns undercount candidates", () => {

@@ -53,6 +53,60 @@ test("formatTranscript skips deltas, bookkeeping events, and user content", () =
   assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  done"]);
 });
 
+test("formatTranscript renders the exact prompt under the separator when includePrompts", () => {
+  const prompt = "You are the feature loop.\n\nRead README.md first.\n";
+  const lines = [agentStart(), userLine(prompt), assistantBlocks([{ type: "text", text: "done" }])];
+  // Default stays prompt-free (the existing contract, pinned above).
+  assert.deepEqual(formatTranscript(lines).flat(), [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  done"]);
+  // Opt-in renders the prompt verbatim, once, before the run's assistant turn.
+  assert.deepEqual(formatTranscript(lines, { includePrompts: true }).flat(), [
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
+    "You are the feature loop.",
+    "",
+    "Read README.md first.",
+    "", // the prompt's trailing newline is preserved verbatim
+    "  done",
+  ]);
+});
+
+test("formatTranscript includePrompts with empty user content yields just the separator", () => {
+  const lines = [
+    agentStart(),
+    JSON.stringify({ type: "message_end", message: { role: "user", timestamp: FIXED_TS, content: [] } }),
+    assistantBlocks([{ type: "text", text: "hi" }]),
+  ];
+  assert.deepEqual(formatTranscript(lines, { includePrompts: true }).flat(), [
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
+    "  hi",
+  ]);
+});
+
+test("formatTranscript includePrompts labels the prompt separator for a marked review run", () => {
+  const lines = [
+    JSON.stringify({ type: "tumwater_run", label: "review" }),
+    agentStart(),
+    userLine("review this diff"),
+    assistantBlocks([{ type: "text", text: "VERDICT: approve" }]),
+  ];
+  assert.deepEqual(formatTranscript(lines, { includePrompts: true }).flat(), [
+    `── review @ ${expectedTimestamp(FIXED_TS)} ──`,
+    "review this diff",
+    "  VERDICT: approve",
+  ]);
+});
+
+test("createTranscriptRenderer emits the prompt once under its separator when includePrompts", () => {
+  const r = createTranscriptRenderer({ includePrompts: true });
+  assert.deepEqual(r.feed(agentStart()), []); // separator waits for the user message's timestamp
+  assert.deepEqual(r.feed(userLine("prompt 1\nline 2")), [
+    `── run @ ${expectedTimestamp(FIXED_TS)} ──`,
+    "prompt 1",
+    "line 2",
+  ]);
+  assert.deepEqual(r.feed(assistantBlocks([{ type: "text", text: "turn 1" }])), ["  turn 1"]); // no duplicate separator
+  assert.deepEqual(r.flush(), []);
+});
+
 test("formatTranscript skips torn and non-JSON lines without failing", () => {
   const out = formatTranscript([
     "",

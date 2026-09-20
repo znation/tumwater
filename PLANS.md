@@ -54,7 +54,11 @@ Corrections (pinned in plans/repair-traces.md):
 
 Sizing unchanged: src/roles.ts ~35 lines, src/init.ts ~2, test/prompt.test.ts ~40, test/init.test.ts ~5. No design question remains open.
 
-### Show the exact prompt each run received — `tumwater logs --role <id> --prompt` (planned 2026-09-19)
+## Done
+
+### Show the exact prompt each run received — `tumwater logs --role <id> --prompt` (planned 2026-09-19, done 2026-09-19)
+
+**Landed 2026-09-19 (feature loop).** As planned; the four acceptance criteria hold (prompt under its separator, `-n` counts a prompt as an entry, the tail equals a full re-read with prompts included, the default path and dashboards unchanged). Suite 1182/1182.
 
 **Goal.** Make the composed tick prompt observable. The prompt is the product ("you only write the initial prompt") and is assembled dynamically per tick — a role's find-text plus PRINCIPLES.md plus injected blocks (the telemetry failure digest, the qa flow-coverage block, a rejected change's reasons, the leftover-recovery note). Today there is no way to see what a loop was actually asked: `tumwater logs --role <id>` renders the pi transcript with user messages deliberately suppressed (src/ui/transcript.ts:94,138 — "the multi-KB tick prompt sent each run — are never rendered"), the pi sessions are not a documented surface, and nothing else writes the prompt.
 
@@ -73,8 +77,6 @@ Sizing unchanged: src/roles.ts ~35 lines, src/init.ts ~2, test/prompt.test.ts ~4
 - `logs --role clean --prompt -n 1` prints only the newest run's prompt; `--prompt` without `--role` exits 1 with `logs --prompt needs --role <id>`.
 - The tail window is exact: `readTranscriptTail(file, n, { includePrompts: true })` equals `formatTranscript(wholeFile, { includePrompts: true }).slice(-n)` (the existing pin in test/transcript-tail.test.ts), including when the newest entry is a prompt.
 - The full suite stays green; `readTranscript`/dashboards and every default-path transcript test are unchanged.
-
-## Done
 
 ### Observer roles 2/2 — a flow-coverage ledger so `qa` can rotate (planned 2026-09-17, requested by user, refined 2026-09-18, done 2026-09-19)
 

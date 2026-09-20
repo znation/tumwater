@@ -225,6 +225,7 @@ tumwater report --failures [--days N]   # Markdown failure digest — tick outco
 tumwater doctor       # pre-flight check: node, git, repo, config, pi, locks, build (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
+tumwater logs --role feature --prompt   # …and the exact prompt each run received
 tumwater prompt "prefer no third-party deps"
 tumwater prompt --list             # show queued prompts, numbered in execution order
 tumwater prompt --cancel <n>       # remove the Nth queued prompt (as shown by --list)
