@@ -1,18 +1,20 @@
 import fs from "node:fs";
-import { knownRoleIds, loadConfig } from "./config.js";
-import { fail, parseCountFlag, parseRoleFlag } from "./cli-args.js";
-import { parseEventLine, readEvents } from "./events.js";
-import { formatEvent } from "./ui/event-format.js";
-import { ensureParentDir } from "./files.js";
-import { followFile } from "./ui/tail.js";
-import { createTranscriptRenderer } from "./ui/transcript.js";
-import { readTranscriptTail } from "./ui/transcript-tail.js";
-import { eventsLogPath, piLogPath } from "./paths.js";
+import { knownRoleIds, loadConfig } from "../config.js";
+import { fail, parseCountFlag, parseRoleFlag } from "../cli-args.js";
+import { parseEventLine, readEvents } from "../events.js";
+import { formatEvent } from "./event-format.js";
+import { ensureParentDir } from "../files.js";
+import { followFile } from "./tail.js";
+import { createTranscriptRenderer } from "./transcript.js";
+import { readTranscriptTail } from "./transcript-tail.js";
+import { eventsLogPath, piLogPath } from "../paths.js";
 
 /** The read-only observing half of the CLI's non-dispatch commands: `tumwater logs` and its
  * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table.
  * Unlike operator-commands.ts these write nothing but stdout — they only read the event log
- * and each loop's pi transcript. */
+ * and each loop's pi transcript. It lives in ui/ with the rendering layer it drives: it imports
+ * the event formatter, the transcript renderer, and the file-following helpers, so placing it
+ * here keeps the documented rule that src/ui/ is imported only by itself and cli.ts. */
 
 /** `tumwater logs [-f] [-n <count>] [--role <id>] [--prompt]`: follow or dump the harness event
  * log, or with `--role` one loop's pi transcript (see cmdLogsTranscript). */

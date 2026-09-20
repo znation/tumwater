@@ -11,7 +11,7 @@ import {
   rejectUnknownArgs,
 } from "./cli-args.js";
 import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdWake } from "./operator-commands.js";
-import { cmdLogs } from "./log-commands.js";
+import { cmdLogs } from "./ui/log-commands.js";
 import { orchestratorAlive } from "./state.js";
 import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
 import {
