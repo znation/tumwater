@@ -5,6 +5,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Human-friendly numbers in the report tab's chart labels (planned 2026-09-20, requested by user)
+
+**Goal.** The GUI report tab's chart hover labels abbreviate large counts exactly as the rest of the dashboard already does: a day's 14,000 output tokens reads `2026-09-14: 14.0k`, not `2026-09-14: 14000`. All three chart builders format each numeric segment value through the client's existing `fmtTokens` helper, so a chart label can never disagree with the stat blocks above it.
+
+**Why.** `src/ui/gui-client.ts` defines `fmtTokens` (line 22: `<10000` as-is, else one decimal + `k`) and already uses it for the report's stat blocks (line 213) and the loop table's generated/peak-ctx cells (lines 412–413). The chart builders added later (commit b56c96f, the 2026-09-14 hover-label plan) interpolate the raw values instead — `chartTokens` (line 132) `d.date + ": " + d.tokensOut`, `chartCommits` (line 136), `chartTicksByRole` (line 148). One report tab therefore shows the same token count as `14.0k` in the stat block and `14000` in the chart. The gap is three interpolation sites, not a new formatter.
+
+**Approach.**
+- `src/ui/gui-client.ts` — wrap each chart builder's numeric value in `fmtTokens(...)`:
+  - `chartTokens` (line 132): `title: d.date + ": " + fmtTokens(d.tokensOut)`.
+  - `chartCommits` (line 136): `title: d.date + ": " + fmtTokens(d.commits)`.
+  - `chartTicksByRole` (line 148): `title: d.date + " " + role + ": " + fmtTokens(d.ticksByRole[role] || 0)`.
+  Counts below 10,000 pass through unchanged, so every commit and per-role tick label keeps today's exact text; only token counts ≥10k change. `fmtTokens` is defined above the `// report-chart:start` region but in the same script scope, so the builders already see it.
+  - Correct the two comments that promise the `<title>` is the "exact raw value": the `reportSvg` doc (lines 99–101) and the `report-tip` header (lines 158–160) now say the label carries the same abbreviated value the stat blocks show.
+- `test/gui.test.ts` — the chart-builder test (line 1769) evaluates only the `// report-chart:start…end` region through `new Function("esc", …)`, and `fmtTokens` sits above that region, so inject it as a second parameter exactly as `esc` is: `new Function("esc", "fmtTokens", …)` called with a test-local impl matching line 22 (`(n) => (n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0))`). Update the two value pins: `"2026-09-14: 14000"` → `"2026-09-14: 14.0k"` (line 1820) with its comment, and the commit pin `"2026-09-04: 2"` (line 1835) keeps its string (small value unchanged) while its "exact raw value" comment becomes "abbreviated value". Update the hover-label test's comment (lines 1751–1753) that calls the `<title>` "the exact raw value the chart-builder test pins byte-for-byte".
+
+**Files touched.** `src/ui/gui-client.ts`; `test/gui.test.ts`. No core change, no README change (the GUI paragraph names the tab, not its label formatting).
+
+**Acceptance criteria.**
+- The "Output tokens per day" hover label for a 14,000-token day is `2026-09-14: 14.0k`, the same string the stat block's "output tokens" shows for that total.
+- Commit and per-role tick hover labels are byte-identical to today for counts below 10,000.
+- The chart-builder test passes with `fmtTokens` injected, and `npm test` stays green.
+
+Out of scope: changing `fmtTokens`'s thresholds (adding an `M` suffix, or formatting 1,000–9,999), and any change to the stat blocks' display.
+
+**Grounded 2026-09-20 (director)** against main `ef9a1aa`: `fmtTokens` at src/ui/gui-client.ts:22, stat-block call at :213, loop-table calls at :412–413, chart builder titles at :132/:136/:148; the chart-builder test's region extraction and `esc` injection at test/gui.test.ts:1774–1785, the raw-value pins at :1820–1821 and :1835, the hover-label string test at :1741–1767. Capability check: `grep -n 'fmtTokens' src/ui/gui-client.ts` returns :22, :213, :412, :413 — no chart builder among them, confirming the three unformatted sites.
+
 ### Portability & packaging — run tumwater anywhere, against anything (planned 2026-09-14, requested by user, refined 2026-09-19)
 
 **Full plan: plans/portability.md** — nine independently landable sub-plans (4/7 was split three ways on the 2026-09-19 audit), each with its own goal, design rationale, approach, files touched, and acceptance criteria; the shared problem statement, invariants, and sequencing live at the top of that document. Kept there rather than inline because the series spans packaging, config, git, prompts, and init, and the detail would crowd out every other entry here.
