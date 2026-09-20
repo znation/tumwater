@@ -398,4 +398,3 @@ export async function commitAll(wt: string, message: string): Promise<string> {
   await git(wt, ...COMMIT_IDENT, "commit", "-m", message);
   return headOf(wt, "HEAD");
 }
-

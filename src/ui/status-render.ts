@@ -39,7 +39,6 @@ export function lastTickCell(ts: number | undefined): string {
   return `${s} · ${ago(ts)}`;
 }
 
-
 /** The table's state cell: loopPhase's label, with the current work item prepended while a
  * tick is in flight ("implement plan X · working 3m · turn 2"). Prepending — not appending —
  * so the item survives ellipsis clipping on narrow terminals; the live detail after it is what
@@ -78,7 +77,6 @@ const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
   { index: 8, minWidth: 10 },
 ];
 const COLUMN_GAP = 2;
-
 
 /** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is
  * given, wide cells are clipped so no line exceeds it (terminal rows never wrap). */
