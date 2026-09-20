@@ -2,6 +2,7 @@ import fs from "node:fs";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
 import { formatDate } from "./text.js";
+import { isJsonObject } from "./json-object.js";
 import {
   ensureParentDir,
   forEachTailChunk,
@@ -83,7 +84,7 @@ function terminateTornTail(file: string): void {
 export function parseEventLine(line: string): HarnessEvent | null {
   try {
     const parsed: unknown = JSON.parse(line);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null; // Not an event object.
+    if (!isJsonObject(parsed)) return null; // Not an event object.
     return parsed as HarnessEvent;
   } catch {
     return null; // Skip partial/corrupt lines (e.g. torn writes).

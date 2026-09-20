@@ -1,6 +1,7 @@
 import { extractRefusal, hasVerdictLine, isNothingToDo, REFUSED_SENTINEL } from "./reply-contract.js";
 import { applyToolExecutionEvent, piEventType, type OpenToolCall } from "./pi-event-line.js";
 import { describeToolCall } from "./text.js";
+import { isJsonObject } from "./json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi, piArgs,
@@ -152,7 +153,7 @@ export class PiStreamParser {
       // check below and be counted as forward progress, resetting the hang watchdog for a line
       // that proves nothing. Skip it: the same object check parseEventLine applies to the
       // harness event log.
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return;
+      if (!isJsonObject(parsed)) return;
       event = parsed as PiStreamEvent;
     } catch {
       return; // Non-JSON noise on stdout; ignore.

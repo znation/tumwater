@@ -1,4 +1,5 @@
 import { allRoleIds } from "./roles.js";
+import { isJsonObject } from "./json-object.js";
 
 /** Schema validation for tumwater.json: the key lists (the one source of truth for what a valid
  * file may hold at each level, kept in sync with TumwaterConfig/BackoffConfig/RoleConfig in
@@ -17,13 +18,6 @@ function typeName(v: unknown): string {
   if (v === null) return "null";
   if (Array.isArray(v)) return "an array";
   return typeof v;
-}
-
-/** True when `v` is a plain JSON object — not null, not an array. Every section of
- * tumwater.json must have this shape; the predicate lives in one place so its semantics
- * cannot drift between sections (and it narrows the type, removing the casts). */
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /** Every key tumwater.json may hold, by level. Anything else is a typo that would be
@@ -122,7 +116,7 @@ const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of at leas
  * unknown key is silently ignored so the intended setting never takes effect. Collects
  * every problem so one edit can fix them all; throws a single Error listing them. */
 export function validateConfig(raw: unknown): void {
-  if (!isPlainObject(raw)) {
+  if (!isJsonObject(raw)) {
     throw new Error(`tumwater.json must be a JSON object (got ${typeName(raw)})`);
   }
   const problems: string[] = [];
@@ -182,7 +176,7 @@ export function validateConfig(raw: unknown): void {
       problems.push(`${prefix}${key} must be an array of strings (got ${show(v)})`);
   };
 
-  const r = raw; // Narrowed to an object by isPlainObject above.
+  const r = raw; // Narrowed to an object by isJsonObject above.
   checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
   checkModelTriple(r, "");
   checkStringArray(r, "", "piArgs");
@@ -202,7 +196,7 @@ export function validateConfig(raw: unknown): void {
 
   if ("idleBackoff" in r) {
     const b = r.idleBackoff;
-    if (!isPlainObject(b)) {
+    if (!isJsonObject(b)) {
       problems.push(`idleBackoff must be an object (got ${show(b)})`);
     } else {
       const o = b;
@@ -215,7 +209,7 @@ export function validateConfig(raw: unknown): void {
 
   if ("review" in r) {
     const rv = r.review;
-    if (!isPlainObject(rv)) {
+    if (!isJsonObject(rv)) {
       problems.push(`review must be an object (got ${show(rv)})`);
     } else {
       const o = rv;
@@ -232,7 +226,7 @@ export function validateConfig(raw: unknown): void {
   // rejected: it names nothing, so it would silently never engage.
   if ("fallbackModel" in r) {
     const fb = r.fallbackModel;
-    if (!isPlainObject(fb)) {
+    if (!isJsonObject(fb)) {
       problems.push(`fallbackModel must be an object (got ${show(fb)})`);
     } else {
       checkKnownKeys(fb, MODEL_TRIPLE_KEYS, "fallbackModel", problems);
@@ -255,7 +249,7 @@ export function validateConfig(raw: unknown): void {
     } else {
       cl.forEach((entry, i) => {
         const where = `customLoops[${i}]`;
-        if (!isPlainObject(entry)) {
+        if (!isJsonObject(entry)) {
           problems.push(`${where} must be an object with keys name and task (got ${show(entry)})`);
           return;
         }
@@ -290,7 +284,7 @@ export function validateConfig(raw: unknown): void {
 
   if ("roles" in r) {
     const roles = r.roles;
-    if (!isPlainObject(roles)) {
+    if (!isJsonObject(roles)) {
       problems.push(`roles must be an object mapping role ids to settings (got ${show(roles)})`);
     } else {
       for (const [id, rc] of Object.entries(roles)) {
@@ -303,7 +297,7 @@ export function validateConfig(raw: unknown): void {
           );
           continue;
         }
-        if (!isPlainObject(rc)) {
+        if (!isJsonObject(rc)) {
           problems.push(`roles.${id} must be an object (got ${show(rc)})`);
           continue;
         }

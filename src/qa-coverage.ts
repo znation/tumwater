@@ -1,5 +1,6 @@
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { qaCoveragePath } from "./paths.js";
+import { isJsonObject } from "./json-object.js";
 
 /** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2). Every `qa` tick
  * starts a fresh pi session, so the only durable memory of which flow it last exercised is a
@@ -49,11 +50,11 @@ function isResult(value: unknown): value is QaFlowResult {
 export function readQaCoverage(root: string): QaCoverage {
   const file = readJsonFile<{ flows?: unknown }>(qaCoveragePath(root));
   const flows = file?.flows;
-  if (typeof flows !== "object" || flows === null || Array.isArray(flows)) return {};
+  if (!isJsonObject(flows)) return {};
   const out: QaCoverage = {};
   for (const [name, raw] of Object.entries(flows)) {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
-    const entry = raw as Record<string, unknown>;
+    if (!isJsonObject(raw)) continue;
+    const entry = raw;
     if (typeof entry.lastRunAt !== "number" || !isResult(entry.result)) continue;
     out[name] = {
       lastRunAt: entry.lastRunAt,

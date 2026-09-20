@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { logEvent } from "./events.js";
 import { truncate } from "./text.js";
+import { isJsonObject } from "./json-object.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -79,10 +80,10 @@ function buildCheckFrom(dir: string): BuildCheck | null {
   // TypeError straight out of detection — which every caller's contract (detectBuildCheck,
   // checkMainBaseline, runScopedBuildCheck) promises cannot happen. A scalar or array is the
   // same "not a package.json" case: it declares no scripts either way.
-  if (typeof pkg !== "object" || pkg === null || Array.isArray(pkg)) return null;
-  const scripts = (pkg as { scripts?: unknown }).scripts;
-  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return null;
-  const s = scripts as Record<string, unknown>;
+  if (!isJsonObject(pkg)) return null;
+  const scripts = pkg.scripts;
+  if (!isJsonObject(scripts)) return null;
+  const s = scripts;
   if (isCheckScript(s, "test")) return { rootDir: dir, script: "test" };
   if (isCheckScript(s, "typecheck")) return { rootDir: dir, script: "typecheck" };
   if (isCheckScript(s, "build")) return { rootDir: dir, script: "build" };

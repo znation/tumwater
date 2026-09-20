@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { ensureParentDir } from "./files.js";
+import { isJsonObject } from "./json-object.js";
 
 /** The harness's plain JSON marker/info/state files: tolerant reads of files written by other
  * processes, and pretty-printed overwrites — plain or atomic (tmp+rename) — whose format
@@ -20,7 +21,7 @@ import { ensureParentDir } from "./files.js";
 export function readJsonFile<T extends object>(file: string): T | null {
   try {
     const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null; // Not a state object — no data.
+    if (!isJsonObject(parsed)) return null; // Not a state object — no data.
     return parsed as T;
   } catch {
     return null; // Missing or torn — no data.

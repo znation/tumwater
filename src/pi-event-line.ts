@@ -6,6 +6,8 @@
  * subprocess layer for a pure parse: the same separation reply-contract.ts gives the
  * sentinel/verdict text. */
 
+import { isJsonObject } from "./json-object.js";
+
 /** The `type` value of one pi event line in pi's compact type-first serialization
  * (`{"type":"<event>",…}` — 100% of lines in observed logs), or null when the line does not
  * match that exact prefix (a future pi serialization, torn or foreign JSON). Callers use it as
@@ -44,7 +46,7 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
     // value with no event fields (returned `5`, `"noise"`, `[1,2]`) — the same object check
     // parseEventLine applies to the harness event log and PiStreamParser.feedLine applies to
     // pi's stdout.
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    if (!isJsonObject(parsed)) return null;
     return parsed as T;
   } catch {
     return null; // Torn or non-JSON line — skip without failing.

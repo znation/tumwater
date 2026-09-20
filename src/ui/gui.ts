@@ -7,6 +7,7 @@ import {
   plannedPlanEntries,
 } from "../backlog.js";
 import { submitPrompt } from "../inbox.js";
+import { isJsonObject } from "../json-object.js";
 import { checkDailyBudgetUsd, knownRoleIds, loadConfigCached, setDailyBudgetUsd } from "../config.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
@@ -190,13 +191,12 @@ async function readJsonObject(
     return null;
   }
   // Valid JSON that is not an object ("just a string", [1], null) gets the same fix as
-  // malformed JSON — pointing at a field of a body that has none would mislead. Arrays are
-  // objects in JS, so they need their own clause.
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+  // malformed JSON — pointing at a field of a body that has none would mislead.
+  if (!isJsonObject(parsed)) {
     sendJson(res, 400, { error: `body must be a JSON object like ${example}` });
     return null;
   }
-  return parsed as Record<string, unknown>;
+  return parsed;
 }
 
 /** External IPv4 addresses of this machine's network interfaces, for printing the URLs a

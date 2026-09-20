@@ -4,6 +4,7 @@ import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
 import { configForRole, enabledRoleIds, fallbackPair, reviewConfig } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
+import { isJsonObject } from "./json-object.js";
 
 /** pi's model definitions — the custom providers and models they serve, with each model's
  * declared cost. This is where a local (free) fleet differs from an API one: unpriced or
@@ -31,8 +32,8 @@ const COST_KEYS = ["input", "output", "cacheRead", "cacheWrite"] as const;
  * would otherwise throw straight into the status poll. */
 function costIsFree(cost: unknown): boolean {
   if (cost === undefined) return true;
-  if (typeof cost !== "object" || cost === null || Array.isArray(cost)) return false;
-  const c = cost as Record<string, unknown>;
+  if (!isJsonObject(cost)) return false;
+  const c = cost;
   return COST_KEYS.every((key) => {
     const p = c[key];
     return p === undefined || (typeof p === "number" && Number.isFinite(p) && p === 0);
