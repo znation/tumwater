@@ -37,48 +37,27 @@ locally and keep all project state within the git repo.
 
 <!-- tumwater:status:start -->
 v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
-`status` (`--json`), `report` (`--days N`; Markdown usage report, default 14 days) and
-`report --failures` (Markdown failure digest — tick outcomes, deltas, and clustered errors,
-default 14 days), `doctor` (pre-flight check of node, git, repo, config, fallback model, pi, locks, and build — read-only,
-exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`, `--prompt`), `prompt "text"` /
-`prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`,
-`wake [--role <id>]` (clears a backed-off fleet's sleep — the named roles, or all of them,
-tick within one poll), `abort --role <id>` (kills one loop's in-flight tick; work discarded,
-the loop keeps running), `pause` / `resume` (operator-intent fleet gate: role loops stop
-starting new ticks while in-flight ones finish; the director keeps running), and `help` / `version`.
-All thirteen roles —
-feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h clock), telemetry
-(~2 h clock), improve, steward (~6 h clock) — plus the director are enabled by default; user-defined loops are added
-from `customLoops` in tumwater.json or by prompting the director, and act as full-citizen loops
-marked `*` on both dashboards. While main's build/test suite is red, code-producing roles skip
-their authoring run and show a `main red` state in both dashboards until main is green again
-(director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix, and its
-prompt is pointed at the failure's headline line so it fixes main instead of hunting blind); three
-consecutive error ticks on one loop raise one `warning` and that loop reads `failing` in both
-dashboards until a healthy tick. Queued landings show as `· land queue: N` in the status
-header and both dashboard headers, and the landing role's row reads `landing <elapsed>`.
-The daily cost budget has a third state: with `fallbackModel` naming a model pi prices at zero,
-reaching `maxDailyCostUsd` switches every role loop to it (`budget_fallback`; header badge
-`· fallback: <model> (cost n/a)`) instead of pausing them — the fleet degrades to free work
-rather than stopping, and only a fallback that cannot be verified as free leaves it paused.
+`status` (`--json`), `report` (`--days N`; `--failures` for the Markdown failure digest),
+`doctor`, `logs` (`-f`, `--role <id>`, `-n N`, `--prompt`), `prompt "text"` / `--list` /
+`--cancel <n>`, `reset-counters [--role <id>]`, `wake [--role <id>]`, `abort --role <id>`,
+`pause` / `resume`, and `help` / `version`. All thirteen roles — `feature`, `bugfix`, `plan`,
+`readme`, `organize`, `coverage`, `clean`, `dry`, `perf`, `qa`, `telemetry`, `improve`,
+`steward` — plus the director are enabled by default; user-defined loops come from `customLoops`
+in tumwater.json or by prompting the director.
 
 Open items:
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; nine sub-plans in plans/portability.md, 4/7 split
   three ways on 2026-09-19).
-- Planned: live config-change event — one `config_changed` event naming the tumwater.json keys a
-  live edit changed (planned 2026-09-19).
-- Planned: failure digest in the GUI — a `failures` tab and `/api/failures` endpoint beside
-  `report` (planned 2026-09-19).
-- Open bug: `inputViewWindow` collapses to an empty window, blanking the TUI prompt line at narrow
-  widths with adjacent astral characters (filed 2026-09-19).
-- Open bug: `status --json` is documented as "the same payload as the GUI's /api/status", but the
-  served payload adds `serverBuildSha` (filed 2026-09-19).
-- Open bug: the restart-cooldown deferral warning fires once per landed head instead of once per
-  cooldown episode — one warning per merge across a 12 h cooldown (filed 2026-09-19).
+- Open bug: the budget fallback has no liveness check — an unreachable free model turns the spend
+  cap into an hour of 100% tick failure instead of pausing the fleet (filed 2026-09-20).
+- Open bug: a dead reviewer backend destroys committed work — transport errors count toward
+  `REVIEW_FAILURE_LIMIT` and hard-reset the worktree (filed 2026-09-20).
+- Open bug: a killed tick leaks its tool-call grandchildren — `terminateChild` signals only the pi
+  process, never its group (filed 2026-09-20).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`fe4816f`): build clean, suite 1231/1231.
+Current main (`ef9a1aa`): build clean, suite 1232/1232.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -97,7 +76,9 @@ one loop per enabled role. Every loop tick:
    the same session to produce it; failing that the subject names the changed files), pins the
    sha by `refs/tumwater/landing/<role>`, and enqueues a landing in `.tumwater/land-queue/` —
    then the tick ENDS: it holds no slot through review, and the role's branch resets to main
-   the moment its commit exists. The orchestrator drains the queue on a single serial landing
+   the moment its commit exists. Queued landings show as `· land queue: N` in the status header
+   and both dashboard headers, and the landing role's row reads `landing <elapsed>`. The
+   orchestrator drains the queue on a single serial landing
    slot that takes the same `maxConcurrent` permit as a role tick (at a higher-priority tier,
    so a queued landing jumps ahead of parked role waiters while authors keep ticking on the
    remaining slots) — an adversarial review gate over the full ahead-of-main
@@ -137,6 +118,13 @@ orders the work roles (feature, bugfix, plan) ahead of every maintenance role,
 least-recently-ticked first within a tier — and the same tier order holds for ticks already
 waiting on a slot across polls: a work-role tick that becomes due later jumps ahead of
 maintenance ticks parked from an earlier poll (in-flight ticks always run to completion).
+
+Two operator-visible states sit alongside scheduling. While main's build/test suite is red,
+code-producing roles skip their authoring run and show a `main red` state in both dashboards
+until main is green again — the director, bugfix, and the markdown-only roles keep ticking, since
+bugfix can land the fix and its prompt is pointed at the failure's headline line so it fixes main
+instead of hunting blind. Three consecutive error ticks on one loop raise one `warning`, and that
+loop reads `failing` in both dashboards until a healthy tick.
 
 The fleet's autonomous spend is capped by `maxDailyCostUsd` (default $50; set 0 to disable).
 While the day's total cost has reached the cap, role loops stop starting new ticks — scheduled,
