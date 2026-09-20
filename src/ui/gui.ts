@@ -12,6 +12,7 @@ import { checkDailyBudgetUsd, knownRoleIds, loadConfigCached, setDailyBudgetUsd 
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "./report.js";
+import { collectFailureReport, renderFailureMarkdown } from "../failure-report.js";
 import { statusPayload } from "./status-payload.js";
 import { readTranscript } from "./transcript.js";
 import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reload.js";
@@ -95,22 +96,33 @@ function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root
   sendJson(res, 200, { title: entry.title, body: entry.body });
 }
 
-/** Handle GET /api/report?days=N: the usage report data (collectReport's ReportData) as
- * JSON — the dashboard's report tab renders it. days defaults to REPORT_DEFAULT_DAYS and
- * clamps to 1..REPORT_MAX_DAYS (the same bounds the CLI's --days enforces, shared in
- * report.ts) by
- * one exact rule: missing or non-decimal → 14, out-of-range clamped (never error: a URL typo
- * must degrade to the default window, deliberately unlike handleTranscript's
- * parsePositiveInt→400 idiom). "Non-decimal" is the shared plain-digit rule
- * (text.parseNonNegativeInt): hex/scientific/signed/padded spellings are not counts and get
- * the default instead of a coerced value — raw Number.parseInt would read "1e3" as 1, "0x10"
- * as 0, and "-5" as -5. Reads files directly, so it works whether or not the fleet is running.
- */
-function handleReport(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+/** The window both report endpoints serve, from ?days=N on the request. One exact rule,
+ * shared so /api/report and /api/failures cannot drift: missing or non-decimal →
+ * REPORT_DEFAULT_DAYS, out-of-range clamped to 1..REPORT_MAX_DAYS (the same bounds the CLI's
+ * --days enforces, shared in report.ts) — never an error (a URL typo must degrade to the
+ * default window, deliberately unlike handleTranscript's parsePositiveInt→400 idiom).
+ * "Non-decimal" is the shared plain-digit rule (text.parseNonNegativeInt):
+ * hex/scientific/signed/padded spellings are not counts and get the default instead of a
+ * coerced value — raw Number.parseInt would read "1e3" as 1, "0x10" as 0, and "-5" as -5. */
+function windowDays(req: http.IncomingMessage): number {
   const q = new URL(req.url ?? "", "http://localhost").searchParams;
   const n = parseNonNegativeInt(q.get("days") ?? "");
-  const days = n === null ? REPORT_DEFAULT_DAYS : Math.min(REPORT_MAX_DAYS, Math.max(1, n));
-  sendJson(res, 200, collectReport(root, days));
+  return n === null ? REPORT_DEFAULT_DAYS : Math.min(REPORT_MAX_DAYS, Math.max(1, n));
+}
+
+/** Handle GET /api/report?days=N: the usage report data (collectReport's ReportData) as
+ * JSON — the dashboard's report tab renders it. The days window follows windowDays. Reads
+ * files directly, so it works whether or not the fleet is running. */
+function handleReport(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+  sendJson(res, 200, collectReport(root, windowDays(req)));
+}
+
+/** Handle GET /api/failures?days=N: the same bounded Markdown failure digest the telemetry
+ * loop feeds on and `tumwater report --failures` prints, as JSON ({ markdown }) — the
+ * dashboard's failures tab renders it. The days window follows windowDays (so it can never
+ * drift from /api/report's). Reads files directly, so it works with no fleet running. */
+function handleFailures(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(req))) });
 }
 
 /** Max request body for /api/prompt, in wire bytes. Over it the promise rejects
@@ -253,6 +265,8 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
         sendJson(res, 200, { ...statusPayload(root), serverBuildSha: startupBuild?.sha ?? null });
       } else if (req.method === "GET" && pathname === "/api/report") {
         handleReport(req, res, root);
+      } else if (req.method === "GET" && pathname === "/api/failures") {
+        handleFailures(req, res, root);
       } else if (req.method === "GET" && pathname === "/api/transcript") {
         handleTranscript(req, res, root);
       } else if (req.method === "GET" && pathname === "/api/backlog") {

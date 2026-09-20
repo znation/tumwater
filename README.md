@@ -253,7 +253,11 @@ and reviewer runs, and review runs render as `── review @ <timestamp> ──
 `gui --all-interfaces` binds every network interface (IPv4 and IPv6) instead of localhost, and
 prints the LAN URLs it is reachable at. The dashboard has **no authentication**, and its prompt
 box feeds the director — anyone who can reach the port can steer the fleet and read every
-transcript. Use it only on networks where that is acceptable.
+transcript. Use it only on networks where that is acceptable. Its `report` tab charts usage
+(served by `GET /api/report?days=N`) and its `failures` tab renders the same Markdown failure
+digest as `tumwater report --failures` (served by `GET /api/failures?days=N`, the sibling
+endpoint sharing the report's clamped 1–90 window; both read files directly, so they work with
+no fleet running).
 
 Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
 `qa`, `telemetry`, `improve`, `steward`, `director`. Enable/disable them, pick pi's provider/model/thinking

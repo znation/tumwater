@@ -56,20 +56,24 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     });
   }
   // loop-sort:end
-  // ---- report tab: the usage dashboard ------------------------------------------
-  // Top-level views inside one page: "fleet" (today's dashboard, default) and "report"
-  // (usage charts). The director prompt form sits outside both — an operator control,
-  // visible on every tab. The 1s status poll keeps running on both tabs; the report data
-  // itself is fetched only on tab activation (usage moves at tick granularity, not per second).
+  // ---- report / failures tabs: the usage dashboard and the failure digest ---------
+  // Top-level views inside one page: "fleet" (today's dashboard, default), "report" (usage
+  // charts) and "failures" (the bounded Markdown digest). The director prompt form sits
+  // outside all of them — an operator control, visible on every tab. The 1s status poll keeps
+  // running on every tab; report/failures data is fetched only on tab activation (both move at
+  // tick granularity, not per second).
   let activeView = "fleet";
   function switchView(v) {
-    if (v !== "fleet" && v !== "report") return;
+    if (v !== "fleet" && v !== "report" && v !== "failures") return;
     activeView = v;
     document.getElementById("fleet-view").hidden = v !== "fleet";
     document.getElementById("report").hidden = v !== "report";
+    document.getElementById("failures").hidden = v !== "failures";
     document.getElementById("tab-fleet").classList.toggle("active", v === "fleet");
     document.getElementById("tab-report").classList.toggle("active", v === "report");
+    document.getElementById("tab-failures").classList.toggle("active", v === "failures");
     if (v === "report") fetchReport(); // on every activation — re-clicking refetches
+    if (v === "failures") fetchFailures(); // likewise
   }
 
   // report-chart:start
@@ -231,6 +235,22 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
       // A failed poll is no longer a bare "unavailable": the apiError message names the
       // endpoint, status, and the server's error (a network failure says Failed to fetch).
       panel.innerHTML = "<span class='muted'>report unavailable" + (e && e.message ? " — " + esc(e.message) : "") + "</span>";
+    }
+  }
+
+  // Fetch the failure digest on tab activation and render the Markdown into #failures, the
+  // same bounded text that "tumwater report --failures" prints (server-rendered, so the
+  // browser stays a thin viewer). Re-clicking the tab refetches, like the report tab.
+  async function fetchFailures() {
+    const panel = document.getElementById("failures");
+    try {
+      const r = await fetch("/api/failures?days=14");
+      if (!r.ok) throw await apiError("/api/failures", r);
+      const d = await r.json();
+      panel.innerHTML = "<span class='muted'>failure digest — last 14 days — click the tab again to refresh</span>\\n" + esc(d.markdown || "(no digest)");
+    } catch (e) {
+      // Same guard as fetchReport: name the endpoint, status, and server error.
+      panel.innerHTML = "<span class='muted'>failures unavailable" + (e && e.message ? " — " + esc(e.message) : "") + "</span>";
     }
   }
 
@@ -440,7 +460,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     const a = ev.target.closest("a");
     if (!a || !a.id.startsWith("tab-")) return;
     ev.preventDefault();
-    switchView(a.id.slice(4)); // "fleet" | "report" — re-clicking the active tab refetches
+    switchView(a.id.slice(4)); // "fleet" | "report" | "failures" — re-clicking the active tab refetches
   });
   document.getElementById("promptform").addEventListener("submit", async (ev) => {
     ev.preventDefault();

@@ -26,7 +26,21 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7; 4c/7 is markdown-only. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
-### Failure digest in the GUI — a `failures` tab beside `report` (planned 2026-09-19)
+## Done
+
+### Failure digest in the GUI — a `failures` tab beside `report` (planned 2026-09-19, done 2026-09-19)
+
+**Landed 2026-09-19 (feature loop).** As planned, with one refinement: the three `days`-parsing
+lines became a local `windowDays(req)` helper in `src/ui/gui.ts`, used by both `handleReport` and
+the new `handleFailures`, so the two endpoints cannot drift. `handleFailures` serves
+`{ markdown: renderFailureMarkdown(collectFailureReport(root, days)) }` over `GET /api/failures`;
+the page gained a `failures` nav tab and a `#failures` container (added to `#transcript`’s CSS
+rule, so the digest keeps its newlines and scrolls), and the client’s `switchView`/`fetchFailures`
+render the digest on activation and refetch on re-click. README names the tab and the endpoint
+beside its report sibling. Tests: `test/gui.test.ts` adds an `/api/failures` route test (the
+markdown equals the pure renderer’s output; the full `/api/report` clamp table compared against
+the digest for each clamped window) and extends the page test for the third tab, the `#failures`
+container, and the activation-only fetch. `npm test`: 1232/1232 — full suite green.
 
 **Goal.** The deterministic failure digest the `telemetry` loop feeds on and `tumwater report --failures` prints becomes a dashboard view: a `GET /api/failures?days=N` endpoint serving the same bounded Markdown, and a `failures` tab in the GUI beside `report` that renders it. An operator can see tick outcomes, per-role deltas, and clustered errors over the window without leaving the browser.
 
@@ -50,7 +64,6 @@ Out of scope: a TUI failures pane, a window/days selector, and a JSON form of th
 
 **Grounded 2026-09-19 (plan loop)** against main `b4781e8`: `collectFailureReport` (src/failure-report.ts:214) and `renderFailureMarkdown` (:378) are exported core functions; the digest's only current surfaces are `tumwater report --failures` (src/cli.ts:263) and the telemetry prompt block (src/prompt.ts:141–149). Capability absence re-confirmed: `grep -rn 'api/failures\|tab-failures\|fetchFailures' src/ test/` is empty and no Planned/Done entry covers a dashboard failures view — plans/telemetry-role.md:212–214 explicitly deferred it. Seams pinned: `handleReport` (src/ui/gui.ts:109–113), the route chain (:254), the nav (src/ui/gui-page.ts:48), `#report` (:62), `switchView` (src/ui/gui-client.ts:65–73), `fetchReport` (:219), the `viewnav` handler (:439); tests to mirror at test/gui.test.ts:1568 and :1636. One run: one route + one shared days helper, three markup/client edits, one README sentence, and two GUI tests.
 
-## Done
 
 ### Live config-change event — surface what a tumwater.json edit changed (planned 2026-09-19, done 2026-09-19)
 

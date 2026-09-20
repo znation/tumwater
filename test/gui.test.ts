@@ -9,6 +9,7 @@ import { collectReport, type ReportData, type ReportDay } from "../src/ui/report
 import { lanAddresses, startGui } from "../src/ui/gui.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
+import { collectFailureReport, renderFailureMarkdown } from "../src/failure-report.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { eventsLogPath, landingStatePath, orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
@@ -1633,31 +1634,89 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   }
 });
 
+test("gui /api/failures serves the rendered digest and clamps days instead of erroring", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "failures api test");
+  // Seed events with explicit ts values across roles, including one error so the digest has a
+  // cluster to render — the endpoint's whole job is to hand back renderFailureMarkdown's text.
+  const evFile = eventsLogPath(repo);
+  fs.mkdirSync(path.dirname(evFile), { recursive: true });
+  fs.writeFileSync(
+    evFile,
+    [
+      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
+      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "tick_end", tick: 2, result: "error", error: "pi exited 1" }),
+      JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }),
+      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "tick_end", tick: 3, result: "no_change" }),
+    ].join("\n") + "\n",
+  );
+
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  try {
+    // Default window: the markdown equals the pure renderer's output for the same root/days.
+    const res = await fetch(base + "/api/failures");
+    assert.equal(res.status, 200);
+    const d = (await res.json()) as { markdown: string };
+    assert.equal(d.markdown, renderFailureMarkdown(collectFailureReport(repo, 14)));
+    assert.match(d.markdown, /^# tumwater failure digest/, "the tab renders the digest's heading first");
+
+    // days follows /api/report's exact rule: missing/non-decimal → 14; out-of-range clamped to
+    // 1..90 — never an error. Compare each against the digest rendered for the clamped count.
+    const cases: Array<[string, number]> = [
+      ["days=14", 14],
+      ["days=", 14],
+      ["days=abc", 14],
+      ["days=-5", 14], // signed spelling is not a count — default, not clamped coercion
+      ["days=1e3", 14], // scientific spelling likewise
+      ["days=0x10", 14], // hex prefix: raw parseInt stopped at "x" and coerced to 0 → 1 day
+      ["days=%207", 14], // whitespace-padded spelling is not a count
+      ["days=0", 1],
+      ["days=91", 90],
+      ["days=900", 90],
+    ];
+    for (const [q, expected] of cases) {
+      const r = await fetch(base + "/api/failures?" + q);
+      assert.equal(r.status, 200, `${q} → 200 (a URL typo degrades to a window, not an error)`);
+      const dd = (await r.json()) as { markdown: string };
+      assert.equal(dd.markdown, renderFailureMarkdown(collectFailureReport(repo, expected)), `${q} → ${expected}`);
+    }
+  } finally {
+    server.close();
+  }
+});
+
 test("the dashboard page carries the report tab nav and its view containers", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
 
-  // Nav row under the h1 with both tabs; fleet is active by default.
+  // Nav row under the h1 with all three tabs; fleet is active by default.
   assert.match(
     GUI_PAGE,
-    /<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet<\/a>[\s\S]*?<a href="#" id="tab-report">report<\/a><\/nav>/,
+    /<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet<\/a>[\s\S]*?<a href="#" id="tab-report">report<\/a>[\s\S]*?<a href="#" id="tab-failures">failures<\/a><\/nav>/,
   );
 
-  // The fleet view wraps exactly the four fleet elements; #report is a hidden sibling shown
-  // when active (the page's existing hidden-attribute pattern).
+  // The fleet view wraps exactly the four fleet elements; #report and #failures are hidden
+  // siblings shown when active (the page's existing hidden-attribute pattern).
   assert.match(
     GUI_PAGE,
     /<div id="fleet-view">\n<table>[\s\S]*?<\/table>\n<div id="transcript" hidden><\/div>\n<div id="backlog"><\/div>\n<div id="feed"><\/div>\n<\/div>/,
   );
-  assert.match(GUI_PAGE, /<\/div>\n<div id="report" hidden><\/div>\n<script>/);
+  assert.match(GUI_PAGE, /<\/div>\n<div id="report" hidden><\/div>\n<div id="failures" hidden><\/div>\n<script>/);
+  // #failures reuses #transcript's box, so the digest keeps its newlines and scrolls.
+  assert.match(GUI_PAGE, /#transcript, #failures \{[\s\S]*?white-space:pre-wrap/);
 
-  // The director prompt form sits outside the fleet view — visible on both tabs.
+  // The director prompt form sits outside the fleet view — visible on every tab.
   const formIdx = GUI_PAGE.indexOf('<form id="promptform">');
   const viewIdx = GUI_PAGE.indexOf('<div id="fleet-view">');
   assert.ok(formIdx !== -1 && viewIdx !== -1 && formIdx < viewIdx, "the prompt form stays outside the fleet view");
 
-  // The report is fetched on tab activation only — no per-second poll of it while open.
+  // Report and failures are fetched on tab activation only — no per-second polls of them.
   assert.match(GUI_PAGE, /fetch\("\/api\/report\?days=14"\)/);
   assert.match(GUI_PAGE, /if \(v === "report"\) fetchReport\(\)/);
+  assert.match(GUI_PAGE, /fetch\("\/api\/failures\?days=14"\)/);
+  assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
   assert.equal(GUI_PAGE.match(/setInterval\(/g)?.length ?? 0, 1, "the only poll is the existing 1s status refresh");
 });
 

@@ -18,7 +18,7 @@ export const GUI_PAGE = `<!doctype html>
   .working { color:#7ec8ff; } .changed { color:#7fd88f; } .error, .merge_conflict { color:#ff9a8a; }
   #feed { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
           height:16em; overflow-y:auto; font-size:13px; color:#9fb0bf; }
-  #transcript { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
+  #transcript, #failures { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
           max-height:16em; overflow-y:auto; font-size:13px; color:#9fb0bf; white-space:pre-wrap;
           margin-bottom:1rem; }
   #backlog { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
@@ -45,7 +45,7 @@ export const GUI_PAGE = `<!doctype html>
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
 </style>
 <h1>tumwater <span class="muted" id="header">connecting…</span><span id="budgetwrap"></span></h1>
-<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet</a><span class="muted"> | </span><a href="#" id="tab-report">report</a></nav>
+<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet</a><span class="muted"> | </span><a href="#" id="tab-report">report</a><span class="muted"> | </span><a href="#" id="tab-failures">failures</a></nav>
 <form id="promptform">
   <input id="prompt" placeholder="type a prompt for the project — it runs immediately via the director loop" autocomplete="off">
   <button>send</button><span id="flash"></span>
@@ -60,6 +60,7 @@ export const GUI_PAGE = `<!doctype html>
 <div id="feed"></div>
 </div>
 <div id="report" hidden></div>
+<div id="failures" hidden></div>
 <script>
 ${GUI_CLIENT_JS}
 </script>
