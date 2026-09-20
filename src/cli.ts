@@ -57,7 +57,8 @@ Usage:
                                    network — no auth, anyone reaching it can prompt
                                    the director)
   tumwater status [--json]         One-shot status table (--json prints machine-readable
-                                   fleet state — same payload as the GUI's /api/status)
+                                   fleet state — the GUI's /api/status payload minus the
+                                   serving process's serverBuildSha)
   tumwater report [--days N]       Markdown usage report — tokens/ticks/commits per day (default 14 days)
   tumwater report --failures [--days N]
                                    Markdown failure digest — tick outcomes, deltas, and clustered errors (default 14 days)
@@ -231,9 +232,10 @@ async function main(): Promise<void> {
       rejectUnknownArgs("status", args, [{ names: ["--json"] }]);
       await requireReadyRepo(root);
       if (args.includes("--json")) {
-        // Machine-readable fleet state — the same document GET /api/status serves, printed
-        // with no server. A query, not a health verdict: exit 0 on any successful read and
-        // let scripts interpret fields themselves ("running": false is data, not failure).
+        // Machine-readable fleet state — the document GET /api/status serves minus the
+        // serving process's own `serverBuildSha`, printed with no server. A query, not a
+        // health verdict: exit 0 on any successful read and let scripts interpret fields
+        // themselves ("running": false is data, not failure).
         process.stdout.write(JSON.stringify(statusPayload(root), null, 2) + "\n");
       } else {
         process.stdout.write(

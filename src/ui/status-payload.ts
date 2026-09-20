@@ -6,11 +6,13 @@ import { budgetGate, budgetReached, dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
 import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForRole, loopPhase } from "./status-model.js";
 
-/** The one fleet-state document both observer surfaces serve: `GET /api/status` (gui.ts) and
- * `tumwater status --json` (cli.ts) print the same payload, so the dashboard and the CLI can
- * never drift apart. Assembled here — not in gui.ts — because it is shared data collection for
- * observers, not part of serving HTTP: snapshot() supplies the core state, and the per-loop
- * phase/metrics fields come from the same status-model helpers the TUI table uses. */
+/** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui.ts)
+ * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
+ * newer build and reload), while `tumwater status --json` (cli.ts) prints it verbatim — every
+ * other field is shared, so the dashboard and the CLI can never drift apart. Assembled here —
+ * not in gui.ts — because it is shared data collection for observers, not part of serving HTTP:
+ * snapshot() supplies the core state, and the per-loop phase/metrics fields come from the same
+ * status-model helpers the TUI table uses. */
 export function statusPayload(root: string): object {
   const snap = snapshot(root);
   // The budget gate is fleet-wide (plans/daily-cost-budget.md) and three-valued since

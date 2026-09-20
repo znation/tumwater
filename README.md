@@ -69,8 +69,6 @@ Open items:
   live edit changed (planned 2026-09-19).
 - Open bug: `inputViewWindow` collapses to an empty window, blanking the TUI prompt line at narrow
   widths with adjacent astral characters (filed 2026-09-19).
-- Open bug: `status --json` is documented as "the same payload as the GUI's /api/status", but the
-  served payload adds `serverBuildSha` (filed 2026-09-19).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
 Current main (`b4781e8`): build clean, suite 1224/1224.
@@ -222,7 +220,7 @@ tumwater tui          # terminal 2: dashboard + main prompt
 tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N to change)
 tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
 tumwater status       # one-shot table
-tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)
+tumwater status --json   # machine-readable fleet state (the GUI's /api/status payload minus its serverBuildSha)
 tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days; --days bounded to the GUI's shared 1–90 window)
 tumwater report --failures [--days N]   # Markdown failure digest — tick outcomes, deltas, and clustered errors (default 14 days)
 tumwater doctor       # pre-flight check: node, git, repo, config, fallback model, pi, locks, build (read-only; exit 0/1)

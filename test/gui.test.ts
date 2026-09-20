@@ -117,6 +117,24 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
     assert.equal(status.running, false);
     assert.ok(status.loops.some((l) => l.role === "director"));
 
+    // The served document is exactly the CLI's (`statusPayload`) plus one field only the server
+    // can know — the serving process's own `serverBuildSha`, the page's cue to notice a newer
+    // build and reload. Pin the relation so the two surfaces cannot silently drift, and the
+    // README/help's "the GUI's payload minus serverBuildSha" promise stays true. Both sides go
+    // through a JSON round-trip (the served side already has): that is exactly what the endpoint
+    // and `status --json` emit, and `pid: undefined` must vanish from both.
+    const { serverBuildSha, ...servedRest } = status as Record<string, unknown>;
+    assert.ok("serverBuildSha" in status, "the served payload names the serving build");
+    assert.ok(
+      serverBuildSha === null || typeof serverBuildSha === "string",
+      "serverBuildSha is the build sha or null",
+    );
+    assert.deepEqual(
+      servedRest,
+      JSON.parse(JSON.stringify(statusPayload(repo))),
+      "served payload is the CLI's plus serverBuildSha",
+    );
+
     const post = await fetch(base + "/api/prompt", {
       method: "POST",
       headers: { "content-type": "application/json" },
