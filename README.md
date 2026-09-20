@@ -67,12 +67,13 @@ Open items:
   three ways on 2026-09-19).
 - Planned: live config-change event — one `config_changed` event naming the tumwater.json keys a
   live edit changed (planned 2026-09-19).
-- Open bug: friction's absolute turn threshold flags ordinary fast-model ticks — `highFriction`
-  ORs `thrashTurns` (40, tuned for the local model) with wall-clock, so 41-turn/5-minute ticks get
-  the full flag (filed 2026-09-19).
+- Open bug: `inputViewWindow` collapses to an empty window, blanking the TUI prompt line at narrow
+  widths with adjacent astral characters (filed 2026-09-19).
+- Open bug: `status --json` is documented as "the same payload as the GUI's /api/status", but the
+  served payload adds `serverBuildSha` (filed 2026-09-19).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`e360bd1`): build clean, suite 1210/1210.
+Current main (`b4781e8`): build clean, suite 1224/1224.
 <!-- tumwater:status:end -->
 
 ## How it works
