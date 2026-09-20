@@ -472,6 +472,37 @@ test("typing edits the prompt line; Enter queues it for the director", async () 
   }
 });
 
+test("a failed prompt submit keeps the text and flashes the error instead of losing it", async () => {
+  // Regression: the TUI cleared the input line before calling submitPrompt and left the call
+  // unguarded, so a queue write failure (disk full, permissions) both silently dropped the
+  // operator's prompt and threw out of the keypress handler, killing the TUI. The GUI's prompt
+  // form already keeps the text and flashes the error on failure; the TUI must match.
+  const repo = await makeTuiRepo();
+  const tui = startTui(repo);
+  const origWriteFileSync = fs.writeFileSync;
+  fs.writeFileSync = ((file: fs.PathOrFileDescriptor, ...rest: unknown[]) => {
+    if (String(file).includes(`${path.sep}inbox${path.sep}`)) {
+      throw new Error("ENOSPC: no space left on device, write");
+    }
+    return (origWriteFileSync as (...a: unknown[]) => unknown)(file, ...rest);
+  }) as unknown as typeof fs.writeFileSync;
+  try {
+    for (const ch of "fix the bug") tui.key(ch, ch);
+    tui.key(undefined, "return");
+
+    const frame = tui.lastFrame();
+    assert.match(frame, /error: ENOSPC/); // the reason is surfaced, not swallowed
+    assert.doesNotMatch(frame, /queued for the director loop/);
+    // The text is kept so it can be resubmitted once the failure is fixed.
+    assert.equal(tui.lines().at(-1), "> fix the bug");
+    const inbox = path.join(repo, ".tumwater", "inbox");
+    assert.equal(fs.readdirSync(inbox).filter((f) => f.endsWith(".md")).length, 0);
+  } finally {
+    fs.writeFileSync = origWriteFileSync;
+    await tui.quit();
+  }
+});
+
 /** Replace a file's first `_None yet._` placeholder (under its first section) with an entry. */
 function seedEntry(root: string, file: string, heading: string): void {
   const p = path.join(root, file);

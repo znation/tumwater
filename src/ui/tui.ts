@@ -12,7 +12,7 @@ import { submitPrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
-import { clipToWidth, usdCap } from "../text.js";
+import { clipToWidth, errorMessage, usdCap } from "../text.js";
 import { readTranscript } from "./transcript.js";
 import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reload.js";
 import {
@@ -348,11 +348,23 @@ export async function runTui(root: string): Promise<void> {
           flashUntil = Date.now() + 3000;
         } else {
           const prompt = input.trim();
-          input = "";
-          cursor = 0;
-          if (prompt) {
-            submitPrompt(root, prompt);
-            flash = "queued for the director loop";
+          if (!prompt) {
+            // Whitespace-only input queues nothing; drop it like an empty line.
+            input = "";
+            cursor = 0;
+          } else {
+            try {
+              submitPrompt(root, prompt);
+              input = "";
+              cursor = 0;
+              flash = "queued for the director loop";
+            } catch (err) {
+              // The queue write failed (disk full, permissions): keep the operator's text so
+              // it can be resubmitted, and flash the reason — the same contract the GUI's
+              // prompt form honors. Clearing the line first would silently lose the prompt,
+              // and an unguarded throw would escape the keypress handler and kill the TUI.
+              flash = `error: ${errorMessage(err)}`;
+            }
             flashUntil = Date.now() + 3000;
           }
         }
