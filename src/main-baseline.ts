@@ -27,9 +27,10 @@ export function failureHeadline(tail: readonly string[] | undefined): string | u
 // ── Main baseline (red-main gate) ────────────────────────────────────────────────────────
 // The review gate verifies worktree = main + changes before every merge; this checks MAIN
 // ITSELF — once per SHA, fleet-wide — before an authoring run is spent on top of it. A red
-// main rejects every code diff deterministically at the gate (BUGS.md's nine "build/tests red
-// on main" entries), so while a SHA is known red the harness skips authoring for the
-// code-producing roles instead of burning runs that are guaranteed to fail (PLANS.md, "Red-
+// main rejects every code diff deterministically at the gate (BUGS.md's "Build broken on
+// main" and "Tests red on main" entries), so while a SHA is known red the harness skips
+// authoring for the code-producing roles instead of burning runs that are guaranteed to
+// fail (PLANS.md, "Red-
 // main baseline check").
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA. */
