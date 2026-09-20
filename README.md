@@ -262,7 +262,10 @@ instead of restamping after every merge), and tune backoff in
 `tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
 within ~2s — every setting applies live: enabling/disabling roles, per-role provider/model/
 thinking/instructions, tick intervals, backoff, the `maxConcurrent` cap and `landBatchMax` batch size, `autoRestart`, and
-`sessionRetentionDays` (a mid-run edit re-prunes immediately). User-defined loops (`customLoops` entries in tumwater.json) can be added, removed, or rearranged by prompting the director ("add a loop named X that does Y") or by hand-editing the file (live within ~2 s); they act like any other loop and are marked with `*` beside their name on both dashboards.
+`sessionRetentionDays` (a mid-run edit re-prunes immediately). A live edit that changes any of
+these logs one `config_changed` event naming the keys that changed (the two settings with their
+own, more informative events — `maxConcurrent` and `sessionRetentionDays` — keep those). A
+`roles.<id>` change is named per role, never as the whole map. User-defined loops (`customLoops` entries in tumwater.json) can be added, removed, or rearranged by prompting the director ("add a loop named X that does Y") or by hand-editing the file (live within ~2 s); they act like any other loop and are marked with `*` beside their name on both dashboards.
 
 Spend is capped by `maxDailyCostUsd` in tumwater.json (default 50; set 0 to disable): once the
 day's total cost across all loops reaches it, role loops stop starting new ticks for the rest of

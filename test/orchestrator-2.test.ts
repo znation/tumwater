@@ -265,6 +265,52 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
   }
 });
 
+test("a live config edit logs one config_changed naming the keys, and an identical rewrite logs none", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "config change event test");
+  saveConfig(repo, fastConfig(["clean"]));
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    const changeds = () => readEvents(repo).filter((e) => e.type === "config_changed");
+    await waitFor(() => loadLoopState(repo, "clean").ticks >= 1, "a startup tick");
+    assert.equal(changeds().length, 0, "no config_changed while the file is unchanged");
+
+    // Rewriting the same content (new mtime, same bytes) is not a change.
+    saveConfig(repo, fastConfig(["clean"]));
+    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 4));
+    assert.equal(changeds().length, 0, "an identical rewrite logs nothing");
+
+    // A real edit names exactly the changed keys, once — not once per poll.
+    const cfg = fastConfig(["clean"]);
+    cfg.provider = "huggingface";
+    cfg.thrashTurns = 7;
+    saveConfig(repo, cfg);
+    await waitFor(() => changeds().length === 1, "exactly one config_changed event");
+    assert.deepEqual(changeds()[0]!.keys, ["provider", "thrashTurns"]);
+    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 4));
+    assert.equal(changeds().length, 1, "no repeat event while the file is unchanged");
+
+    // A maxConcurrent-only edit keeps its own event and stays out of config_changed.
+    cfg.maxConcurrent = cfg.maxConcurrent > 2 ? cfg.maxConcurrent - 1 : cfg.maxConcurrent + 1;
+    saveConfig(repo, cfg);
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "max_concurrent_changed"),
+      "the max concurrent event",
+    );
+    assert.equal(changeds().length, 1, "maxConcurrent has its own event");
+
+    // A roles.<id> edit is named per role.
+    cfg.roles.clean = { ...cfg.roles.clean!, instructions: "be tidy" };
+    saveConfig(repo, cfg);
+    await waitFor(() => changeds().length === 2, "the roles.<id> event");
+    assert.deepEqual(changeds()[1]!.keys, ["roles.clean"]);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
 // --- User-defined loops (plans/user-defined-loops.md, PLANS.md "User-defined loops 1/3") ---
 
 test("custom loops can be added, removed, and reordered mid-run without a restart", async () => {

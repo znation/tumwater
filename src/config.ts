@@ -172,6 +172,42 @@ export function saveConfig(root: string, config: TumwaterConfig): void {
   fs.writeFileSync(configPath(root), JSON.stringify(config, null, 2) + "\n");
 }
 
+/** Canonical serialization for config comparison: object keys are sorted recursively so a mere
+ * reordering of the same content never looks like a change; arrays keep their order (order is
+ * meaningful for `piArgs` and `customLoops`). */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const body = Object.keys(obj)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(obj[k])}`)
+      .join(",");
+    return `{${body}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
+/** Sorted names of the config settings whose value differs between two loaded configs, for the
+ * orchestrator's live-reload event. `maxConcurrent` and `sessionRetentionDays` are skipped: each
+ * already has its own, more informative event. The `roles` map is never reported whole — only
+ * each differing `roles.<id>` — so a `customLoops` add/remove names both the section and the
+ * affected role. */
+export function changedConfigKeys(prev: TumwaterConfig, next: TumwaterConfig): string[] {
+  const skip = new Set(["maxConcurrent", "sessionRetentionDays", "roles"]);
+  const keys: string[] = [];
+  const prevRecord = prev as unknown as Record<string, unknown>;
+  const nextRecord = next as unknown as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(prevRecord), ...Object.keys(nextRecord)])) {
+    if (skip.has(key)) continue;
+    if (stableJson(prevRecord[key]) !== stableJson(nextRecord[key])) keys.push(key);
+  }
+  for (const id of new Set([...Object.keys(prev.roles), ...Object.keys(next.roles)])) {
+    if (stableJson(prev.roles[id]) !== stableJson(next.roles[id])) keys.push(`roles.${id}`);
+  }
+  return keys.sort();
+}
+
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
  * /api/budget endpoint both run their input through it): a finite number of 0 or more —
  * 0 disables the gate, fractional dollars allowed (the badge renders cents). Returns an

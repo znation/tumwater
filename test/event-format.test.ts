@@ -294,6 +294,25 @@ test("formatEvent renders the retention change event plainly with from and to", 
   assert.match(bare, /sessionRetentionDays changed:/);
 });
 
+// The live config-change event (PLANS.md "Live config-change event"): a routine state change
+// like its maxConcurrent/retention siblings — a plain line naming the edited keys, no warning.
+test("formatEvent renders the config change event plainly with the edited keys", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "config_changed",
+    keys: ["provider", "thrashTurns"],
+  } as never);
+  assert.match(line, /harness\s+config changed: provider, thrashTurns/);
+  assert.ok(!line.includes("warning"), "a routine state change is not a warning");
+
+  // A torn or hand-edited event line could carry no keys; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "harness", type: "config_changed" } as never);
+  assert.match(bare, /config changed$/);
+  const empty = formatEvent({ ts: 0, loop: "harness", type: "config_changed", keys: [] } as never);
+  assert.match(empty, /config changed$/);
+});
+
 // Per-tick usage in the event feed (PLANS.md): tick_end carries this tick's tokens and cost so
 // operators see where spend went — after result/summary/error, "·"-separated like the budget
 // badge. Zero or absent fields render byte-identical to a pre-feature line (no trailing sep).

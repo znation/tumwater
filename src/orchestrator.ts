@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { TickOutcome, TumwaterConfig } from "./types.js";
 import type { OrchestratorInfo } from "./state.js";
-import { applyFallbackModel, enabledRoleIds, fallbackPair, loadConfigCached } from "./config.js";
+import { applyFallbackModel, changedConfigKeys, enabledRoleIds, fallbackPair, loadConfigCached } from "./config.js";
 import {
   deferTick,
   dueForPrune,
@@ -264,6 +264,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // broken) and, derived from it, the view role loops run under while the fallback gate holds
   // — recomputed only when the config object itself changes.
   let liveConfig = config;
+  // The previous successful reload's config, for the one-shot config_changed event. Seeded from
+  // the startup config, so the first poll of an unchanged file logs nothing.
+  let prevLiveConfig = config;
   let fallbackFrom: TumwaterConfig | null = null;
   let fallbackConfig: TumwaterConfig = config;
   // Same bookkeeping for the operator pause (the marker file), so each pause/resume logs
@@ -322,6 +325,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const reloaded = loadConfigCached(root);
       if (reloaded.config) {
         liveConfig = reloaded.config;
+        // A live edit that changes behavior elsewhere logs one event naming the settings that
+        // changed (maxConcurrent and sessionRetentionDays have their own events above/below).
+        const changedKeys = changedConfigKeys(prevLiveConfig, reloaded.config);
+        if (changedKeys.length > 0)
+          logEvent(root, { loop: "harness", type: "config_changed", keys: changedKeys });
+        prevLiveConfig = reloaded.config;
         for (const r of runners) r.config = reloaded.config;
         // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute
         // concurrently within this poll — no restart. Growing admits already-queued ticks;

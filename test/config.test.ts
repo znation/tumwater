@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   applyFallbackModel,
+  changedConfigKeys,
   configForRole,
   customLoopNames,
   fallbackPair,
@@ -916,4 +917,63 @@ test("loadConfig round-trips fallbackModel and owns its object", () => {
   const again = loadConfigCached(dir).config;
   assert.notEqual(again?.fallbackModel, loaded.fallbackModel);
   assert.deepEqual(again?.fallbackModel, loaded.fallbackModel);
+});
+
+// --- changedConfigKeys (PLANS.md "Live config-change event") ---
+
+test("changedConfigKeys reports added, removed, and changed top-level keys", () => {
+  const prev = defaultConfig();
+  const next = defaultConfig();
+  next.provider = "huggingface"; // present in both, changed
+  delete (next as { landBatchMax?: number }).landBatchMax; // removed
+  (next as unknown as Record<string, unknown>).piArgs = ["--foo"]; // changed array
+  assert.deepEqual(changedConfigKeys(prev, next), ["landBatchMax", "piArgs", "provider"]);
+  // A key only in one object is still reported; unknown keys are surfaced rather than dropped.
+  (prev as unknown as Record<string, unknown>).unknownKey = 1;
+  assert.deepEqual(changedConfigKeys(prev, next), ["landBatchMax", "piArgs", "provider", "unknownKey"]);
+});
+
+test("changedConfigKeys reports a roles.<id> edit per role, never the whole roles map", () => {
+  const prev = defaultConfig();
+  const next = defaultConfig();
+  next.roles.feature = { ...next.roles.feature!, model: "bigger" };
+  assert.deepEqual(changedConfigKeys(prev, next), ["roles.feature"]);
+  // Adding a custom loop names both `customLoops` and the affected role entry.
+  const added = defaultConfig();
+  added.customLoops.push({ name: "docs-auditor", task: "Keep docs current." });
+  added.roles["docs-auditor"] = { enabled: true };
+  assert.deepEqual(changedConfigKeys(prev, added), ["customLoops", "roles.docs-auditor"]);
+  // Removing one reports the same two.
+  assert.deepEqual(changedConfigKeys(added, prev), ["customLoops", "roles.docs-auditor"]);
+});
+
+test("changedConfigKeys ignores key order and reports nested section names", () => {
+  const prev = defaultConfig();
+  // A key-order-only rewrite of identical content reports nothing.
+  const reordered = JSON.parse(JSON.stringify(prev)) as ReturnType<typeof defaultConfig>;
+  const reorder = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(reorder);
+    if (v && typeof v === "object") {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(v as Record<string, unknown>).sort().reverse())
+        out[k] = reorder((v as Record<string, unknown>)[k]);
+      return out;
+    }
+    return v;
+  };
+  assert.deepEqual(changedConfigKeys(prev, reorder(reordered) as never), []);
+  // Sub-key edits of a section report the section name, not each leaf.
+  const tuned = defaultConfig();
+  tuned.idleBackoff = { ...tuned.idleBackoff, maxSeconds: 1 };
+  tuned.review = { ...tuned.review, enabled: !tuned.review.enabled };
+  tuned.roles.feature = { ...tuned.roles.feature!, thinking: "high" };
+  assert.deepEqual(changedConfigKeys(prev, tuned), ["idleBackoff", "review", "roles.feature"]);
+});
+
+test("changedConfigKeys skips maxConcurrent and sessionRetentionDays, which have their own events", () => {
+  const prev = defaultConfig();
+  const next = defaultConfig();
+  next.maxConcurrent = prev.maxConcurrent + 1;
+  next.sessionRetentionDays = prev.sessionRetentionDays + 1;
+  assert.deepEqual(changedConfigKeys(prev, next), []);
 });

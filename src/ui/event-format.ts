@@ -135,6 +135,12 @@ export function formatEvent(e: HarnessEvent): string {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
       return `${time} ${loop} sessionRetentionDays changed: ${e.from} → ${e.to}`;
     }
+    case "config_changed": {
+      // Routine state change, like its maxConcurrent/retention siblings — no warning prefix.
+      // A bare/empty keys array (a torn or hand-edited line) still renders.
+      const keys = Array.isArray(e.keys) ? (e.keys as unknown[]).join(", ") : "";
+      return keys ? `${time} ${loop} config changed: ${keys}` : `${time} ${loop} config changed`;
+    }
     case "build_stale":
       // Self-hosting fleets only (src/redeploy.ts): the code main describes is not the code
       // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.
