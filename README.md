@@ -66,13 +66,15 @@ Open items:
   three ways on 2026-09-19).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
+- Planned: red-main handoff — point the bugfix loop's prompt at the failing suite when main is red
+  (planned 2026-09-19; `bugfixMainRedNote` in `src/main-red.ts` plus a `<main-red>` prompt block).
 - Open bug: build-check rejections name a stack frame (e.g. `at TestContext.<anonymous>`) instead
   of the failing test, because `src/review.ts` never adopted `failureHeadline` (filed 2026-09-19).
 - Open bug: the failure digest's per-role rejection counter reads 0 on the live fleet — `roleStats`
   counts `tick_end.result === "rejected"`, a shape no landing path emits (filed 2026-09-19).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`1d69d4d`): build clean, suite 1187/1187.
+Current main (`c234057`): build clean, suite 1189/1189.
 <!-- tumwater:status:end -->
 
 ## How it works
