@@ -8,10 +8,10 @@ import { shortSha } from "./text.js";
 
 /** Red-main baseline gate for fresh authoring ticks (PLANS.md "Red-main baseline check"):
  * before an authoring run is spent on top of pristine main, verify that MAIN ITSELF is green —
- * a red main rejects every code diff deterministically at the review gate (BUGS.md's nine
- * "build/tests red on main" entries), so while a SHA is known red the blocked roles skip
- * authoring instead of burning runs that are guaranteed to fail. Split out of loop.ts — which
- * keeps the tick lifecycle around it — because this is a self-contained policy with its own
+ * a red main rejects every code diff deterministically at the review gate (BUGS.md's "Build
+ * broken on main" and "Tests red on main" entries), so while a SHA is known red the blocked
+ * roles skip authoring instead of burning runs that are guaranteed to fail. Split out of loop.ts —
+ * which keeps the tick lifecycle around it — because this is a self-contained policy with its own
  * per-process state (one harness-level warning per newly-discovered red SHA) and its own event
  * contract; what it borrows from the loop is identity only, and it consumes build-check.ts's
  * checkMainBaseline machinery (detection + execution + per-SHA cache), which stays unaware of
