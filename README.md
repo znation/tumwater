@@ -40,7 +40,7 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 `status` (`--json`), `report` (`--days N`; Markdown usage report, default 14 days) and
 `report --failures` (Markdown failure digest — tick outcomes, deltas, and clustered errors,
 default 14 days), `doctor` (pre-flight check of node, git, repo, config, pi, locks, and build — read-only,
-exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`), `prompt "text"` /
+exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`, `--prompt`), `prompt "text"` /
 `prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`,
 `wake [--role <id>]` (clears a backed-off fleet's sleep — the named roles, or all of them,
 tick within one poll), `abort --role <id>` (kills one loop's in-flight tick; work discarded,
@@ -66,12 +66,13 @@ Open items:
   three ways on 2026-09-19).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
-- Planned: Show the exact prompt each run received — `tumwater logs --role <id> --prompt`
-  (planned 2026-09-19).
-- Open bugs: none.
+- Open bug: build-check rejections name a stack frame (e.g. `at TestContext.<anonymous>`) instead
+  of the failing test, because `src/review.ts` never adopted `failureHeadline` (filed 2026-09-19).
+- Open bug: the failure digest's per-role rejection counter reads 0 on the live fleet — `roleStats`
+  counts `tick_end.result === "rejected"`, a shape no landing path emits (filed 2026-09-19).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`f52cac9`): build clean, suite 1179/1179.
+Current main (`1d69d4d`): build clean, suite 1187/1187.
 <!-- tumwater:status:end -->
 
 ## How it works
