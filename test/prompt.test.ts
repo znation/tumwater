@@ -17,8 +17,8 @@ import {
 import { parseVerdict } from "../src/review.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
-import { customRole, DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, ROLES, roleById, searchGuidance } from "../src/roles.js";
-import { tmpdir } from "./util.js";
+import { customRole, DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, ROLES, roleById, searchGuidance, VALIDATION_GAP_GUIDANCE, VALIDATION_GAP_TAGS } from "../src/roles.js";
+import { sh, tmpdir } from "./util.js";
 
 test("readInitialPrompt extracts the managed block", () => {
   const dir = tmpdir();
@@ -359,6 +359,59 @@ test("guidance is a single shared constant, not drifting copies", () => {
   assert.match(DECOMPOSITION_GUIDANCE, /cross-references/);
 });
 
+// The validation-gap trace (PLANS.md, planned 2026-09-17, plans/repair-traces.md): a bugfix run
+// records what made the bug hard to CONFIRM as a closed-vocabulary line, the steward preserves
+// the tag through compression, and one documented query counts both forms. These pin the shared
+// constant and both embedded copies so the vocabulary cannot drift or lose its tally.
+
+test("the validation-gap guidance renders every tag in the closed vocabulary", () => {
+  for (const tag of VALIDATION_GAP_TAGS) {
+    assert.ok(VALIDATION_GAP_GUIDANCE.includes(tag), `guidance names ${tag}`);
+  }
+  assert.match(VALIDATION_GAP_GUIDANCE, /\*\*Validation gap:\*\* <tag> — <one sentence>/);
+  // `none` must be written, not omitted, or the tally's denominator is a lie.
+  assert.match(VALIDATION_GAP_GUIDANCE, /`none` is written, never omitted/);
+  assert.match(VALIDATION_GAP_GUIDANCE, /never invent a\ntag/);
+});
+
+test("the bugfix prompt requires the validation-gap trace line for every fixed entry", () => {
+  const role = roleById("bugfix");
+  assert.ok(role);
+  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  assert.ok(prompt.includes(VALIDATION_GAP_GUIDANCE), "embeds the shared constant verbatim");
+  assert.match(prompt, /recording the required validation-gap trace line/);
+});
+
+test("the documented gap tally counts the verbatim line and the compressed suffix as one vocabulary", () => {
+  // The query is the whole aggregation surface, so it must count both the `**Validation gap:**`
+  // line bugfix writes and the `gap: <tag>` suffix the steward leaves after compression — else the
+  // newest entries are invisible to the only recorded query. Run it for real on both forms.
+  const query =
+    "grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c";
+  assert.ok(VALIDATION_GAP_GUIDANCE.includes(query), "guidance documents this exact query");
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    [
+      "**Validation gap:** no-fake — had to write a shim.",
+      "**Validation gap:** none — the existing suite confirmed it.",
+      "- Old headline (fixed 2026-09-01; commit abc1234; gap: no-repro)",
+      "- Untraced headline (fixed 2026-09-02; commit def5678)",
+      "",
+    ].join("\n"),
+  );
+  const out = sh(dir, "sh", "-c", query);
+  assert.match(out, /1 no-fake/);
+  assert.match(out, /1 no-repro/);
+  assert.match(out, /1 none/);
+  assert.ok(!out.includes("def5678"), "no tag invented for an entry without a trace");
+});
+
+test("the steward prompt embeds the validation-gap guidance verbatim", () => {
+  const find = oneLine(steward!.find);
+  assert.ok(find.includes(oneLine(VALIDATION_GAP_GUIDANCE)), "embeds the shared constant");
+});
+
 // Prompt contract for the refusal design (plans/refusal-and-thrash.md): a fresh-session tick
 // has no memory of an earlier refusal except what the markdown says, so the skip rule and the
 // recording shape must ride along in every prompt that picks work or routes decisions.
@@ -681,9 +734,9 @@ test("the steward prompt makes ONE curation move from the planned list", () => {
   assert.match(find, /Re-read the initial prompt, PRINCIPLES\.md, PLANS\.md, BUGS\.md/);
   assert.match(find, /and QUESTIONS\.md if it exists/);
   assert.match(find, /skim the codebase's shape \(sizes, module list, test count\)/);
-  // One move per tick, and the four planned moves: prune plans (with an epitaph), flag
+  // One move per tick, and the five planned moves: prune plans (with an epitaph), flag
   // drift as a PLANS.md note, tighten or update a principle or complexity budget in
-  // PRINCIPLES.md, record a structural risk in BUGS.md.
+  // PRINCIPLES.md, record a structural risk in BUGS.md, promote a recurring gap tag.
   assert.match(find, /make ONE curation move, the most valuable one/);
   assert.match(
     find,
@@ -692,6 +745,10 @@ test("the steward prompt makes ONE curation move from the planned list", () => {
   assert.match(find, /flag drift between what is being built and the initial prompt as a PLANS\.md note/);
   assert.match(find, /tighten or update a principle or complexity budget in PRINCIPLES\.md/);
   assert.match(find, /record a structural risk in BUGS\.md/);
+  assert.match(
+    find,
+    /promote a recurring non-`none` `gap:` tag — three or more retained Fixed entries carrying it — into a PLANS\.md entry for the infrastructure that would retire it, citing those entries/,
+  );
 });
 
 test("the steward prompt restricts writes to markdown", () => {
@@ -777,13 +834,16 @@ test("the steward prompt bounds BUGS.md's Fixed section to a ten-entry verbatim 
   );
 });
 
-test("the steward prompt compresses older Fixed entries to one-line records with headline and date clause as-is", () => {
+test("the steward prompt compresses older Fixed entries to one-line records with headline, date clause, and gap tag", () => {
   const find = oneLine(steward!.find);
-  // The exact one-line form: symptom headline, the heading's own date clause, landing commit.
+  // The exact one-line form: symptom headline, the heading's own date clause, landing commit,
+  // and the entry's validation-gap tag.
   assert.match(
     find,
-    /`- <symptom headline> \(<the heading's own date clause>; commit <sha>\)`/,
+    /`- <symptom headline> \(<the heading's own date clause>; commit <sha>; gap: <tag>\)`/,
   );
+  // `none` costs nothing: the suffix is omitted so the common case stays byte-identical.
+  assert.match(find, /omitting the `gap: <tag>` suffix entirely when the tag is `none`/);
   assert.match(find, /The headline comes from the entry's heading/);
   // The date clause is copied verbatim: BUGS.md headings vary across found/reported/re-recorded
   // × fixed/closed/resolved and may carry notes inside their parentheses.
@@ -823,6 +883,11 @@ test("the steward prompt sources Fixed-record commits from landing citations or 
   assert.match(
     find,
     /when no landing commit exists \(an entry closed without code change says so in its \*\*Resolution:\*\* note\) omit the `commit` field rather than guess/,
+  );
+  // The gap tag survives even without a landing commit, and `none` still costs nothing.
+  assert.match(
+    find,
+    /keeping the `gap: <tag>` suffix \(the no-commit variant reads `- <symptom headline> \(<date clause>; gap: <tag>\)`, and plain `\(<date clause>\)` when the tag is `none`\)/,
   );
 });
 
@@ -1101,7 +1166,13 @@ test("the steward maps the backlog files by heading and reads bodies only by ran
   assert.match(find, /You may see PLANS\.md and BUGS\.md whole, but do it cheaply/);
   assert.match(find, /map each file first with `grep -n '\^##' FILE`/);
   assert.match(find, /read Done\/Fixed entries by line range only where your move needs their bodies/);
-  assert.match(find, /no body read required/);
+  // The compressed Fixed record's `gap:` tag comes from the body's Validation gap line, so that
+  // one line IS read; the old blanket "no body read required" was self-contradictory.
+  assert.match(
+    find,
+    /except a Fixed entry's `gap:` suffix, which comes from the `\*\*Validation gap:\*\*` line in its body/,
+  );
+  assert.match(find, /read that one line \(`grep -n 'Validation gap' FILE`\), not the whole body/);
 });
 
 test("buildReviewPrompt carries the reviewer checklist and a reading budget", () => {

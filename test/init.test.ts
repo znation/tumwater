@@ -5,6 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt } from "../src/readme.js";
 import { loadConfig } from "../src/config.js";
+import { VALIDATION_GAP_TAGS } from "../src/roles.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
 test("initProject creates and commits the harness files", async () => {
@@ -39,6 +40,16 @@ test("initProject seeds PRINCIPLES.md with positive starter principles", async (
   // Starter principles are phrased positively ("prefer…", "keep…", "every… ships").
   assert.match(seeded, /Prefer the standard library/);
   assert.match(seeded, /Every behavior change ships with a test/);
+});
+
+test("initProject seeds BUGS.md with the validation-gap convention", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "prompt");
+  const seeded = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
+  // A fresh project starts with the trace line rather than acquiring it later.
+  assert.match(seeded, /\*\*Validation gap:\*\* <tag> — <one sentence>/);
+  // The seeded list is the same closed vocabulary the roles enforce.
+  for (const tag of VALIDATION_GAP_TAGS) assert.ok(seeded.includes(tag), `template names ${tag}`);
 });
 
 test("initProject never clobbers an existing PRINCIPLES.md", async () => {

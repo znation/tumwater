@@ -28,6 +28,37 @@ alone: a handful of files, at most a few hundred lines of change including tests
 question left open for the implementer. Anything larger is split into independently landable
 sub-plans that cross-reference each other, each with its own acceptance criteria.`;
 
+/** The closed vocabulary for the validation-gap trace (plans/repair-traces.md): what made a bug
+ * hard to *confirm*, which is the only evidence of where this project's test infrastructure is
+ * weakest. Closed on purpose so the traces aggregate, and `none` is a written value rather than an
+ * omitted line so a tally's denominator stays honest. Defined once so the bugfix and steward find
+ * texts embed the same list; one query counts both the verbatim line and the compressed suffix. */
+export const VALIDATION_GAP_TAGS: readonly string[] = [
+  "none",
+  "no-repro",
+  "no-fake",
+  "real-run-needed",
+  "no-observability",
+  "slow-check",
+  "unclear-invariant",
+];
+
+/** Shared rendering of the validation-gap trace, embedded verbatim by the bugfix and steward find
+ * texts (the define-once pattern of DECOMPOSITION_GUIDANCE/PLAN_SIZING). It carries the write form,
+ * the meaning of every tag, and the one tally query that counts both the verbatim `**Validation
+ * gap:**` line and the steward's compressed `gap: <tag>` suffix. */
+export const VALIDATION_GAP_GUIDANCE = `The validation-gap trace: every Fixed entry records what
+made the bug hard to CONFIRM — not to fix — as one line, \`**Validation gap:** <tag> — <one sentence>\`.
+<tag> is one of: none (the existing suite reproduced and confirmed it; nothing was missing),
+no-repro (could not reproduce it deterministically), no-fake (needed a fake or shim that did not
+exist), real-run-needed (no offline path covered it; a real bounded run was required),
+no-observability (the failure left no trace), slow-check (the only verification was slow enough to
+shape the fix), unclear-invariant (had to reconstruct what the code was supposed to guarantee
+first). When nothing fits exactly, use the closest tag and say so in the sentence — never invent a
+tag. \`none\` is written, never omitted, so a tally has an honest denominator. One query counts
+both this verbatim line and the steward's compressed \`gap: <tag>\` suffix:
+\`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c\`.`;
+
 /** The markdown note the feature loop appends to a plan it cannot finish in one run, so the plan
  * loop can split it. Mirrors the **Refused …** note convention: a note the next fresh tick reads,
  * with no code parsing it. Defined once so the feature and plan texts and the director's routing
@@ -85,7 +116,8 @@ nothing to do.`,
     title: "bug fixer",
     find: `Open BUGS.md and pick the SINGLE most important open bug (\`grep -n '^##' BUGS.md\` lists
 the headings; read only that entry's line range). Reproduce it if possible, fix it, add a
-regression test, and update BUGS.md to mark it fixed (move it to a Fixed section with the date).
+regression test, and update BUGS.md to mark it fixed (move it to a Fixed section with the date),
+recording the required validation-gap trace line. ${VALIDATION_GAP_GUIDANCE}
 If you discover a new bug while investigating but cannot fix it in this run, record it in
 BUGS.md instead. ${DECOMPOSITION_GUIDANCE}
 A "bug" whose fix would harm the project is refused, not force-fixed. Skip BUGS.md entries
@@ -248,14 +280,18 @@ exists — and skim the codebase's shape (sizes, module list, test count). Then 
 curation move, the most valuable one: delete or merge stale/duplicative/superseded
 PLANS.md entries (with a one-line epitaph in the entry's place or in Done); flag drift
 between what is being built and the initial prompt as a PLANS.md note; tighten or update
-a principle or complexity budget in PRINCIPLES.md; or record a structural risk in BUGS.md.
+a principle or complexity budget in PRINCIPLES.md; record a structural risk in BUGS.md; or promote
+a recurring non-\`none\` \`gap:\` tag — three or more retained Fixed entries carrying it — into a
+PLANS.md entry for the infrastructure that would retire it, citing those entries.
 
 You may see PLANS.md and BUGS.md whole, but do it cheaply — they run to hundreds of KB: map
 each file first with \`grep -n '^##' FILE\` (every section and entry heading with its line
 number), read the Planned and Open sections in full, and read Done/Fixed entries by line range
 only where your move needs their bodies. For the compression moves below, an entry's heading
 line plus a \`grep -n\` for its landing citation (the "tick N (\`<sha>\`)" form) supply everything
-the one-line record needs — no body read required.
+the one-line record needs — except a Fixed entry's \`gap:\` suffix, which comes from the
+\`**Validation gap:**\` line in its body: read that one line (\`grep -n 'Validation gap' FILE\`), not
+the whole body.
 
 PLANS.md's ## Done section is curated to stay bounded: keep the ten most recent entries
 verbatim (newest first, by position in file) and compress older ones to one line each —
@@ -278,7 +314,9 @@ it stays bounded.
 
 BUGS.md's ## Fixed section is curated to stay bounded by the same policy: keep the ten most
 recent entries verbatim (newest first) and compress older ones to one line each —
-\`- <symptom headline> (<the heading's own date clause>; commit <sha>)\`. The headline comes from
+\`- <symptom headline> (<the heading's own date clause>; commit <sha>; gap: <tag>)\` — carrying the
+entry's validation-gap tag as a suffix, and omitting the \`gap: <tag>\` suffix entirely when the tag
+is \`none\` (so the common case costs nothing). ${VALIDATION_GAP_GUIDANCE} The headline comes from
 the entry's heading, and the date clause is copied from that heading as-is: BUGS.md headings vary
 across found/reported/re-recorded × fixed/closed/resolved and may carry extra notes inside their
 parentheses, so do not normalize or fabricate dates; when a heading carries no dates at all, omit
@@ -288,7 +326,9 @@ commit itself), else git log on main, whose self-explaining subjects name the ro
 the change; never use a verification reference ("Verified … on main \`<sha>\`", "at HEAD \`<sha>\`")
 as the record's hash — bodies citing several shas need the one cited as having landed the fix —
 and when no landing commit exists (an entry closed without code change says so in its
-**Resolution:** note) omit the \`commit\` field rather than guess. Never compress an entry carrying
+**Resolution:** note) omit the \`commit\` field rather than guess, keeping the \`gap: <tag>\`
+suffix (the no-commit variant reads \`- <symptom headline> (<date clause>; gap: <tag>)\`, and plain
+\`(<date clause>)\` when the tag is \`none\`). Never compress an entry carrying
 a standing **Refused …** note; such entries stay full. The same rules carry over: compression is
 lossy on purpose with git history as the archive, and one curation move per tick still holds.
 

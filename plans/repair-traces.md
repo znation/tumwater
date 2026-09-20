@@ -57,9 +57,11 @@ with `<tag>` drawn from a fixed vocabulary:
 | `unclear-invariant` | had to reconstruct what the code was *supposed* to guarantee before fixing |
 
 The closed vocabulary is the whole point: free text alone is unaggregatable, and a tally is what
-turns anecdote into a priority. `grep -o 'gap: [a-z-]*' BUGS.md | sort | uniq -c` is the entire
-query surface, which suits both a mid-sized local model and an operator at a terminal. The free
-text after the em dash is what makes an individual entry actionable; the tag is what makes a
+turns anecdote into a priority. The verbatim line and the compressed suffix spell the tag
+differently (`**Validation gap:** no-repro` vs `gap: no-repro`), so one query absorbs both:
+`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c` is the
+entire query surface, which suits both a mid-sized local model and an operator at a terminal. The
+free text after the em dash is what makes an individual entry actionable; the tag is what makes a
 hundred of them countable.
 
 **`none` is mandatory, not optional.** A missing line is indistinguishable from a role that
@@ -130,7 +132,7 @@ what makes it one run.
 
 ## How we will know it worked
 
-After ten or so fixes, `grep -o 'gap: [a-z-]*' BUGS.md | sort | uniq -c` returns a distribution
+After ten or so fixes, `grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c` returns a distribution
 rather than nothing. The success condition is not a particular shape — it is that the question
 "where is this project hardest to verify?" becomes answerable from the repo instead of from
 memory. The first PLANS.md entry the steward writes off a tag cluster is the point at which the
@@ -216,3 +218,17 @@ commit-message.ts:84) and attaches to the commit, not the bug.
 fragment embedded in two places, one move-list clause), src/init.ts ~2, test/prompt.test.ts ~40
 (three assertions plus the one updated form), test/init.test.ts ~5. No source behavior changes, no
 new state, no new file. No design question remains open.
+
+**Landed 2026-09-19 (feature loop) — two corrections from review.**
+
+1. **The tally query counts both forms.** The original `grep -o 'gap: [a-z-]*'` matched only the
+   compressed `gap: <tag>` suffix, not the verbatim `**Validation gap:** <tag>` line `bugfix`
+   writes — so the newest entries were uncountable by the only recorded query, and the design's
+   "counts one vocabulary" claim was false. The query is now
+   `grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c`, and a
+   test in test/prompt.test.ts runs that exact command against a file carrying both forms.
+2. **The steward reads the body line the tag lives on.** The generic compression shortcut said an
+   entry's heading plus its landing citation needed "no body read required", but the compressed
+   Fixed record's `gap:` tag comes from the entry's `**Validation gap:**` line. The steward text now
+   carves out that one line (`grep -n 'Validation gap' FILE`) rather than the whole body, so the tag
+   is not dropped.
