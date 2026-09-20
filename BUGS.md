@@ -5,6 +5,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### `inputViewWindow` can collapse to an empty window, blanking the TUI prompt line at narrow widths (found by bugfix loop 2026-09-19)
+
+**Symptom:** With two adjacent astral characters (emoji) at/around the cursor and a terminal `width` of 4–5 columns (`room = max(1, width - 3)` of 1–2), `inputViewWindow` returns `start === end`, so `renderInputView` renders only the leading ellipsis — `tumwater tui`'s prompt line shows no prompt text at all while the user edits it, contradicting renderInputView's stated goal that "mid-text edits stay visible". The cursor caret is still drawn, so this is a visibility degradation, not a crash.
+
+**Repro:** In a scratch node script (the function is pure), `inputViewWindow("ab\u{1f600}\u{1f600}", 4, 2)` → `{ start: 4, end: 4 }` and `inputViewWindow("\u{1f600}\u{1f600}", 4, 1)` → `{ start: 4, end: 4 }`; `renderInputView("ab\u{1f600}\u{1f600}", 4, 5)` → `"…"`. A brute-force sweep of random BMP+astral strings shows this only at `room` 1–2 (width 4–5). `test/tui.test.ts`'s width sweep uses samples with no adjacent astral pairs and only asserts `start <= c && c <= end`, which an empty window satisfies, so it never catches this.
+
+**Suspected cause:** In `inputViewWindow` (src/ui/tui-input.ts) a start that would split a pair is stepped forward (`start0 + 1`) while an end that would split a pair is backed off (`end0 - 1`); when both fire on adjacent pairs the two edges meet, leaving `start === end`. Not fixed inline: showing the cursor's character (2 units) plus the 1-column ellipsis needs 3 columns, so at `room` ≤ 2 every width-preserving window either is empty or hides the cursor — the fix trades the documented "never exceeds `width`" invariant against the "cursor's text stays visible" one, a deliberate design choice to make rather than guess.
+
 ## Fixed
 
 ### Friction's absolute turn threshold measures model speed, not difficulty: on the fleet's fast API model it flags 41% of changed ticks at 2–19 minutes (found by telemetry loop 2026-09-19, fixed 2026-09-19)
