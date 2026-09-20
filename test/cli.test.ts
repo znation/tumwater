@@ -477,6 +477,16 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   assert.equal(r.code, 1);
   assert.match(r.stderr, /takes no arguments/);
 
+  // ...including version and help, which used to accept anything silently: `version --json`
+  // printed a version as if it had answered the query, and `help extra` printed usage.
+  r = await cli(repo, "version", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /takes no arguments/);
+
+  r = await cli(repo, "help", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /takes no arguments/);
+
   // Stray non-flag tokens are rejected too.
   r = await cli(repo, "reset-counters", "--role", "feature", "extra");
   assert.equal(r.code, 1);

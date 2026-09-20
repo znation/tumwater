@@ -351,6 +351,9 @@ async function main(): Promise<void> {
     case "version":
     case "--version":
     case "-v": {
+      // A stray flag fails like every other command's: `tumwater version --json` (a plausible
+      // slip from `status --json`) must not print a version as if it had answered the query.
+      rejectUnknownArgs("version", args, []);
       const pkg = JSON.parse(
         fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
       ) as { version: string };
@@ -361,6 +364,9 @@ async function main(): Promise<void> {
     case "--help":
     case "-h":
     case undefined:
+      // `help` selects nothing (there is no per-command help), so any argument is a mistake
+      // and fails rather than printing usage as though it were that token's help.
+      rejectUnknownArgs("help", args, []);
       process.stdout.write(HELP);
       break;
     default:
