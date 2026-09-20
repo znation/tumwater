@@ -26,6 +26,64 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7; 4c/7 is markdown-only. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
+### TUI failures pane — the failure digest in the Ctrl+T cycle (planned 2026-09-20)
+
+**Goal.** Give the TUI the same failure digest the GUI's `failures` tab and `tumwater report
+--failures` already show: a pane in the Ctrl+T cycle (events → each loop's transcript → project
+status → usage report → failures → events) rendering
+`renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS))`. The GUI failures tab
+entry (landed 2026-09-19) named "a TUI failures pane" as out of scope; this is the remaining
+surface gap in "observable by gui/tui/log".
+
+**Why.** The digest is the telemetry loop's evidence and an operator's fastest read on what is
+going wrong fleet-wide, and it now exists on the CLI and in the GUI but not in the always-on
+dashboard. The usage-report pane already establishes the exact mechanism to reuse: a Markdown
+string cached once per view entry and windowed with `entryBodyWindow`.
+
+**Approach (decided).**
+- `src/ui/tui.ts` — import `REPORT_DEFAULT_DAYS` from `./report.js` (the report pane currently
+  hardcodes `14`; use the shared constant for both panes) and `collectFailureReport`,
+  `renderFailureMarkdown` from `../failure-report.js` (core, imports no `ui/` module — no cycle).
+- Generalize the one cached-Markdown pane, since the failures pane needs identical
+  cache-on-enter / null-on-leave / re-window-per-frame behavior: rename `reportCache`/`reportScroll`
+  (declarations at :92/:95) to `paneCache`/`paneScroll`. One mechanism, two views.
+- Ctrl+T handler (:271–278): cycle length becomes `roleIds.length + 4`; on entry set
+  `paneCache = view === roleIds.length + 2 ? renderReportMarkdown(collectReport(root,
+  REPORT_DEFAULT_DAYS)) : view === roleIds.length + 3 ?
+  renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS)) : null;` and reset
+  `paneScroll = 0` (as today).
+- Render (:120 clamp becomes `roleIds.length + 3`; branch at :180): one branch for
+  `view === roleIds.length + 2 || view === roleIds.length + 3`, choosing the header label
+  (`usage report` / `failures`) and otherwise reusing the existing windowing and
+  scroll-affordance code unchanged.
+- PgUp/PgDn handler (:290–300): widen the condition to `view >= roleIds.length + 2` so both
+  Markdown panes page the single `paneCache`; project status (`+1`) keeps its own entry-mode
+  handler untouched.
+- No README change: the README does not enumerate TUI views (the `readme` loop maintains Status).
+
+**Files touched.** `src/ui/tui.ts`, `test/tui.test.ts`. No core, config, or storage change — the
+failures pane consumes functions that already exist and are exported.
+
+**Acceptance criteria.**
+- Ctrl+T cycles events → transcripts → project status → usage report → failures → events; the
+  failures pane's header reads `failures — [PgUp/PgDn scroll · ]Ctrl+T to cycle` (the scroll hint
+  appears only while the digest overflows the pane, matching the usage-report header).
+- The pane's body is exactly `renderFailureMarkdown(collectFailureReport(root, 14))`, windowed by
+  `entryBodyWindow`, starting at the digest head (`# tumwater failure digest`) on entry.
+- PgUp/PgDn page the failures digest and clamp at both ends; leaving the view drops the cache so
+  re-entry recomputes it. The usage-report pane behaves exactly as before.
+- `npm test` green.
+
+**Grounded 2026-09-20 (plan loop)** against main `92caeb7`: `collectFailureReport`
+(src/failure-report.ts:214) and `renderFailureMarkdown` (:378, head `# tumwater failure digest`)
+are exported core functions; `REPORT_DEFAULT_DAYS = 14` is exported from src/event-window.ts and
+re-exported by src/ui/report.ts. Capability absence re-confirmed: `grep -n failures src/ui/tui.ts`
+is empty, and the GUI entry's own text (PLANS.md:63) lists "a TUI failures pane" as out of scope,
+so no Planned/Done entry covers it. Seams pinned: `reportCache` :92, `reportScroll` :95, the
+clamp :120, the report render branch :180, the Ctrl+T modulo :271 and cache assignment :277, the
+PgUp/PgDn branch :290–300; the cycle test at test/tui.test.ts:541 and the report paging test at
+:1047 are the two to extend. One run: ~30 lines in one file plus tests.
+
 ## Done
 
 ### Failure digest in the GUI — a `failures` tab beside `report` (planned 2026-09-19, done 2026-09-19)
