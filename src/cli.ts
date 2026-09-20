@@ -75,9 +75,9 @@ Usage:
   tumwater prompt --cancel <n>     Remove the Nth queued prompt (as shown by --list)
   tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
   tumwater wake [--role <id>]             Wake a backed-off fleet — the named roles (or all) tick within one poll
-  tumwater abort --role <id>             Abort that loop's in-flight tick (work discarded; the loop keeps running)
-  tumwater pause                     Stop role loops starting new ticks (in-flight finish; the director keeps running)
-  tumwater resume                    Lift a fleet pause
+  tumwater abort --role <id>              Abort that loop's in-flight tick (work discarded; the loop keeps running)
+  tumwater pause                   Stop role loops starting new ticks (in-flight finish; the director keeps running)
+  tumwater resume                  Lift a fleet pause
   tumwater help | version
 
 The harness runs inside a git repo. Each role loop owns a persistent worktree and branch
