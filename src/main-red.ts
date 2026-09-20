@@ -1,6 +1,7 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles.js";
 import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
 import { BUILD_CHECK_TIMEOUT_MS, buildCheckSkipWarning, failureHeadline } from "./build-check.js";
+import type { BuildCheckOutcome } from "./build-check.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./prompt.js";
 import { logEvent } from "./events.js";
@@ -38,6 +39,25 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
   });
 }
 
+/** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
+ * that paid for it, with its duration — the gate's build_check sibling, so both halves of the
+ * fleet's deterministic verification are priced in the feed. Shared by the bugfix healer and the
+ * gate so the event's shape cannot drift between them. */
+function baselineCheckLogger(
+  root: string,
+  role: string,
+): (run: { outcome: BuildCheckOutcome; durationMs: number }) => void {
+  return ({ outcome, durationMs }) =>
+    logEvent(root, {
+      loop: role,
+      type: "build_check",
+      scope: "baseline",
+      status: outcome.status,
+      script: outcome.script,
+      durationMs,
+    });
+}
+
 /** Red-main handoff for the `bugfix` healer (PLANS.md "Red-main handoff"): mainRedGate exempts
  * bugfix so the only role that can unblock the fleet may author, but its prompt then starts from
  * BUGS.md and knows nothing about the red suite. This runs the same per-SHA baseline check
@@ -46,16 +66,7 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
  * at the failure. Returns undefined on green, no declared check, or an environmental skip — the
  * healer's tick then proceeds exactly as it did before this existed. Never throws. */
 export async function bugfixMainRedNote(root: string, role: string, wt: string): Promise<string | undefined> {
-  const baseline = await checkMainBaseline(wt, ({ outcome, durationMs }) =>
-    logEvent(root, {
-      loop: role,
-      type: "build_check",
-      scope: "baseline",
-      status: outcome.status,
-      script: outcome.script,
-      durationMs,
-    }),
-  );
+  const baseline = await checkMainBaseline(wt, baselineCheckLogger(root, role));
   const red = baseline.baseline;
   if (red?.status !== "red") return undefined;
   warnMainRedOnce(root, red);
@@ -75,19 +86,7 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
   // which know no customs).
   const cfg = loadConfigCached(root).config ?? defaultConfig();
   if (!BASELINE_BLOCKED_ROLES.has(role) && !isCustomRole(cfg, role)) return null;
-  // The one run per SHA (cache misses only) is logged under the role that paid for it, with its
-  // duration — the gate's build_check sibling, so both halves of the fleet's deterministic
-  // verification are priced in the feed.
-  const baseline = await checkMainBaseline(wt, ({ outcome, durationMs }) =>
-    logEvent(root, {
-      loop: role,
-      type: "build_check",
-      scope: "baseline",
-      status: outcome.status,
-      script: outcome.script,
-      durationMs,
-    }),
-  );
+  const baseline = await checkMainBaseline(wt, baselineCheckLogger(root, role));
   if (baseline.skipReason) {
     logEvent(root, {
       loop: role,
