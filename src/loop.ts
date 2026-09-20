@@ -98,6 +98,13 @@ export class LoopRunner {
     saveLoopState(this.root, this.state);
   }
 
+  /** Log one warning event for this loop — the single home of the warning-event shape, so every
+   * warning site (pin failure, transient retry, error/quiet-kill streak, no-change diagnosis,
+   * missing SUMMARY, high friction) stamps this loop and the "warning" type in one place. */
+  private warn(message: string): void {
+    logEvent(this.root, { loop: this.role, type: "warning", message });
+  }
+
   /** Zero the accumulated counters in memory and persist them. The orchestrator calls this
    * when it consumes a `tumwater reset-counters` request: without zeroing the in-memory copy,
    * the next tick's save would resurrect the pre-reset values on disk.
@@ -264,11 +271,9 @@ export class LoopRunner {
   private async pinAndReset(wt: string, sha: string): Promise<boolean> {
     const pinned = await setRef(this.root, landingRefName(this.role), sha);
     if (!pinned) {
-      logEvent(this.root, {
-        loop: this.role,
-        type: "warning",
-        message: `failed to pin ${shortSha(sha)} by its landing ref — leaving the commit on the branch for next-tick recovery`,
-      });
+      this.warn(
+        `failed to pin ${shortSha(sha)} by its landing ref — leaving the commit on the branch for next-tick recovery`,
+      );
       return false;
     }
     await resetWorktreeToMain(wt, this.mainBranch);
@@ -341,8 +346,7 @@ export class LoopRunner {
       // while the quiet watchdog still counts down (BUGS.md 2026-09-13 sibling): before this,
       // a hung command was invisible until the kill. The dashboards derive their own flag from
       // the raw log, so only the harness event needs wiring here.
-      onToolCallStalled: (message) =>
-        logEvent(this.root, { loop: this.role, type: "warning", message }),
+      onToolCallStalled: (message) => this.warn(message),
     };
   }
 
@@ -382,13 +386,11 @@ export class LoopRunner {
   private async runWithTransientRetry(opts: PiRunOptions): Promise<PiRunResult> {
     const pi = await runPi(opts);
     if (!pi.aborted && !pi.timedOut && !pi.quietKilled && (pi.transientServerTimeout || pi.transientPiCrash) && !pi.ok) {
-      logEvent(this.root, {
-        loop: this.role,
-        type: "warning",
-        message: pi.transientPiCrash
+      this.warn(
+        pi.transientPiCrash
           ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"}) — resuming the session once`
           : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
-      });
+      );
       // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
@@ -496,22 +498,14 @@ export class LoopRunner {
     // resets it on any other result, so the streak equals the threshold exactly once per
     // episode — the crossing — and re-warns only after a healthy tick re-armed it.
     if ((s.consecutiveErrors ?? 0) === ERROR_STREAK_WARN) {
-      logEvent(this.root, {
-        loop: this.role,
-        type: "warning",
-        message: `${s.consecutiveErrors} consecutive tick failures: ${s.lastError ?? "unknown error"}`,
-      });
+      this.warn(`${s.consecutiveErrors} consecutive tick failures: ${s.lastError ?? "unknown error"}`);
     }
     // One warning per quiet-kill episode (BUGS.md 2026-09-18): a loop burning an hour per
     // tick with no output must not look like a sleeping loop. applyTickOutcome grows the
     // streak on each kill and resets it on any other result, so the crossing fires once;
     // the give-up (fresh session + backoff) follows on the next kill.
     if ((s.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
-      logEvent(this.root, {
-        loop: this.role,
-        type: "warning",
-        message: `${s.quietKillStreak} consecutive quiet kills (no progress): ${s.lastError ?? "unknown hang"}`,
-      });
+      this.warn(`${s.quietKillStreak} consecutive quiet kills (no progress): ${s.lastError ?? "unknown hang"}`);
     }
     // Per-tick usage (PLANS.md, per-tick-usage plan): the event feed is where operators see
     // spend — this tick's tokens and cost ride on tick_end so a budget pause or a money-burning
@@ -674,13 +668,10 @@ export class LoopRunner {
       // diagnosable on its own.
       const diagnosis = diagnoseNoChange(pi);
       if (!pi.nothingToDo) {
-        logEvent(this.root, {
-          loop: this.role,
-          type: "warning",
-          message:
-            `pi finished without changes and without declaring nothing-to-do` +
+        this.warn(
+          `pi finished without changes and without declaring nothing-to-do` +
             (diagnosis.notes.length ? ` (${diagnosis.notes.join(", ")})` : ""),
-        });
+        );
       }
       // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
       // to the inbox to rerun fresh; a role loop resumes the just-compacted session
@@ -713,15 +704,12 @@ export class LoopRunner {
         body = body ?? extractCommitBody(followUp.finalText);
       }
       if (summary === null) summary = fallbackSummary(await changedFiles(wt), this.role, s.ticks);
-      logEvent(this.root, {
-        loop: this.role,
-        type: "warning",
-        message:
-          `reply had no SUMMARY line — ` +
+      this.warn(
+        `reply had no SUMMARY line — ` +
           (followUp && extractSummary(followUp.finalText) !== null
             ? "recovered it with a follow-up turn"
             : `follow-up gave none; subject derived from the changed files: "${summary}"`),
-      });
+      );
     }
 
     // Friction as a signal (plans/refusal-and-thrash.md): a changed tick that burned more than
@@ -737,13 +725,10 @@ export class LoopRunner {
     const highFriction =
       authoringTurns > this.config.thrashTurns || minutes > this.config.thrashMinutes;
     if (highFriction) {
-      logEvent(this.root, {
-        loop: this.role,
-        type: "warning",
-        message:
-          `high-friction tick: ${authoringTurns} turns in ${Math.round(minutes)} min ` +
+      this.warn(
+        `high-friction tick: ${authoringTurns} turns in ${Math.round(minutes)} min ` +
           `(thresholds: ${this.config.thrashTurns} turns / ${this.config.thrashMinutes} min)`,
-      });
+      );
     }
     // The trailer is harness-stamped truth: turns and peak ctx over this tick's pre-commit
     // runs only (conflict-resolution and review runs fold after the commit). A high-friction
