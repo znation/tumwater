@@ -65,10 +65,12 @@ Open items:
   binary (planned 2026-09-14, requested by user; seven sub-plans in plans/portability.md).
 - Planned: Repair traces — a required `Validation gap` line in BUGS.md Fixed entries (planned
   2026-09-17, requested by user).
+- Planned: Show the exact prompt each run received — `tumwater logs --role <id> --prompt`
+  (planned 2026-09-19).
 - Open bugs: none.
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`cf0347a`): build clean, suite 1174/1174.
+Current main (`0d32b71`): build clean, suite 1176/1176.
 <!-- tumwater:status:end -->
 
 ## How it works
