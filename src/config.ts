@@ -50,8 +50,13 @@ export function defaultConfig(): TumwaterConfig {
     // generous for a normal day of autonomous work on mid-tier API models and low enough to
     // catch a runaway. Local-model fleets report $0 cost, so the cap never fires for them.
     maxDailyCostUsd: 50,
+    // Friction is flagged only when a changed tick burns BOTH thresholds (src/loop.ts): the
+    // absolute turn count alone measures model speed, so a fast model's ordinary 40+ turn /
+    // few-minute tick stays unflagged, while a genuinely hard tick that burned 40+ turns over
+    // half an hour or more still is (BUGS.md 2026-09-19). Tuned for the ~27B local model at
+    // 24-35 tok/s, where 40 turns is half an hour of work.
     thrashTurns: 40,
-    thrashMinutes: 60,
+    thrashMinutes: 30,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },
     // A self-hosting fleet redeploys itself onto a green main (src/redeploy.ts): the alternative
     // — a process that never reloads its own code — ran ten days stale in dogfood.

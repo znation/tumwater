@@ -542,11 +542,12 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
 });
 
 // Thrash flag (plans/refusal-and-thrash.md item b): a changed tick whose authoring run burned
-// more than thrashTurns turns or thrashMinutes of wall clock is flagged high-friction — one
-// warning event carrying both thresholds, the outcome flag, the reviewer prompt's HIGH-FRICTION
-// marker, and (for the turns case) the Friction trailer line on the commit itself. The fake pi
-// identifies reviewer runs by their VERDICT prompt (the pattern this file already uses for gate
-// tests) and records that run's args to a file outside the worktree.
+// BOTH more than thrashTurns turns and thrashMinutes of wall clock is flagged high-friction —
+// one warning event carrying both thresholds, the outcome flag, the reviewer prompt's
+// HIGH-FRICTION marker, and the Friction trailer line on the commit itself. Requiring both (not
+// either) keeps a fast model's ordinary 40-turn/few-minute tick unflagged (BUGS.md 2026-09-19).
+// The fake pi identifies reviewer runs by their VERDICT prompt (the pattern this file already
+// uses for gate tests) and records that run's args to a file outside the worktree.
 
 test("a changed tick past thrashTurns is flagged high-friction end to end", async () => {
   const repo = await initializedRepo();
@@ -554,8 +555,8 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
-      // Two assistant turns with thrashTurns set to 1 → past the turn threshold (the time
-      // threshold stays at its default of 60 min, so only the turns side can fire).
+      // Two assistant turns with thrashTurns set to 1 AND thrashMinutes set to 0 → past both
+      // thresholds, so the flag fires.
       `printf '%s\\n' '${assistantLine("first turn of work")}'`,
       `printf '%s\\n' '${assistantLine("second turn\nSUMMARY: slow change", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
@@ -564,6 +565,7 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
   try {
     const config = defaultConfig();
     config.thrashTurns = 1;
+    config.thrashMinutes = 0;
     const runner = new LoopRunner(repo, "improve", config, "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
@@ -580,7 +582,7 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
     assert.equal(warnings.length, 1, "exactly one high-friction warning event");
     assert.match(
       String(warnings[0]!.message),
-      /^high-friction tick: 2 turns in \d+ min \(thresholds: 1 turns \/ 60 min\)$/,
+      /^high-friction tick: 2 turns in \d+ min \(thresholds: 1 turns \/ 0 min\)$/,
     );
 
     // The reviewer run's prompt carried the HIGH-FRICTION marker for extra scrutiny.
@@ -594,40 +596,38 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
   }
 });
 
-test("a changed tick past thrashMinutes is flagged high-friction", async () => {
+test("a changed tick past only thrashTurns is not flagged high-friction", async () => {
   const repo = await initializedRepo();
   const reviewArgs = path.join(tmpdir(), "review-args");
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
-      // One turn (far under the default thrashTurns of 40) but ~1 s of wall clock with
-      // thrashMinutes set to 0 → past the time threshold, so only the minutes side can fire.
-      `sleep 1`,
-      `printf '%s\\n' '${assistantLine("slow work\nSUMMARY: slow change", { tokens: 42, output: 42, cost: 0.05 })}'`,
+      // Two turns with thrashTurns set to 1 is past the turn threshold; the default
+      // thrashMinutes of 30 is nowhere near → only the turns side fires. Both are required, so
+      // an ordinary fast tick is NOT flagged (the false positive BUGS.md 2026-09-19 recorded).
+      `printf '%s\\n' '${assistantLine("first turn of work")}'`,
+      `printf '%s\\n' '${assistantLine("second turn\nSUMMARY: fast change", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
   );
   try {
     const config = defaultConfig();
-    config.thrashMinutes = 0; // validation allows >= 0
+    config.thrashTurns = 1;
     const runner = new LoopRunner(repo, "improve", config, "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, config, "improve"), "changed");
-    assert.ok(outcome.highFriction, "the tick is flagged high-friction");
+    assert.ok(!outcome.highFriction, "a turns-only fast tick is not flagged high-friction");
 
+    // No high-friction warning event, no marker on the reviewer prompt, and no Friction
+    // trailer on the commit.
     const events = readEvents(repo);
-    const warnings = events.filter(
-      (e) => e.type === "warning" && /high-friction/.test(String(e.message)),
+    assert.ok(
+      !events.some((e) => e.type === "warning" && /high-friction/.test(String(e.message))),
+      "no high-friction warning event",
     );
-    assert.equal(warnings.length, 1, "exactly one high-friction warning event");
-    assert.match(
-      String(warnings[0]!.message),
-      /^high-friction tick: 1 turns in \d+ min \(thresholds: 40 turns \/ 0 min\)$/,
-    );
-
-    // The reviewer run's prompt carried the HIGH-FRICTION marker for extra scrutiny.
-    assert.match(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
+    assert.doesNotMatch(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
+    assert.doesNotMatch(sh(repo, "git", "log", "-1", "--format=%B"), /Friction:/);
   } finally {
     restore();
   }
@@ -644,7 +644,7 @@ test("an ordinary changed tick under both thresholds is not flagged high-frictio
     ].join("\n"),
   );
   try {
-    // Default thresholds (40 turns / 60 min): one fast turn is far under both.
+    // Default thresholds (40 turns / 30 min): one fast turn is far under both.
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");

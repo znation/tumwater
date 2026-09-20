@@ -53,10 +53,10 @@ not in the vocabulary.
   arbitrary strings, so no new rendering code is needed.
 - **Thrash detection** (`src/loop.ts`, measured at tick end): pi runs autonomously, so mid-run
   intervention is out of scope — instead measure after: if a changed tick used more than
-  `thrashTurns` assistant turns (config, default 40) or ran longer than `thrashMinutes` (default
-  60), mark the outcome `highFriction: true`, log a `warning` event, and — once the review gate
-  exists — include the flag in the review prompt so the reviewer applies extra scrutiny. The
-  commit-body note lands with [commit-bodies.md](commit-bodies.md), which reserved the slot
+  `thrashTurns` assistant turns (config, default 40) AND ran longer than `thrashMinutes` (default
+  30 — refined 2026-09-19, see below), mark the outcome `highFriction: true`, log a `warning`
+  event, and — once the review gate exists — include the flag in the review prompt so the
+  reviewer applies extra scrutiny. The commit-body note lands with [commit-bodies.md](commit-bodies.md), which reserved the slot
   ("appends to this line when set"); the format is now decided (2026-08-29 re-audit) as a sibling
   git-trailer line after the Tick line — `Friction: high (<turns> turns / <minutes>m)` — rather
   than an extension of that line, which keeps its asserted format stable and gives minutes (absent
@@ -66,6 +66,13 @@ not in the vocabulary.
   59, 2026-08-30): friction is measured over the tick's authoring runs only — a pre-gate snapshot
   of the turn counter, since the review gate folds its own run into `tickTurns` after the commit;
   reviewer turns never count toward thrash.
+  Refined 2026-09-19 (bugfix, BUGS.md "Friction's absolute turn threshold measures model speed"):
+  the turn and wall-clock thresholds are ANDed, not ORed. An absolute turn count alone redefines
+  itself with the fleet's model — on the fast API model 40 turns is a 3–5-minute tick, so the OR
+  flagged 41% of changed ticks at 2–19 minutes, none near the 60-minute bound. `thrashMinutes`
+  defaults to 30 ("half an hour"), so a genuinely hard 70-turn/40-minute tick still flags while a
+  45-turn/4-minute one does not. There is no separate minutes-only trigger: a slow few-turn tick
+  is covered by the stall/quiet watchdogs.
   Data sources: turn count is a small `PiStreamParser` addition (a counter over assistant
   message-end events) exposed as `PiRunResult.turns` — commit-bodies.md needs the same field for
   its trailer, so
@@ -107,7 +114,7 @@ selective commit/discard helper), `src/loop.ts`, `src/types.ts` (TickResult, PiR
 config fields), `src/config.ts` (thrash thresholds + validation), `src/roles.ts`,
 `test/refusal.test.ts` (sentinel parse; md-only refusal commits and merges; mixed refusal keeps
 the note and discards tracked *and* untracked code changes; no-note refusal resets cleanly;
-thrash flag set past either threshold) plus prompt-contract assertions: the skip rule in
+thrash flag set past both thresholds) plus prompt-contract assertions: the skip rule in
 COMMON_RULES, the feature + bugfix find-text lines, and the director's unblock-routing line.
 README. No status-render/gui-page change: `refused`
 shows up in both tables for free once `lastResult` is set.
@@ -119,7 +126,7 @@ shows up in both tables for free once `lastResult` is set.
 - A refusal that also edited code keeps the markdown note (committed and merged) and discards
   every non-markdown change — tracked modifications and untracked files alike; a refusal with no
   note at all resets the worktree to main and still records the reason via event + lastSummary.
-- A changed tick past either thrash threshold is flagged `highFriction` with a warning event;
+- A changed tick past BOTH thrash thresholds is flagged `highFriction` with a warning event;
   once commit-bodies.md has landed the same tick's commit carries the reserved trailer line.
 - A refused entry is blocked: the COMMON_RULES skip rule, both roles' find-text lines, and the
   director's unblock-routing line are all present (prompt tests assert each); a refusal note uses

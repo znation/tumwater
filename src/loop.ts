@@ -712,18 +712,21 @@ export class LoopRunner {
       );
     }
 
-    // Friction as a signal (plans/refusal-and-thrash.md): a changed tick that burned more than
-    // thrashTurns turns or thrashMinutes of wall clock is flagged high-friction — difficulty
-    // suggests the work may not fit, so it goes to review marked and leaves a warning event.
-    // Measured over this tick's main authoring run (a transient retry included via runRolePi),
-    // like the trailer; conflict-resolution runs happen later inside merge().
+    // Friction as a signal (plans/refusal-and-thrash.md): a changed tick that burned BOTH more
+    // than thrashTurns turns and thrashMinutes of wall clock is flagged high-friction —
+    // difficulty suggests the work may not fit, so it goes to review marked and leaves a warning
+    // event. Requiring both (not either) keeps the absolute turn count from measuring model
+    // speed: a fast model emits 40+ turns in a few minutes, which is ordinary work, not
+    // difficulty (BUGS.md 2026-09-19). Measured over this tick's main authoring run (a transient
+    // retry included via runRolePi), like the trailer; conflict-resolution runs happen later
+    // inside merge().
     const minutes = (Date.now() - piStartedAt) / 60_000;
     // Friction is measured over this tick's authoring runs only — the review gate folds its
     // run into tickTurns AFTER the commit, so every friction artifact (flag, warning event,
     // trailer line, final summary) reads this pre-gate snapshot instead of the live counter.
     const authoringTurns = this.tickTurns;
     const highFriction =
-      authoringTurns > this.config.thrashTurns || minutes > this.config.thrashMinutes;
+      authoringTurns > this.config.thrashTurns && minutes > this.config.thrashMinutes;
     if (highFriction) {
       this.warn(
         `high-friction tick: ${authoringTurns} turns in ${Math.round(minutes)} min ` +

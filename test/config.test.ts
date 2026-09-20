@@ -56,11 +56,11 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
 });
 
 test("defaultConfig carries the thrash thresholds and validation guards them", () => {
-  // AC5 (plans/refusal-and-thrash.md): the friction thresholds default to 40 turns / 60
+  // AC5 (plans/refusal-and-thrash.md): the friction thresholds default to 40 turns / 30
   // minutes, and invalid values are rejected with actionable errors like every other knob.
   const config = defaultConfig();
   assert.equal(config.thrashTurns, 40);
-  assert.equal(config.thrashMinutes, 60);
+  assert.equal(config.thrashMinutes, 30);
   assert.doesNotThrow(() => validateConfig(config));
 
   for (const [key, bad] of [

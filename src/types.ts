@@ -121,9 +121,11 @@ export interface TumwaterConfig {
    * before. The director is outside both behaviors: it keeps the budgeted model, because an
    * explicit human prompt outranks the autonomous-spend cap. */
   fallbackModel?: FallbackModelConfig;
-  /** Friction threshold in assistant turns: a changed tick using MORE than this many turns is
-   * flagged high-friction (Friction trailer line on its commit, warning event, and extra review
-   * scrutiny) — difficulty is a signal that the work may not fit. See plans/refusal-and-thrash.md.
+  /** Friction threshold in assistant turns: a changed tick is flagged high-friction only when it
+   * used MORE than this many turns AND ran longer than thrashMinutes (Friction trailer line on
+   * its commit, warning event, and extra review scrutiny) — difficulty is a signal that the work
+   * may not fit; requiring both keeps the absolute turn count from flagging a fast model's
+   * ordinary work. See plans/refusal-and-thrash.md.
    */
   thrashTurns: number;
   /** Friction threshold in wall-clock minutes, same semantics as thrashTurns. */
@@ -167,8 +169,8 @@ export interface TickOutcome {
   result: TickResult;
   summary?: string;
   commit?: string;
-  /** The tick's authoring run burned more than the configured thrashTurns/thrashMinutes
-   * thresholds (plans/refusal-and-thrash.md): difficulty is a signal, so the change went to
+  /** The tick's authoring run burned more than the configured thrashTurns turns AND thrashMinutes
+   * (plans/refusal-and-thrash.md): difficulty is a signal, so the change went to
    * review flagged and a warning event was logged. */
   highFriction?: boolean;
   /** The run was truncated at the model's context ceiling before it could finish (a

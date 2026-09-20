@@ -5,7 +5,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Friction's absolute turn threshold measures model speed, not difficulty: on the fleet's fast API model it flags 41% of changed ticks at 2–19 minutes (found by telemetry loop 2026-09-19)
+## Fixed
+
+### Friction's absolute turn threshold measures model speed, not difficulty: on the fleet's fast API model it flags 41% of changed ticks at 2–19 minutes (found by telemetry loop 2026-09-19, fixed 2026-09-19)
 
 **Symptom:** The 2026-09-19 digest's second warning cluster is `high-friction tick: <n> turns in <m> min (thresholds: 40 turns / 60 min)` — 36 occurrences across eight roles (`bugfix`, `clean`, `coverage`, `dry`, +4) against 87 changed ticks (41%), and 29 of the last 80 commits on main carry the `Friction: high` trailer it stamps. The digest's own first occurrence is `41 turns in 5 min`: the wall-clock half of the OR is an order of magnitude under the 60-minute threshold, so only the absolute turn count fired — one turn past 40. Every flag in the window looks like it: the harness-stamped `Tick:`/`Friction:` trailers on main read 41–86 turns at 2–19 minutes and not one approaches 60 minutes (`400f6e2` 48/2m, `f45684f` 41/5m, `254d277` 75/7m, `492cbeb` 86/19m, `b116802` 43/14m), while the same day's unflagged ticks sit at 8–39 turns (`f4c2a94` 10, `7c9acb3` 16, `31cb2a1` 19). So the minutes threshold is dead on this fleet and the turn threshold — an absolute count whose difficulty meaning depends on how fast the model emits turns — carries the whole signal. Each flag gets the full high-friction treatment on a five-minute tick: a `warning` event, a permanent `Friction: high` line on the commit, and a reviewer-prompt paragraph telling the reviewer to "apply extra scrutiny to whether the change should exist at all, not just whether it is correct" (src/prompt.ts:353–354).
 
@@ -17,9 +19,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Suspected cause:** `highFriction = authoringTurns > thrashTurns || minutes > thrashMinutes` (src/loop.ts:729–730) ORs an absolute turn count with a wall-clock bound, so a faster model silently redefines the turn half; the default was set for the local model and nothing re-derives it when the fleet's model changes.
 
-**Files:** src/loop.ts (friction decision, ~729), src/config.ts (`thrashTurns`/`thrashMinutes` defaults, line 53), plans/refusal-and-thrash.md (the threshold spec, refined 2026-08-30), test/loop-2.test.ts (the two thrash-flag tests pin the OR semantics).
+**Fix:** The friction flag now requires BOTH thresholds — `highFriction = authoringTurns > thrashTurns && minutes > thrashMinutes` (src/loop.ts) — so an absolute turn count can no longer flag a fast model's ordinary work. `thrashMinutes` defaults to 30 ("half an hour") in src/config.ts, rescaling the wall-clock half for the fast API fleet: the digest's 36 warnings all sat at 2–19 minutes, so none would fire again, while a genuinely hard 70-turn/40-minute tick still does. A slow few-turn tick is covered by the stall/quiet watchdogs, so there is no separate minutes-only trigger. plans/refusal-and-thrash.md's spec and acceptance criterion now say AND (with a refined-2026-09-19 note), and src/types.ts documents the paired semantics.
 
-## Fixed
+**Files:** src/loop.ts (AND condition + comment), src/config.ts (`thrashMinutes: 30`), src/types.ts (thrashTurns/thrashMinutes/highFriction docs), plans/refusal-and-thrash.md (spec, wording, acceptance criterion), test/loop-2.test.ts (the two-threshold e2e flags; a new turns-only test pins the regression), test/config.test.ts (default 30).
 
 ### The failure digest's per-role rejection counter reads 0 on the live fleet: it counted a `tick_end` result no landing path emits (found by telemetry loop 2026-09-19, fixed 2026-09-19)
 
