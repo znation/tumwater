@@ -696,6 +696,20 @@ test("compileStaged without typescript installed anywhere above the project fail
   assert.match(result.detail, /typescript is not installed/);
 });
 
+test("compileStaged reports a timeout instead of hanging when tsc runs past its cap", async () => {
+  // The redeploy's only guard against a wedged compiler: a tsc that never returns must fail the
+  // compile with a clear reason (so the stale build keeps running with `restart BLOCKED: tsc timed
+  // out`) rather than hang the drain forever. `timeoutMs` is the seam that lets the 5-minute
+  // production cap be exercised at all; a 1 ms cap guarantees the (slow-to-start) tsc is killed.
+  const root = makeRepo();
+  const head = tinyTsProject(root);
+  fs.mkdirSync(path.join(root, "node_modules"));
+  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+  const result = await compileStaged(root, mirror, head, 1);
+  assert.deepEqual(result, { ok: false, detail: "tsc timed out after 0.001s" });
+});
+
 test("mainIsGreen: no declared check reads as green", async () => {
   const root = makeRepo();
   const head = sh(root, "git", "rev-parse", "HEAD");
