@@ -3,8 +3,8 @@
 Planned 2026-09-14, requested by the user; audited against main `1384eeb` on 2026-09-15, 1/7
 re-audited against `00501fa` on 2026-09-16, 2/7 against `e76c5d5` on 2026-09-17, 6/7 against
 `94562d8` on 2026-09-18, 3/7 against `44a037c` on 2026-09-18, 4/7 against `2714022` on 2026-09-19 —
-re-audited and split into 4a/7, 4b/7 and 4c/7 (5/7 remains on `1384eeb`; 7/7 re-audited against
-`5a99627` on 2026-09-18). Full plan
+re-audited and split into 4a/7, 4b/7 and 4c/7 (5/7 re-audited against `f52cac9` on 2026-09-19;
+7/7 re-audited against `5a99627` on 2026-09-18). Full plan
 for the `Portability & packaging` entry in PLANS.md: nine independently landable sub-plans (4/7
 became three), each with its own goal, design rationale, approach, files touched, and acceptance
 criteria. The problem statement, invariants, and sequencing below are shared by all of them.
@@ -586,9 +586,10 @@ gate on `findOnPath("pi")` — so a non-PATH install, a wrapper script, or two p
 side are all impossible.
 
 **Design (decided, with rationale).**
-- **Resolution order: `TUMWATER_PI_BIN` → `agentBin` in config → `"pi"`.** An absolute or
-  `./`-relative value is used as given; a bare name is resolved on PATH. The env variable exists
-  for one-off runs and for CI, where the value differs per job.
+- **Resolution order: `TUMWATER_PI_BIN` → `agentBin` in config → `"pi"`.** A value containing a
+  path separator is used as given (absolute, or relative to the process cwd); a bare name is left
+  to PATH resolution. The env variable exists for one-off runs and for CI, where the value differs
+  per job.
 - **This is deliberately NOT an agent-CLI abstraction.** The argv pi accepts (`--print --mode json
   --session-dir --continue -n --provider --model --thinking`) and its JSON event protocol are
   woven through pi.ts's stream parser, review.ts's verdict contract, and the resume path. What
@@ -613,8 +614,9 @@ side are all impossible.
   spawn-error message names the resolved binary), test/cli.test.ts (preflight failure text),
   test/doctor.test.ts (all three sources).
 
-**Files touched.** src/types.ts, src/config-validation.ts, src/pi.ts, src/cli.ts, src/doctor.ts,
-tumwater.example.json, test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts.
+**Files touched.** src/types.ts, src/config-validation.ts, src/pi.ts, src/readiness.ts, src/cli.ts,
+src/doctor.ts, test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts, test/config.test.ts; and
+`tumwater.example.json` only when 4a/7 has already created it (see correction 6 below).
 
 **Acceptance criteria.**
 - With `pi` absent from PATH but `agentBin` set to an absolute path, `tumwater run` starts and
@@ -625,6 +627,67 @@ tumwater.example.json, test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts.
   front of PATH and exercises this shape).
 - With none of the three resolving to an executable, `run` and `doctor` both fail naming the
   resolved value, its source, and the install hint.
+
+**Refined 2026-09-19 (plan loop) — 5/7 audited against main `f52cac9` (build clean, suite
+1179/1179 per the README stamp). This was the series' last member never re-audited — its only
+pass was the series write `074e48f` against `1384eeb` on 2026-09-15, and ~60 landings have
+happened since. Every load-bearing claim re-verified on this tree; six corrections, the first
+four load-bearing.**
+
+Verified as written: `spawn("pi", …)` is still the single pi spawn (src/pi.ts:113), the
+`SPAWN_ERROR_PREFIX` constant sits at src/pi.ts:81, and `grep -rn 'findOnPath("pi")' src/`
+returns exactly the two named gates — src/cli.ts:122 in `cmdRun` and src/doctor.ts:102 in
+`checkPiBinary`. `TumwaterConfig` is src/types.ts:78 and `TOP_LEVEL_KEYS` src/config-validation.ts:27;
+`findOnPath` is src/files.ts:55. Capability absence re-confirmed: `grep -rn
+'agentBin\|TUMWATER_PI_BIN\|resolveAgentBin\|checkAgentBinary' src/ test/` is empty.
+
+Corrections:
+
+1. **The missing-binary message is one shared constant, not a per-caller string.**
+   `PI_MISSING_MESSAGE` lives in `src/readiness.ts:11` and both `src/cli.ts:24` and
+   `src/doctor.ts:14` import it; readiness.ts's own doc comment promises the two surfaces "cannot
+   drift". Naming the resolved binary + source therefore cannot be done at the two call sites:
+   add a builder (`piMissingMessage(resolved)`) beside `PI_MISSING_MESSAGE` in readiness.ts and
+   add **src/readiness.ts** to Files touched. Keep the default-source text byte-identical to
+   today's — `test/cli.test.ts:388` and `:1121` match `/pi not found on PATH/` and
+   `test/doctor.test.ts:78` pins the install hint — so only a non-default source gains the
+   "resolved `<bin>` from `TUMWATER_PI_BIN`/`agentBin`" clause.
+2. **`runPi` already receives the config.** `PiRunOptions.config: TumwaterConfig` exists
+   (src/pi.ts:24), so the spawn site resolves `resolveAgentBin(opts.config)` with **no signature
+   change** in loop.ts/merge.ts/review.ts — thread nothing. Pin this so the implementer does not
+   add an `agentBin` field to `PiRunOptions`.
+3. **`resolveAgentBin` is precedence only; a bare name is not pre-resolved.** Return
+   `{ bin, source }` from `TUMWATER_PI_BIN` → `agentBin` → `"pi"`; an empty or whitespace env
+   value falls through to config (so `TUMWATER_PI_BIN= tumwater run` cannot wedge the fleet), and
+   a value containing a path separator is used as given (relative to the process cwd). Keep
+   `resolveAgentBin` free of filesystem calls so it is trivially unit-testable, and test
+   resolvability at the two preflight sites instead: a bare name through `findOnPath`, a path
+   through `fs.accessSync(X_OK)`. Note `findOnPath` is POSIX-only (`X_OK` + `isFile()`, no
+   PATHEXT, src/files.ts:55) and the spawn keeps the raw bare name so the OS resolves it exactly
+   as today.
+4. **`cmdRun` must load the config before its preflight.** Today the `findOnPath("pi")` check
+   (src/cli.ts:122) precedes `const config = loadConfig(root)` (~src/cli.ts:130). Hoist the
+   `loadConfig` line above the check — `requireReadyRepo` has already gated on tumwater.json
+   existing, and `loadConfig` returns defaults when the file is absent (src/config.ts:74), so the
+   move is behavior-preserving on the default path. Leave the supervised early return where it is
+   (one extra parse in a path that reads the config moments later).
+5. **doctor resolves the config itself, safely.** `checkPiBinary(pathEnv)` (src/doctor.ts:101)
+   takes only a PATH string and is called from `runDoctor` (src/doctor.ts:201) with no config;
+   make it `checkAgentBinary(root, pathEnv)`, resolving through `loadConfigSafe(root)`
+   (src/config.ts:113) so a malformed tumwater.json cannot throw inside a check (checkInit already
+   reports that failure separately, src/doctor.ts:87-95). **Keep the user-visible check label `pi
+   binary`** — `test/doctor.test.ts:221,243` and `test/cli.test.ts:1121,1148` pin it, as does
+   README's doctor line — and rename only the function and its detail text.
+6. **The example-config line is order-dependent.** `tumwater.example.json` does not exist on this
+   tree; 4a/7 creates it. Since this entry lands independently after 2/7 only, keep the file in
+   Files touched but make the edit conditional: add the commented `agentBin` entry only if the
+   template is present (and 4a/7's template carries it otherwise). It is not an acceptance
+   criterion. Top-level key validation is pinned in **test/config.test.ts:383** (there is no
+   `test/config-validation.test.ts`), so `agentBin`'s validation test joins that file.
+
+Sizing unchanged: src/pi.ts ~20 lines, src/readiness.ts ~8, src/cli.ts ~5, src/doctor.ts ~8,
+src/types.ts + src/config-validation.ts ~4, tests ~40. No design question remains open; landable
+after 2/7.
 
 ---
 
