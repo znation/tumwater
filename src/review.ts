@@ -12,9 +12,9 @@ import { shortSha } from "./text.js";
 import {
   BUILD_CHECK_TIMEOUT_MS,
   clipReason,
+  failureHeadline,
   runScopedBuildCheck,
 } from "./build-check.js";
-import { failureHeadline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with

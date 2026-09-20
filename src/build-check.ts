@@ -239,6 +239,24 @@ export function clipBuildTail(output: string): string[] {
   return (message ? [message, ...tail] : tail).map(clipReason);
 }
 
+/** The line of a clipped failure tail (clipBuildTail) worth putting in a one-line warning.
+ * clipBuildTail keeps the LAST ten meaningful lines (plus the error-message line above the
+ * window when it would otherwise be cut), so a check that died on an unhandled rejection ends
+ * mid-stack and the tail's FIRST line is a frame: every red-main warning logged before
+ * 2026-09-18 read "main <sha> is red (test: at process.processTicksAndRejections
+ * (node:internal/...))" — where, never what, which is why a false red that blocked the fleet
+ * for hours could not be diagnosed from the event feed at all (BUGS.md). Prefer the first line
+ * that is not a stack frame; fall back to the tail's first line when every line is one, so a
+ * caller always has something to print. Frames are the only thing skipped — an assertion diff,
+ * a compiler error and a bare "1) test name" all read as the headline they are. Lives beside
+ * clipBuildTail, whose output it interprets, so every consumer of a check's tail — the red-main
+ * gate (main-red.ts) and the review gate (review.ts) — shares one "which line is the
+ * headline" answer. */
+export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
+  if (!tail?.length) return undefined;
+  return tail.find((line) => !/^at\s/.test(line)) ?? tail[0];
+}
+
 /** Probe the toolchain (see probeToolchain), then run `npm run <script>` in the worktree
  * (cwd = wt), capturing combined output with a hard timeout. Never throws: every outcome is
  * classified per BuildCheckOutcome. Running a local

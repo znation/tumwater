@@ -1,7 +1,7 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles.js";
 import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
-import { BUILD_CHECK_TIMEOUT_MS, buildCheckSkipWarning } from "./build-check.js";
-import { checkMainBaseline, failureHeadline } from "./main-baseline.js";
+import { BUILD_CHECK_TIMEOUT_MS, buildCheckSkipWarning, failureHeadline } from "./build-check.js";
+import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./prompt.js";
 import { logEvent } from "./events.js";
 import type { TickOutcome } from "./types.js";

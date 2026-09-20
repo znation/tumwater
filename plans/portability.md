@@ -794,7 +794,8 @@ Corrections (pinned; the three stale spots are already corrected in place):
 1. **`checkMainBaseline` is in src/main-baseline.ts, not build-check.ts — and main-red.ts needs
    no change.** `checkMainBaseline` (src/main-baseline.ts:137) calls `detectBuildCheck(wt)` +
    `runBuildCheck(wt, check)` itself (line 159), so it is a third `detectBuildCheck` site the plan
-   must thread; src/main-red.ts only imports it (`checkMainBaseline, failureHeadline`, line 4) and
+   must thread; src/main-red.ts imports only `checkMainBaseline` from it (now line 5; `failureHeadline` comes from
+   build-check.ts) and
    passes an `onRun` hook, and src/redeploy.ts:469 calls it too. The files bullet now names
    `src/main-baseline.ts` in place of `src/main-red.ts` and `test/main-baseline.test.ts` in place of
    `test/main-red.test.ts`.

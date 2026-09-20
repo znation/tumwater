@@ -5,26 +5,9 @@ import { gitTry } from "./git.js";
  * machinery that produces it. Split out of build-check.ts — which keeps detecting and running
  * the project's declared check — because a verdict ABOUT a specific SHA is a different concern
  * from the mechanics of running one: this module owns the cache, the in-flight dedup, the
- * re-verification policy that keeps one worktree's environmental red from blocking the fleet,
- * and the presentation of a red's failure tail. main-red.ts's gate consumes it; merge.ts seeds
- * a green here after a post-rebase re-check; redeploy.ts re-verifies a red here before it
- * strands the fleet on a stale build. */
-
-/** The line of a failure tail worth putting in a one-line warning. clipBuildTail keeps the LAST
- * ten meaningful lines (plus the error-message line above the window when it would otherwise be
- * cut), so a check that died on an unhandled rejection ends mid-stack and the tail's FIRST line
- * is a frame: every red-main warning logged before 2026-09-18 read
- * "main <sha> is red (test: at process.processTicksAndRejections (node:internal/...))" — where,
- * never what, which is why a false red that blocked the fleet for hours could not be diagnosed
- * from the event feed at all (BUGS.md). Prefer the first line that is not a stack frame; fall
- * back to the tail's first line when every line is one, so a caller always has something to
- * print. Frames are the only thing skipped — an assertion diff, a compiler error and a bare
- * "1) test name" all read as the headline they are. Shared by main-red.ts's red-main warning and
- * review.ts's machine-generated rejection reason, so both surfaces name what broke. */
-export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
-  if (!tail?.length) return undefined;
-  return tail.find((line) => !/^at\s/.test(line)) ?? tail[0];
-}
+ * re-verification policy that keeps one worktree's environmental red from blocking the fleet.
+ * main-red.ts's gate consumes it; merge.ts seeds a green here after a post-rebase re-check;
+ * redeploy.ts re-verifies a red here before it strands the fleet on a stale build. */
 
 // ── Main baseline (red-main gate) ────────────────────────────────────────────────────────
 // The review gate verifies worktree = main + changes before every merge; this checks MAIN
@@ -42,8 +25,9 @@ interface MainBaseline {
   sha: string;
   /** Red only: the script that failed. */
   script?: string;
-  /** Red only: clipped failure tail (clipBuildTail) — failureHeadline picks the line that goes
-   * into the warning event so an operator sees what broke without opening a transcript. */
+  /** Red only: clipped failure tail (clipBuildTail) — failureHeadline (build-check.ts) picks the
+   * line that goes into the warning event so an operator sees what broke without opening a
+   * transcript. */
   outputTail?: string[];
   /** Red only: the worktrees that have independently observed this red. A red seen in ONE
    * worktree is provisional evidence about the environment as much as the tree, so it is

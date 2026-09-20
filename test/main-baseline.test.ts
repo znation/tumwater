@@ -2,15 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkMainBaseline, failureHeadline, noteGreenBaseline } from "../src/main-baseline.js";
-import { clipBuildTail } from "../src/build-check.js";
+import { checkMainBaseline, noteGreenBaseline } from "../src/main-baseline.js";
 import { sh, tmpdir } from "./util.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
-// red from blocking the fleet, green seeding from the landing path, and the presentation of a
-// red's failure tail. main-red.test.ts covers the gate built on top; build-check.test.ts
-// covers the detection and execution this module consumes.
+// red from blocking the fleet, and green seeding from the landing path. main-red.test.ts
+// covers the gate built on top; build-check.test.ts covers the detection, execution, and
+// failure-tail presentation this module consumes.
 
 const ROLE = "improve";
 
@@ -56,40 +55,6 @@ function addWorktree(root: string, role: string): string {
   sh(root, "git", "worktree", "add", "-b", `tumwater/${role}`, wt, "main");
   return wt;
 }
-
-test("failureHeadline names what broke, not the frame it broke in", () => {
-  // clipBuildTail keeps the LAST ten lines, so an unhandled rejection's tail opens mid-stack.
-  assert.equal(
-    failureHeadline([
-      "at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
-      "at async Promise.all (index 0)",
-      "AssertionError [ERR_ASSERTION]: actual: 'quiet_killed', expected: 'no_change'",
-    ]),
-    "AssertionError [ERR_ASSERTION]: actual: 'quiet_killed', expected: 'no_change'",
-  );
-  assert.equal(failureHeadline(["at a (f:1:1)", "at b (f:2:2)"]), "at a (f:1:1)", "all frames: print something");
-  assert.equal(failureHeadline([]), undefined);
-  assert.equal(failureHeadline(undefined), undefined);
-});
-
-test("failureHeadline names an unhandled error whose message the tail window would otherwise cut", () => {
-  const frames = Array.from({ length: 12 }, (_, i) => `at f${i} (file:///w/x.ts:${i}:1)`);
-  const tail = clipBuildTail(
-    [
-      "Error: ENOENT: no such file or directory, open '/nope'",
-      ...frames,
-      "errno: -2,",
-      "code: 'ENOENT',",
-      "syscall: 'open',",
-      "path: '/nope'",
-    ].join("\n"),
-  );
-  assert.equal(
-    failureHeadline(tail),
-    "Error: ENOENT: no such file or directory, open '/nope'",
-    "the message, not `errno: -2,`",
-  );
-});
 
 test("a red in one worktree is re-verified by the next, and a green there promotes the SHA", async () => {
   const counter = path.join(tmpdir(), "runs");

@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   clipBuildTail,
   detectBuildCheck,
+  failureHeadline,
   resolveFromNodeModules,
   runBuildCheck,
   runScopedBuildCheck,
@@ -337,6 +338,43 @@ test("clipBuildTail never mistakes an error property for the message", () => {
     ...Array.from({ length: 8 }, (_, i) => `at f${i} (x:1:1)`),
   ];
   assert.deepEqual(clipBuildTail(lines.join("\n")), lines.slice(-10));
+});
+
+// --- failureHeadline: which line of a clipped tail becomes the one-line headline, so a red
+// names what broke rather than the stack frame it broke in.
+
+test("failureHeadline names what broke, not the frame it broke in", () => {
+  // clipBuildTail keeps the LAST ten lines, so an unhandled rejection's tail opens mid-stack.
+  assert.equal(
+    failureHeadline([
+      "at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+      "at async Promise.all (index 0)",
+      "AssertionError [ERR_ASSERTION]: actual: 'quiet_killed', expected: 'no_change'",
+    ]),
+    "AssertionError [ERR_ASSERTION]: actual: 'quiet_killed', expected: 'no_change'",
+  );
+  assert.equal(failureHeadline(["at a (f:1:1)", "at b (f:2:2)"]), "at a (f:1:1)", "all frames: print something");
+  assert.equal(failureHeadline([]), undefined);
+  assert.equal(failureHeadline(undefined), undefined);
+});
+
+test("failureHeadline names an unhandled error whose message the tail window would otherwise cut", () => {
+  const frames = Array.from({ length: 12 }, (_, i) => `at f${i} (file:///w/x.ts:${i}:1)`);
+  const tail = clipBuildTail(
+    [
+      "Error: ENOENT: no such file or directory, open '/nope'",
+      ...frames,
+      "errno: -2,",
+      "code: 'ENOENT',",
+      "syscall: 'open',",
+      "path: '/nope'",
+    ].join("\n"),
+  );
+  assert.equal(
+    failureHeadline(tail),
+    "Error: ENOENT: no such file or directory, open '/nope'",
+    "the message, not `errno: -2,`",
+  );
 });
 
 // --- resolveFromNodeModules: the same walk-up detectBuildCheck makes, for a dependency the
