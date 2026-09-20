@@ -364,9 +364,9 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
         }
       }
       const qn = (d.questions || []).length;
-      // The build badge arrives pre-formatted from the payload — status-render's buildBadge,
+      // The build badge arrives pre-formatted from the payload — status-model's buildBadge,
       // the same string the TUI/status header renders, so the two surfaces cannot drift.
-      // The land-queue badge is the same pattern (status-render's landingBadge —
+      // The land-queue badge is the same pattern (status-model's landingBadge —
       // "· land queue: N" while anything is queued or landing, empty when idle), appended
       // in the same order as renderStatus's header: after the running/pid+build part, before
       // the inbox badge.
@@ -375,7 +375,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
         (d.landingBadge || "") +
         (d.inbox ? " · inbox: " + d.inbox : "") +
         (qn ? " · questions: " + qn : "");
-      // The daily cost budget badge arrives preformatted from the payload — status-render's
+      // The daily cost budget badge arrives preformatted from the payload — status-model's
       // budgetBadge, the same string the TUI/status header renders (n/a for an all-free
       // fleet; "· no cap" when disabled), so the two surfaces cannot drift. It is its own
       // element because it is clickable (in priced states — an all-free fleet renders

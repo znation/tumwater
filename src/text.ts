@@ -132,7 +132,7 @@ export function usd(n: number): string {
 /** A USD cap for display: whole dollars stay bare ($50), fractional ones keep their cents
  * ($12.34) — the budget badge reads `· budget: $12.34/$50 today`, and the TUI's cap-edit
  * confirmation reads `budget set to $25`. The single home of the drop-`.00` rule, shared by
- * status-render's `budgetBadge` and the TUI's budget-edit flash so the two cannot drift. */
+ * status-model's `budgetBadge` and the TUI's budget-edit flash so the two cannot drift. */
 export function usdCap(n: number): string {
   return `$${n.toFixed(2).replace(/\.00$/, "")}`;
 }

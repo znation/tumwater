@@ -1200,8 +1200,8 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
   assert.equal(payload.buildBadge, "", "no running harness: empty badge");
 
   // A live orchestrator (this process) publishing a stale stamp with a blocked restart:
-  // the payload's badge is exactly what status-render's buildBadge renders for that BuildStatus.
-  const { buildBadge } = await import("../src/ui/status-render.js");
+  // the payload's badge is exactly what status-model's buildBadge renders for that BuildStatus.
+  const { buildBadge } = await import("../src/ui/status-model.js");
   const stamp = {
     sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 7,
     checkedHead: "b".repeat(40), restartBlocked: "main cccccccc is red",

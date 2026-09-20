@@ -4,13 +4,13 @@ import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { budgetGate, budgetReached, dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForRole, loopPhase } from "./status-render.js";
+import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForRole, loopPhase } from "./status-model.js";
 
 /** The one fleet-state document both observer surfaces serve: `GET /api/status` (gui.ts) and
  * `tumwater status --json` (cli.ts) print the same payload, so the dashboard and the CLI can
  * never drift apart. Assembled here — not in gui.ts — because it is shared data collection for
  * observers, not part of serving HTTP: snapshot() supplies the core state, and the per-loop
- * phase/metrics fields come from the same status-render helpers the TUI table uses. */
+ * phase/metrics fields come from the same status-model helpers the TUI table uses. */
 export function statusPayload(root: string): object {
   const snap = snapshot(root);
   // The budget gate is fleet-wide (plans/daily-cost-budget.md) and three-valued since
@@ -25,19 +25,19 @@ export function statusPayload(root: string): object {
     // The running harness's build stamp and staleness (src/build-info.ts); null when no
     // harness runs or its dist carries no stamp — machine-readable for `status --json`.
     build: snap.build,
-    // The header's build badge pre-formatted through status-render's buildBadge — the same
+    // The header's build badge pre-formatted through status-model's buildBadge — the same
     // string the TUI/status table renders. Sent display-ready (like phase and events) because
     // the page is browser JS that cannot import TypeScript, and this multi-branch text must
     // not be re-derived client-side where it could drift from the TUI header.
     buildBadge: buildBadge(snap.build),
-    // The header's daily-cost-budget badge preformatted through status-render's budgetBadge —
+    // The header's daily-cost-budget badge preformatted through status-model's budgetBadge —
     // the same string the TUI/status table renders (n/a for an all-free fleet; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
     budgetBadge: budgetBadge(snap.budget),
     // The land queue (plans/merge-queue.md 4/5): depth always (machine-readable for
     // `status --json`; 0 when idle) plus the in-flight landing's identity only while one is
     // actually running. Raw data here, like budget — and the display-ready header badge
-    // preformatted through status-render's landingBadge, so the page cannot re-derive it.
+    // preformatted through status-model's landingBadge, so the page cannot re-derive it.
     landQueue: snap.landQueue,
     landingBadge: landingBadge(snap.landQueue),
     inbox: snap.inbox,
