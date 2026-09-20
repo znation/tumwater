@@ -153,21 +153,27 @@ test("deltas report new roles as absent, not an infinite increase", () => {
 });
 
 test("deltas count quiet kills and rejections per role, both windows", () => {
-  // The delta table has dedicated quiet-kills and rejections columns but no fixture ever fed
-  // roleStats a quiet_killed or rejected tick_end, so those counters read 0 however bad the
-  // window was — the one regression an operator reading the digest could not notice.
+  // The delta table has dedicated quiet-kills and rejections columns. A rejection is recorded
+  // by the landing slot AFTER its authoring tick has ended `queued` (plans/merge-queue.md 3/5),
+  // so the fixture pairs a `queued` tick_end with a `review_rejected` event — the shape the
+  // live fleet emits. A fixture that fabricates a `rejected` tick_end would pass even while the
+  // counter reads 0 on every real rejection, the regression an operator could not notice.
   const root = tmpdir();
+  const head = (c: string) => c.repeat(40);
   writeEvents(root, [
     // Preceding window (yesterday): feature had a quiet kill, a rejection, an error, a pass.
     { ts: at(1), loop: "feature", type: "tick_end", result: "quiet_killed" },
-    { ts: at(1), loop: "feature", type: "tick_end", result: "rejected" },
+    { ts: at(1), loop: "feature", type: "tick_end", result: "queued" },
+    { ts: at(1), loop: "feature", type: "review_rejected", head: head("a"), reasons: ["too big"] },
     { ts: at(1), loop: "feature", type: "tick_end", result: "error" },
     { ts: at(1), loop: "feature", type: "tick_end", result: "changed" },
     // Current window (today): feature again, and bugfix appears for the first time.
     { ts: at(0), loop: "feature", type: "tick_end", result: "quiet_killed" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "rejected" },
+    { ts: at(0), loop: "feature", type: "tick_end", result: "queued" },
+    { ts: at(0), loop: "feature", type: "review_rejected", head: head("b"), reasons: ["too big"] },
     { ts: at(0), loop: "bugfix", type: "tick_end", result: "quiet_killed" },
-    { ts: at(0), loop: "bugfix", type: "tick_end", result: "rejected" },
+    { ts: at(0), loop: "bugfix", type: "tick_end", result: "queued" },
+    { ts: at(0), loop: "bugfix", type: "review_rejected", head: head("c"), reasons: ["too big"] },
   ]);
   const data = collectFailureReport(root, 1);
 
@@ -189,6 +195,10 @@ test("deltas count quiet kills and rejections per role, both windows", () => {
   const md = renderFailureMarkdown(data);
   assert.match(md, /\| feature \| 4 → 2 \| 25% → 0% \| 1 → 1 \| 1 → 1 \|/);
   assert.match(md, /\| bugfix \| — → 2 \| — → 0% \| — → 1 \| — → 1 \|/);
+
+  // The delta and the rejection cluster read the same source: a window with a rejection shows
+  // both, so the delta can never claim "no rejections" while the cluster section lists one.
+  assert.equal(data.rejectionClusters.reduce((n, c) => n + c.count, 0), 2);
 });
 
 test("the digest renders under 6 KB however bad the window was", () => {

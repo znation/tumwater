@@ -175,7 +175,8 @@ function clusterMessages(
     }));
 }
 
-/** One role's tick-end metrics, used for the delta row. */
+/** One role's window metrics, used for the delta row: ticks/errors/quiet kills from
+ * `tick_end`, rejections from `review_rejected` (the landing slot logs it after the tick). */
 interface RoleStats {
   ticks: number;
   errors: number;
@@ -185,15 +186,24 @@ interface RoleStats {
 
 function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   const byRole = new Map<string, RoleStats>();
-  for (const ev of events) {
-    if (ev.type !== "tick_end") continue;
-    const role = eventRole(ev);
+  const statsFor = (role: string): RoleStats => {
     const stats = byRole.get(role) ?? { ticks: 0, errors: 0, quietKills: 0, rejections: 0 };
-    stats.ticks++;
-    if (ev.result === "error") stats.errors++;
-    else if (ev.result === "quiet_killed") stats.quietKills++;
-    else if (ev.result === "rejected") stats.rejections++;
     byRole.set(role, stats);
+    return stats;
+  };
+  for (const ev of events) {
+    // Ticks are tick_end events; a rejection is now recorded by the landing slot, AFTER the
+    // authoring tick has already ended `queued` (plans/merge-queue.md 3/5). review_rejected is
+    // the one event every reject path logs exactly once (src/review.ts), so it — not a
+    // tick_end result no production path emits — is the rejection source.
+    if (ev.type === "tick_end") {
+      const stats = statsFor(eventRole(ev));
+      stats.ticks++;
+      if (ev.result === "error") stats.errors++;
+      else if (ev.result === "quiet_killed") stats.quietKills++;
+    } else if (ev.type === "review_rejected") {
+      statsFor(eventRole(ev)).rejections++;
+    }
   }
   return byRole;
 }
@@ -341,6 +351,16 @@ function deltaCell(prevTicks: number, prev: string, ticks: number, cur: string):
   return `${prevTicks === 0 ? "—" : prev} → ${ticks === 0 ? "—" : cur}`;
 }
 
+/** The rejections column's cell. It cannot reuse deltaCell: a rejection is logged by the
+ * landing slot, so its authoring tick_end can fall in the other window — a role with a
+ * rejection must show it even when its tick count is 0. Presence is judged on the rejection
+ * count itself (the role is "absent" from the column only with neither ticks nor rejections). */
+function rejectionCell(prevTicks: number, prevRejections: number, ticks: number, rejections: number): string {
+  const prev = prevTicks === 0 && prevRejections === 0 ? "—" : String(prevRejections);
+  const cur = ticks === 0 && rejections === 0 ? "—" : String(rejections);
+  return `${prev} → ${cur}`;
+}
+
 function rate(errors: number, ticks: number): string {
   if (ticks === 0) return "—";
   return `${Math.round((100 * errors) / ticks)}%`;
@@ -390,7 +410,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     lines.push("| --- | --- | --- | --- | --- |");
     for (const d of data.deltas) {
       lines.push(
-        `| ${roleCell(d.role)} | ${deltaCell(d.prevTicks, String(d.prevTicks), d.ticks, String(d.ticks))} | ${deltaCell(d.prevTicks, rate(d.prevErrors, d.prevTicks), d.ticks, rate(d.errors, d.ticks))} | ${deltaCell(d.prevTicks, String(d.prevQuietKills), d.ticks, String(d.quietKills))} | ${deltaCell(d.prevTicks, String(d.prevRejections), d.ticks, String(d.rejections))} |`,
+        `| ${roleCell(d.role)} | ${deltaCell(d.prevTicks, String(d.prevTicks), d.ticks, String(d.ticks))} | ${deltaCell(d.prevTicks, rate(d.prevErrors, d.prevTicks), d.ticks, rate(d.errors, d.ticks))} | ${deltaCell(d.prevTicks, String(d.prevQuietKills), d.ticks, String(d.quietKills))} | ${rejectionCell(d.prevTicks, d.prevRejections, d.ticks, d.rejections)} |`,
       );
     }
   }
