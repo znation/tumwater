@@ -54,6 +54,29 @@ Corrections (pinned in plans/repair-traces.md):
 
 Sizing unchanged: src/roles.ts ~35 lines, src/init.ts ~2, test/prompt.test.ts ~40, test/init.test.ts ~5. No design question remains open.
 
+### Red-main handoff — point the bugfix loop at the failing suite when main is red (planned 2026-09-19)
+
+**Goal.** When the red-main gate discovers that main's own suite is red, hand the failure to the `bugfix` loop in its next prompt, so the fleet's designated healer fixes main instead of burning a tick on a change the review gate is guaranteed to reject.
+
+**Why.** `mainRedGate` (src/main-red.ts) blocks every code-producing role (`BASELINE_BLOCKED_ROLES`, src/roles.ts) while main is red, but deliberately exempts `bugfix` — the healer must be able to author on a red main, since its fix is the only way the fleet unblocks itself. Nothing, however, tells the healer's prompt that main is red: `mainRedGate` returns at line 38, before `checkMainBaseline`, for any exempt role, and the only signal is a harness-level `warning` event that no role prompt reads. So `bugfix`'s `find` text (src/roles.ts:84) starts from BUGS.md and, with no open bugs, spends its ~10-tool-call hunt reading recent diffs rather than running the suite; even when it does author a fix, the review gate's deterministic build pre-check runs `main + change`, fails on the pre-existing red, and rejects the tick — a model run plus a suite run, pure waste, with the fleet still blocked. The information already exists: `checkMainBaseline` (src/main-baseline.ts:137) returns `{ status, sha, script, outputTail }` and `failureHeadline` (:22) names the failure; only the handoff into the healer's prompt is missing.
+
+**Approach.**
+- `src/main-red.ts` — factor the existing "one warning per newly-discovered red SHA" block (the `lastMainRedSha` guard, lines 67–76) into a private `warnMainRedOnce(root, red)` helper, then add `export async function bugfixMainRedNote(root, role, wt): Promise<string | undefined>`: run `checkMainBaseline(wt, onRun)` with the same scope-`baseline` `build_check` event hook `mainRedGate` uses, and when `baseline.baseline?.status === "red"` call `warnMainRedOnce` and return `buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail))`; otherwise return `undefined`. The shared per-SHA `baselineCache` and its provisional-red re-verification are reused unchanged, so this costs at most one suite run per SHA fleet-wide; running it for `bugfix` mainly means the healer is often the first observer (attribution moves, total runs do not grow).
+- `src/prompt.ts` — add `export function buildMainRedNote(sha, script?, headline?)`, a `<main-red>` block in the same style as `digestBlock`/`buildRejectedReviewNote`: main's suite is red (`<script>: <headline>`), every code role is skipping and nothing merges until it is green, so this tick the healer must reproduce that failure, fix it with a regression test, and land the fix; a change leaving the suite red is rejected by the gate's pre-check; if the failure is environmental (flaky, load-sensitive, a broken local toolchain) say so plainly rather than editing unrelated code.
+- `src/loop.ts` — in `runTick`'s fresh-tick arm, after `resetWorktreeToMain` (~line 602) change `const prompt` (line 562) to `let` and branch: for `this.role === "bugfix"`, `const note = await bugfixMainRedNote(this.root, this.role, wt); if (note) prompt += \`\n\n${note}\`;` — otherwise call `mainRedGate` exactly as today. Resume ticks keep the current path (no pristine worktree, no gate, no note). Import `bugfixMainRedNote` beside `mainRedGate` (line 40).
+- `README.md` — the red-main sentence in "How it works" gains that the `bugfix` prompt is pointed at the failure headline.
+
+**Files touched.** `src/main-red.ts`, `src/prompt.ts`, `src/loop.ts`, `README.md`; `test/main-red.test.ts`, `test/prompt.test.ts`, `test/loop-2.test.ts`. No config, event, or storage changes: `checkMainBaseline`, `failureHeadline`, and the `baseline`-scope `build_check` shape are reused as-is.
+
+**Acceptance criteria.**
+- A fresh `bugfix` tick on a red main produces a prompt containing a `<main-red>` block naming the failing script and the `failureHeadline` line; its pi run still starts (bugfix is never blocked) and the rest of the authoring path is unchanged.
+- A blocked role (`feature`) on the same SHA is still rejected with `main_red` and starts no pi run; the harness-level warning is still logged exactly once per red SHA (the healer's check must not add a second).
+- A green main, no declared check, and an environmental skip (`no-npm`/`toolchain`/`timeout`) all yield no note and no `main_red` outcome for `bugfix` — its tick proceeds exactly as today.
+- The bugfix baseline check emits one `build_check` event with `scope: "baseline"` under `loop: "bugfix"` on a cache miss, and none on a cache hit.
+- `buildMainRedNote` is a pure function with a pinned shape in `test/prompt.test.ts`; the full suite stays green.
+
+**Grounded 2026-09-19 (plan loop)** against main `f52cac9`: verified the exempt-role early return (src/main-red.ts:38), the inline warn-once block (`lastMainRedSha` at :24, guard at :67–76), the `checkMainBaseline`/`failureHeadline` exports (src/main-baseline.ts:22,137), the `BASELINE_BLOCKED_ROLES` doc naming bugfix the healer (src/roles.ts:338–350), `bugfix`'s find text (src/roles.ts:84), `tickPrompt()`'s existing post-build note appends (src/loop.ts:191,197), and the fresh-tick arm's prompt-build-then-reset order (src/loop.ts:562–609). Capability absence re-confirmed: `grep -rn 'buildMainRedNote\|bugfixMainRedNote\|main-red handoff' src/ test/ PLANS.md BUGS.md` is empty; no Planned or Done entry covers a red-main handoff.
+
 ## Done
 
 ### Show the exact prompt each run received — `tumwater logs --role <id> --prompt` (planned 2026-09-19, done 2026-09-19)
