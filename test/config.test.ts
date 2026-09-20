@@ -346,6 +346,28 @@ test("validateConfig rejects non-object top levels and bad containers", () => {
   assert.match(validationError({ roles: { clean: "nope" } }), /roles\.clean must be an object/);
 });
 
+test("validateConfig rejects blank string-array entries and names their position", () => {
+  // A blank `piArgs` entry is handed straight to pi's CLI, where its args parser reads any
+  // non-flag token — "" included — as an empty user message; a blank `review.exemptPaths`
+  // pattern is skipped by isExemptPath, so it silently matches nothing. Both are typos with
+  // no valid meaning, so they fail fast instead of being inert.
+  assert.match(
+    validationError({ piArgs: ["--verbose", ""] }),
+    /piArgs\[1\] must not be blank \(got ""\)/,
+  );
+  assert.match(
+    validationError({ piArgs: ["  "] }),
+    /piArgs\[0\] must not be blank \(got "  "\)/,
+  );
+  assert.match(
+    validationError({ review: { exemptPaths: ["*.md", ""] } }),
+    /review\.exemptPaths\[1\] must not be blank \(got ""\)/,
+  );
+  // The valid shapes still pass: empty arrays and non-blank entries.
+  assert.doesNotThrow(() => validateConfig({ piArgs: [], review: { exemptPaths: [] } }));
+  assert.doesNotThrow(() => validateConfig({ piArgs: ["--no-skills", "--verbose"] }));
+});
+
 test("validateConfig guards the review section like its sibling sections", () => {
   // A non-object review (a hand-edited tumwater.json) fails with an actionable message
   // instead of crashing deep in the gate — the same guard idleBackoff and roles get. The

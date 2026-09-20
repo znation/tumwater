@@ -197,8 +197,19 @@ export function validateConfig(raw: unknown): void {
   const checkStringArray = (obj: Record<string, unknown>, prefix: string, key: string): void => {
     if (!(key in obj)) return;
     const v = obj[key];
-    if (!Array.isArray(v) || !v.every((s) => typeof s === "string"))
+    if (!Array.isArray(v) || !v.every((s) => typeof s === "string")) {
       problems.push(`${prefix}${key} must be an array of strings (got ${show(v)})`);
+      return;
+    }
+    // A blank entry has no valid meaning and would otherwise be silently inert: pi.ts passes
+    // every `piArgs` element straight to pi's CLI, where an empty string is read as an empty
+    // user MESSAGE (pi's args parser pushes any non-flag token, "" included, as a message),
+    // and isExemptPath skips a blank pattern so a blank `review.exemptPaths` entry never
+    // matches anything. Name its position so one edit removes it.
+    const arr = v as string[];
+    const blankAt = arr.findIndex((s) => s.trim() === "");
+    if (blankAt >= 0)
+      problems.push(`${prefix}${key}[${blankAt}] must not be blank (got ${show(arr[blankAt])})`);
   };
 
   const r = raw; // Narrowed to an object by isJsonObject above.
