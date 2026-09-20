@@ -1,5 +1,6 @@
 import { allRoleIds } from "./roles.js";
 import { isJsonObject } from "./json-object.js";
+import { truncate } from "./text.js";
 
 /** Schema validation for tumwater.json: the key lists (the one source of truth for what a valid
  * file may hold at each level, kept in sync with TumwaterConfig/BackoffConfig/RoleConfig in
@@ -8,9 +9,21 @@ import { isJsonObject } from "./json-object.js";
  * cache, budget editing, per-role views) — because this is a self-contained concern with its own
  * sync obligation: it depends only on the role catalog (allRoleIds), not on any persistence. */
 
-/** Render a value for an error message. */
+/** The longest value rendered in an error message. A wrongly-typed section (the whole `roles`
+ * object under `autoRestart`, say) would otherwise dump kilobytes into a message meant to be
+ * read at a glance; the cut goes through text.ts's surrogate-safe truncate, so it never emits a
+ * lone surrogate and always ends in an ellipsis. */
+const SHOW_MAX_CHARS = 120;
+
+/** Render a value for an error message. `undefined` reads as "missing" (the key is absent) and a
+ * non-finite number is spelled out: JSON.stringify renders Infinity and NaN as "null", which
+ * names a value the user never wrote (a numeric literal past ~1.8e308 parses to Infinity), and
+ * that null is exactly the misreading a validation error exists to prevent. Anything longer than
+ * SHOW_MAX_CHARS is truncated so the message stays one readable line. */
 export function show(v: unknown): string {
-  return v === undefined ? "missing" : (JSON.stringify(v) ?? String(v));
+  if (v === undefined) return "missing";
+  if (typeof v === "number" && !Number.isFinite(v)) return String(v);
+  return truncate(JSON.stringify(v) ?? String(v), SHOW_MAX_CHARS);
 }
 
 /** JSON type name for top-level error messages ("an array", "null", "string", …). */

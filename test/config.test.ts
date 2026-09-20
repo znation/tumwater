@@ -17,7 +17,7 @@ import {
   saveConfig,
   setDailyBudgetUsd,
 } from "../src/config.js";
-import { validateConfig } from "../src/config-validation.js";
+import { show, validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
 import { tmpdir } from "./util.js";
@@ -197,6 +197,24 @@ function validationError(raw: unknown): string {
   }
   throw new Error("validateConfig did not throw");
 }
+
+test("show renders the offending value honestly and compactly", () => {
+  // Regression: JSON.stringify(Infinity) is "null", so a huge numeric literal — which
+  // JSON.parse turns into Infinity — was reported as `got null` even though the user wrote a
+  // number. validateConfig rejects non-finite values, so this is the only place naming them.
+  assert.equal(show(Number.POSITIVE_INFINITY), "Infinity");
+  assert.equal(show(Number.NEGATIVE_INFINITY), "-Infinity");
+  assert.equal(show(Number.NaN), "NaN");
+  assert.match(validationError({ tickTimeoutSeconds: Number.POSITIVE_INFINITY }), /\(got Infinity\)/);
+  // An absent key and a present-but-short value keep their existing rendering.
+  assert.equal(show(undefined), "missing");
+  assert.equal(show("40"), '"40"');
+  assert.equal(show(null), "null");
+  // A very long value is cut to keep the problem list readable, and the cut is marked.
+  const long = show("x".repeat(500));
+  assert.ok(long.length <= 120, `long value should be capped, got ${long.length} chars`);
+  assert.ok(long.endsWith("…"), `a truncated value should end in an ellipsis: ${long}`);
+});
 
 test("validateConfig accepts defaults and fully valid overrides", () => {
   assert.doesNotThrow(() => validateConfig(defaultConfig()));
