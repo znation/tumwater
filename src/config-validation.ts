@@ -61,6 +61,11 @@ const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking"];
  * `review`, `fallbackModel` (plans/fallback-model.md), and each `roles.<id>` entry — so one
  * mental model and one validator cover them all. */
 const MODEL_TRIPLE_KEYS = ["provider", "model", "thinking"];
+/** pi's accepted `--thinking` levels (pi's own `--help`). pi WARNS and falls back to its own
+ * default on any other value rather than failing, so a misspelled level would silently run the
+ * fleet at the wrong reasoning depth — the same silent-ignore class this validator exists to
+ * catch. Kept in sync with pi's CLI (dist/cli/args.js VALID_THINKING_LEVELS). */
+const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 const CUSTOM_LOOP_KEYS = ["name", "task"];
 /** A custom loop's name becomes a worktree dir and a git ref, so it is validated strictly:
  * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */
@@ -145,6 +150,13 @@ export function validateConfig(raw: unknown): void {
   // ignored rather than honored.
   const checkModelTriple = (obj: Record<string, unknown>, prefix: string): void => {
     for (const key of MODEL_TRIPLE_KEYS) checkString(obj, prefix, key, false);
+    // thinking is also value-checked: pi only recognizes THINKING_LEVELS and silently drops
+    // anything else, so a typo would run the loops at pi's default depth and never say so.
+    const t = obj.thinking;
+    if (typeof t === "string" && t.trim() !== "" && !THINKING_LEVELS.has(t))
+      problems.push(
+        `${prefix}thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})`,
+      );
   };
 
   const checkNumber = (

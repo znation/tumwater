@@ -222,7 +222,7 @@ test("model-triple fields reject empty strings but instructions may be empty", (
   // is silently ignored and the fleet quietly uses pi's default — reject it instead. This
   // covers the top level and the per-role overrides; review and fallbackModel have their own
   // tests above.
-  for (const key of ["provider", "model", "thinking"]) {
+  for (const key of ["provider", "model"]) {
     assert.match(
       validationError({ [key]: "" }),
       new RegExp(`${key} must not be empty \\(got ""\\)`),
@@ -235,8 +235,38 @@ test("model-triple fields reject empty strings but instructions may be empty", (
     );
     assert.doesNotThrow(() => validateConfig({ [key]: "set" }));
   }
+  // thinking shares the empty rule (top level and per-role) but not the any-string rule — its
+  // value is checked against pi's accepted levels in its own test below.
+  assert.match(validationError({ thinking: "" }), /thinking must not be empty \(got ""\)/);
+  assert.match(
+    validationError({ roles: { feature: { thinking: "  " } } }),
+    /roles\.feature\.thinking must not be empty/,
+  );
   // An empty instructions string is a deliberate "no extra instructions", not a typo.
   assert.doesNotThrow(() => validateConfig({ roles: { feature: { instructions: "" } } }));
+});
+
+test("thinking values are checked against pi's accepted levels", () => {
+  // pi WARNS and falls back to its own default on an unrecognized --thinking level rather than
+  // failing, so a typo would silently run every loop at the wrong reasoning depth. Reject it at
+  // load, naming the accepted values, instead of handing it to pi.
+  const bad = "hgih";
+  const message = (prefix: string) =>
+    new RegExp(`${prefix}thinking must be one of off, minimal, low, medium, high, xhigh, max \\(got "hgih"\\)`);
+  // Every section that carries a model triple is covered by the one validator.
+  assert.match(validationError({ thinking: bad }), message(""));
+  assert.match(validationError({ roles: { feature: { thinking: bad } } }), message("roles\\.feature\\."));
+  assert.match(validationError({ review: { thinking: bad } }), message("review\\."));
+  assert.match(validationError({ fallbackModel: { model: "m", thinking: bad } }), message("fallbackModel\\."));
+  // Whitespace padding is not the same value to pi, so it is not the same value here either.
+  assert.match(validationError({ thinking: " high " }), /got " high "/);
+  // Every accepted level passes, everywhere a triple is validated.
+  for (const level of ["off", "minimal", "low", "medium", "high", "xhigh", "max"]) {
+    assert.doesNotThrow(() => validateConfig({ thinking: level }), level);
+    assert.doesNotThrow(() => validateConfig({ roles: { feature: { thinking: level } } }), level);
+    assert.doesNotThrow(() => validateConfig({ review: { thinking: level } }), level);
+    assert.doesNotThrow(() => validateConfig({ fallbackModel: { model: "m", thinking: level } }), level);
+  }
 });
 
 test("role instructions are capped like a custom loop's task", () => {
