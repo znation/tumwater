@@ -11,14 +11,16 @@ import { gitTry } from "./git.js";
  * strands the fleet on a stale build. */
 
 /** The line of a failure tail worth putting in a one-line warning. clipBuildTail keeps the LAST
- * ten meaningful lines, so a check that died on an unhandled rejection ends mid-stack and the
- * tail's FIRST line is a frame: every red-main warning logged before 2026-09-18 read
+ * ten meaningful lines (plus the error-message line above the window when it would otherwise be
+ * cut), so a check that died on an unhandled rejection ends mid-stack and the tail's FIRST line
+ * is a frame: every red-main warning logged before 2026-09-18 read
  * "main <sha> is red (test: at process.processTicksAndRejections (node:internal/...))" — where,
  * never what, which is why a false red that blocked the fleet for hours could not be diagnosed
  * from the event feed at all (BUGS.md). Prefer the first line that is not a stack frame; fall
  * back to the tail's first line when every line is one, so a caller always has something to
  * print. Frames are the only thing skipped — an assertion diff, a compiler error and a bare
- * "1) test name" all read as the headline they are. */
+ * "1) test name" all read as the headline they are. Shared by main-red.ts's red-main warning and
+ * review.ts's machine-generated rejection reason, so both surfaces name what broke. */
 export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
   if (!tail?.length) return undefined;
   return tail.find((line) => !/^at\s/.test(line)) ?? tail[0];

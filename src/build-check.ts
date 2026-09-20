@@ -212,13 +212,25 @@ function toolchainErrorInOutput(output: string): boolean {
   return TOOLCHAIN_ERROR_PATTERNS.some((p) => p.test(output));
 }
 
+/** A line that NAMES a failure rather than framing it: Node prints an unhandled error's message
+ * ABOVE its stack and property dump (`Error: ENOENT: …`, `AssertionError [ERR_ASSERTION]: …`),
+ * so a ten-line tail window that cuts the stack can cut the message too. The pattern is used to
+ * PRESERVE that line, never to skip lines: an over-broad "skip property lines" rule would drop
+ * real diff content like `actual: 1,` / `expected: 2,` and pick a trailing `diff: 'simple'`
+ * instead (BUGS.md 2026-09-19). It matches `<Something>Error: …` / `<Something>Error [CODE]: …`. */
+const ERROR_MESSAGE_LINE = /^\S*Error\b[^:]*:\s/;
+
 /** Keep the TAIL of a build's combined output: last ≤10 meaningful lines, each via clipReason —
  * so a chatty build cannot bloat persisted state or the injected next-tick note. Blank lines
  * and npm's own script banner (`> pkg@1.0 script`, `> <command>`) are dropped: they name the
- * script that ran, not what broke in it. */
+ * script that ran, not what broke in it. When the ten-line window cuts off the error-message
+ * line that sits above the stack, the nearest such line is kept as well (eleven lines at most),
+ * so failureHeadline can name the failure instead of a stack frame or an error property. */
 export function clipBuildTail(output: string): string[] {
   const lines = output.split("\n").map((l) => l.trim()).filter((l) => l !== "" && !/^>\s/.test(l));
-  return lines.slice(-10).map(clipReason);
+  const tail = lines.slice(-10);
+  const message = [...lines.slice(0, -10)].reverse().find((l) => ERROR_MESSAGE_LINE.test(l));
+  return (message ? [message, ...tail] : tail).map(clipReason);
 }
 
 /** Probe the toolchain (see probeToolchain), then run `npm run <script>` in the worktree

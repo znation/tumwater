@@ -14,6 +14,7 @@ import {
   clipReason,
   runScopedBuildCheck,
 } from "./build-check.js";
+import { failureHeadline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
@@ -164,14 +165,18 @@ export async function reviewAheadOfMain(
   if (preCheck) {
     const { check, outcome } = preCheck;
     if (outcome.status === "failed") {
-      // Machine-generated reasons: the header joined to the first output line (so the
-      // compiler error sits right after it in the injected next-tick note), then the rest of
-      // the clipped tail. The rejection itself routes through the shared reject path — no pi
-      // run consumed, unreviewFailures resetting exactly like a model reject.
-      const first = (outcome.outputTail ?? [])[0];
+      // Machine-generated reasons: the headline joined to the rest of the clipped tail (so the
+      // compiler error sits right after it in the injected next-tick note). The headline is
+      // failureHeadline's — the first line that is not a stack frame — not outputTail[0]: a
+      // suite that dies on an unhandled rejection opens mid-stack, and naming the frame tells
+      // the author where it broke, never what (BUGS.md 2026-09-19). The rejection itself routes
+      // through the shared reject path — no pi run consumed, unreviewFailures resetting exactly
+      // like a model reject.
+      const tail = outcome.outputTail ?? [];
+      const headline = failureHeadline(tail);
       const reasons =
-        first !== undefined
-          ? [`build check failed (${check.script}): ${first}`, ...(outcome.outputTail ?? []).slice(1)]
+        headline !== undefined
+          ? [`build check failed (${check.script}): ${headline}`, ...tail.filter((l) => l !== headline)]
           : [`build check failed (${check.script})`];
       return reject(reasons);
     }

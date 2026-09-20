@@ -552,6 +552,52 @@ test("gate pre-check selects the declared test script — a failing suite reject
   }
 });
 
+test("gate pre-check names the failing assertion, not the stack frame the tail opens on", async () => {
+  // A suite that dies on an unhandled rejection leaves a tail whose window opens mid-stack; the
+  // headline must be the assertion line the suite reported, and the real diff content must
+  // survive — not be skipped as noise (BUGS.md 2026-09-19).
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    [
+      "#!/bin/sh",
+      "cat <<'BUILD_OUT'",
+      "AssertionError [ERR_ASSERTION]: 1 == 2",
+      "at TestContext.<anonymous> (file:///w/dist/test/x.test.js:3:35)",
+      "at Test.runInAsyncScope (node:async_hooks:226:14)",
+      "at Test.run (node:internal/test_runner/test:1397:25)",
+      "at Test.start (node:internal/test_runner/test:1257:17)",
+      "at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)",
+      "generatedMessage: true,",
+      "code: 'ERR_ASSERTION',",
+      "actual: 1,",
+      "expected: 2,",
+      "operator: '==',",
+      "diff: 'simple'",
+      "}",
+      "BUILD_OUT",
+      "exit 1",
+      "",
+    ].join("\n"),
+    "test",
+  );
+
+  // The fake pi records ANY invocation — the pre-check must decide before it is ever asked.
+  const marker = path.join(tmpdir(), "pi-ran");
+  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "rejected"); // deterministic — no model verdict involved
+    assert.ok(!fs.existsSync(marker), "the reviewer never ran: the pre-check decided alone");
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.equal(reasons[0], "build check failed (test): AssertionError [ERR_ASSERTION]: 1 == 2");
+    assert.ok(reasons.some((r) => r.startsWith("at ")), "the rest of the clipped tail still follows");
+    assert.ok(reasons.includes("actual: 1,"), "real diff content is not skipped as noise");
+  } finally {
+    restore();
+  }
+});
+
 test("gate pre-check timeout warns and still proceeds to the model review", async () => {
   const { root, wt } = await gateBuildFixture("sleep 5"); // hangs past the shortened cap
   const marker = path.join(tmpdir(), "pi-ran");

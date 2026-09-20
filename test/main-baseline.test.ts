@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkMainBaseline, failureHeadline, noteGreenBaseline } from "../src/main-baseline.js";
+import { clipBuildTail } from "../src/build-check.js";
 import { sh, tmpdir } from "./util.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
@@ -69,6 +70,25 @@ test("failureHeadline names what broke, not the frame it broke in", () => {
   assert.equal(failureHeadline(["at a (f:1:1)", "at b (f:2:2)"]), "at a (f:1:1)", "all frames: print something");
   assert.equal(failureHeadline([]), undefined);
   assert.equal(failureHeadline(undefined), undefined);
+});
+
+test("failureHeadline names an unhandled error whose message the tail window would otherwise cut", () => {
+  const frames = Array.from({ length: 12 }, (_, i) => `at f${i} (file:///w/x.ts:${i}:1)`);
+  const tail = clipBuildTail(
+    [
+      "Error: ENOENT: no such file or directory, open '/nope'",
+      ...frames,
+      "errno: -2,",
+      "code: 'ENOENT',",
+      "syscall: 'open',",
+      "path: '/nope'",
+    ].join("\n"),
+  );
+  assert.equal(
+    failureHeadline(tail),
+    "Error: ENOENT: no such file or directory, open '/nope'",
+    "the message, not `errno: -2,`",
+  );
 });
 
 test("a red in one worktree is re-verified by the next, and a green there promotes the SHA", async () => {

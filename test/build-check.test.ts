@@ -306,6 +306,39 @@ test("clipBuildTail clips each surviving line to the reason cap with an ellipsis
   assert.equal(tail[2], "short", "lines that fit are unchanged");
 });
 
+test("clipBuildTail keeps the error message when the ten-line window cuts it off above a long stack", () => {
+  // Node prints an unhandled error's message ABOVE its stack and property dump (verified
+  // against node 26): a deep stack pushes the message out of the last-ten window, so without
+  // this it is lost and the headline becomes a frame or `errno: -2,` (BUGS.md 2026-09-19).
+  const frames = Array.from({ length: 12 }, (_, i) => `at f${i} (file:///w/x.ts:${i}:1)`);
+  const output = [
+    "Error: ENOENT: no such file or directory, open '/nope'",
+    ...frames,
+    "{",
+    "errno: -2,",
+    "code: 'ENOENT',",
+    "syscall: 'open',",
+    "path: '/nope'",
+    "}",
+  ].join("\n");
+  const tail = clipBuildTail(output);
+  assert.equal(tail[0], "Error: ENOENT: no such file or directory, open '/nope'", "the naming line, not a frame");
+  assert.equal(tail.length, 11, "the ten-line window plus the rescued message");
+});
+
+test("clipBuildTail never mistakes an error property for the message", () => {
+  // `actual:`/`expected:`/`diff:` are real assertion-diff content, not noise to skip: with no
+  // message shape in the prefix, the plain ten-line window is returned unchanged.
+  const lines = [
+    "actual: 1,",
+    "expected: 2,",
+    "operator: '==',",
+    "diff: 'simple'",
+    ...Array.from({ length: 8 }, (_, i) => `at f${i} (x:1:1)`),
+  ];
+  assert.deepEqual(clipBuildTail(lines.join("\n")), lines.slice(-10));
+});
+
 // --- resolveFromNodeModules: the same walk-up detectBuildCheck makes, for a dependency the
 // harness must locate itself (redeploy's tsc) rather than let npm's PATH walk find.
 
