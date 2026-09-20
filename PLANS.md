@@ -110,6 +110,68 @@ clamp :120, the report render branch :180, the Ctrl+T modulo :271 and cache assi
 PgUp/PgDn branch :290–300; the cycle test at test/tui.test.ts:541 and the report paging test at
 :1047 are the two to extend. One run: ~30 lines in one file plus tests.
 
+### Fleet pause from the dashboard — a click-to-pause control in the GUI header (planned 2026-09-20)
+
+**Goal.** Give the GUI the fleet gate the CLI already owns: a small header control that pauses
+(`tumwater pause`) or resumes (`tumwater resume`) the whole fleet in one click. Everything else an
+operator does mid-run is on the dashboard — send the director a prompt (`POST /api/prompt`), edit
+the daily cost cap (`POST /api/budget`) — while stop-the-fleet stays CLI-only, so an operator
+watching the dashboard (e.g. over `gui --all-interfaces`, with no shell at hand) must drop to a
+terminal to halt a runaway fleet.
+
+**Approach (decided).**
+- `src/state.ts` — beside `isFleetPaused` (:73), add the two writers in the same file for the
+  single-definition reason its doc comment gives (the scheduler and every observer read the marker
+  from disk without importing each other): `pauseFleet(root): boolean` writes `pausedPath(root)` as
+  `{ at: Date.now() }` via `writeJsonAtomic` and returns whether it changed state (false when the
+  marker already exists); `resumeFleet(root): boolean` `removeQuiet`s the marker and returns whether
+  it existed. Add `removeQuiet` to the `./files.js` import.
+- `src/operator-commands.ts` — `cmdPause` (:91) / `cmdResume` (:106) delegate to those helpers,
+  keeping their exact stdout (`already paused`, `not paused`, the `markerApplyNote` timing lines)
+  and their idempotence, so the CLI and the new control write the marker one way.
+- `src/ui/gui.ts` — `POST /api/pause` beside `/api/budget` (:292): `readJsonObject(req, res,
+  '{"paused": true}')`, require a boolean `paused` (400 naming what arrived otherwise), then
+  `value ? pauseFleet(root) : resumeFleet(root)`, answering `{ ok: true, paused: value }`.
+- `src/ui/gui-page.ts` — add `<span id="pausewrap"></span>` after `<span id="budgetwrap"></span>`
+  (:47).
+- `src/ui/gui-client.ts` — a second header fragment mirroring the budget block: a
+  `// pause-control:start/end` block whose `renderPauseBadge(d)` (called next to
+  `renderBudgetBadge(d)` at :403) renders ` · pause` as `<a href='#' id='pausebadge'>` while
+  `!d.paused`, and ` · paused — resume` while `d.paused`; a delegated click on `#pausebadge` POSTs
+  the target state (`!lastStatus.paused`) to `/api/pause` and flashes the server's error on
+  failure. No optimistic state: the next 1 s poll re-renders from `d.paused`, which
+  status-payload.ts already ships (:55) — exactly the budget badge's contract.
+- No TUI change: an idle loop's TUI/`status` cell already reads `paused` (src/ui/status-model.ts:124)
+  and a terminal operator has `tumwater pause` at hand; the GUI is the shell-less surface that needs
+  the control.
+
+**Files touched.** `src/state.ts`, `src/operator-commands.ts`, `src/ui/gui.ts`,
+`src/ui/gui-page.ts`, `src/ui/gui-client.ts`; `test/state.test.ts`,
+`test/operator-commands.test.ts`, `test/gui.test.ts`.
+
+**Acceptance criteria.**
+- With the fleet unpaused the GUI header shows ` · pause`; clicking it writes the pause marker and
+  the next 1 s poll renders ` · paused — resume`; clicking again removes the marker and restores
+  ` · pause`. With no fleet running the toggle still writes/removes the marker (pausing before
+  startup starts an already-paused fleet), matching the CLI.
+- `POST /api/pause` with `{"paused":true}` writes the marker and answers `{ok:true,paused:true}`;
+  `{"paused":false}` removes it; a missing or non-boolean `paused`, a malformed body, and an
+  oversized body all get the endpoint's 400/413 and leave the marker untouched.
+- `tumwater pause` / `resume` print exactly what they did before and leave the marker's format
+  unchanged (test/operator-commands.test.ts:198 pins the behavior); `pauseFleet`/`resumeFleet`
+  return false on a repeat call.
+- `npm test` green.
+
+**Grounded 2026-09-20 (plan loop)** against main `738205a`: `isFleetPaused` (src/state.ts:73, over
+`pausedPath` at src/paths.ts:83), `cmdPause`/`cmdResume` (src/operator-commands.ts:91/:106) and
+their output tests (test/operator-commands.test.ts:198) are the seams above. Capability absence
+confirmed: `grep -rn 'pausewrap\|api/pause\|pauseFleet\|resumeFleet' src/` is empty, src/ui/gui.ts
+has exactly two POST routes (:274, :292), and `paused` is shipped in the payload
+(src/ui/status-payload.ts:55) yet appears nowhere in gui-client.ts — the state is sent, never
+consumed as a control. Pattern to copy: the budget badge's markup (gui-page.ts:47), its
+render/click block (`// budget-edit:start` :257–:325), its route (:292), and its DOM-stub test
+(test/gui.test.ts:1001). One run: ~110 lines of source (mostly the client block) plus tests.
+
 ## Done
 
 ### Failure digest in the GUI — a `failures` tab beside `report` (planned 2026-09-19, done 2026-09-19)
