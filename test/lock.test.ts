@@ -130,6 +130,41 @@ test("withLock does not break a fresh lock that has no pid file yet", async () =
   assert.ok(fs.existsSync(lock), "the foreign lock is left untouched");
 });
 
+test("withLock swallows a failed cleanup of a stale lock and waits instead of crashing", async () => {
+  // Skip under root, where chmod cannot stop the removal and removeTree would succeed.
+  if (typeof process.getuid === "function" && process.getuid() === 0) return;
+
+  // A stale lock whose dir cannot be removed (the parent is read-only, so removeTree's rmdir
+  // fails with EACCES): rmLockDir must ignore that error and fall back to the ordinary wait,
+  // not abort the acquire path with the cleanup error. A crash here would wedge every merge on
+  // a lock nobody can delete.
+  const root = tmpdir();
+  const lock = path.join(root, "unremovable.lock");
+  fs.mkdirSync(lock);
+  fs.writeFileSync(path.join(lock, "pid"), "999999999"); // dead holder: stale by pid
+  const elevenMinutesAgo = new Date(Date.now() - 11 * 60 * 1000);
+  fs.utimesSync(lock, elevenMinutesAgo, elevenMinutesAgo);
+  fs.chmodSync(root, 0o555); // no write on the parent: the stale dir cannot be removed
+  let ran = false;
+  try {
+    await assert.rejects(
+      withLock(
+        lock,
+        async () => {
+          ran = true;
+        },
+        700,
+      ),
+      /timed out after 0\.7s waiting for lock/,
+      "the cleanup failure surfaces as the ordinary wait timeout, not the rmdir error",
+    );
+  } finally {
+    fs.chmodSync(root, 0o755);
+  }
+  assert.ok(!ran, "never entered the critical section");
+  assert.ok(fs.existsSync(lock), "the unremovable lock is left in place");
+});
+
 test("withLock times out instead of breaking a fresh lock held by a live pid", async () => {
   const lock = path.join(tmpdir(), "x.lock");
   fs.mkdirSync(lock);
