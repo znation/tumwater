@@ -2,6 +2,7 @@ import path from "node:path";
 import { readTextOrNull } from "./files.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, type Role } from "./roles.js";
 import { NOTHING_TO_DO, REFUSED_SENTINEL } from "./reply-contract.js";
+import { shortSha } from "./text.js";
 
 /** Prompt construction for every kind of pi run the harness starts (tick, director, resume,
  * conflict resolution, review), declaring in prose the reply contract those runs must follow:
@@ -418,4 +419,24 @@ export function buildRejectedReviewNote(reasons: string[]): string {
   const list =
     reasons.length > 0 ? reasons.map((r, i) => `${i + 1}. ${r}`).join("\n") : "(no reasons recorded)";
   return `Your previous change was rejected in review:\n${list}\nAddress the objections or take a different approach.`;
+}
+
+/** The note injected into the `bugfix` healer's prompt when main's own suite is red (PLANS.md
+ * "Red-main handoff"): the gate's warning event is harness-level and no role prompt reads it, so
+ * the one role allowed to author on a red main is told what failed and that fixing it is this
+ * tick's job. The healer's normal charter is a starting point, not a fit — a red main blocks
+ * every other code role, and the gate's deterministic pre-check rejects any change that leaves
+ * the suite red, so authoring anything else first is waste. A pure function so its shape is
+ * pinned in tests; script/headline are optional because a red carries a failing script, but the
+ * note must still read sensibly if it is ever absent. */
+export function buildMainRedNote(sha: string, script?: string, headline?: string): string {
+  const what = script
+    ? `${script}${headline ? `: ${headline}` : ""}`
+    : (headline ?? "the project's declared check");
+  return `<main-red>
+main's own suite is red at ${shortSha(sha)} (${what}). Every code-producing role is skipping authoring and no change merges until main is green.
+This tick your job is to make main green: reproduce that failure, fix it (add a regression test where one is feasible), and land the fix.
+The review gate's deterministic pre-check runs main + your change, so a change that leaves the suite red is rejected — do not author anything else first.
+If the failure is environmental — flaky, load-sensitive, or a broken local toolchain — say so plainly in your reply rather than editing unrelated code.
+</main-red>`;
 }

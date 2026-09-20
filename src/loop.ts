@@ -37,7 +37,7 @@ import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
 import { recordDailyCost } from "./budget.js";
 import { recoverLeftover } from "./leftover.js";
-import { mainRedGate } from "./main-red.js";
+import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
@@ -559,7 +559,7 @@ export class LoopRunner {
     // otherwise a shutdown/crash.
     const resumeCause =
       pendingResumeCause === "hung-tool" ? "hung-tool" : (s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart";
-    const prompt = resuming ? buildResumePrompt(this.role, resumeCause) : this.tickPrompt();
+    let prompt = resuming ? buildResumePrompt(this.role, resumeCause) : this.tickPrompt();
     if (prompt === null) return { result: "skipped" };
     // The raw user prompt a director tick is executing (null for role loops), so an
     // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
@@ -603,9 +603,17 @@ export class LoopRunner {
       // Red-main baseline gate (src/main-red.ts): the worktree is pristine main right now —
       // verify main's own suite before spending an authoring run on top of it. Only roles whose
       // diff can carry code changes are blocked; resume ticks skip this by construction (their
-      // worktree is not pristine main).
-      const blocked = await mainRedGate(this.root, this.role, wt);
-      if (blocked) return blocked;
+      // worktree is not pristine main). The `bugfix` healer is exempt because its fix is the
+      // fleet's only way back to green, so instead of blocking it we hand it the failure (PLANS.md
+      // "Red-main handoff"): the same check runs, but a red main appends a <main-red> note to
+      // this tick's prompt so it reproduces and fixes that failure rather than hunting blind.
+      if (this.role === "bugfix") {
+        const note = await bugfixMainRedNote(this.root, this.role, wt);
+        if (note) prompt += `\n\n${note}`;
+      } else {
+        const blocked = await mainRedGate(this.root, this.role, wt);
+        if (blocked) return blocked;
+      }
     }
 
     const piStartedAt = Date.now();

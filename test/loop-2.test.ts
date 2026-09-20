@@ -903,6 +903,44 @@ test("an exempt role ticks normally while main is red — its markdown-only diff
   }
 });
 
+test("the bugfix healer's fresh prompt carries the red-main handoff", async () => {
+  const repo = await initializedRepo();
+  const counter = path.join(tmpdir(), "npm-runs");
+  makeMainRed(repo, counter);
+  const promptsFile = path.join(tmpdir(), "prompts.log");
+  const marker = path.join(tmpdir(), "pi-invoked");
+  const restore = fakePi(
+    [
+      `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: fix main", { tokens: 10, output: 10, cost: 0.01 })}'`,
+      `echo hello > hello.txt`,
+      `touch '${marker}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "bugfix", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued", "the healer authors on a red main (never blocked)");
+    assert.ok(fs.existsSync(marker), "its pi run started");
+
+    const run = fs.readFileSync(promptsFile, "utf8");
+    assert.ok(run.includes("<main-red>"), "the tick prompt carries the red-main block");
+    assert.ok(run.includes("baseline-failure-line"), "…naming the failure headline");
+    assert.ok(run.includes("test"), "…and the failing script");
+
+    // The healer's check is priced in the feed under bugfix, and the red SHA warns once.
+    const checks = readEvents(repo).filter((e) => e.type === "build_check");
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0]!.loop, "bugfix");
+    assert.equal(checks[0]!.scope, "baseline");
+    assert.equal(checks[0]!.status, "failed");
+    assert.equal(readEvents(repo).filter((e) => e.type === "warning" && e.loop === "harness").length, 1);
+  } finally {
+    restore();
+  }
+});
+
 test("after a fix lands on main, the next tick re-checks the new SHA and authoring resumes", async () => {
   const repo = await initializedRepo();
   const counter = path.join(tmpdir(), "npm-runs");

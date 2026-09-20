@@ -7,6 +7,7 @@ import {
   buildConflictPrompt,
   buildCutOffNote,
   buildDirectorPrompt,
+  buildMainRedNote,
   buildRejectedReviewNote,
   buildResumePrompt,
   buildReviewPrompt,
@@ -322,6 +323,29 @@ test("buildRejectedReviewNote degrades to a placeholder when no reasons were rec
   const note = buildRejectedReviewNote([]);
   assert.ok(note.includes("(no reasons recorded)"), "says so rather than listing nothing");
   assert.match(note, /rejected in review/);
+});
+
+// The red-main handoff note is the only signal a red main reaches the healer through: the
+// harness warning event is fleet-level and no role prompt reads it, so this note's shape is
+// the contract that points `bugfix` at the failing suite (PLANS.md "Red-main handoff").
+test("buildMainRedNote names the short SHA, script, and failure headline in a <main-red> block", () => {
+  const note = buildMainRedNote("abcdef1234567890", "test", "1) foo fails");
+  assert.match(note, /^<main-red>/);
+  assert.match(note, /<\/main-red>$/);
+  assert.ok(note.includes("abcdef12"), "carries the shortened SHA");
+  assert.ok(note.includes("test: 1) foo fails"), "names the script and headline together");
+  assert.match(note, /make main green/);
+  assert.match(note, /reproduce that failure/);
+  assert.match(note, /regression test/);
+  assert.match(note, /review gate's deterministic pre-check/);
+  assert.match(note, /environmental/);
+});
+
+test("buildMainRedNote degrades when the script or headline is absent", () => {
+  const noHeadline = buildMainRedNote("abcdef1234567890", "test");
+  assert.ok(noHeadline.includes("(test)"), "a scriptless failure tail still names the script");
+  const neither = buildMainRedNote("abcdef1234567890");
+  assert.ok(neither.includes("the project's declared check"), "falls back to a readable phrase");
 });
 
 test("director routing includes the shared decomposition guidance", () => {

@@ -2,6 +2,7 @@ import { BASELINE_BLOCKED_ROLES } from "./roles.js";
 import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
 import { BUILD_CHECK_TIMEOUT_MS, buildCheckSkipWarning } from "./build-check.js";
 import { checkMainBaseline, failureHeadline } from "./main-baseline.js";
+import { buildMainRedNote } from "./prompt.js";
 import { logEvent } from "./events.js";
 import type { TickOutcome } from "./types.js";
 import { shortSha } from "./text.js";
@@ -22,6 +23,44 @@ import { shortSha } from "./text.js";
  * module-level so every runner in the fleet shares it. A restart re-logs once: the cache is
  * cold then too, and an operator restarting into a still-red main should see why nothing lands. */
 let lastMainRedSha: string | null = null;
+
+/** Log the fleet-wide red-main warning for `red`'s SHA at most once per process. Module-level
+ * (with lastMainRedSha) so the gate and the bugfix handoff share one guard: whichever observes
+ * the red first logs it, the other stays silent. */
+function warnMainRedOnce(root: string, red: { sha: string; script?: string; outputTail?: string[] }): void {
+  if (lastMainRedSha === red.sha) return;
+  lastMainRedSha = red.sha;
+  const firstLine = failureHeadline(red.outputTail);
+  logEvent(root, {
+    loop: "harness",
+    type: "warning",
+    message: `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — code merges blocked until main is green`,
+  });
+}
+
+/** Red-main handoff for the `bugfix` healer (PLANS.md "Red-main handoff"): mainRedGate exempts
+ * bugfix so the only role that can unblock the fleet may author, but its prompt then starts from
+ * BUGS.md and knows nothing about the red suite. This runs the same per-SHA baseline check
+ * (cache and provisional-red re-verification reused unchanged, so it costs at most the one run
+ * the gate would have paid for) and, when main is red, returns the note that points the healer
+ * at the failure. Returns undefined on green, no declared check, or an environmental skip — the
+ * healer's tick then proceeds exactly as it did before this existed. Never throws. */
+export async function bugfixMainRedNote(root: string, role: string, wt: string): Promise<string | undefined> {
+  const baseline = await checkMainBaseline(wt, ({ outcome, durationMs }) =>
+    logEvent(root, {
+      loop: role,
+      type: "build_check",
+      scope: "baseline",
+      status: outcome.status,
+      script: outcome.script,
+      durationMs,
+    }),
+  );
+  const red = baseline.baseline;
+  if (red?.status !== "red") return undefined;
+  warnMainRedOnce(root, red);
+  return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail));
+}
 
 /** Gate one fresh tick on main's baseline. Returns null when authoring may proceed — role not
  * blocked, no declared check, green, or an environmental skip (warned under the role and
@@ -63,16 +102,7 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
     return null;
   }
   if (baseline.baseline?.status === "red") {
-    const red = baseline.baseline;
-    if (lastMainRedSha !== red.sha) {
-      lastMainRedSha = red.sha;
-      const firstLine = failureHeadline(red.outputTail);
-      logEvent(root, {
-        loop: "harness",
-        type: "warning",
-        message: `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — code merges blocked until main is green`,
-      });
-    }
+    warnMainRedOnce(root, baseline.baseline);
     return { result: "main_red", summary: "code merges blocked until main is green" };
   }
   return null;

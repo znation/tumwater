@@ -51,7 +51,8 @@ feature, bugfix, plan, readme, organize, coverage, clean, dry, perf, qa (~2 h cl
 from `customLoops` in tumwater.json or by prompting the director, and act as full-citizen loops
 marked `*` on both dashboards. While main's build/test suite is red, code-producing roles skip
 their authoring run and show a `main red` state in both dashboards until main is green again
-(director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix); three
+(director, bugfix, and the markdown-only roles keep ticking — bugfix can land the fix, and its
+prompt is pointed at the failure's headline line so it fixes main instead of hunting blind); three
 consecutive error ticks on one loop raise one `warning` and that loop reads `failing` in both
 dashboards until a healthy tick. Queued landings show as `· land queue: N` in the status
 header and both dashboard headers, and the landing role's row reads `landing <elapsed>`.

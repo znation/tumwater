@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { mainRedGate } from "../src/main-red.js";
+import { bugfixMainRedNote, mainRedGate } from "../src/main-red.js";
 import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
 import { sh, tmpdir } from "./util.js";
@@ -208,6 +208,94 @@ test("mainRedGate warns under the role and proceeds when npm is missing", async 
       (warning as { message?: string }).message?.includes("no npm on PATH"),
       `skip reason in warning: ${(warning as { message?: string }).message}`,
     );
+  } finally {
+    process.env.PATH = oldPath;
+  }
+});
+
+test("bugfixMainRedNote hands the healer the failing script and headline, warning once", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const script = `echo healer-failure-line; echo run >> ${counter}; exit 1`;
+  const { root, wt } = baselineFixture(script);
+  const restore = fakeNpm(script);
+  try {
+    const note = await bugfixMainRedNote(root, "bugfix", wt);
+    assert.ok(note, "a red main yields a note for the healer");
+    assert.match(note, /^<main-red>/);
+    assert.match(note, /<\/main-red>$/);
+    assert.ok(note.includes("test"), "names the failing script");
+    assert.ok(note.includes("healer-failure-line"), "carries the failureHeadline line");
+
+    // The check ran once, priced under the healer; the fleet warning fired under "harness".
+    assert.equal(runsOf(counter), 1);
+    const events = readEvents(root);
+    const checks = events.filter((e) => e.type === "build_check");
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0]?.loop, "bugfix");
+    assert.equal(checks[0]?.scope, "baseline");
+    assert.equal(checks[0]?.status, "failed");
+    const warnings = events.filter((e) => e.type === "warning" && e.loop === "harness");
+    assert.equal(warnings.length, 1, "one fleet-wide warning for the red SHA");
+
+    // A blocked role on the same SHA still reads the cached red and does NOT add a second
+    // warning: the healer's check and the gate share the once-per-SHA guard.
+    const blocked = await mainRedGate(root, "feature", wt);
+    assert.equal(blocked?.result, "main_red");
+    assert.equal(runsOf(counter), 1, "the cached verdict was reused — no second run");
+    assert.equal(
+      readEvents(root).filter((e) => e.type === "warning" && e.loop === "harness").length,
+      1,
+      "the healer's check did not add a second warning",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("bugfixMainRedNote yields no note on a green main", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const script = `echo green-healer >> ${counter}; exit 0`;
+  const { root, wt } = baselineFixture(script);
+  const restore = fakeNpm(script);
+  try {
+    assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
+    assert.equal(runsOf(counter), 1, "the green check still ran once");
+    assert.equal(readEvents(root).filter((e) => e.type === "warning").length, 0);
+  } finally {
+    restore();
+  }
+});
+
+test("bugfixMainRedNote yields no note when no check is declared", async () => {
+  const base = tmpdir("mainred-bugfix-none-");
+  const root = path.join(base, "project");
+  fs.mkdirSync(root, { recursive: true });
+  sh(root, "git", "init", "-b", "main");
+  sh(root, "git", "config", "user.name", "test");
+  sh(root, "git", "config", "user.email", "test@example.com");
+  fs.writeFileSync(path.join(root, "seed.txt"), "x\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed");
+  const wt = path.join(root, ".tumwater", "worktrees", "bugfix");
+  fs.mkdirSync(path.dirname(wt), { recursive: true });
+  sh(root, "git", "worktree", "add", "-b", "tumwater/bugfix", wt, "main");
+  assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
+  assert.deepEqual(readEvents(root), [], "nothing to verify, nothing to say");
+});
+
+test("bugfixMainRedNote yields no note on an environmental skip (no npm)", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const script = `echo skip-healer >> ${counter}; exit 1`;
+  const { root, wt } = baselineFixture(script);
+  // A PATH that keeps git but drops npm — the check cannot run, so it is not evidence of red.
+  const partialBin = tmpdir("no-npm-bugfix-");
+  fs.symlinkSync(sh(wt, "which", "git"), path.join(partialBin, "git"));
+  const oldPath = process.env.PATH;
+  process.env.PATH = partialBin;
+  try {
+    assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
+    assert.equal(runsOf(counter), 0, "nothing ran");
+    assert.equal(readEvents(root).filter((e) => e.type === "warning").length, 0);
   } finally {
     process.env.PATH = oldPath;
   }
