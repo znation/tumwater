@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   checkBuild,
   checkBuildCheck,
+  checkFallbackModel,
   checkGitBinary,
   checkInit,
   checkMergeLock,
@@ -136,6 +137,59 @@ test("checkInit carries the config error verbatim — invalid JSON and validatio
   assert.match(fail.detail, /unknown key "bogusKey" in tumwater\.json/);
 });
 
+/** A models.json with one unpriced (free) model and one paid model, for the fallback check. */
+function writeModels(): string {
+  const dir = tmpdir("doctor-models-");
+  const file = path.join(dir, "models.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      providers: {
+        local: { models: [{ id: "free-model" }] },
+        paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
+      },
+    }),
+  );
+  return file;
+}
+
+test("checkFallbackModel reports the cap behavior and verifies a free fallback pair", () => {
+  const models = writeModels();
+
+  // No fallbackModel: informational — the fleet pauses at the cap by design. The definitions
+  // file is not even consulted, so an absent path is still ok.
+  const none = readyRepo();
+  assert.deepEqual(checkFallbackModel(none, path.join(tmpdir(), "absent.json")), {
+    level: "ok",
+    detail: "none configured — role loops pause at the cap",
+  });
+
+  // A free local pair is the case the fallback exists for.
+  const free = readyRepo();
+  writeConfig(free, { fallbackModel: { provider: "local", model: "free-model" } });
+  assert.deepEqual(checkFallbackModel(free, models), {
+    level: "ok",
+    detail: "local/free-model — priced at zero (cost n/a)",
+  });
+
+  // A priced or unknown id would be refused by the gate, so role loops would pause at the cap
+  // instead of switching — warn before the day's budget is spent on discovering it.
+  const paid = readyRepo();
+  writeConfig(paid, { fallbackModel: { provider: "paid", model: "gpt-x" } });
+  const warned = checkFallbackModel(paid, models);
+  assert.equal(warned.level, "warn");
+  assert.match(warned.detail, /paid\/gpt-x is not priced at zero/);
+  assert.match(warned.detail, /role loops pause instead of switching/);
+});
+
+test("checkFallbackModel cannot run on an invalid config and says so without failing", () => {
+  const root = readyRepo();
+  writeConfig(root, { bogusKey: 1 });
+  const outcome = checkFallbackModel(root, path.join(tmpdir(), "absent.json"));
+  assert.equal(outcome.level, "warn");
+  assert.match(outcome.detail, /cannot check — invalid tumwater\.json/);
+});
+
 test("checkStateDir accepts an absent dir and proves writability without leaving a trace", () => {
   const root = makeRepo();
   assert.deepEqual(checkStateDir(root), { level: "ok", detail: "absent — created on first run" });
@@ -218,7 +272,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "pi binary", "state dir", "merge lock", "build check", "build"],
+    ["node", "git binary", "repo", "init", "fallback", "pi binary", "state dir", "merge lock", "build check", "build"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.

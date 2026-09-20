@@ -39,7 +39,7 @@ locally and keep all project state within the git repo.
 v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
 `status` (`--json`), `report` (`--days N`; Markdown usage report, default 14 days) and
 `report --failures` (Markdown failure digest — tick outcomes, deltas, and clustered errors,
-default 14 days), `doctor` (pre-flight check of node, git, repo, config, pi, locks, and build — read-only,
+default 14 days), `doctor` (pre-flight check of node, git, repo, config, fallback model, pi, locks, and build — read-only,
 exits 0/1 so it can be scripted), `logs` (`-f`, `--role <id>`, `-n N`, `--prompt`), `prompt "text"` /
 `prompt --list` / `prompt --cancel <n>`, `reset-counters [--role <id>]`,
 `wake [--role <id>]` (clears a backed-off fleet's sleep — the named roles, or all of them,
@@ -224,7 +224,7 @@ tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)
 tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days; --days bounded to the GUI's shared 1–90 window)
 tumwater report --failures [--days N]   # Markdown failure digest — tick outcomes, deltas, and clustered errors (default 14 days)
-tumwater doctor       # pre-flight check: node, git, repo, config, pi, locks, build (read-only; exit 0/1)
+tumwater doctor       # pre-flight check: node, git, repo, config, fallback model, pi, locks, build (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
 tumwater logs --role feature --prompt   # …and the exact prompt each run received

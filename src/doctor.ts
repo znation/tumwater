@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { enabledRoleIds, loadConfig } from "./config.js";
+import { enabledRoleIds, fallbackPair, loadConfig } from "./config.js";
 import { detectBuildCheck } from "./build-check.js";
+import { fallbackModelFree, piModelsPath } from "./pi-models.js";
+import type { TumwaterConfig } from "./types.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo } from "./build-info.js";
 import { STALE_INPUTS_LABEL } from "./redeploy.js";
 import { findOnPath } from "./files.js";
@@ -95,6 +97,39 @@ export function checkInit(root: string): CheckOutcome {
   } catch (err) {
     return { level: "fail", detail: errorMessage(err) };
   }
+}
+
+/** Fallback model readiness — the daily-cost budget's third state (plans/fallback-model.md):
+ * with `fallbackModel` set, pi's definitions must price that pair at zero or the gate refuses
+ * it and role loops pause at the cap exactly as if no fallback existed. That refusal is the
+ * right runtime behavior (spend must never climb past the cap), but a typo'd id would otherwise
+ * surface only after the day's budget is already spent — so doctor checks it up front, before
+ * the operator needs it. Read-only: it inspects pi's definitions file, never pi or the network.
+ * No fallbackModel configured is informational, not a warning — plenty of fleets intend to stop
+ * at the cap. `modelsPath` is injectable so tests need no real pi install. */
+export function checkFallbackModel(
+  root: string,
+  modelsPath: string = piModelsPath(),
+): CheckOutcome {
+  let config: TumwaterConfig;
+  try {
+    config = loadConfig(root);
+  } catch (err) {
+    // checkInit already fails on a broken tumwater.json; this check only says it could not run.
+    return { level: "warn", detail: `cannot check — ${errorMessage(err)}` };
+  }
+  const pair = fallbackPair(config);
+  if (!pair) return { level: "ok", detail: "none configured — role loops pause at the cap" };
+  // A pair missing either half would fall through to pi's own (unverified) default, so it can
+  // never be free; naming that case beats rendering a bare "?/model".
+  const name =
+    pair.provider && pair.model ? `${pair.provider}/${pair.model}` : "a half-resolved pair";
+  if (fallbackModelFree(config, modelsPath))
+    return { level: "ok", detail: `${name} — priced at zero (cost n/a)` };
+  return {
+    level: "warn",
+    detail: `${name} is not priced at zero in ${modelsPath} — at the cap role loops pause instead of switching`,
+  };
 }
 
 /** pi binary — with cmdRun's existing install hint, so the two entry points cannot drift. */
@@ -209,6 +244,7 @@ export async function runDoctor(root: string, pathEnv: string = process.env.PATH
     { name: "git binary", ...checkGitBinary(pathEnv) },
     { name: "repo", ...(await checkRepo(root)) },
     { name: "init", ...checkInit(root) },
+    { name: "fallback", ...checkFallbackModel(root) },
     { name: "pi binary", ...checkPiBinary(pathEnv) },
     { name: "state dir", ...checkStateDir(root) },
     { name: "merge lock", ...checkMergeLock(root) },
