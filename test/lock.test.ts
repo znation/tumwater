@@ -185,3 +185,24 @@ test("withLock times out instead of breaking a fresh lock held by a live pid", a
   assert.ok(!ran, "must not enter the critical section of a live holder");
   assert.ok(fs.existsSync(lock), "the foreign lock is left untouched");
 });
+
+test("the lock timeout names the holder: its pid, or that no pid was readable", async () => {
+  // The timeout is a tick's lastError. Naming the pid is what lets an operator go look at the
+  // holder (or see that an orphan dir has no pid to look for) instead of hunting by hand.
+  const root = tmpdir();
+
+  const live = path.join(root, "live.lock");
+  fs.mkdirSync(live);
+  fs.writeFileSync(path.join(live, "pid"), String(process.pid));
+  await assert.rejects(
+    withLock(live, async () => {}, 700),
+    new RegExp(`waiting for lock .*live\\.lock \\(held by pid ${process.pid}\\)$`),
+  );
+
+  const orphan = path.join(root, "orphan.lock");
+  fs.mkdirSync(orphan); // fresh, no pid file: inside the no-pid grace, so it is not broken
+  await assert.rejects(
+    withLock(orphan, async () => {}, 700),
+    /waiting for lock .*orphan\.lock \(no readable pid file\)$/,
+  );
+});

@@ -69,6 +69,15 @@ export function classifyLock(dir: string): LockState {
   return pidAlive(pid) ? "live" : "stale";
 }
 
+/** Name the lock's holder for the timeout message: the pid its pid file records, or a note
+ * that none was readable. The message surfaces as a tick's lastError, and the pid is the one
+ * handle an operator needs to tell "waiting on a slow holder" from "an orphan dir nobody can
+ * break" — without it every timeout reads the same and the holder has to be found by hand. */
+function lockHolderNote(dir: string): string {
+  const pid = readLockPid(dir);
+  return pid === null ? " (no readable pid file)" : ` (held by pid ${pid})`;
+}
+
 function tryBreakStale(dir: string): void {
   if (classifyLock(dir) === "stale") rmLockDir(dir);
 }
@@ -83,9 +92,11 @@ export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs =
       break;
     } catch {
       tryBreakStale(dir);
-      // Report the wait budget: this surfaces as a tick's lastError, and "gave up after
-      // 120s" is what distinguishes a slow holder from a wedged one.
-      if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}`);
+      // Report the wait budget and the holder: this surfaces as a tick's lastError, and
+      // "gave up after 120s waiting on pid 999" is what distinguishes a slow holder from a
+      // wedged one (and names which process to look at).
+      if (Date.now() > deadline)
+        throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}${lockHolderNote(dir)}`);
       await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
     }
   }
