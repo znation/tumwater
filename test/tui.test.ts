@@ -166,6 +166,17 @@ test("renderInputView windows astral text without a lone surrogate or a hidden c
   // the tail. The window is one whole emoji at the right edge.
   assert.equal(renderInputView("\u{1f600}".repeat(4), 8, 6), "…\u{1f600}");
 
+  // Regression: a cursor on an astral character in a room-1/2 window used to leave an
+  // empty window (start === end), which renderInputView drew as a bare ellipsis — the whole
+  // prompt line blank at width 4–5. The window now falls back to the character under the
+  // cursor, and the ellipsis is dropped when it no longer fits beside it.
+  assert.deepEqual(inputViewWindow("ab\u{1f600}\u{1f600}", 4, 2), { start: 4, end: 6 });
+  assert.deepEqual(inputViewWindow("ab\u{1f600}\u{1f600}", 5, 2), { start: 4, end: 6 });
+  assert.deepEqual(inputViewWindow("\u{1f600}\u{1f600}", 4, 1), { start: 2, end: 4 });
+  assert.equal(renderInputView("ab\u{1f600}\u{1f600}", 4, 5), "…\u{1f600}");
+  assert.equal(renderInputView("ab\u{1f600}\u{1f600}", 4, 4), "\u{1f600}");
+  assert.equal(renderInputView("\u{1f600}\u{1f600}", 4, 4), "\u{1f600}");
+
   const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
   const samples = ["a".repeat(40), "\u{1f600}".repeat(8), "x\u{1f600}y\u00e9\u{1f600}z".repeat(3)];
   for (const text of samples) {
@@ -179,12 +190,19 @@ test("renderInputView windows astral text without a lone surrogate or a hidden c
         const view = renderInputView(text, cursor, width);
         assert.ok(!loneSurrogate.test(view), `${where}: ${JSON.stringify(view)} has a lone surrogate`);
         assert.ok(("> " + view).length <= width, `${where}: ${JSON.stringify(view)} exceeds the width`);
+        assert.ok(view.length > 0, `${where}: ${JSON.stringify(view)} is empty`);
         // The window must keep the (clamped) cursor inside it — the property the rejected
         // fix broke: it dropped tail units so the cursor fell off the right edge.
         const { start, end } = inputViewWindow(text, cursor, room);
         const c = Math.max(0, Math.min(cursor, text.length));
+        assert.ok(start < end, `${where}: window [${start},${end}) is empty`);
         assert.ok(start <= c && c <= end, `${where}: window [${start},${end}) hides the cursor`);
-        assert.equal((start > 0 ? "…" : "") + text.slice(start, end), view, `${where}: window/render drift`);
+        // renderInputView mirrors this window, dropping the ellipsis when the whole-character
+        // fallback no longer leaves it room beside the slice.
+        const slice = text.slice(start, end);
+        const withEllipsis = start > 0 ? `…${slice}` : slice;
+        const expected = withEllipsis.length <= width - 2 ? withEllipsis : slice;
+        assert.equal(expected, text.length <= room ? text : view, `${where}: window/render drift`);
       }
     }
   }

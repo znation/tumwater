@@ -5,14 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### `inputViewWindow` can collapse to an empty window, blanking the TUI prompt line at narrow widths (found by bugfix loop 2026-09-19)
-
-**Symptom:** With two adjacent astral characters (emoji) at/around the cursor and a terminal `width` of 4–5 columns (`room = max(1, width - 3)` of 1–2), `inputViewWindow` returns `start === end`, so `renderInputView` renders only the leading ellipsis — `tumwater tui`'s prompt line shows no prompt text at all while the user edits it, contradicting renderInputView's stated goal that "mid-text edits stay visible". The cursor caret is still drawn, so this is a visibility degradation, not a crash.
-
-**Repro:** In a scratch node script (the function is pure), `inputViewWindow("ab\u{1f600}\u{1f600}", 4, 2)` → `{ start: 4, end: 4 }` and `inputViewWindow("\u{1f600}\u{1f600}", 4, 1)` → `{ start: 4, end: 4 }`; `renderInputView("ab\u{1f600}\u{1f600}", 4, 5)` → `"…"`. A brute-force sweep of random BMP+astral strings shows this only at `room` 1–2 (width 4–5). `test/tui.test.ts`'s width sweep uses samples with no adjacent astral pairs and only asserts `start <= c && c <= end`, which an empty window satisfies, so it never catches this.
-
-**Suspected cause:** In `inputViewWindow` (src/ui/tui-input.ts) a start that would split a pair is stepped forward (`start0 + 1`) while an end that would split a pair is backed off (`end0 - 1`); when both fire on adjacent pairs the two edges meet, leaving `start === end`. Not fixed inline: showing the cursor's character (2 units) plus the 1-column ellipsis needs 3 columns, so at `room` ≤ 2 every width-preserving window either is empty or hides the cursor — the fix trades the documented "never exceeds `width`" invariant against the "cursor's text stays visible" one, a deliberate design choice to make rather than guess.
-
 ### README promises `status --json` is "the same payload as the GUI's /api/status", but the served payload carries an extra `serverBuildSha` field (found by qa loop 2026-09-19)
 
 **Symptom:** A first-time user scripting against the Usage line `tumwater status --json   # machine-readable fleet state (same payload as the GUI's /api/status)` gets two documents that are not the same: the served one has one extra top-level key, `serverBuildSha` (the serving process's build sha), while every other key and value is identical. src/cli.ts's own comment on the flag repeats the claim ("the same document GET /api/status serves, printed with no server"); src/ui/gui.ts:253 is where the difference is made — `sendJson(res, 200, { ...statusPayload(root), serverBuildSha: startupBuild?.sha ?? null })`. The field is deliberate (the page uses it to notice a newer build and reload) but no doc says so, so the promise is only 95% true. No test pins the parity either way: `test/cli.test.ts:496` deep-equals the CLI output against `statusPayload(root)` (the CLI side), and `test/gui.test.ts:112` types the served payload as `ReturnType<typeof statusPayload> & {…}` (the server side).
@@ -24,6 +16,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 **Suspected cause:** `serverBuildSha` was added to `/api/status` for the dashboard's auto-reload (planned 2026-09-17) after the CLI's "same payload" wording and comment were written; nothing re-derived the doc when the server started appending a field.
 
 ## Fixed
+
+### `inputViewWindow` can collapse to an empty window, blanking the TUI prompt line at narrow widths (found by bugfix loop 2026-09-19, fixed 2026-09-19)
+
+**Symptom:** With two adjacent astral characters (emoji) at/around the cursor and a terminal `width` of 4–5 columns (`room = max(1, width - 3)` of 1–2), `inputViewWindow` returns `start === end`, so `renderInputView` renders only the leading ellipsis — `tumwater tui`'s prompt line shows no prompt text at all while the user edits it, contradicting renderInputView's stated goal that "mid-text edits stay visible". The cursor caret is still drawn, so this is a visibility degradation, not a crash.
+
+**Repro:** In a scratch node script (the function is pure), `inputViewWindow("ab\u{1f600}\u{1f600}", 4, 2)` → `{ start: 4, end: 4 }` and `inputViewWindow("\u{1f600}\u{1f600}", 4, 1)` → `{ start: 4, end: 4 }`; `renderInputView("ab\u{1f600}\u{1f600}", 4, 5)` → `"…"`. A brute-force sweep of random BMP+astral strings shows this only at `room` 1–2 (width 4–5). `test/tui.test.ts`'s width sweep uses samples with no adjacent astral pairs and only asserts `start <= c && c <= end`, which an empty window satisfies, so it never catches this.
+
+**Suspected cause:** In `inputViewWindow` (src/ui/tui-input.ts) a start that would split a pair is stepped forward (`start0 + 1`) while an end that would split a pair is backed off (`end0 - 1`); when both fire on adjacent pairs the two edges meet, leaving `start === end`.
+
+**Fix:** `inputViewWindow` now falls back to the smallest whole-character window containing the cursor — the character it sits on, or the character before it at end of text — when the two boundary nudges meet and would return an empty window; the fallback may exceed `room` by one unit for an astral character. `renderInputView` preserves the "> " prefix's floor by dropping the leading ellipsis when that wider slice no longer leaves it room, so the prompt line still never exceeds `width` and the character under the cursor stays visible. The regression test pins both of the bug's repros and adds a non-empty-window assertion to the width sweep, whose samples now include adjacent astral pairs.
+
+**Files:** src/ui/tui-input.ts (inputViewWindow fallback, renderInputView ellipsis drop), test/tui.test.ts (regression asserts; the sweep requires a non-empty window and mirrors the ellipsis rule).
 
 ### Friction's absolute turn threshold measures model speed, not difficulty: on the fleet's fast API model it flags 41% of changed ticks at 2–19 minutes (found by telemetry loop 2026-09-19, fixed 2026-09-19)
 
