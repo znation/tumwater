@@ -47,26 +47,19 @@ in tumwater.json or by prompting the director.
 
 Open items:
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; nine sub-plans in plans/portability.md, 4/7 split
-  three ways on 2026-09-19).
-- Planned: TUI failures pane — render the failure digest in the Ctrl+T view cycle (planned
-  2026-09-20).
-- Open bug: the dashboard loop table sorts the `landing` phase as inactive, so a landing role
-  drops below queued and sleeping loops (reported by user 2026-09-21); the TUI/`status` table
-  applies no state grouping at all, so the two dashboards disagree.
+  binary (planned 2026-09-14, requested by user; nine independently landable PLANS.md entries
+  1/7–7/7, split 2026-09-21).
 - Open bug: every Fixed entry lacks its required `**Validation gap:**` trace, so the repair-trace
   tally has no population and the Fixed backlog cannot be compressed (filed 2026-09-20).
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the spend
   cap into an hour of 100% tick failure instead of pausing the fleet (filed 2026-09-20).
-- Open bug: a dead reviewer backend destroys committed work — transport errors count toward
-  `REVIEW_FAILURE_LIMIT` and hard-reset the worktree (filed 2026-09-20).
 - Open bug: a killed tick leaks its tool-call grandchildren — `terminateChild` signals only the pi
   process, never its group (filed 2026-09-20).
 - Open bug: the failure digest carries outcomes but not the harness decisions that produced them,
   so the telemetry role cannot apply its own load-bearing rule (filed 2026-09-20).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`b4e409d`): build clean, suite 1236/1236.
+Current main (`58b1a27`): build clean, suite 1241/1241.
 <!-- tumwater:status:end -->
 
 ## How it works
