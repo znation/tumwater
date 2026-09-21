@@ -5,6 +5,25 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### Every Fixed entry lacks the `**Validation gap:**` trace, so the repair-trace tally has no population and the Fixed backlog cannot be compressed (found by steward 2026-09-20)
+
+**Symptom:** The validation-gap convention landed 2026-09-19 (`794e170`, "Land repair traces with a tally counting both gap-tag forms"): every Fixed entry must carry `**Validation gap:** <tag> — <one sentence>`, and `test/prompt.test.ts:405` pins that the exact guidance reaches the bugfix prompt verbatim. Yet the line exists nowhere in BUGS.md — `grep -c 'Validation gap' BUGS.md` is **0** across all 28 entries — and the documented tally query returns nothing:
+
+```
+grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c   # empty
+```
+
+Five Fixed entries landed after the guidance shipped (all descended from `794e170`, committed 20:24:01) and none carries the line: `2e02c16` (auth 20:50), `207e560` (21:16), `9bcbd4b` (22:04), `92caeb7` (22:49), `02edcf5` (2026-09-20 00:07). So the feature is inert: the evidence it exists to collect — where this project's test infrastructure is weakest — has never been recorded, and the steward's Fixed-compression rule (carry each entry's tag as a `gap: <tag>` suffix; `none` is written, never omitted) has no tag to carry. Twenty-three Fixed entries now sit verbatim against a ten-entry window (`grep -cE '^### '` = 28, minus the 5 Open), so the backlog is bounded only by inertia — and compressing it as written would force the steward to invent or silently omit a tag, erasing the signal instead of preserving it.
+
+**Repro:** Deterministic, no model needed:
+- `grep -c 'Validation gap' BUGS.md` → 0.
+- the tally query above → empty output.
+- `git log --oneline --ancestry-path 794e170..main --grep='tumwater(bugfix)'` lists the five fix commits; `git show <sha>:BUGS.md | grep -c 'Validation gap'` is 0 for each.
+
+**Expected:** Every entry bugfix moves to Fixed carries the line, so the tally has an honest denominator and the steward can compress the Fixed section preserving each tag. Prose alone is not enough (see below); enforce it where a missing line is visible — e.g. a deterministic check in the landing gate's suite that scans BUGS.md's Fixed entries for the line (scoped to entries dated after the convention, so the legacy backlog does not fail the build), or a `tumwater doctor`/status warning counting entries that lack it. Backfilling the legacy entries by reconstructing each tag from its entry body is optional cleanup, not a precondition. This must not be "fixed" by having the steward drop, default, or invent the suffix.
+
+**Suspected cause:** The convention is enforced only by prose in `bugfix.find` (`src/roles.ts:120`, embedding `VALIDATION_GAP_GUIDANCE`); nothing — test, gate, or observer — can see a Fixed entry's missing line, so a model focused on the fix and its regression test gets no feedback when it drops the trace. The suite pins that the guidance is *in the prompt* (`test/prompt.test.ts:405`) but never that its output is *in BUGS.md* — the same class of blind spot the repair-trace feature was built to expose, one level up the stack.
+
 ### The GUI and TUI abbreviate millions as `k`: 13.8M output tokens renders as `13820.3k` (reported by user 2026-09-20)
 
 **Symptom:** The GUI report tab's "output tokens" stat block renders a window total of 13,820,300 as `13820.3k`; it should read `13.8M`. The same missing-millions branch hits every other token cell on the two dashboards: the GUI loop table's generated and peak-ctx columns (`src/ui/gui-client.ts:412–413`), and the TUI/status `compactTokens` (`src/text.ts:111`) — the status table's gen/peak-ctx columns (`src/ui/status-render.ts:136–137,148–149`), the `ctx` chip (`src/ui/status-model.ts:47`), the commit trailer's `ctx` field (`src/commit-message.ts:86`), and the event feed's `tok` suffix (`src/ui/event-format.ts:21`). The Markdown `tumwater report` already gets this right: its private `formatTokens` (`src/ui/report.ts:142`) returns `13.8M`, and `test/report.test.ts:223`/`:233` pin `1.8M`/`1.2M` — so the two report surfaces print the same number two different ways.
