@@ -5,25 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Every Fixed entry lacks the `**Validation gap:**` trace, so the repair-trace tally has no population and the Fixed backlog cannot be compressed (found by steward 2026-09-20)
-
-**Symptom:** The validation-gap convention landed 2026-09-19 (`794e170`, "Land repair traces with a tally counting both gap-tag forms"): every Fixed entry must carry `**Validation gap:** <tag> — <one sentence>`, and `test/prompt.test.ts:405` pins that the exact guidance reaches the bugfix prompt verbatim. Yet the line exists nowhere in BUGS.md — `grep -c 'Validation gap' BUGS.md` is **0** across all 28 entries — and the documented tally query returns nothing:
-
-```
-grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c   # empty
-```
-
-Five Fixed entries landed after the guidance shipped (all descended from `794e170`, committed 20:24:01) and none carries the line: `2e02c16` (auth 20:50), `207e560` (21:16), `9bcbd4b` (22:04), `92caeb7` (22:49), `02edcf5` (2026-09-20 00:07). So the feature is inert: the evidence it exists to collect — where this project's test infrastructure is weakest — has never been recorded, and the steward's Fixed-compression rule (carry each entry's tag as a `gap: <tag>` suffix; `none` is written, never omitted) has no tag to carry. Twenty-three Fixed entries now sit verbatim against a ten-entry window (`grep -cE '^### '` = 28, minus the 5 Open), so the backlog is bounded only by inertia — and compressing it as written would force the steward to invent or silently omit a tag, erasing the signal instead of preserving it.
-
-**Repro:** Deterministic, no model needed:
-- `grep -c 'Validation gap' BUGS.md` → 0.
-- the tally query above → empty output.
-- `git log --oneline --ancestry-path 794e170..main --grep='tumwater(bugfix)'` lists the five fix commits; `git show <sha>:BUGS.md | grep -c 'Validation gap'` is 0 for each.
-
-**Expected:** Every entry bugfix moves to Fixed carries the line, so the tally has an honest denominator and the steward can compress the Fixed section preserving each tag. Prose alone is not enough (see below); enforce it where a missing line is visible — e.g. a deterministic check in the landing gate's suite that scans BUGS.md's Fixed entries for the line (scoped to entries dated after the convention, so the legacy backlog does not fail the build), or a `tumwater doctor`/status warning counting entries that lack it. Backfilling the legacy entries by reconstructing each tag from its entry body is optional cleanup, not a precondition. This must not be "fixed" by having the steward drop, default, or invent the suffix.
-
-**Suspected cause:** The convention is enforced only by prose in `bugfix.find` (`src/roles.ts:120`, embedding `VALIDATION_GAP_GUIDANCE`); nothing — test, gate, or observer — can see a Fixed entry's missing line, so a model focused on the fix and its regression test gets no feedback when it drops the trace. The suite pins that the guidance is *in the prompt* (`test/prompt.test.ts:405`) but never that its output is *in BUGS.md* — the same class of blind spot the repair-trace feature was built to expose, one level up the stack.
-
 ### The budget fallback has no liveness check: an unreachable free model turns the spend cap into an hour of 100% tick failure instead of a pause (found by log analysis 2026-09-20)
 
 **Symptom:** At 2026-09-19 23:00:56 the fleet reached `maxDailyCostUsd: 10` and logged `budget_fallback`. Every tick from then until local midnight's `budget_resumed` failed — **33 of 33** `tick_end` events in the window carry `result: "error"`, across nine roles (`organize`, `feature`, `bugfix`, `improve`, `coverage` 5 each; `clean`, `dry` 3; `plan`, `readme` 1). All 33 carry an oMLX HTTP 400: `oMLX prefill memory guard rejected this prompt: Prefill would require ~97.75 GB peak (current 95.54 GB + KV+SDPA 2.21 GB) but metal_cap ceiling is 96.97 GB … code: "prefill_memory_exceeded"`. The fallback backend was up but pinned at its Metal ceiling — `~/.omlx/logs/server.log` shows it rejecting prompts as small as `kv_len=1152` and logging `Qwen4-Exp PLE forced to SSD … resident 119.0GB exceeds the 111.7GB memory ceiling` — so it could serve almost nothing. `budgetGate` (src/budget.ts:80) chose `fallback` anyway and never reconsidered: the orchestrator re-evaluates it every poll (src/orchestrator.ts:413) from `budgetPaused(...)` and `fallbackModelFree(liveConfig, modelsPath)`, and the second input is a pure COST check — `fallbackModelFree` (src/pi-models.ts:116) resolves the configured pair and asks `pairFree(readPiProviders(modelsPath), …)`, i.e. "does pi's models.json price this at zero". Nothing probes the backend, and no number of consecutive failures demotes `fallback` to `paused`. The outcome is strictly worse than the alternative the gate already implements: `paused` blocks new role ticks, so the fleet would have idled one hour and resumed at midnight with no damage. Instead it burned 36 tick_starts, drove every role up the error ladder (`organize` reached `consecutiveErrors: 6` / `backoffSeconds: 600`), emitted 12 warnings, and — through the sibling bug below — destroyed two commits.
@@ -45,6 +26,40 @@ Five Fixed entries landed after the guidance shipped (all descended from `794e17
 **Suspected cause:** `terminateChild` was written when pi was assumed to be the leaf of the process tree; it is in fact an agent whose whole purpose is spawning tool calls. The `exec` workaround in the tests dates from the same assumption and made the gap invisible — the suite pins that a killed run *ends promptly*, never that it leaves nothing behind.
 
 ## Fixed
+
+### Every Fixed entry lacks the `**Validation gap:**` trace, so the repair-trace tally has no population and the Fixed backlog cannot be compressed (found by steward 2026-09-20, fixed 2026-09-21)
+
+**Symptom:** The validation-gap convention landed 2026-09-19 (`794e170`, "Land repair traces with a tally counting both gap-tag forms"): every Fixed entry must carry `**Validation gap:** <tag> — <one sentence>`, and `test/prompt.test.ts:405` pins that the exact guidance reaches the bugfix prompt verbatim. Yet the line exists nowhere in BUGS.md — `grep -c 'Validation gap' BUGS.md` is **0** across all 28 entries — and the documented tally query returns nothing:
+
+```
+grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c   # empty
+```
+
+Five Fixed entries landed after the guidance shipped (all descended from `794e170`, committed 20:24:01) and none carries the line: `2e02c16` (auth 20:50), `207e560` (21:16), `9bcbd4b` (22:04), `92caeb7` (22:49), `02edcf5` (2026-09-20 00:07). So the feature is inert: the evidence it exists to collect — where this project's test infrastructure is weakest — has never been recorded, and the steward's Fixed-compression rule (carry each entry's tag as a `gap: <tag>` suffix; `none` is written, never omitted) has no tag to carry. Twenty-three Fixed entries now sit verbatim against a ten-entry window (`grep -cE '^### '` = 28, minus the 5 Open), so the backlog is bounded only by inertia — and compressing it as written would force the steward to invent or silently omit a tag, erasing the signal instead of preserving it.
+
+**Repro:** Deterministic, no model needed:
+- `grep -c 'Validation gap' BUGS.md` → 0.
+- the tally query above → empty output.
+- `git log --oneline --ancestry-path 794e170..main --grep='tumwater(bugfix)'` lists the five fix commits; `git show <sha>:BUGS.md | grep -c 'Validation gap'` is 0 for each.
+
+**Expected:** Every entry bugfix moves to Fixed carries the line, so the tally has an honest denominator and the steward can compress the Fixed section preserving each tag. Prose alone is not enough (see below); enforce it where a missing line is visible — e.g. a deterministic check in the landing gate's suite that scans BUGS.md's Fixed entries for the line (scoped to entries dated after the convention, so the legacy backlog does not fail the build), or a `tumwater doctor`/status warning counting entries that lack it. Backfilling the legacy entries by reconstructing each tag from its entry body is optional cleanup, not a precondition. This must not be "fixed" by having the steward drop, default, or invent the suffix.
+
+**Suspected cause:** The convention is enforced only by prose in `bugfix.find` (`src/roles.ts:120`, embedding `VALIDATION_GAP_GUIDANCE`); nothing — test, gate, or observer — can see a Fixed entry's missing line, so a model focused on the fix and its regression test gets no feedback when it drops the trace. The suite pins that the guidance is *in the prompt* (`test/prompt.test.ts:405`) but never that its output is *in BUGS.md* — the same class of blind spot the repair-trace feature was built to expose, one level up the stack.
+
+**Fix:** Added `test/validation-gap.test.ts` — a deterministic, offline check in the suite the
+landing gate already runs. It parses BUGS.md's Fixed entries and, for every entry whose heading
+carries a `fixed`/`closed`/`resolved` date on or after 2026-09-21 (the day the guard shipped;
+earlier entries are grandfathered so the legacy backlog cannot fail the build), requires a
+`**Validation gap:** <tag>` line whose tag is in `VALIDATION_GAP_TAGS`. A missing line and an
+invented tag both fail, because the tally aggregates the tag and a non-vocabulary value would
+vanish from it. The parsing logic is unit-tested against fixtures in the same file, so the guard
+cannot silently pass. A bugfix commit that moves an entry to Fixed without the trace now fails
+the gate's `npm test` pre-check, and its rejection reason is injected into the author's next
+tick — the feedback the prose-only convention never gave. By the time this landed, four
+2026-09-21 entries carried the line and 23 legacy entries still lacked it; backfilling those
+stays optional cleanup.
+
+**Validation gap:** no-observability — no test, gate, or observer read BUGS.md's Fixed entries, so a dropped trace line left no trace of itself and the omission accumulated across 28 entries; the guard test now makes it visible at landing time.
 
 ### The failure digest carries outcomes but not the harness decisions that produced them, so the telemetry role cannot apply its own load-bearing rule (found by human investigation 2026-09-20, fixed 2026-09-21)
 
