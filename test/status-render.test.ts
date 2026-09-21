@@ -729,6 +729,16 @@ test("loopPhase shows failing for idle loops stuck on an error streak, not sleep
   deep.consecutiveErrors = 4;
   assert.equal(loopPhase(deep, true), "failing");
 
+  // A streak fed by leftover-recovery landing failures reads failing even though the tick's
+  // own result is healthy (BUGS.md 2026-09-21): the landing failure, not `lastResult`, is the
+  // tell. Before the fix this cell showed "sleeping" while a dead reviewer backend wedged the
+  // pin forever.
+  const recovered = freshLoopState("feature");
+  recovered.lastResult = "no_change";
+  recovered.consecutiveErrors = 3;
+  recovered.nextRunAt = Date.now() + 1_800_000;
+  assert.equal(loopPhase(recovered, true), "failing", "a recovery-failure streak outranks sleep");
+
   // In-flight ticks are untouched (the label describes the finished tick only).
   const running = freshLoopState("feature");
   running.running = true;

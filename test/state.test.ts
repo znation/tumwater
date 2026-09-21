@@ -522,6 +522,27 @@ test("applyTickOutcome: the error streak counts consecutive failures and resets 
   assert.equal(s.consecutiveErrors, 1, "the next episode re-arms from scratch");
 });
 
+test("applyTickOutcome: a recovery landing failure feeds the error streak on a healthy tick", () => {
+  // BUGS.md 2026-09-21: a dead reviewer backend leaves every leftover pin failing to land
+  // while the tick's own authoring run succeeds (`no_change`/`queued`). The streak must count
+  // that landing failure, or it resets every tick and the alarm never fires.
+  const cfg = testConfig();
+  const s = freshLoopState("clean");
+  applyTickOutcome(s, cfg, "clean", {
+    result: "no_change",
+    recoveryFailure: "review failed: no parseable VERDICT",
+  });
+  assert.equal(s.consecutiveErrors, 1, "the landing failure arms the streak");
+  applyTickOutcome(s, cfg, "clean", {
+    result: "queued",
+    recoveryFailure: "review failed: no parseable VERDICT",
+  });
+  assert.equal(s.consecutiveErrors, 2, "a queued tick that also failed recovery keeps counting");
+  // A tick with no recovery failure at all is healthy and breaks the episode.
+  applyTickOutcome(s, cfg, "clean", { result: "no_change" });
+  assert.equal(s.consecutiveErrors, 0, "a healthy tick with no landing failure resets the streak");
+});
+
 test("applyTickOutcome: no_change laddering is unchanged by the error ladder", () => {
   const cfg = testConfig();
   const s = freshLoopState("feature");

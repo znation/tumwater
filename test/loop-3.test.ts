@@ -13,11 +13,12 @@ import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import { setRef } from "../src/git.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, loadLoopState, saveLoopState, ERROR_STREAK_WARN } from "../src/state.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
 import { landQueuedEntry } from "../src/landing-slot.js";
+import { loopPhase } from "../src/ui/status-model.js";
 import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, tmpdir } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
@@ -847,6 +848,63 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
     const tick2End = tickEnds[tickEnds.length - 1]!;
     assert.equal(tick2End.result, "no_change");
     assert.equal(tick2End.error, undefined, "a successful tick's tick_end carries no stale landing error");
+  } finally {
+    restore();
+  }
+});
+
+test("a persistent recovery review failure feeds the error streak and reads failing", async () => {
+  const repo = await initializedRepo();
+  const m1 = path.join(tmpdir(), "streak-phase1");
+  // Phase 0 (a run whose prompt asks for a VERDICT — the review gate): the backend is down, so
+  // pi exits nonzero with no reply. That is a FAILED run, not a strike against the HEAD, so the
+  // pin is kept indefinitely (src/review.ts) — the "dead reviewer backend" of the bug. Phase 1
+  // (tick 1): commit and pin. Phase 2 (every later tick): nothing to do, so only leftover
+  // recovery touches the gate. Before the fix the streak reset on each no_change recovery tick
+  // and nothing ever named the wedged pin (BUGS.md 2026-09-21).
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) echo "reviewer backend down" >&2; exit 1;; esac; done`,
+      `if [ ! -f "${m1}" ]; then`,
+      `  touch "${m1}"`,
+      `  printf '%s\n' '${assistantLine("ok\\nSUMMARY: branch edit of seed")}'`,
+      `  echo branch change > seed.txt`,
+      `else`,
+      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    assert.equal((await runner.tick()).result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "review_error");
+
+    // Each following tick recovers the still-pinned commit and its review fails again.
+    for (let i = 0; i < ERROR_STREAK_WARN; i++) {
+      assert.equal((await runner.tick()).result, "no_change", "the tick's own authoring run found nothing to do");
+    }
+    assert.equal(runner.state.consecutiveErrors, ERROR_STREAK_WARN, "the landing failures fed the error streak");
+
+    // One warning names the stuck gate, carrying the review failure's own reason (the detail
+    // is not in lastError, which the sibling mislabel fix clears before tick_end).
+    const warnings = readEvents(repo).filter((e) => e.type === "warning");
+    assert.ok(
+      warnings.some(
+        (e) =>
+          /3 consecutive tick failures/.test(String(e.message)) &&
+          /review failed: reviewer backend down/.test(String(e.message)),
+      ),
+      `expected one warning naming the review failure, got: ${JSON.stringify(warnings)}`,
+    );
+    // Both dashboards read their phase from loopPhase, so a healthy lastResult must not hide it.
+    assert.equal(runner.state.lastResult, "no_change");
+    assert.equal(loopPhase(runner.state, true), "failing", "the dashboards read failing, not sleeping");
+    // The failure kept the pin for another attempt.
+    assert.equal(
+      sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim().length,
+      40,
+      "the pinned leftover survives the persistent review failure",
+    );
   } finally {
     restore();
   }

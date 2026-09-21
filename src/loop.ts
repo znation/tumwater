@@ -31,7 +31,7 @@ import {
 import { readInitialPrompt } from "./readme.js";
 import { telemetryDigest } from "./failure-report.js";
 import { configForRole } from "./config.js";
-import { landChange, type LandRequest } from "./lander.js";
+import { RETRIABLE_LANDING_RESULTS, landChange, type LandRequest } from "./lander.js";
 import { enqueueLanding } from "./land-queue.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
@@ -77,6 +77,11 @@ export class LoopRunner {
    * to main, no director-prompt requeue, "user_aborted" result with normal backoff. Cleared
    * at the next tick start so a stale request can never leak into a later tick. */
   private userAborted = false;
+  /** This tick's leftover-recovery landing failure, if any (a retriable lander outcome that
+   * kept the pin): captured in runTick and attached to the returned TickOutcome so
+   * applyTickOutcome can feed it into the error streak even when the tick's own authoring run
+   * is healthy (BUGS.md 2026-09-21). Reset at every tick start. */
+  private recoveryFailure?: string;
 
   constructor(
     readonly root: string,
@@ -463,6 +468,7 @@ export class LoopRunner {
     s.peakContextTokens = 0;
     this.tickTurns = 0;
     this.tickCostUsd = 0;
+    this.recoveryFailure = undefined;
     // A fresh per-tick abort controller and a cleared user-abort flag: an abort request that
     // lands while the loop is idle must not leak into the next tick.
     this.tickAbort = new AbortController();
@@ -480,6 +486,11 @@ export class LoopRunner {
       outcome = { result: "error" };
       s.lastError = errorMessage(err);
     }
+    // A leftover-recovery landing failure is not the tick's own result, so it rides the
+    // outcome separately: applyTickOutcome feeds it into the error streak, and the warning
+    // below names it — even though runTick cleared `lastError` so it never latched onto
+    // `tick_end` (BUGS.md 2026-09-21).
+    if (this.recoveryFailure !== undefined) outcome.recoveryFailure = this.recoveryFailure;
 
     // Read main's current head while this tick is still reserved (running=true): the
     // applyTickOutcome below clears running, and a poll landing between that clear and a later
@@ -498,7 +509,10 @@ export class LoopRunner {
     // resets it on any other result, so the streak equals the threshold exactly once per
     // episode — the crossing — and re-warns only after a healthy tick re-armed it.
     if ((s.consecutiveErrors ?? 0) === ERROR_STREAK_WARN) {
-      this.warn(`${s.consecutiveErrors} consecutive tick failures: ${s.lastError ?? "unknown error"}`);
+      this.warn(
+        `${s.consecutiveErrors} consecutive tick failures: ` +
+          `${s.lastError ?? outcome.recoveryFailure ?? "unknown error"}`,
+      );
     }
     // One warning per quiet-kill episode (BUGS.md 2026-09-18): a loop burning an hour per
     // tick with no output must not look like a sleeping loop. applyTickOutcome grows the
@@ -586,6 +600,15 @@ export class LoopRunner {
             sessionSuffix: "-recovery",
           }),
       });
+      // A failed recovery landing keeps the pin for another attempt, and a run of them is a
+      // PERSISTENT failure the tick's own result cannot express (its authoring run may be fine):
+      // capture it here, before the `lastError` clear below, so applyTickOutcome can feed the
+      // error streak and one warning names the stuck gate (BUGS.md 2026-09-21). The set is the
+      // lander's own non-terminal failure vocabulary — review_error, merge_conflict, merge_blocked.
+      this.recoveryFailure =
+        recovered !== null && RETRIABLE_LANDING_RESULTS.has(recovered)
+          ? (s.lastError ?? `landing failed: ${recovered}`)
+          : undefined;
       if (recovered === "aborted" && this.userAborted) {
         // A deliberate stop during recovery discards the pinned work — exactly like the tick's
         // own landing path. Keeping it would let next-tick recovery resurrect what the operator

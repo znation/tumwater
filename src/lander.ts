@@ -131,6 +131,18 @@ async function reviewPinnedChange(
   return { kind: "gate", gate };
 }
 
+/** The failed landing outcomes that KEEP the pin for another attempt: an under-cap review
+ * failure, or a merge that could not be rebased/landed. They are exactly landChange's
+ * non-terminal failures (`rejected` is final and deletes the pin; `aborted` is a shutdown;
+ * `changed` landed), so a run of them on the leftover-recovery path is what feeds the error
+ * streak — a dead reviewer backend raises the alarm instead of resetting it every tick
+ * (BUGS.md 2026-09-21). */
+export const RETRIABLE_LANDING_RESULTS: ReadonlySet<TickResult> = new Set([
+  "review_error",
+  "merge_conflict",
+  "merge_blocked",
+]);
+
 /** Review and land `req.sha` in this role's lander worktree, returning the same TickResult
  * values a tick returns today — so state.ts, the dashboards, and the event feed need no change.
  * Owns the landing ref's full lifecycle: deleted on every terminal outcome (landed, rejected,

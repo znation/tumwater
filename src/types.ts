@@ -181,6 +181,13 @@ export interface TickOutcome {
    * survives in the pi session, which pi compacted at end of run — so the loop resumes
    * it promptly instead of backing off as if the role were idle. */
   cutOff?: boolean;
+  /** A leftover-recovery landing failed and kept the pin for another attempt (review_error,
+   * merge_conflict, merge_blocked): the tick's own authoring run may be healthy, but the
+   * persistent landing failure must still feed the error streak so a dead reviewer backend
+   * raises the alarm instead of resetting it every tick (BUGS.md 2026-09-21). Carries the
+   * failure detail for the warning: `lastError` is deliberately cleared off the tick so the
+   * failure never rides its `tick_end` (the sibling mislabel fix). */
+  recoveryFailure?: string;
 }
 
 /** Persisted per-loop state in .tumwater/state/<role>.json. */
@@ -220,10 +227,13 @@ export interface LoopState {
    * session the backend will not schedule cannot retry immediately forever (BUGS.md
    * 2026-09-18). Reset by any non-quiet-kill outcome. */
   quietKillStreak?: number;
-  /** Consecutive ticks that ended in `error`. While at or past the warning threshold
+  /** Consecutive failed ticks: an `error`-result tick OR one whose leftover recovery left a
+   * landing pin behind (TickOutcome.recoveryFailure). While at or past the warning threshold
    * (state.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
    * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
-   * identical tick failures looked like a quiet fleet). Reset by any non-error result. */
+   * identical tick failures looked like a quiet fleet; BUGS.md 2026-09-21: a dead reviewer
+   * backend left every recovery landing failing silently and reset this streak each tick).
+   * Reset by any result that is neither. */
   consecutiveErrors?: number;
   /** Where in its cycle the loop was when it last persisted state: "review" means the
    * interruption hit during the review gate, so any uncommitted worktree edits are the

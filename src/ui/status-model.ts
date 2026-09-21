@@ -130,10 +130,13 @@ export function loopPhase(
   if (s.lastResult === "main_red") return "main red";
   // An error streak at or past the warning threshold (state.ts's ERROR_STREAK_WARN): the
   // loop is retrying the same failure on the error ladder, and the operator must see
-  // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). Self-clearing:
-  // the first non-error tick resets the streak, and each retry re-records "error" while the
-  // environment stays broken.
-  if (s.lastResult === "error" && (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN) return "failing";
+  // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak
+  // alone is the tell, not `lastResult`: a tick whose leftover recovery failed keeps the
+  // pin while its own authoring run may end `no_change`/`queued`, so a dead reviewer
+  // backend must still read "failing" (BUGS.md 2026-09-21). Self-clearing: the first
+  // healthy tick resets the streak, and each retry re-arms it while the environment stays
+  // broken.
+  if ((s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN) return "failing";
   // A quiet-kill streak at the give-up threshold reads "failing" too (BUGS.md 2026-09-18):
   // the loop is retrying a session the backend will not schedule, and before this it looked
   // exactly like a sleeping loop while it burned an hour of slot time per tick.
