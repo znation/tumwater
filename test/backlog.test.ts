@@ -7,7 +7,6 @@ import {
   openBugs,
   openQuestions,
   openQuestionEntries,
-  parseEntries,
   parseEntryDetails,
   plannedPlanEntries,
   plannedPlans,
@@ -52,32 +51,6 @@ Known bugs, recorded by any loop and fixed by the bugfix loop.
 
 _None else yet._
 `;
-
-test("parseEntries returns only the requested section's ### headings, full text kept", () => {
-  assert.deepEqual(parseEntries(PLANS_MD, "Planned"), [
-    "Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)",
-    "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)",
-  ]);
-  assert.deepEqual(parseEntries(PLANS_MD, "Done"), ["An old finished plan (done 2026-08-20)"]);
-});
-
-test("parseEntries stops at the next ## section and ignores body text", () => {
-  // The Done entry sits after a second ## line — it must not leak into Planned.
-  assert.ok(!parseEntries(PLANS_MD, "Planned").some((t) => t.includes("old finished")));
-  // Body lines under an entry (bold, code, prose) never become titles.
-  const entries = parseEntries(BUGS_MD, "Open");
-  assert.equal(entries.length, 2);
-  for (const e of entries) {
-    assert.ok(!e.startsWith("**") && !e.includes("Symptom"));
-  }
-});
-
-test("parseEntries handles a missing section and placeholder lines", () => {
-  assert.deepEqual(parseEntries(PLANS_MD, "Backlog"), []);
-  // _None yet._ placeholders are not headings — an empty seeded file yields no entries.
-  const seeded = `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n_None yet._\n`;
-  assert.deepEqual(parseEntries(seeded, "Planned"), []);
-});
 
 test("plannedPlans reads PLANS.md fresh; missing file yields []", () => {
   const root = tmpdir();
@@ -218,15 +191,6 @@ test("parseEntryDetails skips placeholders and prose before the first heading", 
   const md = `# Plans\n\n## Planned\n
 Intro prose that belongs to no entry.\n\n### First (planned 2026-09-05)\n\nReal body.\n`;
   assert.deepEqual(parseEntryDetails(md, "Planned"), [{ title: "First (planned 2026-09-05)", body: "Real body." }]);
-});
-
-test("parseEntries keeps returning titles only — the richer parse is its source", () => {
-  assert.deepEqual(parseEntryDetails(PLANS_MD, "Planned").map((e) => e.title), parseEntries(PLANS_MD, "Planned"));
-  // The fixture's first entry has a body; the second is bare — titles are unchanged either way.
-  assert.deepEqual(parseEntries(PLANS_MD, "Planned"), [
-    "Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)",
-    "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)",
-  ]);
 });
 
 test("the entry readers return title + body pairs in file order; missing file yields []", () => {

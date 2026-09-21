@@ -69,13 +69,6 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
   return entries;
 }
 
-/** The `### ` heading texts inside one `## <sectionTitle>` section — titles only, for the
- * list views (status badges, dashboard lists). Thin wrapper over parseEntryDetails so both
- * shapes come from one parse. */
-export function parseEntries(md: string, sectionTitle: string): string[] {
-  return parseEntryDetails(md, sectionTitle).map((e) => e.title);
-}
-
 /** Parsed sections keyed by file + section title (a future reader of a second section from the
  * same file must not collide with the first). Bounded inside cachedByStat: many short-lived
  * roots in tests would otherwise accumulate. Stores the richer {title, body} shape — one parse
