@@ -6,6 +6,13 @@ import path from "node:path";
 
 export const PROMPT_START = "<!-- tumwater:prompt:start -->";
 export const PROMPT_END = "<!-- tumwater:prompt:end -->";
+
+/** Cap on the initial prompt (see readInitialPrompt). The prompt is the project's reason to
+ * exist and rides into EVERY tick and director prompt, so unbounded text would be a standing
+ * per-tick prefill cost — the same budget customLoops.task and roles.<id>.instructions are
+ * held to. `tumwater init` rejects an over-long prompt before it is committed (init.ts); this
+ * constant is the shared bound so the read path and the init check cannot drift. */
+export const INITIAL_PROMPT_MAX_CHARS = 4096;
 // The status markers are module-private (only readmeTemplate uses them); the prompt
 // markers above stay exported because init.ts names them in its error message.
 const STATUS_START = "<!-- tumwater:status:start -->";
@@ -43,5 +50,11 @@ export function readInitialPrompt(root: string): string {
   if (start < 0) return "";
   const end = text.indexOf(PROMPT_END, start + PROMPT_START.length);
   if (end < 0) return "";
-  return text.slice(start + PROMPT_START.length, end).trim();
+  const prompt = text.slice(start + PROMPT_START.length, end).trim();
+  if (prompt.length <= INITIAL_PROMPT_MAX_CHARS) return prompt;
+  // A hand-edited README can carry an over-long prompt past init's length check. Truncate it
+  // for every tick instead of injecting the whole thing (the same defensive cap readPrinciples
+  // applies), with a visible note so the loss is not silent. init rejects the normal path
+  // before it is committed, so this is the backstop.
+  return `${prompt.slice(0, INITIAL_PROMPT_MAX_CHARS)}\n…[initial prompt truncated at ${INITIAL_PROMPT_MAX_CHARS} chars]`;
 }

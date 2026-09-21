@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { PROMPT_END, PROMPT_START, readInitialPrompt } from "../src/readme.js";
+import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START, readInitialPrompt } from "../src/readme.js";
 import { loadConfig } from "../src/config.js";
 import { VALIDATION_GAP_TAGS } from "../src/roles.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
@@ -116,6 +116,15 @@ test("initProject seeds a git repo when the cwd is not one yet (BUGS.md 2026-09-
 test("initProject validates before seeding: a bad prompt leaves no repo behind", async () => {
   const dir = tmpdir();
   await assert.rejects(() => initProject(dir, "   "), /initial prompt is required/);
+  assert.ok(!fs.existsSync(path.join(dir, ".git")));
+});
+
+test("initProject rejects an over-long initial prompt before seeding", async () => {
+  const dir = tmpdir();
+  await assert.rejects(
+    () => initProject(dir, "x".repeat(INITIAL_PROMPT_MAX_CHARS + 1)),
+    /shorten it to at most 4096/,
+  );
   assert.ok(!fs.existsSync(path.join(dir, ".git")));
 });
 

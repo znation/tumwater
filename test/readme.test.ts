@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { PROMPT_END, PROMPT_START, readmeTemplate, readInitialPrompt } from "../src/readme.js";
+import {
+  INITIAL_PROMPT_MAX_CHARS,
+  PROMPT_END,
+  PROMPT_START,
+  readmeTemplate,
+  readInitialPrompt,
+} from "../src/readme.js";
 import { tmpdir } from "./util.js";
 
 function writeReadme(root: string, text: string): void {
@@ -75,4 +81,14 @@ test("surrounding whitespace around the prompt is trimmed", () => {
     `# myproj\n\n${PROMPT_START}\n   \n  The real prompt.  \n\t\n${PROMPT_END}\n`,
   );
   assert.equal(readInitialPrompt(root), "The real prompt.");
+});
+
+test("readInitialPrompt truncates a hand-edited over-long prompt", () => {
+  const root = tmpdir();
+  const long = "x".repeat(INITIAL_PROMPT_MAX_CHARS + 50);
+  writeReadme(root, `# myproj\n\n${PROMPT_START}\n${long}\n${PROMPT_END}\n`);
+  const got = readInitialPrompt(root);
+  assert.ok(got.length < long.length, "shorter than the raw prompt");
+  assert.ok(got.startsWith("x".repeat(INITIAL_PROMPT_MAX_CHARS)), "keeps the first cap chars");
+  assert.match(got, /truncated at 4096 chars/);
 });

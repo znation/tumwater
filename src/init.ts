@@ -3,7 +3,13 @@ import path from "node:path";
 import { defaultConfig, saveConfig } from "./config.js";
 import { findOnPath } from "./files.js";
 import { GIT_MISSING_MESSAGE, COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
-import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "./readme.js";
+import {
+  INITIAL_PROMPT_MAX_CHARS,
+  PROMPT_END,
+  PROMPT_START,
+  readInitialPrompt,
+  readmeTemplate,
+} from "./readme.js";
 import { STATE_DIR, configPath } from "./paths.js";
 
 const PLANS_TEMPLATE = `# Plans
@@ -92,8 +98,18 @@ export async function initProject(root: string, initialPrompt: string): Promise<
   if (!findOnPath("git")) throw new Error(GIT_MISSING_MESSAGE);
   // Validate everything that is pure validation before any side effect, so a bad prompt or
   // README never leaves a half-seeded repo behind.
-  if (!initialPrompt.trim()) {
+  const prompt = initialPrompt.trim();
+  if (!prompt) {
     throw new Error("an initial prompt is required: tumwater init <prompt | --file prompt.md>");
+  }
+  // The prompt rides into every tick's and director's prefill (readInitialPrompt), so an
+  // unbounded one is a standing per-tick cost — the same reason customLoops.task and
+  // roles.<id>.instructions are capped. Reject before any side effect so a too-long prompt
+  // never lands in README.md and is never committed.
+  if (prompt.length > INITIAL_PROMPT_MAX_CHARS) {
+    throw new Error(
+      `the initial prompt is ${prompt.length} chars — shorten it to at most ${INITIAL_PROMPT_MAX_CHARS}: it rides into every tick's prefill`,
+    );
   }
   // The loops read the project's reason to exist back out of README.md on every tick
   // (readInitialPrompt). If a README already exists without the managed section, it would be
