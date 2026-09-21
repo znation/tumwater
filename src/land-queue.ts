@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
-import { ensureDir } from "./files.js";
 import { listQueueFiles, queueFileName, removeQueueFile } from "./file-queue.js";
+import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { landQueueDir } from "./paths.js";
 import type { LandingEntry } from "./types.js";
@@ -23,9 +22,8 @@ let seq = 0;
  * counter and pid break ties within one process. */
 export function enqueueLanding(root: string, entry: LandingEntry): void {
   const dir = landQueueDir(root);
-  ensureDir(dir);
   const name = queueFileName(entry.enqueuedAt, seq++, ".json");
-  fs.writeFileSync(path.join(dir, name), JSON.stringify(entry, null, 2));
+  writeJsonFile(path.join(dir, name), entry);
 }
 
 /** Every queue file in execution order (oldest first) — the same filename sort queuedLandings,
@@ -73,12 +71,10 @@ function isLandingEntry(v: unknown): v is LandingEntry {
  * read-only. */
 function readEntry(file: string): LandingEntry | null {
   return cachedByStat(entryCache, file, file, () => {
-    try {
-      const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-      return isLandingEntry(parsed) ? parsed : null;
-    } catch {
-      return null; // Vanished mid-listing (or unreadable) — skip it.
-    }
+    // readJsonFile is the shared "missing or torn reads as no data" policy; a foreign shape
+    // is still rejected by isLandingEntry.
+    const parsed = readJsonFile<LandingEntry>(file);
+    return isLandingEntry(parsed) ? parsed : null;
   }, (e) => ({ ...e }));
 }
 

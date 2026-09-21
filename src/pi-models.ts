@@ -1,10 +1,10 @@
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { TumwaterConfig } from "./types.js";
 import { configForRole, enabledRoleIds, fallbackPair, reviewConfig } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { isJsonObject } from "./json-object.js";
+import { readJsonFile } from "./json-files.js";
 
 /** pi's model definitions — the custom providers and models they serve, with each model's
  * declared cost. This is where a local (free) fleet differs from an API one: unpriced or
@@ -57,32 +57,20 @@ function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> | null {
     modelsPath, // Keyed by path so distinct roots and test files never collide.
     modelsPath,
     () => {
-      let raw: string;
-      try {
-        raw = fs.readFileSync(modelsPath, "utf8");
-      } catch {
-        return null;
-      }
-      let doc: unknown;
-      try {
-        doc = JSON.parse(raw);
-      } catch {
-        return null;
-      }
-      if (typeof doc !== "object" || doc === null) return null;
-      const providers = (doc as { providers?: unknown }).providers;
-      if (typeof providers !== "object" || providers === null) return null;
+      // readJsonFile is the shared "missing or torn reads as no data" policy for a JSON object
+      // file; the nested providers/models shapes get the same isJsonObject guard.
+      const doc = readJsonFile<Record<string, unknown>>(modelsPath);
+      if (!doc) return null;
+      const providers = doc.providers;
+      if (!isJsonObject(providers)) return null;
       const out = new Map<string, PiModelDef[]>();
-      for (const [name, pdef] of Object.entries(providers as Record<string, unknown>)) {
-        if (typeof pdef !== "object" || pdef === null) continue;
-        const models = (pdef as { models?: unknown }).models;
+      for (const [name, pdef] of Object.entries(providers)) {
+        if (!isJsonObject(pdef)) continue;
+        const models = pdef.models;
         if (!Array.isArray(models)) continue;
         out.set(
           name,
-          models.filter(
-            (m): m is PiModelDef =>
-              typeof m === "object" && m !== null && typeof (m as PiModelDef).id === "string",
-          ),
+          models.filter((m): m is PiModelDef => isJsonObject(m) && typeof m.id === "string"),
         );
       }
       return out;
