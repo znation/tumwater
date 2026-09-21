@@ -46,8 +46,6 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Planned: human-friendly numbers in the report tab's chart labels — route all three chart
-  builders through the GUI's existing `fmtTokens` (planned 2026-09-20, requested by user).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; nine sub-plans in plans/portability.md, 4/7 split
   three ways on 2026-09-19).
@@ -55,6 +53,8 @@ Open items:
   2026-09-20).
 - Planned: fleet pause from the dashboard — a click-to-pause/resume control in the GUI header
   (planned 2026-09-20).
+- Open bug: every Fixed entry lacks its required `**Validation gap:**` trace, so the repair-trace
+  tally has no population and the Fixed backlog cannot be compressed (filed 2026-09-20).
 - Open bug: the GUI and TUI abbreviate millions as `k` — 13.8M output tokens renders as
   `13820.3k`; `compactTokens` and the GUI's `fmtTokens` need the report's `M` branch (filed
   2026-09-20, reported by user).
@@ -68,7 +68,7 @@ Open items:
   so the telemetry role cannot apply its own load-bearing rule (filed 2026-09-20).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`93837f1`): build clean, suite 1232/1232.
+Current main (`6926014`): build clean, suite 1232/1232.
 <!-- tumwater:status:end -->
 
 ## How it works
