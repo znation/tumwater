@@ -32,6 +32,13 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   async function getJson(path) {
     return (await apiFetch(path)).json();
   }
+  // A POST whose body is JSON: apiFetch with the JSON content-type and a serialized payload.
+  // The one place the write endpoints' method/header/body shape lives (the budget, pause, and
+  // prompt calls below), so each can never drop the content-type or hand-roll the request.
+  async function postJson(path, payload) {
+    return apiFetch(path, { method: "POST", headers: { "content-type": "application/json" },
+                           body: JSON.stringify(payload) });
+  }
   const fmtTokens = (n) => (n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
   // last-tick-fmt:start
   // Last tick cell — mirrors the TUI's lastTickCell in status-render.ts: the absolute local
@@ -317,8 +324,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     // Empty means "no cap" (0 disables).
     const value = input.value === "" ? 0 : Number(input.value);
     try {
-      await apiFetch("/api/budget", { method: "POST", headers: { "content-type": "application/json" },
-                                     body: JSON.stringify({ maxDailyCostUsd: value }) });
+      await postJson("/api/budget", { maxDailyCostUsd: value });
       budgetEditing = false; // the next poll re-renders the badge from the payload
     } catch (e) {
       showFlash("error: " + e.message); // stay in edit mode so the operator can fix it
@@ -352,8 +358,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     // through the shared apiFetch guard, like every other endpoint call.
     const target = !(lastStatus && lastStatus.paused);
     try {
-      await apiFetch("/api/pause", { method: "POST", headers: { "content-type": "application/json" },
-                                      body: JSON.stringify({ paused: target }) });
+      await postJson("/api/pause", { paused: target });
     } catch (e) {
       showFlash("error: " + e.message); // no optimistic state; fix and click again
     }
@@ -506,8 +511,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     // server's 4xx/5xx must not clear the box and claim "queued" for a prompt that was
     // never accepted — flash the error and keep the operator's text so it can be resubmitted.
     try {
-      await apiFetch("/api/prompt", { method: "POST", headers: { "content-type": "application/json" },
-                                      body: JSON.stringify({ text }) });
+      await postJson("/api/prompt", { text });
     } catch (e) {
       showFlash("error: " + e.message);
       return;

@@ -308,7 +308,7 @@ test("the prompt form checks its response before clearing the box and claiming q
   // prompt. It must guard r.ok like saveBudget and the poll fetches, and keep the text on
   // failure. Asserted against the served page, where the handler actually lives.
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  assert.match(GUI_PAGE, /await apiFetch\("\/api\/prompt", \{ method: "POST"/);
+  assert.match(GUI_PAGE, /await postJson\("\/api\/prompt", \{ text \}\)/);
   const handler = GUI_PAGE.match(/promptform"\)\.addEventListener\("submit"[\s\S]*?\n {2}\}\);/)?.[0] ?? "";
   assert.ok(handler, "prompt submit handler found");
   assert.ok(handler.includes("showFlash(\"error: \" + e.message)"), "failure flashes the error");
@@ -806,8 +806,8 @@ test("the dashboard page checks r.ok before parsing both on-demand panel fetches
   // "bad response".
   assert.match(GUI_PAGE, /if \(!r\.ok\) throw await apiError\(path, r\);/);
   assert.match(GUI_PAGE, /async function apiError\(path, r\)/);
-  assert.match(GUI_PAGE, /await apiFetch\("\/api\/budget", \{ method: "POST"/);
-  assert.match(GUI_PAGE, /await apiFetch\("\/api\/pause", \{ method: "POST"/);
+  assert.match(GUI_PAGE, /await postJson\("\/api\/budget", \{ maxDailyCostUsd: value \}\)/);
+  assert.match(GUI_PAGE, /await postJson\("\/api\/pause", \{ paused: target \}\)/);
   // The report panel surfaces the same message instead of a bare "unavailable".
   assert.match(GUI_PAGE, /report unavailable" \+ \(e && e\.message/);
 });
@@ -1052,20 +1052,19 @@ test("the budget editor refuses browser-rejected number text instead of silently
     addEventListener: () => {},
   };
   const posts: unknown[] = [];
-  const fetch = async (_url: string, opts: { body: string }) => {
-    posts.push(JSON.parse(opts.body));
+  // The block's save path posts through the page's shared postJson (which itself guards via
+  // apiFetch); the stub records the payload object directly.
+  const postJson = async (_path: string, payload: unknown) => {
+    posts.push(payload);
     return { ok: true };
   };
   const { saveBudget } = new Function(
     "document",
     "esc",
-    "fetch",
-    // The block's save path now routes through the page's shared apiFetch guard; the stub
-    // mirrors it over the fake fetch above (its success path never touches apiError).
-    "apiFetch",
+    "postJson",
     "setTimeout",
     block + "\nreturn { saveBudget };",
-  )(document, (s: string) => s, fetch, (path: string, init: { body: string }) => fetch(path, init), () => {}) as { saveBudget: () => Promise<void> };
+  )(document, (s: string) => s, postJson, () => {}) as { saveBudget: () => Promise<void> };
 
   await saveBudget();
   assert.equal(posts.length, 0, "rejected text must not POST a cap change");
@@ -1292,17 +1291,18 @@ test("the pause badge reflects the payload and its click POSTs the opposite stat
   };
   const lastStatus: { paused?: boolean } = { paused: false };
   const posts: unknown[] = [];
-  const apiFetch = async (_url: string, opts: { body: string }) => {
-    posts.push(JSON.parse(opts.body));
+  // togglePause posts through the page's shared postJson; the stub records the payload object.
+  const postJson = async (_path: string, payload: unknown) => {
+    posts.push(payload);
     return { ok: true };
   };
   const { renderPauseBadge, togglePause } = new Function(
     "document",
-    "apiFetch",
+    "postJson",
     "showFlash",
     "lastStatus",
     block + "\nreturn { renderPauseBadge, togglePause };",
-  )(document, apiFetch, () => {}, lastStatus) as {
+  )(document, postJson, () => {}, lastStatus) as {
     renderPauseBadge: (d: { paused: boolean }) => void;
     togglePause: () => Promise<void>;
   };
