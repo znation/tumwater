@@ -40,7 +40,6 @@ function seedCounters(repo: string, ...roles: string[]): void {
   }
 }
 
-
 test("a multi-role reset request zeroes every listed runner and logs one harness-level event", async () => {
   const repo = makeRepo();
   await initProject(repo, "multi role reset test");
