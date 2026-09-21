@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runOrchestrator, runTimedRoleTick } from "../src/orchestrator.js";
+import { runOrchestrator, runTimedRoleTick, sleepInterruptible } from "../src/orchestrator.js";
 import { DEFER_MAX_MS } from "../src/scheduling.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
@@ -107,6 +107,30 @@ test("runTimedRoleTick measures the tick, not its semaphore queue wait", async (
     ),
   );
   assert.equal(released, true);
+});
+
+test("sleepInterruptible waits out its delay, wakes early on abort, and returns at once when already aborted", async () => {
+  // No abort: it resolves after roughly the requested delay (it is a sleep, not a no-op).
+  const started = Date.now();
+  await sleepInterruptible(20, new AbortController().signal);
+  assert.ok(Date.now() - started >= 10, "a signal that never aborts still waits out the sleep");
+
+  // An abort DURING the sleep resolves promptly, so shutdown is not held for a full poll cycle.
+  const during = new AbortController();
+  const t0 = Date.now();
+  const pending = sleepInterruptible(2000, during.signal);
+  during.abort();
+  await pending;
+  assert.ok(Date.now() - t0 < 1000, "an in-flight abort wakes the sleep");
+
+  // An ALREADY-aborted signal must resolve immediately: addEventListener alone would never
+  // fire (the event came and went before the listener existed), so a pre-aborted poll would
+  // otherwise block shutdown for the whole interval.
+  const pre = new AbortController();
+  pre.abort();
+  const t1 = Date.now();
+  await sleepInterruptible(2000, pre.signal);
+  assert.ok(Date.now() - t1 < 1000, "a pre-aborted signal returns without sleeping");
 });
 
 test("backoff grows by the factor and caps at max", () => {

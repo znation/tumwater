@@ -75,8 +75,11 @@ export async function runTimedRoleTick(
 
 /** Sleep up to ms, but wake immediately when `signal` aborts — so shutdown (SIGTERM →
  * abort) is prompt instead of waiting out the current poll cycle. The listener is removed
- * on either exit path so long-running orchestrators don't accumulate one per poll. */
-function sleepInterruptible(ms: number, signal: AbortSignal): Promise<void> {
+ * on either exit path so long-running orchestrators don't accumulate one per poll. An
+ * ALREADY-aborted signal returns synchronously: addEventListener alone would never fire
+ * (the abort event has come and gone), leaving shutdown to wait out a full poll. Exported
+ * as a unit-test seam, like runTimedRoleTick above. */
+export function sleepInterruptible(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const onAbort = () => {
       clearTimeout(timer);
