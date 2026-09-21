@@ -151,7 +151,7 @@ export function loopPhase(
 /** One rendered loop-table row's sort key: the role name, its rendered phase label
  * (loopPhase), and its last tick end. Both the TUI/status table and the GUI page's browser
  * copy carry these three fields. */
-export interface LoopSortRow {
+interface LoopSortRow {
   role: string;
   phase: string;
   lastTickEndedAt?: number | null;
@@ -161,7 +161,7 @@ export interface LoopSortRow {
  * `working …`, `reviewing …`, and the marker-driven `landing …` (merge queue 4/5). Named once
  * so the two rendered tables and their lockstep test share the rule instead of restating the
  * prefixes. */
-export function isActivePhase(phase: string): boolean {
+function isActivePhase(phase: string): boolean {
   return phase.startsWith("working") || phase.startsWith("reviewing") || phase.startsWith("landing");
 }
 
