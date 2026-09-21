@@ -1,7 +1,7 @@
 import type { HarnessEvent, TickResult } from "./types.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
-import { dayAt, dayLabel, formatDate, reportWindow, shortSha } from "./text.js";
+import { dayAt, dayLabel, formatDate, formatTime, reportWindow, shortSha, usd } from "./text.js";
 
 /** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
  * The CLI keeps the usage report's 14-day default; the role reads one day so a cluster
@@ -31,6 +31,35 @@ const LANDED_TOP = 10;
 const EXAMPLE_MAX = 120;
 const SUMMARY_MAX = 100;
 const ROLES_SHOWN = 4;
+
+/** The transition events the digest replays: the decisions the harness made about itself (the
+ * cap/fleet gate, live-config edits, self-hosted redeploys, need-based deferrals, orchestrator
+ * lifecycle). They are the evidence the telemetry role's load-bearing rule asks it to judge —
+ * whether the harness's RESPONSE to a failure was wrong (plans/telemetry-role.md) — so they sit
+ * beside the outcomes rather than being dropped. */
+const STATE_CHANGE_TYPES = new Set<string>([
+  "budget_paused",
+  "budget_fallback",
+  "budget_resumed",
+  "fleet_paused",
+  "fleet_resumed",
+  "max_concurrent_changed",
+  "retention_changed",
+  "config_changed",
+  "build_stale",
+  "restart_pending",
+  "restart",
+  "tick_deferred",
+  "orchestrator_start",
+  "orchestrator_stop",
+]);
+/** The Fleet state changes section's caps: newest N transitions, each line's payload capped at
+ * STATE_CHANGE_MAX, each free field within it at STATE_CHANGE_FIELD_MAX. Together with the
+ * fixed timestamp/role cells these make the section's bytes a constant, so the digest's ~6 KB
+ * bound holds no matter how many transitions the window holds or how long a field is. */
+const STATE_CHANGE_TOP = 6;
+const STATE_CHANGE_MAX = 72;
+const STATE_CHANGE_FIELD_MAX = 24;
 
 /** Every `TickResult`, mapped to its display/column rank. Typed as a `Record<TickResult, …>`,
  * so adding a result to src/types.ts and forgetting it here is a compile error — the
@@ -90,6 +119,14 @@ interface LandedCommit {
   summary: string;
 }
 
+/** One harness decision (a transition event) in the window, pre-described for the digest's
+ * Fleet state changes section. */
+interface StateChange {
+  ts: number;
+  role: string;
+  description: string;
+}
+
 /** The digest's collected evidence — a pure function of the event log plus a clock; the
  * render step below is a pure function of this. */
 interface FailureReportData {
@@ -107,6 +144,7 @@ interface FailureReportData {
   warningClusters: Cluster[];
   rejectionClusters: Cluster[];
   landed: LandedCommit[];
+  stateChanges: StateChange[];
 }
 
 /** A cluster key is the message with the volatile parts replaced, rules applied in this order:
@@ -305,6 +343,14 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     .sort((a, b) => b.ts - a.ts)
     .slice(0, LANDED_TOP);
 
+  // The harness's own decisions, newest STATE_CHANGE_TOP kept in chronological order. The
+  // description is bounded at collection so render stays a pure function of this data.
+  const stateChanges: StateChange[] = current
+    .filter((ev) => STATE_CHANGE_TYPES.has(ev.type))
+    .map((ev) => ({ ts: ev.ts, role: eventRole(ev), description: describeStateChange(ev) }))
+    .sort((a, b) => a.ts - b.ts)
+    .slice(-STATE_CHANGE_TOP);
+
   const hasEvents = events.length > 0;
   const oldestEventDate = hasEvents ? eventDayKey(events[0]!) : null;
   // Complete when the log reaches back before the current window (either the early-stop proved
@@ -327,6 +373,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     warningClusters,
     rejectionClusters,
     landed,
+    stateChanges,
   };
 }
 
@@ -371,10 +418,12 @@ function rate(errors: number, ticks: number): string {
  * by src/types.ts), and every free string is capped — cluster examples at 120 chars, landed
  * summaries at 100, a cluster's role list at 4 names plus a remainder count, and any loop id
  * sliced to 32 chars (config validation already refuses longer custom-loop ids, so the slice is
- * a guard rather than the real bound). Cluster counts are capped at top-N. Nothing here grows
- * with how bad the window was: measured 5,554 bytes at the CLI's default 14 days on the live
- * fleet, so it stays a rounding error against the tick prompt. Pure function of
- * FailureReportData: no I/O, no clock reads. */
+ * a guard rather than the real bound). Cluster counts are capped at top-N, and the Fleet state
+ * changes section is capped at STATE_CHANGE_TOP lines with each payload at STATE_CHANGE_MAX and
+ * each free field at STATE_CHANGE_FIELD_MAX. Nothing here grows with how bad the window was:
+ * measured 6,017 bytes at the CLI's default 14 days on the live fleet, and the worst-case
+ * byte-bound fixture in test/failure-report.test.ts covers transition events too. Pure function
+ * of FailureReportData: no I/O, no clock reads. */
 export function renderFailureMarkdown(data: FailureReportData): string {
   const lines: string[] = [];
   lines.push("# tumwater failure digest");
@@ -385,6 +434,16 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   if (data.emptyLog) lines.push("no events retained");
   else if (!data.hasEvents) lines.push(`no events in the last ${dayLabel(data.days)}`);
   else if (data.partial) lines.push(`partial: retained log starts ${data.oldestEventDate ?? "?"}`);
+
+  // The causal frame before the counts: what the fleet DID in the window, so the reader can ask
+  // whether the harness's response was right. Omitted entirely when the window held none.
+  if (data.stateChanges.length > 0) {
+    lines.push("");
+    lines.push("## Fleet state changes");
+    for (const s of data.stateChanges) {
+      lines.push(`- ${stateChangeStamp(s.ts)} ${roleCell(s.role)} — ${s.description}`);
+    }
+  }
 
   const cols = columns(data.outcomes);
   lines.push("");
@@ -456,6 +515,87 @@ function roleList(roles: string[]): string {
  * true even for a hand-edited state file or a future catalog id. */
 function roleCell(role: string): string {
   return role.slice(0, 32);
+}
+
+/** A transition line's local `MM-DD HH:MM` stamp — the year is redundant inside the window and
+ * the seconds add bytes without adding causality. */
+function stateChangeStamp(ts: number): string {
+  return `${dayShort(ts)} ${formatTime(new Date(ts)).slice(0, 5)}`;
+}
+
+/** A free event field, sliced so one hand-edited or future payload cannot blow the section's
+ * byte budget. Takes unknown because HarnessEvent carries its fields loosely typed. */
+function field(v: unknown): string {
+  return String(v).slice(0, STATE_CHANGE_FIELD_MAX);
+}
+
+/** The `$<spent> of $<cap>` fragment the budget transition events share; each field arrives
+ * loosely typed, so it is coerced through the shared money format (usd). */
+function budgetPhrase(ev: HarnessEvent): string {
+  return `${usd(Number(ev.spentUsd ?? 0))} of ${usd(Number(ev.capUsd ?? 0))}`;
+}
+
+/** A compact, bounded one-liner for one harness decision event, for the Fleet state changes
+ * section. Every free string is sliced (field) and the whole line is capped again
+ * (STATE_CHANGE_MAX) so the digest's byte bound holds for any event shape; the render adds the
+ * timestamp and a roleCell-sliced role, so no unbounded field reaches the page. */
+function describeStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
+    case "budget_paused": {
+      const refused = ev.fallbackRejected
+        ? ` (fallback ${field(ev.fallbackRejected)} refused)`
+        : "";
+      text = `budget paused — ${budgetPhrase(ev)} daily cost reached${refused}`;
+      break;
+    }
+    case "budget_fallback":
+      text = `budget fallback — ${budgetPhrase(ev)} daily cost reached; on ${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")} (cost n/a)`;
+      break;
+    case "budget_resumed":
+      text = `budget resumed (${budgetPhrase(ev)} today)`;
+      break;
+    case "fleet_paused":
+      text = "fleet paused — role loops stop starting new ticks";
+      break;
+    case "fleet_resumed":
+      text = "fleet resumed — role loops tick again";
+      break;
+    case "max_concurrent_changed":
+      text = `maxConcurrent ${field(ev.from)} → ${field(ev.to)}`;
+      break;
+    case "retention_changed":
+      text = `sessionRetentionDays ${field(ev.from)} → ${field(ev.to)}`;
+      break;
+    case "config_changed": {
+      const keys = Array.isArray(ev.keys)
+        ? (ev.keys as unknown[]).slice(0, 6).map(field)
+        : [];
+      text = keys.length > 0 ? `config changed: ${keys.join(", ")}` : "config changed";
+      break;
+    }
+    case "build_stale":
+      text = `build ${shortSha(ev.build)} stale — main ${shortSha(ev.head)} ${field(ev.aheadCommits)} commit(s) ahead`;
+      break;
+    case "restart_pending":
+      text = `restart pending — main ${shortSha(ev.head)} green; compiling`;
+      break;
+    case "restart":
+      text = `restarting onto build ${shortSha(ev.to)}`;
+      break;
+    case "tick_deferred":
+      text = "deferred — no work landed since last tick";
+      break;
+    case "orchestrator_start":
+      text = `orchestrator started (pid ${field(ev.pid)}${ev.build ? `, build ${shortSha(ev.build)}` : ""})`;
+      break;
+    case "orchestrator_stop":
+      text = "orchestrator stopped";
+      break;
+    default:
+      text = ev.type;
+  }
+  return text.slice(0, STATE_CHANGE_MAX);
 }
 
 /** The month-day half of a day key. Every cluster date lies inside the digest's window (at

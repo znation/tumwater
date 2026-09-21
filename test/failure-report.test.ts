@@ -223,9 +223,42 @@ test("the digest renders under 6 KB however bad the window was", () => {
       lines.push({ ts: at(0), loop: role, type: "merged", commit: i.toString(16).padStart(40, "0"), summary: `land ${i} `.repeat(20) });
     }
   }
+  // Transition events must not grow the digest with the window either. These include the shapes
+  // that broke the section when it capped only line count: a 40-char loop id and a
+  // config_changed whose keys array and key strings are effectively unbounded.
+  for (let i = 0; i < 20; i++) {
+    lines.push({ ts: at(0), loop: `role${i}`, type: "tick_deferred" });
+  }
+  lines.push({ ts: at(0), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3.8-27B-MLX-oQ4e-mtp" });
+  lines.push({ ts: at(0), loop: "harness", type: "build_stale", build: "b".repeat(40), head: "c".repeat(40), aheadCommits: 12 });
+  lines.push({ ts: at(0), loop: "h".repeat(40), type: "config_changed", keys: Array.from({ length: 200 }, (_, i) => `a.very.deeply.nested.configuration.key.number.${i}`) });
   writeEvents(root, lines);
   const md = renderFailureMarkdown(collectFailureReport(root, 14));
   assert.ok(Buffer.byteLength(md) < 6 * 1024, `rendered ${Buffer.byteLength(md)} bytes`);
+});
+
+test("the digest replays harness decisions so a wrong response is visible", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 12), loop: "feature", type: "tick_end", result: "error", error: "oMLX prefill memory guard rejected this prompt" },
+    { ts: at(0, 13), loop: "harness", type: "fleet_paused" },
+    { ts: at(0, 23), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3-32B" },
+  ]);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  assert.match(md, /## Fleet state changes/);
+  assert.match(md, /budget fallback — \$10\.00 of \$10\.00 daily cost reached; on omlx\/Qwen3-32B/);
+  assert.match(md, /fleet paused/);
+  assert.ok(
+    md.indexOf("## Fleet state changes") < md.indexOf("## Outcome by role"),
+    "the causal frame precedes the counts",
+  );
+});
+
+test("the digest omits the state changes section when the window held none", () => {
+  const root = tmpdir();
+  writeEvents(root, [{ ts: at(0), loop: "feature", type: "tick_end", result: "changed" }]);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  assert.doesNotMatch(md, /## Fleet state changes/);
 });
 
 test("TELEMETRY_DIGEST_DAYS is the role's one-day window", () => {

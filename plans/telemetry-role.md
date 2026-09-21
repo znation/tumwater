@@ -94,7 +94,9 @@ depends on 1/2 of that series for the scheduling half).
    plus a clock; `renderFailureMarkdown` is a pure function of its output. No subprocess, no I/O
    beyond the bounded backwards read the usage report already performs.
 2. **The digest is bounded.** Rendered output stays under ~6 KB regardless of how bad the window
-   was — top-N clusters, capped example strings, no raw event dump. The tick prompt is ~8k tokens
+   was — top-N clusters, capped example strings, no raw event dump. The Fleet state changes
+   section is likewise fixed: at most 6 transition lines, each free field sliced and each line
+   capped. The tick prompt is ~8k tokens
    today; the digest must remain a rounding error against it, not a second window filler.
 3. **One backwards scan, one home.** The windowed, early-stopping backwards read of events.jsonl
    exists today as `readWindowEvents` in `src/ui/report.ts` and moves to core `src/event-window.ts`
@@ -149,10 +151,18 @@ the bottom of the page:
    `partial: retained log starts <oldest event's local date>` (the date from the returned events'
    minimum `ts`); an empty log reads `no events retained` instead, and is not called partial —
    there is nothing to compare against.
-2. **Outcome table** — `tick_end` results per role, the exact tally quoted above. One row per
+2. **Fleet state changes** — the harness's own decisions in the window, newest `STATE_CHANGE_TOP`
+   kept in chronological order, each as `MM-DD HH:MM <role> — <payload>`: the `budget_*`,
+   `fleet_*`, `max_concurrent_changed`, `retention_changed`, `config_changed`, `build_stale`,
+   `restart_pending`, `restart`, `tick_deferred`, and `orchestrator_*` transitions. This is the
+   evidence the "response was wrong" rule needs, so it reads before the counts. Every free field
+   is sliced (`STATE_CHANGE_FIELD_MAX`) and each line capped (`STATE_CHANGE_MAX`), making the
+   section a constant; a window with none omits it. (Added 2026-09-21 — it was omitted before,
+   see BUGS.md's failure-digest entry.)
+3. **Outcome table** — `tick_end` results per role, the exact tally quoted above. One row per
    role, one column per result that occurred in the window. Fields: `tick_end.loop` (the role,
    `"?"` when empty — `collectReport`'s guard) and `tick_end.result`.
-3. **Deltas vs. the preceding window of equal length** — error rate, quiet-kill count, rejection
+4. **Deltas vs. the preceding window of equal length** — error rate, quiet-kill count, rejection
    count, per role. This is what makes a *regression* visible; a static 16% error rate reads as
    normal, while "4% → 16% since Tuesday" names a cause. A role absent from the prior window is
    reported as new, not as an infinite increase. **One scan, not two**: read the 2× window once —
@@ -161,15 +171,15 @@ the bottom of the page:
    partition in memory by local date: the current window is `date >= formatDate(dayAt(days - 1))`,
    the preceding window is the earlier dates in that same read. A second call would double the
    tail I/O invariant 3 exists to bound.
-4. **Error clusters** — `tick_end.error` strings (a string, absent on ticks that set no error —
+5. **Error clusters** — `tick_end.error` strings (a string, absent on ticks that set no error —
    skip those) normalized and grouped: count, roles affected, first and last seen, one verbatim
    example. Top 10 by count.
-5. **Warning clusters** — `warning.message` grouped the same way (harness-scoped warnings carry
+6. **Warning clusters** — `warning.message` grouped the same way (harness-scoped warnings carry
    `loop: "harness"`; no special case needed).
-6. **Review rejections** — `review_rejected.reasons` by role, top 5, clustered on `reasons[0]`
+7. **Review rejections** — `review_rejected.reasons` by role, top 5, clustered on `reasons[0]`
    (the same field the event feed renders, src/ui/event-format.ts), so a digest line reads like a
    `tumwater logs` line.
-7. **What landed in the window** — `merged.summary` (with its `commit`) newest first by `ts`,
+8. **What landed in the window** — `merged.summary` (with its `commit`) newest first by `ts`,
    capped at 20, so a cluster that starts on a date can be correlated with the commit that starts
    it. This is the single most important field for the role's charter: it turns "errors spiked" into
    "errors spiked right after this commit".
