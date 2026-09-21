@@ -27,7 +27,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Commit and per-role tick hover labels are byte-identical to today for counts below 10,000.
 - The chart-builder test passes with `fmtTokens` injected, and `npm test` stays green.
 
-Out of scope: changing `fmtTokens`'s thresholds (adding an `M` suffix, or formatting 1,000–9,999), and any change to the stat blocks' display.
+Out of scope: formatting 1,000–9,999 (the `k` threshold stays at 10,000) and any change to the stat blocks' display. The millions suffix is no longer excluded — it is tracked separately as the BUGS.md entry "The GUI and TUI abbreviate millions as `k`…", which gives `fmtTokens` an `M` branch; this plan then only routes the chart labels through it, and its injected test-local `fmtTokens` should mirror the new rule (or extract the page's own).
 
 **Grounded 2026-09-20 (director)** against main `ef9a1aa`: `fmtTokens` at src/ui/gui-client.ts:22, stat-block call at :213, loop-table calls at :412–413, chart builder titles at :132/:136/:148; the chart-builder test's region extraction and `esc` injection at test/gui.test.ts:1774–1785, the raw-value pins at :1820–1821 and :1835, the hover-label string test at :1741–1767. Capability check: `grep -n 'fmtTokens' src/ui/gui-client.ts` returns :22, :213, :412, :413 — no chart builder among them, confirming the three unformatted sites.
 
