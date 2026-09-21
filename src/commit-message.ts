@@ -121,7 +121,7 @@ export function parseCommitMetadata(message: string): CommitMetadata {
 
 /** Assemble a tick's full commit message — the single place that builds one. The subject is
  * the existing "tumwater(<role>): <summary>" line; the author's body (omitted when absent)
- * and the harness-stamped trailer follow as separate paragraphs. Refusal commits will route
+ * and the harness-stamped trailer follow as separate paragraphs. Refusal commits route
  * through here too (subject + trailer only). */
 export function buildCommitMessage(subject: string, body: CommitBody | null, trailer: string): string {
   const formatted = body ? formatCommitBody(body) : "";
