@@ -234,6 +234,34 @@ test("gate does not discard the commit when the reviewer run itself fails", asyn
   }
 });
 
+test("a stalled tool call during review warns in the event feed while the watchdog counts down", async () => {
+  // The reviewer hangs on an interactive tool call; the gate must surface the stall in the
+  // feed — the same guarantee as the author-side warning (test/loop-2.test.ts) — rather than
+  // stay silent until the quiet watchdog kills the run minutes later.
+  const { root, wt } = await gateFixture();
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
+      `exec sleep 60`, // exec so the kill signal reaches the sleeper directly
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
+    config.toolCallStallSeconds = 2; // ...but the warning lands first
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+    assert.equal(result.decision, "failed");
+    const warnings = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
+      `the review stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("gate exempts a doc-only diff without running pi", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
