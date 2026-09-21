@@ -261,6 +261,45 @@ test("the digest omits the state changes section when the window held none", () 
   assert.doesNotMatch(md, /## Fleet state changes/);
 });
 
+test("each harness state transition renders its own bounded line", () => {
+  // describeStateChange owns the whole transition vocabulary, but the digest tests above reach
+  // only budget_fallback, fleet_paused, build_stale, config_changed and tick_deferred. Each
+  // case gets its own log so the section's newest-STATE_CHANGE_TOP cap never hides one.
+  const cases: Array<[Record<string, unknown>, string]> = [
+    [
+      { type: "budget_paused", spentUsd: 10, capUsd: 10 },
+      "budget paused — $10.00 of $10.00 daily cost reached",
+    ],
+    [
+      { type: "budget_paused", spentUsd: 10, capUsd: 10, fallbackRejected: "x" },
+      "budget paused — $10.00 of $10.00 daily cost reached (fallback x refused)",
+    ],
+    [{ type: "budget_resumed", spentUsd: 4, capUsd: 10 }, "budget resumed ($4.00 of $10.00 today)"],
+    [{ type: "fleet_resumed" }, "fleet resumed — role loops tick again"],
+    [{ type: "max_concurrent_changed", from: 3, to: 5 }, "maxConcurrent 3 → 5"],
+    [{ type: "retention_changed", from: 7, to: 14 }, "sessionRetentionDays 7 → 14"],
+    [{ type: "config_changed", keys: "not-an-array" }, "config changed"],
+    [{ type: "config_changed" }, "config changed"],
+    [
+      { type: "restart_pending", head: "a".repeat(40) },
+      "restart pending — main aaaaaaaa green; compiling",
+    ],
+    [{ type: "restart", to: "b".repeat(40) }, "restarting onto build bbbbbbbb"],
+    [
+      { type: "orchestrator_start", pid: 4321, build: "c".repeat(40) },
+      "orchestrator started (pid 4321, build cccccccc)",
+    ],
+    [{ type: "orchestrator_start", pid: 4321 }, "orchestrator started (pid 4321)"],
+    [{ type: "orchestrator_stop" }, "orchestrator stopped"],
+  ];
+  for (const [ev, expected] of cases) {
+    const root = tmpdir();
+    writeEvents(root, [{ ts: at(0), loop: "harness", ...ev }]);
+    const md = renderFailureMarkdown(collectFailureReport(root, 1));
+    assert.ok(md.includes(expected), `${String(ev.type)}: expected ${JSON.stringify(expected)} in:\n${md}`);
+  }
+});
+
 test("TELEMETRY_DIGEST_DAYS is the role's one-day window", () => {
   assert.equal(TELEMETRY_DIGEST_DAYS, 1);
 });
