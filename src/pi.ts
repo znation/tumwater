@@ -68,12 +68,31 @@ export function hasResumableSession(sessionDir: string): boolean {
   }
 }
 
-/** Terminate a pi child: SIGTERM now, escalating to SIGKILL after 10 s if it is still
- * alive. The escalation timer is unref'd so a clean exit does not keep the harness process
- * alive. Shared by the tick-timeout and harness-shutdown paths. */
+/** Terminate a pi child and everything it started: SIGTERM to the process group now,
+ * escalating to SIGKILL after 10 s if any of it is still alive. pi is spawned detached (its
+ * own process group leader), so a negative PID reaches every tool-call grandchild — which a
+ * single-PID kill leaves orphaned to launchd — while the harness's own group is never in the
+ * blast radius. The escalation timer is unref'd so a clean exit does not keep the harness
+ * process alive. Shared by the tick-timeout, quiet-watchdog, and harness-shutdown paths. */
 function terminateChild(child: ChildProcess): void {
-  child.kill("SIGTERM");
-  setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+  signalTree(child, "SIGTERM");
+  setTimeout(() => signalTree(child, "SIGKILL"), 10_000).unref();
+}
+
+/** Signal the child's whole process group, falling back to the child alone when the group is
+ * already gone or the platform has no negative-PID kill (Windows). Never throws: a process
+ * that died between the caller's decision and this call is the normal case. */
+function signalTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (child.pid == null) return;
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // Already gone.
+    }
+  }
 }
 
 /** Prefix of PiRunResult.errorMessage when the pi process never started (no session file
@@ -114,6 +133,9 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       cwd: opts.cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,
+      // Detached so pi leads its own process group: terminateChild signals the group, so a
+      // killed tick's tool-call grandchildren die with it instead of leaking to launchd.
+      detached: true,
     });
 
     const timeout = setTimeout(() => {

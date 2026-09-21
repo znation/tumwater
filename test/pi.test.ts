@@ -485,6 +485,63 @@ test("toolCallStallSeconds 0 disables the stall warning", async () => {
   }
 });
 
+// A killed tick must take its tool-call grandchildren with it. pi runs detached as its own
+// process group leader and terminateChild signals the group (BUGS.md 2026-09-20); the old
+// single-PID kill left a backgrounded tool-call process orphaned to launchd forever. The
+// fakePi script backgrounds a spinner that does NOT exec, so it is a genuine grandchild —
+// the exec-based kill tests above cannot catch this.
+test("a killed run leaves no grandchild behind (regression)", async () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 2;
+  const pidFile = path.join(dir, "grandchild.pid");
+  // The spinner redirects its stdio so it does not hold pi's pipes open — exactly the shape
+  // of a real tool call, and what lets runPi settle while the leak lives on.
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolName: "bash" })}'`,
+      `sh -c 'echo $$ > ${pidFile}; while :; do :; done' >/dev/null 2>&1 &`,
+      `exec sleep 30`,
+    ].join("\n"),
+  );
+  let pid = 0;
+  try {
+    const result = await runPi({
+      cwd: dir,
+      prompt: "p",
+      config,
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+    });
+    assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
+    pid = Number(fs.readFileSync(pidFile, "utf8").trim());
+    assert.ok(pid > 0, "the grandchild recorded its pid");
+    // The group signal is asynchronous relative to runPi's resolution: poll until the OS
+    // has reaped the grandchild (or the assertion below fails on a leak that never dies).
+    const deadline = Date.now() + 5000;
+    let alive = true;
+    while (alive && Date.now() < deadline) {
+      try {
+        process.kill(pid, 0);
+      } catch {
+        alive = false;
+      }
+      if (alive) await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(alive, false, "the tool-call grandchild is gone after the run resolves");
+  } finally {
+    if (pid > 0) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    }
+    restore();
+  }
+});
+
 test("piArgs reflects config", () => {
   const config = defaultConfig();
   config.provider = "anthropic";
