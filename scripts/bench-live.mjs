@@ -7,7 +7,10 @@ import path from "node:path";
 const { snapshot } = await import("../dist/src/ui/status.js");
 const { renderStatus } = await import("../dist/src/ui/status-render.js");
 
-const ROLES = ["feature", "bugfix", "plan", "readme", "organize", "coverage", "clean", "dry", "perf", "qa", "improve", "steward", "director"];
+// Every role the catalog knows, straight from the compiled harness. A hardcoded copy once
+// drifted — it silently omitted `telemetry` — so the fixture tracks the real role set instead.
+const { allRoleIds } = await import("../dist/src/roles.js");
+const ROLES = allRoleIds();
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "tw-bench-"));
 fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });

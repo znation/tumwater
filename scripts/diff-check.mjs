@@ -4,7 +4,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const ROLES = ["feature", "bugfix", "plan", "readme", "organize", "coverage", "clean", "dry", "perf", "qa", "improve", "steward", "director"];
+// Every role the catalog knows, straight from the compiled harness. A hardcoded copy once
+// drifted — it silently omitted `telemetry` — so the fixture tracks the real role set instead.
+const { allRoleIds } = await import("../dist/src/roles.js");
+const ROLES = allRoleIds();
 
 function makeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tw-diff-"));
