@@ -57,7 +57,9 @@ test("status table ends with a totals row summing tokens and cost", () => {
   const totals = lines[lines.length - 1] ?? "";
   const separator = lines[lines.length - 2] ?? "";
   assert.match(totals, /^total\b/);
-  assert.match(totals, /1250\.0k/, "generated sum is compact-formatted");
+  // 900,000 + 350,000 = 1,250,000: the row must use the same k/M magnitude rule as the rest
+  // of the surface (regression 2026-09-20 — it used to print "1250.0k").
+  assert.match(totals, /1\.3M/, "generated sum is compact-formatted with M past a million");
   assert.match(totals, /120\.0k/, "peak ctx totals cell is the max across loops");
   assert.match(totals, /\$1\.75/);
   assert.match(separator, /^-+( +-+)+\s*$/, "totals row sits below a separator");

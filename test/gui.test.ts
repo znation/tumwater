@@ -16,6 +16,7 @@ import { freshLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
 import { enqueueLanding } from "../src/land-queue.js";
 import { assistantLine, makeRepo } from "./util.js";
+import { compactTokens } from "../src/text.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
@@ -1864,4 +1865,26 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
   const hostileSvg = chartTicksByRole(hostile);
   assert.ok(!hostileSvg.includes("<b>x</b>"), "raw HTML in a role name is not rendered");
   assert.match(hostileSvg, /&lt;b&gt;x&lt;\/b&gt;/, "role names are escaped in legend and tooltips");
+});
+
+test("the dashboard page abbreviates millions with M, in lockstep with compactTokens", async () => {
+  // Regression (2026-09-20): the page's own fmtTokens copy stopped at `k`, so the loop
+  // table's generated/peak-ctx cells and the report summary's output-tokens block rendered
+  // 13,820,300 as "13820.3k" while `tumwater report` printed "13.8M". The page cannot import
+  // TypeScript (a separate browser runtime), so its copy is pinned here from the page's own
+  // source — same regex-extract + new Function pattern as the esc test — and every value is
+  // cross-checked against the shared compactTokens so the deliberate duplicate cannot drift.
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const m = GUI_PAGE.match(/const fmtTokens = \((\w+)\) => (.+);$/m);
+  assert.ok(m, "fmtTokens definition found in the page");
+  const fmtTokens = new Function(m[1]!, `return (${m[2]});`) as (n: number) => string;
+
+  assert.equal(fmtTokens(9_999), "9999", "bare below the k threshold");
+  assert.equal(fmtTokens(14_000), "14.0k", "one-decimal k unchanged");
+  assert.equal(fmtTokens(1_000_000), "1.0M", "boundary: swaps k for M");
+  assert.equal(fmtTokens(13_820_300), "13.8M", "13.8M, not 13820.3k");
+  assert.equal(fmtTokens(undefined as unknown as number), "0", "a missing payload field renders as 0");
+  for (const n of [0, 500, 9_999, 10_000, 12_345, 999_999, 1_000_000, 13_820_300]) {
+    assert.equal(fmtTokens(n), compactTokens(n), `page and compactTokens agree on ${n}`);
+  }
 });

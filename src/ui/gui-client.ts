@@ -19,7 +19,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     } catch { /* unreadable body — the status alone still names the failure */ }
     return new Error(path + " failed: HTTP " + r.status + (detail ? " — " + detail : ""));
   }
-  const fmtTokens = (n) => (n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
+  const fmtTokens = (n) => (n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
   // last-tick-fmt:start
   // Last tick cell — mirrors the TUI's lastTickCell in status-render.ts: the absolute local
   // time of the last tick end alongside its relative age ("14:32:05 · 3m ago"). Zero-padded

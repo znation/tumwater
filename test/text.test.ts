@@ -167,6 +167,18 @@ test("compactTokens renders one-decimal k at and above 10,000", () => {
   assert.equal(compactTokens(12_345), "12.3k");
 });
 
+// Regression (2026-09-20): the millions branch was added to report.ts's private formatTokens
+// but not to this shared formatter or the GUI's browser-side copy, so a window total of
+// 13,820,300 rendered as "13820.3k". `compactTokens` and the page's fmtTokens must agree with
+// the report's rule (uppercase M) at and above one million.
+test("compactTokens renders one-decimal M at and above 1,000,000", () => {
+  assert.equal(compactTokens(1_000_000), "1.0M"); // boundary: swaps k for M
+  assert.equal(compactTokens(13_820_300), "13.8M");
+  // 999,999 still uses the k branch — and rounds up to "1000.0k", exactly as report.ts's
+  // formatTokens does, so the dashboards keep printing what the Markdown table prints.
+  assert.equal(compactTokens(999_999), "1000.0k");
+});
+
 // --- parsePositiveInt / parseNonNegativeInt (the shared numeric core) ---
 
 test("parsePositiveInt accepts plain decimal only — hex, scientific, signed, and padded forms are null", () => {
