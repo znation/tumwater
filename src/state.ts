@@ -105,6 +105,15 @@ export function nextBackoffSeconds(current: number, ladder: BackoffConfig): numb
   return Math.min(current * factor, maxSeconds);
 }
 
+/** Advance the loop's shared backoffSeconds on `ladder` and schedule its next tick after it.
+ * Every backing-off outcome (an unproductive tick, a failed one, a deliberate stop, and the
+ * quiet-kill fallback) funnels through here, so the seconds→ms conversion and the rule that
+ * each ladder advances from the current value apply identically in all four arms. */
+function scheduleBackoff(s: LoopState, ladder: BackoffConfig): void {
+  s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, ladder);
+  s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
+}
+
 /** Backoff ladder for failed ticks (`error` results). The idle ladder prices hour-long model
  * runs — its cap exists so a loop that keeps finding nothing stops burning model time. A tick
  * that fails (a broken toolchain, a dead pi subprocess) often never reaches the model, so it
@@ -209,8 +218,7 @@ export function applyTickOutcome(
     } else if (role !== DIRECTOR_ROLE) {
       s.resumePending = false;
       s.resumeCause = undefined;
-      s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff);
-      s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
+      scheduleBackoff(s, cfg.idleBackoff);
     } else {
       s.nextRunAt = Date.now();
     }
@@ -219,16 +227,14 @@ export function applyTickOutcome(
     // director prompt deliberately dropped, so there is nothing to resume — schedule like an
     // unproductive tick (idle backoff) instead of resuming promptly. phase is cleared by the
     // `result !== "aborted"` check above.
-    s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff);
-    s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
+    scheduleBackoff(s, cfg.idleBackoff);
   } else if (outcome.result === "error") {
     // A failed tick, not an idle verdict: it often never reached the model, so it retries on
     // the short error ladder (capped in minutes) instead of the idle ladder, whose cap prices
     // hour-long model runs. backoffSeconds is shared: each ladder advances from the current
     // value, so an error streak capped at the error ceiling never sleeps LESS than the loop
     // already was sleeping, and the idle ladder picks up from there if the failures stop.
-    s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, ERROR_BACKOFF);
-    s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
+    scheduleBackoff(s, ERROR_BACKOFF);
   } else if (outcome.cutOff && role !== DIRECTOR_ROLE && s.cutOffStreak <= CUT_OFF_RESUME_LIMIT) {
     // Truncated at the context ceiling, not idle: the hour(s) of work survive in the
     // session pi just compacted, so resume it promptly instead of idle-backing-off.
@@ -247,8 +253,7 @@ export function applyTickOutcome(
     s.backoffSeconds = 0;
     s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
   } else {
-    s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff);
-    s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
+    scheduleBackoff(s, cfg.idleBackoff);
   }
 }
 
