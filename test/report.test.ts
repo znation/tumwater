@@ -236,6 +236,23 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   assert.equal(lines[12], "**Ticks by role:** feature — 5 · bugfix — 1");
 });
 
+test("renderReportMarkdown renders token counts through the shared compactTokens rule", () => {
+  const data: ReportData = {
+    days: 1,
+    from: "2026-09-10",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-10", tokensOut: 1_500, ticksByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+    ],
+    totals: { tokensOut: 1_500, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+  };
+  const md = renderReportMarkdown(data);
+  // compactTokens leaves values below 10k bare (the report's old private copy suffixed them at
+  // 1k); pin the shared rule so the table and totals cannot drift from the status table again.
+  assert.match(md, /\| 09-10 \| 1500 █{20} \| 0 \| 0 \| \$0\.00 \|/);
+  assert.match(md, /\*\*Totals:\*\* 1500 output tokens/);
+});
+
 test("renderReportMarkdown shows a one-day window as one whole day, matching the failure digest", () => {
   const data: ReportData = {
     days: 1,

@@ -3,7 +3,7 @@ import { readTextOrNull } from "../files.js";
 import { readWindowEvents } from "../event-window.js";
 import { eventDayKey, eventRole } from "../events.js";
 import { sectionLines } from "../backlog.js";
-import { dayAt, formatDate, reportWindow, usd } from "../text.js";
+import { compactTokens, dayAt, formatDate, reportWindow, usd } from "../text.js";
 
 // The windowed tail read (and the REPORT_*_DAYS bounds it serves) moved to core
 // event-window.ts so the failure digest can share it without a core→ui import. Re-exported
@@ -137,13 +137,6 @@ export function collectReport(root: string, days: number): ReportData {
   return { days, from, to, series, totals };
 }
 
-/** Format a token count for display: <1000 as-is, else one decimal + k/M suffix. */
-function formatTokens(v: number): string {
-  if (v < 1000) return String(v);
-  if (v < 1_000_000) return `${(v / 1000).toFixed(1)}k`;
-  return `${(v / 1_000_000).toFixed(1)}M`;
-}
-
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
 function barWidth(v: number, max: number): number {
@@ -162,7 +155,7 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push("");
   const t = data.totals;
   lines.push(
-    `**Totals:** ${formatTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)} · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed`,
+    `**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)} · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed`,
   );
   lines.push("");
   lines.push("| day | tokens out | ticks | commits | cost |");
@@ -172,7 +165,7 @@ export function renderReportMarkdown(data: ReportData): string {
     const ticks = Object.values(d.ticksByRole).reduce((a, b) => a + b, 0);
     const w = maxTokens > 0 ? barWidth(d.tokensOut, maxTokens) : 0;
     const bar = w > 0 ? ` ${"█".repeat(w)}` : ""; // Zero days carry no bar (and no stray space).
-    lines.push(`| ${d.date.slice(5)} | ${formatTokens(d.tokensOut)}${bar} | ${ticks} | ${d.commits} | ${usd(d.costUsd)} |`);
+    lines.push(`| ${d.date.slice(5)} | ${compactTokens(d.tokensOut)}${bar} | ${ticks} | ${d.commits} | ${usd(d.costUsd)} |`);
   }
   const byRole = new Map<string, number>();
   for (const d of data.series) {

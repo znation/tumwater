@@ -104,11 +104,11 @@ export function parseNonNegativeInt(raw: string): number | null {
 }
 
 /** Compact token count for display: bare integer below 10,000, one-decimal `k` to
- * 999,999 (`12.3k`), one-decimal `M` at ≥1,000,000 (`13.8M`) — the same magnitude rule the
- * Markdown report's private formatTokens uses (uppercase `M`). The single home of this format
- * — the status table's gen/peak-ctx columns, the ctx chip, and the commit trailer's ctx field
- * all render through it, so they cannot drift. (The GUI renders the same rule from its own JS
- * copy in gui-client.ts: a separate runtime that cannot import TypeScript.) */
+ * 999,999 (`12.3k`), one-decimal `M` at ≥1,000,000 (`13.8M`, uppercase `M`). The single home
+ * of this format — the status table's gen/peak-ctx columns, the ctx chip, the commit trailer's
+ * ctx field, and the usage report's totals/table cells all render through it, so they cannot
+ * drift. (The GUI renders the same rule from its own JS copy in gui-client.ts: a separate
+ * runtime that cannot import TypeScript.) */
 export function compactTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
