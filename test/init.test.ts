@@ -75,6 +75,36 @@ test("initProject never clobbers existing files and is idempotent", async () => 
   assert.ok(!second.committed);
 });
 
+test("initProject appends .tumwater/ to an existing .gitignore on its own line", async () => {
+  // An existing project's .gitignore usually has entries already, often with no trailing
+  // newline. The rule must land on its own line: glued onto the last entry ("dist.tumwater/")
+  // it would ignore nothing, and every later `git add -A` would commit the state dir.
+  const noNewline = makeRepo();
+  fs.writeFileSync(path.join(noNewline, ".gitignore"), "node_modules\ndist");
+  sh(noNewline, "git", "add", "-A");
+  sh(noNewline, "git", "commit", "-m", "own gitignore");
+  const first = await initProject(noNewline, "prompt");
+  assert.ok(first.created.includes(".gitignore"));
+  assert.equal(fs.readFileSync(path.join(noNewline, ".gitignore"), "utf8"), "node_modules\ndist\n.tumwater/\n");
+
+  // A trailing newline already present gets no extra blank line before the rule.
+  const withNewline = makeRepo();
+  fs.writeFileSync(path.join(withNewline, ".gitignore"), "node_modules\n");
+  sh(withNewline, "git", "add", "-A");
+  sh(withNewline, "git", "commit", "-m", "own gitignore");
+  await initProject(withNewline, "prompt");
+  assert.equal(fs.readFileSync(path.join(withNewline, ".gitignore"), "utf8"), "node_modules\n.tumwater/\n");
+
+  // The bare `.tumwater` form already ignores the dir: no duplicate `.tumwater/` is added.
+  const bare = makeRepo();
+  fs.writeFileSync(path.join(bare, ".gitignore"), ".tumwater\n");
+  sh(bare, "git", "add", "-A");
+  sh(bare, "git", "commit", "-m", "already ignores state");
+  const result = await initProject(bare, "prompt");
+  assert.ok(!result.created.includes(".gitignore"));
+  assert.equal(fs.readFileSync(path.join(bare, ".gitignore"), "utf8"), ".tumwater\n");
+});
+
 test("initProject refuses to drop the initial prompt when README has no tumwater markers", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "README.md"), "# mine\n");
