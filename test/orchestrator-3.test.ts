@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { runOrchestrator } from "../src/orchestrator.js";
-import { landQueuedEntry } from "../src/landing-slot.js";
+import { landQueuedEntry, writeLandingMarker } from "../src/landing-slot.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
@@ -254,6 +254,38 @@ test("an entry whose sha main already holds is dropped at the drain without a la
       readEvents(repo).filter((e) => e.type === "land_failed").length,
       0,
       "the dedup drop logs no failure",
+    );
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a stale marker beside an already-merged queue head is cleared so an idle fleet reads clean", async () => {
+  // The other crash ordering's residue: a landing wrote its 4/5 marker and the ff-merge made
+  // main hold the entry's sha, but the process died before the write-back dropped the entry.
+  // The dedup arm drops the entry; the marker must go with it, or a liveness-cross-checking
+  // observer (status/TUI/GUI) keeps reading an in-flight landing that no process is running.
+  const repo = makeRepo();
+  await initProject(repo, "stale marker drain e2e test");
+  saveConfig(repo, fastConfig(["clean"]));
+  // Nothing-to-do runs: the drain must drop the entry without any author or reviewer run.
+  const restore = fakePi(["printf '%s\\n' '" + assistantLine("TUMWATER_NOTHING_TO_DO") + "'"].join("\n"));
+  const sha = sh(repo, "git", "rev-parse", "HEAD");
+  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "already merged", enqueuedAt: Date.now() });
+  writeLandingMarker(repo, { role: "clean", sha, summary: "already merged", startedAt: Date.now() });
+  assert.ok(fs.existsSync(landingStatePath(repo)), "fixture sanity: the stale marker exists");
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(() => queueDepth(repo) === 0, "the already-merged entry to be dropped");
+    assert.ok(
+      !fs.existsSync(landingStatePath(repo)),
+      "the stale marker naming the dropped head is cleared",
+    );
+    assert.equal(
+      readEvents(repo).filter((e) => e.type === "landed").length,
+      0,
+      "the deduped entry ran no landing",
     );
   } finally {
     restore();
