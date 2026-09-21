@@ -259,9 +259,8 @@ export function failureHeadline(tail: readonly string[] | undefined): string | u
 
 /** Probe the toolchain (see probeToolchain), then run `npm run <script>` in the worktree
  * (cwd = wt), capturing combined output with a hard timeout. Never throws: every outcome is
- * classified per BuildCheckOutcome. Running a local
- * script needs no network.
- * No env manipulation is needed even though the worktree has no node_modules of its own
+ * classified per BuildCheckOutcome. Running a local script needs no network. No env
+ * manipulation is needed even though the worktree has no node_modules of its own
  * (gitignored): npm's run-script walks UP from the project path, adding EVERY level's
  * `node_modules/.bin` to the script's PATH (@npmcli/run-script setPATH), so the toolchain at
  * check.rootDir — an ancestor of wt by detectBuildCheck construction — is resolvable without

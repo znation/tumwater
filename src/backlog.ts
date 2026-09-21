@@ -10,10 +10,10 @@ import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
  * markdown that grows without bound over the project's lifetime (PLANS/BUGS are append-only
  * durable memory). Any write invalidates it via dev/ino/mtime/size (stat-cache.cachedByStat,
  * same freshness check as tail.ts's incremental log readers). Each dashboard formats this data
- * for its own surface (the
- * TUI's lines live in tui.ts; the GUI renders HTML in gui-page.ts) — this module owns only
- * reading and parsing. The open-question count shown in the status headers is just
- * `openQuestions(root).length`, so the badge and the list always come from one parse. */
+ * for its own surface (the TUI's lines live in tui.ts; the GUI renders HTML in gui-page.ts) —
+ * this module owns only reading and parsing. The open-question count shown in the status
+ * headers is just `openQuestions(root).length`, so the badge and the list always come from
+ * one parse. */
 
 /** One backlog entry as parsed from a markdown section: the full `### ` heading text (kept
  * verbatim, including any `(planned …)`/`(reported …)` suffix) plus the entry's body — the

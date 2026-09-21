@@ -4,12 +4,12 @@ import path from "node:path";
 /** Generic file operations under the harness's error policy — missing is no data, cleanup
  * must not throw, directories are created before writes: stat-or-missing for log readers,
  * PATH lookup for the pi-installation preflight, size-based rotation and bounded backwards
- * tail scans for append-only logs,
- * recursive directory creation before file writes, quiet deletes after marker consumption,
- * and age-based pruning of pi session files. The JSON state-file convention (tolerant reads
- * of possibly-torn writes, pretty-printed overwrites) lives in json-files.ts; stat-keyed
- * caching of polled values in stat-cache.ts; incremental consumption of the append-only logs
- * (complete-line tail reading, tail-state folding, byte-offset following) in tail.ts. */
+ * tail scans for append-only logs, recursive directory creation before file writes, quiet
+ * deletes after marker consumption, and age-based pruning of pi session files. The JSON
+ * state-file convention (tolerant reads of possibly-torn writes, pretty-printed overwrites)
+ * lives in json-files.ts; stat-keyed caching of polled values in stat-cache.ts; incremental
+ * consumption of the append-only logs (complete-line tail reading, tail-state folding,
+ * byte-offset following) in tail.ts. */
 
 /** Stat a file, returning null when it does not exist (or cannot be read). The harness's
  * log readers all treat a missing log as "no data yet" rather than an error — this is the
