@@ -82,7 +82,10 @@ export interface TumwaterConfig {
   model?: string;
   /** pi thinking level; omitted = pi's own default. */
   thinking?: string;
-  /** Extra argv passed straight to pi. */
+  /** Extra argv passed straight to pi. Must not repeat a flag the harness sets itself
+   * (src/pi.ts's `--print`/`--mode`/`--session-dir`, the provider/model/thinking triple, and
+   * the session resume/name flags) — pi's parser is last-wins, so a repeat would silently
+   * override the harness; validateConfig rejects the collision. */
   piArgs: string[];
   /** Max pi runs in flight at once across all loops. */
   maxConcurrent: number;

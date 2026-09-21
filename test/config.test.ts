@@ -369,6 +369,29 @@ test("validateConfig rejects blank string-array entries and names their position
   assert.doesNotThrow(() => validateConfig({ piArgs: ["--no-skills", "--verbose"] }));
 });
 
+test("validateConfig rejects piArgs entries that repeat a harness-managed flag", () => {
+  // pi.ts appends config.piArgs AFTER its own flags and pi's parser is last-wins, so a
+  // repeated flag silently overrides the harness: `--mode text` makes every tick's stream
+  // unparseable and `--model` spends on a model tumwater.json never named. Reject the
+  // collision and point at the setting that owns it.
+  assert.match(
+    validationError({ piArgs: ["--append-system-prompt", "x", "--mode", "text"] }),
+    /piArgs\[2\] "--mode" duplicates a flag the harness sets — the harness requires pi's json output mode/,
+  );
+  assert.match(
+    validationError({ piArgs: ["--model", "other"] }),
+    /piArgs\[0\] "--model" duplicates a flag the harness sets — set the top-level or per-role `model` instead/,
+  );
+  assert.match(
+    validationError({ piArgs: ["-n", "sneaky"] }),
+    /piArgs\[0\] "-n" duplicates a flag the harness sets — the harness names the session/,
+  );
+  // Non-conflicting extras still pass, including pi's own append-system-prompt and tool flags.
+  assert.doesNotThrow(() =>
+    validateConfig({ piArgs: ["--append-system-prompt", "be terse", "--no-skills"] }),
+  );
+});
+
 test("validateConfig rejects exemption patterns that can never match a repo-relative path", () => {
   // isExemptPath matches repo-relative git paths, so an absolute pattern, a "./" prefix, a
   // ".." segment, or a trailing "/" matches nothing — the diff it was meant to exempt is

@@ -79,6 +79,26 @@ const MODEL_TRIPLE_KEYS = ["provider", "model", "thinking"];
  * fleet at the wrong reasoning depth — the same silent-ignore class this validator exists to
  * catch. Kept in sync with pi's CLI (dist/cli/args.js VALID_THINKING_LEVELS). */
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+/** pi flags the harness passes itself (src/pi.ts's piArgs: `--print --mode json
+ * --session-dir …`, the provider/model/thinking triple, and the session resume/name flags).
+ * A piArgs entry equal to one of these is appended AFTER the harness's own copy, and pi's
+ * argument parser is last-wins — so it silently overrides the harness: `--mode text` makes
+ * every tick's stream unparseable, `--model` spends on a model tumwater.json never named, and
+ * `--continue` resumes a session the harness did not choose. Each flag maps to why it is
+ * refused; the model triple points at the setting that owns it. */
+const HARNESS_PI_FLAGS = new Map<string, string>([
+  ["--print", "the harness already runs pi non-interactively"],
+  ["-p", "the harness already runs pi non-interactively"],
+  ["--mode", "the harness requires pi's json output mode"],
+  ["--session-dir", "the harness owns each role's session directory"],
+  ["--continue", "the harness decides when to resume a session"],
+  ["-c", "the harness decides when to resume a session"],
+  ["-n", "the harness names the session"],
+  ["--name", "the harness names the session"],
+  ["--provider", "set the top-level or per-role `provider` instead"],
+  ["--model", "set the top-level or per-role `model` instead"],
+  ["--thinking", "set the top-level or per-role `thinking` instead"],
+]);
 const CUSTOM_LOOP_KEYS = ["name", "task"];
 /** A custom loop's name becomes a worktree dir and a git ref, so it is validated strictly:
  * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */
@@ -216,6 +236,16 @@ export function validateConfig(raw: unknown): void {
   checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
   checkModelTriple(r, "");
   checkStringArray(r, "", "piArgs");
+  // A piArgs entry that repeats a harness-managed flag is appended after the harness's own and
+  // pi's parser is last-wins, so it silently overrides it (see HARNESS_PI_FLAGS). Name the
+  // position and the flag so one edit removes it.
+  if (Array.isArray(r.piArgs)) {
+    (r.piArgs as unknown[]).forEach((arg, i) => {
+      if (typeof arg !== "string") return; // Already reported by checkStringArray.
+      const why = HARNESS_PI_FLAGS.get(arg);
+      if (why) problems.push(`piArgs[${i}] ${show(arg)} duplicates a flag the harness sets — ${why}`);
+    });
+  }
   checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
   checkNumber(r, "", "landBatchMax", POSITIVE_INTEGER);
   checkNumber(r, "", "minTickIntervalSeconds", NON_NEGATIVE);
