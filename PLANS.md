@@ -25,10 +25,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Series.** Part 2/7 of the portability series; gates 3/7, 5/7, 6/7 and 7/7. Depends on: nothing. Approach, design rationale, and audit pins: plans/portability.md §2/7.
 
-**Files touched.** src/git.ts, src/cli.ts, src/cli-args.ts, src/types.ts, src/config-validation.ts, src/orchestrator.ts, src/init.ts, src/doctor.ts, test/git.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/loop.test.ts.
+**Files touched.** src/git.ts, src/cli.ts, src/cli-args.ts, src/types.ts, src/config-validation.ts, src/orchestrator.ts, src/init.ts, src/doctor.ts, test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/doctor.test.ts, test/loop.test.ts.
 
 **Acceptance criteria.**
 - `tumwater status` / `run` / `tui` / `doctor` behave identically from the repo root and from any subdirectory of it.
+- `tumwater init` run from a subdirectory of an existing repo seeds that repo's root (and reports `already initialized` when it is already initialized) rather than creating a nested document set.
 - A repo whose only branch is `trunk` (no `main` anywhere) runs a full tick → review → merge cycle, with the commit landing on `trunk`.
 - `tumwater run --branch release/2.0` targets that branch; naming a nonexistent branch fails at startup listing the branches that exist.
 - Checking out a different branch in the primary checkout mid-run logs exactly one warning and does not change what the fleet merges into.
