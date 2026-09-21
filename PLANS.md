@@ -5,28 +5,133 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Portability & packaging — run tumwater anywhere, against anything (planned 2026-09-14, requested by user, refined 2026-09-19)
+### 1/7 — GitHub Actions CI and a publishable npm package (planned 2026-09-14, requested by user, refined 2026-09-16)
 
-**Needs review 2026-09-21 by feature: too large for one run** — the series is nine independently landable sub-plans spanning packaging, config, git, prompts, and init; one run cannot land it whole, and the feature loop does not split it inline. Skipped this tick in favour of the fleet-pause plan, which fits one run.
+**Goal.** Make the harness installable on any machine (`npm i -g tumwater`, `npx tumwater`) and prove every push green on a clean runner. No behavior change: packaging metadata, a licence, and two workflows.
 
-**Full plan: plans/portability.md** — nine independently landable sub-plans (4/7 was split three ways on the 2026-09-19 audit), each with its own goal, design rationale, approach, files touched, and acceptance criteria; the shared problem statement, invariants, and sequencing live at the top of that document. Kept there rather than inline because the series spans packaging, config, git, prompts, and init, and the detail would crowd out every other entry here.
+**Series.** Part 1/7 of the portability series; land first so the rest run under CI. Depends on: nothing. Approach, design rationale, and audit pins: plans/portability.md §1/7.
 
-**Why.** tumwater has only ever run as a checkout of its own repo, on one machine, against a branch named `main`, driving one local MLX server and one 27B model, verified by `npm test`. Each of those is baked in somewhere, and the goal is to run an installed copy against other people's repositories.
+**Files touched.** package.json, LICENSE (new), .github/workflows/ci.yml (new), .github/workflows/release.yml (new), README.md. No source or test changes.
 
-1. **1/7 — CI and a publishable npm package.** `.github/workflows/{ci,release}.yml`, a `files` allowlist (today a root checkout packs 633 files / 2.8 MB — 384 of them machine-local `.claude/` state and 114 gitignored `dist/` files npm ships anyway; 1/7 audited against main 2026-09-16), `prepack`, LICENSE. No behavior change; lands first so the rest run under CI.
-2. **2/7 — Repo root and any branch.** Resolve the root from `git rev-parse --show-toplevel` instead of `process.cwd()`; `--branch` / `baseBranch` override with the checked-out branch as the default. The branch is already a parameter at every call site, so this is small (2/7 audited against main 2026-09-17).
-3. **3/7 — Harness-mediated config writes.** Move `customLoops` off the commit → review → merge path onto a request file the director leaves in its own worktree, so custom loops need neither a tracked config, nor the tumwater repo, nor the review gate. Supersedes three bullets and invariant 4 of plans/user-defined-loops.md. (3/7 re-audited against main `44a037c` on 2026-09-18: the consume seam in `runTick`, the orphaned `roles.<id>` entry that would silently block a loop removal, and the prompt's two edit sites pinned in plans/portability.md.)
-4. **4/7 — Untrack the config; ship a template** — split three ways by the 2026-09-19 audit, because untracking this repo's own config also needed a landing fix (see the refine note below):
-   - **4a/7 — Seed an untracked config from a tracked template.** `src/paths.ts` (`exampleConfigPath`), `src/config.ts` (`seedConfig`, `exampleDrift`), `src/init.ts` (seed through it; fix `ensureGitignore`'s first-entry early return and keep the ignored config out of the commit pathspec while still reporting it), `src/doctor.ts` (drift folds into the pinned "init" check), `tumwater.example.json` (new), `test/{init,config,doctor}.test.ts`.
-   - **4b/7 — Untrack this repo's own config without deleting it** (depends on 4a/7). A preserve/restore step in `ffMainTo` (`src/merge.ts:314`) writes the live `tumwater.json` back after a landing removes it from the index; then delete the file in the worktree (never `git rm --cached` — loop prompts forbid git) and add it to `.gitignore`; `test/merge.test.ts`.
-   - **4c/7 — Move README's rig notes into `docs/backends.md`** (markdown only; independent).
-5. **5/7 — Configurable agent binary.** `TUMWATER_PI_BIN` → `agentBin` → `"pi"`, replacing `spawn("pi", …)` and two `findOnPath("pi")` gates. (5/7 audited against main `f52cac9` on 2026-09-19 — the series' last un-audited member: the shared `PI_MISSING_MESSAGE` in readiness.ts must become a builder rather than changing at the two call sites, `runPi` already receives the config so nothing threads, `cmdRun` must load the config above its preflight, and the example-template line is order-dependent on 4a/7. Corrected in plans/portability.md.)
-6. **6/7 — Configurable verification command.** `check.command` in config, with today's npm auto-detection as the fallback. Without it a non-npm repo silently loses the review gate's build pre-check and the red-main gate. (6/7 re-audited against main `94562d8` on 2026-09-18: the threading surface is three `detectBuildCheck` sites — runScopedBuildCheck, main-baseline.ts, doctor.ts — plus `MergeContext`, not the "two-site" change the write claimed; files and the timeout/skip criterion corrected in plans/portability.md.)
-7. **7/7 — Adopt an existing repository.** `TUMWATER.md` as the project brief with README as the compatibility path, plus `init --adopt` / `--dry-run`, so init stops hard-failing on a repo that already has a README. (7/7 re-audited against main `5a99627` on 2026-09-18: the brief filename threads through `COMMON_RULES` — shared with the director prompt — fresh init still writes README.md, and `src/loop.ts`/`src/cli.ts`/test/cli-args.test.ts join Files touched. The write's "status markers become exported" claim is wrong and dropped. Files and eight open questions corrected in plans/portability.md.)
+**Acceptance criteria.**
+- `npm pack --dry-run` lists only `dist/src/**`, `dist/build-info.json`, `README.md`, `LICENSE`, and `package.json` — no PLANS.md, no BUGS.md, no `test/`, no `src/*.ts`, no config.
+- `npm pack` in a checkout with no `dist/` still produces a working tarball (prepack built it); installing it globally on a machine with no tumwater checkout gives a `tumwater` on PATH whose `version`, `help`, and `doctor` all run.
+- CI green on ubuntu-latest and macos-latest across Node 20/22/24 from a cold cache, with no global git identity beyond the workflow's own step (fixing Linux-only suite failures the first run surfaces is part of this entry).
+- Pushing tag `v0.1.1` while `package.json` says `0.1.0` fails the release workflow before anything is published.
 
-**Refined 2026-09-19 (plan loop).** 4/7 had never been re-audited since the series' 2026-09-15 audit, and its landing half was unsafe: the old "keep the values in the untracked working copy before this lands" note cannot work, because the landing fast-forwards the primary checkout's working tree (`ffMainTo`, src/merge.ts:314) and the commit that untracks the config deletes the live file — after which the fleet's next ~2 s config poll reads defaults (pi's own model, `maxConcurrent` 6, `maxDailyCostUsd` 50). 4/7 is split into 4a/7, 4b/7 and 4c/7 above; 4b/7 solves the hazard with a preserve/restore step in the landing path, so no operator timing is needed. Two further implementer traps are pinned in plans/portability.md: `ensureGitignore`'s early return only checks its first entry, and `git add -- tumwater.json` fails once the same commit ignores it.
+### 2/7 — Resolve the repo root, and target any branch (planned 2026-09-14, refined 2026-09-17)
 
-**Critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7; 4c/7 is markdown-only. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
+**Goal.** Run the fleet against any repository, from anywhere inside it, targeting whatever branch that repo's primary checkout is on. Branch plumbing is already parameterized end to end; what is missing is a correct root (from `git rev-parse --show-toplevel`), an explicit override, and the guards that keep a resolved branch honest.
+
+**Series.** Part 2/7 of the portability series; gates 3/7, 5/7, 6/7 and 7/7. Depends on: nothing. Approach, design rationale, and audit pins: plans/portability.md §2/7.
+
+**Files touched.** src/git.ts, src/cli.ts, src/cli-args.ts, src/types.ts, src/config-validation.ts, src/orchestrator.ts, src/init.ts, src/doctor.ts, test/git.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/loop.test.ts.
+
+**Acceptance criteria.**
+- `tumwater status` / `run` / `tui` / `doctor` behave identically from the repo root and from any subdirectory of it.
+- A repo whose only branch is `trunk` (no `main` anywhere) runs a full tick → review → merge cycle, with the commit landing on `trunk`.
+- `tumwater run --branch release/2.0` targets that branch; naming a nonexistent branch fails at startup listing the branches that exist.
+- Checking out a different branch in the primary checkout mid-run logs exactly one warning and does not change what the fleet merges into.
+- `tumwater init` in an empty directory with `init.defaultBranch=trunk` creates the repo on `trunk`.
+
+### 3/7 — Harness-mediated config writes: take custom loops off the commit path (planned 2026-09-14, refined 2026-09-18)
+
+**Goal.** Make `customLoops` management independent of whether the config file is tracked, of whether the target repo is tumwater's own, and of the review/merge cycle, so custom loops work on an installed copy against any repository. Today the director edits `<worktree>/tumwater.json` and the edit reaches the primary checkout only by commit → review gate → merge, which forces the file tracked, accrues fleet-authored config commits on an adopted repo, and silently drops a rejected director tick's explicit user instruction. The director leaves a request file in its own worktree instead.
+
+**Series.** Part 3/7 of the portability series; land before 4b/7, because untracking this repo's config silently breaks custom-loop management until this lands. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §3/7.
+
+**Files touched.** src/paths.ts, src/config.ts, src/loop.ts, src/types.ts, src/prompt.ts, src/ui/event-format.ts, plans/user-defined-loops.md, test/config.test.ts, test/loop.test.ts, test/prompt.test.ts, test/event-format.test.ts.
+
+**Acceptance criteria.**
+- Prompting the director "add a loop named docs that keeps the examples current" adds it to the config and starts it ticking within ~2 s, with no commit on the target branch and no review-gate run.
+- The same prompt works identically when the config file is gitignored and absent from every worktree — the state 4a/7 makes the default.
+- A request naming `maxDailyCostUsd` changes nothing, logs a warning naming the ignored key, and still applies `customLoops`.
+- A request whose entry fails name/task validation writes nothing and leaves the previous config live; the fleet keeps running.
+- The request file never appears in a commit, a diff, or a review prompt.
+- `review.exemptPaths` no longer lists `tumwater.json`, and the existing user-defined-loop tests pass with only the documented changes.
+
+### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-19)
+
+**Goal.** Every project tumwater initializes gets an untracked, gitignored `tumwater.json`: seeded from a tracked `tumwater.example.json` when the project ships one, from `defaultConfig()` when it does not; `doctor` reports where the two have drifted. This repo's own config keeps its tracking until 4b/7. Two implementer traps are pinned in the doc: `ensureGitignore`'s early return only checks its first entry, and the ignored config must stay out of the commit pathspec while still being reported as created.
+
+**Series.** Part 4a/7 of the portability series (the old 4/7 was split three ways on the 2026-09-19 audit). Depends on: 3/7. Approach, design rationale, and pins: plans/portability.md §4a/7.
+
+**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/doctor.ts, tumwater.example.json (new), test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a project with no example (defaults, as today).
+
+**Acceptance criteria.**
+- `init` in a fresh repo with `tumwater.example.json` seeds the local config from it; without one, from defaults; with a malformed one, from defaults and no throw.
+- In the freshly initialized repo `git ls-files` lists no `tumwater.json`, `.gitignore` lists both `.tumwater/` and `tumwater.json`, `git status --porcelain` is empty, and the CLI output still names `tumwater.json` as created.
+- `doctor` warns naming the drifted keys when the example has moved ahead, never rewrites the local file, and keeps `"N roles enabled"` + exit 0 when there is no drift.
+- Full suite green.
+
+### 4b/7 — Untrack this repo's own config without deleting it (planned 2026-09-14, refined 2026-09-19)
+
+**Goal.** This repo stops tracking `tumwater.json`, so no future commit carries a machine, a model id, or a concurrency sized to one GPU — and the running fleet keeps its live config through the landing that removes it. The landing fast-forwards the primary checkout's working tree (`ffMainTo`, src/merge.ts:314), so a preserve/restore step in that path writes the live file back after the commit deletes it from the index.
+
+**Series.** Part 4b/7 of the portability series. Depends on: 4a/7, and 3/7 so custom-loop management survives the untracking. Approach, design rationale, and the hazard write-up: plans/portability.md §4b/7.
+
+**Files touched.** src/merge.ts, .gitignore, tumwater.json (untracked), test/merge.test.ts.
+
+**Acceptance criteria.**
+- After the landing: `git ls-files` lists no `tumwater.json`; the root file exists with the exact pre-landing bytes; `.gitignore` lists it; `git status --porcelain` is empty.
+- `loadConfig(root)` after the landing still returns this fleet's `provider`, `model`, `fallbackModel`, `maxConcurrent`, `tickTimeoutSeconds`, `quietTimeoutSeconds` and `idleBackoff` (the test compares the parsed config before and after).
+- A landing whose tree keeps the config, and one on a repo with no config, both leave the working tree untouched and `ffMainTo` still returns true.
+- Full suite green.
+
+### 4c/7 — Move README's rig notes into docs/backends.md (planned 2026-09-14)
+
+**Goal.** README stops being one machine's notebook: its `## Notes on local model servers` section becomes `docs/backends.md`, and README's `## Usage` gains one line naming `tumwater.example.json` as the tracked baseline an untracked `tumwater.json` is seeded from.
+
+**Series.** Part 4c/7 of the portability series; markdown only and independent, so it may land in any order. Depends on: nothing. Design: plans/portability.md §4c/7.
+
+**Files touched.** README.md, docs/backends.md (new). No source or test changes.
+
+**Acceptance criteria.** No section of README names a machine path, a model id, a server URL, or a value sized to one GPU (the moved text is the only place they appear); README links `docs/backends.md`; the worked example is labelled as an example; the suite is untouched.
+
+### 5/7 — Make the agent binary configurable (planned 2026-09-14, refined 2026-09-19)
+
+**Goal.** Stop assuming the agent CLI is a binary literally named `pi` on `PATH`. src/pi.ts spawns `spawn("pi", …)`, and both `cmdRun`'s preflight and `checkPiBinary` gate on `findOnPath("pi")`, so a non-PATH install, a wrapper script, or two pi builds side by side are impossible. Resolution order: `TUMWATER_PI_BIN` → `agentBin` → `"pi"`. The shared `PI_MISSING_MESSAGE` in readiness.ts becomes a builder rather than changing at the two call sites, and `cmdRun` must load the config above its preflight.
+
+**Series.** Part 5/7 of the portability series. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §5/7.
+
+**Files touched.** src/types.ts, src/config-validation.ts, src/pi.ts, src/readiness.ts, src/cli.ts, src/doctor.ts, test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts, test/config.test.ts; and `tumwater.example.json` only when 4a/7 has already created it.
+
+**Acceptance criteria.**
+- With `pi` absent from PATH but `agentBin` set to an absolute path, `tumwater run` starts and ticks normally; `doctor` reports the resolved path and `config` as its source.
+- `TUMWATER_PI_BIN` overrides `agentBin` for one invocation without editing any file.
+- A wrapper script at `agentBin` that exports an env var and execs the real pi produces byte-identical tick behavior (the existing `fakePi` helper already exercises this shape).
+- With none of the three resolving to an executable, `run` and `doctor` both fail naming the resolved value, its source, and the install hint.
+
+### 6/7 — Make the project's verification command configurable (planned 2026-09-14, refined 2026-09-18)
+
+**Goal.** Stop assuming the target project is an npm project. `detectBuildCheck`/`runBuildCheck` walk up for a directory holding both `package.json` and `node_modules`, then run `npm run test|typecheck|build`; against a Python, Rust, or Go repo the walk finds nothing, so the review gate's pre-check, the red-main baseline gate (src/main-red.ts), and redeploy's `mainGreen` all degrade to "no check". Add `check.command` in config with today's npm auto-detection as the fallback; the threading surface is the three `detectBuildCheck` sites (`runScopedBuildCheck`, main-baseline.ts, doctor.ts) plus `MergeContext`.
+
+**Series.** Part 6/7 of the portability series. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §6/7.
+
+**Files touched.** src/types.ts, src/config-validation.ts, src/build-check.ts, src/prompt.ts, src/review.ts, src/merge.ts, src/lander.ts, src/main-baseline.ts, src/loop.ts, src/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts, test/main-baseline.test.ts, test/doctor.test.ts.
+
+**Acceptance criteria.**
+- A repo with `check.command = "pytest -q"` and no `package.json` anywhere has its check run at the review gate, at the red-main baseline, and in redeploy's green check; a failing check rejects the diff with the command's output tail as the reasons.
+- A repo with no `check` and a `package.json` behaves exactly as today (pinned by the existing build-check tests passing unmodified).
+- A configured command that hangs is killed at `timeoutSeconds`; at the `gate` scope it is classified `skipped` and the tick proceeds to model review with a warning, while at `landing`/`batch` it is remapped to `failed` with the "tree is unverified" reason and rejects the merge (the existing `MERGE_SCOPES` policy, unchanged).
+- Tick prompts in a non-npm repo never mention `node_modules`, and name the configured command where they used to say "if it has a build or test command".
+- `doctor` warns, naming the consequence, when neither a configured command nor an npm script is found.
+
+### 7/7 — Adopt an existing repository without hijacking its README (planned 2026-09-14, refined 2026-09-18)
+
+**Goal.** Let `tumwater init` run against a repo that already exists and already has a README. Today it hard-fails when `README.md` exists without the `tumwater:prompt` markers, because `readInitialPrompt` (src/readme.ts) reads the brief only out of README.md's managed section. Introduce `TUMWATER.md` as the project brief with README as the compatibility path, plus `init --adopt` / `--dry-run`; the brief filename threads through `COMMON_RULES` (shared with the director prompt).
+
+**Series.** Part 7/7 of the portability series. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §7/7.
+
+**Files touched.** src/paths.ts, src/readme.ts, src/init.ts, src/cli-args.ts, src/roles.ts, src/prompt.ts, src/doctor.ts, test/init.test.ts, test/readme.test.ts, test/prompt.test.ts, test/doctor.test.ts.
+
+**Acceptance criteria.**
+- `tumwater init --adopt "<brief>"` in a clone of an unrelated repo (existing README.md, existing PLANS.md, no node_modules) creates only `TUMWATER.md`, `QUESTIONS.md`, `PRINCIPLES.md`, `tumwater.json` and the `.gitignore` entries — README.md and PLANS.md byte-identical afterwards.
+- Every loop's prompt carries the brief from `TUMWATER.md`; the readme role keeps its status section current in that file and never edits the project's README.
+- A repo tumwater created before this change keeps reading its brief from README.md with no migration step.
+- `tumwater init --dry-run` prints the file list and exits 0 having written nothing.
+
+**Series critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7; 4c/7 is markdown-only. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
 ## Done
 
