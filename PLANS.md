@@ -7,6 +7,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Portability & packaging — run tumwater anywhere, against anything (planned 2026-09-14, requested by user, refined 2026-09-19)
 
+**Needs review 2026-09-21 by feature: too large for one run** — the series is nine independently landable sub-plans spanning packaging, config, git, prompts, and init; one run cannot land it whole, and the feature loop does not split it inline. Skipped this tick in favour of the fleet-pause plan, which fits one run.
+
 **Full plan: plans/portability.md** — nine independently landable sub-plans (4/7 was split three ways on the 2026-09-19 audit), each with its own goal, design rationale, approach, files touched, and acceptance criteria; the shared problem statement, invariants, and sequencing live at the top of that document. Kept there rather than inline because the series spans packaging, config, git, prompts, and init, and the detail would crowd out every other entry here.
 
 **Why.** tumwater has only ever run as a checkout of its own repo, on one machine, against a branch named `main`, driving one local MLX server and one 27B model, verified by `npm test`. Each of those is baked in somewhere, and the goal is to run an installed copy against other people's repositories.
@@ -84,7 +86,16 @@ clamp :120, the report render branch :180, the Ctrl+T modulo :271 and cache assi
 PgUp/PgDn branch :290–300; the cycle test at test/tui.test.ts:541 and the report paging test at
 :1047 are the two to extend. One run: ~30 lines in one file plus tests.
 
-### Fleet pause from the dashboard — a click-to-pause control in the GUI header (planned 2026-09-20)
+## Done
+
+### Fleet pause from the dashboard — a click-to-pause control in the GUI header (planned 2026-09-20, done 2026-09-21)
+
+**Landed 2026-09-21 (feature loop).** As planned: `pauseFleet`/`resumeFleet` join `isFleetPaused`
+in src/state.ts as the single marker writers, `cmdPause`/`cmdResume` delegate to them with their
+stdout and idempotence unchanged, `POST /api/pause` validates an explicit boolean through
+`readJsonObject`, and the header gains a `#pausewrap` badge whose delegated click POSTs the
+opposite of the last polled state. One guard beyond the write: the click reads
+`!(lastStatus && lastStatus.paused)`, so a click before the first poll cannot throw.
 
 **Goal.** Give the GUI the fleet gate the CLI already owns: a small header control that pauses
 (`tumwater pause`) or resumes (`tumwater resume`) the whole fleet in one click. Everything else an
@@ -145,8 +156,6 @@ has exactly two POST routes (:274, :292), and `paused` is shipped in the payload
 consumed as a control. Pattern to copy: the budget badge's markup (gui-page.ts:47), its
 render/click block (`// budget-edit:start` :257–:325), its route (:292), and its DOM-stub test
 (test/gui.test.ts:1001). One run: ~110 lines of source (mostly the client block) plus tests.
-
-## Done
 
 ### Human-friendly numbers in the report tab's chart labels (planned 2026-09-20, requested by user, done 2026-09-21)
 

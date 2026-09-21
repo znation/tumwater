@@ -3,6 +3,7 @@ import type { TumwaterConfig, LoopState, TickOutcome, TickResult, BackoffConfig 
 import type { BuildStatus } from "./build-info.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "./roles.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
+import { removeQuiet } from "./files.js";
 import { pidAlive } from "./process.js";
 import { orchestratorStatePath, pausedPath, statePath } from "./paths.js";
 
@@ -72,6 +73,29 @@ export function clearBackoff(s: LoopState, now: number): LoopState {
  * definition" rule that put the daily-cost budget in src/budget.ts. */
 export function isFleetPaused(root: string): boolean {
   return fs.existsSync(pausedPath(root));
+}
+
+/** Pause the fleet by writing its marker, the writer half of isFleetPaused's contract; the
+ * marker format ({ at: number }, pretty-printed JSON) is the one `tumwater pause` has always
+ * written. Returns whether this call changed state: false when the marker already existed, so
+ * the CLI can report "already paused" and the dashboard's toggle stays idempotent. Lives here
+ * beside isFleetPaused so the producer (CLI, GUI) and every consumer read the same path. */
+export function pauseFleet(root: string): boolean {
+  const marker = pausedPath(root);
+  if (fs.existsSync(marker)) return false;
+  writeJsonAtomic(marker, { at: Date.now() });
+  return true;
+}
+
+/** Resume the fleet by removing its marker (a no-op if absent); returns whether a marker was
+ * there to lift, mirroring pauseFleet's changed-state contract. Uses removeQuiet's
+ * never-throws delete: a marker vanishing between the check and the unlink is success, not a
+ * failure worth surfacing from a toggle. */
+export function resumeFleet(root: string): boolean {
+  const marker = pausedPath(root);
+  if (!fs.existsSync(marker)) return false;
+  removeQuiet(marker);
+  return true;
 }
 
 /** Next step of a backoff ladder: initial (capped) on the first step, then multiplied, capped. */

@@ -9,6 +9,7 @@ import {
 import { submitPrompt } from "../inbox.js";
 import { isJsonObject } from "../json-object.js";
 import { checkDailyBudgetUsd, knownRoleIds, loadConfigCached, setDailyBudgetUsd } from "../config.js";
+import { pauseFleet, resumeFleet } from "../state.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "./report.js";
@@ -316,6 +317,27 @@ export function startGui(root: string, port: number, allInterfaces = false): Pro
           return;
         }
         sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number });
+      } else if (req.method === "POST" && pathname === "/api/pause") {
+        // The dashboard header's pause/resume toggle: the same operator gate `tumwater pause`
+        // and `resume` write, via state.ts's shared writers so the CLI and the GUI cannot
+        // drift on the marker's format or idempotence. Same body discipline as /api/prompt and
+        // /api/budget (readJsonObject → 400 malformed/non-object, 413 oversized); the target
+        // state is explicit (`paused: true|false`) rather than a toggle, so a retried request
+        // is idempotent.
+        const body = await readJsonObject(req, res, '{"paused": true}');
+        if (!body) return; // 4xx already sent — oversized or not a JSON object
+        const value = body.paused;
+        if (typeof value !== "boolean") {
+          sendJson(
+            res,
+            400,
+            { error: `paused must be a boolean${value === undefined ? "" : ` (got ${JSON.stringify(value)})`}` },
+          );
+          return;
+        }
+        if (value) pauseFleet(root);
+        else resumeFleet(root);
+        sendJson(res, 200, { ok: true, paused: value });
       } else {
         res.writeHead(404, { "content-type": "text/plain" });
         res.end("not found");

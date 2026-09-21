@@ -324,6 +324,35 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   });
   // budget-edit:end
 
+  // pause-control:start
+  // The header's fleet pause/resume control: one click POSTs /api/pause, the same operator
+  // gate "tumwater pause" / "resume" write, so a shell-less operator watching the dashboard
+  // (e.g. over "gui --all-interfaces") can halt a runaway fleet. No optimistic state: the
+  // badge re-renders from the next 1 s poll's d.paused (the marker is persistent state —
+  // pausing before startup starts an already-paused fleet), and a failed POST flashes the
+  // server's error so the operator knows the marker did not change.
+  function renderPauseBadge(d) {
+    document.getElementById("pausewrap").innerHTML = d.paused
+      ? "<a href='#' id='pausebadge'> · paused — resume</a>"
+      : "<a href='#' id='pausebadge'> · pause</a>";
+  }
+  async function togglePause() {
+    // The opposite of the last server-reported state; the poll re-renders the badge after a
+    // successful POST, so the control never paints a state the marker does not hold.
+    const target = !(lastStatus && lastStatus.paused);
+    try {
+      const r = await fetch("/api/pause", { method: "POST", headers: { "content-type": "application/json" },
+                                             body: JSON.stringify({ paused: target }) });
+      if (!r.ok) throw await apiError("/api/pause", r);
+    } catch (e) {
+      showFlash("error: " + e.message); // no optimistic state; fix and click again
+    }
+  }
+  document.addEventListener("click", (ev) => {
+    if (ev.target.closest("#pausebadge")) { ev.preventDefault(); togglePause(); }
+  });
+  // pause-control:end
+
   let transcriptRole = null; // loop whose transcript panel is open (null = closed)
   let backlogKey = null; // "file:index" of the open backlog entry (null = closed) — mutually
                          // exclusive with transcriptRole: both render into #transcript, so only
@@ -401,6 +430,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
       // element because it is clickable (in priced states — an all-free fleet renders
       // plain text, not a link): the editor swaps just this fragment.
       renderBudgetBadge(d);
+      renderPauseBadge(d);
       document.getElementById("loops").innerHTML = sortLoops(d.loops).map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";

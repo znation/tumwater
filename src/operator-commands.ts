@@ -1,10 +1,16 @@
-import fs from "node:fs";
 import { knownRoleIds, loadConfig } from "./config.js";
 import { fail, parseRoleFlag } from "./cli-args.js";
-import { clearBackoff, loadLoopState, orchestratorAlive, saveLoopState, zeroCounters } from "./state.js";
-import { ensureParentDir, removeQuiet } from "./files.js";
+import {
+  clearBackoff,
+  loadLoopState,
+  orchestratorAlive,
+  pauseFleet,
+  resumeFleet,
+  saveLoopState,
+  zeroCounters,
+} from "./state.js";
 import { writeJsonFile } from "./json-files.js";
-import { abortRequestPath, pausedPath, resetRequestPath, wakeRequestPath } from "./paths.js";
+import { abortRequestPath, resetRequestPath, wakeRequestPath } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 
 /** The CLI half of the operator-intent protocol (the consumer half is src/operator-requests.ts):
@@ -90,13 +96,13 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
  * Unlike abort, no live harness is required; when none runs, say where the pause takes effect
  * instead of failing. Idempotent: a second pause reports the existing marker as-is. */
 export async function cmdPause(root: string): Promise<void> {
-  const marker = pausedPath(root);
-  if (fs.existsSync(marker)) {
+  // pauseFleet in src/state.ts is the single writer of the pause marker — the GUI's
+  // /api/pause toggle calls it too, so the CLI and the dashboard cannot drift on format
+  // or idempotence; a false return means the marker was already there.
+  if (!pauseFleet(root)) {
     process.stdout.write("already paused\n");
     return;
   }
-  ensureParentDir(marker); // A fresh repo has no .tumwater/ yet.
-  writeJsonFile(marker, { at: Date.now() });
   const { when, tail } = markerApplyNote(root);
   process.stdout.write(
     `fleet paused — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${tail}\n`,
@@ -107,12 +113,12 @@ export async function cmdPause(root: string): Promise<void> {
  * no marker there is nothing to do. No live harness required — resuming before startup just
  * means the next `tumwater run` starts unpaused. */
 export async function cmdResume(root: string): Promise<void> {
-  const marker = pausedPath(root);
-  if (!fs.existsSync(marker)) {
+  // resumeFleet (src/state.ts) is the single remover, shared with the GUI toggle; a false
+  // return means there was no marker to lift.
+  if (!resumeFleet(root)) {
     process.stdout.write("not paused\n");
     return;
   }
-  removeQuiet(marker);
   const { when, tail } = markerApplyNote(root);
   process.stdout.write(`fleet resumed — role loops tick again${when}${tail}\n`);
 }

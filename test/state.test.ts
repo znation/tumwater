@@ -8,16 +8,19 @@ import {
   applyTickOutcome,
   clearBackoff,
   freshLoopState,
+  isFleetPaused,
   loadLoopState,
   nextBackoffSeconds,
   orchestratorAlive,
+  pauseFleet,
   readOrchestratorInfo,
+  resumeFleet,
   saveLoopState,
   zeroCounters,
 } from "../src/state.js";
 import { dailyCost, todayStamp } from "../src/budget.js";
 import type { LoopState, TumwaterConfig } from "../src/types.js";
-import { orchestratorStatePath, statePath } from "../src/paths.js";
+import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
 import { OBSERVER_ROLES } from "../src/roles.js";
 import { tmpdir } from "./util.js";
@@ -37,6 +40,26 @@ function assertFreshFields(s: LoopState, role: string): void {
 test("loadLoopState returns fresh defaults when no file exists", () => {
   const dir = tmpdir();
   assert.deepEqual(loadLoopState(dir, "clean"), freshLoopState("clean"));
+});
+
+test("pauseFleet and resumeFleet write the pause marker and report whether state changed", () => {
+  const dir = tmpdir(); // fresh repo: no .tumwater/ yet — writeJsonAtomic must create it
+  assert.equal(isFleetPaused(dir), false);
+
+  assert.equal(pauseFleet(dir), true, "the first pause changes state");
+  assert.equal(isFleetPaused(dir), true);
+  const marker = JSON.parse(fs.readFileSync(pausedPath(dir), "utf8")) as { at: number };
+  assert.deepEqual(Object.keys(marker), ["at"], "the marker keeps the CLI's { at } shape");
+  assert.equal(typeof marker.at, "number");
+
+  assert.equal(pauseFleet(dir), false, "a repeat pause is a no-op");
+  assert.equal(isFleetPaused(dir), true);
+
+  assert.equal(resumeFleet(dir), true, "resume lifts the marker");
+  assert.equal(isFleetPaused(dir), false);
+  assert.equal(fs.existsSync(pausedPath(dir)), false);
+
+  assert.equal(resumeFleet(dir), false, "resume without a marker is a no-op");
 });
 
 test("saveLoopState creates the state dir and round-trips without leaving a temp file", () => {

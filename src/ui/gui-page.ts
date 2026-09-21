@@ -44,7 +44,7 @@ export const GUI_PAGE = `<!doctype html>
   .legend { display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; color:#9fb0bf; font-size:12px; }
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
 </style>
-<h1>tumwater <span class="muted" id="header">connecting…</span><span id="budgetwrap"></span></h1>
+<h1>tumwater <span class="muted" id="header">connecting…</span><span id="budgetwrap"></span><span id="pausewrap"></span></h1>
 <nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet</a><span class="muted"> | </span><a href="#" id="tab-report">report</a><span class="muted"> | </span><a href="#" id="tab-failures">failures</a></nav>
 <form id="promptform">
   <input id="prompt" placeholder="type a prompt for the project — it runs immediately via the director loop" autocomplete="off">

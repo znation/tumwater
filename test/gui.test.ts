@@ -1207,6 +1207,111 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
   }
 });
 
+// POST /api/pause — the dashboard header's pause/resume toggle: the same shared state.ts
+// writers the CLI uses, so the GUI and `tumwater pause`/`resume` cannot drift.
+
+test("POST /api/pause writes and removes the fleet pause marker and rejects bad bodies", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui pause route test");
+  const server = await startGui(repo, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  const base = `http://127.0.0.1:${addr.port}`;
+  try {
+    // Pausing writes the persistent marker and reports the new state; a repeat is idempotent.
+    let res = await fetch(base + "/api/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paused: true }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, paused: true });
+    assert.ok(fs.existsSync(pausedPath(repo)), "the pause marker exists");
+    res = await fetch(base + "/api/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paused: true }),
+    });
+    assert.equal(res.status, 200);
+    assert.ok(fs.existsSync(pausedPath(repo)), "a repeat pause leaves the marker in place");
+
+    // Resuming removes it.
+    res = await fetch(base + "/api/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paused: false }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, paused: false });
+    assert.equal(fs.existsSync(pausedPath(repo)), false, "the pause marker is gone");
+
+    // Missing / non-boolean / malformed / non-object bodies all get 400 and change nothing.
+    for (const body of ["{}", '{"paused": "true"}', '{"paused": 1}', '{"paused": null}', "not json", "null", "[true]"]) {
+      res = await fetch(base + "/api/pause", { method: "POST", body });
+      assert.equal(res.status, 400, body);
+      const err = (await res.json()) as { error: string };
+      assert.ok(err.error.length > 0, `actionable message for ${body}`);
+    }
+    assert.equal(fs.existsSync(pausedPath(repo)), false, "rejected bodies leave the marker untouched");
+    assert.match(
+      ((await (await fetch(base + "/api/pause", { method: "POST", body: '{"paused": "true"}' })).json()) as { error: string }).error,
+      /boolean/,
+    );
+
+    // An oversized body gets 413 (readJsonObject's shared guard), still touching nothing.
+    res = await fetch(base + "/api/pause", {
+      method: "POST",
+      body: JSON.stringify({ paused: true, pad: "x".repeat(70000) }),
+    });
+    assert.equal(res.status, 413);
+    assert.equal(fs.existsSync(pausedPath(repo)), false, "an oversized body leaves the marker untouched");
+  } finally {
+    server.close();
+  }
+});
+
+// The pause badge runs in the page's script scope; its marker-delimited block is evaled
+// against a minimal DOM stub, so the render + click behavior is pinned behaviorally, like the
+// budget-editor tests above.
+test("the pause badge reflects the payload and its click POSTs the opposite state", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const block = GUI_PAGE.split("// pause-control:start")[1]!.split("// pause-control:end")[0]!;
+  const wrap = { innerHTML: "" };
+  const flash = { textContent: "" };
+  const document = {
+    getElementById: (id: string) => (id === "pausewrap" ? wrap : flash),
+    addEventListener: () => {},
+  };
+  const lastStatus: { paused?: boolean } = { paused: false };
+  const posts: unknown[] = [];
+  const fetch = async (_url: string, opts: { body: string }) => {
+    posts.push(JSON.parse(opts.body));
+    return { ok: true };
+  };
+  const { renderPauseBadge, togglePause } = new Function(
+    "document",
+    "fetch",
+    "apiError",
+    "showFlash",
+    "lastStatus",
+    block + "\nreturn { renderPauseBadge, togglePause };",
+  )(document, fetch, async () => new Error("x"), () => {}, lastStatus) as {
+    renderPauseBadge: (d: { paused: boolean }) => void;
+    togglePause: () => Promise<void>;
+  };
+
+  renderPauseBadge({ paused: false });
+  assert.match(wrap.innerHTML, /<a href='#' id='pausebadge'> · pause</, "unpaused: the pause affordance");
+  await togglePause();
+  assert.deepEqual(posts, [{ paused: true }], "clicking pause asks the server to pause");
+
+  lastStatus.paused = true; // the next poll's payload
+  renderPauseBadge({ paused: true });
+  assert.match(wrap.innerHTML, /paused — resume/, "paused: the resume affordance");
+  await togglePause();
+  assert.deepEqual(posts, [{ paused: true }, { paused: false }], "clicking resume asks the server to resume");
+});
+
 // The build badge on the GUI surface: /api/status carries it pre-formatted through
 // status-render's buildBadge — the same string the TUI header renders — so the page cannot
 // re-derive (and drift from) the multi-branch text client-side.

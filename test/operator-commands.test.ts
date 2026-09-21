@@ -207,6 +207,14 @@ test("cmdPause writes the marker, reports no-harness timing, and is idempotent",
   assert.match(second.stdout, /already paused/);
 });
 
+test("cmdPause writes the unchanged { at } marker through the shared state writer", async () => {
+  const root = tmpdir();
+  await expectOk(() => cmdPause(root));
+  const marker = JSON.parse(fs.readFileSync(pausedPath(root), "utf8")) as { at: number };
+  assert.deepEqual(Object.keys(marker), ["at"], "the marker format the CLI has always written");
+  assert.equal(typeof marker.at, "number");
+});
+
 test("cmdPause with a live harness promises pickup within ~2s", async () => {
   const root = tmpdir();
   markLive(root);
