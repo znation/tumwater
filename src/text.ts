@@ -143,6 +143,15 @@ export function usdCap(n: number): string {
   return `$${n.toFixed(2).replace(/\.00$/, "")}`;
 }
 
+/** The `$<spent> of $<cap>` fragment every budget-transition event renders — the one home of
+ * that phrasing, shared by the event feed (event-format.ts) and the failure digest's Fleet
+ * state changes lines (failure-report.ts), so a budget transition reads the same on both
+ * surfaces. Both fields arrive loosely typed on HarnessEvent, so each is coerced through the
+ * cents-pinned money format (usd) here. */
+export function budgetPhrase(spentUsd: unknown, capUsd: unknown): string {
+  return `${usd(Number(spentUsd ?? 0))} of ${usd(Number(capUsd ?? 0))}`;
+}
+
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
  * display in the harness renders through (transcript run separators, the status table's last-
  * tick cell, the daily-budget day stamp), so zero-padding cannot drift per consumer. */

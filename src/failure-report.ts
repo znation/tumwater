@@ -1,7 +1,7 @@
 import type { HarnessEvent, TickResult } from "./types.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
-import { dayAt, dayLabel, formatDate, formatTime, reportWindow, shortSha, usd } from "./text.js";
+import { budgetPhrase, dayAt, dayLabel, formatDate, formatTime, reportWindow, shortSha } from "./text.js";
 
 /** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
  * The CLI keeps the usage report's 14-day default; the role reads one day so a cluster
@@ -529,12 +529,6 @@ function field(v: unknown): string {
   return String(v).slice(0, STATE_CHANGE_FIELD_MAX);
 }
 
-/** The `$<spent> of $<cap>` fragment the budget transition events share; each field arrives
- * loosely typed, so it is coerced through the shared money format (usd). */
-function budgetPhrase(ev: HarnessEvent): string {
-  return `${usd(Number(ev.spentUsd ?? 0))} of ${usd(Number(ev.capUsd ?? 0))}`;
-}
-
 /** A compact, bounded one-liner for one harness decision event, for the Fleet state changes
  * section. Every free string is sliced (field) and the whole line is capped again
  * (STATE_CHANGE_MAX) so the digest's byte bound holds for any event shape; the render adds the
@@ -546,14 +540,14 @@ function describeStateChange(ev: HarnessEvent): string {
       const refused = ev.fallbackRejected
         ? ` (fallback ${field(ev.fallbackRejected)} refused)`
         : "";
-      text = `budget paused — ${budgetPhrase(ev)} daily cost reached${refused}`;
+      text = `budget paused — ${budgetPhrase(ev.spentUsd, ev.capUsd)} daily cost reached${refused}`;
       break;
     }
     case "budget_fallback":
-      text = `budget fallback — ${budgetPhrase(ev)} daily cost reached; on ${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")} (cost n/a)`;
+      text = `budget fallback — ${budgetPhrase(ev.spentUsd, ev.capUsd)} daily cost reached; on ${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")} (cost n/a)`;
       break;
     case "budget_resumed":
-      text = `budget resumed (${budgetPhrase(ev)} today)`;
+      text = `budget resumed (${budgetPhrase(ev.spentUsd, ev.capUsd)} today)`;
       break;
     case "fleet_paused":
       text = "fleet paused — role loops stop starting new ticks";

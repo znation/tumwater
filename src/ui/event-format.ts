@@ -1,12 +1,5 @@
-import { compactTokens, shortSha, usd } from "../text.js";
+import { budgetPhrase, compactTokens, shortSha, usd } from "../text.js";
 import type { HarnessEvent } from "../types.js";
-
-/** The `$<spent> of $<cap>` fragment both budget transition events share: the fields arrive
- * loosely typed on HarnessEvent, so each is coerced and rendered through the shared cents-
- * pinned money format (usd) in one place. */
-function budgetPhrase(e: HarnessEvent): string {
-  return `${usd(Number(e.spentUsd ?? 0))} of ${usd(Number(e.capUsd ?? 0))}`;
-}
 
 /** The ` · <N> tok` / ` · $<spent>` usage fragment every event that records a run's cost
  * shares (tick_end, landed): tokens and cost arrive loosely typed on HarnessEvent, so each is
@@ -114,14 +107,14 @@ export function formatEvent(e: HarnessEvent): string {
       const refused = e.fallbackRejected
         ? ` (fallback ${e.fallbackRejected} is not a cost n/a model in pi's models.json)`
         : "";
-      return `${time} ${loop} budget paused — ${budgetPhrase(e)} daily cost reached${refused}`;
+      return `${time} ${loop} budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}`;
     }
     case "budget_fallback":
       // The cap is spent but the fleet keeps working: name the free model it switched to, the
       // one fact that distinguishes this from a pause.
-      return `${time} ${loop} budget fallback — ${budgetPhrase(e)} daily cost reached; role loops continue on ${e.provider ?? "pi's default provider"}/${e.model ?? "pi's default model"} (cost n/a)`;
+      return `${time} ${loop} budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${e.provider ?? "pi's default provider"}/${e.model ?? "pi's default model"} (cost n/a)`;
     case "budget_resumed":
-      return `${time} ${loop} budget resumed (${budgetPhrase(e)} today)`;
+      return `${time} ${loop} budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
     case "fleet_paused":
       // Routine state change, like counters_reset — no warning prefix.
       return `${time} ${loop} fleet paused — role loops stop starting new ticks (director keeps running)`;
