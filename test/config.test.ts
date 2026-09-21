@@ -751,8 +751,13 @@ test("validateConfig rejects invalid customLoops entries with named errors", () 
     /customLoops\[1\]\.name "docs" is duplicated in customLoops/,
   );
 
-  // Empty and over-long tasks.
+  // Empty, whitespace-only, and over-long tasks. A blank-but-non-empty task is rejected the
+  // same way an empty one is: it rides into every tick prefill as blank text.
   assert.match(validationError({ customLoops: [{ name: "docs", task: "" }] }), /customLoops\[0\]\.task must be a non-empty string \(got ""\)/);
+  assert.match(
+    validationError({ customLoops: [{ name: "docs", task: "   " }] }),
+    /customLoops\[0\]\.task must be a non-empty string \(got "   "\)/,
+  );
   const long = "x".repeat(4097);
   assert.match(
     validationError({ customLoops: [{ name: "docs", task: long }] }),

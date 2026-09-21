@@ -327,7 +327,11 @@ export function validateConfig(raw: unknown): void {
           customNames.add(name);
         }
         const task = entry.task;
-        if (typeof task !== "string" || task.length === 0) {
+        // A whitespace-only task is as inert as an empty one — it rides into every one of
+        // this loop's tick prefills as blank text, so the loop has nothing to do and ticks
+        // no_change forever. Reject both shapes with the same message; the model-triple
+        // checkString rule uses the same trim-based emptiness test.
+        if (typeof task !== "string" || task.trim() === "") {
           problems.push(`${where}.task must be a non-empty string (got ${show(task)})`);
         } else if (task.length > CUSTOM_TASK_MAX_CHARS) {
           problems.push(
