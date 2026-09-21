@@ -222,7 +222,9 @@ test("runOrchestrator refuses to start with no roles enabled", async () => {
   try {
     await assert.rejects(
       runOrchestrator({ root: repo, config, mainBranch: "main", signal: controller.signal }),
-      /no roles enabled/,
+      // The message names the problem AND the fix, so an operator who disabled every role is
+      // told exactly which edit unblocks startup.
+      /no roles enabled in tumwater\.json — enable at least one role/,
     );
   } finally {
     controller.abort();

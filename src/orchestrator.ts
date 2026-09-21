@@ -154,7 +154,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const pollMs = opts.pollMs ?? POLL_MS;
   const modelsPath = opts.modelsPath ?? piModelsPath();
   const enabled = enabledRoleIds(config);
-  if (enabled.length === 0) throw new Error("no roles enabled in tumwater.json");
+  // Name the fix, not just the failure: an operator who disabled the last role (or hand-edited
+  // a roles map to all-false) gets the exact edit that unblocks `tumwater run`, and the
+  // defaults they can fall back to.
+  if (enabled.length === 0)
+    throw new Error(
+      'no roles enabled in tumwater.json — enable at least one role in its "roles" section (e.g. `"feature": { "enabled": true }`), or remove that section to restore every role\'s default',
+    );
 
   // Runners and sleeps watch a combined signal: the caller's (Ctrl+C/SIGTERM) plus an internal
   // one the redeploy path fires when its drain of ROLE ticks runs out of patience — those
