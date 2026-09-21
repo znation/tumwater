@@ -189,7 +189,6 @@ export function assistantBlocks(content: unknown[]): string {
 
 // --- Live-orchestrator test helpers (shared by orchestrator.test.ts and orchestrator-2.test.ts) ---
 
-/** Poll until fn() is true, failing after ms (default 20s). */
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the
  * condition is true, so a generous budget costs nothing on the success path and buys only
  * slower reporting of a genuine hang. The default was 20s until 2026-09-18, when it became the
