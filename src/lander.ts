@@ -61,14 +61,6 @@ export interface LanderContext {
  * `result` when it is already terminal (aborted, rejected, or review_error). */
 type GateOutcome = { kind: "gate"; gate: GateResult } | { kind: "result"; result: TickResult };
 
-/** Run one pinned change through the review gate in its lander worktree `wt` and handle the
- * immediate bookkeeping both landing paths otherwise copy — the single-change path (landChange)
- * and the batch's Phase A. Persists the verdict at once, folds the reviewer's usage, and routes
- * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-lands it),
- * rejected (ref deleted — final for this sha), and failed (ref kept under the failure cap; past
- * the cap the gate reset the worktree off the pin, so a HEAD that moved away from `req.sha`
- * means the commit was discarded and the ref goes too — an unreadable head keeps it). Returns
- * the gate result only when the change may be landed. */
 /** The identity every gate invocation needs from whichever landing path calls it. The
  * single-change path's LanderContext and the batch's BatchContext both satisfy this, so one
  * positional call shape serves both — the two paths no longer hand-assemble the same
@@ -80,6 +72,14 @@ interface ReviewGateContext {
   signal(): AbortSignal;
 }
 
+/** Run one pinned change through the review gate in its lander worktree `wt` and handle the
+ * immediate bookkeeping both landing paths otherwise copy — the single-change path (landChange)
+ * and the batch's Phase A. Persists the verdict at once, folds the reviewer's usage, and routes
+ * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-lands it),
+ * rejected (ref deleted — final for this sha), and failed (ref kept under the failure cap; past
+ * the cap the gate reset the worktree off the pin, so a HEAD that moved away from `req.sha`
+ * means the commit was discarded and the ref goes too — an unreadable head keeps it). Returns
+ * the gate result only when the change may be landed. */
 async function reviewPinnedChange(
   ctx: ReviewGateContext,
   req: LandRequest,
