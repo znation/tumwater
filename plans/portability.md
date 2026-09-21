@@ -1,7 +1,8 @@
 # Portability & packaging — run tumwater anywhere, against anything
 
 Planned 2026-09-14, requested by the user; audited against main `1384eeb` on 2026-09-15, 1/7
-re-audited against `00501fa` on 2026-09-16, 2/7 against `e76c5d5` on 2026-09-17, 6/7 against
+re-audited against `00501fa` on 2026-09-16 and refined against `58b1a27` on 2026-09-21, 2/7
+against `e76c5d5` on 2026-09-17, 6/7 against
 `94562d8` on 2026-09-18, 3/7 against `44a037c` on 2026-09-18, 4/7 against `2714022` on 2026-09-19 —
 re-audited and split into 4a/7, 4b/7 and 4c/7 (5/7 re-audited against `f52cac9` on 2026-09-19;
 7/7 re-audited against `5a99627` on 2026-09-18). Full plan
@@ -108,46 +109,72 @@ two workflows.
   exactly the documented contract, and the stamp still gives `tumwater doctor` a provenance line.
 - **Linux + macOS only.** `npm run build` opens with `rm -rf dist`, and the harness's whole model
   is POSIX (`git worktree`, atomic `rename`, POSIX signals, lock dirs). Windows is out of scope
-  and says so in `engines.os` rather than failing mysteriously.
+  and says so in `engines.os` rather than failing mysteriously — which is also why that `rm -rf`
+  stays as it is: the only platform without a POSIX `rm` is already excluded, so a portable
+  removal would edit a working line for no portability gain (correction 2).
 - **Release is tag-driven, never push-to-main.** main is written by an autonomous fleet; every
   landing must not cut a release. A `v*` tag does, and the workflow refuses a tag whose name
   disagrees with `package.json`'s `version`.
 
 **Approach.**
-- package.json — add `files`, `prepack`, `repository`, `homepage`, `bugs`, `keywords`,
-  `engines.os: ["darwin", "linux"]`; keep `bin` and `engines.node: ">=20"`. Replace `rm -rf dist`
-  in `build` with a portable `node -e` removal.
+- package.json — add `files`, `prepack`, `keywords`, `engines.os: ["darwin", "linux"]`; keep
+  `bin`, and raise `engines.node` to `">=20.3"` rather than keeping `">=20"`:
+  `AbortSignal.any` (src/loop.ts:150, src/orchestrator.ts:165) landed in Node 20.3.0, so a
+  20.0–20.2 install would throw (correction 1). Do NOT add `repository`/`homepage`/`bugs` — each
+  needs a real remote URL and this repo has none (correction 3). Leave the `build` script's
+  `rm -rf dist` unchanged (correction 2).
 - LICENSE (new) — MIT text; today's tarball carries a licence claim it cannot substantiate.
 - .github/workflows/ci.yml (new) — `on: [push, pull_request]`; matrix
   `os: [ubuntu-latest, macos-latest]` x `node: [20, 22, 24]`; checkout, `actions/setup-node` with
   `cache: npm`, a `git config --global user.name/user.email` step (the suite's fixtures set their
   own identity today, but a runner with none must not be able to fail a future one), `npm ci`,
   `npm run build`, `npm test`. `concurrency` cancels superseded runs — the fleet pushes often.
-  The suite is 1019 tests, ~1 min locally, so the matrix stays cheap.
+  The suite is 1241 tests (~40 s locally, per the README stamp), so the matrix stays cheap. The
+  bare `20` in the matrix resolves to the newest 20.x, so `engines.node` is what states the floor
+  (correction 1).
 - .github/workflows/release.yml (new) — `on: push: tags: ['v*']`;
   `permissions: { contents: write, id-token: write }`; checkout, setup-node with `registry-url`,
-  `npm ci`, `npm test`, tag/version agreement check, `npm publish --provenance --access public`,
-  then `gh release create` attaching `npm pack`'s tarball.
-- README.md — rewrite `## Usage`'s opening: `npm install -g tumwater` (or `npx tumwater`) as the
-  primary install, `npm install && npm run build && npm link` as the from-source path. CI badge.
-- No new CLI test: test/cli.test.ts's existing "version prints the package version" (line 59)
-  already execFiles the compiled `dist/src/cli.js` and asserts package.json's version — the
-  exact pin this sub-plan wanted for the installed tarball.
+  `npm ci`, `npm test`, tag/version agreement check, `npm publish --access public` (a
+  `# add --provenance once the repo is public` comment, not the flag: provenance needs a public
+  GitHub repo whose `repository` field matches, and this tree has neither — correction 3), then
+  `gh release create` attaching `npm pack`'s tarball. Like CI, this workflow ships as a file and
+  its first run is a human step once a remote exists (correction 4).
+- README.md — rewrite `## Usage`'s opening (line 214 today: `npm install && npm run build`):
+  `npm install -g tumwater` (or `npx tumwater`) as the primary install, `npm install && npm run
+  build && npm link` as the from-source path. No CI badge (correction 3).
+- test/packaging.test.ts (new) — the landing gate runs `npm test`, which today verifies nothing
+  about a metadata-only diff, so pin the intent deterministically (correction 5). Read
+  `package.json` with the `fs.readFileSync(new URL("../../package.json", import.meta.url))` idiom
+  test/cli.test.ts:59 already uses and assert: `files` deep-equals `["dist/src",
+  "dist/build-info.json", "README.md", "LICENSE"]` and has no entry under `test/`, `src/`,
+  `plans/`, or `docs/`, nor equal to `PLANS.md`, `BUGS.md`, `PRINCIPLES.md`, `tsconfig.json`, or
+  `tumwater.json`; `prepack === "npm run build"`; `engines.os` includes `darwin` and `linux` and
+  not `win32`; `engines.node === ">=20.3"`; `bin.tumwater` starts with `dist/`. Then assert the two
+  workflow files exist and carry only the stable triggers — `ci.yml` matches `pull_request`,
+  `ubuntu-latest`, `macos-latest`; `release.yml` matches `v*` — so a later step edit does not have
+  to touch the test. The existing "version prints the package version" (test/cli.test.ts:59)
+  already covers the installed-version path; this file does not duplicate it.
 
 **Files touched.** package.json, LICENSE (new), .github/workflows/ci.yml (new),
-.github/workflows/release.yml (new), README.md. No source or test changes.
+.github/workflows/release.yml (new), test/packaging.test.ts (new), README.md. No `src/` change;
+the one new test file is assertions over the packaged metadata and the workflow triggers
+(correction 5).
 
 **Acceptance criteria.**
-- `npm pack --dry-run` lists only `dist/src/**`, `dist/build-info.json`, `README.md`, `LICENSE`,
-  and `package.json` — no PLANS.md, no BUGS.md, no `test/`, no `src/*.ts`, no config.
+- `npm pack --dry-run --json` lists only `dist/src/**`, `dist/build-info.json`, `README.md`,
+  `LICENSE`, and `package.json` — no PLANS.md, no BUGS.md, no `test/`, no `src/*.ts`, no
+  `tumwater.json`, no `plans/` (today, on a clean worktree: 314 files / 1.6 MB — correction 7).
 - `npm pack` in a checkout with no `dist/` still produces a working tarball (prepack built it);
-  installing it globally on a machine with no tumwater checkout gives a `tumwater` on PATH whose
-  `version`, `help`, and `doctor` all run.
-- CI green on ubuntu-latest and macos-latest across Node 20/22/24 from a cold cache, with no
-  global git identity beyond the workflow's own step. (The first run may surface Linux-only
-  failures in a suite that has only ever run on macOS; fixing them is part of this entry.)
-- Pushing tag `v0.1.1` while `package.json` says `0.1.0` fails the release workflow before
-  anything is published.
+  installing it into a scratch prefix gives a `tumwater` on PATH whose `version`, `help`, and
+  `doctor` all run.
+- `engines.node` reads `">=20.3"`, the `build` script is byte-identical, and `files` / `prepack`
+  / `keywords` / `engines.os` are present — asserted by `npm test` through the new
+  test/packaging.test.ts.
+- `npm test` green on macOS with test/packaging.test.ts passing. **The workflows cannot be run
+  from this worktree** — this repo has no remote and the landing gate runs only `npm test` — so
+  CI's first real run and the release workflow's tag check are post-push steps (correction 4). A
+  Linux-only failure CI surfaces is recorded as a new BUGS.md entry naming that run as its repro,
+  never fixed blind here.
 
 **Refined 2026-09-16 (plan loop) — audited against main `00501fa` (build clean, suite 1019/1019 per the README's stamp at 10c8ae6; this series had no audit since `074e48f` wrote it on 2026-09-15, and no landing since then touches this sub-plan's anchors — the `--since=2026-09-13` log over package.json/tsconfig.json is empty, and the landings since are markdown, TUI-test, and orchestrator-only). Every load-bearing claim verified on this tree; two pins corrected in place (the redundant `version` test, the test count), and the tarball facts re-measured from a root checkout and a worktree.**
 
@@ -159,6 +186,69 @@ Corrections (pinned in place):
 3. **Tarball facts re-measured** (`npm pack --dry-run`, 2026-09-16): the PLANS.md entry's "230 files / 1.1 MB" is stale in both numbers, and the quirk is worse than "dist by a packlist quirk" — a root checkout packs 633 files / 2.8 MB: 384 untracked machine-local `.claude/` state files, 114 gitignored `dist/` files npm packs anyway, and the 135 packed tracked files (137 tracked, minus `.gitignore` and `package-lock.json`, which npm drops from the pack); a worktree checkout (no `dist/` on disk) packs those 135 / 866 kB. Without the allowlist, a publish from this machine ships `.claude/` — the Design bullet is strengthened with the measured numbers and the PLANS.md bullet corrected to match.
 
 Sizing unchanged: one package.json edit block, a LICENSE, two workflow files, one README rewrite, no source or test changes. One run. No design question remains open.
+
+**Refined 2026-09-21 (plan loop) — 1/7 re-audited against main `58b1a27` (build clean, suite
+1241/1241 per the README stamp). This was the series' first member and carried its oldest audit
+(`00501fa`, 2026-09-16, ~100 landings back); its anchors survived, but seven corrections — three
+factual errors and two genuinely open questions — close what the write left open. It is also the
+entry the feature loop will meet first, so a stale or unbounded plan here costs the whole series.**
+
+Verified as written: no `.github/` and no `.npmignore` on this tree, so the packlist the allowlist
+replaces is today's default; package.json still has no `files`, `prepack`, `repository`,
+`homepage`, `bugs`, `keywords`, or `engines.os`; `bin` is still `dist/src/cli.js`;
+`engines.node` is still `">=20"`; `build` still opens with `rm -rf dist`; and `license: "MIT"` is
+declared with no LICENSE on disk. `dist/src/cli.js` opens with `#!/usr/bin/env node`, so the packed
+shim is executable. `scripts/stamp-build.mjs` still calls `stampBuild(root, path.join(root,
+"dist"))`, and `isSelfHosted` is still src/build-info.ts:67 — the CI-degradation bullet holds.
+`dist/src/test-runner.js` still answers "run `npm run build` first" at src/test-runner.ts:39/:46 —
+the `dist/test` exclusion rationale holds. test/cli.test.ts:59 still execFiles the compiled CLI and
+asserts package.json's version. npm 11.19.1.
+
+Corrections (pinned in place):
+1. **`engines.node` must be `">=20.3"`, not `">=20"`.** `AbortSignal.any` — used at src/loop.ts:150
+   and src/orchestrator.ts:165 — was added in Node 20.3.0, so "keep `engines.node: >=20`" would
+   ship a package that throws on 20.0–20.2. No API above 20.0 other than this one is used: grep for
+   `fs.glob`, `Promise.withResolvers`, `Object.groupBy`, `Array.fromAsync`, `import.meta.dirname`,
+   and `process.getBuiltinModule` is empty across src/ and test/ (node:test's `t.mock.method`, in
+   test/inbox.test.ts, is 18.13+). The CI matrix's bare `20` resolves to the newest 20.x and cannot
+   catch this, so `engines.node` — not the matrix — is where the floor is stated.
+2. **The `rm -rf dist` → `node -e` replacement is dropped.** With `engines.os: ["darwin", "linux"]`
+   the one platform without a POSIX `rm` is already excluded, so the edit removes a working line
+   for no portability gain. The `build` script is untouched, shrinking the diff.
+3. **`repository`/`homepage`/`bugs` and the README CI badge are dropped (open question closed).**
+   All four need a real remote URL, and this repo has no remote (`/Users/zach/tumwater` names only
+   a local directory), so every value would have been invented. The package stays publishable
+   without them; `--provenance` goes the same way, since it requires a public GitHub repo whose
+   `repository` field matches. Adding them is a human follow-up once a remote exists.
+4. **The unbounded Linux clause is bounded (open question closed).** "fixing Linux-only suite
+   failures the first run surfaces is part of this entry" made an unknown amount of work part of a
+   one-run plan, and no worktree here can run Linux. Audited hazards (2026-09-21): the suite shells
+   out only through `#!/bin/sh` shims (test/util.ts:48, :65), `findOnPath` gates on `X_OK`
+   (src/files.ts:55), temp dirs come from `fs.mkdtempSync(os.tmpdir())` (test/util.ts:14), and no
+   test or source invokes `timeout`, `sed -i`, `readlink -f`, `stat -f`, `date -r`, `shuf`,
+   `nproc`, `pkill`, or `setsid` — the usual macOS↔Linux divergences are absent, and `git init -b`
+   (git 2.28+) is satisfied by ubuntu-latest. So this entry ships the workflow and pins its
+   content; a Linux failure the first CI run surfaces becomes a new BUGS.md entry naming that run
+   as its repro, never a blind fix here.
+5. **The metadata-only diff gains a deterministic check.** Nothing in `npm test` reads
+   package.json or `.github/`, so the landing gate could not see a broken allowlist or a missing
+   `prepack`. The new test/packaging.test.ts pins the allowlist, `prepack`, `engines.os`,
+   `engines.node`, `bin`, and the two workflow triggers — it is why test/ now appears in Files
+   touched. This does not contradict the old "No new CLI test" bullet, which was about not
+   duplicating the installed-version test.
+6. **Drifted pins.** test/util.ts's git-identity lines are now :26–:27 (the 2026-09-16 note said
+   :25–:26), and the suite count is 1241, not that note's 1019.
+7. **Tarball facts re-measured** on this clean worktree (`58b1a27`, 2026-09-21): `npm pack
+   --dry-run --json` ships 314 files / 1.6 MB packed / 5.2 MB unpacked — PLANS.md, BUGS.md,
+   PRINCIPLES.md, docs/ 1, plans/ 15, src/ 77, test/ 67, scripts/ 3, tsconfig.json, tumwater.json,
+   and 144 `dist/` files. The 144 is the gitignore fallback in the flesh: npm packs a gitignored
+   directory anyway. (The 2026-09-16 note's 633 files / 2.8 MB was a root checkout carrying 384
+   untracked `.claude/` files; the clean-worktree figure is the reproducible one.)
+
+Sizing now: one package.json edit block, a LICENSE, two workflow files, one README rewrite, and
+test/packaging.test.ts (~80 lines, assertions only). One run. No design question remains open: the
+parts that cannot be verified from the worktree (a CI run, a tag push) are named as post-push human
+steps, not as criteria the implementer is expected to satisfy.
 
 ---
 
