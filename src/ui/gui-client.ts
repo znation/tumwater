@@ -97,9 +97,9 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
 
   // Shared bar geometry: fixed plot box, one slot per day so zero days keep their space and
   // all three charts' x-axes line up. segmentsOf(day) → [{ value, color, title }] stacked
-  // bottom-up; each positive segment becomes a <rect> whose <title> carries the exact raw
-  // value — the text the report-tip hover chip displays (zero values leave an empty slot —
-  // no rect to hover).
+  // bottom-up; each positive segment becomes a <rect> whose <title> carries the same
+  // abbreviated value the stat blocks show — the text the report-tip hover chip displays
+  // (zero values leave an empty slot — no rect to hover).
   const REPORT_W = 560;
   const REPORT_H = 170;
   const REPORT_PAD_T = 8;
@@ -129,11 +129,11 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   }
 
   function chartTokens(data) {
-    return reportSvg(data.series, (d) => [{ value: d.tokensOut, color: "#7ec8ff", title: d.date + ": " + d.tokensOut }]);
+    return reportSvg(data.series, (d) => [{ value: d.tokensOut, color: "#7ec8ff", title: d.date + ": " + fmtTokens(d.tokensOut) }]);
   }
 
   function chartCommits(data) {
-    return reportSvg(data.series, (d) => [{ value: d.commits, color: "#7fd88f", title: d.date + ": " + d.commits }]);
+    return reportSvg(data.series, (d) => [{ value: d.commits, color: "#7fd88f", title: d.date + ": " + fmtTokens(d.commits) }]);
   }
 
   // Stacked bars, one color per role from the fixed palette — colors wrap modulo so a fleet
@@ -145,7 +145,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     const colorOf = (i) => REPORT_PALETTE[i % REPORT_PALETTE.length];
     const svg = reportSvg(
       data.series,
-      (d) => roles.map(([role], i) => ({ value: d.ticksByRole[role] || 0, color: colorOf(i), title: d.date + " " + role + ": " + (d.ticksByRole[role] || 0) })),
+      (d) => roles.map(([role], i) => ({ value: d.ticksByRole[role] || 0, color: colorOf(i), title: d.date + " " + role + ": " + fmtTokens(d.ticksByRole[role] || 0) })),
     );
     const legend = roles.length
       ? "<div class='legend'>" + roles.map(([role], i) => "<span><span class='swatch' style='background:" + colorOf(i) + "'></span>" + esc(role) + "</span>").join("") + "</div>"
@@ -156,8 +156,8 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
 
   // report-tip:start
   // Hover label for the report charts: one shared, cursor-following chip that shows each
-  // bar segment's exact value immediately. Each segment's existing <title> is the label
-  // text — the exact raw value the chart builders produce and escape — so the tooltip
+  // bar segment's value immediately. Each segment's existing <title> is the label text —
+  // the same abbreviated value the chart builders produce and escape — so the tooltip
   // cannot drift from them; no rect (gaps, axis, legend, stats row) or an empty title
   // hides the chip. The native <title> tooltip may still appear after the browser's
   // delay; the styled chip is the immediate affordance.

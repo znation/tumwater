@@ -1748,7 +1748,7 @@ test("the report charts carry a cursor-following hover label", async () => {
   // stay untouched.
   assert.match(GUI_PAGE, /#report svg rect:hover \{[^}]*opacity:\.8/);
 
-  // The label is read from each segment's existing <title> — the exact raw value the
+  // The label is read from each segment's existing <title> — the abbreviated value the
   // chart-builder test pins byte-for-byte — never re-derived, so the tooltip cannot drift
   // from the builders' label strings.
   assert.match(GUI_PAGE, /ev\.target instanceof Element \? ev\.target\.closest\("rect"\) : null/);
@@ -1770,19 +1770,25 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc test.
-  // The page's own esc is injected so role names escape exactly like every other dynamic value.
+  // The page's own esc is injected so role names escape exactly like every other dynamic value;
+  // the page's own fmtTokens is extracted the same way (the esc test's single-line-const seam)
+  // and injected so the chart labels rule cannot drift from the stat blocks above them.
   const m = GUI_PAGE.match(/\/\/ report-chart:start\n([\s\S]*?)\n  \/\/ report-chart:end/);
   assert.ok(m, "report-chart region found in the page");
+  const fm = GUI_PAGE.match(/const fmtTokens = \((\w+)\) => (.+);$/m);
+  assert.ok(fm, "fmtTokens definition found in the page");
+  const fmtTokens = new Function(fm[1]!, `return (${fm[2]});`) as (n: number) => string;
   type ChartBuilders = {
     chartTokens(d: ReportData): string;
     chartTicksByRole(d: ReportData): string;
     chartCommits(d: ReportData): string;
   };
   const escImpl = (s: string) => String(s).replace(/[&<>]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c] as string));
-  const builders = new Function("esc", `${m[1]}\nreturn { chartTokens, chartTicksByRole, chartCommits };`) as unknown as (
+  const builders = new Function("esc", "fmtTokens", `${m[1]}\nreturn { chartTokens, chartTicksByRole, chartCommits };`) as unknown as (
     esc: (s: string) => string,
+    fmtTokens: (n: number) => string,
   ) => ChartBuilders;
-  const { chartTokens, chartTicksByRole, chartCommits } = builders(escImpl);
+  const { chartTokens, chartTicksByRole, chartCommits } = builders(escImpl, fmtTokens);
 
   // Fixture: 14 days — tokens rising to a max on the last day, two roles with distinct window
   // totals (feature > bugfix), one zero day in the middle.
@@ -1817,8 +1823,8 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
   // "Output tokens per day": one bar per non-zero day; the window-max day's bar is the tallest.
   const tokenRects = parseRects(chartTokens(data));
   assert.equal(tokenRects.length, 13, "one bar per non-zero day (the zero day leaves an empty slot)");
-  const maxBar = tokenRects.find((r) => r.title === "2026-09-14: 14000");
-  assert.ok(maxBar, "tooltips carry the exact raw value");
+  const maxBar = tokenRects.find((r) => r.title === "2026-09-14: 14.0k");
+  assert.ok(maxBar, "tokens ≥ 10k are abbreviated like the stat blocks");
   for (const r of tokenRects) {
     assert.ok(r.h <= maxBar!.h + 1e-9, "no bar exceeds the window-max bar");
     assert.ok(Math.abs(r.y + r.h - (maxBar!.y + maxBar!.h)) < 1e-9, "every bar sits on the same baseline");
@@ -1829,10 +1835,11 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
   assert.ok(labels.length <= 7, "labels thinned to at most seven");
   assert.equal(labels[0], "09-01", "the first day is always labeled (MM-DD)");
 
-  // "Commits per day": one bar per non-zero day with the exact raw value in its tooltip.
+  // "Commits per day": one bar per non-zero day with the abbreviated value in its tooltip
+  // (counts below 10k pass through unchanged).
   const commitRects = parseRects(chartCommits(data));
   assert.equal(commitRects.length, 13);
-  assert.ok(commitRects.some((r) => r.title === "2026-09-04: 2"), "commit tooltips carry the exact raw value");
+  assert.ok(commitRects.some((r) => r.title === "2026-09-04: 2"), "small commit tooltips are unchanged");
 
   // "Ticks per day by role": one segment per (day, role) with ticks; the highest-count role
   // sits at the bottom of each stack and first in the legend, colored from the fixed palette.
