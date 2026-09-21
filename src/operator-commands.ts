@@ -32,6 +32,15 @@ function markerApplyNote(root: string): { when: string; tail: string } {
   };
 }
 
+/** The role(s) a marker command targets: the `--role <id>` value when given, otherwise every
+ * role in the config. reset-counters and wake share the same all-roles default, so it lives
+ * here once instead of drifting between their bodies. */
+function targetRoles(root: string, args: string[]): string[] {
+  const config = loadConfig(root);
+  const role = parseRoleFlag(args, knownRoleIds(config));
+  return role ? [role] : Object.keys(config.roles);
+}
+
 /** `tumwater reset-counters [--role <id>]`: zero the per-loop counters shown in the
  * dashboards so a fresh observation window can begin. Zeroes each target's state file
  * directly (works while the harness is not running) and drops a marker that a running fleet
@@ -39,9 +48,7 @@ function markerApplyNote(root: string): { when: string; tail: string } {
  * next save resurrects the pre-reset values. Scheduling fields and pi session continuity are
  * untouched: loops keep sleeping/waking exactly as before. */
 export async function cmdResetCounters(root: string, args: string[]): Promise<void> {
-  const config = loadConfig(root);
-  const role = parseRoleFlag(args, knownRoleIds(config));
-  const targets = role ? [role] : Object.keys(config.roles); // Default: every role in the config.
+  const targets = targetRoles(root, args);
   for (const r of targets) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
   writeJsonFile(resetRequestPath(root), { at: Date.now(), roles: targets });
   process.stdout.write(`counters reset for ${targets.join(", ")} — a running fleet picks this up within ~2s\n`);
@@ -57,9 +64,7 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
  * marker a running fleet consumes within one poll — it must also clear the runners'
  * in-memory schedules, or their next save resurrects the pre-wake sleep window. */
 export async function cmdWake(root: string, args: string[]): Promise<void> {
-  const config = loadConfig(root);
-  const role = parseRoleFlag(args, knownRoleIds(config));
-  const targets = role ? [role] : Object.keys(config.roles); // Default: every role in the config.
+  const targets = targetRoles(root, args);
   const now = Date.now();
   for (const r of targets) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
   writeJsonFile(wakeRequestPath(root), { at: now, roles: targets });
