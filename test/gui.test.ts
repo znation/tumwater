@@ -311,7 +311,7 @@ test("the prompt form checks its response before clearing the box and claiming q
   // prompt. It must guard r.ok like saveBudget and the poll fetches, and keep the text on
   // failure. Asserted against the served page, where the handler actually lives.
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  assert.match(GUI_PAGE, /if \(!r\.ok\) throw await apiError\("\/api\/prompt", r\)/);
+  assert.match(GUI_PAGE, /await apiFetch\("\/api\/prompt", \{ method: "POST"/);
   const handler = GUI_PAGE.match(/promptform"\)\.addEventListener\("submit"[\s\S]*?\n {2}\}\);/)?.[0] ?? "";
   assert.ok(handler, "prompt submit handler found");
   assert.ok(handler.includes("showFlash(\"error: \" + e.message)"), "failure flashes the error");
@@ -778,29 +778,25 @@ test("the dashboard page checks r.ok before parsing both on-demand panel fetches
   // good content. Both on-demand fetches must fail identically into the catch that keeps the
   // previous panel content.
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  const t = GUI_PAGE.match(
-    /fetch\("\/api\/transcript\?role=" \+ encodeURIComponent\(transcriptRole\) \+ "&n=50"\);([\s\S]*?)await r\.json\(\)/,
-  );
-  assert.ok(t, "the transcript fetch is in the page");
+  // Both on-demand fetches route through the shared getJson, whose r.ok guard throws
+  // apiError before any parse — so a JSON error body is never read as panel content.
   assert.match(
-    t[1]!,
-    /if \(!r\.ok\) throw await apiError\("\/api\/transcript", r\);/,
-    "the transcript poll checks r.ok before parsing (a JSON error body has no lines)",
+    GUI_PAGE,
+    /getJson\("\/api\/transcript\?role=" \+ encodeURIComponent\(transcriptRole\) \+ "&n=50"\)/,
+    "the transcript poll goes through the guarded getJson",
   );
-  const b = GUI_PAGE.match(
-    /fetch\("\/api\/backlog\?file=" \+ encodeURIComponent\(file\) \+ "&index=" \+ encodeURIComponent\(index\)\);([\s\S]*?)await r\.json\(\)/,
-  );
-  assert.ok(b, "the backlog fetch is in the page");
   assert.match(
-    b[1]!,
-    /if \(!r\.ok\) throw await apiError\("\/api\/backlog", r\);/,
-    "the backlog poll keeps its r.ok guard (pinned so it cannot regress)",
+    GUI_PAGE,
+    /getJson\("\/api\/backlog\?file=" \+ encodeURIComponent\(file\) \+ "&index=" \+ encodeURIComponent\(index\)\)/,
+    "the backlog poll goes through the guarded getJson",
   );
-  // The guards throw the shared helper, which names the endpoint, the HTTP status, and
-  // the server's error text (parsed leniently: JSON {error} or plain text) — the fix a
-  // failed budget save used to flash as a bare "bad response".
+  // The single guard every endpoint call shares, and the error helper it throws: apiError
+  // names the endpoint, the HTTP status, and the server's error text (parsed leniently:
+  // JSON {error} or plain text) — the fix a failed budget save used to flash as a bare
+  // "bad response".
+  assert.match(GUI_PAGE, /if \(!r\.ok\) throw await apiError\(path, r\);/);
   assert.match(GUI_PAGE, /async function apiError\(path, r\)/);
-  assert.match(GUI_PAGE, /throw await apiError\("\/api\/budget", r\);/);
+  assert.match(GUI_PAGE, /await apiFetch\("\/api\/budget", \{ method: "POST"/);
   // The report panel surfaces the same message instead of a bare "unavailable".
   assert.match(GUI_PAGE, /report unavailable" \+ \(e && e\.message/);
 });
@@ -812,12 +808,10 @@ test("the dashboard status poll checks r.ok before parsing", async () => {
   // throw landed in the catch — and the budget editor prefilled from the error object.
   // Throwing before the assignment keeps the last good payload and reports "connection lost".
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  const region = GUI_PAGE.match(/fetch\("\/api\/status"\);([\s\S]*?)await r\.json\(\)/);
-  assert.ok(region, "the status fetch is in the page");
   assert.match(
-    region[1]!,
-    /if \(!r\.ok\) throw await apiError\("\/api\/status", r\);/,
-    "the status poll checks r.ok before parsing (a JSON {error} body is not fleet state)",
+    GUI_PAGE,
+    /const d = await getJson\("\/api\/status"\);/,
+    "the status poll goes through the guarded getJson (a JSON {error} body is not fleet state)",
   );
 });
 
@@ -1055,9 +1049,12 @@ test("the budget editor refuses browser-rejected number text instead of silently
     "document",
     "esc",
     "fetch",
+    // The block's save path now routes through the page's shared apiFetch guard; the stub
+    // mirrors it over the fake fetch above (its success path never touches apiError).
+    "apiFetch",
     "setTimeout",
     block + "\nreturn { saveBudget };",
-  )(document, (s: string) => s, fetch, () => {}) as { saveBudget: () => Promise<void> };
+  )(document, (s: string) => s, fetch, (path: string, init: { body: string }) => fetch(path, init), () => {}) as { saveBudget: () => Promise<void> };
 
   await saveBudget();
   assert.equal(posts.length, 0, "rejected text must not POST a cap change");
@@ -1837,9 +1834,9 @@ test("the dashboard page carries the report tab nav and its view containers", as
   assert.ok(formIdx !== -1 && viewIdx !== -1 && formIdx < viewIdx, "the prompt form stays outside the fleet view");
 
   // Report and failures are fetched on tab activation only — no per-second polls of them.
-  assert.match(GUI_PAGE, /fetch\("\/api\/report\?days=14"\)/);
+  assert.match(GUI_PAGE, /getJson\("\/api\/report\?days=14"\)/);
   assert.match(GUI_PAGE, /if \(v === "report"\) fetchReport\(\)/);
-  assert.match(GUI_PAGE, /fetch\("\/api\/failures\?days=14"\)/);
+  assert.match(GUI_PAGE, /getJson\("\/api\/failures\?days=14"\)/);
   assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
   assert.equal(GUI_PAGE.match(/setInterval\(/g)?.length ?? 0, 1, "the only poll is the existing 1s status refresh");
 });

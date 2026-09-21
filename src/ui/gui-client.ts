@@ -19,6 +19,19 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     } catch { /* unreadable body — the status alone still names the failure */ }
     return new Error(path + " failed: HTTP " + r.status + (detail ? " — " + detail : ""));
   }
+  // One response guard for every API call this page makes: send the request and, on a non-2xx,
+  // throw apiError (endpoint, status, and the server's error) instead of letting a JSON error
+  // body be treated as data. Every endpoint call routes through apiFetch, so the r.ok check
+  // lives in one place and cannot be dropped at a single site.
+  async function apiFetch(path, init) {
+    const r = await fetch(path, init);
+    if (!r.ok) throw await apiError(path, r);
+    return r;
+  }
+  // A GET whose body is JSON: apiFetch plus the parse (the polling reads below).
+  async function getJson(path) {
+    return (await apiFetch(path)).json();
+  }
   const fmtTokens = (n) => (n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
   // last-tick-fmt:start
   // Last tick cell — mirrors the TUI's lastTickCell in status-render.ts: the absolute local
@@ -223,9 +236,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   async function fetchReport() {
     const panel = document.getElementById("report");
     try {
-      const r = await fetch("/api/report?days=14");
-      if (!r.ok) throw await apiError("/api/report", r);
-      const d = await r.json();
+      const d = await getJson("/api/report?days=14");
       const block = (title, svg) => "<div class='chartblock'><div class='charttitle'>" + title + "</div>" + svg + "</div>";
       panel.innerHTML = "<div class='stats'>" + reportSummary(d) + "</div>" +
         block("Output tokens per day", chartTokens(d)) +
@@ -244,9 +255,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   async function fetchFailures() {
     const panel = document.getElementById("failures");
     try {
-      const r = await fetch("/api/failures?days=14");
-      if (!r.ok) throw await apiError("/api/failures", r);
-      const d = await r.json();
+      const d = await getJson("/api/failures?days=14");
       panel.innerHTML = "<span class='muted'>failure digest — last 14 days — click the tab again to refresh</span>\\n" + esc(d.markdown || "(no digest)");
     } catch (e) {
       // Same guard as fetchReport: name the endpoint, status, and server error.
@@ -306,9 +315,8 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     // Empty means "no cap" (0 disables).
     const value = input.value === "" ? 0 : Number(input.value);
     try {
-      const r = await fetch("/api/budget", { method: "POST", headers: { "content-type": "application/json" },
-                                              body: JSON.stringify({ maxDailyCostUsd: value }) });
-      if (!r.ok) throw await apiError("/api/budget", r);
+      await apiFetch("/api/budget", { method: "POST", headers: { "content-type": "application/json" },
+                                     body: JSON.stringify({ maxDailyCostUsd: value }) });
       budgetEditing = false; // the next poll re-renders the badge from the payload
     } catch (e) {
       showFlash("error: " + e.message); // stay in edit mode so the operator can fix it
@@ -362,14 +370,12 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     if (!transcriptRole && !backlogKey) { panel.hidden = true; panel.innerHTML = ""; return; }
     try {
       if (transcriptRole) {
-        const r = await fetch("/api/transcript?role=" + encodeURIComponent(transcriptRole) + "&n=50");
-        // Same guard as the backlog branch below and fetchReport above: every error body
-        // /api/transcript sends is JSON ({error}) with no lines, so without it a failed poll
-        // (400 for an out-of-catalog role, 500 when the log read throws) would render "(no
-        // transcript yet for this loop)" — claiming the log is empty. Throwing keeps the
-        // previous panel content, like every other failed poll here.
-        if (!r.ok) throw await apiError("/api/transcript", r);
-        const d = await r.json();
+        // The shared getJson guard (same as the backlog branch below and fetchReport above):
+        // every error body /api/transcript sends is JSON ({error}) with no lines, so without
+        // it a failed poll (400 for an out-of-catalog role, 500 when the log read throws)
+        // would render "(no transcript yet for this loop)" — claiming the log is empty.
+        // Throwing keeps the previous panel content, like every other failed poll here.
+        const d = await getJson("/api/transcript?role=" + encodeURIComponent(transcriptRole) + "&n=50");
         const lines = Array.isArray(d.lines) ? d.lines : [];
         panel.hidden = false;
         panel.innerHTML = "<span class='muted'>transcript: " + esc(transcriptRole) +
@@ -381,9 +387,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
         // is model-written markdown: escape it before innerHTML like every other dynamic value,
         // or HTML in a plan/bug entry would execute in the dashboard (XSS).
         const [file, index] = backlogKey.split(":");
-        const r = await fetch("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index));
-        if (!r.ok) throw await apiError("/api/backlog", r);
-        const d = await r.json();
+        const d = await getJson("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index));
         panel.hidden = false;
         panel.innerHTML = "<span class='muted'>" + esc(d.title) +
           " — click the entry again to close</span>\\n" + (esc(d.body) || "(no details for this entry)");
@@ -392,15 +396,14 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   }
   async function refresh() {
     try {
-      const r = await fetch("/api/status");
-      // Same guard as the panel fetches below: the server's own 500 catch sends a JSON
-      // {error} body. Without this check that body would be assigned to lastStatus and the
-      // frame would render from an error object ("orchestrator not running", empty loops)
-      // before throwing — and the budget editor would prefill from it. Throwing before the
-      // assignment keeps lastStatus at the last good payload and lands in the catch below,
-      // which reports the honest "connection lost" and keeps the last good frame.
-      if (!r.ok) throw await apiError("/api/status", r);
-      const d = await r.json();
+      // The shared getJson guard (same as the panel fetches below): the server's own 500
+      // catch sends a JSON {error} body. Without that check the body would be assigned to
+      // lastStatus and the frame would render from an error object ("orchestrator not
+      // running", empty loops) before throwing — and the budget editor would prefill from
+      // it. Throwing before the assignment keeps lastStatus at the last good payload and
+      // lands in the catch below, which reports the honest "connection lost" and keeps the
+      // last good frame.
+      const d = await getJson("/api/status");
       lastStatus = d;
       // A newer serving build means this page is stale: reload before painting a frame. The
       // first non-null sha is remembered; the failed-poll catch below never touches it, so it
@@ -501,9 +504,8 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     // server's 4xx/5xx must not clear the box and claim "queued" for a prompt that was
     // never accepted — flash the error and keep the operator's text so it can be resubmitted.
     try {
-      const r = await fetch("/api/prompt", { method: "POST", headers: { "content-type": "application/json" },
-                                               body: JSON.stringify({ text }) });
-      if (!r.ok) throw await apiError("/api/prompt", r);
+      await apiFetch("/api/prompt", { method: "POST", headers: { "content-type": "application/json" },
+                                      body: JSON.stringify({ text }) });
     } catch (e) {
       showFlash("error: " + e.message);
       return;
