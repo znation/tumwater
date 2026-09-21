@@ -107,11 +107,18 @@ terminal to halt a runaway fleet.
 **Approach (decided).**
 - `src/state.ts` — beside `isFleetPaused` (:73), add the two writers in the same file for the
   single-definition reason its doc comment gives (the scheduler and every observer read the marker
-  from disk without importing each other): `pauseFleet(root): boolean` writes `pausedPath(root)` as
-  `{ at: Date.now() }` via `writeJsonAtomic` and returns whether it changed state (false when the
-  marker already exists); `resumeFleet(root): boolean` `removeQuiet`s the marker and returns whether
-  it existed. Add `removeQuiet` to the `./files.js` import.
-- `src/operator-commands.ts` — `cmdPause` (:91) / `cmdResume` (:106) delegate to those helpers,
+  from disk without importing each other). `pauseFleet(root): boolean` writes `pausedPath(root)` as
+  `{ at: Date.now() }` via `writeJsonFile` (the plain-overwrite marker convention `cmdPause` uses
+  today; add it to state.ts's existing `./json-files.js` import) and returns whether it changed
+  state — an `fs.existsSync` check first, false when the marker already exists. `resumeFleet(root):
+  boolean` checks `fs.existsSync` for the marker, removes it with `removeQuiet`, and returns whether
+  it existed; `removeQuiet` returns void, so that existence check is the only way to report it, and
+  `./files.js` is a NEW import (state.ts imports no file helpers today). Both JSON writers call
+  `ensureParentDir` internally, so the fresh-repo path (no `.tumwater/` yet) `cmdPause` handles
+  today is preserved; prefer `writeJsonFile` over `writeJsonAtomic` here so the marker's write
+  mechanism stays exactly as it is (every reader only checks existence, so atomicity buys nothing).
+
+- `src/operator-commands.ts` — `cmdPause` (:92) / `cmdResume` (:109) delegate to those helpers,
   keeping their exact stdout (`already paused`, `not paused`, the `markerApplyNote` timing lines)
   and their idempotence, so the CLI and the new control write the marker one way.
 - `src/ui/gui.ts` — `POST /api/pause` beside `/api/budget` (:292): `readJsonObject(req, res,
@@ -156,6 +163,21 @@ has exactly two POST routes (:274, :292), and `paused` is shipped in the payload
 consumed as a control. Pattern to copy: the budget badge's markup (gui-page.ts:47), its
 render/click block (`// budget-edit:start` :257–:325), its route (:292), and its DOM-stub test
 (test/gui.test.ts:1001). One run: ~110 lines of source (mostly the client block) plus tests.
+
+**Refined 2026-09-21 (plan loop)** against main `6926014`: every seam re-verified — `isFleetPaused`
+src/state.ts:73, `cmdPause`/`cmdResume` src/operator-commands.ts:92/:109 (drifted +1/+3 since the
+2026-09-20 ground), the pause/resume tests test/operator-commands.test.ts:198–:233, gui-page's
+`budgetwrap` :47, the two POST routes (:274/:292), the budget block `// budget-edit:start`…`:end`
+(:257–:325) and its `renderBudgetBadge(d)` call (:403), `paused` in the payload
+(src/ui/status-payload.ts:55) and in status-model.ts:124 — all still match. Capability absence
+re-confirmed: `grep -rn 'pausewrap|api/pause|pauseFleet|resumeFleet' src/` is empty, and
+`grep -rn 'fleet_paused' src/` shows only the orchestrator's transition event (src/orchestrator.ts:453,
+read through `isFleetPaused`), never a writer. Three implementer traps now pinned in the approach:
+state.ts has no `./files.js` import today (the `removeQuiet` import is new, not an addition);
+`removeQuiet` returns void, so `resumeFleet` must `fs.existsSync` before removing to report whether
+the marker existed; and the writer should be `writeJsonFile` (what `cmdPause` uses today), keeping
+the fresh-repo path behavior-preserving where `writeJsonAtomic` would silently change the marker's
+write mechanism. No design question is left open.
 
 ### Human-friendly numbers in the report tab's chart labels (planned 2026-09-20, requested by user, done 2026-09-21)
 
