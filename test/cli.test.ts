@@ -879,7 +879,11 @@ test("reset-counters zeroes counters in every role's state file and writes the f
   const r = await cli(repo, "reset-counters");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /counters reset for/);
-  assert.match(r.stdout, /running fleet picks this up within ~2s/);
+  // No orchestrator.json in this repo: the honest no-harness wording, not a ~2s pickup
+  // promise no process will make (the live wording is pinned by the test below).
+  assert.match(r.stdout, /takes effect on the next `tumwater run`/);
+  assert.match(r.stdout, /no harness is running/);
+  assert.doesNotMatch(r.stdout, /within ~2s/);
 
   for (const role of ["feature", "clean"]) {
     const s = loadLoopState(repo, role);
@@ -934,6 +938,30 @@ test("reset-counters --role targets one loop; unknown or missing role fails with
   r = await cli(repo, "reset-counters", "--role");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--role needs a role id/);
+});
+
+test("reset-counters and wake name the live effect when a harness is running", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli reset wake live");
+
+  // Record this test process as the running orchestrator (it is alive).
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(
+    orchestratorStatePath(repo),
+    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["feature"] }),
+  );
+
+  const reset = await cli(repo, "reset-counters");
+  assert.equal(reset.code, 0);
+  assert.match(reset.stdout, /a running fleet picks this up within ~2s/);
+  assert.doesNotMatch(reset.stdout, /no harness is running/);
+
+  const wake = await cli(repo, "wake");
+  assert.equal(wake.code, 0);
+  assert.match(wake.stdout, /a running fleet applies it within ~2s/);
+  assert.doesNotMatch(wake.stdout, /no harness is running/);
+
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
 
 // --- wake ---

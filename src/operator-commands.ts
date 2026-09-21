@@ -20,13 +20,14 @@ import { DIRECTOR_ROLE } from "./roles.js";
  * `abort`, which has nothing to consume its one-shot marker when no fleet is up. */
 
 /** How a marker command reports when its marker takes effect, derived from one liveness
- * check: `when` is the " within ~2s" a live fleet will pick it up in, and `tail` names the
- * fallback ("takes effect on the next `tumwater run`") while no harness is running. `pause`
- * and `resume` share this so neither can promise a timing the other denies — the one place
- * that user-facing contract lives. */
-function markerApplyNote(root: string): { when: string; tail: string } {
+ * check: `live` says whether a fleet will consume it now, `when` is the " within ~2s" such a
+ * fleet picks it up in, and `tail` names the fallback ("takes effect on the next `tumwater
+ * run`") while no harness is running. Every marker command shares this so none can promise a
+ * timing the others deny — the one place that user-facing contract lives. */
+function markerApplyNote(root: string): { live: boolean; when: string; tail: string } {
   const live = orchestratorAlive(root);
   return {
+    live,
     when: live ? " within ~2s" : "",
     tail: live ? "" : "; no harness is running, so it takes effect on the next `tumwater run`",
   };
@@ -51,7 +52,15 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
   const targets = targetRoles(root, args);
   for (const r of targets) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
   writeJsonFile(resetRequestPath(root), { at: Date.now(), roles: targets });
-  process.stdout.write(`counters reset for ${targets.join(", ")} — a running fleet picks this up within ~2s\n`);
+  // Only a live fleet consumes the marker; without one the state files are already zeroed and
+  // the next `tumwater run` is when the in-memory copies catch up. Name which case this is
+  // rather than promising a ~2s pickup that no process will make.
+  const { live, when } = markerApplyNote(root);
+  process.stdout.write(
+    `counters reset for ${targets.join(", ")} — ${
+      live ? `a running fleet picks this up${when}` : "takes effect on the next `tumwater run` (no harness is running)"
+    }\n`,
+  );
 }
 
 /** `tumwater wake [--role <id>]`: tell the fleet "whatever the loops were failing on is
@@ -68,7 +77,14 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   const now = Date.now();
   for (const r of targets) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
   writeJsonFile(wakeRequestPath(root), { at: now, roles: targets });
-  process.stdout.write(`wake requested for ${targets.join(", ")} — a running fleet applies it within one poll\n`);
+  // Same liveness contract as reset-counters and pause/resume: only a live fleet consumes the
+  // marker, so say so instead of promising a poll that will not happen.
+  const { live, when } = markerApplyNote(root);
+  process.stdout.write(
+    `wake requested for ${targets.join(", ")} — ${
+      live ? `a running fleet applies it${when}` : "takes effect on the next `tumwater run` (no harness is running)"
+    }\n`,
+  );
 }
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot
