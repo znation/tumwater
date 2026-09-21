@@ -6,7 +6,8 @@ import {
   plannedPlanEntries,
 } from "../backlog.js";
 import { readEvents } from "../events.js";
-import { collectReport, renderReportMarkdown } from "./report.js";
+import { collectReport, renderReportMarkdown, REPORT_DEFAULT_DAYS } from "./report.js";
+import { collectFailureReport, renderFailureMarkdown } from "../failure-report.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config.js";
@@ -86,13 +87,14 @@ export async function runTui(root: string): Promise<void> {
   // entry's body — PgDn/PgUp in project-status entry mode. Reset whenever the selection
   // changes or clears, so every newly opened entry starts at its head.
   let entryScroll = 0;
-  // The usage-report pane's Markdown, computed once per activation: the Ctrl+T handler sets
-  // it when cycling into the report view and nulls it on leaving. collectReport tail-scans
-  // events.jsonl, so it must not run on every second's re-render — those only re-window this.
-  let reportCache: string | null = null;
-  // The within-body scroll offset (line index of the window head) for the usage-report pane —
-  // PgDn/PgUp there. Reset to the head whenever the view is entered, like entryScroll.
-  let reportScroll = 0;
+  // The Markdown panes' (usage report, failures) rendered bodies, computed once per activation:
+  // the Ctrl+T handler sets it when cycling into either pane and nulls it on leaving.
+  // collectReport/collectFailureReport tail-scan events.jsonl, so they must not run on every
+  // second's re-render — those only re-window this string.
+  let paneCache: string | null = null;
+  // The within-body scroll offset (line index of the window head) shared by the two Markdown
+  // panes — PgDn/PgUp there. Reset to the head whenever the view is entered, like entryScroll.
+  let paneScroll = 0;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
   // can page within it without re-deriving the height math.
   let eventBudget = 0;
@@ -117,7 +119,7 @@ export async function runTui(root: string): Promise<void> {
     currentCapUsd = snap.budget.capUsd;
     currentBudgetFree = snap.budget.free;
     roleIds = snap.loops.map((s) => s.role);
-    view = Math.min(view, roleIds.length + 2); // clamp a stale index if roles changed
+    view = Math.min(view, roleIds.length + 3); // clamp a stale index if roles changed
     const status = renderStatus(root, snap, width);
     const statusLines = status.split("\n").length;
     // A highlighted nudge above the activity pane while questions await a human answer —
@@ -177,15 +179,16 @@ export async function runTui(root: string): Promise<void> {
           body = win.lines;
         }
       }
-    } else if (view === roleIds.length + 2) {
-      // Usage report: the same Markdown `tumwater report` prints, windowed exactly like
-      // project-status entry mode. The cache is set on view entry by the Ctrl+T handler,
-      // so this branch only re-windows a string — no per-frame collectReport.
-      const win = entryBodyWindow(reportCache ?? "", reportScroll, eventBudget, width);
+    } else if (view === roleIds.length + 2 || view === roleIds.length + 3) {
+      // Markdown panes (usage report, failures): the same Markdown `tumwater report` prints,
+      // windowed exactly like project-status entry mode. The cache is set on view entry by the
+      // Ctrl+T handler, so this branch only re-windows a string — no per-frame collect.
+      const label = view === roleIds.length + 2 ? "usage report" : "failures";
+      const win = entryBodyWindow(paneCache ?? "", paneScroll, eventBudget, width);
       // The scroll affordance appears only while the body overflows the pane — a fitting
       // report keeps the plain header (the browse-hint pattern entry mode already uses).
       const scroll = win.total > eventBudget ? "PgUp/PgDn scroll · " : "";
-      header = `${BOLD}${clipToWidth(`usage report — ${scroll}Ctrl+T to cycle`, width)}${RESET}`;
+      header = `${BOLD}${clipToWidth(`${label} — ${scroll}Ctrl+T to cycle`, width)}${RESET}`;
       body = win.lines;
     } else {
       header = `${BOLD}recent activity${RESET}`;
@@ -268,13 +271,18 @@ export async function runTui(root: string): Promise<void> {
         // Ctrl+T exits budget-edit mode too — view cycling is orthogonal to it, so a cycle
         // never strands the editor with its pre-filled cap in the prompt line.
         exitBudgetMode();
-        view = (view + 1) % (roleIds.length + 3); // events → each loop's transcript → project status → usage report → events
+        view = (view + 1) % (roleIds.length + 4); // events → each loop's transcript → project status → usage report → failures → events
         selectedEntry = null; // leaving a view drops any entry selection…
         entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
-        reportScroll = 0; // the report pane always re-enters at its head
-        // Compute the report once per activation (this handler renders immediately), and drop
-        // it on leaving — a visit's first frame is fresh, later frames only re-window.
-        reportCache = view === roleIds.length + 2 ? renderReportMarkdown(collectReport(root, 14)) : null;
+        paneScroll = 0; // the Markdown panes always re-enter at their head
+        // Compute the pane's Markdown once per activation (this handler renders immediately), and
+        // drop it on leaving — a visit's first frame is fresh, later frames only re-window.
+        paneCache =
+          view === roleIds.length + 2
+            ? renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS))
+            : view === roleIds.length + 3
+              ? renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS))
+              : null;
         render();
         return;
       }
@@ -287,13 +295,13 @@ export async function runTui(root: string): Promise<void> {
         render();
         return;
       }
-      if (view === roleIds.length + 2 && (key.name === "pageup" || key.name === "pagedown")) {
-        // Within-body scroll in the usage-report pane: PgDn/PgUp page the cached report,
-        // clamped at both ends. The total is derived from the cache, mirroring how entry
-        // mode derives it from e.body; every other view ignores these keys as today.
-        const total = (reportCache ?? "").split("\n").length;
-        reportScroll = stepEntryScroll(
-          reportScroll,
+      if (view >= roleIds.length + 2 && (key.name === "pageup" || key.name === "pagedown")) {
+        // Within-body scroll in the Markdown panes (usage report, failures): PgDn/PgUp page the
+        // cached string, clamped at both ends. The total is derived from the cache, mirroring how
+        // entry mode derives it from e.body; every other view ignores these keys as today.
+        const total = (paneCache ?? "").split("\n").length;
+        paneScroll = stepEntryScroll(
+          paneScroll,
           total,
           eventBudget,
           key.name === "pagedown" ? "down" : "up",

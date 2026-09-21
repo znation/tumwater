@@ -538,7 +538,7 @@ function atNoon(daysAgo: number): number {
   return d.getTime();
 }
 
-test("Ctrl+T cycles events → transcript → project status → usage report with real content", async () => {
+test("Ctrl+T cycles events → transcript → project status → usage report → failures", async () => {
   const repo = await makeTuiRepo();
   // Seed the clean loop's pi log with one assistant turn so the transcript pane has
   // something real to show (the user message must never render).
@@ -603,6 +603,14 @@ test("Ctrl+T cycles events → transcript → project status → usage report wi
     assert.match(frame, new RegExp(`\\| ${formatDate(new Date(atNoon(1))).slice(5)} \\| 500`));
     assert.match(frame, new RegExp(`\\| ${formatDate(new Date(atNoon(0))).slice(5)} \\| 150`));
 
+    tui.key(undefined, "t", { ctrl: true }); // → failures
+    frame = tui.lastFrame();
+    assert.match(frame, /failures — (PgUp\/PgDn scroll · )?Ctrl\+T to cycle/);
+    // The pane shows exactly renderFailureMarkdown(collectFailureReport(root, 14)): the
+    // digest head, with a real outcome row for the seeded ticks' roles.
+    assert.match(frame, /# tumwater failure digest/);
+    assert.match(frame, /## Outcome by role/);
+
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /recent activity/); // wraps back to events
   } finally {
@@ -663,8 +671,9 @@ test("project status browses entries in full with up/down and resets on Ctrl+T",
 
     tui.key(undefined, "t", { ctrl: true }); // leaves the view and clears the selection…
     assert.match(tui.lastFrame(), /usage report —/); // …onto the usage-report pane (no events seeded)
-    tui.key(undefined, "t", { ctrl: true });
-    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "t", { ctrl: true }); // → failures
+    tui.key(undefined, "t", { ctrl: true }); // → events
+    tui.key(undefined, "t", { ctrl: true }); // → transcript
     tui.key(undefined, "t", { ctrl: true }); // → project status again
     frame = tui.lastFrame();
     assert.match(frame, /project status — Ctrl\+T to cycle/); // list mode restored…
@@ -1044,7 +1053,7 @@ test("Ctrl+B again exits budget-edit mode, restoring the draft byte-for-byte", a
   }
 });
 
-// PgDn/PgUp in the usage-report view (the last view of the Ctrl+T cycle) page the cached
+// PgDn/PgUp in the usage-report view page the cached
 // report within the pane's line budget, clamped at both ends. The 14-day report is 24
 // lines (8 chrome + 14 day rows + 2); a dozen queued prompts each consume one line of
 // the budget, so the window (≤ ~21 lines at rows=40) is strictly smaller than the report
@@ -1081,6 +1090,49 @@ test("the usage-report pane pages with PgDn/PgUp, clamped at both ends", async (
     const headFrame = frame;
     tui.key(undefined, "pageup");
     assert.equal(tui.lastFrame(), headFrame, "PgUp past the head is a no-op");
+  } finally {
+    await tui.quit();
+  }
+});
+
+// The failures pane (the view after usage report) reuses the same cached-Markdown machinery.
+// With no events the 14-day digest is ~24 lines; a dozen queued prompts shrink the window to
+// ~12 lines (rows=40), so paging has real room in both directions.
+test("the failures pane pages with PgDn/PgUp, clamped at both ends", async () => {
+  const repo = await makeTuiRepo();
+  for (let i = 1; i <= 12; i++) submitPrompt(repo, `prompt ${i}`);
+
+  const tui = startTui(repo);
+  try {
+    tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
+    tui.key(undefined, "t", { ctrl: true }); // → project status
+    tui.key(undefined, "t", { ctrl: true }); // → usage report
+    tui.key(undefined, "t", { ctrl: true }); // → failures
+    let frame = tui.lastFrame();
+    assert.match(frame, /failures — PgUp\/PgDn scroll · Ctrl\+T to cycle/);
+    assert.match(frame, /# tumwater failure digest/); // head window shows the title
+    assert.doesNotMatch(frame, /## Landed in the window/); // …and not the tail
+
+    // Repeated PgDn advances pages and clamps at the tail: the tail line is visible and
+    // the title has scrolled out of the window.
+    for (let i = 0; i < 8; i++) tui.key(undefined, "pagedown");
+    frame = tui.lastFrame();
+    assert.match(frame, /## Landed in the window/);
+    assert.doesNotMatch(frame, /# tumwater failure digest/);
+    const tailFrame = frame;
+    tui.key(undefined, "pagedown");
+    assert.equal(tui.lastFrame(), tailFrame, "PgDn past the tail is a no-op");
+
+    // Re-entering the view recomputes the cache and starts at the head again.
+    tui.key(undefined, "t", { ctrl: true }); // → events
+    tui.key(undefined, "t", { ctrl: true }); // → transcript
+    tui.key(undefined, "t", { ctrl: true }); // → project status
+    tui.key(undefined, "t", { ctrl: true }); // → usage report
+    tui.key(undefined, "t", { ctrl: true }); // → failures
+    assert.match(tui.lastFrame(), /# tumwater failure digest/);
+
+    tui.key(undefined, "pageup");
+    assert.match(tui.lastFrame(), /# tumwater failure digest/, "PgUp at the head is a no-op");
   } finally {
     await tui.quit();
   }

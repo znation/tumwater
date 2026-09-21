@@ -28,7 +28,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7; 4c/7 is markdown-only. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
-### TUI failures pane — the failure digest in the Ctrl+T cycle (planned 2026-09-20)
+## Done
+
+### TUI failures pane — the failure digest in the Ctrl+T cycle (planned 2026-09-20, done 2026-09-21)
+
+**Landed 2026-09-21 (feature loop).** As planned: `src/ui/tui.ts` imports `REPORT_DEFAULT_DAYS` from `./report.js` (the report pane's hardcoded `14` now uses the shared constant for both panes) and `collectFailureReport` / `renderFailureMarkdown` from `../failure-report.js`; the one cached-Markdown mechanism is renamed `reportCache`/`reportScroll` → `paneCache`/`paneScroll` and serves both panes. Ctrl+T cycles events → transcripts → project status → usage report → failures (`roleIds.length + 4`), the failures pane computes `renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS))` on entry and page-windows it under a `failures — [PgUp/PgDn scroll · ]Ctrl+T to cycle` header, and the stale-index clamp widened to `roleIds.length + 3`. Tests: the Ctrl+T cycle test now asserts the failures pane, a new paging test covers PgDn/PgUp clamping and the cache reset on re-entry, and the project-status browse test's cycle count follows the extra view. No README change, as the plan decided.
 
 **Goal.** Give the TUI the same failure digest the GUI's `failures` tab and `tumwater report
 --failures` already show: a pane in the Ctrl+T cycle (events → each loop's transcript → project
@@ -86,7 +90,6 @@ clamp :120, the report render branch :180, the Ctrl+T modulo :271 and cache assi
 PgUp/PgDn branch :290–300; the cycle test at test/tui.test.ts:541 and the report paging test at
 :1047 are the two to extend. One run: ~30 lines in one file plus tests.
 
-## Done
 
 ### Fleet pause from the dashboard — a click-to-pause control in the GUI header (planned 2026-09-20, done 2026-09-21)
 
