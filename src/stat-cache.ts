@@ -7,8 +7,7 @@ import { statOrNull } from "./files.js";
  * every observer and loader that polls a slowly-changing file — backlog.ts's markdown sections,
  * inbox.ts's prompt contents, status.ts's loop states, config.ts's live-reloaded tumwater.json,
  * pi-models.ts's models.json, and land-queue.ts's entry contents. Any write invalidates via
- * dev/ino/mtime/size —
- * the same freshness check as tail.ts's incremental log readers. */
+ * dev/ino/mtime/size — the same freshness check as tail.ts's incremental log readers. */
 
 /** One entry of a stat-keyed cache: the file's identity and freshness at read time plus the
  * value derived from it. */
