@@ -50,14 +50,14 @@ Open items:
   binary (planned 2026-09-14, requested by user; the PLANS.md portability series 1/7–7/7).
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the spend
   cap into an hour of 100% tick failure instead of pausing the fleet (filed 2026-09-20).
-- Open bug: a killed tick leaks its tool-call grandchildren — `terminateChild` signals only the pi
-  process, never its group (filed 2026-09-20).
 - Open bug: a persistent review failure never reaches the error-streak alarm — each recovery tick
   that re-fails resets `consecutiveErrors`, so a dead reviewer backend fails silently forever
   (filed 2026-09-21).
+- Open bug: leftover recovery records a generic merge summary, so the failure digest's `## Landed
+  in the window` cannot name recovered work (filed 2026-09-21).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`b05c79c`): build clean, suite 1252/1252.
+Current main (`c2ff74b`): build clean, suite 1257/1257.
 <!-- tumwater:status:end -->
 
 ## How it works
