@@ -480,7 +480,6 @@ test("formatEvent tells a cut-off resume from a restart resume", () => {
   assert.equal(formatEvent({ ts: 0, loop: "improve", type: "resume" } as never), restart);
 });
 
-
 test("formatEvent prices the gates: build_check lines and review durations", () => {
   const gate = formatEvent({ ts: 0, loop: "feature", type: "build_check", scope: "gate", status: "passed", script: "test", durationMs: 57_000 } as never);
   assert.match(gate, /build check \(gate\): npm test passed \(in 57s\)/);
