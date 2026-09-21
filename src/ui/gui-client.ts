@@ -348,12 +348,12 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   }
   async function togglePause() {
     // The opposite of the last server-reported state; the poll re-renders the badge after a
-    // successful POST, so the control never paints a state the marker does not hold.
+    // successful POST, so the control never paints a state the marker does not hold. Routes
+    // through the shared apiFetch guard, like every other endpoint call.
     const target = !(lastStatus && lastStatus.paused);
     try {
-      const r = await fetch("/api/pause", { method: "POST", headers: { "content-type": "application/json" },
-                                             body: JSON.stringify({ paused: target }) });
-      if (!r.ok) throw await apiError("/api/pause", r);
+      await apiFetch("/api/pause", { method: "POST", headers: { "content-type": "application/json" },
+                                      body: JSON.stringify({ paused: target }) });
     } catch (e) {
       showFlash("error: " + e.message); // no optimistic state; fix and click again
     }

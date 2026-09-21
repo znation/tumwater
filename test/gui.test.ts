@@ -810,6 +810,7 @@ test("the dashboard page checks r.ok before parsing both on-demand panel fetches
   assert.match(GUI_PAGE, /if \(!r\.ok\) throw await apiError\(path, r\);/);
   assert.match(GUI_PAGE, /async function apiError\(path, r\)/);
   assert.match(GUI_PAGE, /await apiFetch\("\/api\/budget", \{ method: "POST"/);
+  assert.match(GUI_PAGE, /await apiFetch\("\/api\/pause", \{ method: "POST"/);
   // The report panel surfaces the same message instead of a bare "unavailable".
   assert.match(GUI_PAGE, /report unavailable" \+ \(e && e\.message/);
 });
@@ -1294,18 +1295,17 @@ test("the pause badge reflects the payload and its click POSTs the opposite stat
   };
   const lastStatus: { paused?: boolean } = { paused: false };
   const posts: unknown[] = [];
-  const fetch = async (_url: string, opts: { body: string }) => {
+  const apiFetch = async (_url: string, opts: { body: string }) => {
     posts.push(JSON.parse(opts.body));
     return { ok: true };
   };
   const { renderPauseBadge, togglePause } = new Function(
     "document",
-    "fetch",
-    "apiError",
+    "apiFetch",
     "showFlash",
     "lastStatus",
     block + "\nreturn { renderPauseBadge, togglePause };",
-  )(document, fetch, async () => new Error("x"), () => {}, lastStatus) as {
+  )(document, apiFetch, () => {}, lastStatus) as {
     renderPauseBadge: (d: { paused: boolean }) => void;
     togglePause: () => Promise<void>;
   };
