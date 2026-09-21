@@ -839,6 +839,14 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
       failed.some((e) => /no parseable VERDICT/.test(String(e.message))),
       `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,
     );
+    // Tick 2's own result was `no_change`; the recovery review's failure must not latch onto
+    // its `tick_end` as the tick's error (BUGS.md 2026-09-21). The review_failed event above
+    // is where the landing failure lives.
+    assert.equal(runner.state.lastError, undefined, "the recovery review failure is not latched onto tick 2");
+    const tickEnds = readEvents(repo).filter((e) => e.type === "tick_end");
+    const tick2End = tickEnds[tickEnds.length - 1]!;
+    assert.equal(tick2End.result, "no_change");
+    assert.equal(tick2End.error, undefined, "a successful tick's tick_end carries no stale landing error");
   } finally {
     restore();
   }

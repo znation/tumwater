@@ -593,6 +593,13 @@ export class LoopRunner {
         // re-review is the point.
         await deleteRef(this.root, landingRefName(this.role));
       }
+      // A recovery landing's failure belongs to the LANDING, not to this tick: the lander wrote
+      // it into the shared `state.lastError` (src/lander.ts), but this tick's own authoring run
+      // may well succeed, and `tick_end` reports `lastError` whatever the result. Clear it so a
+      // `queued`/`no_change` tick never wears the recovery gate's `review failed: …` — the
+      // landing's own `review_failed`/`land_failed` events already carry the reason
+      // (BUGS.md 2026-09-21).
+      s.lastError = undefined;
       await resetWorktreeToMain(wt, this.mainBranch);
       // Red-main baseline gate (src/main-red.ts): the worktree is pristine main right now —
       // verify main's own suite before spending an authoring run on top of it. Only roles whose

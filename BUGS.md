@@ -25,7 +25,19 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Suspected cause:** `terminateChild` was written when pi was assumed to be the leaf of the process tree; it is in fact an agent whose whole purpose is spawning tool calls. The `exec` workaround in the tests dates from the same assumption and made the gap invisible — the suite pins that a killed run *ends promptly*, never that it leaves nothing behind.
 
-### A landing review failure latches the review gate's message onto the authoring tick's `lastError`, so `tick_end` reports it as the tick's own error (found by telemetry loop 2026-09-21)
+### A persistent review failure never reaches the error-streak alarm: every recovery tick that re-fails resets `consecutiveErrors` (found by telemetry loop 2026-09-21)
+
+**Symptom:** A dead reviewer backend fails the review gate for every leftover pinned commit, and the fleet's alarms stay silent. `landChange` returns `review_error`, but the recovery runs inside a tick whose own authoring run then ends `queued`/`no_change`; `applyTickOutcome` resets `consecutiveErrors` on any non-error result, so the streak never crosses `ERROR_STREAK_WARN` and no `warning` fires however many times the gate keeps failing. `5b32f62` (2026-09-21, "Stop a failed reviewer run from striking and discarding committed work") removed the destructive half of a dead reviewer — the commit now survives — but left this liveness gap — a reviewer that never recovers keeps every leftover pinned forever with nothing naming it. This is the liveness half of the sibling Fixed entry above, split out because the mislabel fix does not touch the alarm.
+
+**Repro:** Deterministic, no model. Fake pi replies without a VERDICT to every review run and with `TUMWATER_NOTHING_TO_DO` to author runs; run enough ticks that the reviewer fails `ERROR_STREAK_WARN` times. Observe that no `warning` event names the persistent review failure and `state.consecutiveErrors` reads 0 after each `no_change` recovery tick.
+
+**Expected:** A run of consecutive `review_error` recovery landings should feed the same error streak the tick outcomes do — so a dead reviewer backend raises one `warning` and reads `failing` in both dashboards instead of failing silently forever. The landing failures are already logged as `review_failed`; the streak should count them.
+
+**Suspected cause:** `applyTickOutcome` (src/state.ts) keys the streak on the tick's own `outcome.result`, and a recovery landing's result is deliberately not the tick's result (the tick keeps authoring). No field carries "the recovery landing failed" into the streak.
+
+## Fixed
+
+### A landing review failure latches the review gate's message onto the authoring tick's `lastError`, so `tick_end` reports it as the tick's own error (found by telemetry loop 2026-09-21, fixed 2026-09-21)
 
 **Symptom:** The 2026-09-21 digest's `## Top error clusters` holds **35** occurrences — 25× `429 "Rate limit exceeded"`, 5× `terminated`, 3× `review failed: 429 "Rate limit exceeded"` (roles `clean`, `dry`, `feature`), 1× `killed as hung: no pi progress for over 3600s`, 1× `Request timed out.` — but the same digest's `## Outcome by role` table tallies only **31** ticks in its `error` column (feature 4, coverage 8, bugfix 3, perf 5, improve 4, plan 3, readme 1, qa 1, director 1, telemetry 1). Four ticks are presented as errors that did not end `error`: `killed as hung` rides the one `quiet_killed` tick, and the three `review failed: 429` entries ride ticks whose own result was `queued`/`no_change`. `clean` and `dry` make it plainest — each carries a `review failed: 429` cluster entry beside a `0%` error rate and no warning at all. So the digest claims four more tick errors than occurred and attributes the review gate's backend failures to ticks that succeeded; worse, the failing *landings* themselves stay invisible to every alarm, because the delta's error rate and `consecutiveErrors` both key off `outcome.result`.
 
@@ -37,7 +49,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Suspected cause:** `LoopState.lastError` is a single slot shared by the tick lifecycle and the lander, and the two write it at different scopes — the tick clears it once at `runTick`'s start, the lander overwrites it mid-tick during recovery. The digest's cluster rule was specified from the assumption that only `error` ticks carry the field (plans/telemetry-role.md item 5), so the misattribution was never caught: no test asserts `tick_end.error` is empty when the result is not `error`, and the cluster test (`test/failure-report.test.ts`) feeds only error-result ticks.
 
-## Fixed
+**Fix:** `runTick` now clears `state.lastError` immediately after `recoverLeftover` returns (src/loop.ts), so a recovery landing's `review failed: …` never rides the following authoring tick's `tick_end`; the landing's own `review_failed` event already carries the reason. `collectFailureReport` now clusters only `result === "error"` ticks (src/failure-report.ts), making `## Top error clusters` total equal `## Outcome by role`'s error column, and a new `## Review failures` section clusters `review_failed` events on their own so landing failures stay visible instead of vanishing with the mislabel. Regression tests: `test/failure-report.test.ts` pins the two totals equal and the review-failure section; `test/loop-3.test.ts`'s failed-recovery-review test now asserts tick 2's `no_change` `tick_end` carries no stale error and `state.lastError` is undefined. The separate liveness gap — a persistent review failure never reaching the error streak — is recorded as its own Open entry.
+
+**Validation gap:** unclear-invariant — the code never pinned that `tick_end.error` is empty when the result is not `error` (the telemetry digest spec assumed it), so the correct invariant had to be reconstructed from the lander and the tick sharing `state.lastError` before the latch could be called a bug; the offline repro was otherwise deterministic.
 
 ### Every Fixed entry lacks the `**Validation gap:**` trace, so the repair-trace tally has no population and the Fixed backlog cannot be compressed (found by steward 2026-09-20, fixed 2026-09-21)
 

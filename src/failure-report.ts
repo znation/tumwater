@@ -26,6 +26,7 @@ export function telemetryDigest(root: string): string | undefined {
  * byte bound below for what these buy. */
 const ERROR_TOP = 7;
 const WARNING_TOP = 7;
+const REVIEW_FAILURE_TOP = 5;
 const REJECTION_TOP = 5;
 const LANDED_TOP = 10;
 const EXAMPLE_MAX = 120;
@@ -142,6 +143,7 @@ interface FailureReportData {
   deltas: DeltaRow[];
   errorClusters: Cluster[];
   warningClusters: Cluster[];
+  reviewFailureClusters: Cluster[];
   rejectionClusters: Cluster[];
   landed: LandedCommit[];
   stateChanges: StateChange[];
@@ -308,9 +310,13 @@ export function collectFailureReport(root: string, days: number): FailureReportD
         a.role.localeCompare(b.role),
     );
 
+  // Only ticks that ENDED as errors carry a tick error: `state.lastError` is shared state the
+  // lander also writes, so a successful tick's `tick_end` can carry a leftover landing failure's
+  // text (BUGS.md 2026-09-21). Clustering by result keeps this section's total equal to the
+  // Outcome table's error column; landing failures surface in their own section below.
   const errorClusters = clusterMessages(
     tickEvents
-      .filter((ev) => typeof ev.error === "string" && ev.error !== "")
+      .filter((ev) => ev.result === "error" && typeof ev.error === "string" && ev.error !== "")
       .map((ev) => ({ message: ev.error as string, role: eventRole(ev), ts: ev.ts })),
     ERROR_TOP,
   );
@@ -331,6 +337,18 @@ export function collectFailureReport(root: string, days: number): FailureReportD
         return { message: first, role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
       }),
     REJECTION_TOP,
+  );
+
+  // Landing review failures: a reviewer that could not return a parseable verdict (a dead
+  // backend, a transport error) fails closed and keeps the commit, but its authoring tick ends
+  // `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
+  // `tick_end.error`. Clustered on their own so the telemetry role can see a gate that keeps
+  // failing without misreading it as a tick error (BUGS.md 2026-09-21).
+  const reviewFailureClusters = clusterMessages(
+    current
+      .filter((ev) => ev.type === "review_failed" && typeof ev.message === "string" && ev.message !== "")
+      .map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })),
+    REVIEW_FAILURE_TOP,
   );
 
   const landed: LandedCommit[] = current
@@ -371,6 +389,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     deltas,
     errorClusters,
     warningClusters,
+    reviewFailureClusters,
     rejectionClusters,
     landed,
     stateChanges,
@@ -476,6 +495,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
 
   renderClusters(lines, "Top error clusters", data.errorClusters, "no tick errors in the window");
   renderClusters(lines, "Top warning clusters", data.warningClusters, "no warnings in the window");
+  renderClusters(lines, "Review failures", data.reviewFailureClusters, "no landing review failures in the window");
   renderClusters(lines, "Review rejections", data.rejectionClusters, "no review rejections in the window");
 
   lines.push("");

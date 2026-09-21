@@ -107,6 +107,40 @@ test("review rejections cluster on (role, reasons[0]), not role alone", () => {
   assert.equal(data.rejectionClusters.length, 3);
 });
 
+test("tick errors cluster only on error-result ticks; landing review failures get their own section", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    // A tick that did NOT end as an error but carries a stale `lastError` — the lander wrote the
+    // shared slot during leftover recovery. It must not be counted as a tick error (BUGS.md
+    // 2026-09-21).
+    { ts: at(0), loop: "clean", type: "tick_end", result: "no_change", error: 'review failed: 429 "Rate limit exceeded"' },
+    { ts: at(0), loop: "dry", type: "tick_end", result: "queued", error: 'review failed: 429 "Rate limit exceeded"' },
+    // The landing failure itself is surfaced from its own event.
+    { ts: at(0), loop: "clean", type: "review_failed", head: "a".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
+    { ts: at(0), loop: "dry", type: "review_failed", head: "b".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
+    // A real tick error still clusters.
+    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const errorTotal = data.outcomes.reduce((n, o) => n + (o.counts.error ?? 0), 0);
+  assert.equal(errorTotal, 1, "only the error-result tick counts as an error");
+  assert.equal(
+    data.errorClusters.reduce((n, c) => n + c.count, 0),
+    errorTotal,
+    "the error-cluster total equals the Outcome table's error column",
+  );
+  assert.ok(
+    data.errorClusters.every((c) => !c.key.includes("review failed")),
+    "a successful tick's stale lastError is not a tick error",
+  );
+  assert.equal(data.reviewFailureClusters.length, 1);
+  assert.equal(data.reviewFailureClusters[0]?.count, 2);
+  assert.deepEqual(data.reviewFailureClusters[0]?.roles, ["clean", "dry"]);
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /## Review failures/);
+  assert.match(md, /no parseable VERDICT/);
+});
+
 test("a window longer than the retained log is reported as partial", () => {
   const root = tmpdir();
   writeEvents(root, [{ ts: at(2), loop: "feature", type: "tick_end", result: "error", error: "boom" }]);
