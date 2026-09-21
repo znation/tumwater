@@ -46,18 +46,29 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
+- Planned: human-friendly numbers in the report tab's chart labels — route all three chart
+  builders through the GUI's existing `fmtTokens` (planned 2026-09-20, requested by user).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; nine sub-plans in plans/portability.md, 4/7 split
   three ways on 2026-09-19).
+- Planned: TUI failures pane — render the failure digest in the Ctrl+T view cycle (planned
+  2026-09-20).
+- Planned: fleet pause from the dashboard — a click-to-pause/resume control in the GUI header
+  (planned 2026-09-20).
+- Open bug: the GUI and TUI abbreviate millions as `k` — 13.8M output tokens renders as
+  `13820.3k`; `compactTokens` and the GUI's `fmtTokens` need the report's `M` branch (filed
+  2026-09-20, reported by user).
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the spend
   cap into an hour of 100% tick failure instead of pausing the fleet (filed 2026-09-20).
 - Open bug: a dead reviewer backend destroys committed work — transport errors count toward
   `REVIEW_FAILURE_LIMIT` and hard-reset the worktree (filed 2026-09-20).
 - Open bug: a killed tick leaks its tool-call grandchildren — `terminateChild` signals only the pi
   process, never its group (filed 2026-09-20).
+- Open bug: the failure digest carries outcomes but not the harness decisions that produced them,
+  so the telemetry role cannot apply its own load-bearing rule (filed 2026-09-20).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`ef9a1aa`): build clean, suite 1232/1232.
+Current main (`93837f1`): build clean, suite 1232/1232.
 <!-- tumwater:status:end -->
 
 ## How it works
