@@ -1105,6 +1105,28 @@ test("logs --role --prompt shows each run's exact prompt and -n limits to the ne
   assert.match(r.stderr, /logs --prompt needs --role <id>/);
 });
 
+test("logs --role still reads a transcript when tumwater.json is broken", async () => {
+  // The read-only transcript view needs the config only to accept user-defined loop ids, so a
+  // torn/mid-edit tumwater.json must not take it down: it falls back to the built-in catalog,
+  // the same policy the GUI's transcript handler applies. Before that fallback, loadConfig threw
+  // and the whole command exited 1 with the config error.
+  const repo = makeRepo();
+  await initProject(repo, "broken config transcript test");
+  fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
+  const file = piLogPath(repo, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, [JSON.stringify({ type: "agent_start" }), assistantLine("readable anyway")].join("\n") + "\n");
+
+  const r = await cli(repo, "logs", "--role", "clean");
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(r.stdout.includes("readable anyway"), r.stdout);
+
+  // The fallback relaxes the config READ, not the id validation: an unknown id is still refused.
+  const bad = await cli(repo, "logs", "--role", "nope");
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /unknown role/);
+});
+
 // --- doctor: pre-flight check through the real CLI entry point ---
 // runDoctor/renderDoctor and each individual check are pinned in-process in
 // test/doctor.test.ts; what is missing here is main()'s wiring — that doctor runs WITHOUT a
