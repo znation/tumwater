@@ -68,12 +68,19 @@ export function checkNodeVersion(version: string = process.versions.node): Check
   };
 }
 
+/** Resolve a required binary on PATH: its absolute path when found, else `missing` at fail
+ * level — the shared shape of the git and pi checks below, so both resolve and report
+ * identically. */
+function checkBinary(name: string, missing: string, pathEnv: string): CheckOutcome {
+  const found = findOnPath(name, pathEnv);
+  return found ? { level: "ok", detail: found } : { level: "fail", detail: missing };
+}
+
 /** git binary — fail with the shared GIT_MISSING_MESSAGE so every entry point reports the
  * same fix for a machine without git installed. Takes an explicit PATH so tests can exercise
  * the missing branch by passing "" (no PATH mutation, no spawning). */
 export function checkGitBinary(pathEnv: string = process.env.PATH ?? ""): CheckOutcome {
-  const found = findOnPath("git", pathEnv);
-  return found ? { level: "ok", detail: found } : { level: "fail", detail: GIT_MISSING_MESSAGE };
+  return checkBinary("git", GIT_MISSING_MESSAGE, pathEnv);
 }
 
 /** Repo ready — the git.ts predicates in requireReadyRepo's order, so doctor and the
@@ -134,13 +141,7 @@ export function checkFallbackModel(
 
 /** pi binary — with cmdRun's existing install hint, so the two entry points cannot drift. */
 export function checkPiBinary(pathEnv: string = process.env.PATH ?? ""): CheckOutcome {
-  const found = findOnPath("pi", pathEnv);
-  return found
-    ? { level: "ok", detail: found }
-    : {
-        level: "fail",
-        detail: PI_MISSING_MESSAGE,
-      };
+  return checkBinary("pi", PI_MISSING_MESSAGE, pathEnv);
 }
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
