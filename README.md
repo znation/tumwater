@@ -51,13 +51,11 @@ Open items:
   three ways on 2026-09-19).
 - Planned: TUI failures pane — render the failure digest in the Ctrl+T view cycle (planned
   2026-09-20).
-- Planned: fleet pause from the dashboard — a click-to-pause/resume control in the GUI header
-  (planned 2026-09-20).
+- Open bug: the dashboard loop table sorts the `landing` phase as inactive, so a landing role
+  drops below queued and sleeping loops (reported by user 2026-09-21); the TUI/`status` table
+  applies no state grouping at all, so the two dashboards disagree.
 - Open bug: every Fixed entry lacks its required `**Validation gap:**` trace, so the repair-trace
   tally has no population and the Fixed backlog cannot be compressed (filed 2026-09-20).
-- Open bug: the GUI and TUI abbreviate millions as `k` — 13.8M output tokens renders as
-  `13820.3k`; `compactTokens` and the GUI's `fmtTokens` need the report's `M` branch (filed
-  2026-09-20, reported by user).
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the spend
   cap into an hour of 100% tick failure instead of pausing the fleet (filed 2026-09-20).
 - Open bug: a dead reviewer backend destroys committed work — transport errors count toward
@@ -68,7 +66,7 @@ Open items:
   so the telemetry role cannot apply its own load-bearing rule (filed 2026-09-20).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`6926014`): build clean, suite 1232/1232.
+Current main (`b4e409d`): build clean, suite 1236/1236.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -147,7 +145,10 @@ model override alike — so the day's paid work ends but the fleet does not. Onl
 `models.json` prices at zero is ever engaged (an unknown id, a priced model, or a missing
 definitions file is refused, and the fleet pauses as it would without one), so spend cannot climb
 past the cap either way. The operator-intent sibling is `tumwater pause` / `resume`: a persistent
-marker that blocks new role ticks (same wake reasons, same director exemption) until lifted. Each
+marker that blocks new role ticks (same wake reasons, same director exemption) until lifted, and
+the GUI header's `· pause` / `· paused — resume` badge toggles that same marker in one click
+(`POST /api/pause`), so an operator watching the dashboard — e.g. over `gui --all-interfaces` —
+can halt the fleet without a shell. Each
 gate transition lands as one `budget_paused`/`budget_fallback`/`budget_resumed` or
 `fleet_paused`/`fleet_resumed` event, visible in `tumwater logs`, the TUI activity pane, and the
 GUI feed.
