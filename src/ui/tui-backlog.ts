@@ -39,8 +39,9 @@ export function moveEntrySelection(
   return dir === "down" ? (selected + 1) % count : (selected - 1 + count) % count;
 }
 
-/** The visible window of one backlog entry's body for the TUI pane: lines `offset` through
- * `offset + budget`, each clipped to `width`. At offset 0 this is today's head-keeping view —
+/** The visible window of one backlog entry's body for the TUI pane: `budget` lines starting at
+ * `offset` (at least one, even for a zero budget), each clipped to `width`. At offset 0 this is
+ * today's head-keeping view —
  * a plan's goal comes first, like the list view. The offset is clamped at render time so a
  * terminal resize or a queued-prompt budget shrink cannot strand the window past either end.
  * Returns the clipped lines plus the body's total line count (so the caller can decide the
