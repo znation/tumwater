@@ -369,6 +369,33 @@ test("validateConfig rejects blank string-array entries and names their position
   assert.doesNotThrow(() => validateConfig({ piArgs: ["--no-skills", "--verbose"] }));
 });
 
+test("validateConfig rejects exemption patterns that can never match a repo-relative path", () => {
+  // isExemptPath matches repo-relative git paths, so an absolute pattern, a "./" prefix, a
+  // ".." segment, or a trailing "/" matches nothing — the diff it was meant to exempt is
+  // reviewed anyway and the operator never learns the pattern was inert, the same silent
+  // failure the blank-entry check above closes. Each message names the position and the fix.
+  assert.match(
+    validationError({ review: { exemptPaths: ["/docs/**"] } }),
+    /review\.exemptPaths\[0\] must be repo-relative/,
+  );
+  assert.match(
+    validationError({ review: { exemptPaths: ["*.md", "./src/**"] } }),
+    /review\.exemptPaths\[1\] must be repo-relative/,
+  );
+  assert.match(
+    validationError({ review: { exemptPaths: ["docs/../secrets.md"] } }),
+    /review\.exemptPaths\[0\] must not contain a "\.\." segment/,
+  );
+  assert.match(
+    validationError({ review: { exemptPaths: ["docs/"] } }),
+    /review\.exemptPaths\[0\] must name files, not a directory/,
+  );
+  // The shapes that do match stay valid: basename, full-path, and ** globs.
+  assert.doesNotThrow(() =>
+    validateConfig({ review: { exemptPaths: ["*.md", "docs/**", "tumwater.json", "**/*.test.ts"] } }),
+  );
+});
+
 test("validateConfig guards the review section like its sibling sections", () => {
   // A non-object review (a hand-edited tumwater.json) fails with an actionable message
   // instead of crashing deep in the gate — the same guard idleBackoff and roles get. The

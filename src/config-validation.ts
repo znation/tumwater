@@ -252,6 +252,26 @@ export function validateConfig(raw: unknown): void {
       checkKnownKeys(o, REVIEW_KEYS, "review", problems);
       checkBoolean(o, "review.", "enabled");
       checkStringArray(o, "review.", "exemptPaths");
+      // An exemption pattern is matched against a repo-relative path (exemptions.ts), so a
+      // pattern shaped like something git never emits can never match: the diff it was meant
+      // to exempt gets a model review anyway, and the operator never learns the pattern was
+      // inert. Reject the shapes git paths never take — an absolute path, a "./" prefix, a
+      // ".." segment, or a trailing "/" — the blank-entry rule above applied to the pattern's
+      // shape instead of its emptiness. Each message names the position so one edit fixes it.
+      if (Array.isArray(o.exemptPaths)) {
+        (o.exemptPaths as unknown[]).forEach((p, i) => {
+          if (typeof p !== "string" || p.trim() === "") return; // Already reported by checkStringArray.
+          const fix =
+            p.startsWith("/") || p.startsWith("./")
+              ? 'must be repo-relative — drop the leading "/" or "./"'
+              : p.split("/").includes("..")
+                ? 'must not contain a ".." segment — patterns match repo-relative paths'
+                : p.endsWith("/")
+                  ? 'must name files, not a directory — drop the trailing "/" (e.g. "docs/**")'
+                  : null;
+          if (fix) problems.push(`review.exemptPaths[${i}] ${fix} (got ${show(p)})`);
+        });
+      }
       checkModelTriple(o, "review.");
     }
   }
