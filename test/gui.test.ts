@@ -456,18 +456,22 @@ test("the GUI loop table sorts active first, then by last tick most-recent-first
     { role: "reviewing-a", phase: "reviewing @ …", lastTickEndedAt: null },
     { role: "queued-z", phase: "queued", lastTickEndedAt: t(5) },
     { role: "working-a", phase: "working 1m", lastTickEndedAt: t(2) },
+    { role: "landing-x", phase: "landing 2m", lastTickEndedAt: t(0) },
     { role: "never-ticked", phase: "stopped", lastTickEndedAt: null },
     { role: "main-red", phase: "main red", lastTickEndedAt: t(0) },
   ];
-  // Active (working/reviewing) before inactive; within each group, last tick most-recent-first;
-  // a null (never completed a tick) sorts after any timestamp in its own category.
+  // In-flight phases (working/reviewing/landing) before inactive; within each group, last tick
+  // most-recent-first; a null (never completed a tick) sorts after any timestamp in its own
+  // category. landing-x's tick is older than queued-z's and sleepy's, yet it still groups with
+  // the actives — the regression this fixture pins.
   assert.deepEqual(sortLoops(loops).map((l) => l.role), [
     "working-a",     // active, t(2) — newest among actives
     "working-b",     // active, t(1)
+    "landing-x",     // active (landing), t(0) — groups with in-flight work despite the old tick
     "reviewing-a",   // active, null — last of the active group
-    "queued-z",      // inactive, t(5) — newest among inactives
+    "queued-z",      // inactive, t(5) — newest among inactives, below every active
     "sleepy",        // inactive, t(3)
-    "main-red",      // inactive, t(0)
+    "main-red",      // inactive, t(0) — tie with landing-x, role name breaks it
     "never-ticked",  // inactive, null — last of all
   ]);
 
@@ -479,6 +483,15 @@ test("the GUI loop table sorts active first, then by last tick most-recent-first
     { role: "mid", phase: "main red", lastTickEndedAt: t(4) },
   ];
   assert.deepEqual(sortLoops(tied).map((l) => l.role), ["alpha", "mid", "zeta"]);
+
+  // Lockstep with the TUI/status comparator (status-model.ts `sortLoopsByState`): the page
+  // cannot import TS, so the shared ordering rule is pinned by cross-checking the two copies
+  // over the same fixtures — every branch (active/inactive, timestamp, null, role tie) must
+  // agree, or a drift in either surface fails here.
+  const { sortLoopsByState } = await import("../src/ui/status-model.js");
+  const order = (rows: LoopRow[]) => sortLoopsByState(rows).map((l) => l.role);
+  assert.deepEqual(order(loops), sortLoops(loops).map((l) => l.role));
+  assert.deepEqual(order(tied), sortLoops(tied).map((l) => l.role));
 
   // The input array is not reordered in place — the payload stays untouched for other consumers.
   const before = loops.map((l) => l.role);

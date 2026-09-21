@@ -52,14 +52,16 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   };
   // last-tick-fmt:end
   // loop-sort:start
-  // Loop-table row order: active loops (working/reviewing — the two in-flight phases, same
-  // prefix convention as the row coloring below, extended with reviewing) before inactive
-  // ones; within each category by last tick most-recent-first. Null (never completed a tick)
-  // sorts last in its category; ties break on role name so an identical payload always renders
-  // in the same order. Client-side only — /api/status, status --json, and the TUI keep
-  // payload order.
+  // Loop-table row order — shared by rule with the TUI/status table's TS twin
+  // (status-model.ts sortLoopsByState, cross-checked against this copy in test/gui.test.ts):
+  // in-flight phases first — working, reviewing, landing — before inactive ones; within each
+  // category by last tick most-recent-first. Null (never completed a tick) sorts last in its
+  // category; ties break on role name so an identical payload always renders in the same
+  // order. The page cannot import TS (the fmtTokens/lastTickCell precedent), so the two copies
+  // stay in lockstep by test. /api/status and status --json keep their payload (config)
+  // order — grouping is a display concern of the two rendered tables.
   function sortLoops(loops) {
-    const cat = (l) => ((l.phase.startsWith("working") || l.phase.startsWith("reviewing")) ? 0 : 1);
+    const cat = (l) => ((l.phase.startsWith("working") || l.phase.startsWith("reviewing") || l.phase.startsWith("landing")) ? 0 : 1);
     return loops.slice().sort((a, b) => {
       if (cat(a) !== cat(b)) return cat(a) - cat(b);
       const ta = a.lastTickEndedAt ?? 0;

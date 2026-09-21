@@ -148,6 +148,42 @@ export function loopPhase(
   return "queued";
 }
 
+/** One rendered loop-table row's sort key: the role name, its rendered phase label
+ * (loopPhase), and its last tick end. Both the TUI/status table and the GUI page's browser
+ * copy carry these three fields. */
+export interface LoopSortRow {
+  role: string;
+  phase: string;
+  lastTickEndedAt?: number | null;
+}
+
+/** Is this phase one of the in-flight states? The three labels come from loopPhase:
+ * `working …`, `reviewing …`, and the marker-driven `landing …` (merge queue 4/5). Named once
+ * so the two rendered tables and their lockstep test share the rule instead of restating the
+ * prefixes. */
+export function isActivePhase(phase: string): boolean {
+  return phase.startsWith("working") || phase.startsWith("reviewing") || phase.startsWith("landing");
+}
+
+/** The loop tables' shared row order: in-flight phases (working, reviewing, landing) before
+ * inactive ones; within a category by last tick most-recent-first, a never-ticked (null) row
+ * after any timestamp, ties broken by role ascending. This is the TUI/status table's
+ * comparator; the GUI page's browser copy (`sortLoops`, gui-client.ts) cannot import TS (the
+ * fmtTokens/lastTickCell precedent), so test/gui.test.ts cross-checks the two over the same
+ * fixtures to keep them in lockstep. /api/status and `status --json` keep their payload
+ * (config) order — only the two rendered tables sort. */
+export function sortLoopsByState<T extends LoopSortRow>(loops: readonly T[]): T[] {
+  return loops.slice().sort((a, b) => {
+    const ca = isActivePhase(a.phase) ? 0 : 1;
+    const cb = isActivePhase(b.phase) ? 0 : 1;
+    if (ca !== cb) return ca - cb;
+    const ta = a.lastTickEndedAt ?? 0;
+    const tb = b.lastTickEndedAt ?? 0;
+    if (ta !== tb) return tb - ta;
+    return a.role.localeCompare(b.role);
+  });
+}
+
 /** Token metrics for display. gen / peak ctx are per-tick windows — loop.ts resets them at
  * tick start, so the persisted values hold only what the current (mid-flight) or last
  * completed tick used, never lifetime totals. While a tick is in flight the on-disk values

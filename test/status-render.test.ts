@@ -1024,3 +1024,32 @@ test("renderStatus shows the land-queue badge in the header and the label in the
   assert.match(text2, /clean +landing 1m30s/, "the landing role reads the marker's elapsed");
   assert.match(text2, /bugfix +queued/, "other roles are untouched");
 });
+
+test("status table groups a landing role above queued/sleeping rows with newer last ticks", () => {
+  const root = tmpdir();
+  const t = (min: number) => Date.parse("2026-09-11T00:00:00Z") + min * 60000;
+  // A sleeping role and a queued role, both with a NEWER last tick than the landing role —
+  // grouping must still put the landing role first, the same active-first rule as the GUI
+  // table. Before the fix renderStatus emitted payload order, so landing sank with the idles.
+  const sleeping = freshLoopState("sleepy");
+  sleeping.nextRunAt = Date.now() + 5 * 60_000;
+  sleeping.lastTickEndedAt = t(5);
+  const queued = freshLoopState("queued-z");
+  queued.lastTickEndedAt = t(4);
+  const landing = freshLoopState("landing-r");
+  landing.lastTickEndedAt = t(0);
+  const snap: StatusSnapshot = {
+    ...snapshotWith([sleeping, queued, landing]),
+    running: true,
+    landQueue: {
+      depth: 1,
+      inFlight: { role: "landing-r", sha: "abc1234", summary: "tidy", startedAt: Date.now() - 90_000 },
+    } as StatusSnapshot["landQueue"],
+  };
+  const lines = renderStatus(root, snap).split("\n");
+  const rowOf = (role: string) => lines.findIndex((l) => l.startsWith(role));
+  assert.ok(rowOf("landing-r") >= 0, "the landing role has a row");
+  assert.ok(rowOf("landing-r") < rowOf("sleepy"), "landing sorts above a sleeping row with a newer last tick");
+  assert.ok(rowOf("landing-r") < rowOf("queued-z"), "landing sorts above a queued row with a newer last tick");
+  assert.match(lines[rowOf("landing-r")]!, /landing \dm\d+s/);
+});

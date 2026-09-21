@@ -12,6 +12,7 @@ import {
   landingBadge,
   landingForRole,
   loopPhase,
+  sortLoopsByState,
 } from "./status-model.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
@@ -39,22 +40,14 @@ export function lastTickCell(ts: number | undefined): string {
   return `${s} · ${ago(ts)}`;
 }
 
-/** The table's state cell: loopPhase's label, with the current work item prepended while a
- * tick is in flight ("implement plan X · working 3m · turn 2"). Prepending — not appending —
- * so the item survives ellipsis clipping on narrow terminals; the live detail after it is what
- * gets clipped first. Idle loops are untouched: their log tail describes a finished tick and
- * must not leak its work item into the state cell. (The GUI shows the same item in its own
- * `current` column instead, so its state cell stays clean.) */
-function stateCell(
-  root: string,
-  s: LoopState,
-  orchestratorRunning: boolean,
-  budgetPaused = false,
-  live?: LiveProgress | null,
-  userPaused = false,
-  landing?: { startedAt: number } | null,
-): string {
-  const phase = loopPhase(s, orchestratorRunning, root, budgetPaused, live, userPaused, landing);
+/** The table's state cell: a loop's phase label (loopPhase, computed once per row by
+ * renderStatus so the same label drives the row order), with the current work item prepended
+ * while a tick is in flight ("implement plan X · working 3m · turn 2"). Prepending — not
+ * appending — so the item survives ellipsis clipping on narrow terminals; the live detail
+ * after it is what gets clipped first. Idle loops are untouched: their log tail describes a
+ * finished tick and must not leak its work item into the state cell. (The GUI shows the same
+ * item in its own `current` column instead, so its state cell stays clean.) */
+function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgress | null): string {
   // While under review the log tail's "current work" is the reviewer's own output, not the
   // author's task — don't prepend it; the phase cell already carries the reviewer's live
   // detail. The landing label rides the same guard: the landing role is not running, so the
@@ -110,27 +103,30 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   const userPausedNow = snap.paused;
   // One live tail read per running loop per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
-  // its own, up to three stats + reads per loop per second.
+  // its own, up to three stats + reads per loop per second. The phase is computed here once
+  // and carried on the row: the same label drives the state cell and the shared row order
+  // (sortLoopsByState), so the two cannot diverge.
   const withMetrics = snap.loops.map((s) => {
     const live = s.running ? readLiveProgress(root, s.role) : null;
-    return { s, m: displayTokenMetrics(root, s, live), live };
+    return {
+      s,
+      m: displayTokenMetrics(root, s, live),
+      live,
+      phase: loopPhase(s, snap.running, root, budgetPausedNow, live, userPausedNow, landingForRole(snap.landQueue, s.role)),
+      role: s.role,
+      lastTickEndedAt: s.lastTickEndedAt,
+    };
   });
   // User-defined loops (snapshot's `custom` flag) get an asterisk beside their name — the
   // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS and
   // its width derives from row content, so the extra character widens it automatically.
-  const rows = withMetrics.map(({ s, m, live }) => [
+  // Rows are ordered by the shared display rule (active phases first, last tick most-recent
+  // first) so the TUI/status table groups landing with working/reviewing like the GUI table.
+  const rows = sortLoopsByState(withMetrics).map(({ s, m, live, phase }) => [
     s.custom ? `${s.role}*` : s.role,
-    // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed>` (the
-    // marker-driven record, filtered to this role); every other role is untouched.
-    stateCell(
-      root,
-      s,
-      snap.running,
-      budgetPausedNow,
-      live,
-      userPausedNow,
-      landingForRole(snap.landQueue, s.role),
-    ),
+    // Merge queue 4/5 — the landing role's phase label (the marker-driven record, filtered to
+    // this role by loopPhase's `landing` argument above) rides this same phase string.
+    stateCell(root, s, phase, live),
     String(s.ticks),
     String(s.commits),
     compactTokens(m.generated),
