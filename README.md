@@ -47,19 +47,17 @@ in tumwater.json or by prompting the director.
 
 Open items:
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; nine independently landable PLANS.md entries
-  1/7–7/7, split 2026-09-21).
-- Open bug: every Fixed entry lacks its required `**Validation gap:**` trace, so the repair-trace
-  tally has no population and the Fixed backlog cannot be compressed (filed 2026-09-20).
+  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 1/7–7/7).
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the spend
   cap into an hour of 100% tick failure instead of pausing the fleet (filed 2026-09-20).
 - Open bug: a killed tick leaks its tool-call grandchildren — `terminateChild` signals only the pi
   process, never its group (filed 2026-09-20).
-- Open bug: the failure digest carries outcomes but not the harness decisions that produced them,
-  so the telemetry role cannot apply its own load-bearing rule (filed 2026-09-20).
+- Open bug: a persistent review failure never reaches the error-streak alarm — each recovery tick
+  that re-fails resets `consecutiveErrors`, so a dead reviewer backend fails silently forever
+  (filed 2026-09-21).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`58b1a27`): build clean, suite 1241/1241.
+Current main (`b05c79c`): build clean, suite 1252/1252.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -222,7 +220,7 @@ tumwater gui --all-interfaces      # serve the dashboard to the whole network (s
 tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (the GUI's /api/status payload minus its serverBuildSha)
 tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days; --days bounded to the GUI's shared 1–90 window)
-tumwater report --failures [--days N]   # Markdown failure digest — tick outcomes, deltas, and clustered errors (default 14 days)
+tumwater report --failures [--days N]   # Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
 tumwater doctor       # pre-flight check: node, git, repo, config, fallback model, pi, locks, build (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)

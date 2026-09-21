@@ -61,7 +61,7 @@ Usage:
                                    serving process's serverBuildSha)
   tumwater report [--days N]       Markdown usage report — tokens/ticks/commits per day (default 14 days)
   tumwater report --failures [--days N]
-                                   Markdown failure digest — tick outcomes, deltas, and clustered errors (default 14 days)
+                                   Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
   tumwater doctor                  Pre-flight check: node, git, repo, config, fallback model, pi, locks, build (read-only; exit 0/1)
   tumwater logs [-f] [-n N]        Show (and follow) harness events
   tumwater logs --role <id> [-f] [-n N] [--prompt]
