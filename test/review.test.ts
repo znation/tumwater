@@ -211,6 +211,29 @@ test("gate discards the leftover after three failed reviews of one HEAD", async 
   }
 });
 
+test("gate does not discard the commit when the reviewer run itself fails", async () => {
+  // A dead reviewer backend: pi exits non-zero with no assistant output at all, so the run
+  // FAILED (pi.ok false) rather than replying without a VERDICT. That says nothing about the
+  // diff, so it must never count toward the discard limit — otherwise three infrastructure
+  // failures delete a complete commit the reviewer never saw (BUGS.md 2026-09-20).
+  const { root, wt } = await gateFixture();
+  const restore = fakePi(`echo 'oMLX HTTP 400: prefill_memory_exceeded' >&2\nexit 1`);
+  try {
+    const state = freshLoopState(ROLE);
+    for (let tick = 1; tick <= REVIEW_FAILURE_LIMIT + 2; tick++) {
+      const result = await reviewAheadOfMain(gateCtx(root, wt, tick), state);
+      assert.equal(result.decision, "failed");
+      assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for re-review every time
+      assert.equal(state.unreviewFailures ?? 0, 0); // a failed run is not a strike against the commit
+    }
+    const events = readEvents(root);
+    assert.equal(events.filter((e) => e.type === "review_failed").length, REVIEW_FAILURE_LIMIT + 2);
+    assert.ok(!events.some((e) => e.type === "warning" && /discarding unreviewed/.test(String(e.message))));
+  } finally {
+    restore();
+  }
+});
+
 test("gate exempts a doc-only diff without running pi", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");

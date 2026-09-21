@@ -100,9 +100,12 @@ export interface GateResult {
  *   (its only output channel is the verdict);
  * - reject → reset the branch to main, record reasons in state.lastReview (injected into the
  *   role's next tick prompt), log review_rejected;
- * - fail (no parseable verdict, pi error, timeout) → leave the commit on the branch for the
- *   next tick's re-review, counting consecutive failures per HEAD; past REVIEW_FAILURE_LIMIT
- *   discard the leftover with a warning. Never throws.
+ * - fail with an unparseable reply (the reviewer ran to completion but emitted no VERDICT) →
+ *   leave the commit on the branch for the next tick's re-review, counting consecutive
+ *   failures per HEAD; past REVIEW_FAILURE_LIMIT discard the leftover with a warning.
+ * - fail because the run itself failed (transport/spawn/timeout, pi.ok false) → leave the
+ *   commit and do NOT advance the count: the reviewer never judged the diff, so the failure
+ *   is evidence about the backend, never about the commit (BUGS.md 2026-09-20). Never throws.
  * `highFriction` marks a change whose authoring run burned more than the configured turn/time
  * thresholds (plans/refusal-and-thrash.md): the flag rides along in the review prompt so the
  * reviewer applies extra scrutiny to whether the work should exist at all. */
@@ -233,13 +236,22 @@ export async function reviewAheadOfMain(
   const verdict = parseVerdict(pi.verdictText ?? "");
   if (!verdict) {
     const message = pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply";
+    logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
+    // A run that FAILED (`ok` false: transport error, failed spawn, timeout) produced no
+    // reply, so it is evidence about the backend, not about the diff. Leave the commit for
+    // the next tick's re-review and do not advance the per-HEAD discard counter — a dead
+    // reviewer must never destroy committed work (BUGS.md 2026-09-20). Only a run that
+    // completed and replied without a parseable VERDICT is a strike against this HEAD.
+    if (!pi.ok) {
+      state.lastReview = { verdict: "failed", reasons: [message], head, at: Date.now() };
+      return { decision: "failed", detail: message, run: pi };
+    }
     // Consecutive failures of THIS HEAD only: a new commit (new HEAD) starts fresh. Read
     // *before* overwriting lastReview with this failure.
     const prev = state.lastReview;
     const sameHead = prev?.verdict === "failed" && prev.head === head;
     state.unreviewFailures = (sameHead ? (state.unreviewFailures ?? 0) : 0) + 1;
     state.lastReview = { verdict: "failed", reasons: [message], head, at: Date.now() };
-    logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     if ((state.unreviewFailures ?? 0) >= REVIEW_FAILURE_LIMIT) {
       await resetWorktreeToMain(wt, mainBranch);
       state.unreviewFailures = 0; // The HEAD is gone; nothing left to count against.
