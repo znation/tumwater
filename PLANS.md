@@ -5,6 +5,102 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Landing gate checks latest main: rebase the pinned change before the build pre-check (planned 2026-09-21, requested by user)
+
+**Goal.** A landing's deterministic build pre-check and model review must run against main's
+CURRENT head, not the main the author started from. Today `landChange` checks out the pinned sha
+in a detached lander worktree and `reviewAheadOfMain` runs the pre-check and the reviewer there;
+only `mergeToMain` rebases onto main (src/merge.ts `tryMerge`). So when main goes red and another
+loop lands the fix while this change waits in the queue, the gate still checks main-at-pin + change,
+fails on an already-fixed failure, and rejects — and every other queued landing rejects for the same
+reason. Rebase onto main before the gate so a fix another loop landed is already in the checked tree.
+Sibling plan (independently landable): "Fix a failed landing build check on the spot instead of
+rejecting" — together they stop one red main from cascading through the queue.
+
+**Approach (decided).**
+- `src/lander.ts` `landChange` (:141): after `ensureDetachedWorktree(ctx.root,
+  landWorktreePath(...), req.sha)` (:145) and before `reviewPinnedChange`, call
+  `rebaseOntoMain(wt, ctx.mainBranch)` (exported from `./merge.js`; a no-op when main has not
+  moved). On `true`, read `const syncedHead = await headOf(wt, "HEAD")`; when `syncedHead !==
+  req.sha`, `await setRef(ctx.root, ref, syncedHead)` (git.ts:156) and pass a request copy with
+  `sha: syncedHead` into `reviewPinnedChange`, so the gate's own head and the strike-cap tell
+  (`head !== req.sha`, lander.ts:127) both see the synced head and the landing ref tracks the tree
+  that can land. On `false` (conflict or other), `rebaseOntoMain` has already aborted the rebase and
+  restored the detached pin: continue with the original `req` — the gate reviews the pinned tree and
+  `mergeToMain`'s conflict resolver lands it exactly as today.
+- No change to `src/merge.ts`: with the gate's `verifiedHead` now the synced head, `tryMerge`'s
+  rebase is a no-op, `verifyLanding` skips (`rebasedHead === preMergeHead`) and seeds the baseline
+  from `verifiedHead`; if main moves again during review, the existing post-rebase re-check covers it.
+- Leave the batch path (`landBatch`) alone: its stack is assembled from main's current tip already
+  (src/lander.ts:353).
+
+**Files touched.** `src/lander.ts`; `test/lander.test.ts` (the `landChange` unit host — new cases
+join the existing `landChange` block at :22); `README.md` (the landing paragraph's rebase sentence
+names that the gate checks the rebased tree).
+
+**Acceptance criteria.**
+- A landing pinned against a broken main, with main then advanced by a commit that fixes the build,
+  passes the gate and lands: the pre-check/review ran on the synced tree, the landing ref points at
+  the synced head, and main ends with both main's fix and the change.
+- A main advance that conflicts with the change leaves today's behavior intact: the gate reviews the
+  pinned tree, `mergeToMain` resolves the conflict, the landing still lands.
+- `npm test` green.
+
+### Fix a failed landing build check on the spot instead of rejecting (planned 2026-09-21, requested by user)
+
+**Goal.** When a landing's deterministic build pre-check fails, spend one bounded model run to fix
+the tree and re-check, then proceed if green; reject only if it stays red. A red main otherwise
+rejects every queued landing and bounces each author back for a failure none of them caused.
+Sibling plan (independently landable): "Landing gate checks latest main…" — that one makes the
+checked tree include main's newest fix; this one fixes what is still red.
+
+**Approach (decided).**
+- `src/prompt.ts`: add `buildBuildFixPrompt(roleId, script, reasons)` beside `buildConflictPrompt`
+  (:312). Content: the declared check `npm run <script>` failed on the tree about to land; the
+  failure (headline + clipped tail) follows; reproduce it, fix the source (never delete, skip, or
+  weaken a test), keep the change minimal, re-run until it passes, then stop; do not commit — the
+  harness commits. Pin its shape in `test/prompt.test.ts` (the `buildConflictPrompt` block at :268
+  is the pattern).
+- `src/review.ts`: in the pre-check `failed` branch (:167–181), before `reject`:
+  1. Build `reasons` exactly as today (headline + tail).
+  2. One fix run: `runPi({ cwd: wt, prompt: buildBuildFixPrompt(role, check.script, reasons),
+     config: reviewConfig(config), sessionDir: reviewSessionDir(root, role), sessionName:
+     `tumwater-${role}-${ctx.tick}${ctx.sessionSuffix ?? ""}-buildfix`, rawLogFile: piLogPath(root,
+     role), label: "build-fix", signal: ctx.signal, onToolCallStalled: … })`.
+  3. `fixPi.aborted` → `{ decision: "failed", aborted: true, fixRun: fixPi }` (commit kept,
+     re-reviewed next tick).
+  4. No file changes (`git(wt, "status", "--porcelain")` empty) → `reject(reasons)`.
+  5. Else `commitAll(wt, `tumwater(${role}): fix failing build check`)` (git.ts:396), reassign
+     `head` to the returned sha (make `head` a `let`), and re-run `runScopedBuildCheck(root, role,
+     "gate", wt, ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS)`: `passed` → `verifiedHead =
+     head`, carry `fixRun: fixPi`, and continue to the model reviewer (the fix is in the diff it
+     reviews); `failed` → append one line to `reasons` ("the fix attempt did not turn the check
+     green") and `reject(reasons)`.
+  - Add `fixRun?: PiRunResult` to `GateResult` (the fix and the reviewer are two pi runs; `run`
+    stays the reviewer's).
+- `src/lander.ts` `reviewPinnedChange` (:83): after `reviewAheadOfMain` returns, `if (gate.fixRun)
+  foldUsage(gate.fixRun)`; when `gate.verifiedHead` differs from `req.sha`, `await setRef(root,
+  ref, gate.verifiedHead)` so the ref tracks the fixed tree; change the strike-cap tell (:127) to
+  compare `head` against `await refSha(root, ref)` (git.ts:166) instead of `req.sha` — after a fix
+  the ref, not the original pin, is the commit under review.
+- One fix attempt per gate invocation, never retried in the same run; the fix is ordinary reviewed
+  work once committed.
+
+**Files touched.** `src/prompt.ts`, `src/review.ts`, `src/lander.ts`; `test/prompt.test.ts`,
+`test/review.test.ts` (update "gate pre-check rejects a failing build with zero reviewer runs" at
+:502 — it now sees one fix run before the reject), `test/lander.test.ts`; `README.md` (the
+review-gate paragraph: a failed landing build check triggers one bounded fix run before rejecting).
+
+**Acceptance criteria.**
+- Declared check fails, the fix run edits a file so the re-run passes → the gate commits the fix,
+  proceeds to the reviewer, and approves; the fix run's usage is folded; the landing ref and
+  `verifiedHead` name the fixed head; the fix is in the reviewed diff.
+- Check fails and the fix run makes no changes → one `review_rejected` as today (no second fix run).
+- Check fails again after the fix run → `review_rejected` as today, with the extra reason line.
+- Fix run aborts → `{decision:"failed", aborted:true}`; the commit and ref are kept for the next tick.
+- The fix run is bounded to one attempt per invocation and cannot loop.
+- `npm test` green.
+
 ### 2/7 — Resolve the repo root, and target any branch (planned 2026-09-14, refined 2026-09-17)
 
 **Goal.** Run the fleet against any repository, from anywhere inside it, targeting whatever branch that repo's primary checkout is on. Branch plumbing is already parameterized end to end; what is missing is a correct root (from `git rev-parse --show-toplevel`), an explicit override, and the guards that keep a resolved branch honest.
