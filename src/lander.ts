@@ -69,21 +69,29 @@ type GateOutcome = { kind: "gate"; gate: GateResult } | { kind: "result"; result
  * the cap the gate reset the worktree off the pin, so a HEAD that moved away from `req.sha`
  * means the commit was discarded and the ref goes too — an unreadable head keeps it). Returns
  * the gate result only when the change may be landed. */
-async function reviewPinnedChange(args: {
+/** The identity every gate invocation needs from whichever landing path calls it. The
+ * single-change path's LanderContext and the batch's BatchContext both satisfy this, so one
+ * positional call shape serves both — the two paths no longer hand-assemble the same
+ * nine-field argument object, keeping it in sync by hand. */
+interface ReviewGateContext {
   root: string;
   mainBranch: string;
   config: TumwaterConfig;
-  role: string;
-  wt: string;
-  req: LandRequest;
-  state: LoopState;
-  signal: AbortSignal;
-  foldUsage(run: PiRunResult): void;
-}): Promise<GateOutcome> {
-  const { root, mainBranch, config, role, wt, req, state, signal, foldUsage } = args;
+  signal(): AbortSignal;
+}
+
+async function reviewPinnedChange(
+  ctx: ReviewGateContext,
+  req: LandRequest,
+  wt: string,
+  state: LoopState,
+  foldUsage: (run: PiRunResult) => void,
+): Promise<GateOutcome> {
+  const { root, mainBranch, config } = ctx;
+  const { role } = req;
   const ref = landingRefName(role);
   const gate = await reviewAheadOfMain(
-    { root, role, wt, mainBranch, config, tick: req.tick, sessionSuffix: req.sessionSuffix, signal },
+    { root, role, wt, mainBranch, config, tick: req.tick, sessionSuffix: req.sessionSuffix, signal: ctx.signal() },
     state,
     req.summary,
     req.body,
@@ -136,17 +144,7 @@ export async function landChange(ctx: LanderContext, req: LandRequest): Promise<
   // this detached checkout holds exactly the pinned tree for review and rebase.
   const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
 
-  const outcome = await reviewPinnedChange({
-    root: ctx.root,
-    mainBranch: ctx.mainBranch,
-    config: ctx.config,
-    role: req.role,
-    wt,
-    req,
-    state: ctx.state,
-    signal: ctx.signal(),
-    foldUsage: ctx.foldUsage,
-  });
+  const outcome = await reviewPinnedChange(ctx, req, wt, ctx.state, ctx.foldUsage);
   // A terminal outcome (aborted / rejected / review_error) is already handled: the helper kept
   // or deleted the ref per policy. The caller routes "aborted" through its own abort handling
   // (which discards the pin too when the abort was a deliberate user stop).
@@ -311,17 +309,7 @@ export async function landBatch(
     }
     // The shared gate, verdict persisted immediately (the drain's write-back happens only
     // in-process at batch completion, so a mid-batch crash must not lose what the batch earned).
-    const outcome = await reviewPinnedChange({
-      root: ctx.root,
-      mainBranch: ctx.mainBranch,
-      config: ctx.config,
-      role: req.role,
-      wt,
-      req,
-      state: w.state,
-      signal: ctx.signal(),
-      foldUsage: w.foldUsage,
-    });
+    const outcome = await reviewPinnedChange(ctx, req, wt, w.state, w.foldUsage);
     if (outcome.kind === "gate") {
       stack.push(i); // approved or exempt
       continue;
