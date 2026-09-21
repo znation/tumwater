@@ -5,9 +5,10 @@ re-audited against `00501fa` on 2026-09-16 and refined against `58b1a27` on 2026
 against `e76c5d5` on 2026-09-17, 6/7 against
 `94562d8` on 2026-09-18, 3/7 against `44a037c` on 2026-09-18, 4/7 against `2714022` on 2026-09-19 —
 re-audited and split into 4a/7, 4b/7 and 4c/7 (5/7 re-audited against `f52cac9` on 2026-09-19;
-7/7 re-audited against `5a99627` on 2026-09-18). Full plan
-for the `Portability & packaging` entry in PLANS.md: nine independently landable sub-plans (4/7
-became three), each with its own goal, design rationale, approach, files touched, and acceptance
+7/7 re-audited against `5a99627` on 2026-09-18; 4a/7 re-audited against `c2ff74b` on 2026-09-21;
+4c/7 landed as `dfa6d26` on 2026-09-21). Full plan
+for the `Portability & packaging` entry in PLANS.md: eight independently landable sub-plans (4/7
+became three, and 4c/7 has since landed), each with its own goal, design rationale, approach, files touched, and acceptance
 criteria. The problem statement, invariants, and sequencing below are shared by all of them.
 
 ## The problem
@@ -574,9 +575,12 @@ tracking until 4b/7 — untracking it needs 4b/7's landing fix first.
   omits the config while `created` still reports it; the existing creation and idempotence tests
   keep passing), test/config.test.ts (`seedConfig`, `exampleDrift`), test/doctor.test.ts (drift
   warns and names the keys; the ok detail is unchanged; the local file is never rewritten).
+- README.md — one line in `## Usage` naming `tumwater.example.json` as the tracked baseline an
+  untracked `tumwater.json` is seeded from (the residual of the landed 4c/7; writable only once
+  this entry creates the file).
 
 **Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/doctor.ts, tumwater.example.json
-(new), test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a
+(new), README.md, test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a
 project with no example (defaults, as today).
 
 **Acceptance criteria.**
@@ -587,6 +591,8 @@ project with no example (defaults, as today).
   names `tumwater.json` as created.
 - `doctor` warns naming the drifted keys when the example has moved ahead, never rewrites the local
   file, and keeps `"N roles enabled"` + exit 0 when there is no drift.
+- README's `## Usage` names `tumwater.example.json` as the tracked baseline an untracked
+  `tumwater.json` is seeded from (4c/7's residual).
 - Full suite green.
 
 **Refined 2026-09-19 (plan loop) — the old 4/7 re-audited against main `2714022` and split (see
@@ -601,6 +607,22 @@ mechanism, and missed that `git add` on an ignored path fails); doctor drift fol
 "init" check rather than adding a check entry; and the "repo's own config is removed from
 tracking" and "Operational note" halves move to 4b/7, where the landing hazard they gesture at is
 actually solved.
+
+**Refined 2026-09-21 (plan loop) — 4a/7 re-audited against main `c2ff74b`, and 4c/7's residual
+`## Usage` line folded in here.** Every anchor from the 2026-09-19 audit had drifted, so all are
+re-pinned on this tree: `ensureGitignore` (src/init.ts:69, its one-entry early return now :73),
+`initProject` (:89), the `created` list (:116), `saveConfig(root, defaultConfig())` (:130) with
+`created.push("tumwater.json")` (:131), the `.gitignore` push (:133), `git add -- …created` (:137)
+and the commit (:142); `configPath` (src/paths.ts:11); `defaultConfig` (src/config.ts:13),
+`loadConfig` (:77), `loadConfigSafe` (:118), `loadConfigCached` (:158, default fallback :163);
+`NOT_INITIALIZED_MESSAGE` (src/readiness.ts:10); `checkRepo` (src/doctor.ts:88), `checkInit`
+(:99), and the report's check list (:243–247, `{ name: "init", … }` at :247); the CLI's `created`
+line is src/cli.ts:105–112. Test pins: `"N roles enabled"` (test/doctor.test.ts:118/125) and the
+check-name list (test/doctor.test.ts:274). Capability absence re-confirmed: `grep -rn` for
+`exampleConfigPath`, `seedConfig`, or `exampleDrift` over `src/` is empty, and no
+`tumwater.example.json` exists anywhere. The single addition since the split is one README.md line,
+moved here from the now-landed 4c/7 (`dfa6d26`): 4c/7's goal said it depended on nothing, but that
+line names a file only this entry creates, so it was never implementable there.
 
 ## 4b/7 — Untrack this repo's own config without deleting it (depends on 4a/7)
 
@@ -679,6 +701,15 @@ independent and may land in any order.
 **Acceptance criteria.** No section of README names a machine path, a model id, a server URL, or a
 value sized to one GPU (the moved text is the only place they appear); README links
 `docs/backends.md`; the worked example is labelled as an example; the suite is untouched.
+
+**Landed 2026-09-21 (feature loop) against main `58b1a27` — commit `dfa6d26`.** README's
+`## Notes on local model servers` section (160 lines) became `docs/backends.md` (181 lines), with
+a short `## Backends` pointer left in README; the oMLX/LM Studio numbers are explicitly one
+machine's measurements. Verified on `c2ff74b`: a case-insensitive grep over README.md for `omlx`,
+`lm studio`, `qwen`, `gguf`, `huggingface`, `deepseek` is empty (the only host literal left is the
+generic `http://127.0.0.1:7180` GUI default), `docs/backends.md` exists, and no source or test file
+changed. The `## Usage` line naming `tumwater.example.json` (the second criterion above) could not
+be written before that file exists, so it moved to 4a/7.
 
 ---
 

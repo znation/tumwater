@@ -51,18 +51,19 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The request file never appears in a commit, a diff, or a review prompt.
 - `review.exemptPaths` no longer lists `tumwater.json`, and the existing user-defined-loop tests pass with only the documented changes.
 
-### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-19)
+### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-21)
 
 **Goal.** Every project tumwater initializes gets an untracked, gitignored `tumwater.json`: seeded from a tracked `tumwater.example.json` when the project ships one, from `defaultConfig()` when it does not; `doctor` reports where the two have drifted. This repo's own config keeps its tracking until 4b/7. Two implementer traps are pinned in the doc: `ensureGitignore`'s early return only checks its first entry, and the ignored config must stay out of the commit pathspec while still being reported as created.
 
-**Series.** Part 4a/7 of the portability series (the old 4/7 was split three ways on the 2026-09-19 audit). Depends on: 3/7. Approach, design rationale, and pins: plans/portability.md §4a/7.
+**Series.** Part 4a/7 of the portability series (the old 4/7 was split three ways on the 2026-09-19 audit). Depends on: 3/7. Carries the residual of 4c/7 (landed 2026-09-21): the README `## Usage` line naming `tumwater.example.json`, which can only be written once this entry creates the file. Approach, design rationale, and pins: plans/portability.md §4a/7.
 
-**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/doctor.ts, tumwater.example.json (new), test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a project with no example (defaults, as today).
+**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/doctor.ts, tumwater.example.json (new), README.md, test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a project with no example (defaults, as today).
 
 **Acceptance criteria.**
 - `init` in a fresh repo with `tumwater.example.json` seeds the local config from it; without one, from defaults; with a malformed one, from defaults and no throw.
 - In the freshly initialized repo `git ls-files` lists no `tumwater.json`, `.gitignore` lists both `.tumwater/` and `tumwater.json`, `git status --porcelain` is empty, and the CLI output still names `tumwater.json` as created.
 - `doctor` warns naming the drifted keys when the example has moved ahead, never rewrites the local file, and keeps `"N roles enabled"` + exit 0 when there is no drift.
+- README's `## Usage` names `tumwater.example.json` as the tracked baseline an untracked `tumwater.json` is seeded from (4c/7's residual).
 - Full suite green.
 
 ### 4b/7 — Untrack this repo's own config without deleting it (planned 2026-09-14, refined 2026-09-19)
@@ -78,16 +79,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `loadConfig(root)` after the landing still returns this fleet's `provider`, `model`, `fallbackModel`, `maxConcurrent`, `tickTimeoutSeconds`, `quietTimeoutSeconds` and `idleBackoff` (the test compares the parsed config before and after).
 - A landing whose tree keeps the config, and one on a repo with no config, both leave the working tree untouched and `ffMainTo` still returns true.
 - Full suite green.
-
-### 4c/7 — Move README's rig notes into docs/backends.md (planned 2026-09-14)
-
-**Goal.** README stops being one machine's notebook: its `## Notes on local model servers` section becomes `docs/backends.md`, and README's `## Usage` gains one line naming `tumwater.example.json` as the tracked baseline an untracked `tumwater.json` is seeded from.
-
-**Series.** Part 4c/7 of the portability series; markdown only and independent, so it may land in any order. Depends on: nothing. Design: plans/portability.md §4c/7.
-
-**Files touched.** README.md, docs/backends.md (new). No source or test changes.
-
-**Acceptance criteria.** No section of README names a machine path, a model id, a server URL, or a value sized to one GPU (the moved text is the only place they appear); README links `docs/backends.md`; the worked example is labelled as an example; the suite is untouched.
 
 ### 5/7 — Make the agent binary configurable (planned 2026-09-14, refined 2026-09-19)
 
@@ -132,9 +123,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A repo tumwater created before this change keeps reading its brief from README.md with no migration step.
 - `tumwater init --dry-run` prints the file list and exits 0 having written nothing.
 
-**Series critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7; 4c/7 is markdown-only. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
+**Series critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7. 4c/7 landed 2026-09-21 (`dfa6d26`); its one remaining line — README's `## Usage` naming `tumwater.example.json` — is folded into 4a/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
 ## Done
+
+### 4c/7 — Move README's rig notes into docs/backends.md (planned 2026-09-14, done 2026-09-21)
+
+**Landed 2026-09-21 (feature loop) — commit `dfa6d26`.** README's `## Notes on local model servers`
+section (160 lines) became `docs/backends.md` (181 lines), README keeping a short `## Backends`
+pointer; the oMLX/LM Studio numbers are labelled as one machine's measurements, not "the current
+setup". Readme-side criteria verified: a case-insensitive grep over README.md for `omlx`, `lm
+studio`, `qwen`, `gguf`, `huggingface`, `deepseek` is empty (the only host literal left is the
+generic `http://127.0.0.1:7180` GUI default) and README links `docs/backends.md`. The one criterion
+this entry still owed — README's `## Usage` line naming `tumwater.example.json` — cannot be written
+before 4a/7 creates that file, so it moved into 4a/7. No source or test change.
+
+**Goal.** README stops being one machine's notebook: its `## Notes on local model servers` section becomes `docs/backends.md`, and README's `## Usage` gains one line naming `tumwater.example.json` as the tracked baseline an untracked `tumwater.json` is seeded from.
+
+**Series.** Part 4c/7 of the portability series; markdown only and independent, so it may land in any order. Depends on: nothing. Design: plans/portability.md §4c/7.
+
+**Files touched.** README.md, docs/backends.md (new). No source or test changes.
+
+**Acceptance criteria.** No section of README names a machine path, a model id, a server URL, or a value sized to one GPU (the moved text is the only place they appear); README links `docs/backends.md`; the worked example is labelled as an example; the suite is untouched.
 
 ### TUI failures pane — the failure digest in the Ctrl+T cycle (planned 2026-09-20, done 2026-09-21)
 
