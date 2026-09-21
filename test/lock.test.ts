@@ -165,6 +165,27 @@ test("withLock swallows a failed cleanup of a stale lock and waits instead of cr
   assert.ok(fs.existsSync(lock), "the unremovable lock is left in place");
 });
 
+test("withLock fails fast on a filesystem error that waiting cannot fix", async () => {
+  // Skip under root, where chmod cannot make the parent unwritable.
+  if (typeof process.getuid === "function" && process.getuid() === 0) return;
+
+  // A lock path whose PARENT is read-only and whose dir does NOT exist: mkdir fails EACCES,
+  // not the contention EEXIST. Waiting cannot help, so the acquire must report the real error
+  // immediately instead of spinning to the deadline and blaming a phantom holder.
+  const root = tmpdir();
+  const lock = path.join(root, "blocked.lock");
+  fs.chmodSync(root, 0o555);
+  try {
+    await assert.rejects(
+      withLock(lock, async () => {}, 700),
+      /cannot acquire lock .*blocked\.lock: EACCES/,
+    );
+  } finally {
+    fs.chmodSync(root, 0o755);
+  }
+  assert.ok(!fs.existsSync(lock), "no lock dir is left behind");
+});
+
 test("withLock times out instead of breaking a fresh lock held by a live pid", async () => {
   const lock = path.join(tmpdir(), "x.lock");
   fs.mkdirSync(lock);

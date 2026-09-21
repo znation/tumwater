@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pidAlive } from "./process.js";
-import { parsePositiveInt } from "./text.js";
+import { errorMessage, parsePositiveInt } from "./text.js";
 import { removeTree } from "./files.js";
 
 /** How old a lock dir must be before it is stale on age alone — regardless of whether its
@@ -89,9 +89,14 @@ export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs =
   for (;;) {
     try {
       fs.mkdirSync(dir, { recursive: false });
-      fs.writeFileSync(path.join(dir, "pid"), String(process.pid));
-      break;
-    } catch {
+    } catch (err) {
+      // Only a held lock (EEXIST) is worth waiting for — a concurrent holder releases it. Any
+      // other errno (a read-only or missing parent, a file in the way, ENOSPC) cannot be fixed
+      // by waiting; retrying to the deadline would replace the real cause with a misleading
+      // "timed out … waiting for lock" two minutes later. Name it and fail now.
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw new Error(`cannot acquire lock ${dir}: ${errorMessage(err)}`);
+      }
       tryBreakStale(dir);
       // Report the wait budget and the holder: this surfaces as a tick's lastError, and
       // "gave up after 120s waiting on pid 999" is what distinguishes a slow holder from a
@@ -99,7 +104,15 @@ export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs =
       if (Date.now() > deadline)
         throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}${lockHolderNote(dir)}`);
       await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
+      continue;
     }
+    try {
+      fs.writeFileSync(path.join(dir, "pid"), String(process.pid));
+    } catch (err) {
+      rmLockDir(dir); // We took the dir; a failed pid write must not leave an orphan we own.
+      throw err;
+    }
+    break;
   }
   try {
     return await fn();
