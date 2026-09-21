@@ -78,6 +78,24 @@ export function queuedPrompts(root: string): string[] {
  * it between listing and removal (a concurrent pop is a normal race, not an error). */
 export type CancelOutcome = { status: "cancelled"; text: string } | { status: "gone" };
 
+/** Read a queued prompt and remove its file, treating either half of the concurrent-cancel
+ * race as "the prompt is gone": null when the file has already vanished before the read
+ * (ENOENT — a cancel or a prior dequeue won) or when the removal itself finds it gone (a
+ * concurrent cancel won after our read). Any other read error propagates — it is not a race.
+ * Shared by cancelPrompt (position-addressed) and dequeuePrompt (oldest-first pop) so the
+ * race policy lives once. */
+function takeQueuedFile(file: string): string | null {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; // Cancelled mid-listing.
+    throw err;
+  }
+  if (!removeQueueFile(file)) return null; // A concurrent cancel won the race — do not run a cancelled prompt.
+  return text;
+}
+
 /** Remove the Nth queued prompt — 1-based, as shown by `tumwater prompt --list` — and log one
  * prompt_cancelled event under the director loop (preview via promptPreview, exactly like its
  * prompt_enqueued sibling). Throws for out-of-range positions with no side effects; returns
@@ -91,14 +109,8 @@ export function cancelPrompt(root: string, position: number): CancelOutcome {
   }
   const file = files[position - 1];
   if (!file) throw new Error(`no prompt at position ${position} (${files.length} queued)`); // Unreachable: the range check above.
-  let text: string;
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { status: "gone" };
-    throw err;
-  }
-  if (!removeQueueFile(file)) return { status: "gone" };
+  const text = takeQueuedFile(file);
+  if (text === null) return { status: "gone" };
   logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_cancelled", preview: promptPreview(text) });
   return { status: "cancelled", text };
 }
@@ -114,15 +126,7 @@ export function cancelPrompt(root: string, position: number): CancelOutcome {
 export function dequeuePrompt(root: string): string | null {
   const [oldest] = queuedFiles(root);
   if (!oldest) return null;
-  let text: string;
-  try {
-    text = fs.readFileSync(oldest, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; // Cancelled mid-listing.
-    throw err;
-  }
-  if (!removeQueueFile(oldest)) return null; // A concurrent cancel won the race — do not run a cancelled prompt.
-  return text;
+  return takeQueuedFile(oldest);
 }
 
 /** A user submits a new prompt (TUI, GUI, or CLI): enqueue it for the director and
