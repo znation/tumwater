@@ -1,10 +1,11 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { logEvent, warnEvent } from "./events.js";
 import { truncate } from "./text.js";
 import { isJsonObject } from "./json-object.js";
+import { signalTree } from "./pi.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -155,6 +156,13 @@ export function resolveFromNodeModules(startDir: string, rel: string, maxLevels 
  * shorten it. */
 export const BUILD_CHECK_TIMEOUT_MS = 300_000;
 
+/** SIGTERM → SIGKILL escalation window once a build check's timeout has FIRED: the whole
+ * process group gets SIGTERM, and anything still alive this much later (a SIGTERM-trapping
+ * runner, a wedged worker) is SIGKILLed. Exported so tests can shrink it — pinning both that
+ * the escalation is armed on timeout (never at spawn: a healthy check that merely outlasts
+ * the grace period must run to completion) and that a surviving grandchild is taken down. */
+export const KILL_GRACE_MS = 10_000;
+
 /** Why a declared check reached no verdict: the script never finished (timeout), npm is not on
  * PATH, or the toolchain below the project is broken. Shared with main-baseline.ts's
  * MainBaselineCheck, whose skip is the same three-way environmental case — the string literals
@@ -266,9 +274,97 @@ export function failureHeadline(tail: readonly string[] | undefined): string | u
   return tail.find((line) => !FRAMING_LINE.test(line)) ?? tail[0];
 }
 
+/** What one runScriptGroup attempt observed — enough for runBuildCheck to classify the
+ * outcome exactly as execFile's rejection used to: how the process ended (exit code or
+ * signal), whether the check's timeout fired, what the script printed, and whether it
+ * never spawned at all. */
+interface ScriptGroupResult {
+  code?: number;
+  signal?: NodeJS.Signals;
+  timedOut: boolean;
+  spawnError?: NodeJS.ErrnoException;
+  stdout: string;
+  stderr: string;
+}
+
+/** Run `cmd args` detached — its own process group, exactly like pi — and settle exactly
+ * once: on the process's exit or when timeoutMs fires, whichever comes first. The timeout is
+ * enforced GROUP-WIDE, never against the direct child alone: execFileAsync's `timeout` option
+ * signalled npm and nothing else, so everything below it (`node --test` → one worker per
+ * file) survived and reparented to PID 1 for as long as twelve days (BUGS.md 2026-09-21).
+ * When the timeout fires the whole group gets SIGTERM, and anything still alive after
+ * killGraceMs — a SIGTERM-trapping runner, a wedged worker — is SIGKILLed. The escalation is
+ * armed HERE, when the timeout fires, never at spawn: a healthy check that merely outlasts
+ * the grace period must run to completion (the 2026-09-22 review-gate catch — a timer armed
+ * at spawn SIGKILLed every healthy check longer than KILL_GRACE_MS and misclassified it as a
+ * timeout, freezing all merge-scope checks). The escalation timer is unref'd and survives
+ * the group leader's exit on purpose: npm dying on the SIGTERM must not cancel the SIGKILL a
+ * lingering grandchild still needs; resolving at timeout-fire keeps the caller's latency
+ * bounded while the teardown finishes in the background. Captured output is capped at
+ * maxBuffer per stream (further chunks are dropped — classification reads the tail), so a
+ * chatty script can neither wedge the check nor balloon memory. Never throws; a spawn
+ * failure (npm missing from PATH) is reported as spawnError. */
+function runScriptGroup(
+  cmd: string,
+  args: string[],
+  opts: { cwd: string; timeoutMs: number; killGraceMs: number; maxBuffer: number },
+): Promise<ScriptGroupResult> {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, {
+      cwd: opts.cwd,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let settled = false;
+    let timedOut = false;
+    let killTimer: NodeJS.Timeout | undefined;
+    let stdout = "";
+    let stderr = "";
+    let stdoutSize = 0;
+    let stderrSize = 0;
+    child.stdout?.on("data", (chunk: Buffer) => {
+      if (stdoutSize < opts.maxBuffer) {
+        stdoutSize += chunk.length;
+        stdout += chunk;
+      }
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      if (stderrSize < opts.maxBuffer) {
+        stderrSize += chunk.length;
+        stderr += chunk;
+      }
+    });
+    const finish = (result: Omit<ScriptGroupResult, "timedOut" | "stdout" | "stderr">) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      // The SIGKILL escalation is cancelled only when the timeout never fired: once it has,
+      // the escalation must survive the group leader's exit (npm dies on the SIGTERM; a
+      // trapped grandchild does not) and still reach the rest of the group. unref'd below,
+      // so it never keeps the harness process alive.
+      if (!timedOut) clearTimeout(killTimer);
+      resolve({ ...result, timedOut, stdout, stderr });
+    };
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      signalTree(child, "SIGTERM");
+      killTimer = setTimeout(() => signalTree(child, "SIGKILL"), opts.killGraceMs);
+      killTimer.unref();
+      finish({ signal: "SIGTERM" });
+    }, opts.timeoutMs);
+    child.on("error", (err: NodeJS.ErrnoException) => finish({ spawnError: err }));
+    child.on("close", (code, signal) => {
+      // After the timeout fired this run is already classified; the group teardown (if any
+      // is still needed) continues on the escalation timer in the background.
+      finish({ code: code ?? undefined, signal: signal ?? undefined });
+    });
+  });
+}
+
 /** Probe the toolchain (see probeToolchain), then run `npm run <script>` in the worktree
- * (cwd = wt), capturing combined output with a hard timeout. Never throws: every outcome is
- * classified per BuildCheckOutcome. Running a local script needs no network. No env
+ * (cwd = wt), capturing combined output with a hard timeout enforced GROUP-WIDE — the
+ * process tree, not just the npm process — and classified per BuildCheckOutcome. Never
+ * throws: every outcome is classified. Running a local script needs no network. No env
  * manipulation is needed even though the worktree has no node_modules of its own
  * (gitignored): npm's run-script walks UP from the project path, adding EVERY level's
  * `node_modules/.bin` to the script's PATH (@npmcli/run-script setPATH), so the toolchain at
@@ -279,6 +375,7 @@ export async function runBuildCheck(
   wt: string,
   check: BuildCheck,
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
+  killGraceMs = KILL_GRACE_MS,
 ): Promise<BuildCheckOutcome> {
   // Environmental probe first: a toolchain broken below the project (git exiting 69 on an
   // invalidated Xcode license) would fail the check with noise unrelated to the tree and the
@@ -286,40 +383,35 @@ export async function runBuildCheck(
   if ((await probeToolchain()) === "broken") {
     return { status: "skipped", script: check.script, skipReason: "toolchain" };
   }
-  try {
-    await execFileAsync("npm", ["run", check.script], {
-      cwd: wt,
-      maxBuffer: 32 * 1024 * 1024,
-      timeout: timeoutMs,
-    });
-    return { status: "passed", script: check.script };
-  } catch (err) {
-    const e = err as {
-      code?: number | string;
-      killed?: boolean;
-      signal?: NodeJS.Signals | null;
-      stdout?: string;
-      stderr?: string;
-    };
-    // Killed by the timeout (or an output overflow): environmental — warn and proceed.
-    if (e.killed || e.signal) return { status: "skipped", script: check.script, skipReason: "timeout" };
-    // A started process that exited nonzero is a deterministic failure of the build itself —
-    // unless its output names a broken toolchain: then the environment, not the tree, killed it,
-    // and the same skip semantics apply (never a deterministic rejection, never a red baseline).
-    if (typeof e.code === "number") {
-      const output = `${e.stdout ?? ""}${e.stderr ?? ""}`;
-      if (toolchainErrorInOutput(output)) {
-        return { status: "skipped", script: check.script, skipReason: "toolchain" };
-      }
-      return {
-        status: "failed",
-        script: check.script,
-        outputTail: clipBuildTail(output),
-      };
+  const r = await runScriptGroup("npm", ["run", check.script], {
+    cwd: wt,
+    timeoutMs,
+    killGraceMs,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  // Spawn failed before anything ran — the npm binary is missing from PATH.
+  if (r.spawnError) return { status: "skipped", script: check.script, skipReason: "no-npm" };
+  // The timeout fired (or the tree died on a signal): environmental — warn and proceed. A
+  // timed-out check's whole process tree is already being taken down group-wide by
+  // runScriptGroup (SIGTERM now, SIGKILL after the grace if anything survived).
+  if (r.timedOut || r.signal) return { status: "skipped", script: check.script, skipReason: "timeout" };
+  if (r.code === 0) return { status: "passed", script: check.script };
+  // A started process that exited nonzero is a deterministic failure of the build itself —
+  // unless its output names a broken toolchain: then the environment, not the tree, killed it,
+  // and the same skip semantics apply (never a deterministic rejection, never a red baseline).
+  if (typeof r.code === "number") {
+    const output = `${r.stdout}${r.stderr}`;
+    if (toolchainErrorInOutput(output)) {
+      return { status: "skipped", script: check.script, skipReason: "toolchain" };
     }
-    // Spawn failed before anything ran — the npm binary is missing from PATH.
-    return { status: "skipped", script: check.script, skipReason: "no-npm" };
+    return {
+      status: "failed",
+      script: check.script,
+      outputTail: clipBuildTail(output),
+    };
   }
+  // Spawn failed before anything ran — the npm binary is missing from PATH.
+  return { status: "skipped", script: check.script, skipReason: "no-npm" };
 }
 
 /** The scopes named in a build_check event logged from this helper. The red-main baseline

@@ -11,6 +11,7 @@ import {
   runScopedBuildCheck,
 } from "../src/build-check.js";
 import { readEvents } from "../src/events.js";
+import { pidAlive } from "../src/process.js";
 import { buildCheckFixture, sh, tmpdir } from "./util.js";
 
 // Unit coverage for the deterministic build pre-check (src/build-check.ts): detection by
@@ -53,6 +54,78 @@ test("runBuildCheck skips (not fails closed) when the script times out", async (
   const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 400);
   assert.equal(outcome.status, "skipped");
   assert.equal(outcome.skipReason, "timeout");
+});
+
+// A timed-out check must take its whole process tree with it. npm runs detached as its own
+// process group leader; the old execFileAsync `timeout` signalled npm alone, so everything
+// below it survived and reparented to PID 1 — four orphaned trees on the fleet, one alive 12
+// days, one running a real orchestrator for 18 hours (BUGS.md 2026-09-21). The runner here
+// backgrounds a grandchild that TRAPS SIGTERM — only the SIGKILL escalation can stop it — so
+// the test pins both the group signal and the escalation armed on timeout. Mirrors
+// test/pi.test.ts's "a killed run leaves no grandchild behind".
+test("a timed-out build check takes its process tree with it (regression)", async () => {
+  const { root, wt } = buildCheckFixture();
+  const pidFile = path.join(wt, "grandchild.pid");
+  fs.writeFileSync(
+    path.join(wt, "runner.mjs"),
+    [
+      'import fs from "node:fs";',
+      'import { spawn } from "node:child_process";',
+      `const pidFile = ${JSON.stringify(pidFile)};`,
+      `const script = "process.on('SIGTERM', () => {}); " +`,
+      `  "require('fs').writeFileSync('${pidFile}', String(process.pid)); " +`,
+      '  "setTimeout(() => {}, 60_000)";',
+      'spawn(process.execPath, ["-e", script], { stdio: "ignore" });',
+      "const deadline = Date.now() + 10_000;",
+      "while (!fs.existsSync(pidFile) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));",
+      "if (!fs.existsSync(pidFile)) process.exit(3);",
+      "setInterval(() => {}, 1_000);",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "node runner.mjs" } }),
+  );
+  let pid = 0;
+  try {
+    // 600ms budget, 700ms SIGKILL grace: the grandchild traps SIGTERM, so it must be gone
+    // shortly after the grace expires — and only via the escalation.
+    const outcome = await runBuildCheck(wt, { rootDir: root, script: "test" }, 600, 700);
+    assert.equal(outcome.status, "skipped");
+    assert.equal(outcome.skipReason, "timeout");
+    pid = Number(fs.readFileSync(pidFile, "utf8").trim());
+    assert.ok(pid > 0, "the grandchild recorded its pid before the timeout");
+    // The escalation is asynchronous relative to the check's resolution: poll until the OS
+    // has reaped the grandchild (or the assertion below fails on the leak this test pins).
+    const deadline = Date.now() + 5_000;
+    while (pidAlive(pid) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(pidAlive(pid), false, "the timed-out check's grandchild is gone after the SIGKILL grace");
+  } finally {
+    // A failure above must not leave the SIGTERM-trapping process behind.
+    if (pid > 0) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Already gone — the fix working is exactly this case.
+      }
+    }
+  }
+});
+
+// The SIGKILL escalation is armed WHEN THE TIMEOUT FIRES, never at spawn: a timer armed at
+// spawn SIGKILLed every healthy check still running at killGraceMs and misclassified it as a
+// timeout — which, at a merge scope (landing/batch), is a deterministic reject of a green
+// tree (the 2026-09-22 review-gate catch on this fix's first draft).
+test("a healthy check that outlasts the SIGKILL grace is not mistaken for a timeout", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "sleep 2" } }),
+  );
+  const outcome = await runBuildCheck(wt, { rootDir: root, script: "test" }, 30_000, 500);
+  assert.equal(outcome.status, "passed");
 });
 
 test("a landing- or batch-scope timeout is a deterministic reject, not an environmental skip", async () => {

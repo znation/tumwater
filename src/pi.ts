@@ -81,8 +81,10 @@ function terminateChild(child: ChildProcess): void {
 
 /** Signal the child's whole process group, falling back to the child alone when the group is
  * already gone or the platform has no negative-PID kill (Windows). Never throws: a process
- * that died between the caller's decision and this call is the normal case. */
-function signalTree(child: ChildProcess, signal: NodeJS.Signals): void {
+ * that died between the caller's decision and this call is the normal case. Shared with the
+ * build check's process-group timeout (runScriptGroup in build-check.ts) — the same
+ * "signal the tree, not just the direct child" guarantee in one home. */
+export function signalTree(child: ChildProcess, signal: NodeJS.Signals): void {
   if (child.pid == null) return;
   try {
     process.kill(-child.pid, signal);
