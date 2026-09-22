@@ -2,9 +2,10 @@ import fs from "node:fs";
 import type { FallbackModelConfig, TumwaterConfig, RoleConfig } from "./types.js";
 import { allRoleIds } from "./roles.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { configPath } from "./paths.js";
+import { configPath, configRequestPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
+import { isJsonObject } from "./json-object.js";
 import { show, validateConfig } from "./config-validation.js";
 
 /** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick, qa and
@@ -61,12 +62,13 @@ export function defaultConfig(): TumwaterConfig {
     // A self-hosting fleet redeploys itself onto a green main (src/redeploy.ts): the alternative
     // — a process that never reloads its own code — ran ten days stale in dogfood.
     autoRestart: true,
-    // tumwater.json joins the default exemptions (plans/user-defined-loops.md): only the
-    // director can ever produce a diff touching that file, so exempting it means "user-directed
-    // config changes skip model review" — consistent with the md-only exemption's philosophy.
-    // Without this an explicit user command could be silently discarded: a rejected director
-    // tick does not re-queue its prompt. validateConfig is the safety net instead.
-    review: { enabled: true, exemptPaths: ["*.md", "docs/**", "tumwater.json"] },
+    // Config changes no longer ride the commit path (plans/portability.md §3/7): the director
+    // writes a request file the harness applies to the live config before any commit, so no
+    // diff can ever touch tumwater.json and the exemption — once the only thing keeping an
+    // explicit user instruction from being discarded by a rejected review — has nothing left
+    // to exempt. Removing it also closes the path where a director tick could land a mixed
+    // doc-plus-config diff unreviewed.
+    review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
     customLoops: [],
     roles,
   };
@@ -246,6 +248,89 @@ export function setDailyBudgetUsd(
     return { ok: false, error: errorMessage(err) };
   }
   return { ok: true };
+}
+
+/** Consume the director's config-write request file (plans/portability.md §3/7). After its pi
+ * run the director may leave `.tumwater-config-request.json` at its worktree root:
+ * `{ "customLoops": [ { "name", "task" }, … ] }` — the whole array, replacing the current one.
+ * Applied atomically to the live config with setDailyBudgetUsd's idiom (fresh loadConfig that
+ * bypasses the stat cache, validateConfig, then writeJsonAtomic — readers poll every ~2 s), so
+ * the orchestrator's live reload starts the new loop with no commit, no review gate, and no
+ * merge, and the request file never enters a diff.
+ *
+ * The permitted key set is enforced here, not in prose: `customLoops` is accepted and every
+ * other top-level key is collected into `ignored` and dropped (the caller logs the warning that
+ * names them). Validation runs BEFORE any write and nothing here dereferences a request entry
+ * first — a structurally malformed entry (`[null]`, a non-string name) is left for
+ * validateConfig to reject, so on failure nothing is written and the previous config stays
+ * live. The request file is deleted on EVERY path (including every failure), so a malformed
+ * request cannot retry forever and the file cannot survive into `git add -A`.
+ *
+ * Roles entries for custom loops the request removes are stripped before validation:
+ * loadConfig seeds one `roles.<name>` per current custom loop and validateConfig rejects an
+ * id that is neither a catalog role nor a requested custom-loop name, so without the strip a
+ * removal would never apply. Only structurally valid names feed the strip — a malformed entry
+ * stays in the array for validateConfig to reject.
+ *
+ * Returns null when no request file exists. `applied` names the custom loops now live (empty
+ * unless the write happened); `ignored` lists the discarded top-level keys; `error`, when set,
+ * names why nothing (or only part of the work) was done — the caller turns it and `ignored`
+ * into warning events. */
+export function applyConfigRequest(
+  root: string,
+  wt: string,
+): { applied: string[]; ignored: string[]; error?: string } | null {
+  const requestFile = configRequestPath(wt);
+  let raw: string;
+  try {
+    raw = fs.readFileSync(requestFile, "utf8");
+  } catch {
+    return null; // no request this tick
+  }
+
+  const ignored: string[] = [];
+  let applied: string[] = [];
+  let error: string | undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isJsonObject(parsed))
+      throw new Error(`config request must be a JSON object (got ${show(parsed)})`);
+    for (const key of Object.keys(parsed)) {
+      if (key !== "customLoops") ignored.push(key);
+    }
+    const loops = parsed.customLoops;
+    if (!Array.isArray(loops))
+      throw new Error(`config request's customLoops must be an array (got ${show(loops)})`);
+    const current = loadConfig(root); // fresh — bypasses the stat cache: a writer sees the latest file
+    // Strip roles.<id> entries for custom loops this request removes (see docstring). Structurally
+    // valid names only; anything else stays for validateConfig to reject — never dereference a
+    // request entry before validation.
+    const requestedNames = new Set<string>();
+    for (const entry of loops) {
+      if (isJsonObject(entry) && typeof entry.name === "string") requestedNames.add(entry.name);
+    }
+    const roles = { ...current.roles };
+    for (const c of current.customLoops) {
+      if (!requestedNames.has(c.name)) delete roles[c.name];
+    }
+    const candidate: TumwaterConfig = { ...current, customLoops: loops as TumwaterConfig["customLoops"], roles };
+    validateConfig(candidate); // throws listing every problem — nothing is written on failure
+    applied = candidate.customLoops.map((c) => c.name);
+    writeJsonAtomic(configPath(root), candidate, true);
+  } catch (err) {
+    applied = []; // no write happened, or it must not be reported as applied
+    error = errorMessage(err);
+  }
+
+  // Delete the request on EVERY path — success, rejection, malformed JSON — so it can never be
+  // staged by commitAll, reach a review gate, or retry forever. A failed unlink is surfaced as
+  // an error so the caller logs it (the file would otherwise survive into the diff).
+  try {
+    fs.unlinkSync(requestFile);
+  } catch (err) {
+    error ??= `config request file could not be deleted: ${errorMessage(err)}`;
+  }
+  return { applied, ignored, error };
 }
 
 /** The names of the user-defined loops, in array order (plans/user-defined-loops.md).

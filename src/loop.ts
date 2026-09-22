@@ -30,7 +30,7 @@ import {
 } from "./prompt.js";
 import { readInitialPrompt } from "./readme.js";
 import { telemetryDigest } from "./failure-report.js";
-import { configForRole } from "./config.js";
+import { applyConfigRequest, configForRole } from "./config.js";
 import { RETRIABLE_LANDING_RESULTS, landChange, type LandRequest } from "./lander.js";
 import { enqueueLanding } from "./land-queue.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
@@ -679,6 +679,23 @@ export class LoopRunner {
     // The next tick's reset discards them.
     if (pi.aborted) return this.finishAbortedTick(userPrompt, wt);
     this.pendingUserPrompt = null;
+    // Harness-mediated config writes (plans/portability.md §3/7): the director may have left a
+    // config request in its worktree. Consume it here — after the abort return (a deliberate
+    // abort still discards an unfulfilled request) and before every staging path (quiet-kill,
+    // timeout, refusal, isDirty, commitAll) — so the request file never enters a diff or a
+    // review prompt, and a quiet-killed/timeout re-run starts clean instead of losing the
+    // request to the reset. Applied names are announced by the orchestrator's ~2 s live reload
+    // (one config_changed event naming the keys); this tick logs only the rejection paths.
+    if (this.role === DIRECTOR_ROLE) {
+      const request = applyConfigRequest(this.root, wt);
+      if (request) {
+        if (request.error) this.warn(`config request rejected: ${request.error}`);
+        if (request.ignored.length)
+          this.warn(
+            `config request ignored key(s): ${request.ignored.join(", ")} — only customLoops is accepted`,
+          );
+      }
+    }
     if (pi.quietKilled) {
       // A hung tool call, not a slow run: the session and the worktree's edits are intact.
       // Preserve both — applyTickOutcome resumes them promptly like an interruption instead of

@@ -515,34 +515,41 @@ test("the director routes refusal decisions by clearing the Refused note", () =>
   assert.match(prompt, /so loops can pick it up again/);
 });
 
-// The director is the only loop allowed to touch tumwater.json — and only its customLoops
-// array (plans/user-defined-loops.md). The routing bullet names the mechanics; the exception
-// paragraph scopes the edit so a vague request cannot drift into retuning timeouts or
-// disabling roles. Role tick prompts keep the blanket ban untouched.
+// The director is the only loop that can change customLoops — through the harness-mediated
+// request file (plans/portability.md §3/7), never by editing tumwater.json. The routing bullet
+// names the mechanics; the note scopes the request so a vague request cannot drift into
+// retuning timeouts or disabling roles. Role tick prompts keep the blanket ban untouched.
 
-test("the director routes loop-management requests to tumwater.json's customLoops", () => {
+test("the director routes loop-management requests to the config request file", () => {
   const prompt = oneLine(
     buildDirectorPrompt("add a loop named docs-sync that keeps the README examples current", "a project"),
   );
   assert.match(prompt, /A request to manage user-defined loops/);
-  assert.match(prompt, /editing tumwater\.json's customLoops array/);
+  assert.match(prompt, /\.tumwater-config-request\.json/);
   assert.match(prompt, /\[a-z0-9_-\] no built-in role uses/);
   assert.match(prompt, /standing per-tick instruction/);
   assert.match(prompt, /array order is display\/scheduling order/);
-  assert.match(prompt, /still parses as JSON after editing/);
+  // Replace semantics and the worked example are pinned — a partial array would silently
+  // delete loops the director forgot to repeat.
+  assert.match(prompt, /REPLACES the current one/);
+  assert.match(prompt, /"name": "docs"/);
 });
 
-test("the director's tumwater.json exception is scoped to customLoops; role prompts keep the blanket ban", () => {
+test("the director's request-file contract replaces the tumwater.json edit exception; role prompts keep the blanket ban", () => {
   const d = oneLine(buildDirectorPrompt("add a loop named x that does y", "a project"));
-  assert.match(d, /Exception to one boundary above, director only/);
-  assert.match(d, /only its customLoops array/);
-  // The blanket ban still stands in the director prompt — the exception carves out one file's
-  // one key, not the whole boundary.
+  assert.match(d, /Note on one boundary above, director only/);
+  assert.match(d, /applies only its customLoops array/);
+  assert.match(d, /discarded with a warning/);
+  // No edit exception remains: the director is told the config stays off-limits to it too.
+  assert.ok(!d.includes("Exception to one boundary above"), "no tumwater.json edit exception");
+  assert.ok(!d.includes("you may edit tumwater.json"), "the director never edits the config");
+  // The blanket ban still stands in the director prompt — the request file sits at the
+  // worktree root, so the boundary is untouched.
   assert.match(d, /Never touch the \.tumwater directory or tumwater\.json/);
   for (const role of ROLES) {
     const p = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
     assert.match(p, /Never touch the \.tumwater directory or tumwater\.json/, `${role.id} keeps the ban`);
-    assert.ok(!p.includes("Exception to one boundary above"), `${role.id} carries no exception`);
+    assert.ok(!p.includes("config-request"), `${role.id} carries no request-file contract`);
   }
 });
 

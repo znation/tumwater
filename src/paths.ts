@@ -12,6 +12,14 @@ export function configPath(root: string): string {
   return path.join(root, "tumwater.json");
 }
 
+/** The director's config-write request file, at its worktree root (plans/portability.md §3/7):
+ * the director writes it, the harness consumes and deletes it before any commit path — so it
+ * never enters a diff, a review prompt, or the project's history, and custom-loop management
+ * works whether or not tumwater.json is tracked. */
+export function configRequestPath(wt: string): string {
+  return path.join(wt, ".tumwater-config-request.json");
+}
+
 /** A loop's persistent git worktree under .tumwater/worktrees/. */
 export function worktreePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "worktrees", role);

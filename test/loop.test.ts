@@ -9,11 +9,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig, customLoopNames, loadConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import { loadLoopState } from "../src/state.js";
-import { sessionDir, worktreePath } from "../src/paths.js";
+import { configRequestPath, sessionDir, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
 import { assistantLine, fakePi, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
 
@@ -543,6 +543,60 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
     assert.equal(await landHead(repo, runner, defaultConfig(), "director"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "request.txt")));
     assert.equal(inboxSize(repo), 0, "a fulfilled prompt is not re-queued");
+  } finally {
+    restore();
+  }
+});
+
+// Harness-mediated config writes (plans/portability.md §3/7): the director's config request is
+// consumed before any commit path — the loop is live on the ~2 s reload, no commit exists, and
+// the request file never enters a diff.
+test("a director tick applies a config request without producing a commit", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
+      `printf '%s' '{"customLoops":[{"name":"docs","task":"Keep the examples current."}]}' > .tumwater-config-request.json`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    enqueuePrompt(repo, "add a loop named docs that keeps the examples current");
+    // The request is not a worktree change: consumed and deleted before the dirty check, the
+    // tick is a fulfillment with nothing to commit (the orchestrator's reload starts the loop).
+    assert.equal((await runner.tick()).result, "no_change");
+    assert.deepEqual(customLoopNames(loadConfig(repo)), ["docs"]);
+    assert.ok(!fs.existsSync(configRequestPath(worktreePath(repo, "director"))), "request consumed");
+    assert.equal(
+      sh(repo, "git", "log", "--oneline", "main..tumwater/director").trim(),
+      "",
+      "the request file never reaches a commit",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a config request naming a disallowed key applies customLoops and warns naming the key", async () => {
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
+      `printf '%s' '{"customLoops":[{"name":"docs","task":"t"}],"maxDailyCostUsd":1}' > .tumwater-config-request.json`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    enqueuePrompt(repo, "add docs and set the budget to 1");
+    await runner.tick();
+    // The good half still applies...
+    assert.deepEqual(customLoopNames(loadConfig(repo)), ["docs"]);
+    // ...and the ignored key is named in a warning event, not dropped silently.
+    const warnings = readEvents(repo).filter((e) => e.type === "warning");
+    assert.ok(
+      warnings.some((e) => String(e.message).includes("maxDailyCostUsd")),
+      `expected a warning naming the ignored key, got: ${JSON.stringify(warnings.map((e) => String(e.message)))}`,
+    );
   } finally {
     restore();
   }

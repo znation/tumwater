@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  applyConfigRequest,
   applyFallbackModel,
   changedConfigKeys,
   configForRole,
@@ -18,6 +19,7 @@ import {
   saveConfig,
   setDailyBudgetUsd,
 } from "../src/config.js";
+import { configRequestPath } from "../src/paths.js";
 import { show, validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
@@ -696,13 +698,14 @@ test("autoRestart defaults on and is validated as a boolean", () => {
 
 // --- User-defined loops (plans/user-defined-loops.md, PLANS.md "User-defined loops 1/3") ---
 
-test("defaultConfig carries no customLoops and exempts tumwater.json from review", () => {
-  // Only the director can ever produce a diff touching tumwater.json, so exempting it means
-  // user-directed config changes skip model review — validateConfig is the safety net.
+test("defaultConfig carries no customLoops and no longer exempts tumwater.json from review", () => {
+  // Config changes no longer ride the commit path (plans/portability.md §3/7): the director's
+  // request file is consumed before any diff exists, so the exemption has nothing left to
+  // exempt — and removing it closes the mixed doc-plus-config diff it left unreviewed.
   assert.deepEqual(defaultConfig().customLoops, []);
   assert.ok(
-    defaultConfig().review.exemptPaths.includes("tumwater.json"),
-    "the tracked config file joins the default review exemptions",
+    !defaultConfig().review.exemptPaths.includes("tumwater.json"),
+    "tumwater.json has left the default review exemptions",
   );
 });
 
@@ -1030,4 +1033,123 @@ test("changedConfigKeys skips maxConcurrent and sessionRetentionDays, which have
   next.maxConcurrent = prev.maxConcurrent + 1;
   next.sessionRetentionDays = prev.sessionRetentionDays + 1;
   assert.deepEqual(changedConfigKeys(prev, next), []);
+});
+
+// Harness-mediated config writes (plans/portability.md §3/7): the director leaves a request
+// file in its worktree; applyConfigRequest validates, applies only customLoops, and deletes
+// the request on EVERY path — so custom-loop management works with the config tracked,
+// gitignored, or absent, and the file never reaches a commit.
+
+function writeRequest(wt: string, value: unknown): void {
+  fs.writeFileSync(configRequestPath(wt), typeof value === "string" ? value : JSON.stringify(value));
+}
+
+test("applyConfigRequest returns null when no request file exists", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  assert.equal(applyConfigRequest(root, wt), null);
+});
+
+test("applyConfigRequest applies a customLoops array to the live config and deletes the request", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  saveConfig(root, defaultConfig());
+  writeRequest(wt, { customLoops: [{ name: "docs", task: "Keep the examples current." }] });
+  const result = applyConfigRequest(root, wt);
+  assert.deepEqual(result?.applied, ["docs"]);
+  assert.deepEqual(result?.ignored, []);
+  assert.equal(result?.error, undefined);
+  // The loop is live (loadConfig re-reads the file) with defaults otherwise intact.
+  assert.deepEqual(customLoopNames(loadConfig(root)), ["docs"]);
+  assert.equal(loadConfig(root).maxDailyCostUsd, defaultConfig().maxDailyCostUsd);
+  // The request file is gone — it can never be staged by commitAll.
+  assert.ok(!fs.existsSync(configRequestPath(wt)));
+});
+
+test("applyConfigRequest replaces the whole array and strips orphaned roles entries", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  const config = defaultConfig();
+  config.customLoops = [
+    { name: "docs", task: "old task" },
+    { name: "scrape", task: "old task" },
+  ];
+  config.roles.docs = { enabled: false };
+  config.roles.scrape = { enabled: false };
+  saveConfig(root, config);
+  // The replacement array keeps only docs — scrape's roles entry must go with it, or
+  // validateConfig would reject the orphaned id and the removal would never apply.
+  writeRequest(wt, { customLoops: [{ name: "docs", task: "new task" }] });
+  const result = applyConfigRequest(root, wt);
+  assert.deepEqual(result?.applied, ["docs"]);
+  assert.deepEqual(result?.ignored, []);
+  assert.equal(result?.error, undefined);
+  const loaded = loadConfig(root);
+  assert.deepEqual(customLoopNames(loaded), ["docs"]);
+  assert.equal(loaded.customLoops[0]!.task, "new task");
+  assert.equal(loaded.roles.docs?.enabled, false, "a kept loop's roles entry survives");
+  assert.ok(!("scrape" in loaded.roles), "a removed loop's roles entry is stripped");
+});
+
+test("applyConfigRequest ignores disallowed keys with their names, and still applies customLoops", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  saveConfig(root, defaultConfig());
+  writeRequest(wt, {
+    customLoops: [{ name: "docs", task: "Keep the examples current." }],
+    maxDailyCostUsd: 1,
+    roles: { director: { enabled: false } },
+  });
+  const result = applyConfigRequest(root, wt);
+  // applied names ride with ignored so the caller can warn without losing the good half.
+  assert.deepEqual(result?.applied, ["docs"]);
+  assert.deepEqual(result?.ignored, ["maxDailyCostUsd", "roles"]);
+  assert.equal(result?.error, undefined);
+  const loaded = loadConfig(root);
+  assert.deepEqual(customLoopNames(loaded), ["docs"]);
+  // The ignored keys changed nothing: the permitted-key filter drops them before the merge.
+  assert.equal(loaded.maxDailyCostUsd, defaultConfig().maxDailyCostUsd);
+  assert.equal(loaded.roles.director?.enabled, true);
+});
+
+test("applyConfigRequest rejects an invalid candidate: nothing written, previous config live, request deleted", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  saveConfig(root, defaultConfig());
+  writeRequest(wt, { customLoops: [{ name: "Docs", task: "uppercase name" }] });
+  const result = applyConfigRequest(root, wt);
+  assert.ok(result && result.error, "a validation failure surfaces as an error string");
+  assert.match(result.error, /customLoops\[0\]\.name/);
+  assert.deepEqual(result.applied, []);
+  assert.deepEqual(loadConfig(root), defaultConfig());
+  // Deleted anyway — a malformed request must not retry forever.
+  assert.ok(!fs.existsSync(configRequestPath(wt)));
+});
+
+test("applyConfigRequest survives structurally malformed requests without throwing", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  saveConfig(root, defaultConfig());
+  // Regression: a null entry must reach validateConfig as a named problem, never crash on a
+  // premature `.name` dereference.
+  writeRequest(wt, { customLoops: [null] });
+  let result = applyConfigRequest(root, wt);
+  assert.ok(result && result.error && /customLoops\[0\]/.test(result.error), JSON.stringify(result));
+  assert.deepEqual(loadConfig(root), defaultConfig());
+  assert.ok(!fs.existsSync(configRequestPath(wt)));
+
+  writeRequest(wt, "not json at all");
+  result = applyConfigRequest(root, wt);
+  assert.ok(result && result.error, "unparseable JSON surfaces as an error string");
+  assert.ok(!fs.existsSync(configRequestPath(wt)));
+
+  writeRequest(wt, { customLoops: "everything" });
+  result = applyConfigRequest(root, wt);
+  assert.ok(result && result.error && /must be an array/.test(result.error), JSON.stringify(result));
+  assert.ok(!fs.existsSync(configRequestPath(wt)));
+
+  writeRequest(wt, ["an array, not an object"]);
+  result = applyConfigRequest(root, wt);
+  assert.ok(result && result.error && /must be a JSON object/.test(result.error), JSON.stringify(result));
+  assert.ok(!fs.existsSync(configRequestPath(wt)));
 });

@@ -5,22 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 3/7 — Harness-mediated config writes: take custom loops off the commit path (planned 2026-09-14, refined 2026-09-21)
-
-**Goal.** Make `customLoops` management independent of whether the config file is tracked, of whether the target repo is tumwater's own, and of the review/merge cycle, so custom loops work on an installed copy against any repository. Today the director edits `<worktree>/tumwater.json` and the edit reaches the primary checkout only by commit → review gate → merge, which forces the file tracked, accrues fleet-authored config commits on an adopted repo, and silently drops a rejected director tick's explicit user instruction. The director leaves a request file in its own worktree instead.
-
-**Series.** Part 3/7 of the portability series; land before 4b/7, because untracking this repo's config silently breaks custom-loop management until this lands. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §3/7.
-
-**Files touched.** src/paths.ts, src/config.ts, src/loop.ts, src/prompt.ts, plans/user-defined-loops.md, test/config.test.ts, test/loop.test.ts, test/prompt.test.ts. (src/types.ts and src/ui/event-format.ts dropped on the 2026-09-21 re-audit: the `config_changed` event they were to add already exists — the live config-edit feature landed it 2026-09-19 — and the orchestrator's reload already announces applied changes.)
-
-**Acceptance criteria.**
-- Prompting the director "add a loop named docs that keeps the examples current" adds it to the config and starts it ticking within ~2 s, with no commit on the target branch and no review-gate run.
-- The same prompt works identically when the config file is gitignored and absent from every worktree — the state 4a/7 makes the default.
-- A request naming `maxDailyCostUsd` changes nothing, logs a warning naming the ignored key, and still applies `customLoops`.
-- A request whose entry fails name/task validation writes nothing and leaves the previous config live; the fleet keeps running.
-- The request file never appears in a commit, a diff, or a review prompt.
-- `review.exemptPaths` no longer lists `tumwater.json`, and the existing user-defined-loop tests pass with only the documented changes.
-
 ### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-21)
 
 **Goal.** Every project tumwater initializes gets an untracked, gitignored `tumwater.json`: seeded from a tracked `tumwater.example.json` when the project ships one, from `defaultConfig()` when it does not; `doctor` reports where the two have drifted. This repo's own config keeps its tracking until 4b/7. Two implementer traps are pinned in the doc: `ensureGitignore`'s early return only checks its first entry, and the ignored config must stay out of the commit pathspec while still being reported as created.
@@ -93,9 +77,22 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A repo tumwater created before this change keeps reading its brief from README.md with no migration step.
 - `tumwater init --dry-run` prints the file list and exits 0 having written nothing.
 
-**Series critical path.** 1/7 ✓ and 2/7 ✓ (landed 2026-09-22) are done; 3/7 → 4a/7 → 4b/7 remains the critical path. 4c/7 landed 2026-09-21 (`dfa6d26`); its one remaining line — README's `## Usage` naming `tumwater.example.json` — is folded into 4a/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here.
+**Series critical path.** 1/7 ✓, 2/7 ✓ and 3/7 ✓ (landed 2026-09-23) are done; 4a/7 → 4b/7 remains the critical path. 4c/7 landed 2026-09-21 (`dfa6d26`); its one remaining line — README's `## Usage` naming `tumwater.example.json` — is folded into 4a/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here.
 
 ## Done
+
+### 3/7 — Harness-mediated config writes: take custom loops off the commit path (planned 2026-09-14, refined 2026-09-21, done 2026-09-23)
+
+Landed per plans/portability.md §3/7 (2026-09-21 re-audit): `configRequestPath` (src/paths.ts),
+`applyConfigRequest` (src/config.ts) — permitted-key filter collecting `ignored`, structural
+validation before any entry dereference, orphaned `roles.<id>` strip, validate-then-
+`writeJsonAtomic`, request deleted on every path with a failed unlink surfaced as an error —
+consumed in the director tick after the abort return and before every staging path (src/loop.ts),
+rejection/ignored keys logged as warning events naming them; the director prompt swaps the
+`tumwater.json` edit exception for the request-file contract with a worked example (src/prompt.ts);
+`defaultConfig().review.exemptPaths` drops `tumwater.json`; plans/user-defined-loops.md bullets
+and invariant 4 superseded. Tests: applyConfigRequest unit tests incl. the `[null]` regression,
+loop-level no-commit + ignored-key-warning tests, updated director-prompt contract tests.
 
 ### 2/7 — Resolve the repo root, and target any branch (planned 2026-09-14, refined 2026-09-17, re-audited 2026-09-21, done 2026-09-22)
 

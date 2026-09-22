@@ -46,18 +46,21 @@ stay untouched: the user manages only their own loops.
 - **One source of truth for "which ids exist / which are user-defined":** `customLoopNames`,
   `isCustomRole`, and `knownRoleIds` in src/config.ts — every consumer goes through these so
   the answer cannot drift.
-- **Only the director may write `customLoops`.** Every role tick prompt keeps the blanket
-  "never touch tumwater.json" rule (COMMON_RULES); the director gets a scoped exception for
-  exactly this key, plus a routing bullet telling it how to add/remove/rearrange (2/3). The
-  edit lands like any other director change: commit → review gate → merge → live reload.
-- **`tumwater.json` joins the default `review.exemptPaths`.** Only the director can ever produce
-  a diff touching that file, so exempting it means "user-directed config changes skip model
-  review" — consistent with the md-only exemption's philosophy. Without this, an explicit user
-  command could be silently discarded: a rejected director tick does not re-queue its prompt,
-  and three failed reviews discard the leftover. `validateConfig` is the safety net instead:
-  invalid entries fail fast at load with a named error while the fleet keeps its last-known-good
-  config (the existing live-reload contract) — a bad edit degrades to "no new config changes
-  until fixed", never a broken fleet.
+- **Only the director may write `customLoops`** — through a harness-mediated request file, not
+  a commit (superseded 2026-09-22 by plans/portability.md §3/7): the director writes
+  `.tumwater-config-request.json` in its worktree, the harness validates, applies only the
+  `customLoops` array to the live config, and deletes the request before any commit path — no
+  commit, no review gate, no merge, and the loop starts on the orchestrator's ~2 s live reload.
+  This works whether or not tumwater.json is tracked, so custom-loop management survives
+  untracking the config (4b/7) and works on an adopted repo.
+- **`tumwater.json` has LEFT the default `review.exemptPaths`** (superseded 2026-09-22 by
+  plans/portability.md §3/7): config changes no longer produce a diff at all, so the exemption
+  — once the only thing keeping an explicit user instruction from being silently discarded by a
+  rejected review — has nothing left to exempt. Removing it also closes the path where a
+  director tick could land a mixed doc-plus-config diff unreviewed. `validateConfig` remains
+  the safety net: an invalid request fails with a named warning while the fleet keeps its
+  last-known-good config — a bad edit degrades to "no new config changes until fixed", never a
+  broken fleet.
 - **Custom loops are blocked on red main**, like `feature`/`improve`: their charter may produce
   code, and on red main such diffs are rejected deterministically by the gate's pre-check — an
   authoring run would be pure waste. The state cell reads `main red`, so it is observable; a
@@ -73,8 +76,10 @@ stay untouched: the user manages only their own loops.
    honors minTickInterval, budget, and fleet pause exactly like a built-in — no special-casing
    in loop.ts beyond the prompt lookup.
 3. **Names never collide with or shadow built-ins** (validation at load, not runtime checks).
-4. **Only the director writes tumwater.json**, and only `customLoops` within it; every other
-   role's prompt keeps the blanket ban.
+4. **Only the director writes tumwater.json** — now via the harness-mediated request file, and
+   only `customLoops` within it (enforced by `applyConfigRequest`'s permitted-key filter, not
+   only by prompt text); every other role's prompt keeps the blanket ban, and so does the
+   director's: it writes the request file, never the config.
 
 ## Sequencing
 
