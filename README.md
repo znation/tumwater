@@ -46,8 +46,6 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: a timed-out build check signals npm alone, leaking the entire test process tree
-  to PID 1 (found 2026-09-21).
 - Open bug: a load-sensitive live-orchestrator test falsely reddens main — the same sha
   failed and passed two minutes apart (found 2026-09-21).
 - Open bug: HTTP 429 is not a transient failure class, so a rate-limit storm errors
@@ -62,13 +60,13 @@ Open items:
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
 - Planned: fix a failed landing build check on the spot instead of rejecting — one bounded
   model run to fix the tree and re-check before a red main rejects every queued landing
-  (planned 2026-09-21, requested by user).
+  (planned 2026-09-21, requested by user; re-audited against post-`f0993fc` main 2026-09-23).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; the PLANS.md portability series 2/7–7/7; 1/7
   CI and npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`8f66922`): build clean, suite 1277/1277.
+Current main (`f20e5dc`): build clean, suite 1288/1288.
 <!-- tumwater:status:end -->
 
 ## How it works
