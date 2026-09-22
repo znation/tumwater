@@ -211,7 +211,7 @@ export function applyTickOutcome(
     // the worktree's uncommitted edits intact, so resume them promptly like an interruption.
     // The cause is named in state so the bridge prompt tells the resumed session its run died
     // on a stalled tool call (director ticks never resume — their prompt was re-queued fresh).
-    // Bounded like a cut-off streak: past QUIET_KILL_RESUME_LIMIT resumes the session is
+    // Bounded like a cut-off streak: past QUIET_KILL_RESUME_LIMIT the session is
     // abandoned — the backend has refused to schedule it every attempt, so re-sending it only
     // starves the slot again — and the loop takes a fresh tick on the idle ladder instead
     // (BUGS.md 2026-09-18).
