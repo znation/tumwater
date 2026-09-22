@@ -94,8 +94,8 @@ const TAIL_CHUNK_BYTES = 8 * 1024;
  * chunk (newest first) to `onChunk`, which returns true to stop early once enough bytes are in
  * hand. Files at or under TAIL_SCAN_THRESHOLD are delivered whole as a single chunk; a missing
  * or empty file delivers nothing. Per-call I/O is bounded by the caller's stop condition, not
- * the log's size — callers typically unshift each chunk into an array and decode
- * Buffer.concat(parts) once the scan ends. */
+ * the log's size. Callers that accumulate the chunks into one decoded string should use
+ * readTailText, the shared collection loop built on this. */
 export function forEachTailChunk(file: string, onChunk: (chunk: Buffer) => boolean): void {
   const st = statOrNull(file);
   if (!st || st.size === 0) return; // No log yet.
@@ -126,6 +126,25 @@ export function forEachTailChunk(file: string, onChunk: (chunk: Buffer) => boole
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/** Scan an append-only line log backwards (forEachTailChunk) and return the delivered bytes
+ * as one decoded string. Each chunk is unshifted into `parts` (newest-first delivery, so
+ * oldest-first order) BEFORE the caller's stop predicate runs, and the predicate receives both
+ * the chunk just delivered and everything in hand — so it can count what it has seen (readEvents'
+ * newline count) or inspect the oldest bytes (readWindowEvents' oldest complete line) without
+ * carrying its own parts array. Missing/empty files and a scan that never delivers return
+ * "". */
+export function readTailText(
+  file: string,
+  onChunk: (chunk: Buffer, parts: Buffer[]) => boolean,
+): string {
+  const parts: Buffer[] = [];
+  forEachTailChunk(file, (chunk) => {
+    parts.unshift(chunk);
+    return onChunk(chunk, parts);
+  });
+  return Buffer.concat(parts).toString("utf8");
 }
 
 /** Ensure `dir` exists (created recursively if needed), so a write into it cannot fail on a

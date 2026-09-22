@@ -1,7 +1,7 @@
 import type { HarnessEvent } from "./types.js";
 import { eventDayKey, parseEventLine } from "./events.js";
 import { eventsLogPath } from "./paths.js";
-import { forEachTailChunk } from "./files.js";
+import { readTailText } from "./files.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
  * --days, `tumwater report --failures --days`, and /api/report?days=N): 14-day default, at most
@@ -50,7 +50,7 @@ function oldestCompleteLine(parts: Buffer[]): string | null {
 }
 
 /** Events whose local day is on or after `fromKey`, read with bounded I/O: the log is
- * append-only and chronological, so we scan backwards in chunks from EOF (files.forEachTailChunk)
+ * append-only and chronological, so we scan backwards in chunks from EOF (files.readTailText)
  * and stop as soon as the oldest complete line in hand predates the window — cost scales with
  * the window's size, not the log's. `coversFullWindow` records whether the retained log reaches
  * back before the window (see its field doc), so a caller can tell "the log was rotated inside
@@ -58,10 +58,8 @@ function oldestCompleteLine(parts: Buffer[]): string | null {
  * window start, but only the former means data was lost. */
 export function readWindowEvents(root: string, fromKey: string): EventWindow {
   const file = eventsLogPath(root);
-  const parts: Buffer[] = [];
   let coversFullWindow = false;
-  forEachTailChunk(file, (chunk) => {
-    parts.unshift(chunk);
+  const text = readTailText(file, (_chunk, parts) => {
     // The oldest chunk's leading line may be torn by the chunk boundary, so oldestCompleteLine
     // always drops it; at the file start that merely forgoes an early stop on the final chunk,
     // and the scan ends with the file anyway.
@@ -76,7 +74,6 @@ export function readWindowEvents(root: string, fromKey: string): EventWindow {
     }
     return false;
   });
-  const text = Buffer.concat(parts).toString("utf8");
 
   const events: HarnessEvent[] = [];
   for (const line of text.split("\n")) {

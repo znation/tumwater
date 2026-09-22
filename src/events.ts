@@ -5,8 +5,8 @@ import { formatDate } from "./text.js";
 import { isJsonObject } from "./json-object.js";
 import {
   ensureParentDir,
-  forEachTailChunk,
   openForRead,
+  readTailText,
   rotateIfLarge,
   statOrNull,
 } from "./files.js";
@@ -108,19 +108,16 @@ export function eventRole(ev: HarnessEvent): string {
  * Observers poll this every second and only ever need the tail, so for logs past the small-file
  * threshold we read just enough bytes from the end of the file to cover `limit` lines instead of
  * rescanning the whole log: per-poll I/O is bounded by what `limit` lines occupy, not by how far
- * the log has grown (the backwards chunk scan lives in files.forEachTailChunk). */
+ * the log has grown (the backwards chunk scan lives in files.readTailText). */
 export function readEvents(root: string, limit = 200): HarnessEvent[] {
   const file = eventsLogPath(root);
-  const parts: Buffer[] = [];
   let newlines = 0;
-  forEachTailChunk(file, (chunk) => {
-    parts.unshift(chunk);
+  const text = readTailText(file, (chunk) => {
     for (let i = 0; i < chunk.length; i++) if (chunk[i] === 10) newlines++;
     // limit+1 newlines guarantees `limit` complete lines after the first one
     // (the partial leading line, if any, is unparseable and skipped below).
     return newlines >= limit + 1;
   });
-  const text = Buffer.concat(parts).toString("utf8");
 
   let lines = text.split("\n").filter(Boolean);
   // A torn trailing line (no final \n — a write in flight, or between a crash and the next
