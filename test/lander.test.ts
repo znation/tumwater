@@ -3,13 +3,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  landBatch,
   landChange,
-  type BatchContext,
-  type BatchRoleWiring,
   type LandRequest,
   type LanderContext,
 } from "../src/lander.js";
+import {
+  landBatch,
+  type BatchContext,
+  type BatchRoleWiring,
+} from "../src/land-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";

@@ -16,7 +16,7 @@ import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, currentBranch, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
-import { landBatch } from "./lander.js";
+import { landBatch } from "./land-batch.js";
 import { landQueuedEntry, landingUsage, readLandingMarker, writeLandingMarker, writeLandingOutcome } from "./landing-slot.js";
 import { dropLanding, headLanding, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
 import { logEvent, warnEvent } from "./events.js";
