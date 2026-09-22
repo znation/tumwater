@@ -5,20 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 4b/7 — Untrack this repo's own config without deleting it (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23)
-
-**Goal.** This repo stops tracking `tumwater.json`, so no future commit carries a machine, a model id, or a concurrency sized to one GPU — and the running fleet keeps its live config through the landing that removes it. The landing fast-forwards the primary checkout's working tree (`ffMainTo`, src/merge.ts:314), so a preserve/restore step in that path writes the live file back after the commit deletes it from the index.
-
-**Series.** Part 4b/7 of the portability series. Depends on: 4a/7, and 3/7 so custom-loop management survives the untracking. Approach, design rationale, and the hazard write-up: plans/portability.md §4b/7. 3/7's `applyConfigRequest` (src/config.ts:279, called at src/loop.ts:581 outside the merge lock) adds one pin: the preserve step's write-back is restore-only-when-absent — if a config request recreated the live file between the pre-merge byte read and the post-merge write-back, the newer bytes win; a write earlier in the window just dirties the tracked file and `git merge --ff-only` refuses (merge_blocked, retried), so nothing is lost either way.
-
-**Files touched.** src/merge.ts, .gitignore, tumwater.json (untracked), test/merge.test.ts.
-
-**Acceptance criteria.**
-- After the landing: `git ls-files` lists no `tumwater.json`; the root file exists with the exact pre-landing bytes; `.gitignore` lists it; `git status --porcelain` is empty.
-- `loadConfig(root)` after the landing still returns this fleet's `provider`, `model`, `fallbackModel`, `maxConcurrent`, `tickTimeoutSeconds`, `quietTimeoutSeconds` and `idleBackoff` (the test compares the parsed config before and after).
-- A landing whose tree keeps the config, and one on a repo with no config, both leave the working tree untouched and `ffMainTo` still returns true.
-- Full suite green.
-
 ### 5/7 — Make the agent binary configurable (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23)
 
 **Goal.** Stop assuming the agent CLI is a binary literally named `pi` on `PATH`. src/pi.ts spawns `spawn("pi", …)`, and both `cmdRun`'s preflight and `checkPiBinary` gate on `findOnPath("pi")`, so a non-PATH install, a wrapper script, or two pi builds side by side are impossible. Resolution order: `TUMWATER_PI_BIN` → `agentBin` → `"pi"`. The shared `PI_MISSING_MESSAGE` in readiness.ts becomes a builder rather than changing at the two call sites, and `cmdRun` must load the config above its preflight. Since the 09-19 audit, `checkPiBinary` delegates to doctor's shared private `checkBinary` helper (commit `73e4f58`) — the resolved binary and its source must flow through that helper, not around it. Re-audit pins and corrections: plans/portability.md §5/7.
@@ -62,10 +48,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A repo tumwater created before this change keeps reading its brief from README.md with no migration step.
 - `tumwater init --dry-run` prints the file list and exits 0 having written nothing.
 
-**Series critical path.** 1/7 ✓, 2/7 ✓ and 3/7 ✓ (landed 2026-09-23) are done; 4a/7 → 4b/7 remains the critical path. 4c/7 landed 2026-09-21 (`dfa6d26`); its one remaining line — README's `## Usage` naming `tumwater.example.json` — is folded into 4a/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here.
+**Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ (landed 2026-09-22) and 4b/7 ✓ (landed 2026-09-22) are done. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here — the series has no critical path left.
 
 ## Done
 
+### 4b/7 — Untrack this repo's own config without deleting it (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23, done 2026-09-22)
+
+**Landed 2026-09-22 (feature loop) as designed, plus the 09-23 re-audit's restore-only-when-absent pin.** The preserve step lives in ffMainTo's working-tree arm (src/merge.ts): `configBytesToPreserve` saves the live bytes when the config exists, is tracked, and is absent from the incoming ref; `restoreConfigBytes` writes them back only when the file is absent at write-back time (a config request that recreated it mid-merge wins — latest instruction wins, and the step is idempotent). `.gitignore` gains `tumwater.json` and this repo's copy is deleted in the same commit, so the restored file stays out of `git status` and the next `git add -A`. Four new tests in test/merge.test.ts pin the untracking landing (byte-identical restore, untracked, ignored, clean status, parsed config unchanged), the keeps-config landing, the no-config repo, and the write-back race.
 ### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-22, done 2026-09-22)
 
 Landed per plans/portability.md §4a/7: `exampleConfigPath` + `EXAMPLE_CONFIG_BASENAME` (src/paths.ts),

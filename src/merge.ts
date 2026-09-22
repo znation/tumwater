@@ -19,7 +19,7 @@ import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";
-import { mergeLockDir } from "./paths.js";
+import { CONFIG_BASENAME, configPath, mergeLockDir } from "./paths.js";
 import type { PiRunResult, TickResult } from "./types.js";
 
 /** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased
@@ -312,14 +312,45 @@ export async function ffStackToMain(
   });
 }
 
+/** The live config's bytes, when the landing about to fast-forward `ref` would delete it
+ * (plans/portability.md §4b/7): the config file exists, is tracked in the current index (and
+ * HEAD — a staged-or-dirty config makes `git merge --ff-only` refuse below, so the two agree
+ * on every merge that can succeed), and is absent from the incoming tree. Anything else —
+ * already untracked, already absent, present in `ref` — needs no preserve step. */
+export async function configBytesToPreserve(root: string, ref: string): Promise<Buffer | null> {
+  const cfg = configPath(root);
+  if (!fs.existsSync(cfg)) return null;
+  if ((await gitTry(root, "ls-files", "--error-unmatch", CONFIG_BASENAME)) === null) return null;
+  if ((await gitTry(root, "cat-file", "-e", `${ref}:${CONFIG_BASENAME}`)) !== null) return null;
+  return fs.readFileSync(cfg);
+}
+
+/** The preserve step's write-back, restore-only-when-absent: write the saved bytes only when
+ * the live config is absent at write-back time. The merge deletes the file mid-window, so a
+ * config request applied in that window (3/7's applyConfigRequest runs outside the merge lock)
+ * recreates it — the newer bytes win (latest instruction wins), which also makes the step
+ * idempotent. Called only after a successful merge: a refused merge leaves the file untouched. */
+export function restoreConfigBytes(root: string, saved: Buffer | null): void {
+  if (!saved) return;
+  const cfg = configPath(root);
+  if (fs.existsSync(cfg)) return;
+  fs.writeFileSync(cfg, saved);
+}
+
 /** Fast-forward main to `ref`, without touching any remote. Callers pass the worktree's
  * post-rebase HEAD — a bare sha, which both arms accept (`merge --ff-only <sha>` and
  * `push . <sha>:<main>`). Uses a working-tree merge when the primary checkout is on main (so its
- * files update), otherwise a local ref push. Returns true on success. */
+ * files update), otherwise a local ref push. Returns true on success. The working-tree arm
+ * preserves the live config across a landing that untracks it (plans/portability.md §4b/7):
+ * without the write-back, the commit that removes the tracked config would delete the fleet's
+ * running config out from under it and the next config poll would fall back to defaults. */
 export async function ffMainTo(root: string, ref: string, mainBranch: string): Promise<boolean> {
   const primaryBranch = await currentBranch(root);
   if (primaryBranch === mainBranch) {
-    return (await gitTry(root, "merge", "--ff-only", ref)) !== null;
+    const saved = await configBytesToPreserve(root, ref);
+    if ((await gitTry(root, "merge", "--ff-only", ref)) === null) return false;
+    restoreConfigBytes(root, saved);
+    return true;
   }
   return (await gitTry(root, "push", ".", `${ref}:${mainBranch}`)) !== null;
 }
