@@ -20,11 +20,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - README's `## Usage` names `tumwater.example.json` as the tracked baseline an untracked `tumwater.json` is seeded from (4c/7's residual).
 - Full suite green.
 
-### 4b/7 — Untrack this repo's own config without deleting it (planned 2026-09-14, refined 2026-09-19)
+### 4b/7 — Untrack this repo's own config without deleting it (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23)
 
 **Goal.** This repo stops tracking `tumwater.json`, so no future commit carries a machine, a model id, or a concurrency sized to one GPU — and the running fleet keeps its live config through the landing that removes it. The landing fast-forwards the primary checkout's working tree (`ffMainTo`, src/merge.ts:314), so a preserve/restore step in that path writes the live file back after the commit deletes it from the index.
 
-**Series.** Part 4b/7 of the portability series. Depends on: 4a/7, and 3/7 so custom-loop management survives the untracking. Approach, design rationale, and the hazard write-up: plans/portability.md §4b/7.
+**Series.** Part 4b/7 of the portability series. Depends on: 4a/7, and 3/7 so custom-loop management survives the untracking. Approach, design rationale, and the hazard write-up: plans/portability.md §4b/7. 3/7's `applyConfigRequest` (src/config.ts:279, called at src/loop.ts:581 outside the merge lock) adds one pin: the preserve step's write-back is restore-only-when-absent — if a config request recreated the live file between the pre-merge byte read and the post-merge write-back, the newer bytes win; a write earlier in the window just dirties the tracked file and `git merge --ff-only` refuses (merge_blocked, retried), so nothing is lost either way.
 
 **Files touched.** src/merge.ts, .gitignore, tumwater.json (untracked), test/merge.test.ts.
 

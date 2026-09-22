@@ -717,7 +717,7 @@ watching or not. The preserve step below makes the landing safe by construction.
   (`push . <ref>:<main>`) never touches the working tree and needs nothing.
 - **The implementation deletes the file; it does not run git.** Loop prompts forbid state-changing
   git commands, and the old text's `git rm --cached` is one: deleting `tumwater.json` in the
-  worktree is enough, because `commitAll` (src/git.ts:366–370) runs `git add -A` and stages the
+  worktree is enough, because `commitAll` (src/git.ts:456–459) runs `git add -A` and stages the
   deletion. `.gitignore` must gain `tumwater.json` in the same commit — that is what keeps the
   restored file out of `git status` and out of the next `git add -A`.
 - **A dirty root copy keeps today's behavior.** If the root's `tumwater.json` has uncommitted edits,
@@ -732,7 +732,8 @@ watching or not. The preserve step below makes the landing safe by construction.
 `.gitignore` (`tumwater.json`), `tumwater.json` (deleted in the worktree), test/merge.test.ts (a
 landing commit that deletes and ignores the config leaves the root's file byte-identical,
 untracked, ignored, and `git status --porcelain` clean; a landing that does not touch the config
-leaves it untouched; an absent config is not an error).
+leaves it untouched; an absent config is not an error; and a file recreated between the merge and
+the write-back (the applyConfigRequest race, pinned above) is left byte-identical).
 
 **Files touched.** src/merge.ts, .gitignore, tumwater.json (untracked), test/merge.test.ts.
 
@@ -745,6 +746,40 @@ leaves it untouched; an absent config is not an error).
 - A landing whose tree keeps the config, and one on a repo with no config, both leave the working
   tree untouched and `ffMainTo` still returns true.
 - Full suite green.
+
+**Refined 2026-09-23 (plan loop) — 4b/7 re-audited against main `4dafd41`. This was the last
+entry still carrying only its 2026-09-19 audit while ~40 landings moved its anchor files — most
+notably 2/7 (`c033ad1`, repo-root/branch targeting) and 3/7 (`726e3cc`, harness-mediated config
+writes), both of which touched src/merge.ts and src/config.ts directly. The design holds
+unchanged; one new seam from 3/7 is pinned below, and one drifted line anchor is corrected.**
+
+Verified as written: `ffMainTo` is still src/merge.ts:314 with the same two arms — the
+working-tree `git merge --ff-only <ref>` when the primary checkout is on main (:317) and the
+detached `push . <ref>:<main>` otherwise (:319, which never touches the working tree and needs
+nothing). `currentBranch` now reads the HEAD file first (6b73279) but its signature and the :315
+call are unchanged. Both landing paths still route through it: the single-change path at :108 and
+the batched stack `ffStackToMain` at :297. `configPath` is src/paths.ts:11; `git ls-files` still
+lists `tumwater.json` (tracked) and `.gitignore` still lists only `.tumwater/`. The ~2 s live
+reload the degradation story depends on is intact: `POLL_MS = 2000` (src/orchestrator.ts:42) and
+`loadConfigCached` (src/config.ts:160).
+
+Corrections and new pins:
+1. **`commitAll` drifted: src/git.ts:366–370 → :456–459.** Body unchanged — `git add -A` plus
+   the commit — so the delete-the-file mechanism stands as written; only the pin moves.
+2. **3/7's `applyConfigRequest` (src/config.ts:279) writes the live config from the director's
+   tick (src/loop.ts:581) — outside the merge lock, so it can interleave with an in-flight
+   untracking landing. Two consequences, both pinned:** (a) it *strengthens* this entry — since
+   3/7, no code path can land a config diff at all (the request file is consumed before every
+   staging path and never enters a diff), so the tracked file is pure liability and the
+   untracking commit itself remains the only thing that can carry machine values; (b) one narrow
+   race must be closed in the preserve step: between its pre-merge byte read and its post-merge
+   write-back, the merge deletes the live file, so a config request applied in that window
+   recreates it and the write-back would clobber it. Pin the write-back as
+   **restore-only-when-absent**: write the saved bytes only when the live config is absent at
+   write-back time; a newer write already on disk wins (latest instruction wins), which also
+   makes the step idempotent. The sibling window (before the merge) needs no handling: a config
+   write there leaves the tracked file dirty, so `git merge --ff-only` refuses and the landing
+   retries as `merge_blocked` — no loss. No design question remains open.
 
 ## 4c/7 — Move README's rig notes into docs/backends.md (markdown only)
 
