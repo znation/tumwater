@@ -5,13 +5,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-22)
+### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-22, re-pinned against `a3e4000` 2026-09-22)
 
 **Goal.** Every project tumwater initializes gets an untracked, gitignored `tumwater.json`: seeded from a tracked `tumwater.example.json` when the project ships one, from `defaultConfig()` when it does not; `doctor` reports where the two have drifted. This repo's own config keeps its tracking until 4b/7. Two implementer traps are pinned in the doc: `ensureGitignore`'s early return only checks its first entry, and the ignored config must stay out of the commit pathspec while still being reported as created.
 
 **Series.** Part 4a/7 of the portability series (the old 4/7 was split three ways on the 2026-09-19 audit). Depends on: 3/7. Carries the residual of 4c/7 (landed 2026-09-21): the README `## Usage` line naming `tumwater.example.json`, which can only be written once this entry creates the file. Approach, design rationale, and pins: plans/portability.md §4a/7.
 
-**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/doctor.ts, tumwater.example.json (new), README.md, test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a project with no example (defaults, as today).
+**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/cli.ts, src/doctor.ts, tumwater.example.json (new), README.md, test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a project with no example (defaults, as today).
 
 **Acceptance criteria.**
 - `init` in a fresh repo with `tumwater.example.json` seeds the local config from it; without one, from defaults; with a malformed one, from defaults and no throw.

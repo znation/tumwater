@@ -689,6 +689,41 @@ check-name list (test/doctor.test.ts:274). Capability absence re-confirmed: `gre
 moved here from the now-landed 4c/7 (`dfa6d26`): 4c/7's goal said it depended on nothing, but that
 line names a file only this entry creates, so it was never implementable there.
 
+**Refined 2026-09-22 (plan loop) — 4a/7 re-audited against main `a3e4000` (the README's own stamp
+is `03edeba`, several landings back; the 2026-09-21 audit was against `c2ff74b`). The design and
+both pinned traps hold unchanged. Every anchor drifted and is re-pinned on this tree;
+capability absence re-confirmed; one new shape in `cmdInit` noted.**
+
+Re-pinned anchors:
+- `src/init.ts` is 176 lines. The pure-validation preamble grew since the audit — new since
+  `c2ff74b` are the git-binary preflight (`findOnPath("git")` throw, :104, with
+  `GIT_MISSING_MESSAGE`) and the over-long-prompt reject (:113–117, `INITIAL_PROMPT_MAX_CHARS`);
+  both sit ahead of any side effect and neither touches this entry's seeding code. The
+  README-without-markers guard is :124–129. Then: `ensureGitignore` :75 with its one-entry early
+  return at :78 (trap 1 verbatim); `initProject(root, initialPrompt, branch?)` :98; the `created`
+  list :145; `saveConfig(root, defaultConfig())` :159 with `created.push("tumwater.json")` :160;
+  the `.gitignore` push :162; `git add -- …created` :166 and the commit with the same `--`
+  pathspec :171 (trap 2 verbatim, including the empty-pathspec hazard at :165).
+- `src/cli.ts` (418 lines): `cmdInit` now destructures `{ prompt, branch }` from
+  `parseInitArgs(args)` (:130 — a shape change since the audit; this entry's edits leave it,
+  7/7's flag plumbing is what widens it); the empty-`created` early return ("already
+  initialized; nothing to do") :132–134; the `created …` line :139, which since the audit also
+  appends `" (committed)"` from `InitResult.committed` — trap 2's fix already has its reporting
+  shape: when the pathspec keeps a subset, `committed` must reflect the commit that actually ran.
+- `src/paths.ts`: `configPath` :11. `src/config.ts` (434 lines): `defaultConfig` :14,
+  `loadConfig` :79, `loadConfigSafe` :120, `loadConfigCached` :160 (default fallback :165).
+- `src/readiness.ts`: `NOT_INITIALIZED_MESSAGE` :10 (unchanged).
+- `src/doctor.ts` (301 lines): `CheckOutcome` :45; `checkRepo` :101; `checkInit` :124 — the
+  `NOT_INITIALIZED_MESSAGE` fail at :126 and the `` `${n} roles enabled` `` ok at :129 are the two
+  details the drift fold must preserve; the checks array is :276 with `{ name: "init", … }` at
+  :280; the render pads the name column with `padEnd(12)` :298.
+- Test pins re-pinned: `"N roles enabled"` (test/doctor.test.ts:141 and :148), the full check-name
+  list (test/doctor.test.ts:297–298), the fail-list subset (test/doctor.test.ts:319–320).
+- Capability absence re-confirmed: `grep -rn 'seedConfig\|exampleDrift\|exampleConfigPath' src/
+  test/` is empty, and no `tumwater.example.json` exists anywhere in the repo.
+
+Sizing unchanged. No design question remains open.
+
 ## 4b/7 — Untrack this repo's own config without deleting it (depends on 4a/7)
 
 **Goal.** This repo stops tracking `tumwater.json`, so no future commit carries a machine, a model
