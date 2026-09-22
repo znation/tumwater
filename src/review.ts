@@ -6,6 +6,7 @@ import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
 import { runPi } from "./pi.js";
 import { buildReviewPrompt, readPrinciples } from "./prompt.js";
+import type { VerdictMatch } from "./reply-contract.js";
 import { verdictLines } from "./reply-contract.js";
 import { saveLoopState } from "./state.js";
 import { shortSha } from "./text.js";
@@ -41,13 +42,40 @@ export function parseVerdict(text: string): ReviewVerdict | null {
   if (matches.length === 0) return null;
   const last = matches[matches.length - 1];
   if (!last) return null; // Unreachable: the length check above guarantees a match.
+  // A verdict line is a marker, not a boundary: reasons may sit below the LAST verdict
+  // line (the prompt's advertised shape — searched first), anywhere above it, or as prose
+  // anywhere in the reply. Each region yields its numbered/bulleted lines, falling back to
+  // its non-empty prose, and the first region with something wins.
   const after = text.slice(last.end);
-  const lines = after.split("\n").map((l) => l.trim()).filter(Boolean);
-  let reasons = lines
+  for (const reasons of [reasonsFrom(after), reasonsFrom(textWithoutVerdictLines(text, matches))]) {
+    if (reasons.length > 0) {
+      return { verdict: last.verdict, reasons: reasons.slice(0, MAX_REASONS).map(clipReason) };
+    }
+  }
+  return { verdict: last.verdict, reasons: [] };
+}
+
+/** Numbered/bulleted lines first, any other non-empty prose as a fallback — over one region
+ * of a reviewer reply. Empty when the region carries no lines at all. */
+function reasonsFrom(region: string): string[] {
+  const lines = region.split("\n").map((l) => l.trim()).filter(Boolean);
+  const numbered = lines
     .map((l) => l.match(/^(?:\d+[.)]|[-*])\s+(.+)$/)?.[1]?.trim())
     .filter((r): r is string => Boolean(r));
-  if (reasons.length === 0) reasons = lines; // Prose fallback: every non-empty line.
-  return { verdict: last.verdict, reasons: reasons.slice(0, MAX_REASONS).map(clipReason) };
+  return numbered.length > 0 ? numbered : lines;
+}
+
+/** The reply with every VERDICT line removed, so reasons are read from the whole text (a
+ * verdict line is a marker, not the start of the payload) without a verdict line itself
+ * surfacing as a prose-fallback reason. */
+function textWithoutVerdictLines(text: string, matches: VerdictMatch[]): string {
+  let out = "";
+  let pos = 0;
+  for (const m of matches) {
+    out += text.slice(pos, m.index);
+    pos = m.end;
+  }
+  return out + text.slice(pos);
 }
 
 /** Everything reviewAheadOfMain needs from its caller (a LoopRunner tick or recovery). */

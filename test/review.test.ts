@@ -54,6 +54,46 @@ test("parseVerdict accepts a bare VERDICT line with no reasons (empty list, not 
   assert.deepEqual(parseVerdict("VERDICT: approve"), { verdict: "approve", reasons: [] });
 });
 
+test("parseVerdict reads numbered reasons written BEFORE a verdict-last reply's verdict", () => {
+  // The most common reply shape a mid-sized model produces: reason through the diff, then
+  // decide. A verdict line is a marker, not a boundary — the reply's findings are its
+  // reasons, wherever they sit. Regression for the digest's "no reasons given" rows.
+  const v = parseVerdict(
+    "1. The helper drops errors.\n2. No test covers the new branch.\nVERDICT: reject",
+  );
+  assert.deepEqual(v, {
+    verdict: "reject",
+    reasons: ["The helper drops errors.", "No test covers the new branch."],
+  });
+});
+
+test("parseVerdict reads prose reasons written before a verdict-last reply's verdict", () => {
+  const v = parseVerdict(
+    "The change repeats the swap logic twice.\nIt also needs a maxRetries guard.\nVERDICT: reject",
+  );
+  assert.deepEqual(v, {
+    verdict: "reject",
+    reasons: [
+      "The change repeats the swap logic twice.",
+      "It also needs a maxRetries guard.",
+    ],
+  });
+});
+
+test("parseVerdict prefers reasons after the verdict when both regions carry them", () => {
+  const v = parseVerdict(
+    "1. stale concern above the decision\nVERDICT: reject\n1. the real reason below",
+  );
+  assert.deepEqual(v, { verdict: "reject", reasons: ["the real reason below"] });
+});
+
+test("parseVerdict never records a verdict line itself as a prose reason", () => {
+  // A reply with the verdict at the top and prose above it: the removed verdict line must
+  // not surface as a fallback reason over the reply's actual prose.
+  const v = parseVerdict("The diff is fine and small.\nVERDICT: approve\nShip it.");
+  assert.deepEqual(v, { verdict: "approve", reasons: ["Ship it."] });
+});
+
 test("parseVerdict lets the LAST VERDICT line win", () => {
   const v = parseVerdict(
     "VERDICT: reject\n1. first pass had problems\nAfter re-reading:\nVERDICT: approve\n1. actually fine",
