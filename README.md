@@ -48,6 +48,9 @@ in tumwater.json or by prompting the director.
 Open items:
 - Open bug: the loop suite's quiet-kill resume test flakes under full-suite load — fails 1-in-N
   full runs, passes in isolation (found 2026-09-23).
+- Open bug: the build-check grandchild-kill regression test flakes under full-suite load — the
+  check's 600 ms timeout can beat the runner's npm startup under parallel load, failing 1-in-N
+  full runs with an ENOENT; passes in isolation (found 2026-09-23).
 - Open bug: the failure digest's Review rejections section silently truncates at 5
   alphabetically-first clusters, so most of the window's rejections are invisible while the
   Deltas table reports them (found 2026-09-22).
