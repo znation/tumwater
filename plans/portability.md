@@ -516,6 +516,71 @@ Sizing unchanged and still one run: config.ts ~55 lines (the function + the orph
 loop.ts ~12, prompt.ts ~20, paths.ts ~5, types.ts ~2, event-format.ts ~4, tests ~150 across the
 four named files.
 
+**Refined 2026-09-21 (plan loop) — 3/7 re-audited against main `ee53364`. This entry carried the
+series' oldest un-re-audited audit (`44a037c`, 2026-09-18, 197 landings back), and since then a
+landed feature moved onto this plan's own ground: the live config-change event (`1767778`, done
+2026-09-19) added the very event plumbing this plan said to create, plus new config helpers. The
+design holds unchanged; two corrections SHRINK the diff, one new seam is pinned, and every
+drifted line anchor is re-pinned here.**
+
+Verified as written: `defaultConfig().review.exemptPaths` still lists `"tumwater.json"`
+(src/config.ts:69; was :61), and this repo's own tumwater.json sets no `review` key, so the
+default governs. `setDailyBudgetUsd` is still the idiom, now src/config.ts:229 (was :185) with the
+fresh-`loadConfig` + `writeJsonAtomic(file, { ...cfg, ... }, true)` call at :244 (was :200);
+`writeJsonAtomic` is src/json-files.ts:51. The director-only exception is src/prompt.ts:234–236
+(was :223–226) and the custom-loop routing bullet :220 (was :210–215); COMMON_RULES' "Never touch
+the .tumwater directory or tumwater.json" is :85 and the resume variant :329 (were :84/:318).
+`validateConfig` is src/config-validation.ts:156 (was :99); the customLoops entry validation is
+:331–356; the orphaned `roles.<id>` check is :381–387 (was :273–278) — pin 2's real gap still
+exists exactly as described. `loadConfig` still seeds `merged.roles[c.name]` per custom loop
+(src/config.ts:107; was :98–99). `DIRECTOR_ROLE` is src/roles.ts:11; `commitAll` is still
+`git add -A` (src/git.ts) and `isDirty` still `git status --porcelain`. paths.ts still has no
+`configRequestPath` (`configPath` is :11). plans/user-defined-loops.md still carries both
+superseded bullets (:52 "commit → review gate → merge → live reload"; :53 the exemptPaths bullet).
+All of test/config.test.ts, test/loop.test.ts, test/prompt.test.ts, test/event-format.test.ts
+exist.
+
+Corrections (pinned in place):
+
+1. **`config_changed` already exists — src/types.ts and src/ui/event-format.ts LEAVE Files
+   touched.** `HarnessEvent` has `"config_changed"` (src/types.ts:305) and event-format.ts renders
+   it (:133–137). Better still, the applied case needs NO new emission anywhere: the orchestrator's
+   ~2 s reload already diffs the previous live config against the new one and logs one
+   `config_changed` naming the keys (src/orchestrator.ts:341, via `changedConfigKeys`,
+   src/config.ts:196, which names each `roles.<id>` separately) — so once `applyConfigRequest`
+   writes the file, the announcement of what changed is automatic. loop.ts keeps only the rejection
+   path: one `warning` event (the shared `this.warn`, src/loop.ts:110) naming the ignored keys or
+   the validation problems.
+2. **`saveConfig` is NOT the writer.** The config-change landing also added `saveConfig`
+   (src/config.ts:170, validate-then-write) — tempting as the reuse — but it is a plain
+   `fs.writeFileSync`: non-atomic. `applyConfigRequest` keeps `setDailyBudgetUsd`'s shape: fresh
+   `loadConfig` (bypass the stat cache — a writer must see the latest file), `validateConfig`, then
+   `writeJsonAtomic`, because readers poll the file every ~2 s and two dashboards can save
+   concurrently.
+3. **The consume seam re-pinned against today's `runTick`** (src/loop.ts:543). The pi run's branch
+   order is now: `aborted` → `finishAbortedTick` (:658), `pendingUserPrompt = null` (:659),
+   `quietKilled` (:660), `timedOut` (:669), `refused` (:679), `isDirty` (:692), `commitAll` (:780)
+   — were :595/:596/:597/:606/:616/:629/:713. The call site is unchanged in substance: call
+   `applyConfigRequest(this.root, wt)` immediately after :659 and before the `quietKilled` branch,
+   guarded by `this.role === DIRECTOR_ROLE`, for the same three reasons pin 1 of the 2026-09-18
+   note gave (precede `isDirty`'s dirtiness; precede the staging paths; abort still discards).
+4. **New interplay pinned: `requeueUnfulfilledPrompt`.** Since the audit, `quietKilled` and
+   `timedOut` director ticks requeue the prompt to run fresh (src/loop.ts:664/:672). Consuming
+   BEFORE those branches remains right: a complete request applies, and the re-run re-writes the
+   same request — replace semantics make the double-apply harmless; a torn one fails validation,
+   is deleted with a warning, and the re-run starts clean. Consuming AFTER them would LOSE a
+   timed-out tick's request outright: its "half-done edits are discarded by the reset"
+   (src/loop.ts:671) deletes the untracked file unread. The `aborted` branch still discards it
+   deliberately (`finishAbortedTick` — work discarded), as pinned in 2026-09-18.
+5. **Drifted pins** are the re-pinned numbers above; nothing else moved materially.
+   test/config.test.ts's exemptPaths assertions (:352–406) keep their shape.
+
+Sizing now, smaller than the 2026-09-18 estimate: config.ts ~55 (the function + the orphan
+strip), loop.ts ~10 (the guarded call + the rejection warning — no event plumbing), prompt.ts ~20,
+paths.ts ~5, tests ~150 across test/config.test.ts, test/loop.test.ts, test/prompt.test.ts.
+src/types.ts and src/ui/event-format.ts drop out entirely. One run. No design question remains
+open.
+
 ---
 
 ## 4a/7 — Seed an untracked config from a tracked template
