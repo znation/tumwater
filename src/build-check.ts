@@ -158,10 +158,11 @@ export const BUILD_CHECK_TIMEOUT_MS = 300_000;
 
 /** SIGTERM → SIGKILL escalation window once a build check's timeout has FIRED: the whole
  * process group gets SIGTERM, and anything still alive this much later (a SIGTERM-trapping
- * runner, a wedged worker) is SIGKILLed. Exported so tests can shrink it — pinning both that
- * the escalation is armed on timeout (never at spawn: a healthy check that merely outlasts
- * the grace period must run to completion) and that a surviving grandchild is taken down. */
-export const KILL_GRACE_MS = 10_000;
+ * runner, a wedged worker) is SIGKILLed. The default of runBuildCheck's killGraceMs
+ * parameter, which tests shrink — pinning both that the escalation is armed on timeout
+ * (never at spawn: a healthy check that merely outlasts the grace period must run to
+ * completion) and that a surviving grandchild is taken down. */
+const KILL_GRACE_MS = 10_000;
 
 /** Why a declared check reached no verdict: the script never finished (timeout), npm is not on
  * PATH, or the toolchain below the project is broken. Shared with main-baseline.ts's
