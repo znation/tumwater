@@ -97,6 +97,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### The grandchild-leak regression test raced its own setup: on a loaded machine the quiet watchdog killed the fake-pi shim before the grandchild recorded its pid, reddening main with an ENOENT (found by the review gate 2026-09-21, fixed 2026-09-21)
+
+**Symptom:** Main's suite failed with `test: Error: ENOENT: no such file or directory, open '/var/folders/…/tumwater-test-ckjCIM/grandchild.pid'` in `a killed run leaves no grandchild behind (regression)` (test/pi.test.ts). The same tree passed the same test minutes later, and the test passed in isolation — the product's group kill (BUGS.md 2026-09-20) is correct; the red was the test racing its own setup. Because main was red, every code-producing role skipped authoring and no change could merge until this was fixed.
+
+**Repro:** The test drove the kill with `quietTimeoutSeconds = 2` and the fakePi shim wrote the grandchild's pid file only after printing its first output. The quiet watchdog fires on 2 s of wall-clock silence measured from spawn, so when the machine is loaded enough that the shim has not executed its first lines within that window (the landing gate runs the full suite in a worktree while the fleet keeps building and ticking), the watchdog signals the process group before the backgrounded `sh -c 'echo $$ > pidFile'` has written anything — the run still resolves `quietKilled: true`, and the test's `fs.readFileSync(pidFile)` throws exactly the observed ENOENT. Confirmed with a scratch repro that inserts `sleep 3` before the shim's first line: `quietKilled: true, pidFile exists: false, READ FAILS: ENOENT`.
+
+**Expected:** A regression test must fail only when the invariant it guards is violated, not when the machine is slow. The kill should be observable by the test before it fires, and the pid file should exist before any kill can happen.
+
+**Suspected cause:** The test used an autonomous kill driver (the quiet watchdog) whose trigger time is uncorrelated with the shim's startup progress, and asserted on a file the shim writes concurrently with the kill window. Nothing synchronizes the two, so the test's verdict depended on machine load.
+
+**Fix:** The shim now records the pid file BEFORE printing any output (background job, then `until [ -f … ]` wait, then the tool event, then `exec sleep 30`), and the test drives the kill itself via runPi's `signal: AbortSignal` — it waits (up to 10 s, with a clear assertion failure if the shim never starts) until the grandchild has recorded its pid, then aborts, which exercises the same `terminateChild` group kill through the abort path. The watchdog is parked at 60 s so it cannot race. The test asserts `result.aborted` and the grandchild's death, as before. Verified the rewritten test still bites: with `signalTree` temporarily reverted to a child-only kill it fails with `the tool-call grandchild is gone after the run resolves`.
+
+**Validation gap:** no-repro — the failure was load-dependent and passed in isolation, so no run of the existing suite could confirm it deterministically; confirming the mechanism required a scratch shim whose startup is artificially delayed past the quiet window, and confirming the fix required that same delayed-start repro plus a temporary single-pid-kill patch to show the rewritten test still catches the real leak.
+
 ### Leftover recovery records a generic merge summary, so the failure digest's `## Landed in the window` cannot name recovered work (found by telemetry loop 2026-09-21, fixed 2026-09-21)
 
 

@@ -490,31 +490,51 @@ test("toolCallStallSeconds 0 disables the stall warning", async () => {
 // single-PID kill left a backgrounded tool-call process orphaned to launchd forever. The
 // fakePi script backgrounds a spinner that does NOT exec, so it is a genuine grandchild —
 // the exec-based kill tests above cannot catch this.
+//
+// The kill is test-driven (abort signal) instead of quiet-watchdog-driven, and the shim
+// records the grandchild's pid BEFORE printing any output: the watchdog fires on wall-clock
+// silence, so on a loaded machine it could kill the whole group while the shim was still
+// starting up — before the grandchild had written its pid file — and the test died reading
+// that missing file (the ENOENT that turned main red, 2026-09-22). Waiting for the file and
+// killing only after it exists leaves no race: the test fails with a clear message if the
+// shim never starts, and the abort exercises the same terminateChild group kill.
 test("a killed run leaves no grandchild behind (regression)", async () => {
   const dir = tmpdir();
   const config = defaultConfig();
-  config.quietTimeoutSeconds = 2;
+  // Far beyond the test's span: the quiet watchdog must not fire — this test drives the kill.
+  config.quietTimeoutSeconds = 60;
   const pidFile = path.join(dir, "grandchild.pid");
   // The spinner redirects its stdio so it does not hold pi's pipes open — exactly the shape
   // of a real tool call, and what lets runPi settle while the leak lives on.
   const restore = fakePi(
     [
-      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolName: "bash" })}'`,
       `sh -c 'echo $$ > ${pidFile}; while :; do :; done' >/dev/null 2>&1 &`,
+      `until [ -f ${pidFile} ]; do sleep 0.05; done`,
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolName: "bash" })}'`,
       `exec sleep 30`,
     ].join("\n"),
   );
+  const controller = new AbortController();
   let pid = 0;
+  const run = runPi({
+    cwd: dir,
+    prompt: "p",
+    config,
+    sessionDir: path.join(dir, "sessions"),
+    sessionName: "t",
+    rawLogFile: path.join(dir, "raw.jsonl"),
+    signal: controller.signal,
+  });
   try {
-    const result = await runPi({
-      cwd: dir,
-      prompt: "p",
-      config,
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-    });
-    assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
+    // Wait until the grandchild has recorded itself — the write the old version raced.
+    const recordDeadline = Date.now() + 10_000;
+    while (!fs.existsSync(pidFile) && Date.now() < recordDeadline) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.ok(fs.existsSync(pidFile), "the grandchild recorded its pid within 10s");
+    controller.abort();
+    const result = await run;
+    assert.equal(result.aborted, true, "the run ends killed by the abort");
     pid = Number(fs.readFileSync(pidFile, "utf8").trim());
     assert.ok(pid > 0, "the grandchild recorded its pid");
     // The group signal is asynchronous relative to runPi's resolution: poll until the OS
