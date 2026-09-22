@@ -573,7 +573,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               // Resolve the authoring runner when it exists (runners are never removed from
               // the array on disable — only a warning event fires); a role disabled before
               // this process started has no runner, so a throwaway one supplies the same
-              // wiring (loopPiOpts, runLandingPi, foldLandingUsage) and a disk-loaded state
+              // wiring (loop-pi.ts, runLandingPi, foldLandingUsage) and a disk-loaded state
               // to fold and save on. Both share the live config, like every runner.
               const author =
                 runners.find((r) => r.role === head.entry.role) ??

@@ -10,7 +10,7 @@ import {
 } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events.js";
-import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
+import { hasResumableSession } from "./pi.js";
 import {
   buildCommitMessage,
   commitTrailer,
@@ -24,10 +24,10 @@ import {
   buildDirectorPrompt,
   buildRejectedReviewNote,
   buildResumePrompt,
-  buildSummaryRequestPrompt,
   buildTickPrompt,
   readPrinciples,
 } from "./prompt.js";
+import { LoopPi } from "./loop-pi.js";
 import { readInitialPrompt } from "./readme.js";
 import { telemetryDigest } from "./failure-report.js";
 import { applyConfigRequest, configForRole } from "./config.js";
@@ -43,15 +43,8 @@ import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
 import { extractFlow } from "./reply-contract.js";
 import { readQaCoverage, recordFlow, renderCoverageBlock } from "./qa-coverage.js";
-import { landingRefName, piLogPath, sessionDir } from "./paths.js";
+import { landingRefName, sessionDir } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
-
-/** Upper bound on how long the transient retry waits out a provider's Retry-After hint
- * before re-attempting a rate-limited run. Honouring the hint is the point; capping it is
- * what keeps one generous hint from consuming the tick's own run budget (the retry gets a
- * full fresh run budget, so a wait larger than the cap would spend the tick waiting, not
- * working). */
-const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
@@ -89,6 +82,10 @@ export class LoopRunner {
    * applyTickOutcome can feed it into the error streak even when the tick's own authoring run
    * is healthy (BUGS.md 2026-09-21). Reset at every tick start. */
   private recoveryFailure?: string;
+  /** This loop's pi-run plumbing (src/loop-pi.ts): shared per-run wiring, the transient
+   * retry policy, and the SUMMARY follow-up. Host accessors are read live at every call, so
+   * the orchestrator's config live-reload and the tick lifecycle need no notification path. */
+  private readonly pi: LoopPi;
 
   constructor(
     readonly root: string,
@@ -99,6 +96,16 @@ export class LoopRunner {
   ) {
     this.config = config;
     this.state = loadLoopState(root, role);
+    this.pi = new LoopPi({
+      root: this.root,
+      role: this.role,
+      config: () => this.config,
+      signal: this.signal,
+      runSignal: () => this.runSignal(),
+      warn: (message) => this.warn(message),
+      foldUsage: (run) => this.foldUsage(run),
+      tickNumber: () => this.state.ticks,
+    });
     // A persisted running flag means the previous process died mid-tick WITHOUT the
     // graceful-abort bookkeeping (crash, kill -9, power loss). The interruption looks the
     // same on disk — pi session and worktree edits in place — so resume it the same way.
@@ -267,7 +274,7 @@ export class LoopRunner {
         mainBranch: this.mainBranch,
         exemptPaths: this.config.review.exemptPaths,
         tick: this.state.ticks,
-        runPi: (w, prompt, sessionName) => this.runRolePi(w, prompt, sessionName),
+        runPi: (w, prompt, sessionName) => this.pi.runRolePi(w, prompt, sessionName),
       },
       wt,
       summary,
@@ -305,7 +312,7 @@ export class LoopRunner {
         mainBranch: this.mainBranch,
         config: this.config,
         state: this.state,
-        runPi: (w, prompt, sessionName) => this.runRolePi(w, prompt, sessionName),
+        runPi: (w, prompt, sessionName) => this.pi.runRolePi(w, prompt, sessionName),
         foldUsage: (run) => this.foldUsage(run),
         signal: () => this.runSignal(),
       },
@@ -330,38 +337,6 @@ export class LoopRunner {
     this.tickTurns += run.turns;
   }
 
-  /** Run pi for this loop in worktree `wt` with the shared per-loop wiring (role config,
-   * session dir, raw log) and fold the run's tokens/cost into the state. Every run starts
-   * a FRESH pi session: context never accumulates across ticks, so ticks start cheap
-   * (small prefill), never inherit a near-full window, and durable knowledge lives where
-   * the prompt makes pi read it — README/PLANS/BUGS and the code itself.
-   * A transient model-server timeout (e.g. the machine slept mid-run) gets exactly one
-   * bounded retry: fresh requests succeed quickly after a wake.
-   * `resume` continues the role's most recent session instead — used only when picking up
-   * a tick that a harness shutdown interrupted. */
-  /** The shared per-loop wiring for every pi run this tick makes in worktree `wt`: the
-   * role-resolved config, this loop's session dir and raw log, and the per-tick abort signal.
-   * One place for those derivations — a new PiRunOptions field touches only here instead of
-   * drifting between the author run and the SUMMARY follow-up. Callers override what differs
-   * (the follow-up's capped timeouts). */
-  private loopPiOpts(wt: string, prompt: string, sessionName: string, resume = false): PiRunOptions {
-    return {
-      cwd: wt,
-      prompt,
-      config: configForRole(this.config, this.role),
-      sessionDir: sessionDir(this.root, this.role),
-      sessionName,
-      continueSession: resume,
-      rawLogFile: piLogPath(this.root, this.role),
-      signal: this.runSignal(),
-      // A tool call silent for the configured stall threshold names itself in the event feed
-      // while the quiet watchdog still counts down (BUGS.md 2026-09-13 sibling): before this,
-      // a hung command was invisible until the kill. The dashboards derive their own flag from
-      // the raw log, so only the harness event needs wiring here.
-      onToolCallStalled: (message) => this.warn(message),
-    };
-  }
-
   /** Run pi for the orchestrator's landing slot (merge queue 3/5): the shared per-loop wiring
    * of runRolePi — role config, session dir, raw log, transient-failure retry — with usage
    * folded into this loop's counters, but watching ONLY the harness shutdown signal
@@ -370,12 +345,9 @@ export class LoopRunner {
    * controller) must never reach it, and the stale per-tick controller of a finished tick must
    * not abort it either. Session naming is the caller's (the reviewer composes its own from
    * ReviewContext.tick; merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
-   */
+   * The plumbing itself lives in src/loop-pi.ts; this is the landing slot's public face. */
   async runLandingPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
-    return this.runWithTransientRetry({
-      ...this.loopPiOpts(wt, prompt, sessionName),
-      signal: this.signal,
-    });
+    return this.pi.runLandingPi(wt, prompt, sessionName);
   }
 
   /** Public face of foldUsage for the orchestrator's landing wiring: folds a landing pi run
@@ -384,87 +356,6 @@ export class LoopRunner {
    * work — no new counter semantics, just the same fold loop.ts applies to its tick runs. */
   foldLandingUsage(run: PiRunResult): void {
     this.foldUsage(run);
-  }
-
-  /** The one bounded transient-failure retry shared by EVERY pi run this loop makes
-   * (runRolePi and runLandingPi): two transient failures of the world (not of the session)
-   * earn exactly one retry that continues the same session — the model server timing out an
-   * idle predict stream, pi itself crashing on a torn server chunk (a JSON.parse failure
-   * on its stderr), and the provider rate-limiting the request with HTTP 429 (where the
-   * provider's Retry-After hint, when sent, is waited out first — capped, so one provider's
-   * generosity cannot eat the tick's own run budget). A harness-killed or quiet-killed run
-   * never takes the transient-retry path:
-   * its session is intact but resuming it would just re-hit whatever hung, burning another
-   * full quiet timeout. Extracted verbatim from runRolePi so the rule lives in one place
-   * (574a14c's loopPiOpts move was the wiring half of the same single-source-of-truth).
-   */
-  private async runWithTransientRetry(opts: PiRunOptions): Promise<PiRunResult> {
-    const pi = await runPi(opts);
-    if (
-      !pi.aborted &&
-      !pi.timedOut &&
-      !pi.quietKilled &&
-      (pi.transientServerTimeout || pi.transientPiCrash || pi.transientRateLimit) &&
-      !pi.ok
-    ) {
-      this.warn(
-        pi.transientPiCrash
-          ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"}) — resuming the session once`
-          : pi.transientRateLimit
-            ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : ""}) — retrying the pi run once`
-            : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
-      );
-      // Honour the provider's Retry-After hint when it sent one, so the retry does not
-      // re-hit the same limit immediately; capped so a huge hint cannot consume the tick.
-      const waitS = Math.min(pi.retryAfterSeconds ?? 0, RATE_LIMIT_RETRY_AFTER_CAP_S);
-      if (waitS > 0) await new Promise((r) => setTimeout(r, waitS * 1000));
-      // Within-run continuity only: resume the session the first attempt created, so its
-      // partial progress is not re-done. The next tick still starts fresh.
-      const retry = await runPi({ ...opts, continueSession: true });
-      this.foldUsage(pi);
-      this.foldUsage(retry);
-      return retry;
-    }
-    this.foldUsage(pi);
-    return pi;
-  }
-
-  private async runRolePi(
-    wt: string,
-    prompt: string,
-    sessionName: string,
-    resume = false,
-  ): Promise<PiRunResult> {
-    return this.runWithTransientRetry(this.loopPiOpts(wt, prompt, sessionName, resume));
-  }
-
-  /** Hard caps on the SUMMARY follow-up turn: it should take one short reply on a warm session,
-   * so it never gets the authoring run's hours-long budget. */
-  private static readonly SUMMARY_REQUEST_TIMEOUT_S = 900;
-  private static readonly SUMMARY_REQUEST_QUIET_S = 300;
-
-  /** Ask the tick's own pi session (--continue) for the missing SUMMARY block: one tightly
-   * bounded turn, folded into the tick's usage like every other run. Null when there is no
-   * session to continue (pi never wrote one) — the caller then derives a subject itself. The
-   * run is returned even when it failed so the caller can honor a shutdown abort. */
-  private async requestSummary(wt: string): Promise<PiRunResult | null> {
-    if (!hasResumableSession(sessionDir(this.root, this.role))) return null;
-    const cfg = configForRole(this.config, this.role);
-    // The shared per-loop wiring (loopPiOpts) with the follow-up's hard caps overriding the
-    // authoring run's budget: one short reply on a warm session.
-    const run = await runPi({
-      ...this.loopPiOpts(wt, buildSummaryRequestPrompt(), `tumwater-${this.role}-${this.state.ticks}-summary`, true),
-      config: {
-        ...cfg,
-        tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, LoopRunner.SUMMARY_REQUEST_TIMEOUT_S),
-        quietTimeoutSeconds:
-          cfg.quietTimeoutSeconds > 0
-            ? Math.min(cfg.quietTimeoutSeconds, LoopRunner.SUMMARY_REQUEST_QUIET_S)
-            : LoopRunner.SUMMARY_REQUEST_QUIET_S,
-      },
-    });
-    this.foldUsage(run);
-    return run;
   }
 
   /** Run one full tick of this role loop: build (or resume) the prompt, run pi in the
@@ -669,7 +560,7 @@ export class LoopRunner {
     }
 
     const piStartedAt = Date.now();
-    const pi = await this.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming);
+    const pi = await this.pi.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming);
     // The `qa` observer's reply ends with a result-carrying `FLOW:` line (plans/observer-roles.md
     // 2/2). Extracted once here, recorded only at the success returns below — an interrupted or
     // failed tick must not advance the rotation. The harness records it, never pi.
@@ -772,7 +663,7 @@ export class LoopRunner {
     let summary = extractSummary(pi.finalText);
     let body = extractCommitBody(pi.finalText);
     if (summary === null) {
-      const followUp = await this.requestSummary(wt);
+      const followUp = await this.pi.requestSummary(wt);
       if (followUp?.aborted) return this.finishAbortedTick(userPrompt, wt);
       if (followUp) {
         summary = extractSummary(followUp.finalText);
