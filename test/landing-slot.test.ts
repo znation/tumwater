@@ -7,7 +7,10 @@
  * fold there would silently lose that spend. These pin the accounting branches directly. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { landingUsage, writeLandingOutcome } from "../src/landing-slot.js";
+import { landingUsage, landQueuedEntry, readLandingMarker, writeLandingOutcome } from "../src/landing-slot.js";
+import { landingRefName } from "../src/paths.js";
+import { refSha } from "../src/git.js";
+import { defaultConfig } from "../src/config.js";
 import { freshLoopState, loadLoopState } from "../src/state.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { readEvents } from "../src/events.js";
@@ -100,6 +103,40 @@ test("a review-exempt landing (zero usage) omits the usage fields instead of log
   assert.ok(landed, "the landing logged a landed event");
   assert.ok(!("tokens" in landed), `no tokens key on a zero-usage event: ${JSON.stringify(landed)}`);
   assert.ok(!("costUsd" in landed), `no costUsd key on a zero-usage event: ${JSON.stringify(landed)}`);
+});
+
+test("an unexpected throw inside the landing degrades to an error outcome — the queue drains", async () => {
+  const root = makeRepo();
+  const { entry, file } = queued(root);
+  // A poisoned entry: the sha names no commit anywhere in the repo (a lost pin, a corrupt
+  // queue file), so ensureDetachedWorktree throws before any ref work — exactly the
+  // "unexpected throw" the catch-all exists for (the module contract: landQueuedEntry never
+  // rejects; every outcome drops the entry; the 4/5 marker removal always runs).
+  const state = freshLoopState("improve");
+  state.phase = "review"; // the tick lifecycle's in-flight landing marker on the author's state
+  const author = {
+    state,
+    runLandingPi: () => {
+      throw new Error("reviewer must not be reached");
+    },
+    foldLandingUsage: () => {},
+  } as unknown as LoopRunner;
+  assert.ok(await refSha(root, landingRefName("improve")) === null, "fixture sanity: no pin exists");
+
+  const result = await landQueuedEntry(
+    root, entry, file, author, defaultConfig(), "main", new AbortController().signal,
+  );
+
+  assert.equal(result, "error", "the throw surfaces as an outcome, never a rejection");
+  assert.equal(state.lastResult, "error");
+  assert.ok(state.lastError && state.lastError.length > 0, "the error's message lands on the author's state");
+  const failed = readEvents(root, 10).find((e) => e.type === "land_failed");
+  assert.ok(failed, "even a throw logs land_failed");
+  assert.equal(failed.result, "error");
+  assert.equal(queueDepth(root), 0, "every outcome drops the entry — a poison entry must not wedge the drain");
+  assert.equal(await refSha(root, landingRefName("improve")), null, "no pin existed and the error path fabricates none");
+  assert.equal(readLandingMarker(root), null, "the in-flight marker is removed even on the error path");
+  assert.equal(loadLoopState(root, "improve").lastResult, "error", "the outcome is persisted, not just folded in memory");
 });
 
 test("a failed landing logs land_failed with its usage and counts no commit", () => {
