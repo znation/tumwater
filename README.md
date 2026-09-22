@@ -46,9 +46,6 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: a timed-out build check leaks its entire test process tree — `execFileAsync`'s timeout
-  signals npm alone, so orphans run on for hours or days (found 2026-09-21; a 2026-09-22 fix record
-  was false and re-opened by steward 2026-09-22).
 - Open bug: a fix narrative can land on main without its fix — an md-only BUGS.md edit is exempt
   from the review gate, so a tick can record code that does not exist (found by steward
   2026-09-22).
@@ -75,7 +72,7 @@ Open items:
   2026-09-23).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`4dafd41`): build clean, suite 1279/1279.
+Current main (`03edeba`): build clean, suite 1282/1282.
 <!-- tumwater:status:end -->
 
 ## How it works
