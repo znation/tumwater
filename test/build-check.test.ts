@@ -88,11 +88,24 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
   );
   let pid = 0;
   try {
-    // 600ms budget, 700ms SIGKILL grace: the grandchild traps SIGTERM, so it must be gone
-    // shortly after the grace expires — and only via the escalation.
-    const outcome = await runBuildCheck(wt, { rootDir: root, script: "test" }, 600, 700);
+    // 4s budget, 700ms SIGKILL grace: the grandchild traps SIGTERM, so it must be gone
+    // shortly after the grace expires — and only via the escalation. The budget must cover
+    // the whole startup chain (npm boot → runner boot → the grandchild's own node boot)
+    // BEFORE the group SIGTERM fires: at 600ms a load-sensitive run (the suite's per-file
+    // node --test workers, the orchestrator itself) let SIGTERM land mid-grandchild-startup,
+    // which died by default action before trapping or writing its pid — the test then died
+    // reading a pid file that never existed and falsely reddened main at 03edeba6 (BUGS.md
+    // 2026-09-24). test/pi.test.ts hit and fixed this same startup race once already.
+    const outcome = await runBuildCheck(wt, { rootDir: root, script: "test" }, 4_000, 700);
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "timeout");
+    // The check resolves at timeout-fire and the pid write races the read under the same
+    // load: wait briefly for the file rather than assuming it is there.
+    const pidDeadline = Date.now() + 5_000;
+    while (!fs.existsSync(pidFile) && Date.now() < pidDeadline) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.ok(fs.existsSync(pidFile), "the grandchild recorded its pid before the timeout");
     pid = Number(fs.readFileSync(pidFile, "utf8").trim());
     assert.ok(pid > 0, "the grandchild recorded its pid before the timeout");
     // The escalation is asynchronous relative to the check's resolution: poll until the OS
