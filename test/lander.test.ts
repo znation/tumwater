@@ -538,6 +538,42 @@ function makeWiring(
   return { wiringFor, folded, calls };
 }
 
+/** A batch test's whole fixture in one call: one pinned change per role (the queue shape the
+ * drain reads), a live state per role, and the per-role wiring to land them — the setup every
+ * batch test below otherwise spells out as batchPinnedFixture + states + makeWiring. `edit`
+ * and `resolve` pass through to the fixture and wiring. */
+async function batchFixture<R extends string>(
+  roles: R[],
+  opts: { edit?: (root: string, role: string) => void; resolve?: (wt: string) => void } = {},
+): Promise<{
+  root: string;
+  shas: Record<string, string>;
+  states: Record<R, LoopState>;
+  wiringFor: (role: string) => BatchRoleWiring;
+  folded: Map<string, PiRunResult[]>;
+  calls: PiCall[];
+}> {
+  const { root, shas } = await batchPinnedFixture(roles, opts.edit);
+  const states = Object.fromEntries(roles.map((role) => [role, freshLoopState(role)])) as Record<R, LoopState>;
+  return { root, shas, states, ...makeWiring(states, opts.resolve) };
+}
+
+/** The standard batch drain over a fixture's pinned changes, in `roles` order — the
+ * makeBatchCtx + one-request-per-role call every batch test otherwise spells out. */
+function runBatch(
+  root: string,
+  shas: Record<string, string>,
+  roles: string[],
+  wiringFor: (role: string) => BatchRoleWiring,
+  controller?: AbortController,
+) {
+  return landBatch(
+    makeBatchCtx(root, undefined, controller),
+    roles.map((role) => request(shas[role]!, { role })),
+    wiringFor,
+  );
+}
+
 test("an all-rejected batch returns a defined result for every request without throwing", async () => {
   // The review re-audit found this exact shape crashing: |S| == 0 made the lander index the
   // empty stack and throw, and the drain's catch kept every entry — a queue leak. Now the
@@ -546,16 +582,10 @@ test("an all-rejected batch returns a defined result for every request without t
     reviewerPi("VERDICT: reject\n1. no"),
   );
   try {
-    const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
     const mainBefore = sh(root, "git", "rev-parse", "main");
-    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
-    const { wiringFor } = makeWiring(states);
 
-    const results = await landBatch(
-      makeBatchCtx(root),
-      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
-      wiringFor,
-    );
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["rejected", "rejected"], "every request has a terminal result");
     assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
@@ -569,16 +599,10 @@ test("an all-rejected batch returns a defined result for every request without t
 test("a green batch stacks every approved change, fast-forwards main once, and logs per-change events", async () => {
   const restore = fakePi(APPROVE_PI);
   try {
-    const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
     const mainBefore = sh(root, "git", "rev-parse", "main");
-    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
-    const { wiringFor, folded } = makeWiring(states);
 
-    const results = await landBatch(
-      makeBatchCtx(root),
-      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
-      wiringFor,
-    );
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes landed on main");
@@ -605,18 +629,12 @@ test("a batch stacks a fixed change's work AND fix commits, not the fix alone", 
   // orphan the work commit — the stack must pick the whole range from main to that head.
   const flag = path.join(tmpdir(), "batch-fix-range");
   fs.rmSync(flag, { force: true });
-  const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+  const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
   failOnceCheck(root, flag);
   const mainBefore = sh(root, "git", "rev-parse", "main");
-  const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
-  const { wiringFor, folded } = makeWiring(states);
   const restore = fakePi(FIX_PI(`echo 'fixed' >> fix.txt`, `printf '%s\n' '${assistantLine("VERDICT: approve")}'`));
   try {
-    const results = await landBatch(
-      makeBatchCtx(root),
-      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
-      wiringFor,
-    );
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     // THREE commits on main: alpha's work, alpha's fix, beta's work — none orphaned.
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3");
@@ -638,7 +656,7 @@ test("a fast-forward blocked by a concurrent landing keeps every ref as merge_bl
   // recovery landing. The stack was assembled on the old tip, so its tip is no longer a
   // descendant of main and the single ff fails: every approved change must keep its ref for
   // leftover recovery (which re-lands each through its own gate) and nothing may merge.
-  const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
   const mainBefore = sh(root, "git", "rev-parse", "main");
   // The check moves main on its THIRD run only: the two gate pre-checks pass, then the batch
   // check passes but commits a concurrent landing, so the batch's ff is no longer fast-forward.
@@ -650,14 +668,8 @@ test("a fast-forward blocked by a concurrent landing keeps every ref as merge_bl
   );
   const restore = fakePi(APPROVE_PI);
   try {
-    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
-    const { wiringFor } = makeWiring(states);
 
-    const results = await landBatch(
-      makeBatchCtx(root),
-      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
-      wiringFor,
-    );
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(
       results.map((r) => r.result),
@@ -681,11 +693,9 @@ test("a fast-forward blocked by a concurrent landing keeps every ref as merge_bl
 test("a one-change batch is the single landing path: one ff, one merged event", async () => {
   const restore = fakePi(APPROVE_PI);
   try {
-    const { root, shas } = await batchPinnedFixture(["alpha"]);
-    const states = { alpha: freshLoopState("alpha") };
-    const { wiringFor } = makeWiring(states);
+    const { root, shas, wiringFor } = await batchFixture(["alpha"]);
 
-    const results = await landBatch(makeBatchCtx(root), [request(shas.alpha!, { role: "alpha" })], wiringFor);
+    const results = await runBatch(root, shas, ["alpha"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed"]);
     assert.equal(sh(root, "git", "rev-parse", "main"), shas.alpha!, "landed through landChange, exactly as today");
@@ -696,7 +706,7 @@ test("a one-change batch is the single landing path: one ff, one merged event", 
 });
 
 test("a red stack check abandons to one-at-a-time and both changes still land", async () => {
-  const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+  const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
   // The check fails on its THIRD run only: the two gate pre-checks pass, the batch's one
   // shared check fails, and the fallback's in-lock re-check passes again.
   const count = path.join(root, ".checkcount");
@@ -706,14 +716,8 @@ test("a red stack check abandons to one-at-a-time and both changes still land", 
   );
   const restore = fakePi(APPROVE_PI);
   try {
-    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
-    const { wiringFor, folded } = makeWiring(states);
 
-    const results = await landBatch(
-      makeBatchCtx(root),
-      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
-      wiringFor,
-    );
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "the fallback lands both one at a time");
     const checks = readEvents(root).filter((e) => e.type === "build_check");
@@ -738,20 +742,14 @@ test("a cherry-pick conflict abandons to one-at-a-time and the conflicting chang
   const restore = fakePi(APPROVE_PI);
   try {
     // Both roles rewrite the same line: the cherry-pick of the second onto the first conflicts.
-    const { root, shas } = await batchPinnedFixture(
-      ["alpha", "beta"],
-      (root, role) => fs.writeFileSync(path.join(root, "seed.txt"), `${role}\n`),
-    );
-    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
-    const { wiringFor, calls } = makeWiring(states, (wt) => {
-      fs.writeFileSync(path.join(wt, "seed.txt"), "both\n"); // resolve the rebase conflict
+    const { root, shas, wiringFor, calls } = await batchFixture(["alpha", "beta"], {
+      edit: (root, role) => fs.writeFileSync(path.join(root, "seed.txt"), `${role}\n`),
+      resolve: (wt) => {
+        fs.writeFileSync(path.join(wt, "seed.txt"), "both\n"); // resolve the rebase conflict
+      },
     });
 
-    const results = await landBatch(
-      makeBatchCtx(root),
-      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
-      wiringFor,
-    );
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "both\n", "the resolution landed on main");
@@ -768,16 +766,10 @@ test("a failed gate stops the batch: the later requests stay unattempted with en
     reviewerPi("I think this is fine."),
   );
   try {
-    const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
     const mainBefore = sh(root, "git", "rev-parse", "main");
-    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
-    const { wiringFor, folded } = makeWiring(states);
 
-    const results = await landBatch(
-      makeBatchCtx(root),
-      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
-      wiringFor,
-    );
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.equal(results[0]!.result, "review_error", "the failed gate is terminal for its request");
     assert.equal(results[1]!.result, undefined, "the second request was never attempted — the drain keeps its entry");
@@ -800,11 +792,9 @@ test("a lost pin degrades its request to a terminal error instead of starving th
   // forever. The single path's landQueuedEntry catch-all already self-heals this exact case.
   const restore = fakePi(APPROVE_PI);
   try {
-    const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
     sh(root, "git", "update-ref", "-d", landingRefName("alpha")); // the pin is gone
     const mainBefore = sh(root, "git", "rev-parse", "main");
-    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
-    const { wiringFor, folded } = makeWiring(states);
     const lost = "0".repeat(40); // a sha git cannot check out
 
     const results = await landBatch(
@@ -823,7 +813,7 @@ test("a lost pin degrades its request to a terminal error instead of starving th
     assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0);
 
     // The next drain now sees the healthy head alone and lands it — the queue advanced.
-    const next = await landBatch(makeBatchCtx(root), [request(shas.beta!, { role: "beta" })], wiringFor);
+    const next = await runBatch(root, shas, ["beta"], wiringFor);
     assert.deepEqual(next.map((r) => r.result), ["changed"], "the previously starved head lands on the next drain");
     assert.equal(await refSha(root, landingRefName("beta")), null, "and its ref is gone after landing");
   } finally {
@@ -834,18 +824,12 @@ test("a lost pin degrades its request to a terminal error instead of starving th
 test("an abort mid-batch routes every request without a terminal outcome to aborted, refs kept", async () => {
   const restore = fakePi(`exec sleep 30`); // never reached: the signal is already aborted
   try {
-    const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+    const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
     const mainBefore = sh(root, "git", "rev-parse", "main");
-    const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
-    const { wiringFor, folded } = makeWiring(states);
     const controller = new AbortController();
     controller.abort(); // a shutdown (or a user stop for any batched role) before the batch starts
 
-    const results = await landBatch(
-      makeBatchCtx(root, undefined, controller),
-      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
-      wiringFor,
-    );
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
 
     assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an abort keeps the refs for recovery");
