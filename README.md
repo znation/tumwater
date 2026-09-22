@@ -46,6 +46,9 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
+- Open bug: the failure digest's Review rejections section silently truncates at 5
+  alphabetically-first clusters, so most of the window's rejections are invisible while the
+  Deltas table reports them (found 2026-09-22).
 - Open bug: a 429 storm still has no fleet-wide hold — each tick now retries its own 429, but
   concurrent loops keep hammering a rate-limited provider instead of backing off together
   (found 2026-09-21; the per-tick retry half was fixed 2026-09-22).
@@ -63,7 +66,7 @@ Open items:
   branch targeting landed 2026-09-22).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`c033ad1`): build clean, suite 1261/1261.
+Current main (`255555b`): build clean, suite 1270/1270.
 <!-- tumwater:status:end -->
 
 ## How it works
