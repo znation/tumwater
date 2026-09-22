@@ -150,7 +150,7 @@ review-gate paragraph: a failed landing build check triggers one bounded fix run
 - Tick prompts in a non-npm repo never mention `node_modules`, and name the configured command where they used to say "if it has a build or test command".
 - `doctor` warns, naming the consequence, when neither a configured command nor an npm script is found.
 
-### 7/7 — Adopt an existing repository without hijacking its README (planned 2026-09-14, refined 2026-09-18)
+### 7/7 — Adopt an existing repository without hijacking its README (planned 2026-09-14, refined 2026-09-18, re-audited 2026-09-23)
 
 **Goal.** Let `tumwater init` run against a repo that already exists and already has a README. Today it hard-fails when `README.md` exists without the `tumwater:prompt` markers, because `readInitialPrompt` (src/readme.ts) reads the brief only out of README.md's managed section. Introduce `TUMWATER.md` as the project brief with README as the compatibility path, plus `init --adopt` / `--dry-run`; the brief filename threads through `COMMON_RULES` (shared with the director prompt).
 

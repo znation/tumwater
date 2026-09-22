@@ -1301,6 +1301,61 @@ loop.ts/prompt.ts, the flag plumbing in cli-args.ts/cli.ts, the dry-run branch i
 touched gains `src/loop.ts`, `src/cli.ts`, and `test/cli-args.test.ts`; `briefTemplate` is dropped.
 Still one run, no design question left open.
 
+**Refined 2026-09-23 (plan loop) — 7/7 re-audited against main `e6a4228` (the README's own stamp;
+the 2026-09-18 audit was against `5a99627`, ~30 landings back). The design and all eight pinned
+corrections hold unchanged. Every anchor re-verified and re-pinned below; one stale claim
+corrected (readme.ts grew, and `readInitialPrompt` gained a length cap the resolution change must
+not disturb); one new pre-adopt validation step named; two test anchors re-pinned.**
+
+Verified as written:
+- `src/readme.ts` is now 60 lines (was 47): since the audit it gained the exported
+  `INITIAL_PROMPT_MAX_CHARS = 4096` (:12) and a truncation backstop inside `readInitialPrompt`
+  (:58–60) — a hand-edited README with an over-long prompt truncates with a visible note instead
+  of injecting unbounded text into every tick. The resolution change needs no new seam: both
+  candidates share the same two markers, and the candidate parse + trim + cap all stay inside
+  `readInitialPrompt`; `briefFile(root)` only names which file owns the marked section. The
+  end-marker-after-open ordering guard (:49–52) applies verbatim to whichever candidate parses.
+- `src/init.ts` is now 163 lines: `InitResult` :84 (still no adopt/dryRun fields),
+  `initProject(root, initialPrompt)` :95, the pure-validation preamble :99–117 now includes — new
+  since the audit — the over-long-prompt reject (:114–117), which adoption keeps unchanged; the
+  README-without-markers guard is :118–122, its message built from `PROMPT_START`/`PROMPT_END`;
+  `git init -b main` :128 with the now-superseded `init.defaultBranch` comment at :125–127; the
+  `write` create-if-absent helper ~:135; `ensureGitignore` :75; the commit path :151–160.
+- `src/cli.ts` (381 lines): `root = process.cwd()` :187; `cmdInit` :102 (still
+  `parseInitArgs(args)` returning a bare string); its hardcoded `initialized a new git repository
+  on branch main` :110; `cmdRun` :116; the `run` case's `rejectUnknownArgs("run", args, [])` :193
+  with `cmdRun(root)` :194; the `gui` valued-flag spec :201–205 (the idiom unchanged); the help
+  block's `run` line :52.
+- `src/cli-args.ts` (182 lines): `parseInitArgs` :115, shape unchanged — the `--file`-only rule
+  (:117–118), the duplicate check (:123), `failStrayArg` (:126) — correction 1 lands as written.
+- `src/prompt.ts` (442 lines): `COMMON_RULES` :53, naming README.md at :57 and :86;
+  `TickPromptInput` :144; `buildTickPrompt` :169 (embeds COMMON_RULES :180);
+  `buildDirectorPrompt` :185 (embeds :232). `test/prompt.test.ts:525` pins
+  `/First read README\.md in full/` — correction 2's byte-identical fallback
+  (`briefFile(this.root) ?? "README.md"`) keeps it green; the file gains one adopted-brief
+  variant whose prompt names TUMWATER.md instead.
+- `src/roles.ts` (412 lines): `plan.find` names "its initial prompt in README.md" at :135;
+  `readme.find` :151 names README.md and the status markers. Correction 2's rewrite of both holds.
+- `src/loop.ts` (818 lines): `readInitialPrompt(this.root)` :160 and the
+  `buildDirectorPrompt(userPrompt, initialPrompt, principles)` call :169 — correction 2's
+  `const brief = briefFile(this.root) ?? "README.md"` computes beside :160 and feeds both branches.
+- `src/doctor.ts` (268 lines): `checkInit` :99; `runDoctor` :237 with the checks array :243
+  (`checkInit` entry :247); the name column is `padEnd(12)` :265 — correction 8's `checkBrief`
+  slot holds.
+- Tests re-pinned: `test/init.test.ts` is 166 lines; the old-failure test ("initProject refuses
+  to drop the initial prompt when README has no tumwater markers") is now :108–113 (correction 5
+  inverts it); the PRINCIPLES-seed assertions ("seeds PRINCIPLES.md with positive starter
+  principles") are :33–44 (correction 7's added assertions join them). `test/readme.test.ts` is
+  94 lines, every case through the `writeReadme` helper (:14) — it gains the resolution-order
+  cases.
+- Capability absence re-confirmed: `grep -rn 'TUMWATER.md\|briefFile\|briefCandidate\|--adopt\|--dry-run\|adopt:\|dryRun' src/` is empty.
+
+One claim corrected: the 09-18 note's "src/readme.ts is 47 lines" and its implication that
+`readInitialPrompt` returns the raw prompt — it now caps at `INITIAL_PROMPT_MAX_CHARS`, so an
+adopted repo's `TUMWATER.md` gets the same backstop protection with zero additional code.
+
+Sizing unchanged. No design question remains open.
+
 ---
 
 ## Series close-out
