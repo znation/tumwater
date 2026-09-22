@@ -4,14 +4,33 @@
   "description": "Opinionated autonomous development harness built on pi. You write the initial prompt; role-driven loops build the project.",
   "type": "module",
   "license": "MIT",
+  "keywords": [
+    "agent",
+    "ai",
+    "autonomous",
+    "coding-agent",
+    "harness",
+    "pi"
+  ],
   "bin": {
     "tumwater": "dist/src/cli.js"
   },
+  "files": [
+    "dist/src",
+    "dist/build-info.json",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.3",
+    "os": [
+      "darwin",
+      "linux"
+    ]
   },
   "scripts": {
     "build": "rm -rf dist && tsc && node scripts/stamp-build.mjs",
+    "prepack": "npm run build",
     "test": "npm run build && node dist/src/test-runner.js",
     "tumwater": "node dist/src/cli.js"
   },

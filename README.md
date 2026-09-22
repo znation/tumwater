@@ -222,7 +222,7 @@ in tracked markdown and `tumwater.json`.
 ## Usage
 
 ```
-npm install && npm run build
+npm install -g tumwater    # or: npx tumwater — no checkout needed
 
 cd your-project        # existing or new project dir
 tumwater init "Build a tiny markdown-to-html converter CLI in Python."
@@ -249,6 +249,12 @@ tumwater pause                     # stop role loops starting new ticks (in-flig
 tumwater resume                    # lift a fleet pause
 tumwater help                      # print the command reference
 tumwater version                   # print the harness version
+```
+
+Build from source instead (or when developing tumwater itself):
+
+```
+npm install && npm run build && npm link
 ```
 
 `reset-counters` starts a fresh observation window (e.g. "cost since today") without touching

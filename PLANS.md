@@ -5,20 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 1/7 — GitHub Actions CI and a publishable npm package (planned 2026-09-14, requested by user, refined 2026-09-16)
-
-**Goal.** Make the harness installable on any machine (`npm i -g tumwater`, `npx tumwater`) and prove every push green on a clean runner. No behavior change: packaging metadata, a licence, and two workflows.
-
-**Series.** Part 1/7 of the portability series; land first so the rest run under CI. Depends on: nothing. Approach, design rationale, and audit pins: plans/portability.md §1/7.
-
-**Files touched.** package.json, LICENSE (new), .github/workflows/ci.yml (new), .github/workflows/release.yml (new), README.md. No source or test changes.
-
-**Acceptance criteria.**
-- `npm pack --dry-run` lists only `dist/src/**`, `dist/build-info.json`, `README.md`, `LICENSE`, and `package.json` — no PLANS.md, no BUGS.md, no `test/`, no `src/*.ts`, no config.
-- `npm pack` in a checkout with no `dist/` still produces a working tarball (prepack built it); installing it globally on a machine with no tumwater checkout gives a `tumwater` on PATH whose `version`, `help`, and `doctor` all run.
-- CI green on ubuntu-latest and macos-latest across Node 20/22/24 from a cold cache, with no global git identity beyond the workflow's own step (fixing Linux-only suite failures the first run surfaces is part of this entry).
-- Pushing tag `v0.1.1` while `package.json` says `0.1.0` fails the release workflow before anything is published.
-
 ### 2/7 — Resolve the repo root, and target any branch (planned 2026-09-14, refined 2026-09-17)
 
 **Goal.** Run the fleet against any repository, from anywhere inside it, targeting whatever branch that repo's primary checkout is on. Branch plumbing is already parameterized end to end; what is missing is a correct root (from `git rev-parse --show-toplevel`), an explicit override, and the guards that keep a resolved branch honest.
@@ -126,6 +112,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Series critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7. 4c/7 landed 2026-09-21 (`dfa6d26`); its one remaining line — README's `## Usage` naming `tumwater.example.json` — is folded into 4a/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
 ## Done
+
+### 1/7 — GitHub Actions CI and a publishable npm package (planned 2026-09-14, requested by user, refined 2026-09-16, done 2026-09-21)
+
+Implemented: package.json gains `files` (allowlist: dist/src, dist/build-info.json, README.md, LICENSE), `scripts.prepack` (`npm run build` — inside `scripts`, where npm runs it), `keywords`, `engines.node >=20.3` (AbortSignal.any), and `engines.os [darwin, linux]`; MIT LICENSE added; ci.yml (push/PR matrix, os × node 20/22/24, git-identity step, concurrency cancel) and release.yml (v*-tag driven, tag/version agreement gate, npm publish, tarball attached to a GitHub release) added; README Usage opens with `npm install -g tumwater` / `npx` and gains a from-source `npm link` block. The plan's "no test changes" was superseded by its own 2026-09-21 refinement (correction 5): test/packaging.test.ts pins the allowlist, `scripts.prepack`, engines, bin, and both workflow triggers. First real CI run and any tag push remain post-remote human steps.
 
 ### 4c/7 — Move README's rig notes into docs/backends.md (planned 2026-09-14, done 2026-09-21)
 
