@@ -46,12 +46,16 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: a landing's state cell shows only elapsed time — bare `landing <elapsed>` — while the reviewer run behind it has the same turns/context/tool detail a working or reviewing loop shows (reported by user 2026-09-22).
-- Planned: portability & packaging — run an installed copy on any repo/branch with any agent binary
-  (planned 2026-09-14, requested by user; the PLANS.md portability series 2/7–7/7; 1/7 CI and
-  npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21).
-- Open bug: a verdict-last reviewer reply loses every reason it wrote — `parseVerdict` reads
-  only the lines after the last VERDICT line (found 2026-09-21).
+- Open bug: the build check's rejection headline is a node:test summary counter — two
+  rejections reported as `build check failed (test): ℹ todo 0`, naming nothing (found by
+  telemetry 2026-09-22).
+- Open bug: one pi log per role carries two pi runs — a landing run's `session` event resets
+  the turn counter the dashboard shows for the authoring tick (reported by user 2026-09-22).
+- Open bug: the live-progress tail seeds from an arbitrary byte offset, so a first
+  observation reports a turn count that means nothing (reported by user 2026-09-22).
+- Open bug: a landing's state cell shows only elapsed time — bare `landing <elapsed>` — while
+  the reviewer run behind it has the same turns/context/tool detail a working or reviewing
+  loop shows (reported by user 2026-09-22).
 - Open bug: a timed-out build check signals npm alone, leaking the entire test process tree
   to PID 1 (found 2026-09-21).
 - Open bug: a load-sensitive live-orchestrator test falsely reddens main — the same sha
@@ -66,10 +70,16 @@ Open items:
   331–1158 s (found 2026-09-21).
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
+- Planned: fix a failed landing build check on the spot instead of rejecting — one bounded
+  model run to fix the tree and re-check before a red main rejects every queued landing
+  (planned 2026-09-21, requested by user).
+- Planned: portability & packaging — run an installed copy on any repo/branch with any agent
+  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 2/7–7/7; 1/7
+  CI and npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`e6a4228`): build clean, suite 1270/1270 (one known load flake in
-orchestrator-3, tracked above; passes in isolation).
+Current main (`3557e40`): build clean, suite 1276/1276 (one timing-sensitive loop-2 retry
+  test flaked once under load and passed on rerun).
 <!-- tumwater:status:end -->
 
 ## How it works
