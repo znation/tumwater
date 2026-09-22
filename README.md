@@ -48,6 +48,8 @@ in tumwater.json or by prompting the director.
 Open items:
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; the PLANS.md portability series 1/7–7/7).
+- Open bug: a verdict-last reviewer reply loses every reason it wrote — `parseVerdict` reads
+  only the lines after the last VERDICT line (found 2026-09-21).
 - Open bug: the test suite never deletes its temp dirs — 1.68M abandoned `tumwater-test-*`
   entries make every `mkdtemp` ~9,000× slower and time out build checks (found 2026-09-21).
 - Open bug: a timed-out build check signals npm alone, leaking the entire test process tree
@@ -66,7 +68,7 @@ Open items:
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`ee53364`): build clean, suite 1262/1262 (one known load flake in
+Current main (`c4c882b`): build clean, suite 1263/1263 (one known load flake in
 orchestrator-3, tracked above; passes in isolation).
 <!-- tumwater:status:end -->
 
