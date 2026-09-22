@@ -15,7 +15,7 @@ const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
  * accessors, not copies: `config()` and `tickNumber()` are read at every call so the
  * orchestrator's live-reload (which swaps the config object under the loop) and the tick
  * lifecycle stay authoritative without any notification path. */
-export interface LoopPiHost {
+interface LoopPiHost {
   readonly root: string;
   readonly role: string;
   config(): TumwaterConfig;
