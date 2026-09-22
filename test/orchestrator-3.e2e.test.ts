@@ -1,5 +1,5 @@
-/** Third slice of the orchestrator e2e suite (after orchestrator.test.ts and
- * orchestrator-2.test.ts) — split so node --test runs the slices in parallel processes:
+/** Third slice of the orchestrator e2e suite (after orchestrator.e2e.test.ts and
+ * orchestrator-2.e2e.test.ts) — split so node --test runs the slices in parallel processes:
  * top-level tests within one file run sequentially, while each test FILE gets its own process
  * (and its own PATH, which fakePi's global PATH swap requires). The slices are balanced by
  * measured per-test duration (~17 s each at 2026-09-20); keep them roughly equal when moving

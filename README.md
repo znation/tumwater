@@ -329,8 +329,10 @@ backend must give tumwater and a worked configuration.
 ## Development
 
 ```
-npm test               # build + full unit suite (node:test)
+npm test               # build + the unit suite (node:test) — what the landing gate runs
 npm test <filter>      # …or just the test files whose name contains <filter> (e.g. npm test merge)
+npm run test:e2e       # the live-orchestrator e2e tier (test/*.e2e.test.ts) — kept out of the
+                       # gating suite because its wall-clock waits are not load-proof
 ```
 
 Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `orchestrator.ts` the scheduler,

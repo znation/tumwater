@@ -584,7 +584,7 @@ test("tui gates on repo readiness, rejects extra args, and fails cleanly without
 // --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---
 // The CLI cannot reach into the orchestrator process, so the request rides on disk: a
 // per-role marker (.tumwater/abort-<role>.json) a running fleet consumes within one poll
-// cycle. The fleet-side consumption is covered by test/orchestrator.test.ts; here we pin
+// cycle. The fleet-side consumption is covered by test/orchestrator.e2e.test.ts; here we pin
 // what the CLI itself does — validation, the live-harness gate, and the marker it drops.
 
 test("abort validates its arguments before touching anything", async () => {
@@ -720,7 +720,7 @@ test("abort's confirmation names the discarded prompt only for the director", as
 // Unlike abort, these commands are meaningful with NO harness running (pausing before
 // startup starts an already-paused fleet), so there is no live-harness refusal — only the
 // wording changes. The marker's effect on a live fleet is pinned in
-// test/orchestrator.test.ts; here we pin what the CLI itself does: idempotency, messaging,
+// test/orchestrator.e2e.test.ts; here we pin what the CLI itself does: idempotency, messaging,
 // and the marker it writes/removes.
 
 test("pause and resume are idempotent with no harness running", async () => {

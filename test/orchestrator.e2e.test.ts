@@ -1,3 +1,7 @@
+/** The orchestrator e2e tier (orchestrator-2/3.e2e.test.ts are the other slices): these tests
+ * start a live orchestrator and wait on real timers, so their fixed wall-clock budgets are
+ * not reliable on a loaded machine — they run via `npm run test:e2e` (and CI), not in the
+ * unfiltered `npm test` run the harness's landing gate executes (BUGS.md 2026-09-21). */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -9,7 +9,7 @@ import { makeRepo } from "./util.js";
 
 /** Unit tests for the pure tick-scheduling policy in src/scheduling.ts — eligibility, fair
  * order, work-landed/deferral, and the once-per-day prune gate. Moved out of
- * orchestrator.test.ts, which now covers only the orchestrator runtime, so the policy module
+ * orchestrator.e2e.test.ts, which now covers only the orchestrator runtime, so the policy module
  * has the module-named test file the rest of src/ follows and its pure tests run in their own
  * parallel process. */
 

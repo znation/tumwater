@@ -12,14 +12,30 @@ function fakeDistDir(...files: string[]): string {
   return dir;
 }
 
-test("no filters selects every compiled test file in sort order", () => {
-  const dir = fakeDistDir("z.test.js", "a.test.js", "m.test.js");
+test("no filters selects every compiled test file except the e2e tier, in sort order", () => {
+  const dir = fakeDistDir("z.test.js", "a.test.js", "m.e2e.test.js", "m.test.js");
   fs.writeFileSync(path.join(dir, "helper.js"), ""); // Not a test file — ignored.
   const sel = selectTestFiles([], dir);
   assert.equal(sel.error, undefined);
+  // The live-orchestrator e2e files (BUGS.md 2026-09-21) stay out of the unfiltered run
+  // the harness's build gate executes — their wall-clock waits are not load-proof.
   assert.deepEqual(sel.names, ["a.test.ts", "m.test.ts", "z.test.ts"]);
   assert.ok(sel.files.every((f) => f.endsWith(".test.js")));
   assert.equal(sel.files[0], path.join(dir, "a.test.js"));
+});
+
+test("an explicit filter selects e2e files too, so the tier is one `npm test e2e` away", () => {
+  const dir = fakeDistDir("merge.test.js", "orchestrator.e2e.test.js", "orchestrator-2.e2e.test.js");
+  // The tier's own filter selects only the e2e files — package.json's test:e2e rides on this.
+  assert.deepEqual(selectTestFiles(["e2e"], dir).names, [
+    "orchestrator-2.e2e.test.ts",
+    "orchestrator.e2e.test.ts",
+  ]);
+  // …and naming the module brings its e2e files back alongside it.
+  assert.deepEqual(selectTestFiles(["orchestrator"], dir).names, [
+    "orchestrator-2.e2e.test.ts",
+    "orchestrator.e2e.test.ts",
+  ]);
 });
 
 test("filters substring-match the source-style name and are ORed together", () => {

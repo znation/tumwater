@@ -208,7 +208,7 @@ export function assistantBlocks(content: unknown[]): string {
   return JSON.stringify({ type: "message_end", message: { role: "assistant", content, stopReason: "stop" } });
 }
 
-// --- Live-orchestrator test helpers (shared by orchestrator.test.ts and orchestrator-2.test.ts) ---
+// --- Live-orchestrator test helpers (shared by the orchestrator e2e tier (orchestrator.e2e.test.ts, orchestrator-2.e2e.test.ts)) ---
 
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the
  * condition is true, so a generous budget costs nothing on the success path and buys only
@@ -285,7 +285,7 @@ export function startLiveOrchestrator(
 /** Land a commit on main that counts as "work" for need-based prioritization, so deferrable
  * maintenance roles wake and re-tick. Tests that pin scheduling-adjacent behavior (config
  * reloads, resets, gates) use it to keep their maintenance roles ticking — the deferral rule
- * itself is pinned in its own test in orchestrator.test.ts. */
+ * itself is pinned in its own test in orchestrator.e2e.test.ts. */
 export function landWork(repo: string): void {
   fs.writeFileSync(
     path.join(repo, `work-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`),
