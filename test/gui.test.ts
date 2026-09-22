@@ -16,6 +16,16 @@ import { assistantLine, makeRepo } from "./util.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
+// The dashboard tests read JSON responses the way gui-client's own getJson/postJson guards
+// do; these two keep each call site to one line instead of the double-await fetch idiom.
+async function getJson<T>(base: string, path: string): Promise<T> {
+  return (await (await fetch(base + path)).json()) as T;
+}
+
+async function postJson<T>(base: string, path: string, body: string): Promise<T> {
+  return (await (await fetch(base + path, { method: "POST", body })).json()) as T;
+}
+
 // The --all-interfaces URL filter decides which addresses the dashboard advertises as
 // reachable for an UNAUTHENTICATED server, so its inclusions/exclusions are pinned here
 // against a synthetic interface table: the e2e test can only observe what this machine has,
@@ -107,10 +117,12 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
     const page = await (await fetch(base + "/")).text();
     assert.match(page, /<title>tumwater<\/title>/);
 
-    const status = (await (await fetch(base + "/api/status")).json()) as ReturnType<typeof statusPayload> & {
-      running: boolean;
-      loops: Array<{ role: string; phase: string }>;
-    };
+    const status = await getJson<
+      ReturnType<typeof statusPayload> & {
+        running: boolean;
+        loops: Array<{ role: string; phase: string }>;
+      }
+    >(base, "/api/status");
     assert.equal(status.running, false);
     assert.ok(status.loops.some((l) => l.role === "director"));
 
@@ -180,7 +192,7 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
   const base = `http://127.0.0.1:${addr.port}`;
   try {
     // No log yet: friendly empty state.
-    const empty = (await (await fetch(base + "/api/transcript?role=feature")).json()) as { lines: string[] };
+    const empty = await getJson<{ lines: string[] }>(base, "/api/transcript?role=feature");
     assert.deepEqual(empty, { lines: [] });
 
     // With a log: same rendered lines as the CLI transcript.
@@ -203,7 +215,7 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
         }),
       ].join("\n") + "\n",
     );
-    const ok = (await (await fetch(base + "/api/transcript?role=feature&n=10")).json()) as { lines: string[] };
+    const ok = await getJson<{ lines: string[] }>(base, "/api/transcript?role=feature&n=10");
     assert.ok(ok.lines.some((l) => l.startsWith("── run @ ")));
     assert.ok(ok.lines.includes("  did the thing"));
     assert.ok(ok.lines.includes("→ read PLANS.md"));
@@ -214,9 +226,9 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
       const res = await fetch(base + url);
       assert.equal(res.status, 400, url);
     }
-    const unknownRole = (await (await fetch(base + "/api/transcript?role=nosuch")).json()) as { error: string };
+    const unknownRole = await getJson<{ error: string }>(base, "/api/transcript?role=nosuch");
     assert.match(unknownRole.error, /unknown role "nosuch"/);
-    const missingRole = (await (await fetch(base + "/api/transcript")).json()) as { error: string };
+    const missingRole = await getJson<{ error: string }>(base, "/api/transcript");
     assert.match(missingRole.error, /role required/);
 
     // Routing is by exact path: a path merely prefixing /api/transcript is not that route —
@@ -260,7 +272,7 @@ test("gui /api/transcript accepts user-defined loop roles listed in tumwater.jso
   const base = `http://127.0.0.1:${addr.port}`;
   try {
     // The custom id is accepted and serves its transcript like any built-in's…
-    const ok = (await (await fetch(base + "/api/transcript?role=nightly")).json()) as { lines: string[] };
+    const ok = await getJson<{ lines: string[] }>(base, "/api/transcript?role=nightly");
     assert.ok(ok.lines.some((l) => l.includes("did the nightly thing")));
 
     // …and an unknown id still 400s — listing customs among the valid ids it accepts.
@@ -738,11 +750,11 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     }
     // The 400s name the offending value (or say the input is required), so a client can tell
     // a missing file from an unknown one and see which index was out of range.
-    const unknownFile = (await (await fetch(base + "/api/backlog?file=notes&index=0")).json()) as { error: string };
+    const unknownFile = await getJson<{ error: string }>(base, "/api/backlog?file=notes&index=0");
     assert.match(unknownFile.error, /unknown file "notes"/);
-    const missingFile = (await (await fetch(base + "/api/backlog?index=0")).json()) as { error: string };
+    const missingFile = await getJson<{ error: string }>(base, "/api/backlog?index=0");
     assert.match(missingFile.error, /file required/);
-    const outOfRange = (await (await fetch(base + "/api/backlog?file=plans&index=2")).json()) as { error: string };
+    const outOfRange = await getJson<{ error: string }>(base, "/api/backlog?file=plans&index=2");
     assert.match(outOfRange.error, /index 2 out of range/);
 
     // Routing is by exact path: a path merely prefixing /api/backlog is not that route.
@@ -757,7 +769,7 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     assert.equal(res.status, 400);
 
     // The status payload is unchanged by this endpoint: titles only, no bodies.
-    const status = (await (await fetch(base + "/api/status")).json()) as { plans: string[] };
+    const status = await getJson<{ plans: string[] }>(base, "/api/status");
     assert.deepEqual(status.plans, ["First plan (planned 2026-09-05)", "Second plan (planned 2026-09-04)"]);
   } finally {
     server.close();
@@ -1167,7 +1179,7 @@ test("POST /api/budget persists a valid cap and rejects invalid bodies without t
       const err = (await res.json()) as { error: string };
       assert.ok(err.error.length > 0, `actionable message for ${body}`);
     }
-    assert.match(((await (await fetch(base + "/api/budget", { method: "POST", body: '{"maxDailyCostUsd": -1}' })).json()) as { error: string }).error, /-1/);
+    assert.match((await postJson<{ error: string }>(base, "/api/budget", '{"maxDailyCostUsd": -1}')).error, /-1/);
     assert.equal(fs.readFileSync(configFile, "utf8"), before, "rejected bodies change nothing");
 
     // No tmp remnant from any of the writes above.
@@ -1259,10 +1271,7 @@ test("POST /api/pause writes and removes the fleet pause marker and rejects bad 
       assert.ok(err.error.length > 0, `actionable message for ${body}`);
     }
     assert.equal(fs.existsSync(pausedPath(repo)), false, "rejected bodies leave the marker untouched");
-    assert.match(
-      ((await (await fetch(base + "/api/pause", { method: "POST", body: '{"paused": "true"}' })).json()) as { error: string }).error,
-      /boolean/,
-    );
+    assert.match((await postJson<{ error: string }>(base, "/api/pause", '{"paused": "true"}')).error, /boolean/);
 
     // An oversized body gets 413 (readJsonObject's shared guard), still touching nothing.
     res = await fetch(base + "/api/pause", {
