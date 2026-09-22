@@ -9,7 +9,7 @@ import {
   setRef,
 } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
-import { logEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
 import {
   buildCommitMessage,
@@ -107,7 +107,7 @@ export class LoopRunner {
    * warning site (pin failure, transient retry, error/quiet-kill streak, no-change diagnosis,
    * missing SUMMARY, high friction) stamps this loop and the "warning" type in one place. */
   private warn(message: string): void {
-    logEvent(this.root, { loop: this.role, type: "warning", message });
+    warnEvent(this.root, this.role, message);
   }
 
   /** Zero the accumulated counters in memory and persist them. The orchestrator calls this

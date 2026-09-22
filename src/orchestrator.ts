@@ -19,7 +19,7 @@ import { branchHead, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
 import { landBatch } from "./lander.js";
 import { landQueuedEntry, landingUsage, readLandingMarker, writeLandingMarker, writeLandingOutcome } from "./landing-slot.js";
 import { dropLanding, headLanding, landingFor, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
-import { logEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { inboxSize } from "./inbox.js";
@@ -208,7 +208,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   if (config.sessionRetentionDays > 0) {
     const pruned = pruneOldFiles(sessionsRootDir(root), config.sessionRetentionDays);
     if (pruned > 0) {
-      logEvent(root, { loop: "harness", type: "warning", message: `pruned ${pruned} old pi session file(s)` });
+      warnEvent(root, "harness", `pruned ${pruned} old pi session file(s)`);
     }
   }
 
@@ -358,14 +358,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         }
         for (const role of prevEnabled)
           if (!nowEnabled.includes(role))
-            logEvent(root, { loop: "harness", type: "warning", message: `role ${role} disabled — stopping ticks` });
+            warnEvent(root, "harness", `role ${role} disabled — stopping ticks`);
         for (const role of nowEnabled)
           if (!prevEnabled.has(role))
-            logEvent(root, { loop: "harness", type: "warning", message: `role ${role} enabled — starting ticks` });
+            warnEvent(root, "harness", `role ${role} enabled — starting ticks`);
         prevEnabled = new Set(nowEnabled);
         lastConfigError = null;
       } else if (reloaded.error && reloaded.error !== lastConfigError) {
-        logEvent(root, { loop: "harness", type: "warning", message: `tumwater.json invalid — keeping current config: ${reloaded.error}` });
+        warnEvent(root, "harness", `tumwater.json invalid — keeping current config: ${reloaded.error}`);
         lastConfigError = reloaded.error;
       }
 
@@ -387,7 +387,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         const pruneNow = Date.now();
         if (retention > 0) {
           const pruned = pruneOldFiles(sessionsRootDir(root), retention);
-          if (pruned > 0) logEvent(root, { loop: "harness", type: "warning", message: `pruned ${pruned} old pi session file(s)` });
+          if (pruned > 0) warnEvent(root, "harness", `pruned ${pruned} old pi session file(s)`);
           lastPruneAt = pruneNow;
         }
         lastRetention = retention;
@@ -519,11 +519,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           const stale = staleHeadFile(root);
           if (stale) {
             dropLanding(stale);
-            logEvent(root, {
-              loop: "harness",
-              type: "warning",
-              message: `land queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue can drain`,
-            });
+            warnEvent(
+              root,
+              "harness",
+              `land queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue can drain`,
+            );
             head = headLanding(root);
           }
         }

@@ -1,6 +1,6 @@
 import type { LoopState, PiRunResult, TumwaterConfig } from "./types.js";
 import { reviewConfig } from "./config.js";
-import { logEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events.js";
 import { aheadOfMainDiff, aheadOfMainFiles, git, headOf } from "./git.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
@@ -224,7 +224,7 @@ export async function reviewAheadOfMain(
     signal: ctx.signal,
     // A stalled tool call during review hangs the gate just like one during authoring —
     // name it in the event feed while the quiet watchdog still counts down.
-    onToolCallStalled: (message) => logEvent(root, { loop: role, type: "warning", message }),
+    onToolCallStalled: (message) => warnEvent(root, role, message),
   });
 
   if (pi.aborted) {
@@ -255,11 +255,7 @@ export async function reviewAheadOfMain(
     if ((state.unreviewFailures ?? 0) >= REVIEW_FAILURE_LIMIT) {
       await resetWorktreeToMain(wt, mainBranch);
       state.unreviewFailures = 0; // The HEAD is gone; nothing left to count against.
-      logEvent(root, {
-        loop: role,
-        type: "warning",
-        message: `discarding unreviewed leftover after ${REVIEW_FAILURE_LIMIT} failed reviews (${shortSha(head)})`,
-      });
+      warnEvent(root, role, `discarding unreviewed leftover after ${REVIEW_FAILURE_LIMIT} failed reviews (${shortSha(head)})`);
     }
     return { decision: "failed", detail: message, run: pi };
   }

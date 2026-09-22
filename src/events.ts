@@ -50,6 +50,13 @@ export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
   return full;
 }
 
+/** Log a warning event: the harness's "something is off but the loop continues" signal. The
+ * single home of the `{ loop, type: "warning", message }` shape every warn site constructs —
+ * without it, each caller restates the event object and a field can drift between them. */
+export function warnEvent(root: string, loop: string, message: string): HarnessEvent {
+  return logEvent(root, { loop, type: "warning", message });
+}
+
 /** Append a newline when `file`'s last byte is not one — terminating a torn trailing line so
  * the next append starts on its own line instead of gluing onto the fragment. No-op for a
  * missing, empty, or already-terminated file; never throws (a vanished file just means there

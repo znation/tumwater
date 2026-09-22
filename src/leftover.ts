@@ -1,6 +1,6 @@
 import { aheadOfMain, commitMessage, deleteRef, headOf, isMergedInto, refSha, setRef } from "./git.js";
 import { parseCommitMetadata, type CommitMetadata } from "./commit-message.js";
-import { logEvent } from "./events.js";
+import { warnEvent } from "./events.js";
 import { landingRefName } from "./paths.js";
 import { shortSha } from "./text.js";
 import type { TickResult } from "./types.js";
@@ -67,11 +67,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<TickResult 
     // adoption is logged and harmless: the landing proceeds anyway, with the branch still
     // holding the commit until the caller's post-recovery reset.
     if (!(await setRef(ctx.root, ref, sha))) {
-      logEvent(ctx.root, {
-        loop: ctx.role,
-        type: "warning",
-        message: `failed to adopt unpinned leftover ${shortSha(sha)} into its landing ref`,
-      });
+      warnEvent(ctx.root, ctx.role, `failed to adopt unpinned leftover ${shortSha(sha)} into its landing ref`);
     }
   }
   return await ctx.land(sha, await recoveredMetadata(ctx.root, sha));

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { logEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events.js";
 import { truncate } from "./text.js";
 import { isJsonObject } from "./json-object.js";
 
@@ -399,17 +399,9 @@ export async function runScopedBuildCheck(
     // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
     // code tick into the 3-strike discard (gate) or a merge behind the merge lock.
     const w = SCOPE_WORDS[scope];
-    logEvent(root, {
-      loop: role,
-      type: "warning",
-      message: buildCheckSkipWarning(outcome.skipReason!, w.label, w.proceeding, timeoutMs),
-    });
+    warnEvent(root, role, buildCheckSkipWarning(outcome.skipReason!, w.label, w.proceeding, timeoutMs));
   } else if (mergeTimeout) {
-    logEvent(root, {
-      loop: role,
-      type: "warning",
-      message: `${timeoutReason}; rejecting the merge`,
-    });
+    warnEvent(root, role, `${timeoutReason}; rejecting the merge`);
   }
   return { check, outcome };
 }

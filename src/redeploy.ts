@@ -285,11 +285,9 @@ export class Redeployer {
     if (now < cooldownUntil) {
       if (!this.cooldownWarned) {
         this.cooldownWarned = true;
-        this.log({
-          loop: "harness",
-          type: "warning",
-          message: `auto-restart of ${shortSha(mainHead)} deferred — cooldown until ${new Date(cooldownUntil).toISOString()} (at most one completed restart per 12 h)`,
-        });
+        this.warn(
+          `auto-restart of ${shortSha(mainHead)} deferred — cooldown until ${new Date(cooldownUntil).toISOString()} (at most one completed restart per 12 h)`,
+        );
       }
       return this.endDrain();
     }
@@ -320,11 +318,7 @@ export class Redeployer {
     if (this.green.error) {
       if (this.checkFailedHead !== mainHead) {
         this.checkFailedHead = mainHead;
-        this.log({
-          loop: "harness",
-          type: "warning",
-          message: `green check of ${shortSha(mainHead)} could not run: ${this.green.error} — retrying on the next poll`,
-        });
+        this.warn(`green check of ${shortSha(mainHead)} could not run: ${this.green.error} — retrying on the next poll`);
       }
       this.clearPending();
       return this.endDrain();
@@ -414,6 +408,11 @@ export class Redeployer {
     this.blockedHead = head;
     this.blockedReason = reason;
     this.clearPending();
+    this.warn(message);
+  }
+
+  /** Log one warning event for the harness loop — the shape the class's warn sites share. */
+  private warn(message: string): void {
     this.log({ loop: "harness", type: "warning", message });
   }
 }

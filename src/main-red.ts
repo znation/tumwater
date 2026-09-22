@@ -4,7 +4,7 @@ import { BUILD_CHECK_TIMEOUT_MS, buildCheckSkipWarning, failureHeadline } from "
 import type { BuildCheckOutcome } from "./build-check.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./prompt.js";
-import { logEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events.js";
 import type { TickOutcome } from "./types.js";
 import { shortSha } from "./text.js";
 
@@ -32,11 +32,11 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
   if (lastMainRedSha === red.sha) return;
   lastMainRedSha = red.sha;
   const firstLine = failureHeadline(red.outputTail);
-  logEvent(root, {
-    loop: "harness",
-    type: "warning",
-    message: `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — code merges blocked until main is green`,
-  });
+  warnEvent(
+    root,
+    "harness",
+    `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — code merges blocked until main is green`,
+  );
 }
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
@@ -88,16 +88,16 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
   if (!BASELINE_BLOCKED_ROLES.has(role) && !isCustomRole(cfg, role)) return null;
   const baseline = await checkMainBaseline(wt, baselineCheckLogger(root, role));
   if (baseline.skipReason) {
-    logEvent(root, {
-      loop: role,
-      type: "warning",
-      message: buildCheckSkipWarning(
+    warnEvent(
+      root,
+      role,
+      buildCheckSkipWarning(
         baseline.skipReason,
         "main baseline check",
         "proceeding with authoring unverified",
         BUILD_CHECK_TIMEOUT_MS,
       ),
-    });
+    );
     return null;
   }
   if (baseline.baseline?.status === "red") {
