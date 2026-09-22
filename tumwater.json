@@ -5,7 +5,7 @@
     "provider": "omlx",
     "model": "Qwen3.8-27B-MLX-oQ4e-mtp"
   },
-  "maxDailyCostUsd": 10,
+  "maxDailyCostUsd": 15,
   "piArgs": [],
   "maxConcurrent": 3,
   "minTickIntervalSeconds": 20,
