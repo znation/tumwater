@@ -97,13 +97,19 @@ async function pinnedFixture(): Promise<{ root: string; sha: string; wt: string 
   return { root, sha, wt };
 }
 
+/** The reviewer's fake-pi shim: match the review run (the only run whose args carry a
+ * VERDICT-bearing prompt), print `reply` as its one assistant turn, exit 0 — the gate reads
+ * the verdict out of `reply`. Author-run shims live in test/util.ts. */
+const reviewerPi = (reply: string): string =>
+  `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine(reply)}'; exit 0;; esac; done`;
+
 function request(sha: string, overrides: Partial<LandRequest> = {}): LandRequest {
   return { role: ROLE, sha, tick: 7, summary: "the work", ...overrides };
 }
 
 test("an approved landing lands on main and deletes the ref", async () => {
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+    reviewerPi("VERDICT: approve"),
   );
   try {
     const { root, sha, wt } = await pinnedFixture();
@@ -130,7 +136,7 @@ test("the gate's verdict is durable on disk before the tick's end save", async (
   // that was already on main. The verdict must be durable before the tick's tail
   // (the landing plus the still-to-come authoring run) can die unsaved.
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+    reviewerPi("VERDICT: approve"),
   );
   try {
     const { root, sha } = await pinnedFixture();
@@ -159,7 +165,7 @@ test("the gate's verdict is durable on disk before the tick's end save", async (
 
 test("a rejected landing lands nothing: role worktree clean at main, ref deleted, reasons recorded", async () => {
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: reject\n1. breaks the zero-dep rule")}'; exit 0;; esac; done`,
+    reviewerPi("VERDICT: reject\n1. breaks the zero-dep rule"),
   );
   try {
     const { root, sha, wt } = await pinnedFixture();
@@ -181,7 +187,7 @@ test("a rejected landing lands nothing: role worktree clean at main, ref deleted
 
 test("a verdict-less failure under the strike cap returns review_error and keeps the ref", async () => {
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("I think this is fine overall.")}'; exit 0;; esac; done`,
+    reviewerPi("I think this is fine overall."),
   );
   try {
     const { root, sha } = await pinnedFixture();
@@ -201,7 +207,7 @@ test("a verdict-less failure under the strike cap returns review_error and keeps
 
 test("three verdict-less failures discard the landing and delete the ref", async () => {
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("I think this is fine overall.")}'; exit 0;; esac; done`,
+    reviewerPi("I think this is fine overall."),
   );
   try {
     const { root, sha } = await pinnedFixture();
@@ -243,7 +249,7 @@ test("an abort mid-review returns aborted and keeps the ref", async () => {
 
 test("a conflicting landing gets one resolution run and then lands", async () => {
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+    reviewerPi("VERDICT: approve"),
   );
   try {
     const { root, sha } = await pinnedFixture();
@@ -278,7 +284,7 @@ test("a landing pinned behind main's advance is rebased onto main BEFORE the gat
   const rec = path.join(tmpdir("lander-rec-"), "seen");
   const restore = fakePi(
     `git rev-parse HEAD >> ${rec}\n` +
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      reviewerPi("VERDICT: approve"),
   );
   try {
     const { root, sha } = await pinnedFixture();
@@ -311,7 +317,7 @@ test("a synced rebase moves the landing ref so a failed gate keeps the tree that
   // pre-gate rebase rewrote the pin, the request (and the ref) must name the synced head, or
   // an under-cap failure would look like a strike-cap discard and delete the pinned work.
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("I think this is fine overall.")}'; exit 0;; esac; done`,
+    reviewerPi("I think this is fine overall."),
   );
   try {
     const { root, sha } = await pinnedFixture();
@@ -339,7 +345,7 @@ test("a synced rebase moves the landing ref so a failed gate keeps the tree that
 
 test("the lander worktree is per-role and detached at the pinned sha", async () => {
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+    reviewerPi("VERDICT: approve"),
   );
   try {
     const { root, sha } = await pinnedFixture();
@@ -498,7 +504,7 @@ function declareCheck(root: string, toolBody: string): void {
   );
 }
 
-const APPROVE_PI = `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`;
+const APPROVE_PI = reviewerPi("VERDICT: approve");
 
 function makeBatchCtx(root: string, config?: TumwaterConfig, controller?: AbortController): BatchContext {
   return {
@@ -535,7 +541,7 @@ test("an all-rejected batch returns a defined result for every request without t
   // empty stack and throw, and the drain's catch kept every entry — a queue leak. Now the
   // batch simply returns: every request terminal, nothing to land, refs gone.
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: reject\n1. no")}'; exit 0;; esac; done`,
+    reviewerPi("VERDICT: reject\n1. no"),
   );
   try {
     const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
@@ -757,7 +763,7 @@ test("a cherry-pick conflict abandons to one-at-a-time and the conflicting chang
 
 test("a failed gate stops the batch: the later requests stay unattempted with entry and ref intact", async () => {
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("I think this is fine.")}'; exit 0;; esac; done`,
+    reviewerPi("I think this is fine."),
   );
   try {
     const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
