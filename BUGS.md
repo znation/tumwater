@@ -843,3 +843,7 @@ Re-running the entry's own two-concurrent-suites repro against that fix surfaced
 - TUI: status table scrolled off the top as recent activity grew (reported 2026-08-20, fixed 2026-08-21; commit 9ddd731)
 - LM Studio logs flooded with WARN lines while loops run (reported 2026-08-20, resolved 2026-08-21; commit 413050c)
 - Spurious warning "pi finished without changes and without declaring nothing-to-do" (reported 2026-08-21, fixed 2026-08-21; commit 936b1c9)
+
+## Verified
+
+- 2026-09-22 run (real): first-time-user flow in a scratch repo — init + doctor green, then a bounded real run (one enabled role `organize`, maxConcurrent 1, fake pi shim on PATH) ticked three times; no_change backoff, tick_deferred, and wake-on-main-move all matched the docs; status/logs/`logs --role --prompt` (exact tick prompt under its run separator) confirm; process tree killed, no survivors, scratch deleted.
