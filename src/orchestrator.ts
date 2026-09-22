@@ -18,7 +18,7 @@ import { LoopRunner } from "./loop.js";
 import { branchHead, currentBranch, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
 import { landBatch } from "./lander.js";
 import { landQueuedEntry, landingUsage, readLandingMarker, writeLandingMarker, writeLandingOutcome } from "./landing-slot.js";
-import { dropLanding, headLanding, landingFor, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
+import { dropLanding, headLanding, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
 import { logEvent, warnEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
@@ -686,6 +686,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const workBacklogOpen = plannedPlans(root).length > 0 || openBugs(root).length > 0;
 
       const reasons = new Map<LoopRunner, string | undefined>();
+      // Merge-queue interlock data, listed ONCE per poll (was once per runner per poll — each
+      // landingFor() re-listed the land-queue directory and re-statted every queued entry): the
+      // check below only asks whether the runner's role has a queued entry. The queue changes
+      // only when a landing completes or a tick enqueues — both asynchronous events this pass
+      // observes on its next poll — so one snapshot is as fresh as per-runner reads, and a
+      // landing that completes mid-pass just keeps its role blocked one extra poll (conservative).
+      const queuedLandingRoles = new Set(queuedLandingFiles(root).map((q) => q.entry.role));
       for (const runner of runners) {
         if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
         if ((gate === "paused" || userPaused) && runner.role !== DIRECTOR_ROLE)
@@ -704,7 +711,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // no episode bookkeeping is needed (a landing implies the last result is not
         // no_change, so no deferral episode can be open), and skipping here saves that branch's
         // workLandedSince git-range query for the skipped role.
-        if (landingFor(root, runner.role).length > 0) continue;
+        if (queuedLandingRoles.has(runner.role)) continue;
         // Need-based deferral: a due maintenance tick (scheduled or main-moved wake) whose last
         // tick did nothing stays deferred while the feature/bugfix backlog is open or no new
         // work has landed to react to — nextRunAt is left untouched, so it re-checks every poll

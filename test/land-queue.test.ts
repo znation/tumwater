@@ -11,7 +11,6 @@ import {
   enqueueLanding,
   dropLanding,
   headLanding,
-  landingFor,
   queueDepth,
   queuedLandingFiles,
   queuedLandings,
@@ -60,16 +59,18 @@ test("entries read back in filename order and the head advances on drop", () => 
   dropLanding(head.file); // ENOENT after a concurrent drop is a no-op, not an error
 });
 
-test("landingFor filters by role across queued and in-flight entries", () => {
+test("queuedLandingFiles carries every role's queued entries; a role filter reads them", () => {
   const repo = makeRepo();
   enqueueLanding(repo, entry("improve", "a".repeat(40)));
   enqueueLanding(repo, entry("organize", "b".repeat(40)));
   enqueueLanding(repo, entry("improve", "c".repeat(40), 2));
-  // The entry stays in the queue until its landing completes, so this filter covers the role's
-  // QUEUED and IN-FLIGHT landings at once — the orchestrator's interlock reads exactly this.
-  assert.equal(landingFor(repo, "improve").length, 2);
-  assert.equal(landingFor(repo, "organize").length, 1);
-  assert.deepEqual(landingFor(repo, "readme"), []);
+  // The entry stays in the queue until its landing completes, so one listing covers each
+  // role's QUEUED and IN-FLIGHT landings at once — the orchestrator's interlock derives its
+  // per-poll queued-roles set from exactly this read (one listing per poll, not per runner).
+  const roles = queuedLandingFiles(repo).map((q) => q.entry.role);
+  assert.equal(roles.filter((r) => r === "improve").length, 2);
+  assert.equal(roles.filter((r) => r === "organize").length, 1);
+  assert.deepEqual(roles.filter((r) => r === "readme"), []);
 });
 
 test("a torn or foreign file is skipped, never thrown on", () => {

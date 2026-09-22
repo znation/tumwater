@@ -27,7 +27,8 @@ export function enqueueLanding(root: string, entry: LandingEntry): void {
 }
 
 /** Every queue file in execution order (oldest first) — the same filename sort queuedLandings,
- * headLanding, and landingFor read. A missing queue dir reads as an empty queue. */
+ * headLanding, and the orchestrator's per-poll queued-roles set read. A missing queue dir
+ * reads as an empty queue. */
 function queueFiles(root: string): string[] {
   return listQueueFiles(landQueueDir(root), ".json");
 }
@@ -112,22 +113,13 @@ export function headLanding(root: string): { entry: LandingEntry; file: string }
  * the queue holds files; null when the queue is empty or its head is healthy. The drain
  * drops this file with a warning so the queue can drain: headLanding reads null for it
  * forever and nothing else will remove it, stranding every live entry behind it (each
- * author's interlock, landingFor, pins its ticks along with them). The crashed entry's
- * commit, if any, still lives in its landing ref — next-tick leftover recovery re-lands
+ * author's interlock, the per-poll queued-roles set, pins its ticks along with them). The
+ * crashed entry's commit, if any, still lives in its landing ref — next-tick leftover recovery re-lands
  * it — so the drop loses nothing recoverable from the file (BUGS.md 2026-09-16). */
 export function staleHeadFile(root: string): string | null {
   const file = queueFiles(root)[0];
   if (!file) return null;
   return readEntry(file) === null ? file : null;
-}
-
-/** Every queued entry owned by `role` — queued AND in-flight, since the entry stays in the
- * queue until its landing completes and drops it. The orchestrator's interlock skips a tick
- * whenever this is non-empty: that is what keeps `state.lastReview`'s rejection reasons ahead
- * of the author's next prompt and stops a role stacking two commits. A missing queue reads
- * as an empty list, like every other reader here. */
-export function landingFor(root: string, role: string): LandingEntry[] {
-  return queuedLandings(root).filter((e) => e.role === role);
 }
 
 /** Remove one queued landing's file after its landing outcome — terminal or not (a
