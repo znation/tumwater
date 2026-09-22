@@ -186,6 +186,45 @@ test("withLock fails fast on a filesystem error that waiting cannot fix", async 
   assert.ok(!fs.existsSync(lock), "no lock dir is left behind");
 });
 
+test("withLock removes its own lock dir when the pid write fails", async () => {
+  const lock = path.join(tmpdir(), "pid-fail.lock");
+
+  // The window between mkdir and the pid write is real: a wedged fs (ENOSPC, EACCES, …) can
+  // fail the write after the dir exists. The acquire must rethrow AND take its own dir with
+  // it — an orphan dir the dead holder owns would wedge every future acquirer (fresh locks
+  // with no readable pid are only broken after the no-pid grace, and never while a pid
+  // probe lies) until the 10-minute stale timeout.
+  const orig = fs.writeFileSync.bind(fs);
+  let hit = false;
+  (fs as Record<string, unknown>).writeFileSync = (p: unknown, ...rest: unknown[]) => {
+    if (!hit && p === path.join(lock, "pid")) {
+      hit = true;
+      const err = new Error("simulated pid write failure") as NodeJS.ErrnoException;
+      err.code = "EACCES";
+      throw err;
+    }
+    return (orig as (p: unknown, ...r: unknown[]) => void)(p, ...rest);
+  };
+  let ran = false;
+  try {
+    await assert.rejects(
+      withLock(
+        lock,
+        async () => {
+          ran = true;
+        },
+        700,
+      ),
+      /simulated pid write failure/,
+    );
+  } finally {
+    (fs as Record<string, unknown>).writeFileSync = orig;
+  }
+  assert.ok(hit, "the pid write was attempted once");
+  assert.ok(!ran, "never entered the critical section");
+  assert.ok(!fs.existsSync(lock), "the failed acquire left no orphan lock dir behind");
+});
+
 test("withLock times out instead of breaking a fresh lock held by a live pid", async () => {
   const lock = path.join(tmpdir(), "x.lock");
   fs.mkdirSync(lock);
