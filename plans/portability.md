@@ -1226,6 +1226,73 @@ config-validation/types ~10, and tests ~230 (mechanical parameter threading acro
 main-baseline.test.ts and redeploy.test.ts plus the new configured-check tests). One run. No
 design question remains open.
 
+**Refined 2026-09-24 (plan loop) — 6/7 re-audited against main `03edeba` (README's stamp
+matches). This entry had become the series' only stale audit (`ada3948`, 2026-09-21): 2/7
+landed 09-22, 3/7 landed 09-23, and the 09-23 build-fix-on-the-spot feature moved the gate's
+code after it. The design holds unchanged; one new npm assumption the fix feature introduced
+must join the threading surface (correction 1), and every drifted line anchor is re-pinned.**
+
+Verified as written (capability absence): `grep -n 'check' src/types.ts
+src/config-validation.ts` still finds no `check` key. Re-pinned anchors (old → new, all in the
+09-21 note's terms):
+
+- src/build-check.ts: `BuildCheck` :44 (was :43), `buildCheckFrom` :73 (was :72),
+  `WALK_UP_LEVELS` :55, `detectBuildCheck(startDir, maxLevels)` :131 (was :130),
+  `BUILD_CHECK_TIMEOUT_MS` 300_000 :157, `BuildSkipReason` :170 (was :162), `BuildCheckOutcome`
+  :180 (was :172), `clipBuildTail` :243 (was :235), `failureHeadline` :272 (was :255),
+  `runBuildCheck(wt, check, timeoutMs = …)` :374 (was :269), `BuildCheckScope` :421 /
+  `SCOPE_WORDS` :426 / `MERGE_SCOPES` :438 (were :320/:325/:337), `runScopedBuildCheck` :469
+  (was :368) whose internal `detectBuildCheck(wt)` is :476 and `runBuildCheck` :479 (were
+  :375/:378). The timeout-remap policy (`MERGE_SCOPES.has(scope)` at :486, the "tree is
+  unverified" reason :487) is unchanged, as is `clipBuildTail`'s message-line retention.
+- The three scopes serve gate (src/review.ts:205, was :161, with the
+  `ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS` expression at :210), landing
+  (src/merge.ts:151, unchanged), batch (src/lander.ts:447, was :394).
+- NEW gate call site (post-audit feature): the recheck after a spent fix run, src/review.ts:256
+  with the same timeout expression at :261. Both gate sites sit inside `reviewBuild` where
+  `config` is already destructured (:158), so they need no extra threading — but the fix prompt
+  they spawn does (correction 1).
+- src/prompt.ts: `COMMON_RULES` :53, the node_modules sentence :75–77, and the vague "if it has
+  a build or test command" wording is now the Leave-the-project-working bullet at :79
+  (reworded since the audit; the sentence to replace is the same).
+- src/doctor.ts: `checkBuildCheck(root)` :209 (was :184), its `detectBuildCheck(root)` :210
+  (was :185), the no-check `ok` branch :212 (was :187) with the stale "none declared is
+  informational" comment at :206–208. `runDoctor` :262 loads config once at :267 — the shape
+  2/7's landed refinement pinned, so the 09-21 note's correction-2 mechanism stands.
+- MergeContext (src/merge.ts:42) still has no `config`; its construction moved to the object
+  literal inside `LoopRunner.merge` (src/loop.ts:269, `exemptPaths` at :275; was :257–264/:261 —
+  c351ae6 moved LoopRunner's pi-run plumbing into src/loop-pi.ts, but `merge` stayed).
+  review.ts holds config (GateContext :88, destructured :158); lander.ts and merge.ts unchanged.
+- src/main-red.ts: `bugfixMainRedNote` :68 with its `checkMainBaseline` call :69,
+  `mainRedGate` :81 with `loadConfigCached(root).config ?? defaultConfig()` at :87 and its call
+  :89 — all as pinned. src/redeploy.ts: `mainIsGreen` :431 (was :432), its
+  `checkMainBaseline(mirrorWt, onRun, true)` :437 (was :438), `createRedeployer` :443 with the
+  `mainGreen` dep :456 (was :458). `checkMainBaseline` (src/main-baseline.ts:123) is still
+  `(wt, onRun?, reverifyRed = false)` with detect :145 / run :148 — unchanged.
+- maxLevels-as-second-positional test call sites are now test/build-check.test.ts:360/:371/:372
+  (the maxLevels test moved wholesale to :353; was :274/:285/:286) and test/review.test.ts:515
+  (was :475). Four sites, same count.
+
+Correction (pinned in place):
+1. **The gate's build-fix prompt is an npm assumption the 09-23 fix-on-the-spot feature added.**
+   `buildBuildFixPrompt(roleId, script, reasons)` (src/prompt.ts:346) interpolates
+   `` `npm run ${script}` `` twice into its text, and src/review.ts:235 calls it with
+   `check.script` — a field the configured-command variant of the `BuildCheck` union does not
+   have. The rejection reasons are equally npm-shaped: the headline at src/review.ts:226–227
+   reads `build check failed (${check.script}): …`. Pin: both take the check's human
+   description instead of a script name — one `describeCheck(check)` string (e.g. "verify with
+   `pytest -q`") replaces `npm run ${script}` in the prompt (including its "Re-run …" rule) and
+   the parenthetical in the reasons headline — and both review.ts sites pass it. The three
+   existing prompt tests (test/prompt.test.ts:316/:331/:341) update mechanically; the fix
+   prompt's forbid-weakening-a-test wording applies unchanged to any check. The Approach's
+   prompt.ts bullet gains this alongside the COMMON_RULES change (~+8 lines).
+
+Everything else in the 09-21 note is re-verified as written — corrections 1–7 stand. Sizing
+now: unchanged from the 09-21 note plus ~8 prompt.ts lines for the fix prompt and its reasons
+headline (build-check.ts ~60, main-baseline.ts ~5, main-red.ts ~3, redeploy.ts ~10, doctor.ts
+~12, prompt.ts ~23, review/merge/lander ~10, loop.ts ~2, config-validation/types ~10, tests
+~240). One run. No design question remains open.
+
 ---
 
 ## 7/7 — Adopt an existing repository without hijacking its README
