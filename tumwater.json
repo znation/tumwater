@@ -1,6 +1,6 @@
 {
   "provider": "huggingface",
-  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "model": "zai-org/GLM-5.3-Flash",
   "fallbackModel": {
     "provider": "omlx",
     "model": "Qwen3.8-27B-MLX-oQ4e-mtp"
