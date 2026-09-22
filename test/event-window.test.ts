@@ -3,20 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { readWindowEvents } from "../src/event-window.js";
-import { tmpdir } from "./util.js";
+import { atLocalTs as tsDaysAgo, tmpdir } from "./util.js";
 
 // `readWindowEvents` scans the append-only event log BACKWARDS in 8 KB chunks and early-stops
 // once the oldest complete line in hand predates the window. The subtle parts — a line torn by
 // a chunk boundary, a chunk that ends inside a line, and the one-chunk log whose own oldest line
 // was never checked for an early stop — are what these tests pin.
-
-/** A local-calendar timestamp `daysAgo` days back, matching the window key's local-day bucketing. */
-function tsDaysAgo(daysAgo: number, hour = 12): number {
-  const d = new Date();
-  d.setHours(hour, 0, 0, 0);
-  d.setDate(d.getDate() - daysAgo);
-  return d.getTime();
-}
 
 /** The `YYYY-MM-DD` local key `formatDate` would produce for `ms`. */
 function keyAt(ms: number): string {

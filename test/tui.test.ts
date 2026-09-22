@@ -23,7 +23,7 @@ import {
   stepEntryScroll,
 } from "../src/ui/tui-backlog.js";
 import { cutSplitsSurrogatePair, formatDate } from "../src/text.js";
-import { makeRepo, tmpdir } from "./util.js";
+import { atLocalTs as atNoon, makeRepo, tmpdir } from "./util.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
 
@@ -529,14 +529,8 @@ function seedEntry(root: string, file: string, heading: string): void {
   fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("_None yet._", `${heading}\n`));
 }
 
-/** Local-noon timestamp `daysAgo` days before today — a fixed hour keeps the fixture from
- * straddling midnight between seeding and collectReport's own clock read. */
-function atNoon(daysAgo: number): number {
-  const d = new Date();
-  d.setHours(12, 0, 0, 0);
-  d.setDate(d.getDate() - daysAgo);
-  return d.getTime();
-}
+/** Local-noon fixture timestamps: util.ts's atLocalTs (daysAgo, hour 12) — a fixed hour keeps
+ * the fixture from straddling midnight between seeding and collectReport's own clock read. */
 
 test("Ctrl+T cycles events → transcript → project status → usage report → failures", async () => {
   const repo = await makeTuiRepo();

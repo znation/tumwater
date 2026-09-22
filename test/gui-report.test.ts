@@ -9,20 +9,14 @@ import { renderFailureMarkdown } from "../src/failure-report.js";
 import { eventsLogPath } from "../src/paths.js";
 import { compactTokens } from "../src/text.js";
 import { initProject } from "../src/init.js";
-import { makeRepo } from "./util.js";
+import { atLocalTs as atNoon, makeRepo } from "./util.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
 // container, and its pure SVG chart builders are extracted from a marked region and tested.
 
-/** Local calendar-day timestamp `daysAgo` days back at noon — same local-date-part rule as
- * test/report.test.ts's fixtures (the report buckets by LOCAL day). */
-function atNoon(daysAgo: number): number {
-  const d = new Date();
-  d.setHours(12, 0, 0, 0);
-  d.setDate(d.getDate() - daysAgo);
-  return d.getTime();
-}
+/** Local calendar-day timestamps come from util.ts's atLocalTs — the report buckets by
+ * LOCAL day, the same rule report.test.ts's fixtures follow. */
 
 function localDayKey(ms: number): string {
   const d = new Date(ms);

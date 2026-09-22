@@ -6,16 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { TELEMETRY_DIGEST_DAYS, renderFailureMarkdown, telemetryDigest } from "../src/failure-report.js";
 import { collectFailureReport, normalizeClusterKey } from "../src/failure-data.js";
-import { makeRepo, tmpdir } from "./util.js";
+import { atLocalTs as at, makeRepo, tmpdir } from "./util.js";
 
 // The digest buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings), matching the reader and collectReport.
-function at(daysAgo: number, hour = 12): number {
-  const d = new Date();
-  d.setHours(hour, 0, 0, 0);
-  d.setDate(d.getDate() - daysAgo);
-  return d.getTime();
-}
 
 function keyOf(ms: number): string {
   const d = new Date(ms);

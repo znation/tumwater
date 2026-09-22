@@ -5,16 +5,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectReport, renderReportMarkdown, type ReportData } from "../src/ui/report.js";
-import { makeRepo, tmpdir } from "./util.js";
+import { atLocalTs as at, makeRepo, tmpdir } from "./util.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings) and compute expected keys the same way.
-function at(daysAgo: number, hour = 12): number {
-  const d = new Date();
-  d.setHours(hour, 0, 0, 0);
-  d.setDate(d.getDate() - daysAgo);
-  return d.getTime();
-}
 
 function keyOf(ms: number): string {
   const d = new Date(ms);

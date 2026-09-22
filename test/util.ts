@@ -37,6 +37,17 @@ export function tmpdir(prefix = "tumwater-test-"): string {
   return fs.mkdtempSync(path.join(testRunRoot(), prefix));
 }
 
+/** Local-calendar timestamp `daysAgo` days before today, at local `hour` (default 12 — noon
+ * keeps a fixture from straddling midnight between seeding and the reader's own clock read).
+ * The report/event-window/digest readers bucket by LOCAL day, so fixtures build timestamps
+ * from local date parts (never UTC strings) the same way they do. */
+export function atLocalTs(daysAgo: number, hour = 12): number {
+  const d = new Date();
+  d.setHours(hour, 0, 0, 0);
+  d.setDate(d.getDate() - daysAgo);
+  return d.getTime();
+}
+
 export function sh(cwd: string, cmd: string, ...args: string[]): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8" }).trimEnd();
 }
