@@ -8,16 +8,18 @@ import {
   applyTickOutcome,
   clearBackoff,
   freshLoopState,
-  isFleetPaused,
   loadLoopState,
   nextBackoffSeconds,
+  saveLoopState,
+  zeroCounters,
+} from "../src/state.js";
+import {
+  isFleetPaused,
   orchestratorAlive,
   pauseFleet,
   readOrchestratorInfo,
   resumeFleet,
-  saveLoopState,
-  zeroCounters,
-} from "../src/state.js";
+} from "../src/fleet-state.js";
 import { dailyCost, todayStamp } from "../src/budget.js";
 import type { LoopState, TumwaterConfig } from "../src/types.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";

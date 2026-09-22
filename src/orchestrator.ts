@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { TickOutcome, TumwaterConfig } from "./types.js";
-import type { OrchestratorInfo } from "./state.js";
+import type { OrchestratorInfo } from "./fleet-state.js";
 import { applyFallbackModel, changedConfigKeys, enabledRoleIds, fallbackPair, loadConfigCached } from "./config.js";
 import {
   deferTick,
@@ -9,7 +9,7 @@ import {
   isEligible,
   workLanded,
 } from "./scheduling.js";
-import { isFleetPaused } from "./state.js";
+import { isFleetPaused } from "./fleet-state.js";
 import { budgetGate, budgetPaused, type BudgetGate, fleetDailyCost } from "./budget.js";
 import { saveLoopState } from "./state.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";

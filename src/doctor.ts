@@ -26,7 +26,7 @@ import {
 } from "./readiness.js";
 import { classifyLock, readLockPid } from "./lock.js";
 import { STATE_DIR, configPath, mergeLockDir } from "./paths.js";
-import { orchestratorAlive, readOrchestratorInfo } from "./state.js";
+import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
 import { errorMessage, shortSha } from "./text.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are

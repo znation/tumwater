@@ -16,11 +16,10 @@ import {
   freshLoopState,
   loadLoopState,
   nextBackoffSeconds,
-  orchestratorAlive,
-  readOrchestratorInfo,
   saveLoopState,
   zeroCounters,
 } from "../src/state.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
 import {
   assistantLine,

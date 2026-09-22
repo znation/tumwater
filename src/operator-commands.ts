@@ -1,14 +1,7 @@
 import { knownRoleIds, loadConfig } from "./config.js";
 import { fail, parseRoleFlag } from "./cli-args.js";
-import {
-  clearBackoff,
-  loadLoopState,
-  orchestratorAlive,
-  pauseFleet,
-  resumeFleet,
-  saveLoopState,
-  zeroCounters,
-} from "./state.js";
+import { clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
+import { orchestratorAlive, pauseFleet, resumeFleet } from "./fleet-state.js";
 import { writeJsonFile } from "./json-files.js";
 import { abortRequestPath, resetRequestPath, wakeRequestPath } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";

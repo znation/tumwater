@@ -13,7 +13,7 @@ import {
 } from "./cli-args.js";
 import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdWake } from "./operator-commands.js";
 import { cmdLogs } from "./ui/log-commands.js";
-import { orchestratorAlive } from "./state.js";
+import { orchestratorAlive } from "./fleet-state.js";
 import {
   GIT_MISSING_MESSAGE,
   branchExists,

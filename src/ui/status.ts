@@ -6,13 +6,8 @@ import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../pi-models.j
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { promptPreview, queuedPrompts } from "../inbox.js";
 import { statePath } from "../paths.js";
-import {
-  freshLoopState,
-  isFleetPaused,
-  loadLoopState,
-  orchestratorAlive,
-  readOrchestratorInfo,
-} from "../state.js";
+import { freshLoopState, loadLoopState } from "../state.js";
+import { isFleetPaused, orchestratorAlive, readOrchestratorInfo } from "../fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing-slot.js";
 import { fleetDailyCost } from "../budget.js";
 import { queuedLandings } from "../land-queue.js";
