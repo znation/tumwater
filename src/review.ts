@@ -17,6 +17,7 @@ import {
   runScopedBuildCheck,
 } from "./build-check.js";
 import { isExemptDiff } from "./exemptions.js";
+import { falseFixReason } from "./fix-claim.js";
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
  * a warning: a misconfigured reviewer model must not be able to wedge a loop into re-reviewing
@@ -185,7 +186,16 @@ export async function reviewAheadOfMain(
   if (state.lastApprovedHead === head) return { decision: "approved" };
 
   const files = await aheadOfMainFiles(wt, mainBranch);
-  if (isExemptDiff(files, config.review.exemptPaths)) return { decision: "exempt" };
+  if (isExemptDiff(files, config.review.exemptPaths)) {
+    // The exemption is a fast path, not a blind eye: an md-only diff that moves a bug to
+    // Fixed must have its fix's symbols on this tree, or it records code that does not
+    // exist (BUGS.md 2026-09-22 — 9cea8c3 landed a Fix paragraph naming runScriptGroup
+    // and signalTree with no source behind it). A deterministic rejection, like the
+    // pre-check below: no pi run consumed, reasons injected into the author's next tick.
+    const falseFix = await falseFixReason(wt, mainBranch, files);
+    if (falseFix) return reject([falseFix]);
+    return { decision: "exempt" };
+  }
 
   // Deterministic build pre-check — after BOTH early returns above (an md-only diff cannot
   // break the build) and before any reviewer run or the phase/event that would show

@@ -16,6 +16,7 @@ import { abortSync } from "./worktree.js";
 import { runScopedBuildCheck } from "./build-check.js";
 import { noteGreenBaseline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
+import { falseFixReason } from "./fix-claim.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";
 import { mergeLockDir } from "./paths.js";
@@ -145,7 +146,11 @@ async function verifyLanding(
     return true;
   }
   const files = await aheadOfMainFiles(wt, ctx.mainBranch);
-  if (isExemptDiff(files, ctx.exemptPaths)) return true;
+  if (isExemptDiff(files, ctx.exemptPaths)) {
+    // Same cross-check as the gate (fix-claim.ts): the in-lock re-check must not wave
+    // through an md-only BUGS.md edit the gate would have rejected as a false fix.
+    return !(await falseFixReason(wt, ctx.mainBranch, files));
+  }
   // The run itself (build_check event, environmental-skip warning) lives in
   // runScopedBuildCheck, shared with the review gate's pre-check.
   const check = await runScopedBuildCheck(ctx.root, ctx.role, "landing", wt);

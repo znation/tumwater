@@ -46,9 +46,6 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: a fix narrative can land on main without its fix — an md-only BUGS.md edit is exempt
-  from the review gate, so a tick can record code that does not exist (found by steward
-  2026-09-22).
 - Open bug: the loop suite's quiet-kill resume test flakes under full-suite load — fails 1-in-N
   full runs, passes in isolation (found 2026-09-23).
 - Open bug: the failure digest's Review rejections section silently truncates at 5
@@ -72,7 +69,7 @@ Open items:
   2026-09-23).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`03edeba`): build clean, suite 1282/1282.
+Current main (`03edeba`): build clean, suite 1296/1296.
 <!-- tumwater:status:end -->
 
 ## How it works
