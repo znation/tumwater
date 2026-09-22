@@ -776,6 +776,29 @@ generic `http://127.0.0.1:7180` GUI default), `docs/backends.md` exists, and no 
 changed. The `## Usage` line naming `tumwater.example.json` (the second criterion above) could not
 be written before that file exists, so it moved to 4a/7.
 
+**Refined 2026-09-22 (plan loop) — 4a/7 re-audited against main `4037522`, after the 3/7 landing
+(`726e3cc`) shifted every anchor in src/init.ts, src/config.ts, and src/doctor.ts.** Design is
+unchanged; all line pins re-verified on this tree: `ensureGitignore` (src/init.ts:75, its
+one-entry early return now :79), `initProject` (:98), the `created` list (:145),
+`saveConfig(root, defaultConfig())` (:159) with `created.push("tumwater.json")` (:160), the
+`.gitignore` push (:162), `git add -- …created` (:166) and the commit (:171); `configPath`
+(src/paths.ts:11, unchanged); `defaultConfig` (src/config.ts:14), `loadConfig` (:79),
+`loadConfigSafe` (:120), `loadConfigCached` (:160, default fallback :165);
+`NOT_INITIALIZED_MESSAGE` (src/readiness.ts:10, unchanged); `checkRepo` (src/doctor.ts:101),
+`checkInit` (:124), and the report's check list (`{ name: "init", … }` at :280); the CLI's
+`created` line is src/cli.ts:132–139. Test pins: `"N roles enabled"` (test/doctor.test.ts:141
+and :148) and the check-name list (test/doctor.test.ts:298). Capability absence re-confirmed:
+`grep -rn` for `exampleConfigPath`, `seedConfig`, or `exampleDrift` over `src/` is empty, and no
+`tumwater.example.json` exists. One interaction from 3/7, checked and harmless:
+`applyConfigRequest` (src/config.ts:279) writes the config only when the director's request file
+exists and never seeds from the example, so "init is the only seeder" stands — the one nuance is
+that a director request in a repo with no config still creates one (an explicit human act, same
+spirit as seeding); no plan change.
+
+Also re-pinned here (4b/7's drift, checked in the same pass): `ffStackToMain` is now
+src/merge.ts:288 (was :297); `ffMainTo` is still :314 and the single-change path's call site is
+still :108 inside `mergeToMain` (:68) — the 4b/7 hazard analysis is otherwise untouched.
+
 ---
 
 ## 5/7 — Make the agent binary configurable

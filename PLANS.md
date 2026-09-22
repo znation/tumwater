@@ -5,7 +5,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-21)
+### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-22)
 
 **Goal.** Every project tumwater initializes gets an untracked, gitignored `tumwater.json`: seeded from a tracked `tumwater.example.json` when the project ships one, from `defaultConfig()` when it does not; `doctor` reports where the two have drifted. This repo's own config keeps its tracking until 4b/7. Two implementer traps are pinned in the doc: `ensureGitignore`'s early return only checks its first entry, and the ignored config must stay out of the commit pathspec while still being reported as created.
 
