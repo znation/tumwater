@@ -377,6 +377,32 @@ test("failureHeadline names an unhandled error whose message the tail window wou
   );
 });
 
+test("failureHeadline skips node:test's summary block, not the failure it frames", () => {
+  // node --test's spec reporter ends a failing run with the summary THEN the detail; when both
+  // fit in the ten-line window the first non-frame line was `ℹ todo 0` and two real rejections
+  // surfaced as `build check failed (test): ℹ todo 0` (BUGS.md 2026-09-22). Output is real
+  // spec-reporter shape (reproduced with a test that throws a plain string).
+  const tail = clipBuildTail(
+    [
+      "ℹ pass 0",
+      "ℹ fail 1",
+      "ℹ cancelled 0",
+      "ℹ skipped 0",
+      "ℹ todo 0",
+      "ℹ duration_ms 73.78325",
+      "✖ failing tests:",
+      "test at a.test.js:2:1",
+      "✖ the interlock held: no tick ever started (0.348625ms)",
+      "  'the interlock held: no tick ever started'",
+    ].join("\n"),
+  );
+  assert.equal(
+    failureHeadline(tail),
+    "✖ the interlock held: no tick ever started (0.348625ms)",
+    "the failure's own message, not `ℹ fail 1` or the `test at` marker",
+  );
+});
+
 // --- resolveFromNodeModules: the same walk-up detectBuildCheck makes, for a dependency the
 // harness must locate itself (redeploy's tsc) rather than let npm's PATH walk find.
 

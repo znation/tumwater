@@ -246,15 +246,24 @@ export function clipBuildTail(output: string): string[] {
  * 2026-09-18 read "main <sha> is red (test: at process.processTicksAndRejections
  * (node:internal/...))" — where, never what, which is why a false red that blocked the fleet
  * for hours could not be diagnosed from the event feed at all (BUGS.md). Prefer the first line
- * that is not a stack frame; fall back to the tail's first line when every line is one, so a
- * caller always has something to print. Frames are the only thing skipped — an assertion diff,
+ * that is not framing — a stack frame, or node:test's summary/framing lines (below) — and fall
+ * back to the tail's first line when every line is framing, so a caller always has something
+ * to print. Only framing is skipped — an assertion diff,
  * a compiler error and a bare "1) test name" all read as the headline they are. Lives beside
  * clipBuildTail, whose output it interprets, so every consumer of a check's tail — the red-main
  * gate (main-red.ts) and the review gate (review.ts) — shares one "which line is the
- * headline" answer. */
+ * headline" answer. node:test's spec reporter ends a failing run with its summary block
+ * (`ℹ pass 0`, `ℹ todo 0`, `ℹ duration_ms …`) followed by the `✖ failing tests:` detail
+ * (a bare `test at <file>:<line>` marker, then the failure's own message); when both fit in
+ * the ten-line window the first non-frame line was a summary counter, and the headline named
+ * nothing again (BUGS.md 2026-09-22) — so summary and section-framing lines are skipped like
+ * frames, while a failure line (`✖ <message>`) and an assertion diff still read as the
+ * headline they are. */
+const FRAMING_LINE = /^(?:at\s|ℹ\s|✖ failing tests:|test at \S+:\d+:\d+)/;
+
 export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
   if (!tail?.length) return undefined;
-  return tail.find((line) => !/^at\s/.test(line)) ?? tail[0];
+  return tail.find((line) => !FRAMING_LINE.test(line)) ?? tail[0];
 }
 
 /** Probe the toolchain (see probeToolchain), then run `npm run <script>` in the worktree
