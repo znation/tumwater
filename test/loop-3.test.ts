@@ -1127,6 +1127,38 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
   }
 });
 
+test("a provider 429 rate-limit rejection is retried once and the tick succeeds (regression, BUGS.md 2026-09-21)", async () => {
+  const repo = await initializedRepo();
+  const marker = path.join(tmpdir(), "phase-429");
+  // Attempt 1 (the tick's pi run): the provider rejects the request with 429 — the fleet's
+  // single largest error source, and by definition retryable. Attempt 2 (the harness retry,
+  // detected by the phase file): the limit has passed and the request succeeds.
+  const restore = fakePi(
+    [
+      `if [ ! -f "${marker}" ]; then`,
+      `  touch "${marker}"`,
+      `  printf '%s\\n' '${errorLine('429 "Rate limit exceeded"')}'`,
+      `  exit 1`,
+      `else`,
+      `  printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
+    assert.ok(!runner.state.lastError);
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.some((w) => /rate-limited the request \(429/.test(w)),
+      `expected a rate-limit retry warning, got: ${JSON.stringify(warnings)}`,
+    );
+  } finally {
+    restore();
+  }
+});
+
 // Self-explaining commit bodies (plans/commit-bodies.md item b): the trailer's turn count is
 // the sum over this tick's PRE-COMMIT runs — main attempt plus, on a transient model-server
 // timeout, the one resumed retry. runRolePi folds both into tickTurns via foldUsage before

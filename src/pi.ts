@@ -258,6 +258,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       aborted,
       contextExceeded: parser.contextExceeded,
       transientServerTimeout: parser.transientServerTimeout,
+      transientRateLimit: parser.transientRateLimit,
+      retryAfterSeconds: parser.retryAfterSeconds,
       transientPiCrash: false,
       finalMessageContentless: parser.finalMessageContentless,
       compacted: parser.compacted,

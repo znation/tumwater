@@ -32,6 +32,7 @@ function piRun(outputTokens: number, costUsd: number): PiRunResult {
     quietKilled: false,
     contextExceeded: false,
     transientServerTimeout: false,
+    transientRateLimit: false,
     transientPiCrash: false,
     finalMessageContentless: false,
     compacted: false,

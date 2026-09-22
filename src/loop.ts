@@ -46,6 +46,13 @@ import { readQaCoverage, recordFlow, renderCoverageBlock } from "./qa-coverage.j
 import { landingRefName, piLogPath, sessionDir } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
 
+/** Upper bound on how long the transient retry waits out a provider's Retry-After hint
+ * before re-attempting a rate-limited run. Honouring the hint is the point; capping it is
+ * what keeps one generous hint from consuming the tick's own run budget (the retry gets a
+ * full fresh run budget, so a wait larger than the cap would spend the tick waiting, not
+ * working). */
+const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
+
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
   state: LoopState;
@@ -382,20 +389,35 @@ export class LoopRunner {
   /** The one bounded transient-failure retry shared by EVERY pi run this loop makes
    * (runRolePi and runLandingPi): two transient failures of the world (not of the session)
    * earn exactly one retry that continues the same session — the model server timing out an
-   * idle predict stream, and pi itself crashing on a torn server chunk (a JSON.parse failure
-   * on its stderr). A harness-killed or quiet-killed run never takes the transient-retry path:
+   * idle predict stream, pi itself crashing on a torn server chunk (a JSON.parse failure
+   * on its stderr), and the provider rate-limiting the request with HTTP 429 (where the
+   * provider's Retry-After hint, when sent, is waited out first — capped, so one provider's
+   * generosity cannot eat the tick's own run budget). A harness-killed or quiet-killed run
+   * never takes the transient-retry path:
    * its session is intact but resuming it would just re-hit whatever hung, burning another
    * full quiet timeout. Extracted verbatim from runRolePi so the rule lives in one place
    * (574a14c's loopPiOpts move was the wiring half of the same single-source-of-truth).
    */
   private async runWithTransientRetry(opts: PiRunOptions): Promise<PiRunResult> {
     const pi = await runPi(opts);
-    if (!pi.aborted && !pi.timedOut && !pi.quietKilled && (pi.transientServerTimeout || pi.transientPiCrash) && !pi.ok) {
+    if (
+      !pi.aborted &&
+      !pi.timedOut &&
+      !pi.quietKilled &&
+      (pi.transientServerTimeout || pi.transientPiCrash || pi.transientRateLimit) &&
+      !pi.ok
+    ) {
       this.warn(
         pi.transientPiCrash
           ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"}) — resuming the session once`
-          : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
+          : pi.transientRateLimit
+            ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : ""}) — retrying the pi run once`
+            : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
       );
+      // Honour the provider's Retry-After hint when it sent one, so the retry does not
+      // re-hit the same limit immediately; capped so a huge hint cannot consume the tick.
+      const waitS = Math.min(pi.retryAfterSeconds ?? 0, RATE_LIMIT_RETRY_AFTER_CAP_S);
+      if (waitS > 0) await new Promise((r) => setTimeout(r, waitS * 1000));
       // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });

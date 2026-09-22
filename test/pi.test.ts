@@ -203,6 +203,25 @@ test("parser does not flag other errors as transient server timeouts", () => {
   assert.equal(parser.transientServerTimeout, false);
 });
 
+test("parser flags a provider 429 rate-limit rejection as transient, with its Retry-After hint (regression, BUGS.md 2026-09-21)", () => {
+  const parser = new PiStreamParser();
+  parser.feed(errorLine('429 "Rate limit exceeded"') + "\n");
+  assert.equal(parser.transientRateLimit, true);
+  assert.equal(parser.retryAfterSeconds, undefined, "no hint in the observed fleet error text");
+  assert.equal(parser.transientServerTimeout, false, "a rate limit is its own class, not a stream timeout");
+});
+
+test("parser captures a Retry-After delay from the rate-limit error text and ignores it on other errors", () => {
+  const parser = new PiStreamParser();
+  parser.feed(errorLine("Too Many Requests — retry after 30s") + "\n");
+  assert.equal(parser.transientRateLimit, true);
+  assert.equal(parser.retryAfterSeconds, 30);
+  const other = new PiStreamParser();
+  other.feed(errorLine("gateway retry after 30s") + "\n");
+  assert.equal(other.transientRateLimit, false, "a Retry-After hint outside a rate limit is not one");
+  assert.equal(other.retryAfterSeconds, undefined);
+});
+
 test("parser ignores user message_end events", () => {
   const parser = new PiStreamParser();
   parser.feed(

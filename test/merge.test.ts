@@ -29,6 +29,7 @@ function piResult(over: Partial<PiRunResult> = {}): PiRunResult {
     aborted: false,
     contextExceeded: false,
     transientServerTimeout: false,
+    transientRateLimit: false,
     transientPiCrash: false,
     finalMessageContentless: false,
     compacted: false,

@@ -52,6 +52,19 @@ const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded
  * Module-private: only PiStreamParser.feedLine below matches against it. */
 const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
 
+/** The provider rejecting the request with HTTP 429 — rate limiting. This is the world saying
+ * "later", not the session failing: the fleet's single largest error source (BUGS.md 2026-09-21)
+ * and by definition retryable. Matched against every error text feedLine sees, since pi renders
+ * the provider's status and message variously ("429 \"Rate limit exceeded\"", OpenAI's
+ * "Too Many Requests"). Retry-After, when the provider echoes it into the error text, is
+ * captured in retryAfterSeconds. Module-private: only PiStreamParser.feedLine matches it. */
+const TRANSIENT_RATE_LIMIT = /\b429\b|too many requests|rate limit/i;
+
+/** The provider's Retry-After hint inside a rate-limit error text — seconds to wait before
+ * retrying. Tolerates the spellings error text actually uses ("Retry-After: 30",
+ * "retry after 30s"). Module-private: only PiStreamParser.feedLine matches it. */
+const RETRY_AFTER = /retry[- ]after:?\s*(\d{1,4})/i;
+
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";
@@ -90,6 +103,13 @@ export class PiStreamParser {
    * Transient: the session is healthy and a fresh attempt usually succeeds. Retained as a
    * guard after the move to oMLX, which has not been seen to emit this. */
   transientServerTimeout = false;
+  /** True when any event reports the provider rejecting the request with HTTP 429 (rate
+   * limiting). Transient by definition: the session is healthy and a later attempt succeeds —
+   * the loop's transient retry covers it, waiting out retryAfterSeconds when present. */
+  transientRateLimit = false;
+  /** The Retry-After delay (seconds) from the rate-limit error text, when the provider sent
+   * one. Undefined when the error carried no parseable hint. */
+  retryAfterSeconds: number | undefined;
   /** True when the run's LAST assistant message carried no text and no tool call
    * (thinking-only or empty). A compliant finish always ends with a text block (the
    * SUMMARY/sentinel line), so this signals a generation cut off mid-stream — typically
@@ -164,6 +184,11 @@ export class PiStreamParser {
       // Kept narrow on purpose: a false positive would mask real repeated failures from
       // the session-poisoning heuristic and trigger needless retries.
       if (TRANSIENT_SERVER_TIMEOUT.test(text)) this.transientServerTimeout = true;
+      if (TRANSIENT_RATE_LIMIT.test(text)) {
+        this.transientRateLimit = true;
+        const hint = RETRY_AFTER.exec(text);
+        if (hint) this.retryAfterSeconds = Number(hint[1]);
+      }
     }
     // Every structured event (turn/tool/message boundaries, retries, session) is real
     // progress — streaming deltas never are (they are skipped above, before parsing).

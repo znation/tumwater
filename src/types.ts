@@ -388,6 +388,14 @@ export interface PiRunResult {
    * timeout it is a transient failure of the world: the session is intact on disk and one
    * `--continue` retry picks the run up where it stopped instead of losing hours of work. */
   transientPiCrash: boolean;
+  /** True when any event reported the provider rejecting the request with HTTP 429 (rate
+   * limiting). A transient failure of the world, not of the session — the world saying
+   * "later": one retry after retryAfterSeconds usually succeeds, so the loop's transient
+   * retry covers it instead of discarding the tick's work. */
+  transientRateLimit: boolean;
+  /** The provider's Retry-After delay (seconds) from the rate-limit error text, when one was
+   * sent; undefined otherwise. Caps the loop's wait before the transient retry. */
+  retryAfterSeconds?: number;
   /** The run's last assistant message carried no text and no tool call (thinking-only or
    * empty). A compliant finish always ends with a text block, so this signals a generation
    * cut off mid-stream — typically pi clamping max output tokens to the sliver left under

@@ -48,8 +48,9 @@ in tumwater.json or by prompting the director.
 Open items:
 - Open bug: a load-sensitive live-orchestrator test falsely reddens main — the same sha
   failed and passed two minutes apart (found 2026-09-21).
-- Open bug: HTTP 429 is not a transient failure class, so a rate-limit storm errors
-  two-thirds of the fleet's ticks instead of retrying (found 2026-09-21).
+- Open bug: a 429 storm still has no fleet-wide hold — each tick now retries its own 429, but
+  concurrent loops keep hammering a rate-limited provider instead of backing off together
+  (found 2026-09-21; the per-tick retry half was fixed 2026-09-22).
 - Open bug: the failure digest's `## Outcome by role` separator row has no cell delimiters,
   so the table never renders (found 2026-09-21).
 - Open bug: the grandchild-leak fix landed its kill but not its detector — `doctor` reports
