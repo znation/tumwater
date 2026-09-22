@@ -195,10 +195,49 @@ export async function listBranches(root: string): Promise<string[]> {
   return out ? out.split("\n").filter(Boolean) : [];
 }
 
-/** The branch the primary checkout has, or null when detached. */
+/** The branch `dir`'s checkout has, read from its HEAD file without spawning git: undefined
+ * (not null) when the files cannot answer and the `git symbolic-ref` fallback should decide.
+ * A `.git` directory (primary checkout) or a `gitdir: <path>` pointer file (a linked worktree —
+ * the harness itself can run from one, as its own role worktrees do) both resolve. The HEAD
+ * line must be `ref: refs/heads/<branch>`; a bare sha means detached HEAD — the same null the
+ * spawn produces, since symbolic-ref fails on it — and anything else is unusual (undefined). */
+function currentBranchFromHeadFile(dir: string): string | null | undefined {
+  let gitdir: string;
+  try {
+    const dotGit = path.join(dir, ".git");
+    if (fs.statSync(dotGit).isDirectory()) {
+      gitdir = dotGit; // Primary checkout.
+    } else {
+      // Linked worktree: `.git` is a one-line pointer file (`gitdir: <path>`).
+      const line = fs.readFileSync(dotGit, "utf8").trim();
+      if (!line.startsWith("gitdir:")) return undefined;
+      const target = line.slice("gitdir:".length).trim();
+      if (!target) return undefined; // Malformed pointer: uncertain.
+      gitdir = path.resolve(dir, target);
+    }
+  } catch {
+    return undefined; // No repo here (or .git unreadable) — let the spawn decide.
+  }
+  let head: string;
+  try {
+    head = fs.readFileSync(path.join(gitdir, "HEAD"), "utf8").trim();
+  } catch {
+    return undefined; // HEAD unreadable — let the spawn decide.
+  }
+  const prefix = "ref: refs/heads/";
+  if (!head.startsWith(prefix)) return isSha(head) ? null : undefined; // Detached, or unusual.
+  const branch = head.slice(prefix.length).trim();
+  return branch !== "" ? branch : undefined;
+}
+
+/** The branch the primary checkout has, or null when detached. Reads the checkout's HEAD file
+ * first (microsecond-scale) and spawns `git symbolic-ref` only when the file cannot resolve
+ * the branch — no repo here, a HEAD that is neither a symref nor a plain sha, or a read error.
+ * This runs on every orchestrator poll (the branch-divergence watch), which used to cost a
+ * ~20ms subprocess spawn per poll just to learn what HEAD has said all along. */
 export async function currentBranch(root: string): Promise<string | null> {
-  const out = await gitTry(root, "symbolic-ref", "--short", "HEAD");
-  return out;
+  const fromFile = currentBranchFromHeadFile(root);
+  return fromFile !== undefined ? fromFile : await gitTry(root, "symbolic-ref", "--short", "HEAD");
 }
 
 /** True when the worktree has uncommitted changes of any kind (staged, modified, or

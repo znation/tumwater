@@ -61,6 +61,17 @@ test("ensureWorktree creates a persistent branch and reuses it", async () => {
   assert.equal(again, wt);
 });
 
+test("currentBranch reads the HEAD file: symref, detached HEAD, and linked-worktree root", async () => {
+  const repo = makeRepo();
+  assert.equal(await currentBranch(repo), "main");
+  // Detached HEAD stores a bare sha — null, exactly what `git symbolic-ref` reports.
+  sh(repo, "git", "checkout", "--detach", "HEAD");
+  assert.equal(await currentBranch(repo), null);
+  // A linked worktree's root has a `gitdir:` pointer .git — the branch resolves through it.
+  const wt = await ensureWorktree(repo, "clean", "main");
+  assert.equal(await currentBranch(wt), branchName("clean"));
+});
+
 test("ensureWorktree recovers from a deleted worktree directory", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "clean", "main");
