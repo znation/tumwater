@@ -5,47 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Landing gate checks latest main: rebase the pinned change before the build pre-check (planned 2026-09-21, requested by user)
-
-**Goal.** A landing's deterministic build pre-check and model review must run against main's
-CURRENT head, not the main the author started from. Today `landChange` checks out the pinned sha
-in a detached lander worktree and `reviewAheadOfMain` runs the pre-check and the reviewer there;
-only `mergeToMain` rebases onto main (src/merge.ts `tryMerge`). So when main goes red and another
-loop lands the fix while this change waits in the queue, the gate still checks main-at-pin + change,
-fails on an already-fixed failure, and rejects — and every other queued landing rejects for the same
-reason. Rebase onto main before the gate so a fix another loop landed is already in the checked tree.
-Sibling plan (independently landable): "Fix a failed landing build check on the spot instead of
-rejecting" — together they stop one red main from cascading through the queue.
-
-**Approach (decided).**
-- `src/lander.ts` `landChange` (:141): after `ensureDetachedWorktree(ctx.root,
-  landWorktreePath(...), req.sha)` (:145) and before `reviewPinnedChange`, call
-  `rebaseOntoMain(wt, ctx.mainBranch)` (exported from `./merge.js`; a no-op when main has not
-  moved). On `true`, read `const syncedHead = await headOf(wt, "HEAD")`; when `syncedHead !==
-  req.sha`, `await setRef(ctx.root, ref, syncedHead)` (git.ts:156) and pass a request copy with
-  `sha: syncedHead` into `reviewPinnedChange`, so the gate's own head and the strike-cap tell
-  (`head !== req.sha`, lander.ts:127) both see the synced head and the landing ref tracks the tree
-  that can land. On `false` (conflict or other), `rebaseOntoMain` has already aborted the rebase and
-  restored the detached pin: continue with the original `req` — the gate reviews the pinned tree and
-  `mergeToMain`'s conflict resolver lands it exactly as today.
-- No change to `src/merge.ts`: with the gate's `verifiedHead` now the synced head, `tryMerge`'s
-  rebase is a no-op, `verifyLanding` skips (`rebasedHead === preMergeHead`) and seeds the baseline
-  from `verifiedHead`; if main moves again during review, the existing post-rebase re-check covers it.
-- Leave the batch path (`landBatch`) alone: its stack is assembled from main's current tip already
-  (src/lander.ts:353).
-
-**Files touched.** `src/lander.ts`; `test/lander.test.ts` (the `landChange` unit host — new cases
-join the existing `landChange` block at :22); `README.md` (the landing paragraph's rebase sentence
-names that the gate checks the rebased tree).
-
-**Acceptance criteria.**
-- A landing pinned against a broken main, with main then advanced by a commit that fixes the build,
-  passes the gate and lands: the pre-check/review ran on the synced tree, the landing ref points at
-  the synced head, and main ends with both main's fix and the change.
-- A main advance that conflicts with the change leaves today's behavior intact: the gate reviews the
-  pinned tree, `mergeToMain` resolves the conflict, the landing still lands.
-- `npm test` green.
-
 ### Fix a failed landing build check on the spot instead of rejecting (planned 2026-09-21, requested by user)
 
 **Goal.** When a landing's deterministic build pre-check fails, spend one bounded model run to fix
@@ -208,6 +167,24 @@ review-gate paragraph: a failed landing build check triggers one bounded fix run
 **Series critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7. 4c/7 landed 2026-09-21 (`dfa6d26`); its one remaining line — README's `## Usage` naming `tumwater.example.json` — is folded into 4a/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
 
 ## Done
+
+### Landing gate checks latest main: rebase the pinned change before the build pre-check (planned 2026-09-21, requested by user, done 2026-09-21)
+
+Implemented as planned: `src/lander.ts` `landChange` rebases the detached lander worktree onto
+main (`rebaseOntoMain`) after the checkout and before `reviewPinnedChange` — a no-op when main has
+not moved; on a clean rebase the landing ref and the request (`sha`) are updated to the synced head
+so the strike-cap tell tracks the tree that can land; on a conflict the pre-existing behavior is
+untouched (abort restores the pin, `mergeToMain`'s resolver lands it). No change to `src/merge.ts`.
+One delta from the written approach: the plan said to leave `landBatch` alone, but its abandon
+fallback (a red or un-assemblable stack) re-lands each change through `landChange`, so those singles
+now gate on their synced tree too — the deterministic re-check that used to run at `landing` scope
+in-lock runs at `gate` scope on the synced tree instead (same coverage, one fewer script run per
+change), and a change whose pin is behind moved main gets an honest re-review of the tree that
+will actually land (previously the gate short-circuited on the stale approved head). Tests:
+`test/lander.test.ts` gains two cases (gate reviews the rebased tree and lands both main's fix and
+the change; a synced rebase moves the ref so an under-cap failure keeps the synced tree), and
+`test/orchestrator-3.test.ts`'s cap-1 phase pins the moved coverage; `README.md`'s landing
+paragraph names the pre-gate rebase. Full suite 1272/1272.
 
 ### 1/7 — GitHub Actions CI and a publishable npm package (planned 2026-09-14, requested by user, refined 2026-09-16, done 2026-09-21)
 

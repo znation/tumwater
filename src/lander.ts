@@ -1,7 +1,7 @@
-import { COMMIT_IDENT, deleteRef, gitTry, headOf } from "./git.js";
+import { COMMIT_IDENT, deleteRef, gitTry, headOf, setRef } from "./git.js";
 import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
-import { ffStackToMain, mergeToMain } from "./merge.js";
+import { ffStackToMain, mergeToMain, rebaseOntoMain } from "./merge.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { runScopedBuildCheck } from "./build-check.js";
 import { noteGreenBaseline } from "./main-baseline.js";
@@ -155,6 +155,21 @@ export async function landChange(ctx: LanderContext, req: LandRequest): Promise<
   // The role's own worktree is already clean at main (its caller pinned the sha and reset it);
   // this detached checkout holds exactly the pinned tree for review and rebase.
   const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
+
+  // The gate must review main's CURRENT tree, not the main the author started from: when main
+  // moved after the pin (the common queued-landing case), a pre-check against the stale tree
+  // fails on a failure main already fixed and every queued landing rejects in a cascade. Rebase
+  // onto main BEFORE the gate (a no-op when main has not moved); on a clean rebase the ref and
+  // the request track the synced head so the strike-cap tell and the landing ref name the tree
+  // that can actually land. On a conflict rebaseOntoMain has already aborted and restored the
+  // detached pin — the gate reviews the pinned tree and mergeToMain's resolver lands it as today.
+  if (await rebaseOntoMain(wt, ctx.mainBranch)) {
+    const syncedHead = await headOf(wt, "HEAD");
+    if (syncedHead !== req.sha) {
+      await setRef(ctx.root, ref, syncedHead);
+      req = { ...req, sha: syncedHead };
+    }
+  }
 
   const outcome = await reviewPinnedChange(ctx, req, wt, ctx.state, ctx.foldUsage);
   // A terminal outcome (aborted / rejected / review_error) is already handled: the helper kept

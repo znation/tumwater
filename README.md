@@ -95,7 +95,10 @@ one loop per enabled role. Every loop tick:
    slot that takes the same `maxConcurrent` permit as a role tick (at a higher-priority tier,
    so a queued landing jumps ahead of parked role waiters while authors keep ticking on the
    remaining slots) — an adversarial review gate over the full ahead-of-main
-   diff, in a harness-owned worktree (`_land-<role>`) off the pinned ref: first a deterministic
+   diff, in a harness-owned worktree (`_land-<role>`) off the pinned ref: the pinned tree is
+   first rebased onto main's current head (a no-op when main has not moved — a conflicting
+   advance defers the rebase to the landing itself), so the gate checks what can actually land
+   instead of a stale tree a sibling loop has already fixed: first a deterministic
    build pre-check (the project's declared verify script: `npm test` when declared, else
    typecheck/build; failure rejects without spending a model run), then a fresh-session
    reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject` (md-only diffs are

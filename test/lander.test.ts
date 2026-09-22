@@ -17,7 +17,7 @@ import { defaultConfig } from "../src/config.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import type { LoopState, PiRunResult, TumwaterConfig } from "../src/types.js";
-import { assistantLine, fakePi, makeRepo, sh } from "./util.js";
+import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 // Unit coverage for src/lander.ts's landChange — the harness-owned review-and-land of a pinned
 // commit in _land-<role> (merge queue 2/5). The reviewer run is a real pi subprocess behind the
@@ -264,6 +264,73 @@ test("a conflicting landing gets one resolution run and then lands", async () =>
     assert.equal(await refSha(root, REF), null, "the pin was deleted on landing");
     // The rebase rewrote the pinned commit onto main's advance: linear history, no merge commits.
     assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "");
+  } finally {
+    restore();
+  }
+});
+
+test("a landing pinned behind main's advance is rebased onto main BEFORE the gate and lands both", async () => {
+  // PLANS.md 2026-09-21: the gate must review main's CURRENT tree. Advance main after the
+  // pin with a non-conflicting commit, then check the reviewer saw the rebased tree — if the
+  // gate ran on the stale pin, main's fix would not be under review and a red main would
+  // cascade through every queued landing.
+  const rec = path.join(tmpdir("lander-rec-"), "seen");
+  const restore = fakePi(
+    `git rev-parse HEAD >> ${rec}\n` +
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+  );
+  try {
+    const { root, sha } = await pinnedFixture();
+    fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
+    sh(root, "git", "add", "-A");
+    sh(root, "git", "commit", "-m", "fix main");
+    const state = freshLoopState(ROLE);
+    const { ctx } = makeCtx(root, state);
+
+    assert.equal(await landChange(ctx, request(sha)), "changed");
+
+    // main holds both: main's fix underneath, the rebased change on top (linear, no merge).
+    const mainHead = sh(root, "git", "rev-parse", "main").trim();
+    assert.notEqual(mainHead, sha, "main moved past the pin: the change was rebased onto the fix");
+    assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "seed\nthe work\n");
+    assert.equal(fs.readFileSync(path.join(root, "fix.txt"), "utf8"), "main fix\n");
+    assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "");
+    // The reviewer ran in the lander worktree at the SYNCED head — the pre-check/review tree
+    // is exactly what became main, and the landing ref tracked it (deleted on landing here).
+    const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
+    assert.equal(seen[0], mainHead, "the gate reviewed the rebased tree, not the stale pin");
+    assert.equal(await refSha(root, REF), null, "the pin was deleted on landing");
+  } finally {
+    restore();
+  }
+});
+
+test("a synced rebase moves the landing ref so a failed gate keeps the tree that can land", async () => {
+  // The strike-cap tell compares the lander worktree's HEAD against req.sha: when the
+  // pre-gate rebase rewrote the pin, the request (and the ref) must name the synced head, or
+  // an under-cap failure would look like a strike-cap discard and delete the pinned work.
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("I think this is fine overall.")}'; exit 0;; esac; done`,
+  );
+  try {
+    const { root, sha } = await pinnedFixture();
+    fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
+    sh(root, "git", "add", "-A");
+    sh(root, "git", "commit", "-m", "fix main");
+    const state = freshLoopState(ROLE);
+    const { ctx } = makeCtx(root, state);
+
+    assert.equal(await landChange(ctx, request(sha)), "review_error");
+
+    // Nothing landed (main still holds the fix commit), so the synced head is not main's
+    // head — it is the rebased commit the lander worktree sits at.
+    const syncedHead = sh(landWorktreePath(root, ROLE), "git", "rev-parse", "HEAD").trim();
+    assert.notEqual(syncedHead, sha, "the rebase rewrote the pin onto main's fix");
+    assert.equal(
+      await refSha(root, REF),
+      syncedHead,
+      "the ref tracks the rebased commit, not the stale pin",
+    );
   } finally {
     restore();
   }
@@ -524,12 +591,12 @@ test("a red stack check abandons to one-at-a-time and both changes still land", 
         ["gate", "passed"],
         ["gate", "passed"],
         ["batch", "failed"],
-        ["landing", "passed"],
+        ["gate", "passed"],
       ],
-      "two gate pre-checks, the red batch check, and the fallback's re-check — no second batch check",
+      "two gate pre-checks, the red batch check, and the fallback's re-check on the synced tree",
     );
-    assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run in the fallback: the gate short-circuits");
-    assert.equal(folded.get("beta")!.length, 1);
+    assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run for alpha: its rebase is a no-op, the gate short-circuits");
+    assert.equal(folded.get("beta")!.length, 2, "beta's fallback re-lands on the moved main, so the gate reviews the synced tree");
   } finally {
     restore();
   }

@@ -890,12 +890,11 @@ test("landBatchMax caps the stack and live-reloads: five queue as 3+2 batches, t
     );
     s = scopeCounts();
     assert.equal(s.batch, 2, "cap 1: the new landings took the single path — no third batch check");
-    assert.equal(s.gate, 8, "the singles each gated");
-    // The first single's pin sits directly on current main: its rebase is a no-op, its check
-    // is skipped, and it ff-lands for free — the cheap path the single flow gives a change
-    // whose turn arrived while main was already at its base. Singles 2-3 are behind the moved
-    // main: real rebase, re-check in lock.
-    assert.equal(s.landing, 2, "each single behind main re-checked in lock");
+    assert.equal(s.gate, 8, "the singles each gated — after the pre-gate rebase, on the synced tree");
+    // The pre-gate rebase (PLANS.md 2026-09-21) checks the synced tree in the gate itself,
+    // so the in-lock landing re-check is a no-op skip: the deterministic coverage that used
+    // to run at `landing` scope now runs at `gate` scope on exactly the tree that lands.
+    assert.equal(s.landing, 0, "the gate checks the synced tree; the in-lock re-check is a skip");
     assert.equal(s.merged, 8);
   } finally {
     restore();
