@@ -7,7 +7,8 @@ import {
 } from "../backlog.js";
 import { readEvents } from "../events.js";
 import { collectReport, renderReportMarkdown, REPORT_DEFAULT_DAYS } from "./report.js";
-import { collectFailureReport, renderFailureMarkdown } from "../failure-report.js";
+import { collectFailureReport } from "../failure-data.js";
+import { renderFailureMarkdown } from "../failure-report.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config.js";

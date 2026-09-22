@@ -4,13 +4,8 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  TELEMETRY_DIGEST_DAYS,
-  collectFailureReport,
-  normalizeClusterKey,
-  renderFailureMarkdown,
-  telemetryDigest,
-} from "../src/failure-report.js";
+import { TELEMETRY_DIGEST_DAYS, renderFailureMarkdown, telemetryDigest } from "../src/failure-report.js";
+import { collectFailureReport, normalizeClusterKey } from "../src/failure-data.js";
 import { makeRepo, tmpdir } from "./util.js";
 
 // The digest buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
