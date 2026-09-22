@@ -78,8 +78,7 @@ Open items:
   CI and npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`3557e40`): build clean, suite 1276/1276 (one timing-sensitive loop-2 retry
-  test flaked once under load and passed on rerun).
+Current main (`8f66922`): build clean, suite 1277/1277.
 <!-- tumwater:status:end -->
 
 ## How it works
