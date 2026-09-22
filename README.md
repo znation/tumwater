@@ -46,7 +46,8 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Planned: portability — run an installed copy on any repo/branch with any agent binary
+- Open bug: a landing's state cell shows only elapsed time — bare `landing <elapsed>` — while the reviewer run behind it has the same turns/context/tool detail a working or reviewing loop shows (reported by user 2026-09-22).
+- Planned: portability & packaging — run an installed copy on any repo/branch with any agent binary
   (planned 2026-09-14, requested by user; the PLANS.md portability series 2/7–7/7; 1/7 CI and
   npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21).
 - Open bug: a verdict-last reviewer reply loses every reason it wrote — `parseVerdict` reads
