@@ -19,24 +19,12 @@ import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
 import { landQueuedEntry } from "../src/landing-slot.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, tmpdir } from "./util.js";
+import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, tmpdir, waitForFile } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
   await initProject(repo, "A test project.");
   return repo;
-}
-
-/** Poll until `file` exists (bounded), so a test can act only after the fake pi run has
- * done its work — a fixed sleep races process startup when the suite runs in parallel.
- * 30s: the landing gate runs the whole suite concurrently on a saturated machine, where
- * worktree setup plus fake-pi startup can blow a 10s budget (BUGS.md load-sensitive tests). */
-async function waitForFile(file: string, timeoutMs = 30_000): Promise<void> {
-  const start = Date.now();
-  while (!fs.existsSync(file)) {
-    if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${file}`);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
 }
 
 test("resume falls back to a fresh tick when there is no session to continue", async () => {

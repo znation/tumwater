@@ -16,7 +16,7 @@ import { readEvents } from "../src/events.js";
 import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/land-queue.js";
 import { landingRefName, sessionDir, worktreePath } from "../src/paths.js";
-import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir } from "./util.js";
+import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir, waitForFile } from "./util.js";
 
 async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
@@ -24,20 +24,6 @@ async function initializedRepo(): Promise<string> {
   return repo;
 }
 
-/** Poll until `file` exists (bounded), so a test can act only after the fake pi run has
- * done its work — a fixed sleep races process startup when the suite runs in parallel.
- * 30s: the landing gate runs the whole suite concurrently on a saturated machine, where
- * worktree setup plus fake-pi startup can blow a 10s budget (BUGS.md load-sensitive tests). */
-async function waitForFile(file: string, timeoutMs = 30_000): Promise<void> {
-  const start = Date.now();
-  while (!fs.existsSync(file)) {
-    if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${file}`);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-}
-
-// A shell fragment for fake-pi scripts: create a session file in the --session-dir pi was given,
-// so the harness's resume/continue guard (hasResumableSession) sees a session to continue.
 const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
 test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {
   const repo = await initializedRepo();
