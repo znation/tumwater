@@ -62,8 +62,9 @@ Open items:
   model run to fix the tree and re-check before a red main rejects every queued landing
   (planned 2026-09-21, requested by user; re-audited against post-`f0993fc` main 2026-09-23).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 2/7–7/7; 1/7
-  CI and npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21).
+  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 3/7–7/7;
+  1/7 CI and npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21, 2/7 repo-root and
+  branch targeting landed 2026-09-22).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
 Current main (`f20e5dc`): build clean, suite 1288/1288.

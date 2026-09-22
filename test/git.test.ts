@@ -16,8 +16,11 @@ import {
   isDirty,
   isGitRepo,
   isMergedInto,
+  listBranches,
   readBranchHead,
   refSha,
+  repoToplevel,
+  branchExists,
   runGit,
   setRef,
   subjectsBetween,
@@ -876,4 +879,29 @@ test("subjectsBetween lists main's subjects since a head, newest first; null for
     await subjectsBetween(repo, "0000000000000000000000000000000000000000", "main"),
     null,
   );
+});
+
+// --- repoToplevel / branchExists / listBranches (portability 2/7) ---
+
+test("repoToplevel resolves the repo root from any subdirectory, and null outside a repo", async () => {
+  const repo = makeRepo();
+  const sub = path.join(repo, "src", "deep");
+  fs.mkdirSync(sub, { recursive: true });
+  // git resolves symlinks (macOS /var → /private/var), so compare real paths.
+  assert.equal(await repoToplevel(sub), fs.realpathSync(repo), "a subdirectory resolves to the toplevel");
+  assert.equal(await repoToplevel(repo), fs.realpathSync(repo));
+  assert.equal(await repoToplevel(tmpdir()), null, "not a repository → null");
+});
+
+test("branchExists and listBranches answer from the refs, not the checkout", async () => {
+  const repo = makeRepo();
+  sh(repo, "git", "branch", "side");
+  assert.equal(await branchExists(repo, "main"), true);
+  assert.equal(await branchExists(repo, "side"), true);
+  assert.equal(await branchExists(repo, "nope"), false);
+  assert.deepEqual((await listBranches(repo)).sort(), ["main", "side"]);
+  // An empty repo (no commits) still lists nothing without throwing.
+  const empty = tmpdir();
+  sh(empty, "git", "init", "-b", "main");
+  assert.deepEqual(await listBranches(empty), []);
 });

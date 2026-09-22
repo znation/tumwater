@@ -174,6 +174,27 @@ export async function isMergedInto(root: string, sha: string, branch: string): P
   return (await gitTry(root, "merge-base", "--is-ancestor", sha, branch)) !== null;
 }
 
+/** The repository's top-level working directory, or null when `dir` is not inside a git
+ * repository (the probe fails). Resolving the root from the cwd's toplevel — never trusting
+ * process.cwd() — is what lets every command behave identically from any subdirectory of the
+ * repo it targets: .tumwater/ and tumwater.json live at the toplevel, and readBranchHead's
+ * file fast path only works when the root actually holds `.git`. */
+export async function repoToplevel(dir: string): Promise<string | null> {
+  return gitTry(dir, "rev-parse", "--show-toplevel");
+}
+
+/** True when the local branch `<branch>` exists in the repo. */
+export async function branchExists(root: string, branch: string): Promise<boolean> {
+  return (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
+}
+
+/** The repo's local branch names — what an error message lists when a named branch does not
+ * exist, so the fix is visible in the failure itself. Empty when the repo has no branches. */
+export async function listBranches(root: string): Promise<string[]> {
+  const out = await gitTry(root, "for-each-ref", "--format=%(refname:short)", "refs/heads");
+  return out ? out.split("\n").filter(Boolean) : [];
+}
+
 /** The branch the primary checkout has, or null when detached. */
 export async function currentBranch(root: string): Promise<string | null> {
   const out = await gitTry(root, "symbolic-ref", "--short", "HEAD");

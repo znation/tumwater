@@ -114,6 +114,62 @@ test("init seeds a git repo in an empty directory (BUGS.md 2026-09-08)", async (
   assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "main");
 });
 
+test("commands behave identically from a subdirectory of the repo (portability 2/7)", async () => {
+  const repo = makeRepo();
+  assert.ok((await cli(repo, "init", "From the root.")).code === 0);
+  const sub = path.join(repo, "docs", "deep");
+  fs.mkdirSync(sub, { recursive: true });
+
+  // status resolves the repo root from the subdirectory and answers exactly as from the root.
+  const fromRoot = await cli(repo, "status");
+  const fromSub = await cli(sub, "status");
+  assert.equal(fromSub.code, 0);
+  assert.equal(fromSub.code, fromRoot.code);
+  assert.equal(fromSub.stdout, fromRoot.stdout, "the same fleet state, wherever it runs from");
+
+  // init from a subdirectory of an existing repo seeds THAT repo's root, never a nested
+  // document set — and a second run reports already initialized.
+  const adopted = makeRepo();
+  const adoptedSub = path.join(adopted, "sub");
+  fs.mkdirSync(adoptedSub, { recursive: true });
+  const r = await cli(adoptedSub, "init", "Adopt this repo.");
+  assert.equal(r.code, 0);
+  assert.ok(fs.existsSync(path.join(adopted, "README.md")), "documents land at the toplevel");
+  assert.ok(!fs.existsSync(path.join(adoptedSub, "README.md")), "nothing nested in the subdirectory");
+  const again = await cli(adoptedSub, "init", "Adopt this repo.");
+  assert.equal(again.code, 0);
+  assert.match(again.stdout, /already initialized; nothing to do/);
+});
+
+test("init --branch names the branch a new repo is seeded on", async () => {
+  const dir = tmpdir();
+  const r = await cli(dir, "init", "Build a thing.", "--branch", "trunk");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /initialized a new git repository on branch trunk/);
+  assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
+});
+
+test("run --branch fails at startup when the branch does not exist, listing what does", async () => {
+  const repo = makeRepo();
+  await cli(repo, "init", "Ready repo.");
+  // fake pi on PATH so the run preflight passes and the branch validation itself is what
+  // fails (via the supervised child, which inherits PATH and the forwarded flags).
+  const restore = fakePi("# never reached — the unknown branch fails first\n");
+  try {
+    const r = await cli(repo, "run", "--branch", "ghost");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /branch ghost does not exist/);
+    assert.match(r.stderr, /branches: main/);
+
+    // A valueless --branch fails the same way, at the flag parser.
+    const noValue = await cli(repo, "run", "--branch");
+    assert.equal(noValue.code, 1);
+    assert.match(noValue.stderr, /--branch needs a branch name/);
+  } finally {
+    restore();
+  }
+});
+
 test("init --file reads the prompt from a file and rejects a missing path", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "prompt.md"), "Build a thing.\nWith care.\n");
@@ -472,10 +528,11 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: -ff/);
 
-  // Commands with no flags reject any argument at all.
+  // `run` takes exactly one flag (--branch); anything else is rejected and names it.
   r = await cli(repo, "run", "--verbose");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /takes no arguments/);
+  assert.match(r.stderr, /unknown argument: --verbose/);
+  assert.match(r.stderr, /valid flags for tumwater run: --branch <name>/);
 
   // ...including version and help, which used to accept anything silently: `version --json`
   // printed a version as if it had answered the query, and `help extra` printed usage.
@@ -1203,7 +1260,7 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
     assert.match(r.stdout, /tumwater doctor — harness not running/);
     for (const line of [
       /ok\s+git binary/,
-      /ok\s+repo\s+on branch main/,
+      /ok\s+repo\s+repo at \S+ — on branch main/,
       /ok\s+init/,
       /ok\s+pi binary/,
       /ok\s+state dir/,

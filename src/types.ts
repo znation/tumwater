@@ -82,6 +82,10 @@ export interface TumwaterConfig {
   model?: string;
   /** pi thinking level; omitted = pi's own default. */
   thinking?: string;
+  /** The branch the fleet merges into and bases every role worktree on — the resolved
+   * "main". Omitted, the fleet targets whatever branch the primary checkout has checked
+   * out (the default that makes it branch-agnostic); an explicit value must exist. */
+  baseBranch?: string;
   /** Extra argv passed straight to pi. Must not repeat a flag the harness sets itself
    * (src/pi.ts's `--print`/`--mode`/`--session-dir`, the provider/model/thinking triple, and
    * the session resume/name flags) — pi's parser is last-wins, so a repeat would silently

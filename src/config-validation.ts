@@ -41,6 +41,7 @@ const TOP_LEVEL_KEYS = [
   "provider",
   "model",
   "thinking",
+  "baseBranch",
   "piArgs",
   "maxConcurrent",
   "landBatchMax",
@@ -235,6 +236,9 @@ export function validateConfig(raw: unknown): void {
   const r = raw; // Narrowed to an object by isJsonObject above.
   checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
   checkModelTriple(r, "");
+  // An empty baseBranch would silently fall back to the checked-out branch — the one value
+  // the operator's explicit setting must never degrade to unannounced.
+  checkString(r, "", "baseBranch", false);
   checkStringArray(r, "", "piArgs");
   // A piArgs entry that repeats a harness-managed flag is appended after the harness's own and
   // pi's parser is last-wins, so it silently overrides it (see HARNESS_PI_FLAGS). Name the

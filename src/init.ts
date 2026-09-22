@@ -86,13 +86,20 @@ interface InitResult {
   committed: boolean;
   /** True when the cwd was not a git repository and init created one. */
   repoInitialized: boolean;
+  /** The branch a newly created repo was seeded on; undefined when the repo already
+   * existed (its checked-out branch is the fleet's business, not init's). */
+  branch?: string;
 }
 
 /** Initialize a repo for tumwater: README (with prompt + status), PLANS, BUGS, QUESTIONS,
  * PRINCIPLES, tumwater.json, .gitignore — then commit whatever was created. When the cwd is
  * not a git repository yet, one is seeded first (`git init -b main`), matching the README's
  * "seeds a git repo" promise for brand-new projects. */
-export async function initProject(root: string, initialPrompt: string): Promise<InitResult> {
+export async function initProject(
+  root: string,
+  initialPrompt: string,
+  branch?: string,
+): Promise<InitResult> {
   // Fail fast on a missing binary before the probe below can misread it as "not a git
   // repository" — the same preflight every other command gets in cli.ts.
   if (!findOnPath("git")) throw new Error(GIT_MISSING_MESSAGE);
@@ -122,11 +129,17 @@ export async function initProject(root: string, initialPrompt: string): Promise<
   }
 
   let repoInitialized = false;
+  let createdBranch: string | undefined;
   if (!(await isGitRepo(root))) {
-    // `-b main` matches every doc reference and what `tumwater run` will report; a fresh
-    // repo has no history for an init.defaultBranch preference to protect.
-    await git(root, "init", "-b", "main");
+    // Branch precedence: the caller's explicit --branch, else git's own init.defaultBranch
+    // preference, else main. `git init -b` does not consult init.defaultBranch, so the
+    // preference is read here: an operator who configured `init.defaultBranch=trunk`
+    // expects `git init`-compatible behavior, and the fleet then targets that branch.
+    const preferred =
+      branch ?? ((await gitTry(root, "config", "--get", "init.defaultBranch")) || "main");
+    await git(root, "init", "-b", preferred);
     repoInitialized = true;
+    createdBranch = preferred;
   }
 
   const created: string[] = [];
@@ -159,5 +172,5 @@ export async function initProject(root: string, initialPrompt: string): Promise<
       committed = true;
     }
   }
-  return { created, committed, repoInitialized };
+  return { created, committed, repoInitialized, branch: createdBranch };
 }

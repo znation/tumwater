@@ -66,6 +66,38 @@ test("a tick that changes files commits and merges to main", async () => {
   }
 });
 
+test("a full tick → review → merge cycle lands on a repo whose only branch is trunk (portability 2/7)", async () => {
+  // The branch plumbing is parameterized end to end; this pins that nothing named "main"
+  // leaks into the landing path: rename the only branch to trunk BEFORE init, so no main
+  // exists anywhere, and the commit must land on trunk.
+  const repo = makeRepo();
+  sh(repo, "git", "branch", "-m", "main", "trunk");
+  await initProject(repo, "A trunk-based project.");
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 10, output: 10, cost: 0 })}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    const runner = new LoopRunner(repo, "improve", config, "trunk");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued");
+    assert.equal(
+      await landHead(repo, runner, config, "improve", "trunk"),
+      "changed",
+      "the landing lands on trunk, the only branch there is",
+    );
+    assert.ok(fs.existsSync(path.join(repo, "hello.txt")));
+    assert.equal(sh(repo, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
+    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
+  } finally {
+    restore();
+  }
+});
+
 test("a changed tick schedules its next run at the role's own interval, not the global", async () => {
   // AC3 chain (plans/steward-role.md): applyTickOutcome's branches and configForRole's
   // resolution are unit-covered; this pins the link between them — that tick() resolves

@@ -4,6 +4,7 @@ import path from "node:path";
 import { enabledRoleIds, loadConfig } from "./config.js";
 import {
   fail,
+  parseBranchFlag,
   parseCountFlag,
   parseInitArgs,
   parsePortFlag,
@@ -13,7 +14,15 @@ import {
 import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdWake } from "./operator-commands.js";
 import { cmdLogs } from "./ui/log-commands.js";
 import { orchestratorAlive } from "./state.js";
-import { GIT_MISSING_MESSAGE, currentBranch, hasCommits, isGitRepo } from "./git.js";
+import {
+  GIT_MISSING_MESSAGE,
+  branchExists,
+  currentBranch,
+  hasCommits,
+  isGitRepo,
+  listBranches,
+  repoToplevel,
+} from "./git.js";
 import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,
@@ -21,6 +30,7 @@ import {
   NO_COMMITS_MESSAGE,
   PI_MISSING_MESSAGE,
 } from "./readiness.js";
+import type { TumwaterConfig } from "./types.js";
 import { initProject } from "./init.js";
 import {
   type CancelOutcome,
@@ -49,8 +59,8 @@ import { errorMessage, shortSha } from "./text.js";
 const HELP = `tumwater — autonomous development harness built on pi
 
 Usage:
-  tumwater init <prompt...>        Initialize this repo (or --file <prompt.md>)
-  tumwater run                     Run all enabled loops (headless; Ctrl+C stops)
+  tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --branch <name>)
+  tumwater run [--branch <name>]   Run all enabled loops (headless; Ctrl+C stops)
   tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
   tumwater gui [--port N] [--all-interfaces]
                                    Same dashboard in the browser (default port 7180,
@@ -83,7 +93,23 @@ under .tumwater/, does one task per tick with pi, commits, and merges to main. L
 off while the project is quiet and wake when main moves. Everything is local: no remotes.
 `;
 
-async function resolveMainBranch(root: string): Promise<string> {
+/** The branch the fleet targets: `--branch <name>` wins, then `baseBranch` in config, then
+ * whatever the primary checkout has checked out — the branch-agnostic default. An explicit
+ * value must exist: failing at startup with the branches that do exist beats failing at the
+ * first `git worktree add`. */
+async function resolveMainBranch(
+  root: string,
+  config: TumwaterConfig,
+  branchArg: string | null,
+): Promise<string> {
+  const explicit = branchArg ?? config.baseBranch ?? null;
+  if (explicit !== null) {
+    if (!(await branchExists(root, explicit))) {
+      const existing = (await listBranches(root)).join(", ") || "none";
+      fail(`branch ${explicit} does not exist (branches: ${existing})`);
+    }
+    return explicit;
+  }
   const branch = await currentBranch(root);
   if (!branch) fail(DETACHED_HEAD_MESSAGE);
   return branch;
@@ -101,20 +127,20 @@ async function requireReadyRepo(root: string): Promise<void> {
 }
 
 async function cmdInit(root: string, args: string[]): Promise<void> {
-  const prompt = parseInitArgs(args);
-  const result = await initProject(root, prompt);
+  const { prompt, branch } = parseInitArgs(args);
+  const result = await initProject(root, prompt, branch ?? undefined);
   if (result.created.length === 0) {
     process.stdout.write("already initialized; nothing to do\n");
     return;
   }
-  if (result.repoInitialized) {
-    process.stdout.write(`initialized a new git repository on branch main\n`);
+  if (result.repoInitialized && result.branch) {
+    process.stdout.write(`initialized a new git repository on branch ${result.branch}\n`);
   }
   process.stdout.write(`created ${result.created.join(", ")}${result.committed ? " (committed)" : ""}\n`);
   process.stdout.write("next: `tumwater run` in one terminal, `tumwater tui` in another\n");
 }
 
-async function cmdRun(root: string): Promise<void> {
+async function cmdRun(root: string, args: string[]): Promise<void> {
   await requireReadyRepo(root);
   // Fail fast instead of starting loops whose every tick dies with "spawn pi ENOENT".
   if (!findOnPath("pi")) {
@@ -122,11 +148,13 @@ async function cmdRun(root: string): Promise<void> {
   }
   if (orchestratorAlive(root)) fail("an orchestrator is already running for this repo");
   if (!process.env[SUPERVISED_ENV]) {
-    await superviseRunCommand();
+    // `args` are the flags after the command token — forward them so the child generation
+    // targets the same branch (or whatever else the invocation named).
+    await superviseRunCommand(args);
     return;
   }
   const config = loadConfig(root);
-  const mainBranch = await resolveMainBranch(root);
+  const mainBranch = await resolveMainBranch(root, config, parseBranchFlag(args));
   const controller = new AbortController();
   let stopping = false;
   const stop = () => {
@@ -140,7 +168,10 @@ async function cmdRun(root: string): Promise<void> {
   const enabled = enabledRoleIds(config);
   const redeploy = await createRedeployer(root, (e) => logEvent(root, e));
   const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
-  process.stdout.write(`tumwater running on branch ${mainBranch}${build} — Ctrl+C to stop\n`);
+  // Name the resolved root when it differs from the cwd: an operator who started the fleet
+  // from a subdirectory must see where .tumwater/ actually lives.
+  const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
+  process.stdout.write(`tumwater running on branch ${mainBranch}${build}${rootNote} — Ctrl+C to stop\n`);
   process.stdout.write(`loops: ${enabled.join(", ")}\n`);
   process.stdout.write("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n\n");
   const unsubscribe = subscribeEvents((e) => process.stdout.write(formatEvent(e) + "\n"));
@@ -159,7 +190,7 @@ async function cmdRun(root: string): Promise<void> {
  * generation and respawn it whenever it exits RESTART_EXIT_CODE after redeploying itself. Ctrl+C
  * reaches the child directly from the terminal, so only SIGTERM is forwarded; the supervisor's
  * own exit code is whatever the last generation's was. */
-async function superviseRunCommand(): Promise<void> {
+async function superviseRunCommand(runArgs: string[]): Promise<void> {
   const controller = new AbortController();
   let stopping = false;
   process.on("SIGINT", () => {
@@ -171,7 +202,7 @@ async function superviseRunCommand(): Promise<void> {
   });
   const code = await superviseRun(
     {
-      spawnChild: spawnRunChild,
+      spawnChild: (signal) => spawnRunChild(signal, runArgs),
       stopping: () => stopping,
       onRespawn: (generation) =>
         process.stdout.write(`\nrestarting on the new build (generation ${generation})\n\n`),
@@ -185,14 +216,19 @@ async function superviseRunCommand(): Promise<void> {
 
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
-  const root = process.cwd();
+  // The repo root, not the cwd: every command must behave identically from any subdirectory
+  // of the repo it targets (.tumwater/ and tumwater.json live at the toplevel, and
+  // readBranchHead's ref-file fast path needs a root that actually holds .git). Outside a
+  // repository the probe fails and cwd is used as before, so doctor outside a repo still
+  // reports why the environment is not ready.
+  const root = (await repoToplevel(process.cwd())) ?? process.cwd();
   switch (command) {
     case "init":
       await cmdInit(root, args);
       break;
     case "run":
-      rejectUnknownArgs("run", args, []);
-      await cmdRun(root);
+      rejectUnknownArgs("run", args, [{ names: ["--branch"], value: true, valueName: "<name>" }]);
+      await cmdRun(root, args);
       break;
     case "tui":
       rejectUnknownArgs("tui", args, []);

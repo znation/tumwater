@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  parseBranchFlag,
   parseCountFlag,
   parsePortFlag,
   parseRoleFlag,
@@ -217,16 +218,25 @@ test("rejectUnknownArgs: valued flags claim their value token; duplicates and tr
 // --- parseInitArgs ---
 
 test("parseInitArgs joins positionals (single-dash tokens are content, not flags)", () => {
-  assert.equal(expectOk(() => parseInitArgs(["Build", "a", "todo CLI."])), "Build a todo CLI.");
+  assert.deepEqual(expectOk(() => parseInitArgs(["Build", "a", "todo CLI."])), {
+    prompt: "Build a todo CLI.",
+    branch: null,
+  });
   // Bullets and other single-dash tokens stay prompt content.
-  assert.equal(expectOk(() => parseInitArgs(["- Build A", "- Build B"])), "- Build A - Build B");
+  assert.deepEqual(expectOk(() => parseInitArgs(["- Build A", "- Build B"])), {
+    prompt: "- Build A - Build B",
+    branch: null,
+  });
 });
 
 test("parseInitArgs --file reads the exact file contents", () => {
   const dir = tmpdir();
   const file = path.join(dir, "prompt.md");
   fs.writeFileSync(file, "Build a thing.\nWith care.\n");
-  assert.equal(expectOk(() => parseInitArgs(["--file", file])), "Build a thing.\nWith care.\n");
+  assert.deepEqual(expectOk(() => parseInitArgs(["--file", file])), {
+    prompt: "Build a thing.\nWith care.\n",
+    branch: null,
+  });
 });
 
 test("parseInitArgs rejects unknown double-dash tokens — including the bare `--`", () => {
@@ -235,7 +245,7 @@ test("parseInitArgs rejects unknown double-dash tokens — including the bare `-
   const r = expectFail(() => parseInitArgs(["--fil", "prompt.md"]));
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --fil/);
-  assert.match(r.stderr, /valid flags for tumwater init: --file <path>/);
+  assert.match(r.stderr, /valid flags for tumwater init: --file <path>, --branch <name>/);
 
   // `--` is a common user habit (end-of-options marker) and must not slip through as content.
   const dd = expectFail(() => parseInitArgs(["Build", "--", "a thing"]));
@@ -264,6 +274,45 @@ test("parseInitArgs --file validation: missing path, duplicates, stray positiona
   const missing = expectFail(() => parseInitArgs(["--file", missingFile]));
   assert.match(missing.stderr, /cannot read prompt file/);
   assert.ok(missing.stderr.includes(JSON.stringify(missingFile)), `names the given path:\n${missing.stderr}`);
+});
+
+test("parseBranchFlag: absent returns null, a value passes, a missing value fails", () => {
+  assert.equal(expectOk(() => parseBranchFlag([])), null);
+  assert.equal(expectOk(() => parseBranchFlag(["run"])), null);
+  assert.equal(expectOk(() => parseBranchFlag(["--branch", "release/2.0"])), "release/2.0");
+
+  const noValue = expectFail(() => parseBranchFlag(["--branch"]));
+  assert.match(noValue.stderr, /--branch needs a branch name/);
+
+  // A `-`-leading token is another flag, not a branch name — the same rule a missing value
+  // follows: fall back to the checked-out branch is the one thing a typo must never do.
+  const flagAsValue = expectFail(() => parseBranchFlag(["--branch", "--json"]));
+  assert.match(flagAsValue.stderr, /--branch needs a branch name/);
+});
+
+test("parseInitArgs --branch: never prompt content, combined with --file, duplicates rejected", () => {
+  // The branch pair is pulled out of the prompt text; the rest stays the prompt.
+  assert.deepEqual(expectOk(() => parseInitArgs(["Build", "a", "todo CLI.", "--branch", "trunk"])), {
+    prompt: "Build a todo CLI.",
+    branch: "trunk",
+  });
+
+  // Both flags at once: the file is the prompt, the branch the initial branch.
+  const dir = tmpdir();
+  const file = path.join(dir, "prompt.md");
+  fs.writeFileSync(file, "From a file.");
+  assert.deepEqual(expectOk(() => parseInitArgs(["--file", file, "--branch", "trunk"])), {
+    prompt: "From a file.",
+    branch: "trunk",
+  });
+
+  // A doubled --branch is a mistake, not a name collision.
+  const dup = expectFail(() => parseInitArgs(["--branch", "a", "--branch", "b"]));
+  assert.match(dup.stderr, /--branch may only be given once/);
+
+  // With --file, anything besides the two flag pairs is a stray token.
+  const stray = expectFail(() => parseInitArgs(["--file", file, "--branch", "trunk", "extra"]));
+  assert.match(stray.stderr, /unexpected argument "extra"/);
 });
 
 // --- parsePromptArgs ---

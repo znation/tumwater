@@ -15,7 +15,7 @@ import { saveLoopState } from "./state.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
-import { branchHead, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
+import { branchHead, currentBranch, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
 import { landBatch } from "./lander.js";
 import { landQueuedEntry, landingUsage, readLandingMarker, writeLandingMarker, writeLandingOutcome } from "./landing-slot.js";
 import { dropLanding, headLanding, landingFor, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
@@ -289,6 +289,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // an unchanged fleet prunes at most once per day (dueForPrune).
   let lastRetention = config.sessionRetentionDays;
   let lastPruneAt: number | null = config.sessionRetentionDays > 0 ? Date.now() : null;
+  // The primary checkout's branch, for the edge-triggered divergence warning: the fleet
+  // resolved its target branch at startup, and a human checking out something else mid-run
+  // must not silently change what the fleet merges into — every role worktree is based on
+  // the resolved branch. One warning per episode, re-armed when the checkout returns.
+  let warnedBranchDivergence = false;
 
   // Need-based deferral (PLANS.md "Prioritize loops by need"): work-landed verdicts are cached
   // per base head so a quiet fleet pays no git cost in steady state. A TRUE verdict is monotone
@@ -403,6 +408,23 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // spawns `git rev-parse` only when they cannot resolve it. "" means main does not exist
       // yet — isEligible treats an empty head as "no wake".
       const mainHead = (await branchHead(root, mainBranch)) ?? "";
+      // Branch-divergence watch, once per poll (see warnedBranchDivergence above): the
+      // fleet keeps fast-forwarding the branch it resolved at startup — the safe behavior,
+      // since role worktrees are based on it — and one warning names the divergence
+      // instead of leaving it mysterious. Back on the target branch re-arms the check.
+      const liveBranch = await currentBranch(root);
+      if (liveBranch !== null && liveBranch !== mainBranch) {
+        if (!warnedBranchDivergence) {
+          warnedBranchDivergence = true;
+          warnEvent(
+            root,
+            "harness",
+            `primary checkout moved to ${liveBranch} — the fleet keeps merging into ${mainBranch}`,
+          );
+        }
+      } else {
+        warnedBranchDivergence = false;
+      }
       const inboxCount = inboxSize(root);
       const now = Date.now();
 

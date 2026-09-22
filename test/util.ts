@@ -305,6 +305,7 @@ export async function landHead(
   runner: LoopRunner,
   config: TumwaterConfig,
   role: string,
+  branch = "main",
 ): Promise<TickResult> {
   const head = headLanding(repo);
   if (!head) throw new Error("expected a queued landing");
@@ -315,7 +316,7 @@ export async function landHead(
     head.file,
     runner,
     config,
-    "main",
+    branch,
     new AbortController().signal,
   );
 }

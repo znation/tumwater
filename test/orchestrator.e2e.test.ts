@@ -941,3 +941,48 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
   }
 });
 
+
+test("the primary checkout moving branches mid-run logs exactly one warning (portability 2/7)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "branch divergence test");
+  saveConfig(repo, fastConfig(["clean"]));
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // Let one poll pass so the divergence watch is seeded against the startup branch.
+    await waitFor(() => loadLoopState(repo, "clean").ticks >= 1, "the startup tick to run");
+
+    // A human checks out something else in the primary checkout mid-run: one warning names
+    // the divergence, and the fleet keeps merging into the branch it resolved at startup.
+    sh(repo, "git", "checkout", "-b", "experiment");
+    await waitFor(
+      () =>
+        readEvents(repo).some(
+          (e) => e.type === "warning" && /primary checkout moved to experiment/.test(String(e.message)),
+        ),
+      "one divergence warning",
+    );
+
+    // Edge-triggered: more polls on the foreign branch stay quiet.
+    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 5));
+    const during = readEvents(repo).filter(
+      (e) => e.type === "warning" && /primary checkout moved/.test(String(e.message)),
+    );
+    assert.equal(during.length, 1, JSON.stringify(during));
+
+    // Returning to the target branch re-arms the check, so a second episode warns again.
+    sh(repo, "git", "checkout", "main");
+    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 3));
+    sh(repo, "git", "checkout", "experiment");
+    await waitFor(
+      () =>
+        readEvents(repo).filter(
+          (e) => e.type === "warning" && /primary checkout moved/.test(String(e.message)),
+        ).length === 2,
+      "a second warning after re-arming",
+    );
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});

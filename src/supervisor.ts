@@ -69,16 +69,18 @@ export async function superviseRun(opts: SuperviseOptions, signal: AbortSignal):
 }
 
 /** The production child spawner: the same node binary and cli.js script as this process with
- * `run` as the command, stdio shared (the child's event stream is what the operator sees), and
+ * `run` as the command — plus any flags the operator's original invocation carried (e.g.
+ * `tumwater run --branch x`: the child IS the orchestrator generation, so it must target the
+ * same branch) — stdio shared (the child's event stream is what the operator sees), and
  * SUPERVISED_ENV set so it runs the orchestrator instead of supervising again. */
-export function spawnRunChild(signal: AbortSignal): Promise<ChildExit> {
+export function spawnRunChild(signal: AbortSignal, extraArgs: string[] = []): Promise<ChildExit> {
   return new Promise((resolve) => {
     const script = process.argv[1];
     if (!script) {
       resolve({ code: 1, signal: null });
       return;
     }
-    const child = spawn(process.execPath, [script, "run"], {
+    const child = spawn(process.execPath, [script, "run", ...extraArgs], {
       stdio: "inherit",
       env: { ...process.env, [SUPERVISED_ENV]: "1" },
     });

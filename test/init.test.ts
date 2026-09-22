@@ -143,6 +143,41 @@ test("initProject seeds a git repo when the cwd is not one yet (BUGS.md 2026-09-
   assert.equal(readInitialPrompt(dir), "Fresh project.");
 });
 
+test("initProject honors the caller's branch and git's init.defaultBranch preference (portability 2/7)", async () => {
+  // Explicit --branch wins over everything.
+  const explicit = tmpdir();
+  const withBranch = await initProject(explicit, "On a named branch.", "trunk");
+  assert.equal(withBranch.repoInitialized, true);
+  assert.equal(withBranch.branch, "trunk");
+  assert.equal(sh(explicit, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
+
+  // With none given, git's own init.defaultBranch preference is honored (git init -b does
+  // not consult it, so the preference is read here). Scoped hermetically via GIT_CONFIG_GLOBAL.
+  const dir = tmpdir();
+  const global = path.join(dir, "global-gitconfig");
+  fs.writeFileSync(global, "[init]\n\tdefaultBranch = trunk\n");
+  const bare = tmpdir();
+  process.env.GIT_CONFIG_GLOBAL = global;
+  try {
+    const result = await initProject(bare, "On the configured default.");
+    assert.equal(result.repoInitialized, true);
+    assert.equal(result.branch, "trunk");
+    assert.equal(sh(bare, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
+  } finally {
+    delete process.env.GIT_CONFIG_GLOBAL;
+  }
+
+  // And with neither, main — the long-standing default.
+  const plain = tmpdir();
+  process.env.GIT_CONFIG_GLOBAL = "/nonexistent-tumwater-test-config";
+  try {
+    const result = await initProject(plain, "On main.");
+    assert.equal(result.branch, "main");
+  } finally {
+    delete process.env.GIT_CONFIG_GLOBAL;
+  }
+});
+
 test("initProject validates before seeding: a bad prompt leaves no repo behind", async () => {
   const dir = tmpdir();
   await assert.rejects(() => initProject(dir, "   "), /initial prompt is required/);

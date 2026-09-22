@@ -18,6 +18,7 @@ import {
 } from "../src/doctor.js";
 import { GIT_MISSING_MESSAGE } from "../src/git.js";
 import { allRoleIds } from "../src/roles.js";
+import type { TumwaterConfig } from "../src/types.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
 // Unit coverage for the pre-flight environment check (src/doctor.ts): every check's ok/fail/warn
@@ -105,7 +106,29 @@ test("checkRepo reports not-a-repo, no-commits-yet, and detached HEAD as distinc
   assert.match(det.detail, /detached/);
 
   const ok = await checkRepo(makeRepo());
-  assert.deepEqual(ok, { level: "ok", detail: "on branch main" });
+  assert.equal(ok.level, "ok");
+  assert.match(ok.detail, /repo at \S+ — on branch main$/);
+});
+
+test("checkRepo reports the toplevel and honors a configured baseBranch", async () => {
+  // A configured baseBranch that exists is the target, whatever is checked out.
+  const repo = makeRepo();
+  sh(repo, "git", "branch", "integration");
+  sh(repo, "git", "checkout", "integration");
+  const targeting = await checkRepo(repo, { baseBranch: "main" } as TumwaterConfig);
+  assert.equal(targeting.level, "ok");
+  assert.match(targeting.detail, /repo at \S+ — targeting branch main$/);
+
+  // A configured branch that does not exist fails, listing what does — at doctor time, not
+  // at the first tick.
+  const missing = await checkRepo(repo, { baseBranch: "ghost" } as TumwaterConfig);
+  assert.equal(missing.level, "fail");
+  assert.match(missing.detail, /configured baseBranch ghost does not exist/);
+  assert.match(missing.detail, /branches: .*integration/);
+
+  // No config (the standalone check) falls back to the checked-out branch, as before.
+  const checkedOut = await checkRepo(repo);
+  assert.match(checkedOut.detail, /on branch integration$/);
 });
 
 test("checkInit fails when uninitialized and reports the enabled role count for a valid config", () => {

@@ -7,7 +7,16 @@ import type { TumwaterConfig } from "./types.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo } from "./build-info.js";
 import { STALE_INPUTS_LABEL } from "./redeploy.js";
 import { findOnPath } from "./files.js";
-import { GIT_MISSING_MESSAGE, currentBranch, gitTry, hasCommits, isGitRepo } from "./git.js";
+import {
+  GIT_MISSING_MESSAGE,
+  branchExists,
+  currentBranch,
+  gitTry,
+  hasCommits,
+  isGitRepo,
+  listBranches,
+  repoToplevel,
+} from "./git.js";
 import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,
@@ -84,13 +93,29 @@ export function checkGitBinary(pathEnv: string = process.env.PATH ?? ""): CheckO
 }
 
 /** Repo ready — the git.ts predicates in requireReadyRepo's order, so doctor and the
- * readiness gate cannot drift: not a git repo → no commits yet → detached HEAD. */
-export async function checkRepo(root: string): Promise<CheckOutcome> {
+ * readiness gate cannot drift: not a git repo → no commits yet → detached HEAD. Reports the
+ * resolved toplevel (not the cwd — doctor must say where .tumwater/ lives) and the branch the
+ * fleet would target: a configured `baseBranch` wins (`run --branch` is per-invocation), and
+ * one that does not exist fails here instead of at the first tick. `config` is optional so
+ * the check stands alone; runDoctor passes the loaded config behind a guard. */
+export async function checkRepo(root: string, config?: TumwaterConfig): Promise<CheckOutcome> {
   if (!(await isGitRepo(root))) return { level: "fail", detail: NOT_A_REPO_MESSAGE };
   if (!(await hasCommits(root))) return { level: "fail", detail: NO_COMMITS_MESSAGE };
+  const toplevel = (await repoToplevel(root)) ?? root;
+  const configured = config?.baseBranch;
+  if (configured !== undefined) {
+    if (!(await branchExists(root, configured))) {
+      const existing = (await listBranches(root)).join(", ") || "none";
+      return {
+        level: "fail",
+        detail: `repo at ${toplevel} — configured baseBranch ${configured} does not exist (branches: ${existing})`,
+      };
+    }
+    return { level: "ok", detail: `repo at ${toplevel} — targeting branch ${configured}` };
+  }
   const branch = await currentBranch(root);
   if (branch === null) return { level: "fail", detail: DETACHED_HEAD_MESSAGE };
-  return { level: "ok", detail: `on branch ${branch}` };
+  return { level: "ok", detail: `repo at ${toplevel} — on branch ${branch}` };
 }
 
 /** Initialized + config valid — tumwater.json present and loadConfig does not throw. The fail
@@ -235,6 +260,14 @@ async function currentHead(root: string): Promise<string | null> {
  * construction — no check removes or repairs anything (the state-dir probe writes a temp file
  * and deletes it again) — so doctor works identically with or without a running harness. */
 export async function runDoctor(root: string, pathEnv: string = process.env.PATH ?? ""): Promise<DoctorReport> {
+  // Loaded once for the checks that read config (repo's baseBranch); a broken file stays
+  // null — checkInit reports it verbatim — so doctor still runs every other check.
+  let config: TumwaterConfig | null = null;
+  try {
+    config = loadConfig(root);
+  } catch {
+    // checkInit reports the config problem.
+  }
   const info = readOrchestratorInfo(root);
   const header =
     orchestratorAlive(root, info) && info
@@ -243,7 +276,7 @@ export async function runDoctor(root: string, pathEnv: string = process.env.PATH
   const checks: DoctorReport["checks"] = [
     { name: "node", ...checkNodeVersion() },
     { name: "git binary", ...checkGitBinary(pathEnv) },
-    { name: "repo", ...(await checkRepo(root)) },
+    { name: "repo", ...(await checkRepo(root, config ?? undefined)) },
     { name: "init", ...checkInit(root) },
     { name: "fallback", ...checkFallbackModel(root) },
     { name: "pi binary", ...checkPiBinary(pathEnv) },

@@ -5,22 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 2/7 — Resolve the repo root, and target any branch (planned 2026-09-14, refined 2026-09-17)
-
-**Goal.** Run the fleet against any repository, from anywhere inside it, targeting whatever branch that repo's primary checkout is on. Branch plumbing is already parameterized end to end; what is missing is a correct root (from `git rev-parse --show-toplevel`), an explicit override, and the guards that keep a resolved branch honest.
-
-**Series.** Part 2/7 of the portability series; gates 3/7, 5/7, 6/7 and 7/7. Depends on: nothing. Approach, design rationale, and audit pins: plans/portability.md §2/7.
-
-**Files touched.** src/git.ts, src/cli.ts, src/cli-args.ts, src/types.ts, src/config-validation.ts, src/orchestrator.ts, src/init.ts, src/doctor.ts, test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/doctor.test.ts, test/loop.test.ts.
-
-**Acceptance criteria.**
-- `tumwater status` / `run` / `tui` / `doctor` behave identically from the repo root and from any subdirectory of it.
-- `tumwater init` run from a subdirectory of an existing repo seeds that repo's root (and reports `already initialized` when it is already initialized) rather than creating a nested document set.
-- A repo whose only branch is `trunk` (no `main` anywhere) runs a full tick → review → merge cycle, with the commit landing on `trunk`.
-- `tumwater run --branch release/2.0` targets that branch; naming a nonexistent branch fails at startup listing the branches that exist.
-- Checking out a different branch in the primary checkout mid-run logs exactly one warning and does not change what the fleet merges into.
-- `tumwater init` in an empty directory with `init.defaultBranch=trunk` creates the repo on `trunk`.
-
 ### 3/7 — Harness-mediated config writes: take custom loops off the commit path (planned 2026-09-14, refined 2026-09-21)
 
 **Goal.** Make `customLoops` management independent of whether the config file is tracked, of whether the target repo is tumwater's own, and of the review/merge cycle, so custom loops work on an installed copy against any repository. Today the director edits `<worktree>/tumwater.json` and the edit reaches the primary checkout only by commit → review gate → merge, which forces the file tracked, accrues fleet-authored config commits on an adopted repo, and silently drops a rejected director tick's explicit user instruction. The director leaves a request file in its own worktree instead.
@@ -109,9 +93,20 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A repo tumwater created before this change keeps reading its brief from README.md with no migration step.
 - `tumwater init --dry-run` prints the file list and exits 0 having written nothing.
 
-**Series critical path.** 1/7 → 2/7 → 3/7 → 4a/7 → 4b/7. 4c/7 landed 2026-09-21 (`dfa6d26`); its one remaining line — README's `## Usage` naming `tumwater.example.json` — is folded into 4a/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order after it.
+**Series critical path.** 1/7 ✓ and 2/7 ✓ (landed 2026-09-22) are done; 3/7 → 4a/7 → 4b/7 remains the critical path. 4c/7 landed 2026-09-21 (`dfa6d26`); its one remaining line — README's `## Usage` naming `tumwater.example.json` — is folded into 4a/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here.
 
 ## Done
+
+### 2/7 — Resolve the repo root, and target any branch (planned 2026-09-14, refined 2026-09-17, re-audited 2026-09-21, done 2026-09-22)
+
+**Goal.** Run the fleet against any repository, from anywhere inside it, targeting whatever branch that repo's primary checkout is on. Branch plumbing is already parameterized end to end; what is missing is a correct root (from `git rev-parse --show-toplevel`), an explicit override, and the guards that keep a resolved branch honest.
+
+**Landed as planned, plus two seams the audits left open:**
+- All of the approach as written: `repoToplevel`/`branchExists`/`listBranches` in src/git.ts; `main()` resolves the root from the cwd's toplevel before dispatch (init included — a subdirectory init seeds the repo root and reports `already initialized`); `resolveMainBranch(root, config, branchArg)` implements `--branch` → `baseBranch` → checked-out with existence validation naming the branches that exist; `parseBranchFlag` beside `parseRoleFlag`; `baseBranch` in config (validated non-empty); the edge-triggered branch-divergence warning in the orchestrator's poll loop (re-armed when the checkout returns); `initProject` honors `--branch` → git's `init.defaultBranch` → `main` and `InitResult` carries the created branch, so `cmdInit` prints it; `checkRepo(root, config?)` reports the toplevel and the target branch and fails on a configured-but-missing one, with runDoctor loading the config behind a guard.
+- One addition beyond the plan text: src/supervisor.ts's `spawnRunChild` spawned the child with a literal `[script, "run"]`, which would have dropped `--branch` from a supervised run — it now takes `extraArgs` and cmdRun forwards its flags, so every restart generation targets the same branch.
+- The start banner names the resolved root when it differs from cwd; the help's init/run lines name the new flags.
+
+**Verification.** Full suite 1310/1310 (was 1288 + 22 new/updated tests): toplevel/branch helpers, `parseBranchFlag` and init `--branch` parsing, subdirectory CLI behavior, unknown-`--branch` failure, `init.defaultBranch` (via GIT_CONFIG_GLOBAL), doctor's baseBranch seam, the edge-triggered warning in a live orchestrator, and the trunk-only end-to-end tick → review → merge fixture.
 
 ### Fix a failed landing build check on the spot instead of rejecting (planned 2026-09-21, requested by user, done 2026-09-23)
 
