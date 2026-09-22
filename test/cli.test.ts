@@ -13,6 +13,7 @@ import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { abortRequestPath, inboxDir, orchestratorStatePath, pausedPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
+import { lanAddresses } from "../src/ui/gui.js";
 import { cli, cliWithEnv, exitCode, fakePi, makeRepo, sh, spawnCli, tmpdir } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
@@ -432,6 +433,45 @@ test("gui --port validates its range instead of listening on an unexpected port"
   const withAll = await cli(repo, "gui", "--all-interfaces", "--port", "abc");
   assert.equal(withAll.code, 1);
   assert.match(withAll.stderr, /--port must be an integer/);
+});
+
+test("gui starts, prints its banner, and --all-interfaces names the LAN exposure", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli gui serve");
+
+  // A fresh ephemeral port for each spawn: grab one from the OS, hand it back, and use it
+  // before anything else claims it (the same trick as the busy-port test below, inverted).
+  const freePort = async (): Promise<number> => {
+    const probe = http.createServer();
+    await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    const port = (probe.address() as { port: number }).port;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    return port;
+  };
+
+  // Default binding: the banner names localhost only, with no all-interfaces warning.
+  const localPort = await freePort();
+  const local = spawnCli(repo, ["gui", "--port", String(localPort)]);
+  try {
+    await local.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${localPort}`), "the gui banner", 30_000);
+    assert.ok(!local.out().includes("ALL interfaces"), "default bind does not claim all interfaces");
+  } finally {
+    local.kill();
+  }
+
+  // --all-interfaces: the concrete LAN URLs and the no-auth warning join the banner.
+  const lanPort = await freePort();
+  const lan = spawnCli(repo, ["gui", "--port", String(lanPort), "--all-interfaces"]);
+  try {
+    await lan.waitFor((b) => b.includes("listening on ALL interfaces"), "the all-interfaces warning", 30_000);
+    for (const addr of lanAddresses())
+      assert.ok(
+        lan.out().includes(`also at http://${addr}:${lanPort}`),
+        `names the LAN address ${addr}`,
+      );
+  } finally {
+    lan.kill();
+  }
 });
 
 test("gui reports a friendly error when the port is already in use", async () => {
