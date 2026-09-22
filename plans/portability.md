@@ -856,39 +856,59 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   detected ("verify with `pytest -q`"), and emit the node_modules sentence only when the resolved
   check is the npm one.
 - **Doctor says when there is no check at all**, at `warn` with the consequence spelled out ("the
-  review gate's build pre-check and the red-main gate are off"). A silently absent safety layer is
-  the failure this entry exists to close.
+  review gate's build pre-check, the red-main baseline, and redeploy's green check are all off").
+  This deliberately supersedes `checkBuildCheck`'s 2026-09-05 "none declared is informational"
+  stance (doctor.ts:187): that decision predates non-npm projects being a supported target, when a
+  warn would have been noise no operator could act on. Once `check.command` exists the warning is
+  actionable, so the branch flips to `warn`, its stale comment is rewritten, and doctor's exit code
+  is unchanged (warn does not fail — the `checkFallbackModel` precedent). A silently absent safety
+  layer is the failure this entry exists to close.
 
 **Approach.**
 - src/types.ts + src/config-validation.ts — `check?: { command: string; cwd?: string; timeoutSeconds?: number }`,
   a `CHECK_KEYS` list, and the `TOP_LEVEL_KEYS` entry.
 - src/build-check.ts — `BuildCheck` becomes `{ kind: "npm"; rootDir; script }` |
-  `{ kind: "command"; command; cwd; timeoutMs }`; `detectBuildCheck(startDir, config)` returns the
-  configured command first and falls back to the existing walk-up; `runBuildCheck` dispatches on
-  `kind` with the classification above; `describeCheck(check)` returns the human/prompt-facing
-  string. `clipBuildTail`'s npm-banner filter stays (harmless elsewhere).
+  `{ kind: "command"; command; cwd; timeoutMs }`; `detectBuildCheck(startDir, config?, maxLevels =
+  WALK_UP_LEVELS)` returns the configured command first and falls back to the existing walk-up;
+  `runBuildCheck` dispatches on `kind` with the classification above; `describeCheck(check)`
+  returns the human/prompt-facing string. `clipBuildTail` (:235) keeps its npm-banner filter and
+  its message-line retention — the error-message line above the ten-line window is kept so
+  `failureHeadline` (:255, moved here from main-red.ts by d39e426) can name the failure — and both
+  operate on arbitrary output text, so a configured command's output is classified unchanged.
 - src/prompt.ts — thread `describeCheck` into COMMON_RULES; drop the unconditional node_modules
   sentence.
 - Threading config to `detectBuildCheck` reaches three call sites, not two: `runScopedBuildCheck(root,
-  role, scope, wt, timeoutMs)` in build-check.ts calls `detectBuildCheck(wt)` itself and serves the
-  `gate` (src/review.ts:157), `landing` (src/merge.ts:151) and `batch` (src/lander.ts:376) scopes;
-  `checkMainBaseline` (src/main-baseline.ts:137) calls `detectBuildCheck(wt)` + `runBuildCheck` at
-  line 159; and src/doctor.ts:145 calls it directly. Add the config parameter to all three, plus
-  `config: TumwaterConfig` on `MergeContext` (src/merge.ts:42, set at src/loop.ts:230 — review.ts
-  and lander.ts already hold it). src/redeploy.ts reaches the check through `checkMainBaseline`, so
-  it needs no change beyond what it already hands down.
+  role, scope, wt, config, timeoutMs = BUILD_CHECK_TIMEOUT_MS)` (build-check.ts:368) calls
+  `detectBuildCheck(wt)` itself and serves the `gate` (src/review.ts:161), `landing`
+  (src/merge.ts:151) and `batch` (src/lander.ts:394) scopes; `checkMainBaseline`
+  (src/main-baseline.ts:123 — its signature grows to `checkMainBaseline(wt, config, onRun?,
+  reverifyRed?)`, config required in the 2nd position: detection needs it, and an optional
+  trailing parameter would let future callers skip it) calls `detectBuildCheck(wt)` +
+  `runBuildCheck` at :145/:148; and `checkBuildCheck` (src/doctor.ts:184) calls it at :185. Add the
+  config parameter to all three, plus `config: TumwaterConfig` on `MergeContext` (src/merge.ts:42,
+  set beside `exemptPaths` in the object literal inside `LoopRunner.merge` — src/loop.ts:257–264;
+  review.ts (:61) and lander.ts (:50/:71) already hold it). `checkMainBaseline`'s three callers
+  thread it too: src/main-red.ts's `mainRedGate` passes the `cfg` it already loads (:87) at its
+  :89 call, `bugfixMainRedNote` (:68) gains the same `loadConfigCached(root).config ??
+  defaultConfig()` load for its :69 call, and src/redeploy.ts's `mainIsGreen(mirrorWt, config,
+  onRun?)` (:432) takes config, with the production wiring at createRedeployer (:458) reading the
+  live config per call — so src/main-red.ts and src/redeploy.ts join this entry's files.
 - src/doctor.ts — a `project check` line: configured command, detected npm script, or the warn
   case.
 - Tests: test/build-check.test.ts (a configured command passing, failing with its tail as reasons,
   and timing out to `skipped`; `cwd` honored; npm fallback byte-identical), test/prompt.test.ts
   (the node_modules sentence appears only for an npm check; a configured command is named
-  verbatim), test/review.test.ts + test/main-red.test.ts (a configured command gates a merge and a
-  red baseline), test/doctor.test.ts.
+  verbatim), test/review.test.ts (a configured command gates a merge) + test/main-baseline.test.ts
+  (a configured command runs at the red-main baseline — and its ~25 `checkMainBaseline(...)` call
+  sites gain the config argument mechanically), test/redeploy.test.ts (its four `mainIsGreen(...)`
+  call sites likewise, plus one test that a configured check — no npm anywhere — makes the green
+  check run it), test/main-red.test.ts passes unmodified (neither exported signature changes; the
+  internal config load degrades to defaults in a tmp repo), test/doctor.test.ts.
 
 **Files touched.** src/types.ts, src/config-validation.ts, src/build-check.ts, src/prompt.ts,
-src/review.ts, src/merge.ts, src/lander.ts, src/main-baseline.ts, src/loop.ts, src/doctor.ts,
-test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts, test/main-baseline.test.ts,
-test/doctor.test.ts.
+src/review.ts, src/merge.ts, src/lander.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts,
+src/loop.ts, src/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
+test/main-baseline.test.ts, test/redeploy.test.ts, test/doctor.test.ts.
 
 **Acceptance criteria.**
 - A repo with `check.command = "pytest -q"` and no `package.json` anywhere has its check run at
@@ -975,6 +995,82 @@ Sizing: unchanged apart from the wider threading surface — build-check.ts ~60 
 `buildCheckFrom` variant + dispatch + `describeCheck`), main-baseline.ts ~5, doctor.ts ~10,
 prompt.ts ~15, review/merge/lander ~10, loop.ts ~2 (MergeContext wiring), config-validation/types
 ~10, tests ~180. One run. No design question remains open.
+
+**Refined 2026-09-21 (plan loop) — 6/7 re-audited against main `ada3948` (README's stamp is
+behind at `c2ff74b`). This entry carried the series' oldest audit (`94562d8`, 2026-09-18, ~222
+landings back; of the three 09-18-dated entries 6/7's anchor files took by far the most churn —
+~43 commits across its src files, 7 of them in build-check.ts alone, including three post-audit
+semantic changes). The design holds unchanged; two seams the 09-18 audit left open are closed
+below, and every drifted line anchor is re-pinned.**
+
+Verified as written: no `check` key exists anywhere in src/types.ts or src/config-validation.ts,
+so the capability is still absent. `src/build-check.ts` — `BuildCheck` is still the private
+`{ rootDir; script }` interface (:43, was :42), `buildCheckFrom` (:72, was :71, hardened by
+5da2e2c to reject a non-object package.json and a whitespace-only script), `WALK_UP_LEVELS` :54,
+`detectBuildCheck(startDir, maxLevels = WALK_UP_LEVELS)` :130 (was :114), `BUILD_CHECK_TIMEOUT_MS`
+300_000 :156 (was :140), `BuildSkipReason` now a standalone exported type :162 (extracted by
+f4c4d0b, shared with main-baseline.ts's check), `BuildCheckOutcome` :172 (was :150) with the same
+three states and the same timeout-remap policy, `clipBuildTail` :235, `failureHeadline` :255,
+`runBuildCheck(wt, check, timeoutMs = BUILD_CHECK_TIMEOUT_MS)` :269, `BuildCheckScope` :320 /
+`SCOPE_WORDS` :325 / `MERGE_SCOPES` :337 (were :269/:281), `runScopedBuildCheck` :368 (was :302)
+whose internal `detectBuildCheck(wt)` is :375 and `runBuildCheck` :378. The three scopes serve
+`gate` (src/review.ts:161, was :157, still passing `ctx.buildCheckTimeoutMs ??
+BUILD_CHECK_TIMEOUT_MS` at :166), `landing` (src/merge.ts:151, unchanged) and `batch`
+(src/lander.ts:394, was :376). `src/prompt.ts` — COMMON_RULES (:53) still carries the
+unconditional node_modules sentence (:75–77, was 74–76) and the vague "if it has a build or test
+command" bullet (:79, was :78). `src/doctor.ts` — the direct `detectBuildCheck(root)` call now
+lives in `checkBuildCheck` (:184, was :145) at :185, and its no-check branch still returns `ok`
+(:187). `MergeContext` (src/merge.ts:42) still has no `config`; its single construction site is
+the object literal inside `LoopRunner.merge` at src/loop.ts:257–264 (`exemptPaths` at :261; was
+:230 — loop.ts:297 is the lander's context, which already carries config, and :588 is
+recoverLeftover's). `review.ts` (:61) and `lander.ts` (:50/:71) still hold config.
+maxLevels-as-second-positional test call sites are now test/build-check.test.ts:274/:285/:286 and
+test/review.test.ts:475 (were :276/:287/:288/:424).
+
+Corrections (pinned in place):
+1. **checkMainBaseline's callers must thread config — the 09-18 note's "redeploy needs no
+   change beyond what it already hands down" claim is false under the explicit-parameter design.**
+   `checkMainBaseline` gained a third parameter, `reverifyRed` (landed by 0394c6d, before that
+   audit, but never pinned), and its three production callers are src/main-red.ts:69
+   (`bugfixMainRedNote`, which loads no config today — it gains the two-line
+   `loadConfigCached(root).config ?? defaultConfig()` idiom mainRedGate already uses at :87),
+   src/main-red.ts:89 (`mainRedGate`, passing its existing `cfg`), and src/redeploy.ts:438 inside
+   `mainIsGreen` (:432), whose only production wiring is createRedeployer's `mainGreen` dep
+   (:458 — `root` is in closure scope; read the live config per call so a mid-run
+   `check.command` edit applies). Pin the new signatures: `checkMainBaseline(wt, config, onRun?,
+   reverifyRed?)` and `mainIsGreen(mirrorWt, config, onRun?)`. The acceptance criterion "its check
+   run at the red-main baseline and in redeploy's green check" is exactly what this threading
+   implements — an optional trailing config parameter would silently exempt those two gates.
+   test/main-red.test.ts needs no change (neither exported signature moves; the internal load
+   degrades to defaults in a tmp repo).
+2. **Doctor's no-check stance flips from informational to warn, superseding the 2026-09-05
+   decision** (landed by 784d487, before every audit of this entry, yet never reconciled with the
+   entry's `warn` criterion): pre-portability a non-npm target was out of scope, so "none
+   declared is informational" was honest; with `check.command` available the warning is
+   actionable and its absence is precisely the silently-off safety layer this entry exists to
+   close. The branch at doctor.ts:187 flips to `warn` with the consequence spelled out, the stale
+   comment is rewritten, doctor's exit code stays 0 (warn does not fail), and doctor.test.ts's
+   no-check expectation follows. `checkBuildCheck` gains the config parameter runDoctor already
+   holds (2/7 lands first and pins runDoctor's single guarded load).
+3. **Post-audit build-check.ts facts absorbed.** a3ee4d9 gave `clipBuildTail` message-line
+   retention (≤11 lines) so `failureHeadline` names the failing test rather than a stack frame;
+   d39e426 moved `failureHeadline` into build-check.ts beside it; f4c4d0b extracted the shared
+   `BuildSkipReason` type and skip-warning helper. All three are npm-agnostic and untouched by
+   this entry's union — the old "`clipBuildTail`'s npm-banner filter stays (harmless elsewhere)"
+   phrasing is replaced in the Approach with the fuller statement so an implementer does not
+   simplify the tail logic away while switching on `kind`.
+4. **The Tests bullet and Files-touched disagreed** (the bullet named test/main-red.test.ts, the
+   file list test/main-baseline.test.ts, from the 09-18 swap). Resolved: the red-baseline test
+   lives at the checkMainBaseline level in test/main-baseline.test.ts (the changed seam);
+   test/main-red.test.ts is out (passes unmodified); test/redeploy.test.ts is in (four
+   `mainIsGreen` call sites at :725/:756/:759/:788 plus one configured-check test).
+
+Sizing now: build-check.ts ~60 (union + `buildCheckFrom` variant + dispatch + `describeCheck`),
+main-baseline.ts ~5, main-red.ts ~3 (the load + two call sites), redeploy.ts ~10 (signature +
+wiring), doctor.ts ~12, prompt.ts ~15, review/merge/lander ~10, loop.ts ~2 (MergeContext wiring),
+config-validation/types ~10, and tests ~230 (mechanical parameter threading across
+main-baseline.test.ts and redeploy.test.ts plus the new configured-check tests). One run. No
+design question remains open.
 
 ---
 

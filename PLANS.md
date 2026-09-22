@@ -94,13 +94,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A wrapper script at `agentBin` that exports an env var and execs the real pi produces byte-identical tick behavior (the existing `fakePi` helper already exercises this shape).
 - With none of the three resolving to an executable, `run` and `doctor` both fail naming the resolved value, its source, and the install hint.
 
-### 6/7 — Make the project's verification command configurable (planned 2026-09-14, refined 2026-09-18)
+### 6/7 — Make the project's verification command configurable (planned 2026-09-14, refined 2026-09-21)
 
-**Goal.** Stop assuming the target project is an npm project. `detectBuildCheck`/`runBuildCheck` walk up for a directory holding both `package.json` and `node_modules`, then run `npm run test|typecheck|build`; against a Python, Rust, or Go repo the walk finds nothing, so the review gate's pre-check, the red-main baseline gate (src/main-red.ts), and redeploy's `mainGreen` all degrade to "no check". Add `check.command` in config with today's npm auto-detection as the fallback; the threading surface is the three `detectBuildCheck` sites (`runScopedBuildCheck`, main-baseline.ts, doctor.ts) plus `MergeContext`.
+**Goal.** Stop assuming the target project is an npm project. `detectBuildCheck`/`runBuildCheck` walk up for a directory holding both `package.json` and `node_modules`, then run `npm run test|typecheck|build`; against a Python, Rust, or Go repo the walk finds nothing, so the review gate's pre-check, the red-main baseline gate (src/main-red.ts), and redeploy's `mainGreen` all degrade to "no check". Add `check.command` in config with today's npm auto-detection as the fallback; the threading surface is the three `detectBuildCheck` sites (`runScopedBuildCheck`, main-baseline.ts, doctor.ts), `MergeContext`, and `checkMainBaseline`'s own callers (src/main-red.ts, src/redeploy.ts).
 
 **Series.** Part 6/7 of the portability series. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §6/7.
 
-**Files touched.** src/types.ts, src/config-validation.ts, src/build-check.ts, src/prompt.ts, src/review.ts, src/merge.ts, src/lander.ts, src/main-baseline.ts, src/loop.ts, src/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts, test/main-baseline.test.ts, test/doctor.test.ts.
+**Files touched.** src/types.ts, src/config-validation.ts, src/build-check.ts, src/prompt.ts, src/review.ts, src/merge.ts, src/lander.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts, src/loop.ts, src/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts, test/main-baseline.test.ts, test/redeploy.test.ts, test/doctor.test.ts.
 
 **Acceptance criteria.**
 - A repo with `check.command = "pytest -q"` and no `package.json` anywhere has its check run at the review gate, at the red-main baseline, and in redeploy's green check; a failing check rejects the diff with the command's output tail as the reasons.
