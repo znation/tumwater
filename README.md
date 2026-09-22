@@ -237,6 +237,8 @@ npm install -g tumwater    # or: npx tumwater — no checkout needed
 
 cd your-project        # existing or new project dir
 tumwater init "Build a tiny markdown-to-html converter CLI in Python."
+#   settings live in an untracked tumwater.json, seeded from a tracked tumwater.example.json —
+#   edit the example to give collaborators your roles/intervals baseline
 tumwater run          # terminal 1: the loops (Ctrl+C to stop)
 tumwater tui          # terminal 2: dashboard + main prompt
 tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N to change)

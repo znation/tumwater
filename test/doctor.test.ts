@@ -17,6 +17,8 @@ import {
   runDoctor,
 } from "../src/doctor.js";
 import { GIT_MISSING_MESSAGE } from "../src/git.js";
+import { initProject } from "../src/init.js";
+import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import type { TumwaterConfig } from "../src/types.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
@@ -455,4 +457,28 @@ test("runDoctor includes the build check and never fails the exit on a stale bui
   const build = report.checks.find((c) => c.name === "build");
   assert.ok(build, "the build check is part of the report");
   assert.notEqual(build.level, "fail");
+});
+
+test("checkInit warns naming drifted template keys, never rewrites, and its remedy works", async () => {
+  const root = readyRepo();
+  fs.writeFileSync(
+    path.join(root, "tumwater.example.json"),
+    JSON.stringify({ minTickIntervalSeconds: 45, landBatchMax: 2 }),
+  );
+  const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
+  const warn = checkInit(root);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /minTickIntervalSeconds, landBatchMax/);
+  assert.match(warn.detail, /re-run `tumwater init`/);
+  // Read-only: the warning never touches the local file.
+  assert.equal(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"), before);
+
+  // The remedy is a real path, not a no-op: init skips an existing config, so reseeding means
+  // deleting it first — and then the drift is gone because the seed is the full template merge.
+  fs.rmSync(path.join(root, "tumwater.json"));
+  await initProject(root, "prompt");
+  const ok = checkInit(root);
+  assert.equal(ok.level, "ok");
+  assert.match(ok.detail, /roles enabled/);
+  assert.equal(loadConfig(root).minTickIntervalSeconds, 45);
 });

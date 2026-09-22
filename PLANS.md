@@ -5,21 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-22, re-pinned against `a3e4000` 2026-09-22)
-
-**Goal.** Every project tumwater initializes gets an untracked, gitignored `tumwater.json`: seeded from a tracked `tumwater.example.json` when the project ships one, from `defaultConfig()` when it does not; `doctor` reports where the two have drifted. This repo's own config keeps its tracking until 4b/7. Two implementer traps are pinned in the doc: `ensureGitignore`'s early return only checks its first entry, and the ignored config must stay out of the commit pathspec while still being reported as created.
-
-**Series.** Part 4a/7 of the portability series (the old 4/7 was split three ways on the 2026-09-19 audit). Depends on: 3/7. Carries the residual of 4c/7 (landed 2026-09-21): the README `## Usage` line naming `tumwater.example.json`, which can only be written once this entry creates the file. Approach, design rationale, and pins: plans/portability.md §4a/7.
-
-**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/cli.ts, src/doctor.ts, tumwater.example.json (new), README.md, test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a project with no example (defaults, as today).
-
-**Acceptance criteria.**
-- `init` in a fresh repo with `tumwater.example.json` seeds the local config from it; without one, from defaults; with a malformed one, from defaults and no throw.
-- In the freshly initialized repo `git ls-files` lists no `tumwater.json`, `.gitignore` lists both `.tumwater/` and `tumwater.json`, `git status --porcelain` is empty, and the CLI output still names `tumwater.json` as created.
-- `doctor` warns naming the drifted keys when the example has moved ahead, never rewrites the local file, and keeps `"N roles enabled"` + exit 0 when there is no drift.
-- README's `## Usage` names `tumwater.example.json` as the tracked baseline an untracked `tumwater.json` is seeded from (4c/7's residual).
-- Full suite green.
-
 ### 4b/7 — Untrack this repo's own config without deleting it (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23)
 
 **Goal.** This repo stops tracking `tumwater.json`, so no future commit carries a machine, a model id, or a concurrency sized to one GPU — and the running fleet keeps its live config through the landing that removes it. The landing fast-forwards the primary checkout's working tree (`ffMainTo`, src/merge.ts:314), so a preserve/restore step in that path writes the live file back after the commit deletes it from the index.
@@ -80,6 +65,26 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Series critical path.** 1/7 ✓, 2/7 ✓ and 3/7 ✓ (landed 2026-09-23) are done; 4a/7 → 4b/7 remains the critical path. 4c/7 landed 2026-09-21 (`dfa6d26`); its one remaining line — README's `## Usage` naming `tumwater.example.json` — is folded into 4a/7. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here.
 
 ## Done
+
+### 4a/7 — Seed an untracked config from a tracked template (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-22, done 2026-09-22)
+
+Landed per plans/portability.md §4a/7: `exampleConfigPath` + `EXAMPLE_CONFIG_BASENAME` (src/paths.ts),
+`seedConfig` and `exampleDrift` (src/config.ts, sharing loadConfig's overlay via a new `overlayDefaults`
+helper), `init` seeding through `seedConfig` with both pinned traps fixed (`ensureGitignore` now tests
+`.tumwater/` and `tumwater.json` independently; the config stays out of the add/commit pathspec while
+`created` still reports it, and an empty remaining pathspec skips the commit entirely), `checkInit`
+folding drift into the pinned "init" check as a warn naming the keys, tumwater.example.json (new,
+tracked, the generic half per the plan), and the README `## Usage` line (4c/7's residual). Tests:
+seed/drift unit tests, init seeding + untracked + malformed-template + only-a-config-stays-uncommitted
+tests, doctor drift-warn + read-only + remedy tests, gitignore independent-entry tests updated.
+
+Two review objections from the first landing attempt were addressed: the drift warn's remedy now says
+to **delete** tumwater.json before re-running `tumwater init` (init skips an existing config, so the
+old wording was a no-op), and test/doctor.test.ts proves that remedy end to end. Operational note:
+this repo's own tracked tumwater.json lacks several default-valued keys the new template sets
+(landBatchMax, logMaxBytes, sessionRetentionDays, thrashTurns, thrashMinutes, autoRestart, review,
+customLoops), so `doctor` reports the drift warn here until 4b/7 untracks the config — a warn, exit 0,
+and truthful: the template genuinely has moved ahead.
 
 ### 3/7 — Harness-mediated config writes: take custom loops off the commit path (planned 2026-09-14, refined 2026-09-21, done 2026-09-23)
 

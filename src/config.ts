@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { FallbackModelConfig, TumwaterConfig, RoleConfig } from "./types.js";
 import { allRoleIds } from "./roles.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { configPath, configRequestPath } from "./paths.js";
+import { configPath, configRequestPath, exampleConfigPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
 import { isJsonObject } from "./json-object.js";
@@ -74,28 +74,18 @@ export function defaultConfig(): TumwaterConfig {
   };
 }
 
-/** Load tumwater.json, filling in defaults for anything missing. Throws an Error with an
- * actionable message when the file is malformed or holds invalid values (see validateConfig). */
-export function loadConfig(root: string): TumwaterConfig {
-  const file = configPath(root);
-  const base = defaultConfig();
-  if (!fs.existsSync(file)) return base;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch (err) {
-    throw new Error(`tumwater.json is not valid JSON: ${errorMessage(err)}`);
-  }
-  validateConfig(raw);
-  const cfg = raw as Partial<TumwaterConfig>;
+/** Overlay a partial config's top-level keys over `base`, merging the sub-objects the way the
+ * file loader always has: shared by loadConfig and init's seeding (plans/portability.md §4a/7)
+ * so a seeded config behaves exactly like the equivalent hand-written one. Owns its result — a
+ * caller mutating what comes back cannot reach back into the parsed input. */
+function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfig>): TumwaterConfig {
   const merged: TumwaterConfig = {
     ...base,
     ...cfg,
     idleBackoff: { ...base.idleBackoff, ...(cfg.idleBackoff ?? {}) },
     review: { ...base.review, ...(cfg.review ?? {}) },
     piArgs: cfg.piArgs ?? base.piArgs,
-    // Own the parsed object like every other section, so a caller mutating its result cannot
-    // reach back into the parse. Absent stays absent: no fallback = today's pause behavior.
+    // Absent stays absent: no fallback = today's pause behavior.
     ...(cfg.fallbackModel ? { fallbackModel: { ...cfg.fallbackModel } } : {}),
     customLoops: (cfg.customLoops ?? []).map((c) => ({ ...c })),
     roles: { ...base.roles },
@@ -112,6 +102,63 @@ export function loadConfig(root: string): TumwaterConfig {
     merged.roles[id] = { ...(merged.roles[id] ?? { enabled: true }), ...rc };
   }
   return merged;
+}
+
+/** Build the config `init` seeds a fresh tumwater.json with (plans/portability.md §4a/7): the
+ * tracked tumwater.example.json overlaid on the defaults when the project ships one, the bare
+ * defaults when it does not. Never throws: an unparseable or invalid template falls back to the
+ * defaults, because init must not die on a bad template — the user's own tumwater.json is what
+ * validation protects. */
+export function seedConfig(root: string): TumwaterConfig {
+  const base = defaultConfig();
+  const file = exampleConfigPath(root);
+  if (!fs.existsSync(file)) return base;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, "utf8"));
+    validateConfig(raw);
+  } catch {
+    return base;
+  }
+  return overlayDefaults(base, raw as Partial<TumwaterConfig>);
+}
+
+/** Top-level keys the tracked template sets that the local tumwater.json lacks
+ * (plans/portability.md §4a/7): what doctor's init check reports as template drift. Whole-key
+ * only — sub-objects are reported as units, and a key present in both files is the local file's
+ * business even when the values differ (deep diffing is a bigger design than this needs). []
+ * when either file is missing or unparseable: with no template there is nothing to drift from,
+ * and a broken local file is checkInit's fail, not a drift line. */
+export function exampleDrift(root: string): string[] {
+  const example = exampleConfigPath(root);
+  const config = configPath(root);
+  if (!fs.existsSync(example) || !fs.existsSync(config)) return [];
+  let template: unknown;
+  let local: unknown;
+  try {
+    template = JSON.parse(fs.readFileSync(example, "utf8"));
+    local = JSON.parse(fs.readFileSync(config, "utf8"));
+  } catch {
+    return [];
+  }
+  if (!isJsonObject(template) || !isJsonObject(local)) return [];
+  return Object.keys(template).filter((k) => !(k in local));
+}
+
+/** Load tumwater.json, filling in defaults for anything missing. Throws an Error with an
+ * actionable message when the file is malformed or holds invalid values (see validateConfig). */
+export function loadConfig(root: string): TumwaterConfig {
+  const file = configPath(root);
+  const base = defaultConfig();
+  if (!fs.existsSync(file)) return base;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (err) {
+    throw new Error(`tumwater.json is not valid JSON: ${errorMessage(err)}`);
+  }
+  validateConfig(raw);
+  return overlayDefaults(base, raw as Partial<TumwaterConfig>);
 }
 
 /** Load tumwater.json without throwing: either the validated config or the error message.

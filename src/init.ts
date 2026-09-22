@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig, saveConfig } from "./config.js";
+import { saveConfig, seedConfig } from "./config.js";
 import { findOnPath } from "./files.js";
 import { GIT_MISSING_MESSAGE, COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
 import {
@@ -10,7 +10,7 @@ import {
   readInitialPrompt,
   readmeTemplate,
 } from "./readme.js";
-import { STATE_DIR, configPath } from "./paths.js";
+import { CONFIG_BASENAME, STATE_DIR, configPath } from "./paths.js";
 
 const PLANS_TEMPLATE = `# Plans
 
@@ -71,13 +71,21 @@ what to do, not what to avoid.
 - Small, complete, and correct beats big and half-done: one focused change per tick.
 `;
 
-/** Add the tumwater state dir to .gitignore if it isn't ignored yet. */
+/** Add both tumwater entries to .gitignore independently — the state dir and the config file —
+ * so a .gitignore that already carries one still gains the other (plans/portability.md §4a/7;
+ * the old single-entry early return left a pre-existing `.tumwater/` line hiding the config).
+ * Returns true when the file changed. */
 function ensureGitignore(root: string): boolean {
   const file = path.join(root, ".gitignore");
-  const entry = `${STATE_DIR}/`;
+  const wanted = [`${STATE_DIR}/`, CONFIG_BASENAME];
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
-  if (existing.split("\n").some((l) => l.trim() === entry || l.trim() === STATE_DIR)) return false;
-  fs.writeFileSync(file, existing + (existing && !existing.endsWith("\n") ? "\n" : "") + entry + "\n");
+  const lines = existing.split("\n").map((l) => l.trim());
+  const missing = wanted.filter((e) => !lines.some((l) => l === e || l === e.replace(/\/$/, "")));
+  if (missing.length === 0) return false;
+  fs.writeFileSync(
+    file,
+    existing + (existing && !existing.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n",
+  );
   return true;
 }
 
@@ -156,19 +164,25 @@ export async function initProject(
   write("QUESTIONS.md", QUESTIONS_TEMPLATE);
   write("PRINCIPLES.md", PRINCIPLES_TEMPLATE);
   if (!fs.existsSync(configPath(root))) {
-    saveConfig(root, defaultConfig());
-    created.push("tumwater.json");
+    saveConfig(root, seedConfig(root));
+    created.push(CONFIG_BASENAME);
   }
   if (ensureGitignore(root)) created.push(".gitignore");
 
+  // The config stays out of the commit pathspec: `git add -- tumwater.json` fails on a path
+  // the just-written .gitignore ignores (plans/portability.md §4a/7). It still heads the
+  // `created …` line the CLI prints — the file WAS created, it just must not be tracked. When
+  // that leaves the pathspec empty (`git add --` with no pathspec exits 1), there is nothing
+  // to commit: a repo that only gained a config reports it and stays uncommitted.
+  const committable = created.filter((name) => name !== CONFIG_BASENAME);
   let committed = false;
-  if (created.length > 0) {
-    await git(root, "add", "--", ...created);
+  if (committable.length > 0) {
+    await git(root, "add", "--", ...committable);
     const staged = await gitTry(root, "diff", "--cached", "--quiet");
     if (staged === null) {
       // Non-zero exit = something is staged.
       const message = (await hasCommits(root)) ? "tumwater: init harness files" : "tumwater: init";
-      await git(root, ...COMMIT_IDENT, "commit", "-m", message, "--", ...created);
+      await git(root, ...COMMIT_IDENT, "commit", "-m", message, "--", ...committable);
       committed = true;
     }
   }

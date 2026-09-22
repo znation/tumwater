@@ -1,0 +1,19 @@
+{
+  "piArgs": [],
+  "minTickIntervalSeconds": 20,
+  "landBatchMax": 3,
+  "logMaxBytes": 16777216,
+  "sessionRetentionDays": 7,
+  "thrashTurns": 40,
+  "thrashMinutes": 30,
+  "autoRestart": true,
+  "review": { "enabled": true, "exemptPaths": ["*.md", "docs/**"] },
+  "customLoops": [],
+  "roles": {
+    "steward": { "enabled": true, "minTickIntervalSeconds": 21600 },
+    "qa": { "enabled": true, "minTickIntervalSeconds": 7200 },
+    "telemetry": { "enabled": true, "minTickIntervalSeconds": 7200 },
+    "readme": { "enabled": true, "minTickIntervalSeconds": 1800 },
+    "plan": { "enabled": true, "minTickIntervalSeconds": 3600 }
+  }
+}

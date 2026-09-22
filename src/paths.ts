@@ -3,13 +3,26 @@ import path from "node:path";
 /** All harness runtime state lives under <repo>/.tumwater (gitignored). */
 export const STATE_DIR = ".tumwater";
 
+/** The config file's basename — the name .gitignore's entry and the init output share. */
+export const CONFIG_BASENAME = "tumwater.json";
+
+/** The tracked settings template's basename: the shareable baseline an untracked
+ * tumwater.json is seeded from (plans/portability.md §4a/7). */
+export const EXAMPLE_CONFIG_BASENAME = "tumwater.example.json";
+
 function tumwaterDir(root: string): string {
   return path.join(root, STATE_DIR);
 }
 
 /** The repo's tumwater.json — the fleet config (config.ts). */
 export function configPath(root: string): string {
-  return path.join(root, "tumwater.json");
+  return path.join(root, CONFIG_BASENAME);
+}
+
+/** The repo's tracked settings template, beside the config it seeds (plans/portability.md
+ * §4a/7): shipped by the project, read by init's seeding and doctor's drift check. */
+export function exampleConfigPath(root: string): string {
+  return path.join(root, EXAMPLE_CONFIG_BASENAME);
 }
 
 /** The director's config-write request file, at its worktree root (plans/portability.md §3/7):

@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { enabledRoleIds, fallbackPair, loadConfig } from "./config.js";
+import {
+  enabledRoleIds,
+  exampleDrift,
+  fallbackPair,
+  loadConfig,
+} from "./config.js";
 import { detectBuildCheck } from "./build-check.js";
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
 import type { TumwaterConfig } from "./types.js";
@@ -25,7 +30,7 @@ import {
   PI_MISSING_MESSAGE,
 } from "./readiness.js";
 import { classifyLock, readLockPid } from "./lock.js";
-import { STATE_DIR, configPath, mergeLockDir } from "./paths.js";
+import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
 import { errorMessage, shortSha } from "./text.js";
 
@@ -120,11 +125,25 @@ export async function checkRepo(root: string, config?: TumwaterConfig): Promise<
 
 /** Initialized + config valid — tumwater.json present and loadConfig does not throw. The fail
  * detail carries the thrown message verbatim: it already holds validateConfig's full problem
- * list, so one edit can fix them all. */
+ * list, so one edit can fix them all. On a valid config it folds in template drift
+ * (plans/portability.md §4a/7): when the tracked tumwater.example.json sets keys the local file
+ * lacks, the check warns naming them — a warn never touches the exit code — with a remedy that
+ * actually works (init skips an existing config, so reseeding means deleting it first), and the
+ * no-drift detail stays the pinned "N roles enabled". */
 export function checkInit(root: string): CheckOutcome {
   if (!fs.existsSync(configPath(root))) return { level: "fail", detail: NOT_INITIALIZED_MESSAGE };
   try {
     const config = loadConfig(root);
+    const drift = exampleDrift(root);
+    if (drift.length > 0) {
+      return {
+        level: "warn",
+        detail:
+          `template drift: tumwater.json lacks keys ${EXAMPLE_CONFIG_BASENAME} sets (${drift.join(", ")})` +
+          " — copy them in, or delete tumwater.json and re-run `tumwater init` to reseed from the " +
+          "template (it omits machine keys like provider/model, so re-add those after reseeding)",
+      };
+    }
     return { level: "ok", detail: `${enabledRoleIds(config).length} roles enabled` };
   } catch (err) {
     return { level: "fail", detail: errorMessage(err) };

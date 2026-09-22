@@ -4,8 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START, readInitialPrompt } from "../src/readme.js";
-import { loadConfig } from "../src/config.js";
+import { defaultConfig, loadConfig } from "../src/config.js";
 import { VALIDATION_GAP_TAGS } from "../src/roles.js";
+import { exampleConfigPath } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
 test("initProject creates and commits the harness files", async () => {
@@ -75,34 +76,43 @@ test("initProject never clobbers existing files and is idempotent", async () => 
   assert.ok(!second.committed);
 });
 
-test("initProject appends .tumwater/ to an existing .gitignore on its own line", async () => {
+test("initProject appends both ignore entries to an existing .gitignore on their own lines", async () => {
   // An existing project's .gitignore usually has entries already, often with no trailing
-  // newline. The rule must land on its own line: glued onto the last entry ("dist.tumwater/")
-  // it would ignore nothing, and every later `git add -A` would commit the state dir.
+  // newline. The rules must land on their own lines: glued onto the last entry
+  // ("dist.tumwater/") they would ignore nothing, and every later `git add -A` would commit
+  // the state dir. Both entries are checked independently — a .gitignore that already carries
+  // one still gains the other (plans/portability.md §4a/7).
   const noNewline = makeRepo();
   fs.writeFileSync(path.join(noNewline, ".gitignore"), "node_modules\ndist");
   sh(noNewline, "git", "add", "-A");
   sh(noNewline, "git", "commit", "-m", "own gitignore");
   const first = await initProject(noNewline, "prompt");
   assert.ok(first.created.includes(".gitignore"));
-  assert.equal(fs.readFileSync(path.join(noNewline, ".gitignore"), "utf8"), "node_modules\ndist\n.tumwater/\n");
+  assert.equal(
+    fs.readFileSync(path.join(noNewline, ".gitignore"), "utf8"),
+    "node_modules\ndist\n.tumwater/\ntumwater.json\n",
+  );
 
-  // A trailing newline already present gets no extra blank line before the rule.
+  // A trailing newline already present gets no extra blank line before the rules.
   const withNewline = makeRepo();
   fs.writeFileSync(path.join(withNewline, ".gitignore"), "node_modules\n");
   sh(withNewline, "git", "add", "-A");
   sh(withNewline, "git", "commit", "-m", "own gitignore");
   await initProject(withNewline, "prompt");
-  assert.equal(fs.readFileSync(path.join(withNewline, ".gitignore"), "utf8"), "node_modules\n.tumwater/\n");
+  assert.equal(
+    fs.readFileSync(path.join(withNewline, ".gitignore"), "utf8"),
+    "node_modules\n.tumwater/\ntumwater.json\n",
+  );
 
-  // The bare `.tumwater` form already ignores the dir: no duplicate `.tumwater/` is added.
+  // The bare `.tumwater` form already ignores the dir: no duplicate `.tumwater/` is added,
+  // but the config entry is still missing and gets added on its own.
   const bare = makeRepo();
   fs.writeFileSync(path.join(bare, ".gitignore"), ".tumwater\n");
   sh(bare, "git", "add", "-A");
   sh(bare, "git", "commit", "-m", "already ignores state");
   const result = await initProject(bare, "prompt");
-  assert.ok(!result.created.includes(".gitignore"));
-  assert.equal(fs.readFileSync(path.join(bare, ".gitignore"), "utf8"), ".tumwater\n");
+  assert.ok(result.created.includes(".gitignore"));
+  assert.equal(fs.readFileSync(path.join(bare, ".gitignore"), "utf8"), ".tumwater\ntumwater.json\n");
 });
 
 test("initProject refuses to drop the initial prompt when README has no tumwater markers", async () => {
@@ -198,4 +208,54 @@ test("initProject leaves user's unrelated dirty files uncommitted", async () => 
   fs.writeFileSync(path.join(repo, "wip.txt"), "wip\n");
   await initProject(repo, "prompt");
   assert.match(sh(repo, "git", "status", "--porcelain"), /wip\.txt/);
+});
+
+test("initProject seeds the config from a tracked tumwater.example.json and keeps it untracked", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(
+    exampleConfigPath(repo),
+    JSON.stringify({ minTickIntervalSeconds: 45, review: { enabled: false } }),
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "ship a template");
+  const result = await initProject(repo, "prompt");
+  assert.ok(result.created.includes("tumwater.json"));
+
+  // Seeded from the template, with the same merge behavior loadConfig applies to a file.
+  const cfg = loadConfig(repo);
+  assert.equal(cfg.minTickIntervalSeconds, 45);
+  assert.deepEqual(cfg.review, { ...defaultConfig().review, enabled: false });
+  assert.equal(cfg.maxConcurrent, defaultConfig().maxConcurrent);
+
+  // Untracked and gitignored, so the freshly initialized repo is clean — while the created
+  // line (and result.created) still reports the config.
+  assert.equal(sh(repo, "git", "ls-files", "tumwater.json"), "");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assert.match(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), /^tumwater\.json$/m);
+  // Everything but the config still lands in the init commit.
+  assert.ok(result.committed);
+  assert.ok(sh(repo, "git", "ls-files").includes(".gitignore"));
+});
+
+test("initProject seeds defaults when the template is malformed", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(exampleConfigPath(repo), "{ not json");
+  const result = await initProject(repo, "prompt");
+  assert.ok(result.created.includes("tumwater.json"));
+  // Seeding never throws: a bad template falls back to the defaults.
+  assert.equal(loadConfig(repo).minTickIntervalSeconds, defaultConfig().minTickIntervalSeconds);
+});
+
+test("a repo that only gains a config reports it and stays uncommitted", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "prompt");
+  assert.ok(fs.existsSync(path.join(repo, ".gitignore")));
+  fs.rmSync(path.join(repo, "tumwater.json"));
+  // The .gitignore already carries both entries, so the config is the only creation left —
+  // and the commit pathspec would be empty (`git add --` with no pathspec exits 1).
+  const again = await initProject(repo, "prompt");
+  assert.deepEqual(again.created, ["tumwater.json"]);
+  assert.ok(!again.committed);
+  assert.ok(fs.existsSync(path.join(repo, "tumwater.json")));
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
 });

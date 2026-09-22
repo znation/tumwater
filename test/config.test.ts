@@ -8,6 +8,7 @@ import {
   changedConfigKeys,
   configForRole,
   customLoopNames,
+  exampleDrift,
   fallbackPair,
   defaultConfig,
   isCustomRole,
@@ -16,10 +17,11 @@ import {
   loadConfigCached,
   loadConfigSafe,
   reviewConfig,
+  seedConfig,
   saveConfig,
   setDailyBudgetUsd,
 } from "../src/config.js";
-import { configRequestPath } from "../src/paths.js";
+import { configRequestPath, exampleConfigPath } from "../src/paths.js";
 import { show, validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
@@ -1152,4 +1154,67 @@ test("applyConfigRequest survives structurally malformed requests without throwi
   result = applyConfigRequest(root, wt);
   assert.ok(result && result.error && /must be a JSON object/.test(result.error), JSON.stringify(result));
   assert.ok(!fs.existsSync(configRequestPath(wt)));
+});
+
+test("seedConfig overlays a valid tumwater.example.json on the defaults", () => {
+  const root = tmpdir();
+  fs.writeFileSync(
+    exampleConfigPath(root),
+    JSON.stringify({ minTickIntervalSeconds: 45, review: { enabled: false } }),
+  );
+  const seeded = seedConfig(root);
+  const base = defaultConfig();
+  assert.equal(seeded.minTickIntervalSeconds, 45);
+  // The template's partial review section merges over the default's, like loadConfig's would.
+  assert.deepEqual(seeded.review, { ...base.review, enabled: false });
+  // Untouched keys keep the defaults: the template is a baseline, not a whole config.
+  assert.equal(seeded.maxConcurrent, base.maxConcurrent);
+  assert.deepEqual(Object.keys(seeded.roles), Object.keys(base.roles));
+});
+
+test("seedConfig falls back to the defaults with no example, a malformed one, or an invalid one", () => {
+  const none = seedConfig(tmpdir());
+  assert.deepEqual(none, defaultConfig());
+
+  const malformed = tmpdir();
+  fs.writeFileSync(exampleConfigPath(malformed), "{ not json");
+  // Seeding never throws — init must not die on a bad template.
+  assert.deepEqual(seedConfig(malformed), defaultConfig());
+
+  const invalid = tmpdir();
+  fs.writeFileSync(
+    exampleConfigPath(invalid),
+    JSON.stringify({ minTickIntervalSeconds: -5 }),
+  );
+  assert.deepEqual(seedConfig(invalid), defaultConfig());
+});
+
+test("exampleDrift names template keys the local config lacks, and nothing else", () => {
+  const root = tmpdir();
+  fs.writeFileSync(
+    exampleConfigPath(root),
+    JSON.stringify({ minTickIntervalSeconds: 45, landBatchMax: 2 }),
+  );
+  // No local file yet: nothing to compare, so no drift.
+  assert.deepEqual(exampleDrift(root), []);
+
+  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ landBatchMax: 3 }));
+  // Whole-key comparison: a key present in both files is the local file's business even when
+  // the values differ; only keys the template sets and the file lacks are drift.
+  assert.deepEqual(exampleDrift(root), ["minTickIntervalSeconds"]);
+
+  fs.writeFileSync(
+    path.join(root, "tumwater.json"),
+    JSON.stringify({ minTickIntervalSeconds: 20, landBatchMax: 3 }),
+  );
+  assert.deepEqual(exampleDrift(root), []);
+
+  // Unparseable files and non-objects on either side are silence, not a crash.
+  fs.writeFileSync(path.join(root, "tumwater.json"), "{ broken");
+  assert.deepEqual(exampleDrift(root), []);
+  fs.writeFileSync(path.join(root, "tumwater.json"), "[1]");
+  assert.deepEqual(exampleDrift(root), []);
+  fs.writeFileSync(exampleConfigPath(root), "{ broken");
+  assert.deepEqual(exampleDrift(root), []);
+  assert.deepEqual(exampleDrift(tmpdir()), []);
 });
