@@ -46,9 +46,6 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: the failure digest's Fleet state changes section silently keeps only the newest 6
-  transitions, so on a busy window the oldest fleet decisions vanish from the causal frame with
-  no marker (found 2026-09-22).
 - Open bug: the loop suite's quiet-kill resume test flakes under full-suite load — fails 1-in-N
   full runs, passes in isolation (found 2026-09-23).
 - Open bug: the failure digest's Review rejections section silently truncates at 5
@@ -66,13 +63,13 @@ Open items:
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 4a/7–7/7 remain;
+  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 4b/7–7/7 remain;
   1/7 CI and npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21, 2/7 repo-root and
-  branch targeting landed 2026-09-22, 3/7 harness-mediated director config writes landed
-  2026-09-23).
+  branch targeting landed 2026-09-22, 4a/7 config seeded from a tracked example landed
+  2026-09-22, 3/7 harness-mediated director config writes landed 2026-09-23).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`e2ca7a4`): build clean, suite 1299/1299.
+Current main (`0733811`): build clean, suite 1314/1314.
 <!-- tumwater:status:end -->
 
 ## How it works
