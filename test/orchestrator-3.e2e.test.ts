@@ -912,3 +912,66 @@ test("landBatchMax caps the stack and live-reloads: five queue as 3+2 batches, t
     await orch.stop();
   }
 });
+
+test("an unexpected throw from the batch keeps every entry for re-drain and is contained", async () => {
+  // The drain's catch: landBatch degrades failed landings to results, but a git-level failure
+  // in the stack assembly still throws (unlike Phase A's worktree ensure, the assembly's is
+  // unguarded). The catch must keep EVERY entry queued — none dropped, the write-back runs
+  // only after landBatch returns — and let the next poll re-drain, instead of escaping
+  // startLanding's body as an unhandled rejection. Trigger: during the SECOND gate run
+  // (dry's — the head role's gate already approved), delete the head role's lander worktree
+  // and make its parent unwritable, so the assembly's ensureDetachedWorktree cannot
+  // re-create it and throws.
+  const repo = makeRepo();
+  await initProject(repo, "batch throw recovery test");
+  saveConfig(repo, fastConfig(["clean", "dry"]));
+  await seedLandQueue(repo, "clean", "dry");
+  const worktrees = path.join(repo, ".tumwater", "worktrees");
+  const headWt = path.join(worktrees, "_land-clean");
+  const count = path.join(tmpdir(), "batch-throw-gatecount");
+  const armed = path.join(tmpdir(), "batch-throw-armed");
+  const restore = fakePi(
+    [
+      `n=$(cat '${count}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${count}'`,
+      `for a in "$@"; do case "$a" in`,
+      `*"VERDICT:"*)`,
+      `if [ "$n" = 2 ] && [ ! -e '${armed}' ]; then touch '${armed}'; rm -rf '${headWt}'; chmod 555 '${worktrees}'; fi`,
+      `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
+      `esac; done`,
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(() => fs.existsSync(armed), "the second gate to arm the corruption", 60_000);
+    // The throw was contained and the re-drain self-terminated: dry's entry survived the
+    // throw (kept queued, its gate verdict persisted) and lands on the next poll, while
+    // clean's — whose lander worktree can no longer be created — drops as a terminal error
+    // instead of silently vanishing or wedging the queue forever.
+    await waitFor(
+      () => fs.existsSync(path.join(repo, "dry.txt")) && queueDepth(repo) === 0,
+      "dry's re-drained landing to land and the queue to drain",
+      60_000,
+    );
+    assert.ok(fs.existsSync(path.join(repo, "dry.txt")), "dry's change landed on main");
+    assert.ok(
+      !fs.existsSync(path.join(repo, "clean.txt")),
+      "clean's change did not land — its assembly worktree was gone",
+    );
+    const cleanErrors = readEvents(repo).filter(
+      (e) => e.type === "land_failed" && e.loop === "clean" && e.result === "error",
+    );
+    assert.ok(cleanErrors.length >= 1, "clean's re-drain ended in a terminal error outcome");
+    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    assert.equal(
+      merged.filter((e) => e.loop === "dry").length,
+      1,
+      "exactly one merged event, and it is dry's",
+    );
+  } finally {
+    // Restore before stopping: shutdown and later ticks must be able to create worktrees.
+    fs.chmodSync(worktrees, 0o755);
+    restore();
+    await orch.stop();
+  }
+});
