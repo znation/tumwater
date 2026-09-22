@@ -1,11 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import http from "node:http";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
@@ -13,37 +12,12 @@ import { defaultConfig, loadConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
-import { abortRequestPath, inboxDir, orchestratorStatePath, pausedPath, piLogPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
-import { SUPERVISED_ENV } from "../src/supervisor.js";
-import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import { abortRequestPath, inboxDir, orchestratorStatePath, pausedPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
+import { cli, cliWithEnv, exitCode, fakePi, makeRepo, sh, spawnCli, tmpdir } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
-// tested as a child process: the built dist/src/cli.js with cwd set to a temp repo.
-const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
-
-interface CliResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-/** Run the CLI with an explicit env override (merged over process.env). The timeout
- * bounds tests that would otherwise hang if a command regresses to not exiting. */
-function cliWithEnv(cwd: string, env: NodeJS.ProcessEnv, args: string[]): Promise<CliResult> {
-  const merged = { ...process.env, ...env };
-  // Hermeticity: the supervised marker leaks from any tumwater orchestrator into pi's (and
-  // this test process') environment; without stripping it, `run` skips its supervisor half.
-  delete merged[SUPERVISED_ENV];
-  return new Promise((resolve) => {
-    execFile(process.execPath, [CLI, ...args], { cwd, env: merged, timeout: 20_000 }, (err, stdout, stderr) => {
-      resolve({ code: err ? Number(err.code ?? 1) : 0, stdout, stderr });
-    });
-  });
-}
-
-function cli(cwd: string, ...args: string[]): Promise<CliResult> {
-  return cliWithEnv(cwd, {}, args);
-}
+// tested as a child process — the spawn helpers (CLI, cli, cliWithEnv, spawnCli,
+// exitCode) live in util.ts alongside the rest of the test scaffolding.
 
 test("help and no command print usage", async () => {
   const dir = tmpdir();
@@ -404,28 +378,6 @@ test("prompt keeps single-dash positionals as prompt content", async () => {
   assert.equal(r.code, 0);
   assert.match(r.stdout, /queued for the director loop/);
   assert.equal(dequeuePrompt(repo), "-x");
-});
-
-test("logs -n validates its value instead of misbehaving", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli logs validation");
-
-  // Unvalidated, these made readEvents' slice(-limit) dump the whole log (NaN/0)
-  // or drop leading lines (negative).
-  for (const bad of ["abc", "0", "-5", "2.5"]) {
-    const r = await cli(repo, "logs", "-n", bad);
-    assert.equal(r.code, 1, `-n ${bad} should fail`);
-    assert.match(r.stderr, /-n needs a positive integer/);
-  }
-
-  // A bare -n used to silently fall back to the default of 50.
-  const noValue = await cli(repo, "logs", "-n");
-  assert.equal(noValue.code, 1);
-  assert.match(noValue.stderr, /-n needs a value/);
-
-  // A valid -n still works.
-  const ok = await cli(repo, "logs", "-n", "3");
-  assert.equal(ok.code, 0);
 });
 
 test("run fails fast with a clear message when pi is missing from PATH", async () => {
@@ -856,28 +808,9 @@ test("pause and resume name the live effect when a harness is running", async ()
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
 
-// --- logs --role (per-role pi transcript) ---
-
-test("logs --role validates the role id and reports a missing transcript", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "transcript cli test");
-
-  let r = await cli(repo, "logs", "--role");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--role needs a role id/);
-
-  r = await cli(repo, "logs", "--role", "bogus");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
-
-  // A valid id whose loop never ran: friendly message, exit 0.
-  r = await cli(repo, "logs", "--role", "clean");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /no transcript yet for clean/);
-});
+// --- logs/reset-counters/abort --role: user-defined loop targets ---
 
 // User-defined loops are valid --role targets for logs/reset-counters/abort once tumwater.json
-// lists them (plans/user-defined-loops.md): the id validates against built-ins PLUS customs,
 // and an unknown id fails naming the customs in the valid list.
 
 test("logs, reset-counters, and abort accept user-defined loop names from tumwater.json", async () => {
@@ -1085,133 +1018,6 @@ test("wake --role targets one loop; unknown or missing role fails without side e
   assert.match(r.stderr, /--role needs a role id/);
 });
 
-test("logs --role prints the rendered pi transcript and -n limits entries", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "transcript cli render test");
-  const TS1 = 1787222691956;
-  const TS2 = TS1 + 3_600_000;
-  const file = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(
-    file,
-    [
-      JSON.stringify({ type: "session", version: 3, id: "x" }),
-      JSON.stringify({ type: "agent_start" }),
-      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "tick prompt one (must not appear)" }], timestamp: TS1 } }),
-      JSON.stringify({ type: "message_update", delta: { type: "text_delta", textDelta: "streaming noise" } }),
-      JSON.stringify({
-        type: "message_end",
-        message: {
-          role: "assistant",
-          content: [
-            { type: "thinking", thinking: "look at the files first" },
-            { type: "text", text: "Reading PLANS.md." },
-            { type: "toolCall", id: "c1", name: "read", arguments: { path: "/repo/PLANS.md" } },
-          ],
-          stopReason: "stop",
-        },
-      }),
-      JSON.stringify({ type: "agent_start" }),
-      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "tick prompt two (must not appear)" }], timestamp: TS2 } }),
-      JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "second run done" }], stopReason: "stop" } }),
-    ].join("\n") + "\n",
-  );
-
-  const p = (n: number) => String(n).padStart(2, "0");
-  const stamp = (ts: number) => {
-    const d = new Date(ts);
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  };
-
-  let r = await cli(repo, "logs", "--role", "clean");
-  assert.equal(r.code, 0);
-  // Both runs render in order: separator stamped from the user message, then the turn.
-  assert.ok(r.stdout.includes(`── run @ ${stamp(TS1)} ──`), r.stdout);
-  assert.ok(r.stdout.includes("· look at the files first"), r.stdout);
-  assert.ok(r.stdout.includes("  Reading PLANS.md."), r.stdout);
-  assert.ok(r.stdout.includes("→ read PLANS.md"), r.stdout);
-  assert.ok(r.stdout.includes(`── run @ ${stamp(TS2)} ──`), r.stdout);
-  assert.ok(r.stdout.includes("  second run done"), r.stdout);
-  // User prompts and streaming deltas never leak into the transcript.
-  assert.ok(!r.stdout.includes("must not appear"));
-  assert.ok(!r.stdout.includes("streaming noise"));
-
-  // -n limits to the last N entries: only the second run's turn remains.
-  r = await cli(repo, "logs", "--role", "clean", "-n", "1");
-  assert.equal(r.code, 0);
-  assert.ok(!r.stdout.includes("Reading PLANS.md."), r.stdout);
-  assert.ok(r.stdout.includes("  second run done"), r.stdout);
-});
-
-test("logs --role --prompt shows each run's exact prompt and -n limits to the newest", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "transcript prompt test");
-  const TS1 = 1787222691956;
-  const TS2 = TS1 + 3_600_000;
-  const file = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(
-    file,
-    [
-      JSON.stringify({ type: "agent_start" }),
-      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "PROMPT ONE\nsecond line" }], timestamp: TS1 } }),
-      JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "turn one" }] } }),
-      JSON.stringify({ type: "agent_start" }),
-      // The newest run has no assistant turn yet: with --prompt the newest entry is its prompt.
-      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "PROMPT TWO" }], timestamp: TS2 } }),
-    ].join("\n") + "\n",
-  );
-  const p = (n: number) => String(n).padStart(2, "0");
-  const stamp = (ts: number) => {
-    const d = new Date(ts);
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  };
-
-  let r = await cli(repo, "logs", "--role", "clean", "--prompt");
-  assert.equal(r.code, 0);
-  // Each prompt lands under its run separator and before that run's assistant turn, verbatim.
-  const one = r.stdout.indexOf("PROMPT ONE\nsecond line");
-  assert.ok(one > -1, r.stdout);
-  assert.ok(r.stdout.indexOf(`── run @ ${stamp(TS1)} ──`) < one, r.stdout);
-  assert.ok(one < r.stdout.indexOf("  turn one"), r.stdout);
-  assert.ok(r.stdout.includes(`── run @ ${stamp(TS2)} ──`), r.stdout);
-  assert.ok(r.stdout.includes("PROMPT TWO"), r.stdout);
-
-  // -n counts a prompt as one entry: only the newest run's prompt remains.
-  r = await cli(repo, "logs", "--role", "clean", "--prompt", "-n", "1");
-  assert.equal(r.code, 0);
-  assert.ok(r.stdout.includes("PROMPT TWO"), r.stdout);
-  assert.ok(!r.stdout.includes("PROMPT ONE"), r.stdout);
-  assert.ok(!r.stdout.includes("  turn one"), r.stdout);
-
-  // --prompt is meaningless without --role.
-  r = await cli(repo, "logs", "--prompt");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /logs --prompt needs --role <id>/);
-});
-
-test("logs --role still reads a transcript when tumwater.json is broken", async () => {
-  // The read-only transcript view needs the config only to accept user-defined loop ids, so a
-  // torn/mid-edit tumwater.json must not take it down: it falls back to the built-in catalog,
-  // the same policy the GUI's transcript handler applies. Before that fallback, loadConfig threw
-  // and the whole command exited 1 with the config error.
-  const repo = makeRepo();
-  await initProject(repo, "broken config transcript test");
-  fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
-  const file = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, [JSON.stringify({ type: "agent_start" }), assistantLine("readable anyway")].join("\n") + "\n");
-
-  const r = await cli(repo, "logs", "--role", "clean");
-  assert.equal(r.code, 0, r.stderr);
-  assert.ok(r.stdout.includes("readable anyway"), r.stdout);
-
-  // The fallback relaxes the config READ, not the id validation: an unknown id is still refused.
-  const bad = await cli(repo, "logs", "--role", "nope");
-  assert.equal(bad.code, 1);
-  assert.match(bad.stderr, /unknown role/);
-});
-
 // --- doctor: pre-flight check through the real CLI entry point ---
 // runDoctor/renderDoctor and each individual check are pinned in-process in
 // test/doctor.test.ts; what is missing here is main()'s wiring — that doctor runs WITHOUT a
@@ -1315,59 +1121,8 @@ test("report --days above the shared bound fails fast with the offending value",
   assert.match(ok.stdout, /\(90 days\)/);
 });
 
-// --- long-running commands (run, logs -f): spawned with a live handle so the test can
-// observe startup output, exercise the follow behavior, and always reap the child. ---
-
-interface SpawnedCli {
-  out: () => string;
-  /** Resolves once `pred` matches the captured stdout; fails the test with the output on timeout. */
-  waitFor(pred: (out: string) => boolean, what: string, ms?: number): Promise<void>;
-  kill(): void;
-}
-
-function spawnCli(cwd: string, args: string[]): { child: ChildProcess } & SpawnedCli {
-  const env = { ...process.env };
-  delete env[SUPERVISED_ENV]; // same hermeticity as cliWithEnv: `run` must take the supervisor path
-  const child = spawn(process.execPath, [CLI, ...args], { cwd, env });
-  let buffer = "";
-  child.stdout?.on("data", (d) => (buffer += d));
-  return {
-    child,
-    out: () => buffer,
-    waitFor(pred, what, ms = 10_000) {
-      return new Promise((resolve, reject) => {
-        const started = Date.now();
-        const timer = setInterval(() => {
-          if (pred(buffer)) {
-            clearInterval(timer);
-            resolve();
-          } else if (Date.now() - started > ms) {
-            clearInterval(timer);
-            reject(new Error(`timed out waiting for ${what}; output so far:\n${buffer}`));
-          }
-        }, 100);
-      });
-    },
-    kill: () => {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // Already exited.
-      }
-    },
-  };
-}
-
-/** Wait for the child's exit code; null on timeout so a hung command fails the test instead of hanging it. */
-function exitCode(child: ChildProcess, ms = 15_000): Promise<number | null> {
-  return new Promise((resolve) => {
-    const t = setTimeout(() => resolve(null), ms);
-    child.once("close", (code) => {
-      clearTimeout(t);
-      resolve(code);
-    });
-  });
-}
+// --- long-running commands (run): spawned with a live handle so the test can
+// observe startup output and always reap the child. ---
 
 // --- run: startup guards, banner, and graceful shutdown ---
 
@@ -1500,56 +1255,6 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
   } finally {
     s.kill();
     restore();
-  }
-});
-
-// --- logs -f: the follow half of both log commands is only reachable with a live child ---
-
-test("logs -f prints the current window and follows newly appended events", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli logs follow");
-
-  // Seed one real event through the same path the TUI/GUI/CLI use.
-  submitPrompt(repo, "first prompt");
-
-  const s = spawnCli(repo, ["logs", "-f"]);
-  try {
-    await s.waitFor((out) => out.includes("user prompt queued: first prompt"), "the seeded event");
-
-    // A new event appended while following must appear without a restart (500ms poll).
-    submitPrompt(repo, "second prompt");
-    await s.waitFor((out) => out.includes("user prompt queued: second prompt"), "the live event");
-  } finally {
-    s.kill();
-  }
-});
-
-test("logs --role -f prints each turn exactly once across the initial window and follow", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli transcript follow");
-
-  // One completed run on disk; a second is appended while following.
-  const file = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(
-    file,
-    [JSON.stringify({ type: "session", version: 3, id: "x" }), assistantLine("first turn text")].join("\n") + "\n",
-  );
-
-  const s = spawnCli(repo, ["logs", "--role", "clean", "-f"]);
-  try {
-    await s.waitFor((out) => out.includes("first turn text"), "the initial window");
-
-    fs.appendFileSync(file, assistantLine("second turn text") + "\n");
-    await s.waitFor((out) => out.includes("second turn text"), "the live turn");
-
-    // The follow renderer starts fresh at the window's end: a regression that re-fed the
-    // initial lines would print the first turn twice.
-    const out = s.out();
-    assert.equal(out.split("first turn text").length - 1, 1, `first turn printed once:\n${out}`);
-    assert.equal(out.split("second turn text").length - 1, 1, `second turn printed once:\n${out}`);
-  } finally {
-    s.kill();
   }
 });
 
