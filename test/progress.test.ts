@@ -8,7 +8,7 @@ import {
   stalledToolLabel,
   toolCallStallMs,
 } from "../src/ui/progress.js";
-import { piLogPath } from "../src/paths.js";
+import { landWorktreePath, piLogPath, worktreePath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
 
 function toolStart(toolName: string, args: unknown): string {
@@ -167,6 +167,96 @@ test("readLiveProgress accumulates appended lines across polls", () => {
   const p = readLiveProgress(root, "clean");
   assert.equal(p?.toolCalls, 1);
   assert.equal(p?.lastTool, "bash npm test");
+});
+
+// A role's log carries several pi run kinds — the authoring tick's run and the review gate's
+// runs (reviewer, conflict resolver) in the role's `_land-<role>` worktree — each with its
+// own `session` event (cwd names the worktree). A gate session must reset only the gate's
+// counts, never the working tick's (BUGS.md 2026-09-22: a landing's reviewer run reset the
+// author's cell to turn 1 mid-tick and its turns/ctx/tool described the wrong run).
+
+test("a lander (gate) session mid-log does not reset the author run's counts", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const gateSession = JSON.stringify({
+    type: "session",
+    version: 3,
+    id: "g",
+    cwd: landWorktreePath(root, "clean"),
+  });
+  fs.writeFileSync(
+    file,
+    [
+      SESSION,
+      assistantLine("author turn one", { tokens: 100 }),
+      assistantLine("author turn two", { tokens: 200 }),
+      gateSession, // the landing's reviewer run starts mid-tick
+      assistantLine("reviewer turn", { tokens: 300 }),
+    ].join("\n") + "\n",
+  );
+  const author = readLiveProgress(root, "clean");
+  assert.equal(author?.turns, 2, "the working cell keeps the author run's turns");
+  assert.equal(author?.contextTokens, 200);
+  const gate = readLiveProgress(root, "clean", "gate");
+  assert.equal(gate?.turns, 1, "the reviewing cell reads the reviewer run");
+  assert.equal(gate?.contextTokens, 300);
+  assert.equal(gate?.currentWork, "reviewer turn");
+});
+
+test("the next author session resets only the author accumulator, and gate lines fold into gate", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const gateSession = JSON.stringify({
+    type: "session",
+    version: 3,
+    id: "g",
+    cwd: landWorktreePath(root, "clean"),
+  });
+  const authorSession = JSON.stringify({
+    type: "session",
+    version: 3,
+    id: "a",
+    cwd: worktreePath(root, "clean"),
+  });
+  fs.writeFileSync(
+    file,
+    [
+      SESSION,
+      assistantLine("old tick", { tokens: 999 }),
+      gateSession,
+      assistantLine("reviewer", { tokens: 50 }),
+      authorSession, // the role's next tick starts
+      assistantLine("new tick", { tokens: 10 }),
+    ].join("\n") + "\n",
+  );
+  const author = readLiveProgress(root, "clean");
+  assert.equal(author?.turns, 1, "the new tick's run starts from zero");
+  assert.equal(author?.contextTokens, 10);
+  const gate = readLiveProgress(root, "clean", "gate");
+  assert.equal(gate?.turns, 1, "the finished reviewer run's counts survive untouched");
+  assert.equal(gate?.contextTokens, 50);
+});
+
+test("the harness's review label line routes following lines to the gate accumulator", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    [
+      SESSION,
+      assistantLine("author", { tokens: 100 }),
+      // src/pi.ts writes the harness's label line before the reviewer's session event.
+      JSON.stringify({ type: "tumwater_run", label: "review" }),
+      assistantLine("reviewer", { tokens: 200 }),
+    ].join("\n") + "\n",
+  );
+  assert.equal(readLiveProgress(root, "clean")?.turns, 1, "the author run keeps its count");
+  const gate = readLiveProgress(root, "clean", "gate");
+  assert.equal(gate?.turns, 1, "the labeled run's line folded into gate");
+  assert.equal(gate?.currentWork, "reviewer");
 });
 
 test("readLiveProgress does not count a torn trailing line until it is complete", () => {

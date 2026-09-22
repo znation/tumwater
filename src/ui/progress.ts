@@ -1,11 +1,20 @@
 import { applyToolExecutionEvent, parsePiEventLine, type OpenToolCall } from "../pi-event-line.js";
 import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
 import { defaultConfig, loadConfigCached } from "../config.js";
+import { landWorktreePath } from "../paths.js";
 import { statRoleLog, type TailState, withTail } from "./tail.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
- * The log is append-only across ticks; each tick's pi run starts with a `session` event,
- * so everything after the last one belongs to the current run. */
+ * The log is append-only across ticks AND runs: a role makes several kinds of pi run into
+ * the one `roleLogPath` file — the authoring tick's run in its own worktree, and the review
+ * gate's runs (reviewer, conflict resolver) in its `_land-<role>` lander worktree — each
+ * starting with a `session` event whose `cwd` names the worktree it runs in. The reader
+ * keeps one accumulator per run kind (readLiveProgress's `kind`), so a gate run starting
+ * mid-tick resets only the gate's counts, never the working tick's (BUGS.md 2026-09-22).
+ * Everything after a run's `session` event is folded into that run's accumulator; lines
+ * from two truly concurrent runs of different kinds interleave unattributed and land in
+ * the newer run's accumulator — the best attribution the line format allows, since only
+ * `session` (and the harness's own `tumwater_run` label line) carry the run's identity. */
 export interface LiveProgress {
   /** Assistant turns completed so far. */
   turns: number;
@@ -41,10 +50,30 @@ export interface LiveProgress {
  * bytes appended since the previous poll, so this window is read once, not every second. */
 const TAIL_BYTES = 4 * 1024 * 1024;
 
+/** Which of a role's pi run kinds a LiveProgress describes: `author` — the tick's own
+ * run in the role's worktree (the working cell's subject) — or `gate` — the review gate's
+ * runs in the role's lander worktree (the reviewing cell's subject). */
+export type ProgressRunKind = "author" | "gate";
+
 /** Per-file incremental state for readLiveProgress: where we last stopped reading and
- * the progress accumulated from everything read so far. Bounded by the number of distinct
- * log paths observed in this process (one root × its roles for a TUI/GUI). */
-const tails = new Map<string, TailState<LiveProgress>>();
+ * the progress accumulated from everything read so far — one accumulator per run kind
+ * (ProgressRunKind), since a gate run's `session` event must not reset the author run's
+ * counts. Bounded by the number of distinct log paths observed in this process
+ * (one root × its roles for a TUI/GUI). */
+const tails = new Map<string, TailState<RoleLogTail>>();
+
+/** The tail state for one role log: per-kind accumulators plus which kind the most recent
+ * `session` event belongs to — non-session lines carry no run identity, so they fold into
+ * that kind's accumulator (see the module premise above). */
+interface RoleLogTail {
+  author: LiveProgress;
+  gate: LiveProgress;
+  cur: ProgressRunKind;
+}
+
+function freshRoleTail(quietMs: number): RoleLogTail {
+  return { author: freshProgress(quietMs), gate: freshProgress(quietMs), cur: "author" };
+}
 
 /** Max length of a captured work item, ellipsis included (~60 chars). */
 const WORK_ITEM_MAX = 60;
@@ -88,9 +117,11 @@ function freshProgress(quietMs: number): LiveProgress {
 /** The event types feedLine acts on — everything else (streaming deltas, turn/agent
  * bookkeeping) is ignored. Also passed as parsePiEventLine's pre-filter to skip JSON.parse for
  * pi lines whose type is verifiably not one of these; a new case in the switch must be added
- * here too. */
+ * here too. `tumwater_run` is the harness's own label line (src/pi.ts), read only for its
+ * run kind — a labeled run ("review") flips the demux before its `session` event lands. */
 const PROGRESS_TYPES = new Set([
   "session",
+  "tumwater_run",
   "tool_execution_start",
   "tool_execution_update",
   "tool_execution_end",
@@ -100,6 +131,10 @@ const PROGRESS_TYPES = new Set([
 /** The fields feedLine reads off a parsed progress event (a structural subset of pi's JSON). */
 interface ProgressEvent {
   type?: string;
+  /** session events only: the worktree the run started in — the run-kind discriminator. */
+  cwd?: string;
+  /** tumwater_run events only: the harness's label for the run ("review"). */
+  label?: string;
   toolCallId?: string;
   toolName?: string;
   args?: unknown;
@@ -107,10 +142,8 @@ interface ProgressEvent {
   message?: { role?: string; content?: unknown; usage?: { totalTokens?: number; output?: number } };
 }
 
-/** Apply one raw log line to a progress object (mutates it). Non-JSON noise is skipped. */
-function feedLine(progress: LiveProgress, line: string): void {
-  const event = parsePiEventLine<ProgressEvent>(line, PROGRESS_TYPES);
-  if (!event) return; // Blank, unparseable, or a type this feed does not act on.
+/** Apply one parsed progress event to a progress object (mutates it). */
+function feedLine(progress: LiveProgress, event: ProgressEvent): void {
   switch (event.type) {
     case "session": // A new run starts: everything before it was a previous tick — restore the at-time-zero state.
       Object.assign(progress, freshProgress(progress.quietMs));
@@ -160,10 +193,16 @@ function feedLine(progress: LiveProgress, line: string): void {
   }
 }
 
-/** Parse pi event lines (current run = after the last `session` event). Exported for tests. */
+/** Parse pi event lines of ONE run (its events = after its `session` event). Exported for
+ * tests; readLiveProgress routes through feedDemuxed instead, since a real role log can
+ * interleave two runs' lines. A `session` event without a cwd (the test fixtures' shape)
+ * counts as an author run. */
 export function parseProgress(lines: string[], quietMs: number): LiveProgress {
   const progress = freshProgress(quietMs);
-  for (const line of lines) feedLine(progress, line);
+  for (const line of lines) {
+    const event = parsePiEventLine<ProgressEvent>(line, PROGRESS_TYPES);
+    if (event) feedLine(progress, event);
+  }
   // Freshly fed lines stamp Date.now(), so nothing is stalled right after parsing — the flag
   // exists here so callers that pass a hand-built tail through workingDetail see the same
   // shape readLiveProgress returns.
@@ -197,23 +236,47 @@ export function stalledToolLabel(
   return undefined;
 }
 
-/** Live progress for a loop's in-flight tick, or null when there is no log yet.
- * The raw log is append-only while pi runs (and each run starts with a `session` event),
- * so after seeding from the tail window once we only read and parse bytes appended since
- * the last poll — observers that call this every second (TUI, GUI) stop rescanning up to
- * TAIL_BYTES of JSON per role per poll. */
-export function readLiveProgress(root: string, role: string): LiveProgress | null {
+/** Fold one raw log line into a role log's per-kind tail state (mutates it): a labeled run
+ * line or a `session` event switches which accumulator following lines fold into — the
+ * `session` event's `cwd` is the authoritative kind discriminator (the lander worktree's
+ * path = gate), the harness's `tumwater_run` label line an early hint for the window between
+ * the label and the session event. Everything else folds into the current kind's
+ * accumulator. Non-JSON noise is skipped. */
+function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
+  const event = parsePiEventLine<ProgressEvent>(line, PROGRESS_TYPES);
+  if (!event) return; // Blank, unparseable, or a type this feed does not act on.
+  if (event.type === "session") {
+    tail.cur = event.cwd === gateCwd ? "gate" : "author";
+    tail[tail.cur] = freshProgress(tail[tail.cur].quietMs);
+    return;
+  }
+  if (event.type === "tumwater_run") {
+    if (event.label === "review") tail.cur = "gate";
+    return;
+  }
+  feedLine(tail[tail.cur], event);
+}
+
+/** Live progress for one of a loop's pi run kinds (`author` — the in-flight tick's run in
+ * the role's own worktree, the default; `gate` — the review gate's runs in the role's lander
+ * worktree, what the reviewing cell shows), or null when there is no log yet. The raw log is
+ * append-only while pi runs and every run starts with a `session` event, so after seeding
+ * from the tail window once we only read and parse bytes appended since the last poll —
+ * observers that call this every second (TUI, GUI) stop rescanning up to TAIL_BYTES of JSON
+ * per role per poll. */
+export function readLiveProgress(root: string, role: string, kind: ProgressRunKind = "author"): LiveProgress | null {
   const log = statRoleLog(tails, root, role);
   if (!log) return null; // No raw log yet — nothing to show.
   const quietMs = Math.max(0, Date.now() - log.st.mtimeMs);
   // Seed from the tail window; a leading partial line is unparseable and skipped by feedLine.
-  const progress = withTail(
+  const tail = withTail(
     tails,
     log.file,
     log.st,
-    (size) => ({ fromOffset: Math.max(0, size - TAIL_BYTES), value: freshProgress(quietMs) }),
-    feedLine,
+    (size) => ({ fromOffset: Math.max(0, size - TAIL_BYTES), value: freshRoleTail(quietMs) }),
+    (t, line) => feedDemuxed(t, line, landWorktreePath(root, role)),
   );
+  const progress = tail[kind];
   progress.quietMs = quietMs;
   // The stall flag is derived from wall-clock time (like quietMs), not folded from lines —
   // recomputed on every read with the configured threshold. A call already open when this

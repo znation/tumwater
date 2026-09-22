@@ -3,7 +3,7 @@ import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../state.js";
 import { budgetGate, budgetReached } from "../budget.js";
-import { readLiveProgress, type LiveProgress } from "./progress.js";
+import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress.js";
 import { compactTokens, shortSha, usd, usdCap } from "../text.js";
 
 /** The status DISPLAY MODEL: what a loop's cycle position is, what each header badge reads,
@@ -54,6 +54,16 @@ function inFlightDetail(s: LoopState, label: string, p: LiveProgress | null): st
   // only flag a stall once at least five minutes have passed without any pi output.
   if (p.quietMs >= 300_000) parts.push(`no pi output for ${duration(p.quietMs)}`);
   return parts.join(" · ");
+}
+
+/** Which pi run kind (progress.ts's ProgressRunKind) a loop's in-flight cells should read:
+ * the review gate's reviewer run ("gate") while the tick is under review — its `session`
+ * event is the log's newest and its counts are what "reviewing" describes — the author's
+ * own run ("author") for every other in-flight phase. One home for the rule so the TUI
+ * table and the GUI payload cannot drift (the precomputed `live` tail must name the same
+ * run the phase label does). */
+export function progressKind(s: LoopState): ProgressRunKind {
+  return s.phase === "review" ? "gate" : "author";
 }
 
 /** The state cell for a working loop: elapsed · turns · live context · current tool. Pass
@@ -111,9 +121,12 @@ export function loopPhase(
   if (landing) return `landing ${duration(Date.now() - landing.startedAt)}`;
   if (s.running) {
     // The tick's work is committed and under adversarial review: the raw log tail now
-    // describes the reviewer run — show its live progress with a "reviewing" label.
+    // describes the reviewer run — show its live progress with a "reviewing" label. The
+    // reviewer's run writes the same role log as the author's (each `session` event names
+    // its worktree), so read the GATE accumulator here — the author one still holds the
+    // finished authoring run (BUGS.md 2026-09-22).
     if (s.phase === "review") {
-      const p = root ? (live === undefined ? readLiveProgress(root, s.role) : live) : null;
+      const p = root ? (live === undefined ? readLiveProgress(root, s.role, "gate") : live) : null;
       return inFlightDetail(s, "reviewing", p);
     }
     // In-flight ticks finish even while the budget is paused — only NEW ticks are blocked,

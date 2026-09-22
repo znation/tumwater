@@ -4,7 +4,7 @@ import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { budgetGate, budgetReached, dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForRole, loopPhase } from "./status-model.js";
+import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForRole, loopPhase, progressKind } from "./status-model.js";
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -55,7 +55,8 @@ export function statusPayload(root: string): object {
     paused: snap.paused,
     loops: snap.loops.map((s) => {
       // One live tail read per running loop per poll (was up to three — see renderStatus).
-      const live = s.running ? readLiveProgress(root, s.role) : null;
+      // The kind follows the phase (progressKind) — see renderStatus / BUGS.md 2026-09-22.
+      const live = s.running ? readLiveProgress(root, s.role, progressKind(s)) : null;
       const m = displayTokenMetrics(root, s, live);
       return {
         role: s.role,

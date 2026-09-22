@@ -12,6 +12,7 @@ import {
   landingBadge,
   landingForRole,
   loopPhase,
+  progressKind,
   sortLoopsByState,
 } from "./status-model.js";
 
@@ -107,7 +108,9 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // and carried on the row: the same label drives the state cell and the shared row order
   // (sortLoopsByState), so the two cannot diverge.
   const withMetrics = snap.loops.map((s) => {
-    const live = s.running ? readLiveProgress(root, s.role) : null;
+    // The tail read names the run kind the loop's phase describes (progressKind) — a gate
+    // run's session mid-tick must not reset the working cell's counts (BUGS.md 2026-09-22).
+    const live = s.running ? readLiveProgress(root, s.role, progressKind(s)) : null;
     return {
       s,
       m: displayTokenMetrics(root, s, live),

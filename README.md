@@ -46,11 +46,6 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: the build check's rejection headline is a node:test summary counter — two
-  rejections reported as `build check failed (test): ℹ todo 0`, naming nothing (found by
-  telemetry 2026-09-22).
-- Open bug: one pi log per role carries two pi runs — a landing run's `session` event resets
-  the turn counter the dashboard shows for the authoring tick (reported by user 2026-09-22).
 - Open bug: the live-progress tail seeds from an arbitrary byte offset, so a first
   observation reports a turn count that means nothing (reported by user 2026-09-22).
 - Open bug: a landing's state cell shows only elapsed time — bare `landing <elapsed>` — while

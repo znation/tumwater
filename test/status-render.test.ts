@@ -8,10 +8,16 @@ import { budgetBadge, buildBadge, landingBadge, loopPhase, workingDetail } from 
 import type { StatusSnapshot } from "../src/ui/status.js";
 import { freshLoopState } from "../src/state.js";
 import { fleetDailyCost, todayStamp } from "../src/budget.js";
-import { piLogPath } from "../src/paths.js";
+import { piLogPath, landWorktreePath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
+
+/** A session event for a review-gate run: pi stamps the worktree it started in, and the
+ * gate's runs start in the role's `_land-<role>` lander worktree — the discriminator the
+ * live-progress reader keys on (BUGS.md 2026-09-22). */
+const GATE_SESSION = (root: string, role: string) =>
+  JSON.stringify({ type: "session", version: 3, id: "x", cwd: landWorktreePath(root, role) });
 
 /** Write a raw pi log for `role` under `root`; returns the file path. */
 function writePiLog(root: string, role: string, lines: string[]): string {
@@ -504,10 +510,11 @@ test("loopPhase shows the review gate label without a log to read from", () => {
 
 test("loopPhase shows the reviewer run's live detail while a tick is under review", () => {
   const root = tmpdir();
-  // The reviewer writes to the same per-role raw log, starting a fresh session — so the tail
-  // after the last `session` event is the reviewer's own progress.
+  // The reviewer writes to the same per-role raw log, starting a fresh session IN THE ROLE'S
+  // LANDER WORKTREE (its session event's cwd names it) — so the gate accumulator, not the
+  // author's, carries the reviewer's progress (BUGS.md 2026-09-22).
   writePiLog(root, "feature", [
-    SESSION,
+    GATE_SESSION(root, "feature"),
     assistantLine("reviewing the diff", { tokens: 22_000 }),
     toolStart("bash", { command: "npm test" }),
   ]);
