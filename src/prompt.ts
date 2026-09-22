@@ -330,6 +330,28 @@ Rules for this run:
 - When every marker is resolved and the project is consistent, just stop.`;
 }
 
+/** The prompt for the gate's one bounded build-fix run: the deterministic pre-check failed on
+ * the tree about to land, and this run gets one chance to make it green before the landing is
+ * rejected — a red main otherwise rejects every queued landing for a failure none of their
+ * authors caused. The harness commits whatever the run produces; the run must not. */
+export function buildBuildFixPrompt(roleId: string, script: string, reasons: string[]): string {
+  return `You are the "${roleId}" loop of tumwater, an autonomous development harness. The
+project's declared check, \`npm run ${script}\`, FAILED on the tree that is about to be merged
+to main. Reproduce the failure, fix the source, and make the check pass.
+
+Failure output (headline first, then the clipped tail):
+${reasons.map((r) => `- ${r}`).join("\n")}
+
+Rules for this run:
+- Fix the underlying cause in source. Never delete a test, skip a test, weaken an assertion, or
+  otherwise make the check pass without the code being right.
+- Keep the change minimal: only what the failure requires.
+- Re-run \`npm run ${script}\` until it passes, then stop. Do not start other work.
+- Never run any git command that changes state (no add, commit, merge, rebase, reset,
+  checkout) — the harness commits your fix. Reading git state is fine.
+- Never touch the .tumwater directory or tumwater.json.`;
+}
+
 /** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees
  * only the diff and project context — never the author's session — and replies with exactly
  * one VERDICT line plus numbered reasons (see parseVerdict in src/review.ts). `verifiedByHarness`

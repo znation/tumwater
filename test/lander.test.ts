@@ -371,6 +371,95 @@ test("the lander worktree is per-role and detached at the pinned sha", async () 
 /** A repo where every listed role has a single-commit pin based on main — the queue shape
  * the batch drain reads. One separate file per role by default so cherry-picks apply
  * cleanly; `edit` overrides the per-role change (the conflict test rewrites one line). */
+// The gate's bounded build-fix run (a red deterministic pre-check gets one model run to turn
+// the check green): the pin, the landing tree, and the usage accounting must all track the
+// fixed tree, whichever way the gate then decides. The fake shim tells its runs apart by the
+// session name pi is handed (`-n tumwater-buildfix-<role>-…` vs `…review…`).
+const FIX_PI = (fix: string, review: string) =>
+  // Match the session-name argument exactly — the prompt itself may quote the word.
+  `b=review\nfor a in "$@"; do case "$a" in tumwater-buildfix-*) b=fix ;; esac; done\nif [ "$b" = fix ]; then ${fix}; else ${review}; fi`;
+
+/** A fail-once build check: the first invocation fails (the pre-check), every later one
+ * passes — as if the fix run's edit had made it green. */
+function failOnceCheck(root: string, flag: string): void {
+  declareCheck(
+    root,
+    `if [ -f '${flag}' ]; then exit 0; fi\ntouch '${flag}'\necho 'error TS2345: boom' >&2\nexit 1\n`,
+  );
+}
+
+test("a gate fix run commits the fix and the landing carries work AND fix to main", async () => {
+  const flag = path.join(tmpdir(), "lander-fix-green");
+  fs.rmSync(flag, { force: true });
+  const { root, sha, wt } = await pinnedFixture();
+  failOnceCheck(root, flag);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const restore = fakePi(FIX_PI(`echo 'fixed' >> seed.txt`, `printf '%s\n' '${assistantLine("VERDICT: approve")}'`));
+  try {
+    const state = freshLoopState(ROLE);
+    const { ctx, folded } = makeCtx(root, state);
+    const result = await landChange(ctx, request(sha));
+    assert.equal(result, "changed");
+    // BOTH commits reached main — the fix alone would be a landing of nothing.
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2");
+    const tree = sh(root, "git", "show", "main:seed.txt");
+    assert.ok(tree.includes("the work") && tree.includes("fixed"), `main has work + fix: ${tree}`);
+    assert.equal(await refSha(root, REF), null, "landed: the pin is gone");
+    // Two pi runs were consumed (fix + reviewer) and both folded into the tick's totals.
+    assert.equal(folded.length, 2);
+  } finally {
+    restore();
+  }
+  void wt;
+});
+
+test("a fix followed by an under-cap reviewer failure keeps the pin on the fixed head", async () => {
+  // The regression this pins: the fix commit moves the worktree head past the pinned sha —
+  // which the old strike-cap tell read as "the gate discarded the commit", deleting the pin
+  // on strike 1 and orphaning the author's work. An under-cap failure must keep the pin,
+  // moved to the fixed head, so the next re-land reviews the fixed tree.
+  const flag = path.join(tmpdir(), "lander-fix-red-review");
+  fs.rmSync(flag, { force: true });
+  const { root, sha } = await pinnedFixture();
+  failOnceCheck(root, flag);
+  const restore = fakePi(
+    FIX_PI(`echo 'fixed' >> seed.txt`, `printf '%s\n' '${assistantLine("still no verdict here")}'`),
+  );
+  try {
+    const state = freshLoopState(ROLE);
+    const { ctx, folded } = makeCtx(root, state);
+    const result = await landChange(ctx, request(sha));
+    assert.equal(result, "review_error");
+    const pinned = await refSha(root, REF);
+    assert.ok(pinned, "the pin survives an under-cap failure");
+    assert.notEqual(pinned, sha, "the pin moved to the fixed head");
+    const tree = sh(root, "git", "show", `${pinned}:seed.txt`);
+    assert.ok(tree.includes("the work") && tree.includes("fixed"), `the pin names the fixed tree: ${tree}`);
+    assert.equal(folded.length, 2, "fix run + reviewer both folded despite the failure");
+    assert.match(state.lastError ?? "", /review failed/);
+  } finally {
+    restore();
+  }
+});
+
+test("a fix run's spend folds even when the landing is rejected", async () => {
+  // The no-change fix path: the check stays red, the run made no edits, the landing rejects —
+  // the consumed run still folds (never only on the happy path).
+  const { root, sha } = await pinnedFixture();
+  declareCheck(root, "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n");
+  const restore = fakePi(FIX_PI(`true`, `printf '%s\n' '${assistantLine("VERDICT: approve")}'`));
+  try {
+    const state = freshLoopState(ROLE);
+    const { ctx, folded } = makeCtx(root, state);
+    const result = await landChange(ctx, request(sha));
+    assert.equal(result, "rejected");
+    assert.equal(await refSha(root, REF), null, "rejected: the pin is gone");
+    assert.equal(folded.length, 1, "exactly the fix run folded — the reviewer never ran");
+  } finally {
+    restore();
+  }
+});
+
 async function batchPinnedFixture(
   roles: string[],
   edit?: (root: string, role: string) => void,
@@ -496,6 +585,40 @@ test("a green batch stacks every approved change, fast-forwards main once, and l
     assert.equal(folded.get("beta")!.length, 1);
     assert.equal(states.alpha.lastApprovedHead, shas.alpha!, "the verdict persisted per role");
     assert.equal(states.beta.lastApprovedHead, shas.beta!);
+  } finally {
+    restore();
+  }
+});
+
+test("a batch stacks a fixed change's work AND fix commits, not the fix alone", async () => {
+  // The regression this pins: a gate fix run moves the pin to a head whose own diff is only
+  // the fix. Picking that single head would land the fix without the work it fixes and
+  // orphan the work commit — the stack must pick the whole range from main to that head.
+  const flag = path.join(tmpdir(), "batch-fix-range");
+  fs.rmSync(flag, { force: true });
+  const { root, shas } = await batchPinnedFixture(["alpha", "beta"]);
+  failOnceCheck(root, flag);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const states = { alpha: freshLoopState("alpha"), beta: freshLoopState("beta") };
+  const { wiringFor, folded } = makeWiring(states);
+  const restore = fakePi(FIX_PI(`echo 'fixed' >> fix.txt`, `printf '%s\n' '${assistantLine("VERDICT: approve")}'`));
+  try {
+    const results = await landBatch(
+      makeBatchCtx(root),
+      [request(shas.alpha!, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
+      wiringFor,
+    );
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+    // THREE commits on main: alpha's work, alpha's fix, beta's work — none orphaned.
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3");
+    assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"));
+    assert.ok(sh(root, "git", "show", "main:fix.txt").includes("fixed"), "the fix landed with its work");
+    assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"));
+    assert.equal(await refSha(root, landingRefName("alpha")), null);
+    assert.equal(await refSha(root, landingRefName("beta")), null);
+    // alpha consumed a fix run + a reviewer; beta only a reviewer.
+    assert.equal(folded.get("alpha")!.length, 2);
+    assert.equal(folded.get("beta")!.length, 1);
   } finally {
     restore();
   }

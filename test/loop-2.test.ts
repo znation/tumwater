@@ -304,18 +304,22 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
     // Tick 1: the change is committed and enqueued; the LANDING's build pre-check rejects it
-    // deterministically — no reviewer run.
+    // after one bounded fix run (which makes no edits here) — no reviewer run.
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "rejected");
     assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "the failing build did not merge");
 
     // Tick 2: the machine-generated reasons are the cross-tick memory of what broke — every
-    // tick starts a fresh pi session, so they must ride along on this tick's prompt.
+    // tick starts a fresh pi session, so they must ride along on this tick's prompt. The
+    // prompts log now holds three runs: tick 1's author, the landing's fix run, tick 2's
+    // author — the fix run is the one bounded model run a red pre-check spends.
     assert.equal((await runner.tick()).result, "no_change");
     const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
-    assert.equal(runs.length, 2, "exactly two author runs were recorded");
+    assert.equal(runs.length, 3, "two author runs plus the landing's one fix run");
     assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
-    const second = runs[1] ?? "";
+    assert.match(runs[1] ?? "", /npm run build.*FAILED/s, "the fix run was told exactly what failed");
+    assert.match(runs[1] ?? "", /Never delete a test/, "the fix run may not fake a pass");
+    const second = runs[2] ?? "";
     assert.match(second, /Your previous change was rejected in review:/);
     assert.match(second, /build check failed \(build\): src\/bad\.ts\(3,5\)/);
   } finally {

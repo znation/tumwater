@@ -57,9 +57,12 @@ export interface LanderContext {
   signal(): AbortSignal;
 }
 
-/** A gate invocation's outcome: `gate` when the change is approved/exempt and may be landed,
- * `result` when it is already terminal (aborted, rejected, or review_error). */
-type GateOutcome = { kind: "gate"; gate: GateResult } | { kind: "result"; result: TickResult };
+/** A gate invocation's outcome: `gate` when the change is approved/exempt and may be landed
+ * (`sha` is the head to land — the pinned sha, or a later head carrying a build-fix commit
+ * the gate added), `result` when it is already terminal (aborted, rejected, or review_error). */
+type GateOutcome =
+  | { kind: "gate"; gate: GateResult; sha: string }
+  | { kind: "result"; result: TickResult };
 
 /** The identity every gate invocation needs from whichever landing path calls it. The
  * single-change path's LanderContext and the batch's BatchContext both satisfy this, so one
@@ -76,10 +79,11 @@ interface ReviewGateContext {
  * immediate bookkeeping both landing paths otherwise copy — the single-change path (landChange)
  * and the batch's Phase A. Persists the verdict at once, folds the reviewer's usage, and routes
  * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-lands it),
- * rejected (ref deleted — final for this sha), and failed (ref kept under the failure cap; past
- * the cap the gate reset the worktree off the pin, so a HEAD that moved away from `req.sha`
- * means the commit was discarded and the ref goes too — an unreadable head keeps it). Returns
- * the gate result only when the change may be landed. */
+ * rejected (ref deleted — final for this sha), and failed (a strike-cap discard — the gate
+ * reports it as `discarded` — deletes the ref; an under-cap failure keeps it, tracking any
+ * build-fix commit the gate added, so the pin names the fixed tree the next re-land reviews —
+ * an unreadable head keeps it too, fail closed). Returns
+ * the gate result only when the change may be landed, alongside the head to land it at. */
 async function reviewPinnedChange(
   ctx: ReviewGateContext,
   req: LandRequest,
@@ -105,10 +109,13 @@ async function reviewPinnedChange(
   // and re-inject a superseded rejection even though its replacement is already on main.
   saveLoopState(root, state);
   if (gate.run) foldUsage(gate.run);
+  // The gate's build-fix run is its own pi invocation — fold it on every outcome it reached
+  // (abort, no-change reject, still-red reject, approval), never only on the happy path.
+  if (gate.fixRun) foldUsage(gate.fixRun);
 
-  // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-lands it.
-  // The caller routes "aborted" through its own abort handling (which discards the pin too when
-  // the abort was a deliberate user stop).
+  // Shutdown/user abort mid-review (or mid-build-fix): fail closed — the ref stays and the next
+  // tick re-lands it. The caller routes "aborted" through its own abort handling (which
+  // discards the pin too when the abort was a deliberate user stop).
   if (gate.aborted) return { kind: "result", result: "aborted" };
 
   if (gate.decision === "rejected") {
@@ -119,16 +126,36 @@ async function reviewPinnedChange(
 
   if (gate.decision === "failed") {
     state.lastError = `review failed: ${gate.detail}`;
-    // Strike-cap discard is invisible in GateResult — the same shape as an under-cap failure.
-    // The tell is the worktree itself: past REVIEW_FAILURE_LIMIT the gate reset it off the pin,
-    // so a HEAD that moved away from req.sha means the commit was discarded and the ref goes too.
-    // An unreadable head keeps the ref (fail closed): the next tick re-lands through this gate.
+    // Strike-cap discard: the gate says so directly (it reset the worktree off the pin) — the
+    // commit is gone and the ref goes too. An under-cap failure keeps the pin, TRACKING any
+    // build-fix commit the gate added: the worktree head moved past `req.sha` only by that
+    // fix (an under-cap failure never resets the worktree), so the pin names the fixed tree
+    // the next re-land reviews — without this, a fix followed by an under-cap reviewer
+    // failure would delete the pin on strike 1 and discard the author's work with it. An
+    // unreadable head keeps the ref (fail closed): the next tick re-lands through this gate.
+    if (gate.discarded) {
+      await deleteRef(root, ref);
+      return { kind: "result", result: "review_error" };
+    }
     const head = await headOf(wt, "HEAD").catch(() => null);
-    if (head !== null && head !== req.sha) await deleteRef(root, ref);
+    if (head !== null && head !== req.sha) {
+      await setRef(root, ref, head);
+      req = { ...req, sha: head };
+    }
     return { kind: "result", result: "review_error" };
   }
 
-  return { kind: "gate", gate };
+  // Approved or exempt: track the pin to the head the verdict judged, so a merge that cannot
+  // finish (conflict/blocked) leaves recovery re-landing the fixed tree, not the stale pin.
+  // verifiedHead carries it when the re-check ran green; the worktree head covers the skipped
+  // re-check corner (a fix was committed but the tree was never verified — still unmergeable
+  // work worth keeping pinned). An unreadable head keeps the old pin (fail closed).
+  const sha = gate.verifiedHead ?? (await headOf(wt, "HEAD").catch(() => req.sha));
+  if (sha !== req.sha) {
+    await setRef(root, ref, sha);
+    req = { ...req, sha };
+  }
+  return { kind: "gate", gate, sha };
 }
 
 /** The failed landing outcomes that KEEP the pin for another attempt: an under-cap review
@@ -234,9 +261,11 @@ export interface BatchRoleWiring {
  *
  * Phase A — for each request in queue order, the SAME review gate landChange runs, in that
  * role's own `_land-<role>` worktree, with the verdict persisted right after (a mid-batch
- * crash must not lose what the batch earned). approved/exempt → into the stack S; rejected →
- * terminal (ref deleted), continue; failed → stop (this request "review_error", the ref goes
- * only on landChange's strike-cap tell, the rest stay unattempted); aborted (a shutdown
+ * crash must not lose what the batch earned). approved/exempt → into the stack S (each entry
+ * recorded with the head its gate judged — pin, or pin + build-fix commit); rejected →
+ * terminal (ref deleted), continue; failed → stop (this request "review_error": a strike-cap
+ * discard deletes the ref, an under-cap failure keeps it tracking any build-fix commit; the
+ * rest stay unattempted); aborted (a shutdown
  * mid-gate or a quiet-killed reviewer run) → every request without a terminal outcome reads
  * "aborted" and keeps its ref. |S| == 0 means nothing was approved — all results are already
  * defined (or unattempted after an early stop) and there is nothing to land: return as-is.
@@ -246,9 +275,10 @@ export interface BatchRoleWiring {
  * is what makes landBatchMax=1 reproduce 3/5 exactly.
  *
  * |S| >= 2 — assemble the stack in S[0]'s lander worktree, checked out detached at main's
- * CURRENT tip, then cherry-pick every S sha in queue order onto it (head included),
- * capturing each post-pick sha — one check over the combined tree, one fast-forward through
- * those captured shas. ONE scope-`batch` runScopedBuildCheck over the combined tree
+ * CURRENT tip, then cherry-pick each S entry's full range from that tip to its head to land,
+ * in queue order — `base..sha`, every commit ahead of main (one normally; work + build fix
+ * after a gate fix run), capturing each post-pick tip — one check over the combined tree, one
+ * fast-forward through those captured shas. ONE scope-`batch` runScopedBuildCheck over the combined tree
  * — the expensive, deterministic half the batch shares (the model review already ran per
  * change in Phase A, because an adversarial review of a stack would blur which change a
  * criticism applies to). null (no declared check) → land directly; "failed" (a red tree or a
@@ -316,6 +346,7 @@ export async function landBatch(
 
   // ── Phase A: the per-change review gate, in queue order ────────────────────────────────
   const stack: number[] = []; // request indices of the approved/exempt changes, queue order
+  const stackSha: string[] = []; // each stack entry's head to land (pin, or pin + build fix)
   for (let i = 0; i < requests.length; i++) {
     const req = requests[i]!;
     const w = wiringForRole(req.role);
@@ -339,6 +370,7 @@ export async function landBatch(
     const outcome = await reviewPinnedChange(ctx, req, wt, w.state, w.foldUsage);
     if (outcome.kind === "gate") {
       stack.push(i); // approved or exempt
+      stackSha.push(outcome.sha);
       continue;
     }
     if (outcome.result === "aborted") {
@@ -355,7 +387,7 @@ export async function landBatch(
   // ── The degenerate case: one approved change IS 2/5's single path ────────────────────
   if (stack.length === 1) {
     const i = stack[0]!;
-    const req = requests[i]!;
+    const req = { ...requests[i]!, sha: stackSha[0]! };
     try {
       results[i]!.result = await landChange(landerCtx(wiringForRole(req.role)), req);
     } catch (err) {
@@ -385,11 +417,17 @@ export async function landBatch(
     // S[0]'s lander worktree hosts the assembly (its Phase A gate used it too); one
     // idempotent ensure at the fresh base covers the worktree-a-moment-ago case.
     wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, headReq.role), base);
-    for (const i of stack) {
+    for (let s = 0; s < stack.length; s++) {
+      const i = stack[s]!;
       const req = requests[i]!;
-      // Cherry-pick, not rebase: after 2/5 the role branches sit at main and each landing
-      // lives only in its pinned ref as a single commit — there is nothing to rebase.
-      const pick = await gitTry(wt, ...COMMIT_IDENT, "cherry-pick", req.sha);
+      // Cherry-pick the whole RANGE from main's tip to the entry's head to land — not just
+      // that head's own diff. A gate build-fix run commits on top of the work commit and the
+      // pin moves to the fixed head, whose own diff is only the fix: picking the single head
+      // would land the fix without the work it fixes and orphan the work commit. `base..sha`
+      // picks every commit ahead of main, in queue order — one commit normally, work + fix
+      // after a build-fix run. (Not a rebase: after 2/5 the role branches sit at main and
+      // each landing lives only in its pinned ref — there is nothing to rebase.)
+      const pick = await gitTry(wt, ...COMMIT_IDENT, "cherry-pick", `${base}..${stackSha[s]!}`);
       if (pick === null) {
         // A conflict (or an already-applied patch — the crash-window re-drain): abort the
         // pick and abandon to one-at-a-time. The worktree may be left mid-state; its next
@@ -432,11 +470,14 @@ export async function landBatch(
   }
   if (abandon) {
     // One-at-a-time through the existing single path, queue order, stopping at the first
-    // non-terminal outcome (the rest keep entry + ref and re-drain). The already-approved
-    // gate short-circuits, so each fallback burns no model run; main is never left red —
-    // the single path's own gate + in-lock re-check cover every change.
-    for (const i of stack) {
-      const req = requests[i]!;
+    // non-terminal outcome (the rest keep entry + ref and re-drain). Each request lands its
+    // Phase-A head to land (pin + build fix, not the bare pin) — its lander worktree then
+    // holds the exact tree its gate approved. The already-approved gate short-circuits, so
+    // each fallback burns no model run; main is never left red — the single path's own gate
+    // + in-lock re-check cover every change.
+    for (let s = 0; s < stack.length; s++) {
+      const i = stack[s]!;
+      const req = { ...requests[i]!, sha: stackSha[s]! };
       try {
         const result = await landChange(landerCtx(wiringForRole(req.role)), req);
         results[i]!.result = result;

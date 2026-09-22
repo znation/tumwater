@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   PRINCIPLES_MAX_CHARS,
+  buildBuildFixPrompt,
   buildConflictPrompt,
   buildCutOffNote,
   buildDirectorPrompt,
@@ -306,6 +307,44 @@ test("buildConflictPrompt keeps the project building and ends by stopping", () =
   // no sentinel or SUMMARY line (this flow parses neither from pi's reply).
   assert.match(p, /just stop/i);
   assert.ok(!p.includes(NOTHING_TO_DO), "no tick sentinel in a conflict run");
+});
+
+// The build-fix prompt drives the gate's one bounded run against a red deterministic
+// pre-check. Its contract: pi knows which script failed and why, may not fake a pass by
+// weakening the suite, and may not commit — the harness commits the fix it made.
+
+test("buildBuildFixPrompt names the role, the failing script, and every failure line", () => {
+  const p = buildBuildFixPrompt("feature", "test", [
+    "build check failed (test): 1 failing of 3 tests: assert.equal",
+    "at TestContext.<anonymous> (file:///w/dist/test/x.test.js:3:35)",
+  ]);
+  assert.match(p, /"feature" loop/);
+  assert.match(p, /`npm run test`/);
+  assert.match(p, /FAILED/);
+  assert.ok(
+    p.includes("- build check failed (test): 1 failing of 3 tests: assert.equal") &&
+      p.includes("- at TestContext.<anonymous>"),
+    "every reason line as its own bullet, headline first",
+  );
+});
+
+test("buildBuildFixPrompt forbids deleting, skipping, or weakening tests", () => {
+  const p = buildBuildFixPrompt("bugfix", "build", ["build check failed (build): error TS2345"]);
+  // A fix that makes the check pass without the code being right is worse than no fix —
+  // it would land a red tree behind a green headline.
+  assert.match(p, /Never delete a test/);
+  assert.match(p, /weaken an assertion/);
+  assert.match(p, /Fix the underlying cause in source/);
+  assert.match(p, /Keep the change minimal/);
+});
+
+test("buildBuildFixPrompt forbids state-changing git commands (the harness commits)", () => {
+  const p = buildBuildFixPrompt("clean", "test", ["build check failed (test): boom"]);
+  assert.match(p, /no add, commit, merge, rebase/);
+  assert.match(p, /the harness commits your fix/i);
+  // The run's exit condition: the check passes, then it stops — no retry loop, no new task.
+  assert.match(p, /until it passes, then stop/i);
+  assert.match(p, /Never touch the \.tumwater directory/);
 });
 
 // The rejected-review note is the ONLY cross-tick memory of a failed change: every tick

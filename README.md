@@ -99,7 +99,11 @@ one loop per enabled role. Every loop tick:
    advance defers the rebase to the landing itself), so the gate checks what can actually land
    instead of a stale tree a sibling loop has already fixed: first a deterministic
    build pre-check (the project's declared verify script: `npm test` when declared, else
-   typecheck/build; failure rejects without spending a model run), then a fresh-session
+   typecheck/build; a failure buys one bounded fix run — a fresh-session model run told to
+   reproduce and fix the failure in source, which may not weaken a test, and may not commit —
+   and only a still-red re-check rejects, with the fix attempt's outcome named in the reasons;
+   the fix commit joins the reviewed diff and the pin tracks it, so a merge that cannot finish
+   re-lands the fixed tree), then a fresh-session
    reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject` (md-only diffs are
    exempt); rejects reset the branch with reasons injected into the author's next tick,
    failures keep the commit for re-review under a 3-strike discard cap. When several landings are

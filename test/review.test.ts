@@ -590,20 +590,24 @@ async function gateBuildFixture(
   return { root, wt };
 }
 
-test("gate pre-check rejects a failing build with zero reviewer runs and the compiler tail as reasons", async () => {
+test("a red pre-check spends one fix run, and a no-change fix rejects with zero reviewer runs", async () => {
   const { root, wt } = await gateBuildFixture(
     "buildcheck-tool --fail",
     "#!/bin/sh\necho 'src/bad.ts(3,5): error TS2345: Argument of type string is not assignable'\nexit 1\n",
   );
 
-  // The fake pi records ANY invocation — the pre-check must decide before it is ever asked.
+  // The fake pi now serves the FIX run (the pre-check failed): it touches a marker outside
+  // the worktree — no changes — so the gate must reject without ever reaching the reviewer.
+  // Exactly one fix run: the no-change outcome is final for this invocation.
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
     const state = freshLoopState(ROLE);
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
-    assert.equal(result.decision, "rejected"); // deterministic — no model verdict involved
-    assert.ok(!fs.existsSync(marker), "the reviewer never ran: the pre-check decided alone");
+    assert.equal(result.decision, "rejected"); // the fix run had nothing to offer
+    assert.ok(fs.existsSync(marker), "the fix run ran before the reject");
+    assert.equal(result.run, undefined, "the reviewer never ran: the fix outcome decided alone");
+    assert.ok(result.fixRun, "the spent fix run is reported for usage folding");
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
     assert.match(result.detail ?? "", /^build check failed \(build\): /);
     assert.equal(state.lastReview?.verdict, "reject");
@@ -618,21 +622,21 @@ test("gate pre-check rejects a failing build with zero reviewer runs and the com
   }
 });
 
-test("gate pre-check selects the declared test script — a failing suite rejects with zero reviewer runs", async () => {
+test("a red pre-check on the declared test script rejects after one spent fix run", async () => {
   const { root, wt } = await gateBuildFixture(
     "buildcheck-tool --fail",
     "#!/bin/sh\necho '1 failing of 3 tests: assert.equal'\nexit 1\n",
     "test",
   );
 
-  // The fake pi records ANY invocation — the pre-check must decide before it is ever asked.
+  // The fake pi serves the fix run (no worktree changes), so the reject is final.
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
     const state = freshLoopState(ROLE);
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
-    assert.equal(result.decision, "rejected"); // deterministic — no model verdict involved
-    assert.ok(!fs.existsSync(marker), "the reviewer never ran: the pre-check decided alone");
+    assert.equal(result.decision, "rejected");
+    assert.ok(fs.existsSync(marker), "the fix run ran before the reject");
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
     assert.match(result.detail ?? "", /^build check failed \(test\): /);
     const reasons = state.lastReview?.reasons ?? [];
@@ -672,18 +676,101 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
     "test",
   );
 
-  // The fake pi records ANY invocation — the pre-check must decide before it is ever asked.
+  // The fake pi serves the fix run (marker outside the worktree — no changes), so the
+  // still-failing pre-check rejects after one spent run.
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
     const state = freshLoopState(ROLE);
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
-    assert.equal(result.decision, "rejected"); // deterministic — no model verdict involved
-    assert.ok(!fs.existsSync(marker), "the reviewer never ran: the pre-check decided alone");
+    assert.equal(result.decision, "rejected"); // the fix run had nothing to offer
+    assert.ok(fs.existsSync(marker), "the fix run ran before the reject");
     const reasons = state.lastReview?.reasons ?? [];
     assert.equal(reasons[0], "build check failed (test): AssertionError [ERR_ASSERTION]: 1 == 2");
     assert.ok(reasons.some((r) => r.startsWith("at ")), "the rest of the clipped tail still follows");
     assert.ok(reasons.includes("actual: 1,"), "real diff content is not skipped as noise");
+  } finally {
+    restore();
+  }
+});
+
+// The one bounded fix run: a red deterministic pre-check gets a single model run to turn the
+// check green before the landing is rejected — a red main otherwise rejects every queued
+// landing for a failure none of their authors caused. The fake shim tells the runs apart by
+// the session name pi is handed (`-n tumwater-buildfix-<role>-…` vs `…review…`).
+const FIX_AND_APPROVE_PI = (fix: string, verdict = "VERDICT: approve") =>
+  `b=review\nfor a in "$@"; do case "$a" in tumwater-buildfix-*) b=fix ;; esac; done\nif [ "$b" = fix ]; then ${fix}; else printf '%s\n' '${assistantLine(verdict)}'; fi`;
+
+test("a fix run that turns the check green commits the fix and proceeds to the reviewer", async () => {
+  // The tool fails its first invocation (the pre-check) and passes afterwards — as if the
+  // fix run's edit had made it green.
+  const flag = path.join(tmpdir(), "buildfix-green");
+  fs.rmSync(flag, { force: true });
+  const { root, wt } = await gateBuildFixture(
+    `if [ -f '${flag}' ]; then exit 0; fi\ntouch '${flag}'\necho 'error TS2345: boom' >&2\nexit 1\n`,
+    "#!/bin/sh\ntrue\n",
+  );
+  const restore = fakePi(FIX_AND_APPROVE_PI(`echo 'fixed' >> seed.txt`));
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "approved");
+    assert.equal(await aheadOfMain(wt, "main"), 2, "work commit + fix commit ahead of main");
+    const subjects = sh(wt, "git", "log", "--format=%s", "main..HEAD");
+    assert.match(subjects, /fix failing build check/, "the harness committed the fix");
+    // Everything downstream names the tree the verdict actually judged: the fixed head.
+    assert.equal(result.verifiedHead, await headOf(wt, "HEAD"), "the landing path gets the fixed head");
+    assert.equal(state.lastApprovedHead, await headOf(wt, "HEAD"));
+    assert.ok(fs.readFileSync(path.join(wt, "seed.txt"), "utf8").includes("fixed"));
+    // Two pi runs were consumed — the fix run and the reviewer — both reported for folding.
+    assert.ok(result.fixRun, "the fix run rides on the result");
+    assert.ok(result.run, "the reviewer ran after the green re-check");
+  } finally {
+    restore();
+  }
+});
+
+test("a fix run that leaves the check red rejects with the extra reason line", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
+  );
+  // The fix run edits a file (so the harness commits it) but the check stays red.
+  const restore = fakePi(FIX_AND_APPROVE_PI(`echo 'fixed' >> seed.txt`));
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "rejected");
+    assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.match(reasons[0] ?? "", /^build check failed \(build\): /);
+    assert.ok(
+      reasons.includes("the fix attempt did not turn the check green"),
+      `the fix attempt's outcome rides on the reasons; got: ${JSON.stringify(reasons)}`,
+    );
+    assert.ok(result.fixRun, "the spent fix run is reported even on the still-red reject");
+    assert.equal(result.run, undefined, "the reviewer never ran");
+  } finally {
+    restore();
+  }
+});
+
+test("an aborted fix run fails closed, keeping the commit for the next tick", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
+  );
+  const restore = fakePi(`sleep 5\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const controller = new AbortController();
+    controller.abort(); // harness shutdown already in progress
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), signal: controller.signal }, state);
+    assert.equal(result.decision, "failed");
+    assert.ok(result.aborted);
+    assert.ok(result.fixRun, "the aborted run is the fix run, reported for folding");
+    assert.equal(await aheadOfMain(wt, "main"), 1); // the work commit stays; re-landed next tick
+    assert.equal(state.lastReview, undefined); // no bookkeeping on abort
   } finally {
     restore();
   }
