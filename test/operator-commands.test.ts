@@ -11,6 +11,7 @@ import {
 import { defaultConfig } from "../src/config.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
+import { configPath } from "../src/paths.js";
 import {
   freshLoopState,
   loadLoopState,
@@ -151,6 +152,39 @@ test("cmdWake clears the named loop's backoff and pulls nextRunAt to now, leavin
   assert.ok(after.nextRunAt >= before && after.nextRunAt <= Date.now(), `nextRunAt ${after.nextRunAt} not pulled to now`);
   assert.equal(after.ticks, 7); // observation-window counters are not this command's job
   assert.deepEqual(readJson(wakeRequestPath(root))["roles"], ["clean"]);
+});
+
+// A malformed tumwater.json must not block an operator marker aimed at a built-in role:
+// the fleet itself keeps running on its last-known-good config (the live reload), so wake,
+// reset-counters, and abort --role <builtin> resolve the id from the static catalog instead
+// of requiring the file to parse — the same resilience `logs --role` has.
+test("marker commands with --role <builtin> work while tumwater.json is malformed", async () => {
+  const root = tmpdir();
+  fs.writeFileSync(configPath(root), "{ not json");
+  saveLoopState(root, { ...freshLoopState("feature"), backoffSeconds: 120 });
+
+  const wake = await expectOk(() => cmdWake(root, ["--role", "feature"]));
+  assert.match(wake.stdout, /wake requested for feature/);
+  assert.equal(loadLoopState(root, "feature").backoffSeconds, 0);
+
+  const reset = await expectOk(() => cmdResetCounters(root, ["--role", "feature"]));
+  assert.match(reset.stdout, /counters reset for feature/);
+  assert.equal(loadLoopState(root, "feature").ticks, 0);
+
+  markLive(root);
+  const abort = await expectOk(() => cmdAbort(root, ["--role", "feature"]));
+  assert.match(abort.stdout, /abort requested for feature/);
+});
+
+// The escape hatch is only for built-ins: a custom-loop id (or any unknown id) still needs
+// the config to know the valid id set, so the malformed file is reported honestly instead
+// of the command silently claiming a role that may not exist.
+test("marker commands with a custom/unknown --role still report the broken config", async () => {
+  const root = tmpdir();
+  fs.writeFileSync(configPath(root), "{ not json");
+  const { code, stderr } = await expectFail(() => cmdWake(root, ["--role", "docs"]));
+  assert.equal(code, 1);
+  assert.match(stderr, /tumwater\.json is not valid JSON/);
 });
 
 // --- abort ---

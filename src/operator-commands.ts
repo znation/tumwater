@@ -1,10 +1,11 @@
 import { knownRoleIds, loadConfig } from "./config.js";
 import { fail, parseRoleFlag } from "./cli-args.js";
+import { errorMessage } from "./text.js";
+import { allRoleIds, DIRECTOR_ROLE } from "./roles.js";
 import { clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
 import { orchestratorAlive, pauseFleet, resumeFleet } from "./fleet-state.js";
 import { writeJsonFile } from "./json-files.js";
 import { abortRequestPath, resetRequestPath, wakeRequestPath } from "./paths.js";
-import { DIRECTOR_ROLE } from "./roles.js";
 
 /** The CLI half of the operator-intent protocol (the consumer half is src/operator-requests.ts):
  * `reset-counters`, `wake`, `abort`, `pause`, and `resume` write the on-disk markers the fleet
@@ -26,13 +27,31 @@ function markerApplyNote(root: string): { live: boolean; when: string; tail: str
   };
 }
 
+/** The `--role <id>` value when given, resolved WITHOUT tumwater.json when it names a
+ * built-in catalog role: the fleet itself tolerates a broken config (the live reload keeps
+ * the last-known-good one), so an operator marker aimed at a built-in loop must not depend
+ * on the file parsing — the same resilience `logs --role` already has. A custom-loop id or
+ * an unknown id falls through to the config-backed check, which fails with the honest error
+ * (the config problem, or "unknown role" naming every valid id). Returns null when no
+ * --role is given. */
+function namedRole(root: string, args: string[]): string | null {
+  const i = args.indexOf("--role");
+  if (i < 0) return null;
+  const role = args[i + 1];
+  if (role && allRoleIds().includes(role)) return role;
+  try {
+    return parseRoleFlag(args, knownRoleIds(loadConfig(root)));
+  } catch (err) {
+    fail(errorMessage(err)); // same message main().catch would print, but via the standard fail()
+  }
+}
+
 /** The role(s) a marker command targets: the `--role <id>` value when given, otherwise every
  * role in the config. reset-counters and wake share the same all-roles default, so it lives
  * here once instead of drifting between their bodies. */
 function targetRoles(root: string, args: string[]): string[] {
-  const config = loadConfig(root);
-  const role = parseRoleFlag(args, knownRoleIds(config));
-  return role ? [role] : Object.keys(config.roles);
+  const role = namedRole(root, args);
+  return role ? [role] : Object.keys(loadConfig(root).roles);
 }
 
 /** `tumwater reset-counters [--role <id>]`: zero the per-loop counters shown in the
@@ -89,7 +108,7 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
 export async function cmdAbort(root: string, args: string[]): Promise<void> {
   // As in cmdLogs: the config exists only to validate the id against built-ins plus
   // user-defined loops; a missing --role fails before it is ever needed.
-  const role = args.includes("--role") ? parseRoleFlag(args, knownRoleIds(loadConfig(root))) : null;
+  const role = namedRole(root, args);
   if (!role) fail("abort requires --role <id> (e.g. `--role feature`)");
   if (!orchestratorAlive(root)) fail("no harness is running — start it with `tumwater run` first");
   writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
