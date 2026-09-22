@@ -80,6 +80,42 @@ export function buildCheckFixture(): { root: string; wt: string } {
   return { root, wt };
 }
 
+/** A git repo whose main is "installed" (package.json + node_modules at root) with a linked
+ * worktree checked out to it — the shape checkMainBaseline expects (a pristine main HEAD) —
+ * shared by main-red.test.ts and main-baseline.test.ts. `testScript` is committed to main so
+ * the worktree's checkout carries it; node_modules stays untracked — the install marker
+ * detectBuildCheck walks up to, gitignored in real projects. Each fixture gets its own temp
+ * dir, hence its own SHA: the gate's verdict cache and red-SHA warning state are module-level,
+ * so tests must never share a HEAD. */
+export function baselineFixture(role: string, testScript: string): { root: string; wt: string } {
+  const root = path.join(tmpdir("baseline-"), "project");
+  fs.mkdirSync(root, { recursive: true });
+  sh(root, "git", "init", "-b", "main");
+  sh(root, "git", "config", "user.name", "test");
+  sh(root, "git", "config", "user.email", "test@example.com");
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: testScript } }),
+  );
+  fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed");
+  const wt = path.join(root, ".tumwater", "worktrees", role);
+  fs.mkdirSync(path.dirname(wt), { recursive: true });
+  sh(root, "git", "worktree", "add", "-b", `tumwater/${role}`, wt, "main");
+  return { root, wt };
+}
+
+/** How many times a fixture's test script actually ran (its appends to `counter`). Zero when
+ * the counter was never written — an environmental skip ran nothing. */
+export function runsOf(counter: string): number {
+  try {
+    return fs.readFileSync(counter, "utf8").trim().split("\n").length;
+  } catch {
+    return 0;
+  }
+}
+
 /** Install a fake `pi` executable at the front of PATH for the duration of a test.
  * The script runs with the worktree as cwd. Returns a restore function. */
 export function fakePi(script: string): () => void {

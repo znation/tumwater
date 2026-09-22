@@ -5,7 +5,7 @@ import path from "node:path";
 import { bugfixMainRedNote, mainRedGate } from "../src/main-red.js";
 import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
-import { sh, tmpdir } from "./util.js";
+import { baselineFixture, runsOf, sh, tmpdir } from "./util.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
@@ -14,30 +14,6 @@ import { sh, tmpdir } from "./util.js";
 // execution, and per-SHA cache machinery is covered in build-check.test.ts.
 
 const ROLE = "coverage"; // a BASELINE_BLOCKED_ROLES member (code-producing)
-
-/** A git repo whose main is "installed" (package.json + node_modules at root), with a linked
- * worktree checked out to it — the shape checkMainBaseline expects (a pristine main HEAD).
- * Each fixture gets its own temp dir, hence its own SHA: the gate's verdict cache and red-SHA
- * warning state are module-level, so tests must never share a HEAD. */
-function baselineFixture(testScript: string): { root: string; wt: string } {
-  const base = tmpdir("mainred-");
-  const root = path.join(base, "project");
-  fs.mkdirSync(root, { recursive: true });
-  sh(root, "git", "init", "-b", "main");
-  sh(root, "git", "config", "user.name", "test");
-  sh(root, "git", "config", "user.email", "test@example.com");
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: testScript } }),
-  );
-  fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "seed");
-  const wt = path.join(root, ".tumwater", "worktrees", ROLE);
-  fs.mkdirSync(path.dirname(wt), { recursive: true });
-  sh(root, "git", "worktree", "add", "-b", `tumwater/${ROLE}`, wt, "main");
-  return { root, wt };
-}
 
 /** A fake `npm` executable at the front of PATH for the duration of a test (the repo's real
  * npm must never run in unit tests). Returns a restore function. */
@@ -53,17 +29,9 @@ function fakeNpm(script: string): () => void {
   };
 }
 
-function runsOf(counter: string): number {
-  try {
-    return fs.readFileSync(counter, "utf8").trim().split("\n").length;
-  } catch {
-    return 0;
-  }
-}
-
 test("mainRedGate lets a non-blocked role through without running the check", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(`echo run >> ${counter}; exit 1`);
+  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   const restore = fakeNpm(`echo run >> ${counter}; exit 0`);
   try {
     // A bookkeeping role is never gated: no check runs and nothing is logged — even though
@@ -79,7 +47,7 @@ test("mainRedGate lets a non-blocked role through without running the check", as
 
 test("mainRedGate proceeds on a green main and prices the run under the role", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(`echo ok >> ${counter}; exit 0`);
+  const { root, wt } = baselineFixture(ROLE, `echo ok >> ${counter}; exit 0`);
   const restore = fakeNpm(`echo ok >> ${counter}; exit 0`);
   try {
     assert.equal(await mainRedGate(root, ROLE, wt), null, "green main never blocks authoring");
@@ -101,7 +69,7 @@ test("mainRedGate proceeds on a green main and prices the run under the role", a
 
 test("mainRedGate blocks a red main with the terminal outcome and a harness-level warning", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(`echo baseline-failure; echo run >> ${counter}; exit 1`);
+  const { root, wt } = baselineFixture(ROLE, `echo baseline-failure; echo run >> ${counter}; exit 1`);
   const restore = fakeNpm(`echo baseline-failure; echo run >> ${counter}; exit 1`);
   try {
     const blocked = await mainRedGate(root, ROLE, wt);
@@ -133,7 +101,7 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
 
 test("mainRedGate warns once per red SHA: a repeat tick on the same HEAD re-blocks silently", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(`echo run >> ${counter}; exit 1`);
+  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   const restore = fakeNpm(`echo run >> ${counter}; exit 1`);
   try {
     assert.equal((await mainRedGate(root, ROLE, wt))?.result, "main_red");
@@ -154,7 +122,7 @@ test("mainRedGate blocks a user-defined loop on red main like the code roles", a
   // (plans/user-defined-loops.md). Customs come from tumwater.json, not the catalog — declare
   // one in the fixture repo before the gate reads the live config.
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(`echo run >> ${counter}; exit 1`);
+  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   fs.writeFileSync(
     path.join(root, "tumwater.json"),
     JSON.stringify({ customLoops: [{ name: "docs-auditor", task: "Keep the docs current." }] }),
@@ -180,7 +148,7 @@ test("mainRedGate blocks a user-defined loop on red main like the code roles", a
 
 test("mainRedGate warns under the role and proceeds when npm is missing", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(`echo run >> ${counter}; exit 1`);
+  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
 
   // A PATH that keeps git (the helper keys by HEAD) but drops npm — the real-world shape of a
   // machine without node. The skip must warn and proceed, never block authoring.
@@ -216,7 +184,7 @@ test("mainRedGate warns under the role and proceeds when npm is missing", async 
 test("bugfixMainRedNote hands the healer the failing script and headline, warning once", async () => {
   const counter = path.join(tmpdir(), "runs");
   const script = `echo healer-failure-line; echo run >> ${counter}; exit 1`;
-  const { root, wt } = baselineFixture(script);
+  const { root, wt } = baselineFixture(ROLE, script);
   const restore = fakeNpm(script);
   try {
     const note = await bugfixMainRedNote(root, "bugfix", wt);
@@ -255,7 +223,7 @@ test("bugfixMainRedNote hands the healer the failing script and headline, warnin
 test("bugfixMainRedNote yields no note on a green main", async () => {
   const counter = path.join(tmpdir(), "runs");
   const script = `echo green-healer >> ${counter}; exit 0`;
-  const { root, wt } = baselineFixture(script);
+  const { root, wt } = baselineFixture(ROLE, script);
   const restore = fakeNpm(script);
   try {
     assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
@@ -286,7 +254,7 @@ test("bugfixMainRedNote yields no note when no check is declared", async () => {
 test("bugfixMainRedNote yields no note on an environmental skip (no npm)", async () => {
   const counter = path.join(tmpdir(), "runs");
   const script = `echo skip-healer >> ${counter}; exit 1`;
-  const { root, wt } = baselineFixture(script);
+  const { root, wt } = baselineFixture(ROLE, script);
   // A PATH that keeps git but drops npm — the check cannot run, so it is not evidence of red.
   const partialBin = tmpdir("no-npm-bugfix-");
   fs.symlinkSync(sh(wt, "which", "git"), path.join(partialBin, "git"));

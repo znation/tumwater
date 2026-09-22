@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkMainBaseline, noteGreenBaseline } from "../src/main-baseline.js";
-import { sh, tmpdir } from "./util.js";
+import { baselineFixture, runsOf, sh, tmpdir } from "./util.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
@@ -19,35 +19,6 @@ const ROLE = "improve";
 // at the real location (.tumwater/worktrees/<role>): the helper keys its verdict by the
 // worktree's HEAD, which must be pristine main.
 
-/** A git repo whose main is "installed" (package.json + node_modules at root) with a linked
- * worktree checked out to it. `testScript` is committed to main so the worktree's checkout
- * carries it; node_modules stays untracked — the install marker detectBuildCheck walks up to,
- * gitignored in real projects. */
-async function baselineFixture(testScript: string): Promise<{ root: string; wt: string }> {
-  const base = tmpdir("baseline-");
-  const root = path.join(base, "project");
-  fs.mkdirSync(root, { recursive: true });
-  sh(root, "git", "init", "-b", "main");
-  sh(root, "git", "config", "user.name", "test");
-  sh(root, "git", "config", "user.email", "test@example.com");
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: testScript } }),
-  );
-  fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "seed");
-  const wt = path.join(root, ".tumwater", "worktrees", ROLE);
-  fs.mkdirSync(path.dirname(wt), { recursive: true });
-  sh(root, "git", "worktree", "add", "-b", `tumwater/${ROLE}`, wt, "main");
-  return { root, wt };
-}
-
-/** How many times the fixture's test script actually ran (its appends to `counter`). */
-function runsOf(counter: string): number {
-  return fs.readFileSync(counter, "utf8").trim().split("\n").length;
-}
-
 /** A second linked worktree on the same repo at main: same immutable tree, different
  * environment — the case a provisional red has to distinguish. */
 function addWorktree(root: string, role: string): string {
@@ -59,7 +30,7 @@ function addWorktree(root: string, role: string): string {
 test("a red in one worktree is re-verified by the next, and a green there promotes the SHA", async () => {
   const counter = path.join(tmpdir(), "runs");
   // Fails only where an untracked marker sits: identical tree, different environment.
-  const { root, wt } = await baselineFixture(
+  const { root, wt } = baselineFixture(ROLE,
     `echo run >> ${counter}; if [ -f ./RED_MARKER ]; then echo env-failure; exit 1; fi; echo ok`,
   );
   fs.writeFileSync(path.join(wt, "RED_MARKER"), "");
@@ -80,7 +51,7 @@ test("a red in one worktree is re-verified by the next, and a green there promot
 
 test("a red confirmed by a second worktree is authoritative: a third trusts the cache", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = await baselineFixture(`echo run >> ${counter}; echo real-failure; exit 1`);
+  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo real-failure; exit 1`);
   const second = addWorktree(root, "dry");
   const third = addWorktree(root, "clean");
 
@@ -97,7 +68,7 @@ test("a red confirmed by a second worktree is authoritative: a third trusts the 
 
 test("checkMainBaseline reports a red main with the failing script and clipped tail", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = await baselineFixture(`echo baseline-failure; echo run >> ${counter}; exit 1`);
+  const { root, wt } = baselineFixture(ROLE, `echo baseline-failure; echo run >> ${counter}; exit 1`);
   const result = await checkMainBaseline(wt);
   assert.equal(result.baseline?.status, "red");
   assert.equal(result.baseline?.sha, sh(root, "git", "rev-parse", "main"));
@@ -107,7 +78,7 @@ test("checkMainBaseline reports a red main with the failing script and clipped t
 
 test("checkMainBaseline caches per SHA: a second call on the same HEAD re-runs nothing", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { wt } = await baselineFixture(`echo run >> ${counter}; exit 1`);
+  const { wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   const first = await checkMainBaseline(wt);
   const second = await checkMainBaseline(wt);
   assert.equal(first.baseline?.status, "red");
@@ -117,7 +88,7 @@ test("checkMainBaseline caches per SHA: a second call on the same HEAD re-runs n
 
 test("checkMainBaseline re-checks when main moves to a new SHA", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = await baselineFixture(`echo run >> ${counter}; exit 1`);
+  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   assert.equal((await checkMainBaseline(wt)).baseline?.status, "red");
   // A new commit lands on main (still red) and the worktree resets to it — the next tick's
   // fresh SHA must re-run the check instead of trusting the old verdict.
@@ -135,7 +106,7 @@ test("checkMainBaseline re-checks when main moves to a new SHA", async () => {
 });
 
 test("checkMainBaseline reports a green main without failure details", async () => {
-  const { wt } = await baselineFixture("echo ok");
+  const { wt } = baselineFixture(ROLE, "echo ok");
   const result = await checkMainBaseline(wt);
   assert.equal(result.baseline?.status, "green");
   assert.equal(result.baseline?.script, undefined, "red-only field stays absent");
@@ -163,7 +134,7 @@ test("checkMainBaseline returns null (no block) when no build check is declared"
 
 test("checkMainBaseline never caches red for an environmental skip: with npm missing it reports the skip, and re-runs once npm returns", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { wt } = await baselineFixture(`echo run >> ${counter}; exit 1`);
+  const { wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
 
   // A PATH that keeps git (the helper keys by HEAD) but drops npm — the real-world shape of a
   // machine without node.
@@ -191,7 +162,7 @@ test("checkMainBaseline reads a toolchain-failing suite as an environmental skip
   // incident's suite path, in miniature: git works (rev-parse keys the check), the suite runs
   // and dies on the toolchain — the verdict must be a skip, not a red.
   const counter = path.join(tmpdir(), "runs");
-  const { wt } = await baselineFixture(
+  const { wt } = baselineFixture(ROLE,
     `echo run >> ${counter}; echo "You have not agreed to the Xcode license agreements."; exit 1`,
   );
   const skipped = await checkMainBaseline(wt);
@@ -211,7 +182,7 @@ test("checkMainBaseline reads a toolchain-failing suite as an environmental skip
 
 test("checkMainBaseline dedups concurrent checks of one new SHA into a single run", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { wt } = await baselineFixture(`echo run >> ${counter}; exit 1`);
+  const { wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   // A fresh main move wakes every blocked role at once: their concurrent checks must share one
   // npm invocation, not race N of them.
   const [a, b] = await Promise.all([checkMainBaseline(wt), checkMainBaseline(wt)]);
@@ -227,7 +198,7 @@ test("a red is provisional: the next worktree re-runs it unasked, and a pass pro
   // the flag, so one environmental red blocked every code role until main moved — which it could
   // not, because blocking the code roles is what stops main moving (BUGS.md).
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = await baselineFixture(
+  const { root, wt } = baselineFixture(ROLE,
     `echo run >> ${counter}; node -e "process.exit(require('fs').existsSync('marker') ? 0 : 1)"`,
   );
   assert.equal((await checkMainBaseline(wt)).baseline?.status, "red");
@@ -259,7 +230,7 @@ test("a red is provisional: the next worktree re-runs it unasked, and a pass pro
 
 test("noteGreenBaseline records a directly-observed green verdict: checkMainBaseline returns it without running the suite", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = await baselineFixture(`echo run >> ${counter}; echo ok`);
+  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo ok`);
   // The landing path just verified this exact tree (branch HEAD == main here) and passed:
   // record that verdict the way verifyLanding does after a green runBuildCheck.
   noteGreenBaseline(sh(root, "git", "rev-parse", "HEAD"));
