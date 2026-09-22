@@ -46,9 +46,6 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: a landing's state cell shows only elapsed time — bare `landing <elapsed>` — while
-  the reviewer run behind it has the same turns/context/tool detail a working or reviewing
-  loop shows (reported by user 2026-09-22).
 - Open bug: a timed-out build check signals npm alone, leaking the entire test process tree
   to PID 1 (found 2026-09-21).
 - Open bug: a load-sensitive live-orchestrator test falsely reddens main — the same sha
