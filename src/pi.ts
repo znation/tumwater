@@ -166,6 +166,12 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     let lastProgressCount = 0;
     let quietKilled = false;
     const quietMs = opts.config.quietTimeoutSeconds * 1000;
+    // A run that has not yet produced progress is starting, not hung: process creation and
+    // model connect are legitimately slow on a loaded machine (a full test suite, a busy
+    // fleet), and charging that startup latency as pi silence quiet-kills runs that never
+    // had the chance to speak (BUGS.md 2026-09-23). Such a run gets one extra full quiet
+    // window before the kill; once it has spoken, quietTimeoutSeconds applies unchanged.
+    const allowedSilenceMs = () => (parser.progressCount > 0 ? quietMs : quietMs * 2);
     // The stall warning's threshold (distinct from the kill above): one hung tool call is
     // surfaced by name even while sibling calls keep streaming, so total silence is not
     // required. One warning per stalled call — the interval keeps firing until the kill or
@@ -180,7 +186,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
               if (parser.progressCount > lastProgressCount) {
                 lastProgressCount = parser.progressCount;
                 lastProgressAt = Date.now();
-              } else if (quietMs > 0 && Date.now() - lastProgressAt > quietMs) {
+              } else if (quietMs > 0 && Date.now() - lastProgressAt > allowedSilenceMs()) {
                 quietKilled = true;
                 terminateChild(child);
               }

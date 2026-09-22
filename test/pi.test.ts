@@ -300,6 +300,37 @@ test("a stalled run is reported as quiet-killed, not timed out", async () => {
   }
 });
 
+// BUGS.md 2026-09-23: under full-suite load a run's first output could land past the quiet
+// window measured from runPi's start — the OS had not yet scheduled the process, so the
+// watchdog killed a run that never had the chance to speak. A run with zero progress gets
+// one extra full quiet window before the kill; this pins that a slow-to-speak run completes
+// where the old single window killed it.
+test("a run that is slow to speak is not quiet-killed during startup", async () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 5; // old single window killed a silent run at the ~7.5 s check
+  const restore = fakePi(
+    [
+      `sleep 8`, // speaks past the old kill point, inside the doubled startup window
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: spoke late")}'`,
+    ].join("\n"),
+  );
+  try {
+    const result = await runPi({
+      cwd: dir,
+      prompt: "p",
+      config,
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+    });
+    assert.equal(result.quietKilled, false, "startup latency is not a hung tool call");
+    assert.equal(result.ok, true, "the run completes once pi finally speaks");
+  } finally {
+    restore();
+  }
+});
+
 // Open-tool-call tracking feeds the stall warning (BUGS.md 2026-09-13 sibling): a hung
 // command must be nameable while it is still open, and content-free updates must not mask
 // its silence the way they cannot reset the quiet watchdog.
