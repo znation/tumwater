@@ -284,6 +284,30 @@ test("the digest omits the state changes section when the window held none", () 
   assert.doesNotMatch(md, /## Fleet state changes/);
 });
 
+test("a state changes section over the newest-6 cap names its remainder instead of truncating silently", () => {
+  const root = tmpdir();
+  // 9 transition events with distinct times, oldest first — the pre-6:03 events must be
+  // declared hidden, not silently amputated.
+  const events = Array.from({ length: 9 }, (_, i) => ({
+    ts: at(0, 10 + i),
+    loop: "harness",
+    type: "tick_deferred",
+  }));
+  writeEvents(root, [{ ts: at(0, 9), loop: "feature", type: "tick_end", result: "changed" }, ...events]);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  const section = md.slice(md.indexOf("## Fleet state changes"), md.indexOf("## Outcome by role"));
+  assert.match(section, /\+3 older transitions hidden/);
+  assert.match(section, /13:00/, "newest transitions kept");
+  assert.match(section, /18:00/, "newest transitions kept");
+  for (const hour of ["10:00", "11:00", "12:00"]) {
+    assert.ok(!section.includes(hour), `oldest transition ${hour} dropped without a marker`);
+  }
+  // Under the cap the section stays a plain itemization — no false truncation marker.
+  const quiet = tmpdir();
+  writeEvents(quiet, [events[0]!]);
+  assert.doesNotMatch(renderFailureMarkdown(collectFailureReport(quiet, 1)), /older transitions hidden/);
+});
+
 test("each harness state transition renders its own bounded line", () => {
   // describeStateChange owns the whole transition vocabulary, but the digest tests above reach
   // only budget_fallback, fleet_paused, build_stale, config_changed and tick_deferred. Each

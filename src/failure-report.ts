@@ -101,13 +101,17 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   else if (data.partial) lines.push(`partial: retained log starts ${data.oldestEventDate ?? "?"}`);
 
   // The causal frame before the counts: what the fleet DID in the window, so the reader can ask
-  // whether the harness's response was right. Omitted entirely when the window held none.
+  // whether the harness's response was right. Omitted entirely when the window held none. When
+  // the newest-N cap cut the window's transitions, the remainder is named — a quiet window (no
+  // line) and a truncated one must not look the same.
   if (data.stateChanges.length > 0) {
     lines.push("");
     lines.push("## Fleet state changes");
     for (const s of data.stateChanges) {
       lines.push(`- ${stateChangeStamp(s.ts)} ${roleCell(s.role)} — ${s.description}`);
     }
+    const hidden = data.stateChangesTotal - data.stateChanges.length;
+    if (hidden > 0) lines.push(`+${hidden} older transitions hidden`);
   }
 
   const cols = columns(data.outcomes);

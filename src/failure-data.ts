@@ -114,6 +114,7 @@ export interface FailureReportData {
   rejectionClusters: Cluster[];
   landed: LandedCommit[];
   stateChanges: StateChange[];
+  stateChangesTotal: number; // all transitions in the window, before the newest-N cut
 }
 
 /** A cluster key is the message with the volatile parts replaced, rules applied in this order:
@@ -329,12 +330,13 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     .slice(0, LANDED_TOP);
 
   // The harness's own decisions, newest STATE_CHANGE_TOP kept in chronological order. The
-  // description is bounded at collection so render stays a pure function of this data.
-  const stateChanges: StateChange[] = current
+  // description is bounded at collection so render stays a pure function of this data. The
+  // pre-slice count rides along so the render can say when it is showing a cut, not all of them.
+  const allStateChanges: StateChange[] = current
     .filter((ev) => STATE_CHANGE_TYPES.has(ev.type))
     .map((ev) => ({ ts: ev.ts, role: eventRole(ev), description: describeStateChange(ev) }))
-    .sort((a, b) => a.ts - b.ts)
-    .slice(-STATE_CHANGE_TOP);
+    .sort((a, b) => a.ts - b.ts);
+  const stateChanges: StateChange[] = allStateChanges.slice(-STATE_CHANGE_TOP);
 
   const hasEvents = events.length > 0;
   const oldestEventDate = hasEvents ? eventDayKey(events[0]!) : null;
@@ -360,6 +362,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     rejectionClusters,
     landed,
     stateChanges,
+    stateChangesTotal: allStateChanges.length,
   };
 }
 
