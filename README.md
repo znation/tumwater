@@ -46,8 +46,6 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: the live-progress tail seeds from an arbitrary byte offset, so a first
-  observation reports a turn count that means nothing (reported by user 2026-09-22).
 - Open bug: a landing's state cell shows only elapsed time — bare `landing <elapsed>` — while
   the reviewer run behind it has the same turns/context/tool detail a working or reviewing
   loop shows (reported by user 2026-09-22).

@@ -2,7 +2,7 @@ import { applyToolExecutionEvent, parsePiEventLine, type OpenToolCall } from "..
 import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
 import { defaultConfig, loadConfigCached } from "../config.js";
 import { landWorktreePath } from "../paths.js";
-import { statRoleLog, type TailState, withTail } from "./tail.js";
+import { statRoleLog, readCompleteLines, type TailState, withTail } from "./tail.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
  * The log is append-only across ticks AND runs: a role makes several kinds of pi run into
@@ -45,10 +45,32 @@ export interface LiveProgress {
   stalledTool?: string;
 }
 
-/** How much log tail to scan when first observing a file (or after rotation); a tick
- * rarely exceeds this, and stats degrade gracefully. Steady-state polls only parse the
- * bytes appended since the previous poll, so this window is read once, not every second. */
+/** How much log tail a first observation scans initially (or after rotation); findSeedOffset
+ * grows the window in doubling steps until it contains the log's last `session` event, so
+ * this is the floor, not the guarantee. Steady-state polls only parse the bytes appended
+ * since the previous poll, so this window is read at attach time only, not every second. */
 const TAIL_BYTES = 4 * 1024 * 1024;
+
+/** Byte offset a first observation of the log (size `size`) seeds from: the start of the
+ * smallest suffix window, grown from TAIL_BYTES in doubling steps, that contains a complete
+ * `session` event line — or 0 when the log carries none. A bare `size - TAIL_BYTES` seed
+ * opens mid-run whenever the log (which accumulates across ticks up to logMaxBytes) is
+ * larger than the window, and the first observation then counts every assistant turn after
+ * that offset as if it were one run — a number with no defined meaning (BUGS.md 2026-09-22).
+ * Seeding at the window that contains the last session anchors the read at a real run
+ * boundary: the session event resets the accumulator, so the turns reported are exactly the
+ * current run's. Doubling keeps the scan bounded (~log2 reads over a rotated log) and cheap
+ * (the type-first pre-filter skips message_update lines without JSON.parse); attach-time
+ * only — steady-state polls never rescan. The window is injectable for tests. */
+export function findSeedOffset(file: string, size: number, window = TAIL_BYTES): number {
+  for (;;) {
+    const from = Math.max(0, size - window);
+    const { lines } = readCompleteLines(file, from, size);
+    if (lines.some((line) => parsePiEventLine<ProgressEvent>(line, PROGRESS_TYPES)?.type === "session")) return from;
+    if (from === 0) return 0; // No session anywhere in the log — the whole file is the best anchor there is.
+    window *= 2;
+  }
+}
 
 /** Which of a role's pi run kinds a LiveProgress describes: `author` — the tick's own
  * run in the role's worktree (the working cell's subject) — or `gate` — the review gate's
@@ -273,7 +295,7 @@ export function readLiveProgress(root: string, role: string, kind: ProgressRunKi
     tails,
     log.file,
     log.st,
-    (size) => ({ fromOffset: Math.max(0, size - TAIL_BYTES), value: freshRoleTail(quietMs) }),
+    (size) => ({ fromOffset: findSeedOffset(log.file, size), value: freshRoleTail(quietMs) }),
     (t, line) => feedDemuxed(t, line, landWorktreePath(root, role)),
   );
   const progress = tail[kind];

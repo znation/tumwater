@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  findSeedOffset,
   parseProgress,
   readLiveProgress,
   stalledToolLabel,
@@ -463,4 +464,65 @@ test("toolCallStallMs resolves the configured threshold, defaulting to five minu
   const root = tmpdir();
   fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ toolCallStallSeconds: 5 }));
   assert.equal(toolCallStallMs(root), 5_000);
+});
+
+// A first observation seeds from a bare `size - TAIL_BYTES` offset (BUGS.md 2026-09-22): when
+// the log is larger than that window — role logs accumulate across ticks up to logMaxBytes —
+// the window opens mid-run and the turns it reports counted from an arbitrary byte offset,
+// a number with no defined meaning. The fix grows the seed window until it contains the
+// log's last `session` event, anchoring the read at a real run boundary.
+
+test("findSeedOffset grows its window until it contains the log's last session", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const first = assistantLine("before", { tokens: 1 });
+  const lines = [first, SESSION, assistantLine("after", { tokens: 2 })];
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+  const size = fs.statSync(file).size;
+  const sessionOffset = first.length + 1; // Byte offset of the session line.
+  // A 40-byte window cannot hold the session; the scan must grow past it.
+  const from = findSeedOffset(file, size, 40);
+  assert.ok(from > 0 && from <= sessionOffset, `from=${from}, session at ${sessionOffset}`);
+  // A window that already holds the session needs no growth.
+  assert.equal(findSeedOffset(file, size, size), 0);
+});
+
+test("findSeedOffset returns 0 for a log with no session event", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, [assistantLine("a"), assistantLine("b")].join("\n") + "\n");
+  assert.equal(findSeedOffset(file, fs.statSync(file).size, 40), 0);
+});
+
+test("readLiveProgress counts a run past the default tail window from its session, not from the window edge", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Two turns, a session (the current run's anchor), one turn, then >4 MB of streaming
+  // deltas: the last 4 MB hold no session and no turns, so the old seed reported 0 turns
+  // for a run whose real count is 1.
+  const filler = JSON.stringify({ type: "message_update", delta: "x".repeat(120) });
+  const lines = [assistantLine("old tick", { tokens: 1 }), SESSION, assistantLine("current", { tokens: 9 })];
+  const need = 4 * 1024 * 1024 + 1024 - lines.join("\n").length;
+  for (let i = 0, n = Math.ceil(need / filler.length); i < n; i++) lines.push(filler);
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+  const p = readLiveProgress(root, "clean");
+  assert.ok(p);
+  assert.equal(p.turns, 1, "the run after the last session has exactly one turn");
+});
+
+test("readLiveProgress counts every turn of a run larger than the tail window", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // One session, then more than 4 MB of assistant turns: the old seed counted only the
+  // turns inside the last 4 MB — a fraction of the run — on first observation.
+  const lines = [SESSION];
+  const turns: string[] = [];
+  for (let i = 0; i < 24_000; i++) turns.push(assistantLine(`turn ${i}`, { tokens: 10 }));
+  fs.writeFileSync(file, lines.concat(turns).join("\n") + "\n");
+  assert.ok(fs.statSync(file).size > 4 * 1024 * 1024, "the fixture must exceed the tail window");
+  assert.equal(readLiveProgress(root, "clean")?.turns, 24_000);
 });
