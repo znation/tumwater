@@ -16,7 +16,7 @@ import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { logEvent, readEvents } from "../src/events.js";
-import { loadLoopState, readOrchestratorInfo } from "../src/state.js";
+import { loadLoopState, saveLoopState, readOrchestratorInfo } from "../src/state.js";
 import { abortRequestPath, branchName, landQueueDir, landingRefName, landingStatePath, worktreePath } from "../src/paths.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { refSha, setRef } from "../src/git.js";
@@ -778,6 +778,17 @@ test("an abort for a NON-HEAD batched role kills the whole batch and discards ev
   cfg.minTickIntervalSeconds = 300;
   saveConfig(repo, cfg);
   await seedLandQueue(repo, "clean", "dry");
+  // The 300 s min-gap only throttles ticks AFTER the first: a never-run role has
+  // lastTickEndedAt 0, so it is startup-eligible on poll one and — under load — can finish a
+  // no-op tick before the asserts below read `ticks`, which is exactly the race that reddened
+  // this test twice. Seed both roles as freshly ticked so NO tick can start for the next
+  // 300 s; "the interlock held: no tick ever started" then asserts a deterministic fact (the
+  // deeper interlock itself is pinned by the in-flight-landing test above).
+  for (const role of ["clean", "dry"]) {
+    const s = loadLoopState(repo, role);
+    s.lastTickEndedAt = Date.now();
+    saveLoopState(repo, s);
+  }
   // The head's reviewer run touches the marker and then hangs — the batch stays in flight
   // until the abort kills it.
   const marker = path.join(tmpdir(), "batch-reviewing");

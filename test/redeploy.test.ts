@@ -717,6 +717,17 @@ test("compileStaged reports a timeout instead of hanging when tsc runs past its 
   assert.deepEqual(result, { ok: false, detail: "tsc timed out after 0.001s" });
 });
 
+test("compileStaged still names the exit code when tsc fails without any output", async () => {
+  // The detail's tail is optional: a compiler that dies silently (OOM-kill shim, broken
+  // install printing nothing) must not produce an empty "tsc exited" message — the exit code
+  // alone is what the redeploy state machine surfaces as `restart BLOCKED: …`.
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "node_modules/typescript/bin"), { recursive: true });
+  fs.writeFileSync(path.join(root, "node_modules/typescript/bin/tsc"), "process.exit(7);\n");
+  const result = await compileStaged(root, root, "e".repeat(40));
+  assert.deepEqual(result, { ok: false, detail: "tsc exited 7" });
+});
+
 test("mainIsGreen: no declared check reads as green", async () => {
   const root = makeRepo();
   const head = sh(root, "git", "rev-parse", "HEAD");
