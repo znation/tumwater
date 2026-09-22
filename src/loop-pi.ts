@@ -104,8 +104,6 @@ export class LoopPi {
             ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : ""}) — retrying the pi run once`
             : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
       );
-      // Honour the provider's Retry-After hint when it sent one, so the retry does not
-      // re-hit the same limit immediately; capped so a huge hint cannot consume the tick.
       const waitS = Math.min(pi.retryAfterSeconds ?? 0, RATE_LIMIT_RETRY_AFTER_CAP_S);
       if (waitS > 0) await new Promise((r) => setTimeout(r, waitS * 1000));
       // Within-run continuity only: resume the session the first attempt created, so its
