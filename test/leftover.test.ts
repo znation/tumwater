@@ -24,7 +24,11 @@ function makeCtx(
   root: string,
   wt: string,
   landResult: TickResult = "changed",
-): { ctx: LeftoverContext; landed: string[]; metas: Array<{ body?: string; highFriction?: boolean }> } {
+): {
+  ctx: LeftoverContext;
+  landed: string[];
+  metas: Array<{ subject?: string; body?: string; highFriction?: boolean }>;
+} {
   const landed: string[] = [];
   const metas: Array<{ body?: string; highFriction?: boolean }> = [];
   const ctx: LeftoverContext = {
@@ -72,7 +76,12 @@ test("a pinned commit not in main is re-landed through the lander", async () => 
 
   assert.equal(await recoverLeftover(ctx), "changed", "the lander's outcome passes through");
   assert.deepEqual(landed, [sha], "the lander gets exactly the pinned sha");
-  assert.deepEqual(metas, [{ body: undefined, highFriction: undefined }], "a routine commit carries no recovered metadata");
+  // A routine hand-made commit still names what landed — its whole subject, un-stamped.
+  assert.deepEqual(
+    metas,
+    [{ subject: "stranded work", body: undefined, highFriction: undefined }],
+    "a routine commit carries no recovered metadata",
+  );
 });
 
 // BUGS.md 2026-09-19: recovery re-landed a high-friction commit without its flag (and its
@@ -111,6 +120,11 @@ test("recovery reads the pinned commit's body and high-friction flag back out of
     metas[0]?.body,
     "WHY: the fix was fiddly\nRISK: touches the landing path\nVERIFIED: npm test, all pass",
     "the commit body rides into the review gate",
+  );
+  assert.equal(
+    metas[0]?.subject,
+    "slow but worthwhile",
+    "the subject rides into the merged summary with the harness stamp stripped",
   );
 });
 

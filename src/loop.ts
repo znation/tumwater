@@ -594,7 +594,13 @@ export class LoopRunner {
             role: this.role,
             sha,
             tick: s.ticks,
-            summary: `recovered leftover work from ${this.role}`,
+            // Name what landed, not merely that a recovery happened: the recovered commit's
+            // own subject rides the landing, so the failure digest's "Landed in the window"
+            // can correlate a recovered merge with the work it names (BUGS.md 2026-09-21).
+            // Unreadable messages fall back to the bare provenance label.
+            summary: meta.subject
+              ? `recovered leftover work from ${this.role}: ${meta.subject}`
+              : `recovered leftover work from ${this.role}`,
             body: meta.body,
             highFriction: meta.highFriction,
             sessionSuffix: "-recovery",

@@ -99,21 +99,43 @@ export function hasFrictionTrailer(message: string): boolean {
   return FRICTION_TRAILER.test(message);
 }
 
-/** The fields a landing request needs that a commit message can supply: the author's body
- * (WHY/RISK/VERIFIED, reformatted) and whether the tick was high-friction. */
+/** The fields a landing request needs that a commit message can supply: the commit's
+ * subject (WHAT landed — recovery rides it into its `merged` summary so the failure digest
+ * can name recovered work, BUGS.md 2026-09-21), the author's body (WHY/RISK/VERIFIED,
+ * reformatted), and whether the tick was high-friction. */
 export interface CommitMetadata {
+  subject?: string;
   body?: string;
   highFriction?: boolean;
+}
+
+/** The harness-stamped commit-subject prefix — the `tumwater(<role>):` part loop.ts (and
+ * refusal.ts) adds before the SUMMARY line, space included when a summary follows. */
+const SUBJECT_PREFIX = /^tumwater\([^)]+\):(?:\s|$)/;
+
+/** The commit subject's summary portion: the message's first line with the harness's
+ * `tumwater(<role>): ` stamp stripped. A hand-made commit has no stamp and rides its whole
+ * subject; undefined when the line is empty or the stamp is all there is (nothing left to
+ * name). The stamp itself carries only the role, which the caller already names. */
+export function commitSubject(message: string): string | undefined {
+  const line = (message.split("\n", 1)[0] ?? "").trim();
+  if (!line) return undefined;
+  const m = line.match(SUBJECT_PREFIX);
+  if (!m) return line;
+  const rest = line.slice(m[0].length).trim();
+  return rest === "" ? undefined : rest;
 }
 
 /** Reconstruct the review-gate metadata from a commit message the harness stamped itself.
  * Leftover recovery has no authoring run to read from, so the pinned commit's message is the
  * only source of truth: without this a recovered high-friction change loses both its flag and
- * its WHY/RISK/VERIFIED and is reviewed as if it were routine. Empty object when the message
- * carries neither (e.g. a hand-made or non-compliant commit). */
+ * its WHY/RISK/VERIFIED and is reviewed as if it were routine, and its merged event names the
+ * recovery but not the work (BUGS.md 2026-09-21). Absent fields read as undefined when the
+ * message carries none of them (e.g. a hand-made or non-compliant commit). */
 export function parseCommitMetadata(message: string): CommitMetadata {
   const body = extractCommitBody(message);
   return {
+    subject: commitSubject(message),
     body: body ? formatCommitBody(body) : undefined,
     highFriction: hasFrictionTrailer(message) || undefined,
   };

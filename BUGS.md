@@ -15,7 +15,10 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Suspected cause:** `plans/fallback-model.md` framed readiness as a property of the *model* ("is it free?"), which is answerable from a static file, and `budgetGate` was built from that single boolean; whether the *backend* can serve is a property of the world that nothing in the gate's inputs represents. `doctor.ts:127` consults the same cost-only predicate, so `tumwater doctor` also reports a dead fallback as ready.
 
-### Leftover recovery records a generic merge summary, so the failure digest's `## Landed in the window` cannot name recovered work (found by telemetry loop 2026-09-21)
+## Fixed
+
+### Leftover recovery records a generic merge summary, so the failure digest's `## Landed in the window` cannot name recovered work (found by telemetry loop 2026-09-21, fixed 2026-09-21)
+
 
 **Symptom:** The 2026-09-21 digest's `## Landed in the window` lists ten commits, two of which name no work at all: `- c73363e2 — recovered leftover work from bugfix` and `- 3c8511d5 — recovered leftover work from clean`. Both commits carry a real subject that says what landed — `git log -1 --format=%s c73363e2` is `tumwater(bugfix): Kill pi's whole process group so a killed tick leaves no grandchildren` and `3c8511d5` is `tumwater(clean): Drop stale duplicate doc comment above waitFor in test/util.ts` — but the digest renders the landing's synthesized provenance label instead. The event feed's `merged` line and the `tumwater logs` view inherit the same string. This is the section `plans/telemetry-role.md` item 8 calls "the single most important field for the role's charter": it exists so "a cluster that starts on a date can be correlated with the commit that starts it." For a recovered landing the instrument degrades to "a recovery happened in role X" — the reader cannot tell what the commit touched or correlate it with anything, so 2 of 10 landed entries in the window are opaque to the one role whose job is to read runtime evidence.
 
@@ -27,7 +30,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Suspected cause:** `recoverLeftover` reconstructs everything the review gate needs from the pinned commit's message except its subject: `CommitMetadata` (src/commit-message.ts) has `body` and `highFriction` fields only, so the caller in loop.ts invents a provenance string for the summary the lander logs into the `merged` event. The summary parameter was inherited from the fresh-tick path, where the authoring run supplies it; recovery has no run, so the placeholder was used and the durable subject sitting in the very message already being read was never plumbed through.
 
-## Fixed
+**Fix:** `commitSubject` (src/commit-message.ts) now reconstructs the commit's subject — the message's first line with the harness's `tumwater(<role>): ` stamp stripped (a hand-made commit rides its whole subject; an empty or stamp-only line reads as absent) — and `parseCommitMetadata` returns it in `CommitMetadata`, so the subject the recovery was already reading out of the pinned message is no longer fetched and discarded. The `land` closure wired to `recoverLeftover` (src/loop.ts) rides it into the landing: the `merged` summary is now `recovered leftover work from <role>: <subject>`, falling back to the bare provenance label when the message carries no subject, and the reviewer's prompt carries the same enriched summary. The four tests that pinned the defect now pin the fix: `test/loop-2.test.ts` asserts `recovered leftover work from improve: add hello file`; `test/loop-3.test.ts` asserts `…: branch edit of seed`, `…: interrupted tick's commit`, and `…: the pin write never happened`; `test/commit-message.test.ts` pins the stamp stripping and the new metadata shape, and `test/leftover.test.ts` asserts the recovered subject reaches the lander.
+
+**Validation gap:** none — the existing suite reproduced and confirmed it: `test/loop-2.test.ts` already asserted the landed commit's real subject alongside the `merged` event's generic label in one test, so nothing was missing between the bug and a red run.
 
 ### A persistent review failure never reaches the error-streak alarm: every recovery tick that re-fails resets `consecutiveErrors` (found by telemetry loop 2026-09-21, fixed 2026-09-21)
 

@@ -6,6 +6,7 @@ import {
   extractCommitBody,
   extractSummary,
   fallbackSummary,
+  commitSubject,
   formatCommitBody,
   hasFrictionTrailer,
   parseCommitMetadata,
@@ -149,26 +150,39 @@ test("hasFrictionTrailer matches only the harness-stamped Friction line", () => 
   assert.equal(hasFrictionTrailer(""), false);
 });
 
-test("parseCommitMetadata reconstructs the body and friction flag from a stamped message", () => {
+test("commitSubject returns the message's first line with the harness stamp stripped", () => {
+  // A harness-stamped commit: the `tumwater(<role>): ` prefix is stamp, not subject.
+  assert.equal(commitSubject("tumwater(improve): add hello file\n\nWHY: …"), "add hello file");
+  // A hand-made commit has no stamp: its whole subject is the answer.
+  assert.equal(commitSubject("interrupted tick's commit\n\nbody"), "interrupted tick's commit");
+  // An empty subject line (or a stamp with nothing after it) names nothing.
+  assert.equal(commitSubject("\n\nWHY: only a body"), undefined);
+  assert.equal(commitSubject("tumwater(clean):\n"), undefined);
+  assert.equal(commitSubject(""), undefined);
+});
+
+test("parseCommitMetadata reconstructs the subject, body, and friction flag from a stamped message", () => {
   const message = buildCommitMessage(
     "tumwater(improve): slow but worthwhile",
     { why: "the fix was fiddly", risk: "touches landing", verified: "npm test" },
     commitTrailer("improve", 5, 44, 20_000, 4.2),
   );
   assert.deepEqual(parseCommitMetadata(message), {
+    subject: "slow but worthwhile",
     body: "WHY: the fix was fiddly\nRISK: touches landing\nVERIFIED: npm test",
     highFriction: true,
   });
 });
 
-test("parseCommitMetadata yields an empty object for a message with neither body nor trailer", () => {
+test("parseCommitMetadata yields absent fields for a message with neither body nor trailer", () => {
   assert.deepEqual(parseCommitMetadata("interrupted tick's commit"), {
+    subject: "interrupted tick's commit",
     body: undefined,
     highFriction: undefined,
   });
   // A routine harness commit: the Tick trailer alone still carries no friction flag.
   assert.deepEqual(
     parseCommitMetadata(buildCommitMessage("tumwater(clean): tidy", null, commitTrailer("clean", 1, 3, 500))),
-    { body: undefined, highFriction: undefined },
+    { subject: "tidy", body: undefined, highFriction: undefined },
   );
 });

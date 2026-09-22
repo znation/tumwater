@@ -544,8 +544,8 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
     const merged = readEvents(repo).filter((e) => e.type === "merged");
     assert.ok(
-      merged.some((e) => String(e.summary) === "recovered leftover work from improve"),
-      "recovery is recorded as a merge of the leftover work",
+      merged.some((e) => String(e.summary) === "recovered leftover work from improve: branch edit of seed"),
+      "recovery is recorded as a merge of the leftover work, naming its subject",
     );
     // The branch is reset to main afterwards, so nothing is stranded twice.
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
@@ -585,8 +585,10 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
     assert.ok(fs.existsSync(path.join(repo, "crash.txt")), "the recovered file is on main");
     const merged = readEvents(repo).filter((e) => e.type === "merged");
     assert.ok(
-      merged.some((e) => String(e.summary) === "recovered leftover work from improve"),
-      "recovery is recorded as a merge of the leftover work",
+      merged.some(
+        (e) => String(e.summary) === "recovered leftover work from improve: interrupted tick's commit",
+      ),
+      "recovery is recorded as a merge of the leftover work, naming its subject",
     );
     let refGone = false;
     try {
@@ -730,8 +732,10 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
     assert.ok(fs.existsSync(path.join(repo, "unpinned.txt")), "the recovered file is on main");
     const merged = readEvents(repo).filter((e) => e.type === "merged");
     assert.ok(
-      merged.some((e) => String(e.summary) === "recovered leftover work from improve"),
-      "recovery is recorded as a merge of the leftover work",
+      merged.some(
+        (e) => String(e.summary) === "recovered leftover work from improve: the pin write never happened",
+      ),
+      "recovery is recorded as a merge of the leftover work, naming its subject",
     );
     // The role worktree is clean at main whatever recovery did.
     assert.equal(sh(wt, "git", "status", "--porcelain"), "");

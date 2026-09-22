@@ -27,9 +27,9 @@ export interface LeftoverContext {
   mainBranch: string;
   /** The role's worktree — read for the no-pin fallback only. */
   wt: string;
-  /** Land `sha` through the shared lander (review gate, rebase, ff-merge). `meta` carries the
-   * recovered commit's body + high-friction flag, read back from its message because the
-   * authoring run that set them is gone. */
+  /** Land `sha` through the shared lander (review gate, rebase, ff-merge). `meta` carries
+   * the recovered commit's subject + body + high-friction flag, read back from its message
+   * because the authoring run that set them is gone. */
   land(sha: string, meta: CommitMetadata): Promise<TickResult>;
 }
 
@@ -78,10 +78,11 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<TickResult 
 }
 
 /** The review-gate metadata a pinned leftover commit carries in its own message: its
- * high-friction flag and author's body, or an empty object when the commit predates the
- * contract or the message cannot be read. Recovery lands through the same gate as a fresh
- * tick, so it must present those fields the same way — otherwise a flagged change is silently
- * reviewed as routine (BUGS.md 2026-09-19). */
+ * subject, high-friction flag, and author's body, or an empty object when the commit
+ * predates the contract or the message cannot be read. Recovery lands through the same gate
+ * as a fresh tick, so it must present those fields the same way — otherwise a flagged change
+ * is silently reviewed as routine (BUGS.md 2026-09-19), and the merged event names the
+ * recovery but not the work (BUGS.md 2026-09-21). */
 async function recoveredMetadata(root: string, sha: string): Promise<CommitMetadata> {
   const message = await commitMessage(root, sha);
   return message ? parseCommitMetadata(message) : {};

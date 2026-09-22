@@ -1220,7 +1220,10 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     // found nothing to do.
     const merged = readEvents(repo).filter((e) => e.type === "merged");
     assert.equal(merged.length, 1);
-    assert.match(String(merged[0]!.summary), /recovered leftover work from improve/);
+    // The merged summary names what landed — the recovered commit's own subject — not
+    // merely that a recovery happened, so the failure digest's "Landed in the window" is
+    // never opaque (BUGS.md 2026-09-21).
+    assert.equal(String(merged[0]!.summary), "recovered leftover work from improve: add hello file");
   } finally {
     restore2();
   }
