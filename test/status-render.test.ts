@@ -126,6 +126,21 @@ test("the status header carries a questions badge only while questions await", (
   assert.match(header, /· questions: 2 · budget: \$0\.00\/\$50 today$/);
 });
 
+// The inbox badge is the questions badge's sibling: queued director prompts show as `· inbox:
+// N` so an operator sees waiting work at a glance, and a drained inbox leaves no trace —
+// `status --json` carries the same count, but only the header renders it for a human.
+
+test("the status header carries an inbox badge only while prompts are queued", () => {
+  const zero = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  assert.doesNotMatch(zero, /inbox/);
+
+  const snap = snapshotWith([{ role: "clean" }]);
+  snap.inbox = 3;
+  const header = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  // The standing budget badge follows the inbox one in the header, like the questions badge's.
+  assert.match(header, /· inbox: 3 · budget: \$0\.00\/\$50 today$/);
+});
+
 test("renderStatus with maxWidth clips every line and truncates wide cells", () => {
   const snap = snapshotWith([
     {
