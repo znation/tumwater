@@ -46,6 +46,14 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
+- Open bug: a timed-out build check leaks its entire test process tree — `execFileAsync`'s timeout
+  signals npm alone, so orphans run on for hours or days (found 2026-09-21; a 2026-09-22 fix record
+  was false and re-opened by steward 2026-09-22).
+- Open bug: a fix narrative can land on main without its fix — an md-only BUGS.md edit is exempt
+  from the review gate, so a tick can record code that does not exist (found by steward
+  2026-09-22).
+- Open bug: the loop suite's quiet-kill resume test flakes under full-suite load — fails 1-in-N
+  full runs, passes in isolation (found 2026-09-23).
 - Open bug: the failure digest's Review rejections section silently truncates at 5
   alphabetically-first clusters, so most of the window's rejections are invisible while the
   Deltas table reports them (found 2026-09-22).
@@ -61,12 +69,13 @@ Open items:
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 3/7–7/7;
+  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 4a/7–7/7 remain;
   1/7 CI and npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21, 2/7 repo-root and
-  branch targeting landed 2026-09-22).
+  branch targeting landed 2026-09-22, 3/7 harness-mediated director config writes landed
+  2026-09-23).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`255555b`): build clean, suite 1270/1270.
+Current main (`4dafd41`): build clean, suite 1279/1279.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -335,8 +344,8 @@ npm run test:e2e       # the live-orchestrator e2e tier (test/*.e2e.test.ts) —
                        # gating suite because its wall-clock waits are not load-proof
 ```
 
-Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `orchestrator.ts` the scheduler,
-`pi.ts` the pi subprocess integration, `git.ts` the git plumbing, `worktree.ts` the persistent
+Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `loop-pi.ts` its pi-run plumbing,
+`orchestrator.ts` the scheduler, `pi.ts` the pi subprocess integration, `git.ts` the git plumbing, `worktree.ts` the persistent
 worktree lifecycle, `merge.ts` the
 rebase/fast-forward/conflict-resolution landing flow), `src/ui/` the observer/presentation layer
 (TUI, GUI dashboard, status table, transcript, and report rendering — imported only by each other
