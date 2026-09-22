@@ -336,6 +336,52 @@ test("runDoctor's header names the live orchestrator pid when the harness is run
   assert.equal(report.header, `tumwater doctor — harness running (pid ${process.pid})`);
 });
 
+test("runDoctor's header carries the running build's sha, staleness, and restart block", async () => {
+  // orchestrator.json's build field is what an operator reads to answer "why is doctor saying
+  // STALE / restart blocked" — the header must surface all three states, not just the pid.
+  const sha = "a".repeat(40);
+  const writeInfo = (build: Record<string, unknown>) => {
+    const root = readyRepo();
+    fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ".tumwater", "state", "orchestrator.json"),
+      JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: [], build }),
+    );
+    return root;
+  };
+
+  // Fresh, un-stale build: just the sha.
+  const fresh = await runDoctor(writeInfo({ sha, builtAt: Date.now() }), fakeBins("git", "pi"));
+  assert.match(fresh.header, new RegExp(`harness running \\(pid ${process.pid}, build ${sha.slice(0, 8)}\\)`));
+  assert.doesNotMatch(fresh.header, /STALE|restart blocked/);
+
+  // Stale build whose auto-restart is under way: STALE, no block note.
+  const stale = await runDoctor(
+    writeInfo({ sha, builtAt: Date.now(), stale: true, aheadCommits: 2 }),
+    fakeBins("git", "pi"),
+  );
+  assert.match(stale.header, new RegExp(`build ${sha.slice(0, 8)} — STALE\\)`));
+
+  // Stale build whose auto-restart was REFUSED: the block reason is the operator's answer.
+  const blocked = await runDoctor(
+    writeInfo({ sha, builtAt: Date.now(), stale: true, aheadCommits: 3, restartBlocked: "main deadbeef is red" }),
+    fakeBins("git", "pi"),
+  );
+  assert.match(blocked.header, new RegExp(`build ${sha.slice(0, 8)} — STALE \\(restart blocked\\)`));
+});
+
+test("runDoctor survives a corrupt config and lets the init check report it", async () => {
+  // loadConfig throwing must not take down the one command an operator runs to find out why
+  // nothing works — doctor degrades to the init check's failure detail instead.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "tumwater.json"), "{ not json");
+  const report = await runDoctor(root, fakeBins("git", "pi"));
+  assert.match(report.header, /harness not running/);
+  const init = report.checks.find((c) => c.name === "init");
+  assert.equal(init?.level, "fail");
+  assert.ok(init && init.detail.length > 0, "the init check names the config problem");
+});
+
 test("renderDoctor prints one padded line per check between the header and the verdict", () => {
   const rendered = renderDoctor({
     header: "tumwater doctor — harness not running",
