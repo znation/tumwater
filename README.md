@@ -48,22 +48,33 @@ in tumwater.json or by prompting the director.
 Open items:
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; the PLANS.md portability series 1/7–7/7).
-- Open bug: the budget fallback has no liveness check — an unreachable free model turns the spend
-  cap into an hour of 100% tick failure instead of pausing the fleet (filed 2026-09-20).
-- Open bug: a persistent review failure never reaches the error-streak alarm — each recovery tick
-  that re-fails resets `consecutiveErrors`, so a dead reviewer backend fails silently forever
-  (filed 2026-09-21).
-- Open bug: leftover recovery records a generic merge summary, so the failure digest's `## Landed
-  in the window` cannot name recovered work (filed 2026-09-21).
+- Open bug: the test suite never deletes its temp dirs — 1.68M abandoned `tumwater-test-*`
+  entries make every `mkdtemp` ~9,000× slower and time out build checks (found 2026-09-21).
+- Open bug: a timed-out build check signals npm alone, leaking the entire test process tree
+  to PID 1 (found 2026-09-21).
+- Open bug: a load-sensitive live-orchestrator test falsely reddens main — the same sha
+  failed and passed two minutes apart (found 2026-09-21).
+- Open bug: HTTP 429 is not a transient failure class, so a rate-limit storm errors
+  two-thirds of the fleet's ticks instead of retrying (found 2026-09-21).
+- Open bug: the failure digest's `## Outcome by role` separator row has no cell delimiters,
+  so the table never renders (found 2026-09-21).
+- Open bug: the grandchild-leak fix landed its kill but not its detector — `doctor` reports
+  nothing about orphaned worktree processes (found 2026-09-21).
+- Open bug: the build check's 300 s timeout does not bound it — skipped checks recorded
+  331–1158 s (found 2026-09-21).
+- Open bug: the budget fallback has no liveness check — an unreachable free model turns the
+  spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
 - Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
 
-Current main (`c2ff74b`): build clean, suite 1257/1257.
+Current main (`ee53364`): build clean, suite 1262/1262 (one known load flake in
+orchestrator-3, tracked above; passes in isolation).
 <!-- tumwater:status:end -->
 
 ## How it works
 
 `tumwater init "<prompt>"` seeds a git repo with README.md (your prompt + a status section),
-PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, and tumwater.json, and commits them. `tumwater run` then starts
+PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, and tumwater.json, and commits them — the
+initial prompt is capped at 4096 chars, because it rides into every tick's prefill. `tumwater run` then starts
 one loop per enabled role. Every loop tick:
 
 1. Resets its persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`) to main.
