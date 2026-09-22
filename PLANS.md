@@ -66,9 +66,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A landing whose tree keeps the config, and one on a repo with no config, both leave the working tree untouched and `ffMainTo` still returns true.
 - Full suite green.
 
-### 5/7 — Make the agent binary configurable (planned 2026-09-14, refined 2026-09-19)
+### 5/7 — Make the agent binary configurable (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23)
 
-**Goal.** Stop assuming the agent CLI is a binary literally named `pi` on `PATH`. src/pi.ts spawns `spawn("pi", …)`, and both `cmdRun`'s preflight and `checkPiBinary` gate on `findOnPath("pi")`, so a non-PATH install, a wrapper script, or two pi builds side by side are impossible. Resolution order: `TUMWATER_PI_BIN` → `agentBin` → `"pi"`. The shared `PI_MISSING_MESSAGE` in readiness.ts becomes a builder rather than changing at the two call sites, and `cmdRun` must load the config above its preflight.
+**Goal.** Stop assuming the agent CLI is a binary literally named `pi` on `PATH`. src/pi.ts spawns `spawn("pi", …)`, and both `cmdRun`'s preflight and `checkPiBinary` gate on `findOnPath("pi")`, so a non-PATH install, a wrapper script, or two pi builds side by side are impossible. Resolution order: `TUMWATER_PI_BIN` → `agentBin` → `"pi"`. The shared `PI_MISSING_MESSAGE` in readiness.ts becomes a builder rather than changing at the two call sites, and `cmdRun` must load the config above its preflight. Since the 09-19 audit, `checkPiBinary` delegates to doctor's shared private `checkBinary` helper (commit `73e4f58`) — the resolved binary and its source must flow through that helper, not around it. Re-audit pins and corrections: plans/portability.md §5/7.
 
 **Series.** Part 5/7 of the portability series. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §5/7.
 

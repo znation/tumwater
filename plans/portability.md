@@ -889,6 +889,37 @@ Sizing unchanged: src/pi.ts ~20 lines, src/readiness.ts ~8, src/cli.ts ~5, src/d
 src/types.ts + src/config-validation.ts ~4, tests ~40. No design question remains open; landable
 after 2/7.
 
+**Re-audited 2026-09-23 (plan loop) against main `8646573` (build clean, suite 1288/1288 per the
+README stamp). Two days and ~10 landings after the 2026-09-19 audit: one load-bearing restructure
+found (correction 1 below), the rest line-pin drift. Corrections 1–6 of the 09-19 audit stand
+except where re-pinned here.**
+
+1. **`checkPiBinary` is now a one-line delegator, not a self-contained check.** Commit `73e4f58`
+   (dry role) extracted the shared private helper `checkBinary(name, missing, pathEnv)`
+   (src/doctor.ts:74) so the git and pi checks resolve and report identically, and `checkPiBinary`
+   (now src/doctor.ts:143) just calls `checkBinary("pi", PI_MISSING_MESSAGE, pathEnv)`. Correction
+   5's rename and config resolution still apply, but the resolved bin must flow through the shared
+   helper, not around it: for a bare-name bin, call `checkBinary(bin, piMissingMessage(resolved),
+   pathEnv)`; for a bin containing a path separator, resolve with `fs.accessSync(…, X_OK)` and
+   return the same `CheckOutcome` shape. Keep `checkBinary` private — its doc comment promises the
+   two checks stay identical, and a second, divergent PATH-resolution path in doctor would break
+   that promise.
+2. **Line pins refreshed.** The single pi spawn is now src/pi.ts:132 (the spawn gained
+   `detached: true` and a process-group kill, `c73363e` — no interaction with this entry);
+   `SPAWN_ERROR_PREFIX` is src/pi.ts:100; `PiRunOptions.config` is src/pi.ts:21; `TOP_LEVEL_KEYS`
+   is src/config-validation.ts:40; `loadConfigSafe` is src/config.ts:118. `cmdRun`'s preflight
+   still precedes its `loadConfig` (src/cli.ts:120 vs :128), so correction 4 stands as written;
+   `findOnPath` (src/files.ts:55) is unchanged, so correction 3 stands.
+3. **Test pins refreshed.** `/pi not found on PATH/` now matches at test/cli.test.ts:388 and
+   :1181 (was :1121); the `pi binary` check label is pinned at test/doctor.test.ts:275 and :297
+   and test/cli.test.ts:1181 and :1208 (the 09-19 note's doctor.test.ts:221,243 no longer exist);
+   `checkPiBinary`'s direct tests are test/doctor.test.ts:79–85 and rename with the function.
+   Capability absence re-confirmed: `grep -rn 'agentBin\|TUMWATER_PI_BIN\|resolveAgentBin\|
+   checkAgentBinary' src/ test/` is still empty, and `tumwater.example.json` still does not
+   exist, so correction 6's conditional edit stands.
+
+Sizing unchanged.
+
 ---
 
 ## 6/7 — Make the project's verification command configurable
