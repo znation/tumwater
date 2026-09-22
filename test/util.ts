@@ -10,8 +10,29 @@ import { headLanding } from "../src/land-queue.js";
 import { LoopRunner } from "../src/loop.js";
 import type { TickResult, TumwaterConfig } from "../src/types.js";
 
+/** Per-process root for every test temp dir: created on first use, torn down synchronously at
+ * process exit. A full suite run (one worker process per test file) therefore abandons at most
+ * one directory per file instead of one per tmpdir() call (~500 per run), which kept $TMPDIR
+ * growing until mkdtemp itself dominated suite runtime. */
+let runRoot: string | undefined;
+
+function testRunRoot(): string {
+  if (runRoot === undefined) {
+    runRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-test-run-"));
+    process.once("exit", () => {
+      if (runRoot === undefined) return;
+      try {
+        fs.rmSync(runRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+      } catch {
+        // Best effort: one leaked root per crashed process is still bounded.
+      }
+    });
+  }
+  return runRoot;
+}
+
 export function tmpdir(prefix = "tumwater-test-"): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  return fs.mkdtempSync(path.join(testRunRoot(), prefix));
 }
 
 export function sh(cwd: string, cmd: string, ...args: string[]): string {
