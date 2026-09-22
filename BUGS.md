@@ -97,6 +97,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### The slow-but-talkative quiet-watchdog test dies quiet_killed on a loaded machine: 1s sleeps against a 3s window left ~2s of per-gap slack, and a landing gate's gap crossed it (found by the review gate 2026-09-21, fixed 2026-09-21)
+
+**Symptom:** The landing gate's build pre-check failed `a slow but talkative pi run is not killed by the quiet watchdog` (test/loop-2.test.ts) with `actual: 'quiet_killed', expected: 'no_change'` — "run completed despite taking longer than the quiet window" — reddening main and blocking all landings, while the same tree passed the file locally minutes before.
+
+**Repro:** The test streamed a `turn_start` every ~1s for ~4s with `quietTimeoutSeconds = 3`, so each silent gap had only ~2s of headroom over the sleep itself — and each gap also carried the spawn cost of `sleep`/`printf` plus, for the first gap, node spawning the shim and sh starting up. On the machine the gate runs on (the fleet keeps ticking and building during it), one gap exceeded 3s and the watchdog killed the run. Same load-sensitivity class as the grandchild-leak race above (2026-09-21): the gate runs the full suite on a deliberately saturated machine.
+
+**Expected:** A test pinning "the watchdog measures silence, not runtime" must keep total runtime beyond the window while giving every silent gap drift headroom an order of magnitude wider than observed scheduler jitter.
+
+**Suspected cause:** The sizing comment even warned about this exact failure mode ("the assertion measured machine load rather than the watchdog") but bought only 2s of slack; the first output was also placed after a `sleep`, folding the least controllable interval — process spawn — into the first gap.
+
+**Fix:** The shim now emits its first line before any sleep (spawn cost leaves the measured gaps entirely), and the sleeps are 3s against a 10s window — total ~12s still exceeds the window, so the ratio is still pinned, with ~7s of per-gap drift headroom instead of ~2s. Full loop-2 file: 31/31 pass.
+
+**Validation gap:** no-repro — the failure was load-dependent and passed in isolation, so no local run could confirm it deterministically; the only confirmation was the gate's failure log, and the fix's margin is argued from the timing ratio, not from a reproduced kill.
+
 ### The grandchild-leak regression test raced its own setup: on a loaded machine the quiet watchdog killed the fake-pi shim before the grandchild recorded its pid, reddening main with an ENOENT (found by the review gate 2026-09-21, fixed 2026-09-21)
 
 **Symptom:** Main's suite failed with `test: Error: ENOENT: no such file or directory, open '/var/folders/…/tumwater-test-ckjCIM/grandchild.pid'` in `a killed run leaves no grandchild behind (regression)` (test/pi.test.ts). The same tree passed the same test minutes later, and the test passed in isolation — the product's group kill (BUGS.md 2026-09-20) is correct; the red was the test racing its own setup. Because main was red, every code-producing role skipped authoring and no change could merge until this was fixed.
