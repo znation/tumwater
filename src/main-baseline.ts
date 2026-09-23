@@ -1,8 +1,9 @@
-import { type BuildCheckOutcome, type BuildSkipReason, detectBuildCheck, runBuildCheck } from "./build-check.js";
+import { type BuildCheckOutcome, type BuildSkipReason, runBuildCheck } from "./build-check.js";
+import { detectBuildCheck } from "./build-check-detect.js";
 import { gitTry } from "./git.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
- * machinery that produces it. Split out of build-check.ts — which keeps detecting and running
+ * machinery that produces it. Split out of build-check.ts — which keeps running and classifying
  * the project's declared check — because a verdict ABOUT a specific SHA is a different concern
  * from the mechanics of running one: this module owns the cache, the in-flight dedup, the
  * re-verification policy that keeps one worktree's environmental red from blocking the fleet.

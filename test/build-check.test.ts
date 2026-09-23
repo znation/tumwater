@@ -4,12 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   clipBuildTail,
-  detectBuildCheck,
   failureHeadline,
-  resolveFromNodeModules,
   runBuildCheck,
   runScopedBuildCheck,
 } from "../src/build-check.js";
+import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
 import { buildCheckFixture, sh, tmpdir } from "./util.js";
