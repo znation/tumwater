@@ -19,12 +19,24 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     } catch { /* unreadable body — the status alone still names the failure */ }
     return new Error(path + " failed: HTTP " + r.status + (detail ? " — " + detail : ""));
   }
+  // Opt-in shared-token auth: the CLI prints the dashboard URL with ?token=<secret> when a
+  // token is set. Read it once here, attach it as a Bearer header to every API call, and
+  // strip it from the address bar so a screen share does not leak it. Empty when the
+  // server is open — fetch stays byte-for-byte untouched.
+  const guiToken = (typeof location !== "undefined" && new URLSearchParams(location.search).get("token")) || "";
+  if (guiToken) {
+    const stripped = new URL(location.href);
+    stripped.searchParams.delete("token");
+    history.replaceState(null, "", stripped.pathname + stripped.search);
+  }
   // One response guard for every API call this page makes: send the request and, on a non-2xx,
   // throw apiError (endpoint, status, and the server's error) instead of letting a JSON error
   // body be treated as data. Every endpoint call routes through apiFetch, so the r.ok check
   // lives in one place and cannot be dropped at a single site.
   async function apiFetch(path, init) {
-    const r = await fetch(path, init);
+    const headers = new Headers(init && init.headers);
+    if (guiToken) headers.set("authorization", "Bearer " + guiToken);
+    const r = await fetch(path, Object.assign({}, init || {}, { headers: headers }));
     if (!r.ok) throw await apiError(path, r);
     return r;
   }

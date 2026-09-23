@@ -252,13 +252,19 @@ async function main(): Promise<void> {
       rejectUnknownArgs("gui", args, [
         { names: ["--port"], value: true, valueName: "<n>" },
         { names: ["--all-interfaces"] },
+        { names: ["--token"], value: true, valueName: "<secret>" },
       ]);
       await requireReadyRepo(root);
       const portFlag = args.indexOf("--port");
       const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
       const allInterfaces = args.includes("--all-interfaces");
+      // A valueless or empty --token is a CLI error, not an open server: an operator who
+      // asked for protection must never silently get none.
+      const tokenFlag = args.indexOf("--token");
+      const token = tokenFlag >= 0 ? (args[tokenFlag + 1] ?? "") : "";
+      if (tokenFlag >= 0 && !token) fail("--token requires a non-empty secret (e.g. `--token s3cret`)");
       try {
-        await startGui(root, port, allInterfaces);
+        await startGui(root, port, allInterfaces, token);
       } catch (err) {
         // A taken port is the common listen failure; Node's raw EADDRINUSE does not
         // suggest the fix. Other errors (EACCES on privileged ports, …) pass through.
@@ -268,12 +274,19 @@ async function main(): Promise<void> {
           );
         throw err;
       }
-      process.stdout.write(`tumwater gui at http://127.0.0.1:${port} — Ctrl+C to stop\n`);
+      const tokenSuffix = token ? `/?token=${encodeURIComponent(token)}` : "";
+      process.stdout.write(`tumwater gui at http://127.0.0.1:${port}${tokenSuffix} — Ctrl+C to stop\n`);
       if (allInterfaces) {
-        // Name the concrete URLs teammates can open, and say what exposure means: the
-        // dashboard has no auth, and its prompt box steers the fleet.
-        for (const addr of lanAddresses()) process.stdout.write(`             also at http://${addr}:${port}\n`);
-        process.stdout.write(`listening on ALL interfaces — no auth; anyone reaching it can prompt the director\n`);
+        // Name the concrete URLs teammates can open (token included, so they are openable
+        // as printed), and say what exposure means: without a token the dashboard has no
+        // auth and its prompt box steers the fleet; with one, the token is the gate.
+        for (const addr of lanAddresses())
+          process.stdout.write(`             also at http://${addr}:${port}${tokenSuffix}\n`);
+        process.stdout.write(
+          token
+            ? `listening on ALL interfaces — token-protected; prompting the director requires the token\n`
+            : `listening on ALL interfaces — no auth; anyone reaching it can prompt the director\n`,
+        );
       }
       await new Promise(() => {}); // Serve until Ctrl+C.
       break;

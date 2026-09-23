@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import http from "node:http";
 import os from "node:os";
 import {
@@ -26,6 +27,16 @@ import { errorMessage, parseNonNegativeInt, parsePositiveInt } from "../text.js"
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
+}
+
+/** Constant-time credential comparison for the shared-token gate: `timingSafeEqual` throws
+ * on unequal lengths, so the length equality is the guard. A naive `===` string compare
+ * would leak the token's length and prefix byte by byte. */
+function tokenMatches(expected: string, provided: string): boolean {
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(provided, "utf8");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
@@ -252,15 +263,38 @@ function requestPathname(req: http.IncomingMessage): string | null {
 /** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
  * binds the unspecified address (every interface, IPv4 and IPv6), making the dashboard —
  * including the director prompt box, which anyone reaching it can use to steer the fleet —
- * available to the whole network. There is no authentication; exposing it is the caller's
- * deliberate choice. Resolves once it is listening. */
-export function startGui(root: string, port: number, allInterfaces = false): Promise<http.Server> {
+ * available to the whole network. There is no authentication by default — exposing it is
+ * the caller's deliberate choice — and an optional shared token (`gui --token <secret>`,
+ * passed as `token`) gates every route: requests must carry it as `Authorization: Bearer
+ * <token>` or `?token=`, anything else gets a 401 JSON error. An empty token means no
+ * check — byte-for-byte the open server. Resolves once it is listening. */
+export function startGui(
+  root: string,
+  port: number,
+  allInterfaces = false,
+  token = "",
+): Promise<http.Server> {
   // The serving process's own startup stamp: added to every /api/status payload so the page can
   // notice a newer server (a redeploy or manual build re-execs this process) and reload itself.
   const startupBuild = captureStartupBuild();
   const server = http.createServer(async (req, res) => {
     try {
       const pathname = requestPathname(req);
+      // Opt-in shared-token gate, ahead of every route: with a token set, the page and all
+      // /api endpoints require it as `Authorization: Bearer <token>` or `?token=`; anything
+      // else — including `GET /` — gets the same JSON 401 every handler uses, deliberately
+      // no HTML login form: the CLI prints the token-bearing URL, and a bare 401 body is the
+      // honest signal that the URL needs `?token=`.
+      if (token) {
+        const auth = req.headers.authorization ?? "";
+        const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
+        const query = new URL(req.url ?? "", "http://localhost").searchParams;
+        const provided = bearer || query.get("token") || "";
+        if (!tokenMatches(token, provided)) {
+          sendJson(res, 401, { error: "token required" });
+          return;
+        }
+      }
       if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(GUI_PAGE);

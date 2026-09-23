@@ -36,26 +36,19 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ (landed 2026-09-22) and 4b/7 ✓ (landed 2026-09-22) are done. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here — the series has no critical path left.
 
-### Optional shared-token auth for the GUI dashboard — `gui --token <secret>` (planned 2026-09-23, re-audited 2026-09-25)
-
-**Goal.** The dashboard is documented as having no authentication: `--all-interfaces` exposes the director prompt box, the budget editor, and every transcript to anyone who can reach the port (the doc comment above `startGui`, src/ui/gui.ts:253-256, says so explicitly, and the startup banner warns it). An operator who must expose the dashboard on a LAN has no way to protect it short of a reverse proxy. Add an opt-in shared token: `tumwater gui --token <secret>` requires a credential on every request. The default stays open — binding to localhost is the opinionated default, `--all-interfaces` is the caller's deliberate choice, and flipping auth on by default would break curl/scripts hitting `/api/status`; `--token` gives that caller a one-flag protection instead. (Default-on could be a later, separately-planned change if the user asks; not decided here.)
-
-**Approach.**
-- `src/ui/gui.ts`: add an optional `token = ""` parameter to `startGui(root, port, allInterfaces, token)` (gui.ts:257). When a token is set, gate at the top of the `createServer` handler, before any routing: read the credential from `req.headers.authorization` and `req.url` (both already there in the handler), and accept either `Authorization: Bearer <token>` or a `?token=` query parameter, compared with `crypto.timingSafeEqual` over utf8 `Buffer`s behind a byte-length equality guard (lengths differ → mismatch without calling it). Anything else gets `401` with JSON `{error: "token required"}` (the same JSON error shape every handler already uses). An empty token means no check — byte-for-byte today's behavior. `GET /` under a wrong or missing token returns that same JSON 401, deliberately: no HTML login form — the CLI prints the token-bearing URL, and a bare 401 body is the honest signal that the URL needs `?token=`.
-- `src/cli.ts` (`case "gui"`, cli.ts:249-279): accept `--token <secret>` in the `rejectUnknownArgs` list (a value flag like `--port`, validated for presence and non-emptiness — a valueless or empty `--token` is a CLI error, not an open server), pass it to `startGui` (called at cli.ts:261), and print the URLs with the token in the query — `tumwater gui at http://127.0.0.1:7180/?token=<secret>`; the `lanAddresses()` lines and the `--all-interfaces` warning say `token-protected` when a token is set instead of `no auth`.
-- `src/ui/gui-client.ts`: read the token once from `new URLSearchParams(location.search).get("token")`, have `apiFetch` (gui-client.ts:26 — every endpoint call already routes through it, so one edit covers status, prompt, budget, pause, report, transcript, backlog, and failures) attach `Authorization: Bearer <token>` to every request, and call `history.replaceState` to strip `?token=` from the address bar after load so a screen-share does not leak it.
-
-**Files touched.** src/ui/gui.ts, src/cli.ts, src/ui/gui-client.ts, test/gui.test.ts, test/util.ts (`startLocalGui` at test/util.ts:418 gains an optional `token = ""` second parameter passed through to `startGui` — the three other gui test files all start their servers through it).
-
-**Acceptance criteria.**
-- Without `--token`, behavior is exactly today's: the existing gui test files pass unmodified (`startGui` is called directly only from test/gui.test.ts:84/90 and test/util.ts, all without a token).
-- With `--token s3cret`, every route — the page (`GET /`), every `GET /api/*`, every `POST /api/*` — returns 401 JSON `{error: "token required"}` with no credential, a wrong credential, or an empty one; with the credential as either a Bearer header or `?token=` each route behaves exactly as it does today.
-- The comparison is constant-time (`timingSafeEqual` with a length guard — the naive `===` string compare is rejected).
-- `tumwater gui --token s3cret` prints a URL containing the token; with `--all-interfaces` every printed LAN URL contains it and the warning line reads `token-protected`, not `no auth`.
-- The browser client attaches the Bearer header to every request and clears `?token=` from the address bar after load.
-- `npm test` passes with new tests in test/gui.test.ts (the file that owns API and page-route behavior; gui-server.test.ts stays survivability-only): open access unchanged, 401 JSON on missing/wrong/empty token for `GET /` and both a GET and a POST `/api/*` route, and access via Bearer header and via `?token=` giving today's responses.
-
 ## Done
+
+### Optional shared-token auth for the GUI dashboard — `gui --token <secret>` (planned 2026-09-23, re-audited 2026-09-25, done 2026-09-23)
+
+**Done 2026-09-23 by feature.** Landed as described: the token gate at the top of the
+`createServer` handler (Bearer header or `?token=`, `crypto.timingSafeEqual` behind a
+byte-length guard, 401 JSON `{error: "token required"}` otherwise), `gui --token`
+validated non-empty in cli.ts with token-bearing printed URLs and a `token-protected`
+warning line, and the browser client reading the token once, attaching
+`Authorization: Bearer` in `apiFetch`, and stripping `?token=` from the address bar.
+One addition beyond the plan: the client's token read guards `typeof location` so the
+existing Node-side extraction tests of the inline script keep evaluating it.
+`startLocalGui` gained the optional `token` parameter as planned. `npm test` 1393 pass.
 
 ### Cost by role in the usage report (planned 2026-09-25, done 2026-09-23)
 
