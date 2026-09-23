@@ -92,7 +92,7 @@ Open items:
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`22f6f7f`): build clean, suite 1372/1372.
+Current main (`a2de089`): build clean, suite 1372/1372.
 <!-- tumwater:status:end -->
 
 ## How it works
