@@ -93,7 +93,14 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} review approved ${shortSha(e.head)}${e.reason ? ` — ${e.reason}` : ""}${elapsed(e.durationMs)}`;
     case "review_rejected": {
       const reasons = Array.isArray(e.reasons) ? (e.reasons as string[]) : [];
-      return `${time} ${loop} review rejected ${shortSha(e.head)} — ${reasons[0] ?? "no reasons given"}${elapsed(e.durationMs)}`;
+      // Only the first reason renders; when more exist, say so instead of letting the
+      // one-liner read as the complete verdict — the full list rides in state.lastReview
+      // into the author's next tick prompt, and this line is the operator's pointer to it.
+      const more =
+        reasons.length > 1
+          ? ` (+${reasons.length - 1} more — the author's next tick carries every reason)`
+          : "";
+      return `${time} ${loop} review rejected ${shortSha(e.head)} — ${reasons[0] ?? "no reasons given"}${more}${elapsed(e.durationMs)}`;
     }
     case "review_failed":
       return `${time} ${loop} review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)${elapsed(e.durationMs)}`;

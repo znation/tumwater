@@ -132,12 +132,19 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   assert.match(approval, /review approved 01234567 — principles upheld/);
 
   // A bare `VERDICT: reject` reply parses to an empty reasons list; several reasons show only
-  // the first (the rest ride along in state.lastReview for the author's next tick).
+  // the first plus a count of the rest (the full list rides along in state.lastReview for the
+  // author's next tick) — the second reason's text itself must not leak into the one-liner.
   const rejected = formatEvent(
     { ts: 0, loop: "feature", type: "review_rejected", head, reasons: ["adds a runtime dep", "second reason"] } as never,
   );
   assert.match(rejected, /review rejected 01234567 — adds a runtime dep/);
+  assert.match(rejected, /\+1 more — the author's next tick carries every reason/);
   assert.ok(!rejected.includes("second reason"), `only the first reason shows: ${rejected}`);
+
+  const singleReject = formatEvent(
+    { ts: 0, loop: "feature", type: "review_rejected", head, reasons: ["adds a runtime dep"] } as never,
+  );
+  assert.ok(!singleReject.includes("more"), `one reason renders without a more-count: ${singleReject}`);
 
   const bareReject = formatEvent(
     { ts: 0, loop: "feature", type: "review_rejected", head, reasons: [] } as never,
