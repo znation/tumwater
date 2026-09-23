@@ -821,6 +821,38 @@ test("a lost pin degrades its request to a terminal error instead of starving th
   }
 });
 
+test("an unlandable first fallback after a red stack check degrades to error and leaves the rest unattempted", async () => {
+  // The abandon path re-lands the stack one at a time through landChange; the same throw
+  // contract applies there: the first entry's throw is a terminal error, and the loop stops
+  // so the rest stay unattempted (entry + ref intact) for the next drain.
+  const { root, shas, wiringFor, states } = await batchFixture(["alpha", "beta"]);
+  // Runs 1-2 are the gate pre-checks (pass); run 3 is the batch's one shared check: make it
+  // fail AND make every later worktree recreate fail, so the fallback's first landChange
+  // cannot even check its entry out. npm runs the script at the package root, so the
+  // worktrees dir is named by absolute path — the test's own sandbox, nothing above it.
+  const count = path.join(root, ".checkcount");
+  const worktrees = path.join(root, ".tumwater", "worktrees");
+  declareCheck(
+    root,
+    `#!/bin/sh\nc=$(cat ${count} 2>/dev/null || echo 0)\nn=$((c+1))\necho "$n" > ${count}\nif [ "$n" = "3" ]; then rm -rf ${worktrees}; touch ${worktrees}; echo "error TS2345: boom" >&2; exit 1; fi\necho ok\n`,
+  );
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const mainBefore = sh(root, "git", "rev-parse", "main");
+
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+    assert.equal(results[0]!.result, "error", "the first fallback entry's throw is a terminal error");
+    assert.ok(states.alpha!.lastError, "the failure is visible in the role's state");
+    assert.equal(results[1]!.result, undefined, "the rest stay unattempted for the next drain");
+    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an error keeps its ref for recovery");
+    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "and so does the unattempted one");
+    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+  } finally {
+    restore();
+  }
+});
+
 test("an abort mid-batch routes every request without a terminal outcome to aborted, refs kept", async () => {
   const restore = fakePi(`exec sleep 30`); // never reached: the signal is already aborted
   try {
