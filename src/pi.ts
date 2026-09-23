@@ -45,9 +45,8 @@ export interface PiRunOptions {
 }
 
 /** Path to the bundled bounded-output pi extension, resolved from this module's own
- * location so staged builds (.tumwater/build/<sha>) load their own copy. Exported for
- * tests. */
-export function boundedOutputExtensionPath(): string {
+ * location so staged builds (.tumwater/build/<sha>) load their own copy. */
+function boundedOutputExtensionPath(): string {
   return fileURLToPath(new URL("./pi-extension/bounded-output.js", import.meta.url));
 }
 
