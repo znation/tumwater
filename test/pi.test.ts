@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { TRANSIENT_PI_CRASH, piArgs, resolveAgentBin, runPi } from "../src/pi.js";
 import { PiStreamParser } from "../src/pi-stream.js";
 import { toolUpdateHasContent } from "../src/pi-event-line.js";
@@ -734,6 +735,31 @@ test("piArgs reflects config", () => {
   for (const expected of ["--provider", "anthropic", "--model", "sonnet", "--thinking", "high", "--no-skills"]) {
     assert.ok(args.includes(expected), `missing ${expected}`);
   }
+});
+
+// The bundled bounded-output extension rides on every pi run (PLANS.md "Bound tool output
+// head+tail with a tumwater pi extension") — loaded before user piArgs so a user flag wins.
+
+test("piArgs loads the bundled bounded-output extension before user piArgs", () => {
+  const config = defaultConfig();
+  config.piArgs = ["--no-skills"];
+  const args = piArgs({ config, sessionDir: "/tmp/s", sessionName: "n" });
+  const eIndex = args.indexOf("-e");
+  assert.ok(eIndex !== -1, "-e flag present");
+  const extPath = args[eIndex + 1]!;
+  // Tests run compiled from dist/test/, so resolving the same relative URL the code uses
+  // points at dist/src/pi-extension/bounded-output.js — existing after npm run build.
+  const expected = fileURLToPath(new URL("../src/pi-extension/bounded-output.js", import.meta.url));
+  assert.equal(extPath, expected);
+  assert.ok(path.isAbsolute(extPath), "extension path is absolute");
+  assert.ok(fs.existsSync(extPath), `extension exists in dist: ${extPath}`);
+  assert.ok(eIndex < args.indexOf("--no-skills"), "user piArgs still come after the extension");
+});
+
+test("piArgs skips the extension for non-pi agents, keeps it for a configured pi path", () => {
+  const base = { config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" };
+  assert.ok(!piArgs({ ...base, agentBin: "/usr/local/bin/other-agent" }).includes("-e"));
+  assert.ok(piArgs({ ...base, agentBin: "/opt/tools/pi" }).includes("-e"));
 });
 
 test("piArgs omits unset options", () => {

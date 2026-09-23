@@ -1114,6 +1114,10 @@ test("every role prompt carries the fan-out rule: independent calls share a turn
   assert.match(prompt, /Each turn re-sends everything read so far/);
   assert.match(prompt, /issue them as separate tool calls in the same turn/);
   assert.match(prompt, /do not batch an edit with the test that checks it/);
+  // Oversized tool results are bounded head+tail by the bundled pi extension; the rule tells
+  // the model to follow the marker's pointer instead of retrying the same read.
+  assert.match(prompt, /Oversized tool results come back as head\+tail around a marker/);
+  assert.match(prompt, /follow the pointer \(re-read with `offset`\/`limit`, or open the full-output file path\)/);
   // The orientation budget is restated in turn terms; the ~15-tool-call pin stays intact.
   assert.match(prompt, /Choose the task within your first ~15 tool calls, in a handful of turns/);
   // The backlog-free roles' search guidance mirrors the same rule.

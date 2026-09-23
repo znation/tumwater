@@ -36,7 +36,23 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ (landed 2026-09-22) and 4b/7 ✓ (landed 2026-09-22) are done. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here — the series has no critical path left.
 
-### Bound tool output head+tail with a tumwater pi extension (planned 2026-09-23, re-audited 2026-09-24, user request)
+## Done
+
+### Bound tool output head+tail with a tumwater pi extension (planned 2026-09-23, re-audited 2026-09-24, user request, done 2026-09-24)
+
+**Done 2026-09-24 by feature.** Landed as described, with two corrections the implementation
+forced (recorded here in place of the stale claims they replace):
+- Refinement note 4's premise does not hold on pi 0.85.1 — verified against pi's own
+  `dist/core/tools/read.js`: the read tool emits the raw file text (plus its own truncation
+  notes) with **no** 1-indexed line-number prefixes, so there is no numbering to count and no
+  line range to name. The read marker therefore names the omitted character count and points at
+  re-reading the file (named from `event.input.path`) with `offset`/`limit` instead; cut points
+  still snap to whole lines. All other refinement notes landed as pinned.
+- The `import type` from pi's package was dropped: pi is not a dependency of this repo (and must
+  not become one), so the extension carries minimal structural local types instead — same
+  zero-runtime-dependency outcome, no phantom dev dependency.
+Measured (not a gate): deferred until the next natural read sample; the 2026-09-23 baseline
+(~16k mean, 49% over 20k) stands until then.
 
 **Goal.** Stop single tool results from flooding the context. The same 2026-09-23 log sample shows `read` results averaging ~16k characters, with 106 of 216 over 20k — the prompt's "read files over ~300 lines in ranges" rule is advice the model often skips, and pi's own `read` cap (2000 lines / 50KB) is ~4x what the rule intends. pi's `bash` cap keeps only the last 2000 lines / 50KB (tail-only, `truncateTail`), so a failing test run's first error or a long file's header is lost while its tail is kept. Unreal Agent bounds every result to 40k characters split half head / half tail, with a `...N bytes truncated; complete output in <path>...` marker in the middle (harness/operation/output.go `boundOutput`), and the model reads the path on demand. Enforce tumwater's intended budget in the harness rather than in prose.
 
@@ -74,7 +90,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 7. **The fan-out rule landed first, so note 5's obligation now runs in this entry's direction.** `CONTEXT_BUDGET_RULE` (src/prompt.ts:45) ends with the fan-out sentences through "do not batch an edit with the test that checks it." — the plan appends its oversized-results sentence inside that same bullet, after those words, as one additional sentence (oversized tool results come back head+tail around a marker naming the omitted range and, for bash, the full-output path; follow the pointer instead of retrying the same read). test/prompt.test.ts's pin of the fan-out clause is updated to assert both sentences on the same bullet, not a second bullet.
 
 Sizing unchanged: one new extension file (~120 lines), src/pi.ts ~8 (the signature and gate), src/prompt.ts ~2, tests ~130. One run. No design question remains open.
-## Done
+
 ### Tell ticks to fan out independent tool calls in one turn (planned 2026-09-23, user request, done 2026-09-23)
 
 **Goal.** Cut the per-turn re-send tax. Every assistant turn re-sends the whole conversation, so the number of turns, not the number of tool calls, drives input tokens. Across the 14 pi logs in `.tumwater/log/` on 2026-09-23, 1,655 assistant turns made 1,960 tool calls — 1.18 per turn, with only 441 turns issuing more than one — and input ran ~58:1 against output (6.75M uncached + 24.6M cache-read vs 0.54M out). Now that the primary model is a paid HF provider under a $10/day cap, those turns are money. pi 0.85 already executes sibling tool calls from one assistant message concurrently (docs/extensions.md, "parallel tool mode"), so the only missing piece is the model choosing to emit them. Inspired by Unreal Agent's preamble (github.com/unreallabsai/unreal-agent, harness/contextbuilder/prompts/preamble.md), which tells the model turns are the expensive unit and tool calls the cheap one.

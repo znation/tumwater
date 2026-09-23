@@ -53,7 +53,9 @@ const CONTEXT_BUDGET_RULE = `- Your context window is finite and everything you 
   other's output (a \`wc -l\` over several files, a \`grep -n\` plus the \`sed -n\` ranges it points
   at once known, a typecheck and a targeted test), issue them as separate tool calls in the same
   turn; keep edits and anything that depends on a prior result sequential — do not batch an edit
-  with the test that checks it.`;
+  with the test that checks it. Oversized tool results come back as head+tail around a marker
+  that names the omitted amount and where the full output lives — follow the pointer (re-read
+  with \`offset\`/\`limit\`, or open the full-output file path) instead of retrying the same read.`;
 
 const COMMON_RULES = `
 Rules for this run:

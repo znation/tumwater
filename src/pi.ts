@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
@@ -43,9 +44,20 @@ export interface PiRunOptions {
   onToolCallStalled?: (message: string) => void;
 }
 
+/** Path to the bundled bounded-output pi extension, resolved from this module's own
+ * location so staged builds (.tumwater/build/<sha>) load their own copy. Exported for
+ * tests. */
+export function boundedOutputExtensionPath(): string {
+  return fileURLToPath(new URL("./pi-extension/bounded-output.js", import.meta.url));
+}
+
 /** Build the pi argv for one tick. Exported for tests. */
 export function piArgs(
-  opts: Pick<PiRunOptions, "config" | "sessionDir" | "sessionName" | "continueSession">,
+  opts: Pick<PiRunOptions, "config" | "sessionDir" | "sessionName" | "continueSession"> & {
+    /** The resolved agent binary (from resolveAgentBin); defaults to "pi". A non-pi
+     * agent gets no `-e` flag — the bundled extension is pi-specific. */
+    agentBin?: string;
+  },
 ): string[] {
   const { config } = opts;
   const args = ["--print", "--mode", "json", "--session-dir", opts.sessionDir];
@@ -55,6 +67,11 @@ export function piArgs(
   if (config.provider) args.push("--provider", config.provider);
   if (config.model) args.push("--model", config.model);
   if (config.thinking) args.push("--thinking", config.thinking);
+  // Bound oversized tool results in-session (PLANS.md "Bound tool output head+tail with a
+  // tumwater pi extension"). Loaded before config.piArgs so a user flag still wins.
+  if (path.basename(opts.agentBin ?? "pi") === "pi") {
+    args.push("-e", boundedOutputExtensionPath());
+  }
   args.push(...config.piArgs);
   return args;
 }
@@ -171,7 +188,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     // normalizes path-shaped values to absolute (against the process cwd), so the spawn —
     // which runs with the worktree as cwd — lands on the same file the preflight checked.
     const resolved = resolveAgentBin(opts.config);
-    const child = spawn(resolved.bin, [...piArgs(opts), opts.prompt], {
+    const child = spawn(resolved.bin, [...piArgs({ ...opts, agentBin: resolved.bin }), opts.prompt], {
       cwd: opts.cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,
