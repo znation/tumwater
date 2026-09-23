@@ -1,30 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { collectReport, renderReportMarkdown, type ReportData } from "../src/ui/report.js";
-import { atLocalTs as at, makeRepo, tmpdir } from "./util.js";
+import { atLocalTs as at, cli, dayKey, makeRepo, tmpdir, writeEvents } from "./util.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
-// (never UTC strings) and compute expected keys the same way.
-
-function keyOf(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** Write events.jsonl under the fixture root's .tumwater/log/ (strings pass through verbatim —
- * for malformed lines; objects are JSON-encoded like logEvent writes them). */
-function writeEvents(root: string, lines: unknown[]): void {
-  const file = path.join(root, ".tumwater", "log", "events.jsonl");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(
-    file,
-    lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + "\n",
-  );
-}
+// (never UTC strings) and compute expected keys the same way (dayKey).
 
 test("collectReport buckets tick_end/merged events by local day and totals them", () => {
   const root = tmpdir();
@@ -44,8 +26,8 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   const data = collectReport(root, 5);
 
   assert.equal(data.days, 5);
-  assert.equal(data.from, keyOf(at(4)));
-  assert.equal(data.to, keyOf(at(0)));
+  assert.equal(data.from, dayKey(at(4)));
+  assert.equal(data.to, dayKey(at(0)));
   assert.equal(data.series.length, 5);
   for (let i = 1; i < data.series.length; i++) {
     const prev = data.series[i - 1]?.date ?? "";
@@ -62,7 +44,7 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   assert.equal(d1?.commits, 1);
   assert.equal(d1?.tokensOut, 0);
   const d2 = data.series[2]; // at(2): zero-filled gap
-  assert.deepEqual(d2, { date: keyOf(at(2)), tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
+  assert.deepEqual(d2, { date: dayKey(at(2)), tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
   const d3 = data.series[3]; // at(1)
   assert.equal(d3?.tokensOut, 1500);
   assert.deepEqual(d3?.costByRole, { feature: 1.25 });
@@ -106,10 +88,10 @@ test("collectReport reads a grown event log with bounded backwards I/O", () => {
 
 test("collectReport counts features done and bugs fixed from backlog history", () => {
   const root = tmpdir();
-  const d1 = keyOf(at(4));
-  const d2 = keyOf(at(3));
-  const d3 = keyOf(at(2));
-  const dOld = keyOf(at(30)); // out of the 5-day window
+  const d1 = dayKey(at(4));
+  const d2 = dayKey(at(3));
+  const d3 = dayKey(at(2));
+  const dOld = dayKey(at(30)); // out of the 5-day window
 
   fs.writeFileSync(
     path.join(root, "PLANS.md"),
@@ -118,7 +100,7 @@ test("collectReport counts features done and bugs fixed from backlog history", (
       "",
       "## Planned",
       "",
-      `### Still planned (planned ${keyOf(at(1))})`,
+      `### Still planned (planned ${dayKey(at(1))})`,
       "",
       `Body prose that mentions done ${d2} — the Planned section is never scanned.`,
       "",
@@ -152,7 +134,7 @@ test("collectReport counts features done and bugs fixed from backlog history", (
       "",
       "## Open",
       "",
-      `### Still open (found by qa loop ${keyOf(at(1))})`,
+      `### Still open (found by qa loop ${dayKey(at(1))})`,
       "",
       "Body.",
       "",
@@ -190,8 +172,8 @@ test("collectReport degrades to zeros when every source is missing", () => {
   const root = tmpdir(); // no .tumwater/, no PLANS.md, no BUGS.md
   const data = collectReport(root, 3);
   assert.equal(data.days, 3);
-  assert.equal(data.from, keyOf(at(2)));
-  assert.equal(data.to, keyOf(at(0)));
+  assert.equal(data.from, dayKey(at(2)));
+  assert.equal(data.to, dayKey(at(0)));
   for (const d of data.series) {
     assert.deepEqual(d.ticksByRole, {});
     assert.deepEqual(d.costByRole, {});
@@ -327,15 +309,10 @@ test("renderReportMarkdown prints a Cost by role line ranked by spend desc then 
 });
 
 // The CLI runs main() on import and reports failures via process.exit, so it is tested as a
-// child process: the built dist/src/cli.js with cwd set to a temp repo (same pattern as cli.test.ts).
-const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
-
+// child process (util's cli(): the built dist/src/cli.js, cwd a temp repo, output captured).
+// This file's assertions match combined stdout+stderr, so bridge CliResult to that shape.
 function runCli(cwd: string, ...args: string[]): Promise<{ code: number; out: string }> {
-  return new Promise((resolve) => {
-    execFile(process.execPath, [CLI, ...args], { cwd, timeout: 20_000 }, (err, stdout, stderr) => {
-      resolve({ code: err ? Number(err.code ?? 1) : 0, out: `${stdout}${stderr}` });
-    });
-  });
+  return cli(cwd, ...args).then((r) => ({ code: r.code, out: r.stdout + r.stderr }));
 }
 
 test("tumwater report prints the Markdown report and validates --days", async () => {
@@ -346,7 +323,7 @@ test("tumwater report prints the Markdown report and validates --days", async ()
   ]);
   fs.writeFileSync(
     path.join(root, "PLANS.md"),
-    `# Plans\n\n## Planned\n\n## Done\n\n- Epitaph (planned 2026-09-01, done ${keyOf(at(0))}; commit abc)\n`,
+    `# Plans\n\n## Planned\n\n## Done\n\n- Epitaph (planned 2026-09-01, done ${dayKey(at(0))}; commit abc)\n`,
   );
 
   const full = await runCli(root, "report");
@@ -358,7 +335,7 @@ test("tumwater report prints the Markdown report and validates --days", async ()
 
   const one = await runCli(root, "report", "--days", "1");
   assert.equal(one.code, 0);
-  assert.match(one.out, new RegExp(`\\| ${keyOf(at(0)).slice(5)} \\| 42`)); // today only…
+  assert.match(one.out, new RegExp(`\\| ${dayKey(at(0)).slice(5)} \\| 42`)); // today only…
   assert.ok(!one.out.includes("313"), "…and the older day is outside a 1-day window");
 
   for (const bad of ["0", "abc"]) {

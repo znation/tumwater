@@ -51,6 +51,25 @@ export function atLocalTs(daysAgo: number, hour = 12): number {
   return d.getTime();
 }
 
+/** The local-day key `YYYY-MM-DD` the report/digest collectors bucket by, built from raw
+ * local date parts as a test-local oracle — never through text.ts's formatDate — so a drift
+ * in the collector's day keying fails an assertion instead of matching its own format. */
+export function dayKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Write events.jsonl under a fixture root's .tumwater/log/ (strings pass through verbatim —
+ * for malformed lines; objects are JSON-encoded like logEvent writes them). */
+export function writeEvents(root: string, lines: unknown[]): void {
+  const file = path.join(root, ".tumwater", "log", "events.jsonl");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + "\n",
+  );
+}
+
 /** Local wall-clock rendering of an epoch-ms timestamp as `YYYY-MM-DD HH:MM:SS` — the same
  * shape the transcript's run separators print. Test-local oracle: built from raw local date
  * parts, never through text.ts's formatDate/formatTime, so the transcript renderers stay

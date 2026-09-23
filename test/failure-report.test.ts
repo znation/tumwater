@@ -1,31 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { TELEMETRY_DIGEST_DAYS, renderFailureMarkdown, telemetryDigest } from "../src/failure-report.js";
 import { collectFailureReport, normalizeClusterKey } from "../src/failure-data.js";
-import { atLocalTs as at, makeRepo, tmpdir } from "./util.js";
+import { atLocalTs as at, cli, dayKey, makeRepo, tmpdir, writeEvents } from "./util.js";
 
 // The digest buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
-// (never UTC strings), matching the reader and collectReport.
-
-function keyOf(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** Write events.jsonl under the fixture root's .tumwater/log/ (objects are JSON-encoded like
- * logEvent writes them; strings pass through verbatim). */
-function writeEvents(root: string, lines: unknown[]): void {
-  const file = path.join(root, ".tumwater", "log", "events.jsonl");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(
-    file,
-    lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + "\n",
-  );
-}
+// (never UTC strings), matching the reader and collectReport (dayKey).
 
 test("normalizeClusterKey collapses volatile parts and keeps exit codes distinct", () => {
   assert.equal(normalizeClusterKey("boom deadbeef0"), "boom <sha>");
@@ -136,7 +118,7 @@ test("a window longer than the retained log is reported as partial", () => {
   const data = collectFailureReport(root, 5);
   assert.equal(data.partial, true);
   assert.equal(data.emptyLog, false);
-  assert.equal(data.oldestEventDate, keyOf(at(2)));
+  assert.equal(data.oldestEventDate, dayKey(at(2)));
   assert.match(renderFailureMarkdown(data), /^partial: retained log starts \d{4}-\d{2}-\d{2}$/m);
 });
 
@@ -442,16 +424,10 @@ test("a log of malformed lines still yields a digest: garbage is skipped, not fa
   assert.match(digest, /no tick_end events in the window/);
 });
 
-// The CLI runs main() on import, so it is tested as a child process against the built dist,
-// the same pattern report.test.ts uses.
-const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
-
+// The CLI runs main() on import, so it is tested as a child process against the built dist
+// (util's cli(); same bridge as report.test.ts — assertions here match combined output).
 function runCli(cwd: string, ...args: string[]): Promise<{ code: number; out: string }> {
-  return new Promise((resolve) => {
-    execFile(process.execPath, [CLI, ...args], { cwd, timeout: 20_000 }, (err, stdout, stderr) => {
-      resolve({ code: err ? Number(err.code ?? 1) : 0, out: `${stdout}${stderr}` });
-    });
-  });
+  return cli(cwd, ...args).then((r) => ({ code: r.code, out: r.stdout + r.stderr }));
 }
 
 test("tumwater report --failures prints the digest and shares the --days bound", async () => {
