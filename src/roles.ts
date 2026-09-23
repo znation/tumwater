@@ -85,8 +85,8 @@ step's independent lookups as sibling tool calls in one turn — turns, not tool
 expensive unit — and keep anything that depends on a prior result sequential. Vary the
 slice you look at across runs (a different directory, module, or recency window) so successive
 ticks do not all converge on the same files. Decide within ~15 tool calls, in a handful of
-turns: if no candidate clearly
-clears the bar by then, there is nothing to do — searching longer rarely changes the answer.`;
+turns: if no candidate clearly clears the bar by then, there is nothing to do — searching
+longer rarely changes the answer.`;
 }
 
 /** The opinionated role catalog. Every loop runs one role; a role's `find` text is

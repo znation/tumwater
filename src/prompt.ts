@@ -73,8 +73,8 @@ Orientation — read this much before choosing your task, and no more:
 Scope:
 - Do exactly ONE focused task, then stop. Small, complete, and correct beats big and half-done.
   Choose the task within your first ~15 tool calls, in a handful of turns. A task that would
-  need more than roughly 60
-  tool calls, or most of the codebase in view, is too big for one run — take a smaller one.
+  need more than roughly 60 tool calls, or most of the codebase in view, is too big for one
+  run — take a smaller one.
 - Stay inside your worktree: never run an unbounded scan or write above it (\`find /\`,
   \`grep -r /\`, any recursive search rooted outside the repo) — an unmatched full-disk scan runs
   for tens of minutes with no output and blocks your whole tick until the harness kills it as
