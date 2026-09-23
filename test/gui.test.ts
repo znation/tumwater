@@ -11,7 +11,7 @@ import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
-import { assistantLine, makeRepo } from "./util.js";
+import { assistantLine, makeRepo, startLocalGui } from "./util.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
@@ -104,10 +104,7 @@ test("gui binds localhost by default and all interfaces on request", async () =>
 test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui test project");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   try {
     const page = await (await fetch(base + "/")).text();
     assert.match(page, /<title>tumwater<\/title>/);
@@ -181,10 +178,7 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
 test("gui /api/transcript serves rendered lines and validates role/n", async () => {
   const repo = makeRepo();
   await initProject(repo, "transcript gui test");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   try {
     // No log yet: friendly empty state.
     const empty = await getJson<{ lines: string[] }>(base, "/api/transcript?role=feature");
@@ -261,10 +255,7 @@ test("gui /api/transcript accepts user-defined loop roles listed in tumwater.jso
       }),
     ].join("\n") + "\n",
   );
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   try {
     // The custom id is accepted and serves its transcript like any built-in's…
     const ok = await getJson<{ lines: string[] }>(base, "/api/transcript?role=nightly");
@@ -701,10 +692,7 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     ["# Questions", "", "## Open", "", "### Q1: which database?", "", "**Context:** the storage layer is undecided.", "", "## Answered", "", "_None yet._"].join("\n") + "\n",
   );
 
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   try {
     // index 0 of plans: the first entry's title and full body — interior blank lines kept,
     // leading/trailing blanks trimmed, Done entries never leaking in.
@@ -913,11 +901,9 @@ test("the dashboard page escapes backlog entry bodies before innerHTML", async (
     path.join(repo, "BUGS.md"),
     ["# Bugs", "", "## Open", "", "### A bug with HTML in its body (reported 2026-09-06)", "", "<img src=x onerror=alert(1)>", "", "## Fixed", "", "_None yet._"].join("\n") + "\n",
   );
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
+  const { server, base } = await startLocalGui(repo);
   try {
-    const res = await fetch(`http://127.0.0.1:${addr.port}/api/backlog?file=bugs&index=0`);
+    const res = await fetch(base + "/api/backlog?file=bugs&index=0");
     assert.equal(res.status, 200);
     const d = (await res.json()) as { title: string; body: string };
     assert.equal(d.body, "<img src=x onerror=alert(1)>", "the API serves the raw markdown body");

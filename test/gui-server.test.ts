@@ -3,10 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { startGui } from "../src/ui/gui.js";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize } from "../src/inbox.js";
-import { makeRepo } from "./util.js";
+import { makeRepo, startLocalGui } from "./util.js";
 
 // The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,
 // raw-socket framing edge cases, and dropped clients. Each test pins a survivability
@@ -16,10 +15,7 @@ import { makeRepo } from "./util.js";
 test("gui rejects oversized prompt bodies with 413 instead of buffering them unboundedly", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui body limit test");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   try {
     // Just over the 64KB cap: a client error (413 Payload Too Large), not a server failure.
     const huge = JSON.stringify({ text: "x".repeat(70 * 1024) });
@@ -50,10 +46,7 @@ test("gui answers JSON 500 when a handler throws unexpectedly and keeps serving"
 
   const repo = makeRepo();
   await initProject(repo, "gui handler error test");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   const inbox = path.join(repo, ".tumwater", "inbox");
   fs.mkdirSync(inbox, { recursive: true });
   try {
@@ -85,9 +78,7 @@ test("gui answers JSON 500 when a handler throws unexpectedly and keeps serving"
 test("multi-byte UTF-8 characters straddling chunk boundaries arrive intact", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui utf8 test");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
+  const { server, port } = await startLocalGui(repo);
   try {
     // A prompt containing a CJK character (3 bytes in UTF-8). The chunked upload is framed
     // so that character straddles two chunks — socket/chunk boundaries are arbitrary TCP
@@ -99,7 +90,7 @@ test("multi-byte UTF-8 characters straddling chunk boundaries arrive intact", as
     assert.ok(charStart > 0 && charStart + 3 <= body.length, "test body contains the CJK character");
     const splitAt = charStart + 1; // inside the 3-byte sequence
 
-    const socket = net.connect(addr.port, "127.0.0.1");
+    const socket = net.connect(port, "127.0.0.1");
     let response = "";
     socket.on("data", (d: Buffer) => {
       response += d.toString("ascii");
@@ -138,10 +129,7 @@ test("multi-byte UTF-8 characters straddling chunk boundaries arrive intact", as
 test("gui answers 404, not 500, for a request target the URL parser rejects", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui malformed target test");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base, port } = await startLocalGui(repo);
   try {
     // An absolute-form target whose host is malformed (`http://[`) is accepted by Node's HTTP
     // parser and handed to the handler as req.url, but `new URL(req.url, base)` throws on it.
@@ -149,7 +137,7 @@ test("gui answers 404, not 500, for a request target the URL parser rejects", as
     // the throw reach the handler's 500 catch, which would report a server fault for what is
     // plainly a bad request. A raw socket is required: fetch/undici reject the malformed URL
     // client-side before it ever reaches the server.
-    const socket = net.connect(addr.port, "127.0.0.1");
+    const socket = net.connect(port, "127.0.0.1");
     let response = "";
     socket.on("data", (d: Buffer) => {
       response += d.toString("ascii");
@@ -177,9 +165,7 @@ test("gui answers 404, not 500, for a request target the URL parser rejects", as
 test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui body bound test");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
+  const { server, port } = await startLocalGui(repo);
   try {
     // A raw chunked upload of ~4MB in 16KB frames. The 413 lands after the first ~64KB, but
     // this client keeps sending every frame to completion (a well-behaved HTTP client would
@@ -187,7 +173,7 @@ test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", 
     // fix each late chunk was still appended to the body string, growing it to the full upload
     // size. Keep-alive (no Connection: close) keeps the server-side request alive so a buggy
     // buffer would still be retained when we measure.
-    const socket = net.connect(addr.port, "127.0.0.1");
+    const socket = net.connect(port, "127.0.0.1");
     let response = "";
     socket.on("data", (d: Buffer) => {
       response += d.toString("ascii");
@@ -228,9 +214,7 @@ test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", 
 test("gui survives a client that disconnects mid-upload and keeps serving", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui aborted upload test");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
+  const { server, base, port } = await startLocalGui(repo);
   try {
     // A client that vanishes mid-upload (browser closed, flaky LAN): the body is cut off
     // short of Content-Length, so Node fires 'error' (ECONNRESET) on the request stream.
@@ -238,7 +222,7 @@ test("gui survives a client that disconnects mid-upload and keeps serving", asyn
     // would leak one per aborted upload, and an uncaught error from the dead connection could
     // kill the dashboard over one dropped client. The partial body is not valid JSON, so even
     // a regression that resolved it early could only 400 — nothing may be queued.
-    const socket = net.connect(addr.port, "127.0.0.1");
+    const socket = net.connect(port, "127.0.0.1");
     await new Promise<void>((resolve, reject) => {
       socket.once("error", reject);
       socket.write(
@@ -258,7 +242,6 @@ test("gui survives a client that disconnects mid-upload and keeps serving", asyn
 
     // The dashboard survived the dropped connection and still serves: status answers and a
     // fresh, complete prompt is accepted end to end.
-    const base = `http://127.0.0.1:${addr.port}`;
     assert.equal((await fetch(base + "/api/status")).status, 200);
     const res = await fetch(base + "/api/prompt", {
       method: "POST",

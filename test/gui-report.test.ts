@@ -2,14 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { startGui } from "../src/ui/gui.js";
 import { collectReport, type ReportData, type ReportDay } from "../src/ui/report.js";
 import { collectFailureReport } from "../src/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure-report.js";
 import { eventsLogPath } from "../src/paths.js";
 import { compactTokens } from "../src/text.js";
 import { initProject } from "../src/init.js";
-import { atLocalTs as atNoon, makeRepo } from "./util.js";
+import { atLocalTs as atNoon, makeRepo, startLocalGui } from "./util.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
@@ -50,10 +49,7 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
     `# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### A fixed bug (found by qa loop ${today}, fixed ${today})\n`,
   );
 
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   try {
     // Default window: the JSON equals collectReport's output for the same root/days.
     const res = await fetch(base + "/api/report");
@@ -108,10 +104,7 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
     ].join("\n") + "\n",
   );
 
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   try {
     // Default window: the markdown equals the pure renderer's output for the same root/days.
     const res = await fetch(base + "/api/failures");

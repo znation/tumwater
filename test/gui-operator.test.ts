@@ -3,14 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { startGui } from "../src/ui/gui.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
 import { landingStatePath, orchestratorStatePath, pausedPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
 import { enqueueLanding } from "../src/land-queue.js";
-import { makeRepo } from "./util.js";
+import { makeRepo, startLocalGui } from "./util.js";
 
 // The GUI's operator controls, split out of gui.test.ts: the daily budget cap
 // (plans/daily-cost-budget.md) — its /api/status field, preformatted header badge,
@@ -267,10 +266,7 @@ test("a paused fleet's idle role loops read budget paused in the phase payload",
 test("POST /api/budget persists a valid cap and rejects invalid bodies without touching the file", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget edit test"); // defaultConfig: maxDailyCostUsd 50
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   const configFile = path.join(repo, "tumwater.json");
   try {
     // Whole dollars persist and come back in the response.
@@ -342,11 +338,9 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
   // Corrupt the config after init: loadConfig throws on it, so setDailyBudgetUsd — which
   // deliberately reads fresh and never overwrites a broken file with defaults — reports an error.
   fs.writeFileSync(configFile, "{ still editing");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
+  const { server, base } = await startLocalGui(repo);
   try {
-    const res = await fetch(`http://127.0.0.1:${addr.port}/api/budget`, {
+    const res = await fetch(base + "/api/budget", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ maxDailyCostUsd: 25 }), // valid value — the failure is server-side
@@ -373,10 +367,7 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
 test("POST /api/pause writes and removes the fleet pause marker and rejects bad bodies", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui pause route test");
-  const server = await startGui(repo, 0);
-  const addr = server.address();
-  assert.ok(addr && typeof addr === "object");
-  const base = `http://127.0.0.1:${addr.port}`;
+  const { server, base } = await startLocalGui(repo);
   try {
     // Pausing writes the persistent marker and reports the new state; a repeat is idempotent.
     let res = await fetch(base + "/api/pause", {

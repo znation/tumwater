@@ -1,5 +1,6 @@
 import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import type { Server } from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +13,7 @@ import { LoopRunner } from "../src/loop.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import type { TickResult, TumwaterConfig } from "../src/types.js";
+import { startGui } from "../src/ui/gui.js";
 
 /** Per-process root for every test temp dir: created on first use, torn down synchronously at
  * process exit. A full suite run (one worker process per test file) therefore abandons at most
@@ -405,6 +407,19 @@ export async function landHead(
     branch,
     new AbortController().signal,
   );
+}
+
+// --- GUI server scaffolding ---
+
+/** Start the GUI server on an ephemeral port and return it with its `http://127.0.0.1:<port>`
+ * base URL: the same three lines (startGui on port 0, narrow the address, build the base)
+ * every GUI test needs before it can talk to the server, shared so the narrowing and URL
+ * cannot drift between the four gui*.test.ts files. Socket-level tests take `port`. */
+export async function startLocalGui(root: string): Promise<{ server: Server; base: string; port: number }> {
+  const server = await startGui(root, 0);
+  const addr = server.address();
+  assert.ok(addr && typeof addr === "object");
+  return { server, base: `http://127.0.0.1:${addr.port}`, port: addr.port };
 }
 
 // --- CLI binary scaffolding: the CLI is tested as a child process ---
