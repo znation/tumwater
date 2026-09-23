@@ -4,10 +4,11 @@ import { truncate } from "./text.js";
 
 /** Schema validation for tumwater.json: the key lists (the one source of truth for what a valid
  * file may hold at each level, kept in sync with TumwaterConfig/BackoffConfig/RoleConfig in
- * types.ts) and validateConfig, the gate every load and save passes through. Split out of
- * config.ts — which keeps defaultConfig and everything that reads or writes the file (load/save/
- * cache, budget editing, per-role views) — because this is a self-contained concern with its own
- * sync obligation: it depends only on the role catalog (allRoleIds), not on any persistence. */
+ * types.ts) and validateConfig, the gate every load and save passes through (config.ts's
+ * load/save, config-write.ts's budget editing and director config requests). Split out of
+ * config.ts — which keeps defaultConfig and the read side (load/save/cache, per-role views) —
+ * because this is a self-contained concern with its own sync obligation: it depends only on the
+ * role catalog (allRoleIds), not on any persistence. */
 
 /** The longest value rendered in an error message. A wrongly-typed section (the whole `roles`
  * object under `autoRestart`, say) would otherwise dump kilobytes into a message meant to be
