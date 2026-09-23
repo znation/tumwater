@@ -58,8 +58,10 @@ function columns(outcomes: OutcomeRow[]): TickResult[] {
 }
 
 /** A delta cell: `prev → cur`, with "—" on a side where the role had no ticks (the "new role"
- * case for the preceding window), so an absence is never rendered as an infinite increase. */
-function deltaCell(prevTicks: number, prev: string, ticks: number, cur: string): string {
+ * case for the preceding window), so an absence is never rendered as an infinite increase.
+ * The displayed halves may be raw counts (stringified here) or pre-rendered rate strings —
+ * the tick-count halves exist only to decide the "—", not to be printed. */
+function deltaCell(prevTicks: number, prev: string | number, ticks: number, cur: string | number): string {
   return `${prevTicks === 0 ? "—" : prev} → ${ticks === 0 ? "—" : cur}`;
 }
 
@@ -138,7 +140,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     lines.push("| --- | --- | --- | --- | --- |");
     for (const d of data.deltas) {
       lines.push(
-        `| ${roleCell(d.role)} | ${deltaCell(d.prevTicks, String(d.prevTicks), d.ticks, String(d.ticks))} | ${deltaCell(d.prevTicks, rate(d.prevErrors, d.prevTicks), d.ticks, rate(d.errors, d.ticks))} | ${deltaCell(d.prevTicks, String(d.prevQuietKills), d.ticks, String(d.quietKills))} | ${rejectionCell(d.prevTicks, d.prevRejections, d.ticks, d.rejections)} |`,
+        `| ${roleCell(d.role)} | ${deltaCell(d.prevTicks, d.prevTicks, d.ticks, d.ticks)} | ${deltaCell(d.prevTicks, rate(d.prevErrors, d.prevTicks), d.ticks, rate(d.errors, d.ticks))} | ${deltaCell(d.prevTicks, d.prevQuietKills, d.ticks, d.quietKills)} | ${rejectionCell(d.prevTicks, d.prevRejections, d.ticks, d.rejections)} |`,
       );
     }
   }
