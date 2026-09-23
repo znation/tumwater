@@ -48,6 +48,12 @@ in tumwater.json or by prompting the director.
 Open items:
 - Open bug: the loop suite's quiet-kill resume test flakes under full-suite load — fails 1-in-N
   full runs, passes in isolation (found 2026-09-23).
+- Open bug: the active-state rows an operator counts against `maxConcurrent` do not track the
+  real permit holders — a tick parked in the semaphore queue renders as `working`, so a landing
+  that holds a permit looks like it runs outside the cap (reported 2026-09-24).
+- Open bug: the failure digest's Review rejections section silently truncates at 5
+  alphabetically-first clusters, so most of the window's rejections are invisible while the
+  Deltas table reports them (found 2026-09-22).
 - Open bug: a 429 storm still has no fleet-wide hold — each tick now retries its own 429, but
   concurrent loops keep hammering a rate-limited provider instead of backing off together
   (found 2026-09-21; the per-tick retry half was fixed 2026-09-22).
@@ -60,13 +66,15 @@ Open items:
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 4b/7–7/7 remain;
+  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 5/7–7/7 remain;
   1/7 CI and npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21, 2/7 repo-root and
   branch targeting landed 2026-09-22, 4a/7 config seeded from a tracked example landed
-  2026-09-22, 3/7 harness-mediated director config writes landed 2026-09-23).
-- Open questions: none (this repo tracks no QUESTIONS.md; `init` seeds one for new projects).
+  2026-09-22, 4b/7 untracking the live config landed 2026-09-22, 3/7 harness-mediated director
+  config writes landed 2026-09-23).
+- Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
+  new projects).
 
-Current main (`0733811`): build clean, suite 1314/1314.
+Current main (`0231600`): build clean, suite 1321/1321.
 <!-- tumwater:status:end -->
 
 ## How it works
