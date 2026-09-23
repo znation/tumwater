@@ -51,6 +51,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Custom loop ids appear like built-in ones (no role-name allowlist), matching `ticksByRole`.
 - `npm test` passes with the new tests in test/report.test.ts (aggregation + Markdown line) and test/gui-report.test.ts (`/api/report` JSON carries `costByRole`).
 
+### Optional shared-token auth for the GUI dashboard — `gui --token <secret>` (planned 2026-09-23)
+
+**Goal.** The dashboard is documented as having no authentication: `--all-interfaces` exposes the director prompt box, the budget editor, and every transcript to anyone who can reach the port (src/ui/gui.ts:253-255 says so explicitly, and the startup banner warns it). An operator who must expose the dashboard on a LAN has no way to protect it short of a reverse proxy. Add an opt-in shared token: `tumwater gui --token <secret>` requires a credential on every request. The default stays open — binding to localhost is the opinionated default, `--all-interfaces` is the caller's deliberate choice, and flipping auth on by default would break curl/scripts hitting `/api/status`; `--token` gives that caller a one-flag protection instead. (Default-on could be a later, separately-planned change if the user asks; not decided here.)
+
+**Approach.**
+- `src/ui/gui.ts`: add an optional `token = ""` parameter to `startGui(root, port, allInterfaces, token)`. When a token is set, gate at the top of the `createServer` handler, before any routing: accept either `Authorization: Bearer <token>` or a `?token=` query parameter, compared with `crypto.timingSafeEqual` behind a length-equality guard; anything else gets `401` with JSON `{error: "token required"}` (the same JSON error shape every handler already uses). An empty token means no check — byte-for-byte today's behavior. The credential is read per request from `req.headers.authorization` and `req.url`, both already parsed or parseable in the handler.
+- `src/cli.ts` (`case "gui"`): accept `--token <secret>` in the `rejectUnknownArgs` list (a value flag like `--port`, validated for presence and non-emptiness — a valueless or empty `--token` is a CLI error, not an open server), pass it to `startGui`, and print the URLs with the token in the query — `tumwater gui at http://127.0.0.1:7180/?token=<secret>`; the `lanAddresses()` lines and the `--all-interfaces` warning say `token-protected` when a token is set instead of `no auth`.
+- `src/ui/gui-client.ts`: read the token once from `new URLSearchParams(location.search).get("token")`, have `apiFetch` (gui-client.ts:23 — every endpoint call already routes through it, so one edit covers status, prompt, budget, pause, report, transcript, backlog, and failures) attach `Authorization: Bearer <token>` to every request, and call `history.replaceState` to strip `?token=` from the address bar after load so a screen-share does not leak it.
+
+**Files touched.** src/ui/gui.ts, src/cli.ts, src/ui/gui-client.ts, test/gui-server.test.ts.
+
+**Acceptance criteria.**
+- Without `--token`, behavior is exactly today's: the existing gui test files pass unmodified (they all call `startGui` without a token).
+- With `--token s3cret`, every route — the page (`GET /`), every `GET /api/*`, every `POST /api/*` — returns 401 JSON `{error: "token required"}` with no credential, a wrong credential, or an empty one; with the credential as either a Bearer header or `?token=` each route behaves exactly as it does today.
+- The comparison is constant-time (`timingSafeEqual` with a length guard — the naive `===` string compare is rejected).
+- `tumwater gui --token s3cret` prints a URL containing the token; with `--all-interfaces` every printed LAN URL contains it and the warning line reads `token-protected`, not `no auth`.
+- The browser client attaches the Bearer header to every request and clears `?token=` from the address bar after load.
+- `npm test` passes with new tests in test/gui-server.test.ts: open access unchanged, 401 on missing/wrong token, and access via Bearer header and via `?token=`.
+
 ## Done
 
 ### Bound tool output head+tail with a tumwater pi extension (planned 2026-09-23, re-audited 2026-09-24, user request, done 2026-09-24)
