@@ -8,7 +8,8 @@ import {
 } from "../backlog.js";
 import { submitPrompt } from "../inbox.js";
 import { isJsonObject } from "../json-object.js";
-import { checkDailyBudgetUsd, knownRoleIds, loadConfigCached, setDailyBudgetUsd } from "../config.js";
+import { knownRoleIds, loadConfigCached } from "../config.js";
+import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, resumeFleet } from "../fleet-state.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";

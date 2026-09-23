@@ -11,7 +11,7 @@ import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "../inbox.js";
-import { setDailyBudgetUsd } from "../config.js";
+import { setDailyBudgetUsd } from "../config-write.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { clipToWidth, errorMessage, usdCap } from "../text.js";

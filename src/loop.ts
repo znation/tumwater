@@ -30,7 +30,8 @@ import {
 import { LoopPi } from "./loop-pi.js";
 import { readInitialPrompt } from "./readme.js";
 import { telemetryDigest } from "./failure-report.js";
-import { applyConfigRequest, configForRole } from "./config.js";
+import { configForRole } from "./config.js";
+import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS, landChange, type LandRequest } from "./lander.js";
 import { enqueueLanding } from "./land-queue.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";

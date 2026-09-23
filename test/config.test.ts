@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  applyConfigRequest,
   applyFallbackModel,
   changedConfigKeys,
   configForRole,
@@ -20,8 +19,8 @@ import {
   reviewConfig,
   seedConfig,
   saveConfig,
-  setDailyBudgetUsd,
 } from "../src/config.js";
+import { applyConfigRequest, setDailyBudgetUsd } from "../src/config-write.js";
 import { configRequestPath, exampleConfigPath } from "../src/paths.js";
 import { show, validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
