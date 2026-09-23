@@ -502,6 +502,16 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // already holds, and that is dropped without a landing run (leftover.ts's stale-pin
       // idiom); a crash mid-review leaves both entry and ref, so the drain re-runs landChange —
       // re-reviews — the established crash semantics.
+      // Resolve a landing entry's authoring runner: the live runner when the role is enabled
+      // (runners are never removed from the array on disable — only a warning event fires); a
+      // role disabled before this process started has no runner, so a throwaway one supplies
+      // the same wiring (loop-pi.ts, runLandingPi, foldLandingUsage) and a disk-loaded state
+      // to fold and save on. Both share the live config, like every runner — the director
+      // keeps liveConfig (its budget-gate exemption above), every other role takes roleConfig.
+      const authorFor = (role: string): LoopRunner =>
+        runners.find((r) => r.role === role) ??
+        new LoopRunner(root, role, role === DIRECTOR_ROLE ? liveConfig : roleConfig, mainBranch, signal);
+
       if (!holdForRestart && landingInFlight === null) {
         let head = headLanding(root);
         if (!head) {
@@ -543,20 +553,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               // The head's file vanished between the two queue reads (no in-process writer
               // does that — defensive): nothing to land this poll.
             } else if (batch.length === 1) {
-              // Resolve the authoring runner when it exists (runners are never removed from
-              // the array on disable — only a warning event fires); a role disabled before
-              // this process started has no runner, so a throwaway one supplies the same
-              // wiring (loop-pi.ts, runLandingPi, foldLandingUsage) and a disk-loaded state
-              // to fold and save on. Both share the live config, like every runner.
-              const author =
-                runners.find((r) => r.role === head.entry.role) ??
-                new LoopRunner(
-                  root,
-                  head.entry.role,
-                  head.entry.role === DIRECTOR_ROLE ? liveConfig : roleConfig,
-                  mainBranch,
-                  signal,
-                );
+              const author = authorFor(head.entry.role);
               landingInFlight = startLanding([head.entry.role], async (landing) => {
                 await landQueuedEntry(root, head.entry, head.file, author, author.config, mainBranch, landing.controller.signal);
               });
@@ -578,19 +575,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
                   summary: first.entry.summary,
                   startedAt,
                 });
-                const authors = new Map(
-                  batch.map((b) => [
-                    b.entry.role,
-                    runners.find((r) => r.role === b.entry.role) ??
-                      new LoopRunner(
-                        root,
-                        b.entry.role,
-                        b.entry.role === DIRECTOR_ROLE ? liveConfig : roleConfig,
-                        mainBranch,
-                        signal,
-                      ),
-                  ]),
-                );
+                const authors = new Map(batch.map((b) => [b.entry.role, authorFor(b.entry.role)]));
                 const usages = new Map<string, { tokens: number; cost: number }>();
                 try {
                   const outcomes = await landBatch(
