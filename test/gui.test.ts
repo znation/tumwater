@@ -818,6 +818,55 @@ test("the dashboard page checks r.ok before parsing both on-demand panel fetches
   assert.match(GUI_PAGE, /report unavailable" \+ \(e && e\.message/);
 });
 
+test("apiError renders the operator-facing message for every error-body shape", async () => {
+  // The guard above is pinned by source shape; this pins its BEHAVIOR — endpoint, HTTP
+  // status, and the server's error text joined by the same separator — for every body shape
+  // the server sends: JSON {error}, plain text (the 404's "not found"), and an empty body.
+  // Extracted like the esc test: the client script's header region up to fmtTokens holds
+  // esc/apiError/apiFetch/getJson/postJson, whose only external dependency is fetch.
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const script = GUI_PAGE.slice(GUI_PAGE.indexOf("<script>\n") + "<script>\n".length);
+  const head = script.slice(0, script.indexOf("const fmtTokens"));
+  let respond: (path: string, init?: unknown) => unknown = () => ({ ok: true, status: 200 });
+  const fetchStub = (path: string, init: unknown) => respond(path, init);
+  const { apiError, apiFetch, getJson } = new Function(
+    "fetch",
+    `${head}\nreturn { apiError, apiFetch, getJson };`,
+  )(fetchStub) as {
+    apiError: (path: string, r: { status: number; text: () => Promise<string> }) => Promise<Error>;
+    apiFetch: (path: string, init?: unknown) => Promise<{ json: () => Promise<unknown> }>;
+    getJson: (path: string) => Promise<unknown>;
+  };
+
+  // JSON {error} body — the common failure: the error text joins the endpoint and status.
+  let err = await apiError("/api/budget", {
+    status: 400,
+    text: async () => '{"error":"maxDailyCostUsd must be a number of 0 or more"}',
+  });
+  assert.ok(err instanceof Error);
+  assert.equal(err.message, "/api/budget failed: HTTP 400 — maxDailyCostUsd must be a number of 0 or more");
+
+  // Plain text (the 404's "not found", or a proxy's HTML error page): the raw body surfaces
+  // verbatim instead of being swallowed by the JSON parse.
+  err = await apiError("/api/nope", { status: 404, text: async () => "not found" });
+  assert.equal(err.message, "/api/nope failed: HTTP 404 — not found");
+  err = await apiError("/api/status", { status: 502, text: async () => "<html>bad gateway</html>" });
+  assert.equal(err.message, "/api/status failed: HTTP 502 — <html>bad gateway</html>");
+
+  // Empty body: the status alone names the failure, with no dangling separator.
+  err = await apiError("/api/status", { status: 500, text: async () => "   ", });
+  assert.equal(err.message, "/api/status failed: HTTP 500");
+
+  // apiFetch throws that message on a non-2xx and hands a 2xx response through — so
+  // getJson never parses an error body as data.
+  respond = () => ({ ok: false, status: 404, text: async () => "not found" });
+  await assert.rejects(apiFetch("/api/backlog"), /\/api\/backlog failed: HTTP 404 — not found/);
+  await assert.rejects(getJson("/api/backlog"), /HTTP 404/);
+  const payload = { paused: false };
+  respond = () => ({ ok: true, status: 200, json: async () => payload });
+  assert.equal(await getJson("/api/status"), payload, "a 2xx response flows through to the caller");
+});
+
 test("the dashboard status poll checks r.ok before parsing", async () => {
   // Regression: refresh() parsed /api/status without an ok check. The server's 500 catch
   // sends a JSON {error} body, so on a failed poll that object was assigned to lastStatus
