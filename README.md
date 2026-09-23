@@ -50,9 +50,6 @@ Open items:
 - Open bug: a `FLOW:` line without a parseable verdict is recorded as a pass — `extractFlow`
   defaults a malformed or truncated verdict to `passed`, advancing qa's rotation on a check that
   never finished (found 2026-09-23).
-- Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its
-  code is hard-reset — `TUMWATER_REFUSED: none` discarded two finished, tested bugfix ticks
-  (found 2026-09-23; the 2026-09-23 fix was itself discarded by the harness — see BUGS.md).
 - Open bug: a live `tumwater.json` that disappears mid-run hot-reloads as built-in defaults —
   the fleet ran 8.6 hours with zero successful ticks (found 2026-09-23).
 - Open bug: a self-redeploy whose new generation fails a startup precondition takes the whole

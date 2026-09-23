@@ -31,9 +31,11 @@ not in the vocabulary.
   `**Refused <YYYY-MM-DD> by <role>: <one-line reason>**` (the same date/role convention plan and
   bug entries already carry; greppable as `^\*\*Refused`). A second sentence in the same bullet is
   the skip rule — see Repeated refusals below.
-- **Parser** (`src/pi.ts`): `PiStreamParser` detects the sentinel in any assistant message (same
-  pattern as `declaredNothingToDo`) and captures the reason → `PiRunResult.refused` /
-  `refusedReason`.
+- **Parser** (`src/pi-stream.ts`): `PiStreamParser` detects the refusal from the anchored
+  `TUMWATER_REFUSED: <reason>` line (`extractRefusal`) — anchored-only and negation-aware, not
+  the loose whole-reply scan `declaredNothingToDo` uses, so a reply that merely names the
+  sentinel or negates it (`none`, `n/a`) keeps its work (BUGS.md 2026-09-23) — and captures the
+  reason → `PiRunResult.refused` / `refusedReason`.
 - **Loop** (`src/loop.ts`): outcome `refused` (new `TickResult`). The harness classifies what
   the run left behind with a new git helper `changedFiles(wt): string[]` (parse
   `git status --porcelain`, paths only — covers modified, untracked, and deleted; no such lister
