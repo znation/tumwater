@@ -34,13 +34,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Tick prompts in a non-npm repo never mention `node_modules`, and name the configured command where they used to say "if it has a build or test command".
 - `doctor` warns, naming the consequence, when neither a configured command nor an npm script is found.
 
-### 7/7 — Adopt an existing repository without hijacking its README (planned 2026-09-14, refined 2026-09-18, re-audited 2026-09-23)
+### 7/7 — Adopt an existing repository without hijacking its README (planned 2026-09-14, refined 2026-09-18, re-audited 2026-09-24)
 
 **Goal.** Let `tumwater init` run against a repo that already exists and already has a README. Today it hard-fails when `README.md` exists without the `tumwater:prompt` markers, because `readInitialPrompt` (src/readme.ts) reads the brief only out of README.md's managed section. Introduce `TUMWATER.md` as the project brief with README as the compatibility path, plus `init --adopt` / `--dry-run`; the brief filename threads through `COMMON_RULES` (shared with the director prompt).
 
 **Series.** Part 7/7 of the portability series. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §7/7.
 
-**Files touched.** src/paths.ts, src/readme.ts, src/init.ts, src/cli-args.ts, src/roles.ts, src/prompt.ts, src/doctor.ts, test/init.test.ts, test/readme.test.ts, test/prompt.test.ts, test/doctor.test.ts.
+**Files touched.** src/paths.ts, src/readme.ts, src/init.ts, src/cli-args.ts, src/cli.ts, src/loop.ts, src/roles.ts, src/prompt.ts, src/doctor.ts, test/init.test.ts, test/readme.test.ts, test/prompt.test.ts, test/doctor.test.ts, test/cli-args.test.ts.
 
 **Acceptance criteria.**
 - `tumwater init --adopt "<brief>"` in a clone of an unrelated repo (existing README.md, existing PLANS.md, no node_modules) creates only `TUMWATER.md`, `QUESTIONS.md`, `PRINCIPLES.md`, `tumwater.json` and the `.gitignore` entries — README.md and PLANS.md byte-identical afterwards.

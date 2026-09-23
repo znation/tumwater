@@ -1547,6 +1547,82 @@ adopted repo's `TUMWATER.md` gets the same backstop protection with zero additio
 
 Sizing unchanged. No design question remains open.
 
+**Refined 2026-09-24 (plan loop) — 7/7 re-audited against main `af5dbae` (the README's stamp is
+behind at `0733811`). Two days and ~79 landings after the 2026-09-23 audit — the largest gap of
+any re-audit in the series — and the surface moved materially: `--branch` now exists on init
+(cli-args.ts, cli.ts, init.ts), init's prompt became optional on a re-seed (`59bba02`), and 4a/7's
+config seeding is live in the same function this entry rewrites. The design holds unchanged;
+every drifted anchor is re-pinned below and the flag/signature corrections are restated against
+the new shape.**
+
+Verified as written:
+- `src/readme.ts` (60 lines) is functionally unchanged: `PROMPT_START`/`PROMPT_END` :7–8,
+  `INITIAL_PROMPT_MAX_CHARS` :15 (was :12 — its doc comment grew), the end-marker-after-start
+  ordering guard :51, the cap check :54, the truncation backstop :59 (was :58–60). Same two
+  markers, same parse-trim-cap shape — `briefCandidates` resolution needs no new seam here.
+- `src/prompt.ts` (442→473): `COMMON_RULES` :53 still names README.md at :57 and :86 — both pins
+  identical to the 09-23 audit; `TickPromptInput` :144; `buildTickPrompt` :169 embedding
+  COMMON_RULES at :180; `buildDirectorPrompt` :185 embedding at :239 (was :232).
+- `src/roles.ts` (412): `plan.find` :135 and `readme.find` :151 — both pins identical.
+- `test/readme.test.ts` (94): the `writeReadme` helper :14 — unchanged.
+- Doctor's name column is still `padEnd(12)` (src/doctor.ts:317), so correction 8's "brief" name
+  fits.
+- Capability absence re-confirmed: `grep -rn 'TUMWATER\.md\|briefFile\|briefCandidate\|--adopt\|
+dryRun' src/` is empty.
+
+Corrections re-pinned against the new shape:
+1. **`parseInitArgs` already returns an object — correction 1's target moved.** It now returns
+   `{ prompt: string; branch: string | null }` (src/cli-args.ts:127; was a bare string), the
+   allowed double-dash set is `--file` + `--branch` (:128–133) with a per-flag once-check
+   (:135–136), the `--branch` pair is claimed beside `--file`'s (:142–144) and skipped in the
+   no-flag join (:200–204), and cmdInit destructures `{ prompt, branch }` (src/cli.ts:130). The
+   plumbing correction 1 wants is therefore an extension of code that now exists: `--adopt` and
+   `--dry-run` (valueless) join the allowed set, the once-checks, the `--file` claimed list, and
+   the join skip; the return type becomes `{ prompt; branch; adopt; dryRun }` and cmdInit
+   destructures four fields. The doc comment's misspelled-flag rationale (:119–126) is unchanged
+   and covers the new flags.
+2. **`initProject` gained a third positional, `branch?: string`** (src/init.ts:106), and
+   `InitResult` (:92) now also carries `branch: createdBranch` (:193). Correction 6's `opts`
+   parameter therefore lands as the FOURTH positional: `initProject(root, initialPrompt, branch?,
+   opts?: { adopt?: boolean; dryRun?: boolean })` — cmdInit's call (src/cli.ts:131) gains the opts
+   argument and nothing else moves. Correction 6's `dryRun` field joins the existing four.
+3. **The prompt became optional on a re-seed (`59bba02`), and it composes with adoption.**
+   init.ts's validation preamble (:112–131) now makes the prompt optional when the README already
+   carries the markers (:118–123 — a fresh clone, or a checkout that lost its now-untracked
+   tumwater.json, re-seeds with a bare `tumwater init`), while a prompt GIVEN with a marker-less
+   README still hard-fails (:137–141, message :139). Under resolution over `briefCandidates`, both
+   rules read the marked brief wherever it lives: a bare re-seed works against a marked
+   `TUMWATER.md` unchanged, and correction 4's marker-less failure keeps covering the
+   no-marked-brief-anywhere case — including the new `!prompt` path (:121–123), whose message
+   stays as-is (a brief-less repo does need a prompt). No design change; the implementer must
+   apply candidate resolution to BOTH guards, not only the README one.
+4. **4a/7's seeding is live inside the function this entry rewrites** (:168–171:
+   `if (!fs.existsSync(configPath(root))) { saveConfig(root, seedConfig(root)); … }`), so the
+   adopt path's "create tumwater.json" criterion is already the create-if-absent rule 4a/7
+   landed, and the commit path excludes the config from the pathspec (:176–190, the
+   `committable` filter — an adopted repo that only gains a config reports it and stays
+   uncommitted, exactly as today). The adopt path reuses all of it unchanged.
+5. **Line anchors re-pinned.** src/init.ts (163→194): branch-precedence block :144–154 (the
+   `init.defaultBranch` preference the 09-23 audit called a superseded comment is now implemented
+   code — no interaction beyond `git init -b <preferred>` staying where the adopt path reuses
+   it); the `write` create-if-absent helper :159. src/cli.ts (381→418): `cmdInit` :129 (was
+   :102), its `initialized a new git repository on branch ${result.branch}` :137 (was :110),
+   `cmdRun` :143, the run case's `rejectUnknownArgs` :230 (now declaring the `--branch`
+   valued-flag spec) and `cmdRun(root, args)` :231. src/loop.ts (818→748, the LoopRunner pi-run
+   plumbing moved to src/loop-pi.ts): `readInitialPrompt(this.root)` :174 (was :160), the
+   `buildDirectorPrompt(userPrompt, initialPrompt, principles)` call :183 (was :169) —
+   correction 2's `const brief = briefFile(this.root) ?? "README.md"` computes beside :174 and
+   feeds both branches. src/doctor.ts (268→320): `checkInit` :133 (was :99), `runDoctor` :281
+   (was :237), the checks array :295 with the `init` entry :298 — correction 8's `checkBrief`
+   slots immediately after it (the array has since gained `fallback` :299 and `build` :305;
+   brief sits between init and fallback). Tests: `test/init.test.ts` (166→272 — the re-seed and
+   `--branch` tests joined): the old-failure test "initProject refuses to drop the initial prompt
+   when README has no tumwater markers" is now :118 (correction 5 inverts it), the PRINCIPLES-seed
+   test :34 (correction 7's added assertions join it); `test/prompt.test.ts`'s
+   `/First read README\.md in full/` pin is :571 (was :525).
+
+Sizing unchanged. No design question remains open.
+
 ---
 
 ## Series close-out
