@@ -195,6 +195,26 @@ export async function listBranches(root: string): Promise<string[]> {
   return out ? out.split("\n").filter(Boolean) : [];
 }
 
+/** The git directory backing `dir`'s checkout, resolved from files without spawning git:
+ * a `.git` directory (primary checkout) or the target of a `gitdir: <path>` pointer file (a
+ * linked worktree — the harness itself can run from one, as its own role worktrees do).
+ * undefined when .git is missing, unreadable, or carries a malformed pointer — callers fall
+ * back to whatever a spawned git command would decide. */
+export function resolveGitDir(dir: string): string | undefined {
+  const dotGit = path.join(dir, ".git");
+  try {
+    if (fs.statSync(dotGit).isDirectory()) return dotGit; // Primary checkout.
+    // Linked worktree: `.git` is a one-line pointer file (`gitdir: <path>`).
+    const line = fs.readFileSync(dotGit, "utf8").trim();
+    if (!line.startsWith("gitdir:")) return undefined;
+    const target = line.slice("gitdir:".length).trim();
+    if (!target) return undefined; // Malformed pointer: uncertain.
+    return path.resolve(dir, target);
+  } catch {
+    return undefined; // No repo here (or .git unreadable) — let the spawn decide.
+  }
+}
+
 /** The branch `dir`'s checkout has, read from its HEAD file without spawning git: undefined
  * (not null) when the files cannot answer and the `git symbolic-ref` fallback should decide.
  * A `.git` directory (primary checkout) or a `gitdir: <path>` pointer file (a linked worktree —
@@ -202,22 +222,8 @@ export async function listBranches(root: string): Promise<string[]> {
  * line must be `ref: refs/heads/<branch>`; a bare sha means detached HEAD — the same null the
  * spawn produces, since symbolic-ref fails on it — and anything else is unusual (undefined). */
 function currentBranchFromHeadFile(dir: string): string | null | undefined {
-  let gitdir: string;
-  try {
-    const dotGit = path.join(dir, ".git");
-    if (fs.statSync(dotGit).isDirectory()) {
-      gitdir = dotGit; // Primary checkout.
-    } else {
-      // Linked worktree: `.git` is a one-line pointer file (`gitdir: <path>`).
-      const line = fs.readFileSync(dotGit, "utf8").trim();
-      if (!line.startsWith("gitdir:")) return undefined;
-      const target = line.slice("gitdir:".length).trim();
-      if (!target) return undefined; // Malformed pointer: uncertain.
-      gitdir = path.resolve(dir, target);
-    }
-  } catch {
-    return undefined; // No repo here (or .git unreadable) — let the spawn decide.
-  }
+  const gitdir = resolveGitDir(dir);
+  if (gitdir === undefined) return undefined; // No repo here (or .git unreadable) — let the spawn decide.
   let head: string;
   try {
     head = fs.readFileSync(path.join(gitdir, "HEAD"), "utf8").trim();

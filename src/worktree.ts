@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { git, gitTry } from "./git.js";
+import { git, gitTry, resolveGitDir } from "./git.js";
 import { removeTree } from "./files.js";
 import { branchName, worktreePath } from "./paths.js";
 
@@ -74,22 +74,8 @@ export async function ensureDetachedWorktree(root: string, dir: string, ref: str
  * Synchronous and microsecond-scale: this exists because abortSync runs on every fresh tick
  * and the common case used to cost two ~10ms subprocess spawns that were guaranteed no-ops. */
 function syncStateClear(wt: string): boolean {
-  const dotGit = path.join(wt, ".git");
-  let gitdir: string;
-  try {
-    if (fs.statSync(dotGit).isDirectory()) {
-      gitdir = dotGit; // Primary checkout.
-    } else {
-      // Linked worktree: `.git` is a one-line pointer file (`gitdir: <path>`).
-      const line = fs.readFileSync(dotGit, "utf8").trim();
-      if (!line.startsWith("gitdir:")) return false;
-      const target = line.slice("gitdir:".length).trim();
-      if (!target) return false; // Malformed pointer: uncertain.
-      gitdir = path.resolve(wt, target);
-    }
-  } catch {
-    return false; // Not a repo we can inspect — fall back to the spawns.
-  }
+  const gitdir = resolveGitDir(wt);
+  if (gitdir === undefined) return false; // Not a repo we can inspect — fall back to the spawns.
   try {
     if (!fs.statSync(gitdir).isDirectory()) return false; // Pointer target gone: uncertain.
   } catch {
