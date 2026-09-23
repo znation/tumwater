@@ -9,14 +9,14 @@ export const DETACHED_HEAD_MESSAGE =
   "the repo's primary checkout is detached; check out your main branch first";
 export const NOT_INITIALIZED_MESSAGE =
   "not initialized (run `tumwater init <prompt>` first — or a bare `tumwater init` when README.md already carries the prompt)";
-export const PI_MISSING_MESSAGE =
+const PI_MISSING_MESSAGE =
   "pi not found on PATH — install it (https://github.com/badlogic/pi-mono) or add its bin directory to your PATH";
 
 /** Where a resolved agent binary's value came from (plans/portability.md §5/7): the env
  * override, the config field, or the built-in default. Shared by resolveAgentBin (pi.ts)
  * and every message that names the resolution, so the wording cannot drift between the
  * surfaces that report it. */
-export type AgentBinSource = "env" | "config" | "default";
+type AgentBinSource = "env" | "config" | "default";
 
 export interface ResolvedAgentBin {
   bin: string;
