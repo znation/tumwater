@@ -50,6 +50,42 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ (landed 2026-09-22) and 4b/7 ✓ (landed 2026-09-22) are done. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here — the series has no critical path left.
 
+### Tell ticks to fan out independent tool calls in one turn (planned 2026-09-23, user request)
+
+**Goal.** Cut the per-turn re-send tax. Every assistant turn re-sends the whole conversation, so the number of turns, not the number of tool calls, drives input tokens. Across the 14 pi logs in `.tumwater/log/` on 2026-09-23, 1,655 assistant turns made 1,960 tool calls — 1.18 per turn, with only 441 turns issuing more than one — and input ran ~58:1 against output (6.75M uncached + 24.6M cache-read vs 0.54M out). Now that the primary model is a paid HF provider under a $10/day cap, those turns are money. pi 0.85 already executes sibling tool calls from one assistant message concurrently (docs/extensions.md, "parallel tool mode"), so the only missing piece is the model choosing to emit them. Inspired by Unreal Agent's preamble (github.com/unreallabsai/unreal-agent, harness/contextbuilder/prompts/preamble.md), which tells the model turns are the expensive unit and tool calls the cheap one.
+
+**Approach.** Add one bullet to `CONTEXT_BUDGET_RULE` or the Scope group of `COMMON_RULES` in src/prompt.ts, phrased positively per PRINCIPLES.md: each turn re-sends everything read so far, so when the next few reads or commands do not depend on each other's output (a `wc -l` on several files, a `grep -n` plus the `sed -n` ranges it points at once known, a typecheck and a targeted test), issue them as separate tool calls in the same turn rather than one per turn. Restate the orientation budget in the same terms — "choose the task within ~15 tool calls" stays, and gains "in a handful of turns". Mirror the one-line version in `searchGuidance` (src/roles.ts) for the five backlog-free roles, whose orientation is the most read-heavy, and in the reviewer's reading budget (review prompt), which reads a diff plus its touched files and is the clearest fan-out case. Keep edits and anything that depends on a prior result sequential — say so, so the model does not batch an `edit` with the test that checks it. Do not add a config knob.
+
+**Files touched.** src/prompt.ts, src/roles.ts, src/review.ts (only if the reviewer's budget text lives there), test/prompt.test.ts.
+
+**Acceptance criteria.**
+- Every tick prompt and the review prompt carry the fan-out rule; test/prompt.test.ts pins it with the existing `oneLine` matching, and the review prompt still contains "VERDICT:" exactly twice.
+- The existing pins (`Choose the task within your first ~15 tool calls`, `Decide within ~15 tool calls`, the "ran out of context" exclusion on `CONTEXT_BUDGET_RULE`) still pass unmodified or are updated in place, not duplicated.
+- The tick prompt grows by no more than ~120 tokens.
+- Measured afterwards (not a test gate): recompute calls-per-turn over the first ~200 post-landing turns with the jq one-liner used above (`message_end` assistant messages, count `toolCall` content items) and record the before/after in this entry's Done note.
+
+### Bound tool output head+tail with a tumwater pi extension (planned 2026-09-23, user request)
+
+**Goal.** Stop single tool results from flooding the context. The same 2026-09-23 log sample shows `read` results averaging ~16k characters, with 106 of 216 over 20k — the prompt's "read files over ~300 lines in ranges" rule is advice the model often skips, and pi's own `read` cap (2000 lines / 50KB) is ~4x what the rule intends. pi's `bash` cap keeps only the last 2000 lines / 50KB (tail-only, `truncateTail`), so a failing test run's first error or a long file's header is lost while its tail is kept. Unreal Agent bounds every result to 40k characters split half head / half tail, with a `...N bytes truncated; complete output in <path>...` marker in the middle (harness/operation/output.go `boundOutput`), and the model reads the path on demand. Enforce tumwater's intended budget in the harness rather than in prose.
+
+**Approach.** Ship a pi extension with tumwater and load it on every pi run.
+- New `src/pi-extension/bounded-output.ts`: `export default function (pi) { pi.on("tool_result", …) }`, the pattern in pi's docs/extensions.md "tool_result" section (handlers may return a partial `{ content }` patch). Keep the bounding itself a pure exported function (`boundText(text, limitChars, fullPath?)`) so it is unit-testable without pi. Use `import type` only from pi's package, so the zero-runtime-dependency principle holds (types erase; pi loads the file itself via jiti, and the compiled `.js` in dist/ works as well).
+- `read`: when a text result exceeds ~12k characters (≈300 lines, matching `CONTEXT_BUDGET_RULE`), keep head+tail and replace the middle with a marker that names the omitted line range and says to re-read it with `offset`/`limit` — the file itself is the "complete output", so no copy is written. Skip image results and results the model already ranged (`event.input.offset`/`limit` set).
+- `bash`: when the result exceeds ~16k characters, keep head+tail around a `...N bytes truncated; complete output in <path>...` marker. Reuse pi's own full-output file when `details.fullOutputPath` is set; otherwise write the full text under the role's `.tumwater/` log area (never inside the worktree, so it is never committed) and point at that.
+- `piArgs` (src/pi.ts) appends `-e <absolute path to dist/src/pi-extension/bounded-output.js>`, resolved from `import.meta.url` so the staged builds redeploy uses (`.tumwater/build/<sha>`) load their own copy. Append it before `config.piArgs` so a user flag still wins; `--no-extensions` in piArgs would not disable it (explicit `-e` paths still load), which is intended.
+- Limits are constants in the extension, not config (opinionated defaults). Update `CONTEXT_BUDGET_RULE` with one clause saying oversized results come back head+tail with a marker, so the model knows to follow the pointer instead of retrying the same read.
+- Interaction with 5/7 (configurable agent binary): the `-e` flag is pi-specific; if 5/7 lands first, add the flag only when the resolved agent is pi, and note the gap for other agents.
+
+**Files touched.** src/pi-extension/bounded-output.ts (new), src/pi.ts, src/prompt.ts, tsconfig.json (only if the new directory needs including), test/bounded-output.test.ts (new), test/pi.test.ts, test/prompt.test.ts.
+
+**Acceptance criteria.**
+- `boundText` unit tests: text under the limit is returned byte-identical; text over it returns exactly head + marker + tail within the limit, the marker states the truncated byte count (and the path when given), and multi-byte UTF-8 is never split mid-character.
+- `piArgs` output includes `-e` followed by an absolute path to a file that exists in dist/ after `npm run build`; test/pi.test.ts's argv pins are updated in place.
+- A read of a 1,000-line file with no offset/limit yields a result under the read limit whose marker names the omitted line range; the same read with `offset`/`limit` set is passed through untouched.
+- A bash result over the limit keeps both its first and last lines, and the marker's path, when read, contains the full output.
+- Offline tests still pass against the fake pi shim (the shim ignores `-e`).
+- Measured afterwards (not a test gate): mean and p90 `read` result size over the first ~200 post-landing reads, recorded in this entry's Done note alongside the 2026-09-23 baseline (~16k mean, 49% over 20k).
+
 ## Done
 
 ### 4b/7 — Untrack this repo's own config without deleting it (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23, done 2026-09-22)
