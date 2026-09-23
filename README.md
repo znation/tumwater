@@ -47,6 +47,9 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
+- Open bug: a `FLOW:` line without a parseable verdict is recorded as a pass — `extractFlow`
+  defaults a malformed or truncated verdict to `passed`, advancing qa's rotation on a check that
+  never finished (found 2026-09-23).
 - Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its
   code is hard-reset — `TUMWATER_REFUSED: none` discarded two finished, tested bugfix ticks
   (found 2026-09-23; the 2026-09-23 fix was itself discarded by the harness — see BUGS.md).
@@ -81,16 +84,12 @@ Open items:
   binary (planned 2026-09-14, requested by user; PLANS.md items 6/7 — configurable verify
   command — and 7/7 — adopt an existing repo without hijacking its README — remain; 1–5/7
   landed by 2026-09-24).
-- Planned: tell ticks to fan out independent tool calls in one turn (planned 2026-09-23,
-  requested by user).
 - Planned: bound tool output head+tail with a tumwater pi extension (planned 2026-09-23,
   requested by user).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`aca4f6d`): build clean, suite 1348/1348 (this worktree's run; main's recorded
-count was 1343/1343 at `a9933af` — the refusal-detection tick's code was discarded, see
-BUGS.md).
+Current main (`292f642`): build clean, suite 1349/1349.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -192,8 +191,10 @@ taste. Only the director and steward roles edit that file; every other loop trea
 
 The prompts are written for the fleet's real model — a mid-sized local model with thinking on
 behind a large but finite window: rules are grouped, with numeric budgets
-(choose the task within ~15 tool calls; check a file's size before reading it whole; read anything
-over ~300 lines in ranges; the reply ends with plain text, never an announced next step). Roles with
+(choose the task within ~15 tool calls, in a handful of turns; independent reads and commands
+fan out as sibling tool calls in one turn, since every turn re-sends what was read so far; check a
+file's size before reading it whole; read anything over ~300 lines in ranges; the reply ends with
+plain text, never an announced next step). Roles with
 no backlog to point at (`organize`, `clean`, `dry`, `perf`, `improve`) carry a shortlist-and-decide
 search procedure — cheap signals such as recent churn, size outliers, and targeted grep, with their
 own recent commits as the memory of what they already did — instead of surveying the codebase file
