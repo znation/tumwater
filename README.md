@@ -41,19 +41,20 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 `doctor`, `logs` (`-f`, `--role <id>`, `-n N`, `--prompt`), `prompt "text"` / `--list` /
 `--cancel <n>`, `reset-counters [--role <id>]`, `wake [--role <id>]`, `abort --role <id>`,
 `pause` / `resume`, and `help` / `version`. The agent binary is configurable
-(`TUMWATER_PI_BIN` → `agentBin` → `pi`). All thirteen roles — `feature`, `bugfix`, `plan`,
-`readme`, `organize`, `coverage`, `clean`, `dry`, `perf`, `qa`, `telemetry`, `improve`,
-`steward` — plus the director are enabled by default; user-defined loops come from `customLoops`
-in tumwater.json or by prompting the director.
+(`TUMWATER_PI_BIN` → `agentBin` → `pi`), and ticks run pi with a bundled bounded-output extension
+(`-e`) that trims oversized tool results to head+tail around a pointer marker. All thirteen roles
+— `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`, `qa`,
+`telemetry`, `improve`, `steward` — plus the director are enabled by default; user-defined loops
+come from `customLoops` in tumwater.json or by prompting the director.
 
 Open items:
+- Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its
+  code is hard-reset — the fix's record has been carried to Fixed by markdown-only commits three
+  times (`292f642`, `b65df63`, `8cb5a97`) while the fix's symbols (`isNegatedRefusal`,
+  `refusalContradiction`) exist nowhere in the tree (found 2026-09-23).
 - Open bug: the status table's "last result" cell shows `queued` — a tick's live landing status
   rather than its last completed result, duplicating the state column while work sits in the land
   queue or under review (reported by user 2026-09-24).
-- Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its code
-  is hard-reset — `TUMWATER_REFUSED: none` has now discarded three finished bugfix ticks as
-  md-only "refuse — no reason given" commits, the latest of which moved the bug to Fixed claiming
-  its fix had landed (found 2026-09-23; re-opened 2026-09-23 — the recorded fix never landed).
 - Open bug: a `FLOW:` line without a parseable verdict is recorded as a pass — `extractFlow`
   defaults a malformed or truncated verdict to `passed`, advancing qa's rotation on a check that
   never finished (found 2026-09-23).
@@ -88,12 +89,10 @@ Open items:
   binary (planned 2026-09-14, requested by user; PLANS.md items 6/7 — configurable verify
   command — and 7/7 — adopt an existing repo without hijacking its README — remain; 1–5/7
   landed by 2026-09-24).
-- Planned: bound tool output head+tail with a tumwater pi extension (planned 2026-09-23,
-  requested by user).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`b65df63`): build clean, suite 1350/1350.
+Current main (`d964507`): build clean, suite 1372/1372.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -197,7 +196,9 @@ The prompts are written for the fleet's real model — a mid-sized local model w
 behind a large but finite window: rules are grouped, with numeric budgets
 (choose the task within ~15 tool calls, in a handful of turns; independent reads and commands
 fan out as sibling tool calls in one turn, since every turn re-sends what was read so far; check a
-file's size before reading it whole; read anything over ~300 lines in ranges; the reply ends with
+file's size before reading it whole; read anything over ~300 lines in ranges; oversized tool
+results come back head+tail around a pointer marker naming the omitted amount and where the full
+output lives; the reply ends with
 plain text, never an announced next step). Roles with
 no backlog to point at (`organize`, `clean`, `dry`, `perf`, `improve`) carry a shortlist-and-decide
 search procedure — cheap signals such as recent churn, size outliers, and targeted grep, with their
@@ -375,7 +376,8 @@ npm run test:e2e       # the live-orchestrator e2e tier (test/*.e2e.test.ts) —
 Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `loop-pi.ts` its pi-run plumbing,
 `orchestrator.ts` the scheduler, `pi.ts` the pi subprocess integration, `git.ts` the git plumbing, `worktree.ts` the persistent
 worktree lifecycle, `merge.ts` the
-rebase/fast-forward/conflict-resolution landing flow), `src/ui/` the observer/presentation layer
+rebase/fast-forward/conflict-resolution landing flow), `src/pi-extension/` the bundled
+bounded-output pi extension, `src/ui/` the observer/presentation layer
 (TUI, GUI dashboard, status table, transcript, and report rendering — imported only by each other
 and `cli.ts`), `test/` unit tests.
 Tests fake pi with a shell shim on PATH, so they run offline.
