@@ -46,17 +46,31 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: the loop suite's quiet-kill resume test flakes under full-suite load — fails 1-in-N
-  full runs, passes in isolation (found 2026-09-23).
+- Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its
+  code is hard-reset — `TUMWATER_REFUSED: none` discarded two finished, tested bugfix ticks
+  (found 2026-09-23).
+- Open bug: a live `tumwater.json` that disappears mid-run hot-reloads as built-in defaults —
+  the fleet ran 8.6 hours with zero successful ticks (found 2026-09-23).
+- Open bug: a self-redeploy whose new generation fails a startup precondition takes the whole
+  fleet down with no event (found 2026-09-23).
+- Open bug: the restart drain's `hold` does not stop ticks already parked in the semaphore —
+  they start fresh pi runs mid-drain and are the ticks the restart then aborts (found
+  2026-09-23).
+- Open bug: the landing state cell shows only elapsed time — a landing renders bare
+  `landing <elapsed>` while working/reviewing carry turns, context, and tool (reported
+  2026-09-22; re-opened 2026-09-23 — the recorded fix never landed).
+- Open bug: a batched landing is displayed as the head change's landing for the whole batch —
+  the head role reads `landing 29m` long after its own change was rejected, while the change
+  actually being gated shows nothing (reported 2026-09-23).
+- Open bug: a change rejected early in a batch keeps its role blocked for the rest of the
+  batch — the author cannot start the fix tick until every other batched change finishes
+  review, build check, and merge (found 2026-09-23).
 - Open bug: the active-state rows an operator counts against `maxConcurrent` do not track the
   real permit holders — a tick parked in the semaphore queue renders as `working`, so a landing
-  that holds a permit looks like it runs outside the cap (reported 2026-09-24).
-- Open bug: the failure digest's Review rejections section silently truncates at 5
-  alphabetically-first clusters, so most of the window's rejections are invisible while the
-  Deltas table reports them (found 2026-09-22).
+  that holds a permit looks like it runs outside the cap (reported 2026-09-22).
 - Open bug: a 429 storm still has no fleet-wide hold — each tick now retries its own 429, but
   concurrent loops keep hammering a rate-limited provider instead of backing off together
-  (found 2026-09-21; the per-tick retry half was fixed 2026-09-22).
+  (found 2026-09-21).
 - Open bug: the failure digest's `## Outcome by role` separator row has no cell delimiters,
   so the table never renders (found 2026-09-21).
 - Open bug: the grandchild-leak fix landed its kill but not its detector — `doctor` reports
@@ -67,14 +81,15 @@ Open items:
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; the PLANS.md portability series 5/7–7/7 remain;
-  1/7 CI and npm packaging landed 2026-09-21, 4c/7 landed 2026-09-21, 2/7 repo-root and
-  branch targeting landed 2026-09-22, 4a/7 config seeded from a tracked example landed
-  2026-09-22, 4b/7 untracking the live config landed 2026-09-22, 3/7 harness-mediated director
-  config writes landed 2026-09-23).
+  1–4b/7 landed by 2026-09-23).
+- Planned: tell ticks to fan out independent tool calls in one turn (planned 2026-09-23,
+  requested by user).
+- Planned: bound tool output head+tail with a tumwater pi extension (planned 2026-09-23,
+  requested by user).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`0231600`): build clean, suite 1321/1321.
+Current main (`9fe162e`): build clean, suite 1323/1323.
 <!-- tumwater:status:end -->
 
 ## How it works
