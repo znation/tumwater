@@ -1102,6 +1102,38 @@ test("every role prompt states the reading budget in numbers: size check, ranges
   assert.doesNotMatch(prompt, /ran out of context/);
 });
 
+// Fan-out rule (PLANS.md "Tell ticks to fan out independent tool calls in one turn", planned
+// 2026-09-23): each assistant turn re-sends the conversation, so turns — not tool calls — are
+// the expensive unit. Independent reads/commands go out as sibling tool calls in one turn;
+// anything depending on a prior result (an edit and the test that checks it) stays sequential.
+
+test("every role prompt carries the fan-out rule: independent calls share a turn, dependent ones stay sequential", () => {
+  const role = roleById("feature");
+  assert.ok(role);
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  assert.match(prompt, /Each turn re-sends everything read so far/);
+  assert.match(prompt, /issue them as separate tool calls in the same turn/);
+  assert.match(prompt, /do not batch an edit with the test that checks it/);
+  // The orientation budget is restated in turn terms; the ~15-tool-call pin stays intact.
+  assert.match(prompt, /Choose the task within your first ~15 tool calls, in a handful of turns/);
+  // The backlog-free roles' search guidance mirrors the same rule.
+  const g = oneLine(searchGuidance("clean"));
+  assert.match(g, /sibling tool calls in one turn/);
+  assert.match(g, /turns, not tool calls, are the expensive unit/);
+  assert.match(g, /Decide within ~15 tool calls, in a handful of turns/);
+});
+
+test("the review prompt carries the fan-out rule in its reading budget and still advertises VERDICT exactly twice", () => {
+  const prompt = buildReviewPrompt("diff body");
+  const flat = oneLine(prompt);
+  assert.match(flat, /Batch the independent reads/);
+  assert.match(flat, /sibling tool calls in one turn/);
+  assert.match(flat, /turns, not tool calls, are the expensive unit/);
+  assert.match(flat, /keep anything that depends on a prior result sequential/);
+  // The verdict contract is untouched: exactly the two advertised forms, nothing else.
+  assert.equal([...prompt.matchAll(/VERDICT:/g)].length, 2);
+});
+
 test("every role prompt sets a decision deadline and a task-size ceiling", () => {
   const role = roleById("clean");
   assert.ok(role);

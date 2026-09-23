@@ -48,7 +48,12 @@ const CONTEXT_BUDGET_RULE = `- Your context window is finite and everything you 
   files over ~300 lines in ranges (\`sed -n 'A,Bp'\`, or the read tool's offset/limit) around the
   lines \`grep -n\` found; cap command output with \`head\`/\`tail\`; never dump a file, a log, or a
   test run wholesale; do not re-read what you already saw — re-read only a region you edited.
-  Prefer a task you can finish comfortably within the window over a sweeping one.`;
+  Prefer a task you can finish comfortably within the window over a sweeping one. Each turn
+  re-sends everything read so far, so when the next few reads or commands do not depend on each
+  other's output (a \`wc -l\` over several files, a \`grep -n\` plus the \`sed -n\` ranges it points
+  at once known, a typecheck and a targeted test), issue them as separate tool calls in the same
+  turn; keep edits and anything that depends on a prior result sequential — do not batch an edit
+  with the test that checks it.`;
 
 const COMMON_RULES = `
 Rules for this run:
@@ -67,7 +72,8 @@ Orientation — read this much before choosing your task, and no more:
 
 Scope:
 - Do exactly ONE focused task, then stop. Small, complete, and correct beats big and half-done.
-  Choose the task within your first ~15 tool calls. A task that would need more than roughly 60
+  Choose the task within your first ~15 tool calls, in a handful of turns. A task that would
+  need more than roughly 60
   tool calls, or most of the codebase in view, is too big for one run — take a smaller one.
 - Stay inside your worktree: never run an unbounded scan or write above it (\`find /\`,
   \`grep -r /\`, any recursive search rooted outside the repo) — an unmatched full-disk scan runs
@@ -411,7 +417,9 @@ show: wrong behavior the tests never exercise, claims the diff does not back, wo
 unjustified complexity growth, and incomplete or half-done work. Read surrounding code in the
 repo to check claims against reality — a diff that does more than it claims is a finding — but
 read only what the diff touches: the changed functions, their callers, and the tests that cover
-them, in ranges (\`grep -n\`, \`sed -n\`), not the repository at large.
+them, in ranges (\`grep -n\`, \`sed -n\`), not the repository at large. Batch the independent reads
+(the diff's files, their callers, their tests) as sibling tool calls in one turn — turns, not
+tool calls, are the expensive unit — and keep anything that depends on a prior result sequential.
 
 Check, in this order:
 1. Does the diff do exactly what the summary and WHY claim — no more, no less? An unclaimed

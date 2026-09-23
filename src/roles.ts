@@ -80,9 +80,12 @@ the run and rarely finds anything a targeted look would not. Start from cheap si
 files (size outliers), and \`grep -rn\` for the specific pattern you are after. Skip what your own
 role handled lately: \`git log --oneline -15 --grep="tumwater(${roleId})"\` lists it — the harness's
 commit subjects say what each loop did. Shortlist at most five candidate files and inspect them
-with \`grep -n\` and ranged reads; open a file whole only when it is under ~300 lines. Vary the
+with \`grep -n\` and ranged reads; open a file whole only when it is under ~300 lines. Issue a
+step's independent lookups as sibling tool calls in one turn — turns, not tool calls, are the
+expensive unit — and keep anything that depends on a prior result sequential. Vary the
 slice you look at across runs (a different directory, module, or recency window) so successive
-ticks do not all converge on the same files. Decide within ~15 tool calls: if no candidate clearly
+ticks do not all converge on the same files. Decide within ~15 tool calls, in a handful of
+turns: if no candidate clearly
 clears the bar by then, there is nothing to do — searching longer rarely changes the answer.`;
 }
 
