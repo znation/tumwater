@@ -94,6 +94,56 @@ test("sourceHaystack covers code but excludes markdown (the bug entry names its 
   assert.ok(!haystack.includes("claimed here"));
 });
 
+test("sourceHaystack walks nested subdirectories — a symbol defined under src/ui backs a claim", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src", "ui"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "top.ts"), "export const topMarker = 1;\n");
+  fs.writeFileSync(path.join(root, "src", "ui", "deep.ts"), "export const deepMarker = 1;\n");
+  const haystack = sourceHaystack(root);
+  assert.ok(haystack.includes("topMarker"));
+  assert.ok(haystack.includes("deepMarker"), "nested source text is in the haystack");
+  // The gate cross-checks a Fixed entry's symbols against this haystack: a fix that names
+  // code living in a subdirectory must count as backed, not be flagged as a false fix.
+  assert.deepEqual(unbackedSymbols(root, ["deepMarker"], haystack), []);
+});
+
+test("sourceHaystack skips node_modules and dist trees at any depth but keeps other subdirs", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src", "node_modules", "pkg"), { recursive: true });
+  fs.mkdirSync(path.join(root, "src", "dist"), { recursive: true });
+  fs.mkdirSync(path.join(root, "test", "helpers"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "node_modules", "pkg", "dep.js"), "const depMarker = 1;\n");
+  fs.writeFileSync(path.join(root, "src", "dist", "built.js"), "const builtMarker = 1;\n");
+  fs.writeFileSync(path.join(root, "test", "helpers", "kept.ts"), "const keptMarker = 1;\n");
+  const haystack = sourceHaystack(root);
+  assert.ok(!haystack.includes("depMarker"), "vendored code is excluded");
+  assert.ok(!haystack.includes("builtMarker"), "build output is excluded");
+  assert.ok(haystack.includes("keptMarker"), "an ordinary subdirectory is still walked");
+});
+
+test("sourceHaystack tolerates unreadable files and stays usable", () => {
+  // Root reads anything, so the permission failure these branches exist for cannot fire.
+  if (process.getuid && process.getuid() === 0) return;
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "ok.ts"), "const okMarker = 1;\n");
+  const sealed = path.join(root, "src", "sealed.ts");
+  fs.writeFileSync(sealed, "const sealedMarker = 1;\n");
+  fs.chmodSync(sealed, 0o000);
+  const pkg = path.join(root, "package.json");
+  fs.writeFileSync(pkg, "{}\n");
+  fs.chmodSync(pkg, 0o000);
+  try {
+    const haystack = sourceHaystack(root);
+    assert.ok(haystack.includes("okMarker"), "readable files still contribute");
+    assert.ok(!haystack.includes("sealedMarker"), "an unreadable source file contributes nothing");
+    assert.throws(() => fs.readFileSync(pkg, "utf8"), "the fixture must really block reads");
+  } finally {
+    fs.chmodSync(sealed, 0o644);
+    fs.chmodSync(pkg, 0o644);
+  }
+});
+
 test("falseFixReason flags a new Fixed entry whose Fix names nothing on the tree", async () => {
   const root = makeRepo();
   fs.writeFileSync(
