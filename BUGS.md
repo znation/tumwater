@@ -5,6 +5,85 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### The gate's "bounded" build-fix run has no time or resource budget: dry's run load-tested the live host for 90 minutes, stalling the whole fleet, then `pkill`ed every test run on the machine (found by human log analysis 2026-09-23)
+
+**Symptom:** On 2026-09-23 at 03:48:32 dry's leftover-recovery landing failed its gate build check on the load-sensitive `startup latency is not a hung tool call` assertion (test/pi.test.ts:382). The gate started its one build-fix run (session `.tumwater/sessions/_review/dry/2026-09-23T10-48-33-061Z_*.jsonl`), which ran for 1 h 52 m, until 05:40:09. It spent 82 of those minutes running test suites. To reproduce a load flake it created load on the host the whole fleet runs on:
+- 04:06–04:18: two rounds of 6 concurrent full suites.
+- 04:21–04:37: 24 `while :; do :; done` busy-loops plus 4 concurrent `pi` suites.
+- 04:36: wrote `/tmp/spin.sh` and tried to start the spinners detached from its own process group (`setsid`, `nohup … & disown`).
+- 04:37–05:03 and 05:07–05:37: two more rounds of 24 spinners plus 6 concurrent full suites each, ended only by the bash tool's 1500 s / 1800 s timeouts.
+
+While this ran, the fleet crawled. From 05:18:00 to 05:37:48 the event log holds no event at all. Bugfix's authoring run issued a single file `edit` at 05:18:30 and got its result at 05:37:48, the same second the stress command was killed. Plan's md-only landing (no review, no build check) took 20 minutes. The 05:11–05:14 batch build check failed under the load, which pushed its batch onto the one-at-a-time fallback. The 03:42–05:47 landings ran 15–43 minutes each, against a median of 8. At 05:37:51 the run cleaned up with `pkill -f spin.sh; pkill -f test-runner`. That kills every `node dist/src/test-runner.js` on the machine, including organize's gate build check in `_land-organize` (see the signal-kill entry below) and bugfix's own `test-runner.js loop` run, which printed nothing. All of it was wasted: the reviewer rejected the fix commit `b020f67` (see the unclaimed-fix entry below).
+
+**Repro:** Read the session above. Structurally: a gate pre-check that fails on a flaky, load-dependent test launches `runPi` (src/review.ts:244) with `reviewConfig(config)` (src/config.ts:333). That is the top-level config with only model overrides, so the run's only limits are `tickTimeoutSeconds` (54000 s in the live tumwater.json) and the `quietTimeoutSeconds` watchdog (3600 s, doubled for a run that has not spoken yet). Every tool call that reports within the window resets the watchdog. The prompt (src/prompt.ts:352) says "Reproduce the failure … Re-run `npm run test` until it passes". It has no time budget and nothing about the shared host.
+
+**Expected:** "One bounded fix run" should be bounded in wall-clock and in blast radius, not just in count:
+- Give the fix run its own short `tickTimeoutSeconds`, like the SUMMARY follow-up's `SUMMARY_REQUEST_TIMEOUT_S` cap in src/loop-pi.ts.
+- Say in the prompt that the machine is shared with a running fleet: no load generation, no background or detached processes, and no `kill`/`pkill` of processes the run did not start.
+- A failure that does not reproduce on a single re-run is a flake. Reject it (or retry the check once) rather than hunting it with stress runs.
+
+**Suspected cause:** Merge-queue work (4803c07, 2026-09-22) added the fix run by reusing the reviewer's wiring, and the reviewer never needed a tighter bound than the tick's. The "bounded" in the comments at src/review.ts:238 and src/prompt.ts:350 counts runs, not time. The test suite has load-sensitive assertions, so a gate failure is often a flake, and the prompt's "reproduce" turns a flake into a load test on the live host.
+
+### A build check killed by a signal is reported as "timed out after 300s", and at gate scope the change then goes to review unverified (found by human log analysis 2026-09-23)
+
+**Symptom:** On 2026-09-23 at 05:37:56 organize's gate logged `build_check scope:gate status:skipped durationMs:7388` with the warning `build check timed out after 300s; proceeding to model review`. The check had run for 7.4 s. It was killed by the build-fix run's `pkill -f test-runner` at 05:37:51–57 (entry above), not by the timeout. Organize's change was then reviewed and landed with no verified check. The warning names a cause that did not happen and hides a check that was killed from outside.
+
+**Repro:** Deterministic, no model needed: run `runScopedBuildCheck` on a check script that sends SIGKILL to itself (or `kill` its `node` child from outside) well inside the timeout. `runBuildCheck` returns `{ status: "skipped", skipReason: "timeout" }` (src/build-check.ts:287, `if (r.timedOut || r.signal)`), the warning claims the 300 s timeout fired, and at gate scope the change goes on to model review. `MERGE_SCOPES` (src/build-check.ts:328) covers only `landing` and `batch`, so only those scopes fail closed.
+
+**Expected:** Keep "timed out" and "killed by a signal" apart: a distinct `skipReason` (e.g. `killed`) whose warning names the signal and the real duration. A check the harness did not stop itself says nothing about the tree, so retry it once before proceeding unverified.
+
+**Suspected cause:** The comment at src/build-check.ts:284 ("The timeout fired (or the tree died on a signal)") folds the two together on purpose, assuming the only signal a check ever receives is the harness's own timeout kill. A tool call from another pi run on the same host breaks that assumption.
+
+### The reviewer is never told about the gate's own build-fix commit, so a successful fix reads as an unclaimed change and the landing is rejected (found by human log analysis 2026-09-23)
+
+**Symptom:** On 2026-09-23 dry's build-fix run (first entry above) committed `b020f67` "tumwater(dry): fix failing build check" (src/pi.ts, +22 −4) at 05:40. The re-check passed, and the gate went on to the model reviewer. The reviewer rejected it at 05:43:07: "The branch's diff includes an unclaimed production change (commit `b020f67`, `src/pi.ts` …)". Nearly two hours of fix run, and a gate re-check that passed, were thrown away by a reviewer doing exactly what its prompt asks: flag changes the author's summary and body do not claim.
+
+**Repro:** Deterministic with a scripted reviewer: a pin whose gate check fails, a fake fix run that edits a src/ file and turns the check green, and a reviewer prompt capture. The prompt from `buildReviewPrompt` (src/prompt.ts:379) carries the author's summary and commit body plus `verifiedByHarness` (src/review.ts:284). Nothing in it says the diff (`aheadOfMainDiff`, src/review.ts:307) now includes a harness-authored commit, or which files that commit touched.
+
+**Expected:** When the gate added a build-fix commit, tell the reviewer: name the commit, its files, and the failure it fixed, and ask for it to be judged as a fix to that failure, not as scope creep by the author. A fix that goes beyond the failure can still be rejected on its merits.
+
+**Suspected cause:** 4803c07 added the fix run and carried its spend (`fixRun`) and its verified head (`verifiedHead`) through the gate, but never passed the fix commit itself into the review prompt. The prompt predates the fix run.
+
+### The batch's one-at-a-time fallback re-reviews every change it already approved: the lander rebases before the gate, so the approved-head short-circuit never hits (found by human log analysis 2026-09-23)
+
+**Symptom:** On 2026-09-23 the 05:03:43 batch (feature `081c734`, plan `93c18b3`, organize `de4f5e3`) passed Phase A. Feature was approved at 05:06:12 and organize at 05:11:10. The shared batch check failed at 05:14:42, so the batch fell back to landing one at a time. Feature then ran a second full gate: build check 05:14:43–05:16:58 (135 s), review 05:16:58–05:18:00. Organize ran a second full gate too: build check at 05:37:49 and a second review of 554 s, until 05:47:11. That is about 12 minutes of repeated checks and reviews on already-approved changes, holding the only landing slot, and a second model review spent on each. The fallback's own comment (src/land-batch.ts:258) promises the opposite: "The already-approved gate short-circuits, so each fallback burns no model run."
+
+**Repro:** Deterministic, no model needed: batch two entries whose pins are based on an older main, with a counting fake reviewer and a batch check that fails. Phase A reviews each pin as-is (`reviewPinnedChange` at src/land-batch.ts:152, with no rebase). The fallback then calls `landChange`, which first rebases the pin onto current main (src/lander.ts:190). That produces a new sha, so `state.lastApprovedHead === head` (src/review.ts:187) never matches and the gate runs again. For the second and later entries, main has also just moved under them, because the entries before them landed. The reviewer count ends at 2N rather than N.
+
+**Expected:** Either rebase in Phase A the same way `landChange` does, so the approved head is the one the fallback lands, or let the fallback accept a clean rebase of an approved head without a new review (the in-lock `verifyLanding` re-check still covers the rebased tree). At minimum, the comment should stop claiming the short-circuit.
+
+**Suspected cause:** When `landChange` gained the pre-gate rebase ("rebase a pinned landing onto main's current head before the review gate", `f0993fc`, 2026-09-22), the batch's Phase A kept reviewing bare pins. The two paths now judge different shas for the same change, and `lastApprovedHead` is an exact-sha match.
+
+### A batch whose base main moves during its build check is discarded wholesale as `merge_blocked`: leftover-recovery landings run outside the land queue and race it (found by human log analysis 2026-09-23)
+
+**Symptom:** On 2026-09-22 the 11:55:00 batch (clean `9fce01b`, dry `bde4040`, readme `2c6a521`) spent 49 minutes on its Phase A gates, then stacked on main and started its batch check at 12:43:02. At 12:44:10 coverage's own tick landed `c6ce0a3` ("recovered leftover work from coverage …") through the tick-path lander. The batch check passed at 12:44:26, `ffStackToMain` could no longer fast-forward, and all three changes returned `merge_blocked`. Between 13:03 and 13:12 each one went through the whole gate again via leftover recovery: another full build check, another review, another landing check. The same race hit again at 13:12:55: coverage's 551 s batch came back `merge_blocked` 50 s after readme's recovery landing at 13:12:05.
+
+**Repro:** Deterministic, no model needed: start a batch of two approved changes with a slow fake batch check. While it runs, land any commit on main through the tick path's `landChange` (src/loop.ts:305, leftover recovery). `ffStackToMain` (src/merge.ts:292) tries `ffMainTo` once under the merge lock, the ff fails, and src/land-batch.ts:249 marks every stacked change `merge_blocked`.
+
+**Expected:** A stack that loses the fast-forward race should re-stack onto the new main tip and re-check (or, if the new commits are docs-only, just re-stack) rather than send every approved change back through leftover recovery. Better still, leftover-recovery landings should go through the land queue so there is a single writer to main. The comment at src/land-batch.ts:245 lists "a non-batched role's recovery landing" as an expected cause, which makes it routine, not a rare race.
+
+**Suspected cause:** Merge queue 3/5 moved fresh-tick landings into the orchestrator's single slot but left leftover recovery landing from inside the tick (the "still calls it inside the tick" note in src/lander.ts's header). The batch path then assumed it has main to itself between stacking and fast-forwarding, a window that spans the whole batch check.
+
+### A batch reviews its changes one after another, so its wall-clock is the sum of every review and one slow reviewer holds the whole queue (found by human log analysis 2026-09-23)
+
+**Symptom:** A batch's time in the landing slot is the sum of its Phase A gates plus one shared check. On 2026-09-23 the 03:42:00 batch took 40 minutes: feature's gate and review 03:42–04:00 (review 998 s), then organize's 04:00–04:11 (539 s), then clean's 04:11–04:19. Each gate ran its own full build check first (104 s, 116 s, and a 300 s timeout). The batch check ran last, 04:19–04:21. Everything queued behind waited for the whole chain: readme 41 minutes, improve 37.
+
+**Repro:** Deterministic, no model needed: batch three entries with fake reviewers that each take T. The batch takes about 3T plus the check, because the Phase A loop (src/land-batch.ts:132) awaits `reviewPinnedChange` for each request in turn.
+
+**Expected:** Each Phase A gate already runs in its own `_land-<role>` worktree with its own session and state, so the gates could run concurrently, bounded by a small limit because each one runs a full suite. Stacking would still follow queue order. That makes a batch's slot time max(review) plus the check, instead of the sum.
+
+**Suspected cause:** The loop was written to stop early (an under-cap `review_error` leaves the rest unattempted), and running gates in parallel would need that rule rethought. Batching was introduced to save build checks, not reviewer time.
+
+### Reviewers re-run the full suite in scratch copies under /tmp even when the prompt says the harness check already passed (found by human log analysis 2026-09-23)
+
+**Symptom:** When the gate's pre-check passes, the review prompt says so and adds "Do not spend your run re-running it" (src/prompt.ts:408). On 2026-09-23 two reviewers that got that sentence ignored it. Organize's 04:02 review (`_review/organize/2026-09-23T11-02-19-*`) ran `npm test` in `/tmp/revrun`. Improve's 04:31 review (`_review/improve/2026-09-23T11-31-12-*`) rsynced its lander worktree to `/tmp/reviewcopy` and ran the suite there, and was still in it at 04:42. These reviews hold the landing slot, and each extra suite run adds load to the shared host. Over all 429 retained review sessions (2026-09-16 onward), 102 ran a suite or `npm ci` themselves, about 7% of total review time. Some of those were reasonable: when the gate's pre-check timed out, no verified result exists (feature's 2026-09-22 04:16 review in `/tmp/tw-base`, bugfix's 09:01 review in `/tmp/_review-bc`).
+
+**Repro:** `grep -l 'revrun\|reviewcopy\|tw-base\|_review-bc' .tumwater/sessions/_review/*/*.jsonl`. Then check each session's first user message for the "Do not spend your run re-running it" sentence and its tool calls for `npm test` / `test-runner.js`.
+
+**Expected:** A review whose prompt names a passing harness check should not run the suite. Either make the rule harder to miss in the prompt (a rule-list line, not a sentence inside the context paragraph), or have the harness notice a reviewer's suite run and warn about it. A reviewer that has a concrete reason to run one specific test (`test-runner.js <file>`) is fine.
+
+**Suspected cause:** The instruction is one sentence inside a long review prompt, placed away from the rules list. The review model treats "verify everything yourself" as the stronger instruction.
+
 ### The self-redeploy's shutdown awaits an in-flight batched landing with no deadline — the generation handoff lagged its own swap by 97 minutes (found by telemetry loop 2026-09-24)
 
 **Symptom:** The 2026-09-23 digest's fleet transitions: `restart pending — main a2de089d green; compiling` and `restarting onto build a2de089d` at 10:42, then `orchestrator stopped` / `orchestrator started (pid 61046, build a2de089d)` at 12:19 — 97 minutes later, with no transition in between (the newest-6 window holds none between 10:42 and 12:19). The `restart` event logs only after `swapDist` succeeded (src/redeploy.ts, post-drain), so dist/ already held the new build from 10:42 while the old generation kept working for 97 minutes — against the restart path's own promises: "a restart lands within minutes" (src/orchestrator.ts, the `hold` comment) and "the landing is one reviewer run plus a bounded merge, not a fleet-wide drain" (the shutdown comment). The batch in flight explains the gap: main moved from a2de089d to 0ae5dab1 (3 commits — coverage `d5c3441`, organize `ffbdacd`, clean `0ae5dab1`) inside the window, and two of those batch roles (clean, organize) are exactly the ones that logged `build check timed out after 300s` twice — the shutdown sat through their serial build checks and reviewer runs, silently.
