@@ -551,3 +551,33 @@ test("checkInit warns naming drifted template keys, never rewrites, and its reme
   assert.match(ok.detail, /roles enabled/);
   assert.equal(loadConfig(root).minTickIntervalSeconds, 45);
 });
+
+test("checkInit warns on a template that cannot serve as one, naming the file and the fix", async () => {
+  const root = readyRepo();
+  // Unparseable template: seedConfig would silently seed bare defaults and exampleDrift would
+  // report no drift — this warn is the broken template's only signal.
+  fs.writeFileSync(path.join(root, "tumwater.example.json"), "{ not json");
+  const warn = checkInit(root);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /broken template: tumwater\.example\.json is not valid JSON/);
+  assert.match(warn.detail, /fix the file/);
+
+  // An invalid (but parseable) template warns under the example's name too, listing the
+  // actual problems so one edit fixes them all.
+  fs.writeFileSync(path.join(root, "tumwater.example.json"), JSON.stringify({ noSuchKey: true }));
+  const invalid = checkInit(root);
+  assert.equal(invalid.level, "warn");
+  assert.match(invalid.detail, /invalid tumwater\.example\.json/);
+
+  // The template problem outranks drift: the drift parse has already failed.
+  fs.writeFileSync(path.join(root, "tumwater.example.json"), JSON.stringify({ noSuchKey: true, minTickIntervalSeconds: 45 }));
+  const both = checkInit(root);
+  assert.equal(both.level, "warn");
+  assert.doesNotMatch(both.detail, /template drift/);
+
+  // A valid template restores the ordinary paths: no warn, drift wording again.
+  fs.writeFileSync(path.join(root, "tumwater.example.json"), JSON.stringify({ minTickIntervalSeconds: 45 }));
+  const healthy = checkInit(root);
+  assert.equal(healthy.level, "warn"); // drift reappears: tumwater.json lacks the key again
+  assert.match(healthy.detail, /template drift/);
+});

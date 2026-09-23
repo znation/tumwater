@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { FallbackModelConfig, TumwaterConfig, RoleConfig } from "./types.js";
 import { allRoleIds } from "./roles.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { configPath, configRequestPath, exampleConfigPath } from "./paths.js";
+import { configPath, configRequestPath, EXAMPLE_CONFIG_BASENAME, exampleConfigPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
 import { isJsonObject } from "./json-object.js";
@@ -112,15 +112,33 @@ function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfig>): Tu
 export function seedConfig(root: string): TumwaterConfig {
   const base = defaultConfig();
   const file = exampleConfigPath(root);
-  if (!fs.existsSync(file)) return base;
+  // Absent and broken both seed the bare defaults: no template, or one that cannot serve.
+  if (!fs.existsSync(file) || exampleConfigProblem(root) !== null) return base;
+  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  return overlayDefaults(base, raw as Partial<TumwaterConfig>);
+}
+
+/** Why tumwater.example.json cannot serve as a seed template, or null when it can: null when
+ * the file is absent or parses and validates, a human message naming the file when it exists
+ * but is unparseable or holds invalid values. This is the only signal a broken template ever
+ * gets — seedConfig falls back to the bare defaults and exampleDrift reports no drift, so
+ * without it the operator's template intent (their roles/intervals baseline for fresh clones)
+ * is ignored with nothing anywhere saying so. doctor's init check surfaces the message. */
+export function exampleConfigProblem(root: string): string | null {
+  const file = exampleConfigPath(root);
+  if (!fs.existsSync(file)) return null;
   let raw: unknown;
   try {
     raw = JSON.parse(fs.readFileSync(file, "utf8"));
-    validateConfig(raw);
-  } catch {
-    return base;
+  } catch (err) {
+    return `${EXAMPLE_CONFIG_BASENAME} is not valid JSON: ${errorMessage(err)}`;
   }
-  return overlayDefaults(base, raw as Partial<TumwaterConfig>);
+  try {
+    validateConfig(raw, EXAMPLE_CONFIG_BASENAME);
+  } catch (err) {
+    return errorMessage(err);
+  }
+  return null;
 }
 
 /** Top-level keys the tracked template sets that the local tumwater.json lacks

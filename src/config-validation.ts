@@ -154,10 +154,12 @@ const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of at leas
  * non-numeric logMaxBytes rotates the event log on every write, an unknown role id (a
  * misspelled entry under `roles`) spawns a phantom loop that errors every tick, and an
  * unknown key is silently ignored so the intended setting never takes effect. Collects
- * every problem so one edit can fix them all; throws a single Error listing them. */
-export function validateConfig(raw: unknown): void {
+ * every problem so one edit can fix them all; throws a single Error listing them. `label`
+ * names the file in the thrown messages — validateConfig also gates the tracked example
+ * template, whose problems must not be misreported as tumwater.json's. */
+export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   if (!isJsonObject(raw)) {
-    throw new Error(`tumwater.json must be a JSON object (got ${typeName(raw)})`);
+    throw new Error(`${label} must be a JSON object (got ${typeName(raw)})`);
   }
   const problems: string[] = [];
 
@@ -235,7 +237,7 @@ export function validateConfig(raw: unknown): void {
   };
 
   const r = raw; // Narrowed to an object by isJsonObject above.
-  checkKnownKeys(r, TOP_LEVEL_KEYS, "tumwater.json", problems);
+  checkKnownKeys(r, TOP_LEVEL_KEYS, label, problems);
   checkModelTriple(r, "");
   // An empty baseBranch would silently fall back to the checked-out branch — the one value
   // the operator's explicit setting must never degrade to unannounced.
@@ -417,6 +419,6 @@ export function validateConfig(raw: unknown): void {
   }
 
   if (problems.length > 0) {
-    throw new Error(`invalid tumwater.json:\n  - ${problems.join("\n  - ")}`);
+    throw new Error(`invalid ${label}:\n  - ${problems.join("\n  - ")}`);
   }
 }

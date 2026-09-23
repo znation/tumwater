@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   enabledRoleIds,
+  exampleConfigProblem,
   exampleDrift,
   fallbackPair,
   loadConfig,
@@ -139,11 +140,23 @@ export async function checkRepo(root: string, config?: TumwaterConfig): Promise<
  * (plans/portability.md §4a/7): when the tracked tumwater.example.json sets keys the local file
  * lacks, the check warns naming them — a warn never touches the exit code — with a remedy that
  * actually works (init skips an existing config, so reseeding means deleting it first), and the
- * no-drift detail stays the pinned "N roles enabled". */
+ * no-drift detail stays the pinned "N roles enabled". A template that cannot serve as one —
+ * unparseable or invalid — warns too: seedConfig silently seeds the bare defaults from it and
+ * exampleDrift reports no drift, so without this the operator's template intent fails with no
+ * signal anywhere (a broken template only bites fresh checkouts, which is exactly when nobody
+ * is watching). The template problem outranks drift: drift is computed from a parse that has
+ * already failed. */
 export function checkInit(root: string): CheckOutcome {
   if (!fs.existsSync(configPath(root))) return { level: "fail", detail: NOT_INITIALIZED_MESSAGE };
   try {
     const config = loadConfig(root);
+    const templateProblem = exampleConfigProblem(root);
+    if (templateProblem !== null) {
+      return {
+        level: "warn",
+        detail: `broken template: ${templateProblem} — init seeds the bare defaults from it on fresh checkouts; fix the file so new clones get your roles/intervals baseline`,
+      };
+    }
     const drift = exampleDrift(root);
     if (drift.length > 0) {
       return {

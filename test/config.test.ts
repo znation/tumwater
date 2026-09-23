@@ -8,6 +8,7 @@ import {
   changedConfigKeys,
   configForRole,
   customLoopNames,
+  exampleConfigProblem,
   exampleDrift,
   fallbackPair,
   defaultConfig,
@@ -1200,6 +1201,34 @@ test("seedConfig falls back to the defaults with no example, a malformed one, or
     JSON.stringify({ minTickIntervalSeconds: -5 }),
   );
   assert.deepEqual(seedConfig(invalid), defaultConfig());
+});
+
+test("exampleConfigProblem names a broken template and stays null on a usable one", () => {
+  // Absent template: nothing to serve, no problem to report.
+  assert.equal(exampleConfigProblem(tmpdir()), null);
+
+  const valid = tmpdir();
+  fs.writeFileSync(exampleConfigPath(valid), JSON.stringify({ minTickIntervalSeconds: 45 }));
+  assert.equal(exampleConfigProblem(valid), null);
+
+  // A parse failure must name the example file, not leave a bare syntax error for the
+  // operator to attribute to the wrong file.
+  const malformed = tmpdir();
+  fs.writeFileSync(exampleConfigPath(malformed), "{ not json");
+  assert.match(exampleConfigProblem(malformed) ?? "", /tumwater\.example\.json is not valid JSON/);
+
+  // A validation failure carries the full problem list under the example's name — the same
+  // wording loadConfig throws for tumwater.json, relabeled so it cannot be misread.
+  const invalid = tmpdir();
+  fs.writeFileSync(exampleConfigPath(invalid), JSON.stringify({ minTickIntervalSeconds: -5 }));
+  const problem = exampleConfigProblem(invalid) ?? "";
+  assert.match(problem, /invalid tumwater\.example\.json/);
+  assert.match(problem, /minTickIntervalSeconds/);
+
+  // A non-object template reads as invalid, not as "must be a JSON object" twice over.
+  const nonObject = tmpdir();
+  fs.writeFileSync(exampleConfigPath(nonObject), "[1]");
+  assert.match(exampleConfigProblem(nonObject) ?? "", /tumwater\.example\.json must be a JSON object/);
 });
 
 test("exampleDrift names template keys the local config lacks, and nothing else", () => {
