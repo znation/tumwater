@@ -49,7 +49,7 @@ in tumwater.json or by prompting the director.
 Open items:
 - Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its
   code is hard-reset — `TUMWATER_REFUSED: none` discarded two finished, tested bugfix ticks
-  (found 2026-09-23).
+  (found 2026-09-23; the 2026-09-23 fix was itself discarded by the harness — see BUGS.md).
 - Open bug: a live `tumwater.json` that disappears mid-run hot-reloads as built-in defaults —
   the fleet ran 8.6 hours with zero successful ticks (found 2026-09-23).
 - Open bug: a self-redeploy whose new generation fails a startup precondition takes the whole
@@ -88,7 +88,9 @@ Open items:
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`a9933af`): build clean, suite 1343/1343.
+Current main (`aca4f6d`): build clean, suite 1348/1348 (this worktree's run; main's recorded
+count was 1343/1343 at `a9933af` — the refusal-detection tick's code was discarded, see
+BUGS.md).
 <!-- tumwater:status:end -->
 
 ## How it works
