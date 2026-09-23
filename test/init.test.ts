@@ -142,6 +142,17 @@ test("initProject rejects empty prompts", async () => {
   await assert.rejects(() => initProject(makeRepo(), "   "), /initial prompt is required/);
 });
 
+test("a bare init re-seeds a lost config from the README's prompt (portability 4a/7)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "the original prompt");
+  // The config is untracked since 4a/7: a fresh clone, or a checkout whose landing removed the
+  // once-tracked file, has README.md with the prompt but no tumwater.json.
+  fs.rmSync(path.join(repo, "tumwater.json"));
+  const again = await initProject(repo, "");
+  assert.deepEqual(again.created, ["tumwater.json"]);
+  assert.equal(readInitialPrompt(repo), "the original prompt");
+});
+
 test("initProject seeds a git repo when the cwd is not one yet (BUGS.md 2026-09-08)", async () => {
   const dir = tmpdir();
   const result = await initProject(dir, "Fresh project.");

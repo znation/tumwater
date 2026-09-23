@@ -7,6 +7,7 @@ export const NO_COMMITS_MESSAGE =
   "the repo has no commits yet; `tumwater init` creates the first one";
 export const DETACHED_HEAD_MESSAGE =
   "the repo's primary checkout is detached; check out your main branch first";
-export const NOT_INITIALIZED_MESSAGE = "not initialized (run `tumwater init <prompt>` first)";
+export const NOT_INITIALIZED_MESSAGE =
+  "not initialized (run `tumwater init <prompt>` first — or a bare `tumwater init` when README.md already carries the prompt)";
 export const PI_MISSING_MESSAGE =
   "pi not found on PATH — install it (https://github.com/badlogic/pi-mono) or add its bin directory to your PATH";

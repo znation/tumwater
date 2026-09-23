@@ -114,7 +114,11 @@ export async function initProject(
   // Validate everything that is pure validation before any side effect, so a bad prompt or
   // README never leaves a half-seeded repo behind.
   const prompt = initialPrompt.trim();
-  if (!prompt) {
+  // A README that already carries the prompt makes it optional: a fresh clone of an
+  // initialized project, or a checkout that lost its now-untracked tumwater.json
+  // (plans/portability.md §4a/7), re-seeds with a bare `tumwater init` — the existing README
+  // is never rewritten, so a prompt given here would be dropped anyway.
+  if (!prompt && readInitialPrompt(root) === "") {
     throw new Error("an initial prompt is required: tumwater init <prompt | --file prompt.md>");
   }
   // The prompt rides into every tick's and director's prefill (readInitialPrompt), so an
