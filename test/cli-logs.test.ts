@@ -5,7 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { submitPrompt } from "../src/inbox.js";
 import { piLogPath } from "../src/paths.js";
-import { assistantLine, cli, makeRepo, spawnCli } from "./util.js";
+import { assistantLine, cli, expectedTimestamp, makeRepo, spawnCli } from "./util.js";
 
 // The `logs` command family through the real CLI entry point: argument validation, the
 // rendered per-role pi transcript, --prompt, and the -f follow mode (spawned with a live
@@ -88,20 +88,14 @@ test("logs --role prints the rendered pi transcript and -n limits entries", asyn
     ].join("\n") + "\n",
   );
 
-  const p = (n: number) => String(n).padStart(2, "0");
-  const stamp = (ts: number) => {
-    const d = new Date(ts);
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  };
-
   let r = await cli(repo, "logs", "--role", "clean");
   assert.equal(r.code, 0);
   // Both runs render in order: separator stamped from the user message, then the turn.
-  assert.ok(r.stdout.includes(`── run @ ${stamp(TS1)} ──`), r.stdout);
+  assert.ok(r.stdout.includes(`── run @ ${expectedTimestamp(TS1)} ──`), r.stdout);
   assert.ok(r.stdout.includes("· look at the files first"), r.stdout);
   assert.ok(r.stdout.includes("  Reading PLANS.md."), r.stdout);
   assert.ok(r.stdout.includes("→ read PLANS.md"), r.stdout);
-  assert.ok(r.stdout.includes(`── run @ ${stamp(TS2)} ──`), r.stdout);
+  assert.ok(r.stdout.includes(`── run @ ${expectedTimestamp(TS2)} ──`), r.stdout);
   assert.ok(r.stdout.includes("  second run done"), r.stdout);
   // User prompts and streaming deltas never leak into the transcript.
   assert.ok(!r.stdout.includes("must not appear"));
@@ -132,20 +126,14 @@ test("logs --role --prompt shows each run's exact prompt and -n limits to the ne
       JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "PROMPT TWO" }], timestamp: TS2 } }),
     ].join("\n") + "\n",
   );
-  const p = (n: number) => String(n).padStart(2, "0");
-  const stamp = (ts: number) => {
-    const d = new Date(ts);
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  };
-
   let r = await cli(repo, "logs", "--role", "clean", "--prompt");
   assert.equal(r.code, 0);
   // Each prompt lands under its run separator and before that run's assistant turn, verbatim.
   const one = r.stdout.indexOf("PROMPT ONE\nsecond line");
   assert.ok(one > -1, r.stdout);
-  assert.ok(r.stdout.indexOf(`── run @ ${stamp(TS1)} ──`) < one, r.stdout);
+  assert.ok(r.stdout.indexOf(`── run @ ${expectedTimestamp(TS1)} ──`) < one, r.stdout);
   assert.ok(one < r.stdout.indexOf("  turn one"), r.stdout);
-  assert.ok(r.stdout.includes(`── run @ ${stamp(TS2)} ──`), r.stdout);
+  assert.ok(r.stdout.includes(`── run @ ${expectedTimestamp(TS2)} ──`), r.stdout);
   assert.ok(r.stdout.includes("PROMPT TWO"), r.stdout);
 
   // -n counts a prompt as one entry: only the newest run's prompt remains.

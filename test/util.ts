@@ -49,6 +49,16 @@ export function atLocalTs(daysAgo: number, hour = 12): number {
   return d.getTime();
 }
 
+/** Local wall-clock rendering of an epoch-ms timestamp as `YYYY-MM-DD HH:MM:SS` — the same
+ * shape the transcript's run separators print. Test-local oracle: built from raw local date
+ * parts, never through text.ts's formatDate/formatTime, so the transcript renderers stay
+ * pinned against an implementation-independent expectation. */
+export function expectedTimestamp(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 export function sh(cwd: string, cmd: string, ...args: string[]): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8" }).trimEnd();
 }

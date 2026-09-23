@@ -7,6 +7,7 @@ import {
   dayAt,
   dayLabel,
   describeToolCall,
+  formatDate,
   parseNonNegativeInt,
   parsePositiveInt,
   reportWindow,
@@ -263,6 +264,15 @@ test("dayAt returns local midnight offset from the given instant, rolling month/
   assert.equal(dayAt(0, now).getHours(), 0);
   assert.equal(dayAt(0, now).getMinutes(), 0);
   assert.equal(dayAt(0, now).getSeconds(), 0);
+});
+
+test("formatDate renders the local calendar date, zero-padded, from date parts alone", () => {
+  // Direct pin against literal local dates (built from year/month/day parts, never via
+  // dayAt): this is the independent oracle for the day-key format itself, complementing the
+  // dayAt test above, which checks day arithmetic through this same format.
+  assert.equal(formatDate(new Date(2026, 2, 1, 14, 30, 5)), "2026-03-01"); // time of day ignored
+  assert.equal(formatDate(new Date(2026, 0, 5)), "2026-01-05"); // single-digit month and day pad
+  assert.equal(formatDate(new Date(2026, 11, 31)), "2026-12-31");
 });
 
 test("dayLabel is singular at one day and plural otherwise", () => {

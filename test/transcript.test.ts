@@ -4,14 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
-import { FIXED_TS, agentStart, assistantBlocks, tmpdir, userLine } from "./util.js";
-
-/** Local wall-clock rendering of an epoch-ms timestamp (independent of the implementation). */
-function expectedTimestamp(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
+import { FIXED_TS, agentStart, assistantBlocks, expectedTimestamp, tmpdir, userLine } from "./util.js";
 
 test("formatTranscript renders a run separator and an assistant turn", () => {
   const lines = [

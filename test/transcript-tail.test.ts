@@ -11,18 +11,12 @@ import {
   FIXED_TS,
   agentStart,
   assistantBlocks,
+  expectedTimestamp,
   recreateSmallerOnOpen,
   tmpdir,
   userLine,
   vanishOnOpen,
 } from "./util.js";
-
-/** Local wall-clock rendering of an epoch-ms timestamp (independent of the implementation). */
-function expectedTimestamp(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
 
 /** A harness-written run-label marker line (src/pi.ts writes it for labeled runs). */
 function reviewMarker(): string {
