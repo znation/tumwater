@@ -80,7 +80,7 @@ export interface OutcomeRow {
 
 /** One role's current-vs-preceding-window metrics. A zero side means the role had no ticks
  * there ("new" for a role absent from the preceding window). */
-export interface DeltaRow {
+interface DeltaRow {
   role: string;
   prevTicks: number;
   ticks: number;
@@ -93,7 +93,7 @@ export interface DeltaRow {
 }
 
 /** A commit that landed (a `merged` event) inside the window. */
-export interface LandedCommit {
+interface LandedCommit {
   ts: number;
   commit: string;
   summary: string;
@@ -101,7 +101,7 @@ export interface LandedCommit {
 
 /** One harness decision (a transition event) in the window, pre-described for the digest's
  * Fleet state changes section. */
-export interface StateChange {
+interface StateChange {
   ts: number;
   role: string;
   description: string;
