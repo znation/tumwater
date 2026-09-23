@@ -1,8 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import type { TumwaterConfig, PiRunResult } from "./types.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
+import { agentBinSourceLabel, type ResolvedAgentBin } from "./readiness.js";
 import { PiStreamParser } from "./pi-stream.js";
 
 /** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in
@@ -98,8 +100,42 @@ export function signalTree(child: ChildProcess, signal: NodeJS.Signals): void {
 }
 
 /** Prefix of PiRunResult.errorMessage when the pi process never started (no session file
- * is created for such a run). */
-const SPAWN_ERROR_PREFIX = "failed to spawn pi";
+ * is created for such a run). The resolved binary follows it, so a configured agentBin
+ * reads "failed to spawn <bin>" rather than blaming an ambient "pi". */
+const SPAWN_ERROR_PREFIX = "failed to spawn";
+
+/** Normalize a path-shaped agent binary against the harness process's cwd NOW, at
+ * resolution time: the spawn runs with each tick's worktree as cwd, so a relative value
+ * left as given would name a different file there than the run preflight and doctor (which
+ * evaluate against the process cwd) had already accepted. An absolute path comes back
+ * normalized; a bare name — no separator — is left for PATH resolution exactly as before.
+ * No filesystem calls: the two preflight sites test resolvability, so resolution itself
+ * stays trivially unit-testable. */
+function absBin(value: string): string {
+  return value.includes("/") ? path.resolve(value) : value;
+}
+
+/** Resolve which agent binary the harness spawns: TUMWATER_PI_BIN → config.agentBin →
+ * "pi" (plans/portability.md §5/7). An empty or whitespace value falls through to the
+ * next source, so `TUMWATER_PI_BIN= tumwater run` cannot wedge the fleet on a typo'd
+ * export. This is precedence only — resolvability is checked at the preflight sites
+ * (cmdRun and doctor), never here. */
+export function resolveAgentBin(config: Pick<TumwaterConfig, "agentBin">): ResolvedAgentBin {
+  const env = process.env.TUMWATER_PI_BIN?.trim();
+  if (env) return { bin: absBin(env), source: "env" };
+  const configured = config.agentBin?.trim();
+  if (configured) return { bin: absBin(configured), source: "config" };
+  return { bin: "pi", source: "default" };
+}
+
+/** The spawn-error message for a resolved binary: the default source keeps today's text
+ * ("failed to spawn pi: …"); a configured source names the binary and where it came from,
+ * so a wrong agentBin does not read as "pi is broken". */
+function spawnErrorMessage(resolved: ResolvedAgentBin, errMessage: string): string {
+  const source =
+    resolved.source === "default" ? "" : ` (resolved from ${agentBinSourceLabel(resolved.source)})`;
+  return `${SPAWN_ERROR_PREFIX} ${resolved.bin}${source}: ${errMessage}`;
+}
 
 /** Run pi non-interactively in a worktree and distill the result. Never throws. */
 export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
@@ -131,7 +167,11 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     let timedOut = false;
     let settled = false;
 
-    const child = spawn("pi", [...piArgs(opts), opts.prompt], {
+    // plans/portability.md §5/7: the agent binary is configurable. resolveAgentBin
+    // normalizes path-shaped values to absolute (against the process cwd), so the spawn —
+    // which runs with the worktree as cwd — lands on the same file the preflight checked.
+    const resolved = resolveAgentBin(opts.config);
+    const child = spawn(resolved.bin, [...piArgs(opts), opts.prompt], {
       cwd: opts.cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,
@@ -275,7 +315,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     });
 
     child.on("error", (err) => {
-      finish(resultFromParser({ errorMessage: `${SPAWN_ERROR_PREFIX}: ${err.message}` }));
+      finish(resultFromParser({ errorMessage: spawnErrorMessage(resolved, err.message) }));
     });
 
     child.on("close", (code) => {

@@ -28,8 +28,9 @@ import {
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
-  PI_MISSING_MESSAGE,
+  piMissingMessage,
 } from "./readiness.js";
+import { resolveAgentBin } from "./pi.js";
 import type { TumwaterConfig } from "./types.js";
 import { initProject } from "./init.js";
 import {
@@ -143,8 +144,21 @@ async function cmdInit(root: string, args: string[]): Promise<void> {
 async function cmdRun(root: string, args: string[]): Promise<void> {
   await requireReadyRepo(root);
   // Fail fast instead of starting loops whose every tick dies with "spawn pi ENOENT".
-  if (!findOnPath("pi")) {
-    fail(PI_MISSING_MESSAGE);
+  // The config loads first — behavior-preserving: requireReadyRepo has already gated on
+  // tumwater.json existing, and loadConfig returns defaults when it is absent — because
+  // the agent binary (TUMWATER_PI_BIN → agentBin → "pi", plans/portability.md §5/7) is
+  // resolved from it. resolveAgentBin normalizes path-shaped values against THIS process's
+  // cwd, so what is checked here is exactly what the ticks spawn.
+  const config = loadConfig(root);
+  const resolved = resolveAgentBin(config);
+  if (resolved.bin.includes("/")) {
+    try {
+      fs.accessSync(resolved.bin, fs.constants.X_OK);
+    } catch {
+      fail(piMissingMessage(resolved));
+    }
+  } else if (!findOnPath(resolved.bin)) {
+    fail(piMissingMessage(resolved));
   }
   if (orchestratorAlive(root)) fail("an orchestrator is already running for this repo");
   if (!process.env[SUPERVISED_ENV]) {
@@ -153,7 +167,6 @@ async function cmdRun(root: string, args: string[]): Promise<void> {
     await superviseRunCommand(args);
     return;
   }
-  const config = loadConfig(root);
   const mainBranch = await resolveMainBranch(root, config, parseBranchFlag(args));
   const controller = new AbortController();
   let stopping = false;

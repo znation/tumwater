@@ -4,7 +4,7 @@ import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
-import { TRANSIENT_PI_CRASH, piArgs, runPi } from "../src/pi.js";
+import { TRANSIENT_PI_CRASH, piArgs, resolveAgentBin, runPi } from "../src/pi.js";
 import { PiStreamParser } from "../src/pi-stream.js";
 import { toolUpdateHasContent } from "../src/pi-event-line.js";
 import type { PiRunResult } from "../src/types.js";
@@ -13,6 +13,60 @@ import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
 import { assistantLine, errorLine, fakePi, makeRepo, thinkingOnlyLine, tmpdir } from "./util.js";
+
+// plans/portability.md §5/7: the agent binary is TUMWATER_PI_BIN → agentBin → "pi". The
+// resolver is precedence only (no filesystem calls — resolvability is the preflight sites'
+// job); a path-shaped value is normalized against the process cwd AT RESOLUTION TIME, so
+// the spawn — which runs with each tick's worktree as cwd — lands on the same file the run
+// preflight and doctor checked.
+test("resolveAgentBin: TUMWATER_PI_BIN beats agentBin beats the PATH default", () => {
+  assert.deepEqual(resolveAgentBin({}), { bin: "pi", source: "default" });
+  assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+    bin: "/opt/pi/bin/pi",
+    source: "config",
+  });
+
+  process.env.TUMWATER_PI_BIN = "/x/pi-override";
+  try {
+    assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+      bin: "/x/pi-override",
+      source: "env",
+    });
+    // A whitespace value falls through to config, so an empty export cannot wedge the fleet.
+    process.env.TUMWATER_PI_BIN = "  ";
+    assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+      bin: "/opt/pi/bin/pi",
+      source: "config",
+    });
+    process.env.TUMWATER_PI_BIN = "";
+    assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+      bin: "/opt/pi/bin/pi",
+      source: "config",
+    });
+  } finally {
+    delete process.env.TUMWATER_PI_BIN;
+  }
+});
+
+test("resolveAgentBin normalizes a path-shaped value against the process cwd; a bare name is left to PATH", () => {
+  const rel = resolveAgentBin({ agentBin: "bin/pi" });
+  assert.equal(rel.source, "config");
+  assert.equal(rel.bin, path.resolve("bin/pi")); // absolute, so the worktree cwd cannot redirect it
+
+  const envRel = resolveAgentBin({});
+  process.env.TUMWATER_PI_BIN = "./scripts/pi";
+  try {
+    const r = resolveAgentBin({});
+    assert.equal(r.source, "env");
+    assert.equal(r.bin, path.resolve("scripts/pi"));
+  } finally {
+    delete process.env.TUMWATER_PI_BIN;
+  }
+  assert.equal(envRel.bin, "pi"); // sanity: no env leak into the default case
+
+  assert.equal(resolveAgentBin({ agentBin: "pi-wrapper" }).bin, "pi-wrapper");
+  assert.equal(resolveAgentBin({ agentBin: "pi-wrapper" }).source, "config");
+});
 
 test("parser keeps the last non-empty assistant text and sums usage", () => {
   const parser = new PiStreamParser();
@@ -334,6 +388,63 @@ test("a run that is slow to speak is not quiet-killed during startup", async () 
 // Open-tool-call tracking feeds the stall warning (BUGS.md 2026-09-13 sibling): a hung
 // command must be nameable while it is still open, and content-free updates must not mask
 // its silence the way they cannot reset the quiet watchdog.
+
+// Criterion 3 of plans/portability.md §5/7: a wrapper script at agentBin (export an env
+// var, exec the real pi) produces byte-identical tick behavior. PATH holds no pi here, so
+// passing at all proves the spawn went through agentBin.
+test("runPi spawns the configured agentBin — a wrapper script behaves like the real pi", async () => {
+  const dir = tmpdir();
+  const realDir = path.join(dir, "real");
+  const wrapDir = path.join(dir, "wrap");
+  fs.mkdirSync(realDir, { recursive: true });
+  fs.mkdirSync(wrapDir, { recursive: true });
+  const realBin = path.join(realDir, "pi-real");
+  // The stub renders its env into the reply text, so the test can see the wrapper ran.
+  // The stub renders its env into the reply text: the env value is a printf ARGUMENT
+  // substituted into the JSON's text field, so no external tools are needed (PATH is empty).
+  const jsonTemplate = assistantLine("wrapped:RANVAL").replace("RANVAL", "%s");
+  fs.writeFileSync(realBin, `#!/bin/sh\nprintf '${jsonTemplate}\\n' "$AGENT_WRAPPER_RAN"\n`);
+  fs.chmodSync(realBin, 0o755);
+  const wrapper = path.join(wrapDir, "pi-wrapper");
+  fs.writeFileSync(wrapper, `#!/bin/sh\nexport AGENT_WRAPPER_RAN=1\nexec "${realBin}" "$@"\n`);
+  fs.chmodSync(wrapper, 0o755);
+
+  const config = defaultConfig();
+  config.agentBin = wrapper;
+  const oldPath = process.env.PATH;
+  process.env.PATH = ""; // no pi anywhere on PATH — only agentBin can resolve
+  try {
+    const result = await runPi({
+      cwd: dir,
+      prompt: "p",
+      config,
+      sessionDir: path.join(dir, "sessions"),
+      sessionName: "t",
+      rawLogFile: path.join(dir, "raw.jsonl"),
+    });
+    assert.equal(result.ok, true, `expected the wrapper-run pi to succeed: ${result.errorMessage}`);
+    assert.match(result.finalText, /wrapped:1/, "the wrapper exported its env var before exec");
+  } finally {
+    process.env.PATH = oldPath;
+  }
+});
+
+test("runPi's spawn-error message names the resolved binary and its source", async () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.agentBin = "/no/such/dir-xyz/pi-here";
+  const result = await runPi({
+    cwd: dir,
+    prompt: "p",
+    config,
+    sessionDir: path.join(dir, "sessions"),
+    sessionName: "t",
+    rawLogFile: path.join(dir, "raw.jsonl"),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errorMessage ?? "", /failed to spawn \/no\/such\/dir-xyz\/pi-here/);
+  assert.match(result.errorMessage ?? "", /resolved from agentBin in tumwater\.json/);
+});
 
 test("parser tracks open tool calls across start, update, and end", () => {
   const parser = new PiStreamParser();

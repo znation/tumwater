@@ -397,6 +397,35 @@ test("run fails fast with a clear message when pi is missing from PATH", async (
   assert.match(r.stderr, /pi not found on PATH/);
 });
 
+// plans/portability.md §5/7 criteria 2 and 4: the env override works without editing any
+// file, and a failure names the resolved value, its source, and the install hint — a wrong
+// agentBin must not read as "pi is not installed".
+test("run fails fast naming the resolved agentBin and its source when it is not an executable", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run agentBin fail");
+  const binDir = tmpdir();
+  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+
+  // TUMWATER_PI_BIN overrides for one invocation — including overriding the default into a
+  // failure whose text names the variable, not the ambient PATH.
+  const r = await cliWithEnv(repo, { PATH: binDir, TUMWATER_PI_BIN: "/no/such/pi-override" }, ["run"]);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /\/no\/such\/pi-override/);
+  assert.match(r.stderr, /TUMWATER_PI_BIN/);
+  assert.match(r.stderr, /install it/);
+  assert.doesNotMatch(r.stderr, /pi not found on PATH/);
+
+  // A configured agentBin fails with the same shape, naming tumwater.json's key.
+  const cfg = defaultConfig();
+  cfg.agentBin = "/also/missing/pi";
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+  const r2 = await cliWithEnv(repo, { PATH: binDir }, ["run"]);
+  assert.equal(r2.code, 1);
+  assert.match(r2.stderr, /\/also\/missing\/pi/);
+  assert.match(r2.stderr, /agentBin in tumwater\.json/);
+});
+
 test("status and init fail fast with a clear message when git is missing from PATH", async () => {
   // Without git on PATH, every repo probe used to report "not a git repository (run `git
   // init` first)" — pointing at the wrong fix for a machine that has no git installed.
@@ -1245,6 +1274,46 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
   } finally {
     s.kill();
     restore();
+  }
+});
+
+// Criterion 1 of plans/portability.md §5/7: with pi absent from PATH but agentBin set to an
+// absolute path, the fleet starts and ticks normally. The lifecycle mirrors the SIGTERM test
+// above, but PATH holds only git — the agent binary comes from tumwater.json alone.
+test("run starts and ticks with agentBin when pi is absent from PATH", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run agentBin lifecycle");
+
+  // One enabled role keeps the startup burst small; a no-op pi ends every tick as no_change.
+  const cfg = defaultConfig();
+  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
+
+  // A bin dir with git (the repo checks and every git call need it) and the agent stub —
+  // and no pi anywhere on PATH.
+  const binDir = tmpdir();
+  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+  const stub = path.join(binDir, "agent-stub");
+  fs.writeFileSync(stub, "#!/bin/sh\nexit 0\n");
+  fs.chmodSync(stub, 0o755);
+  cfg.agentBin = stub;
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+
+  const oldPath = process.env.PATH;
+  process.env.PATH = binDir; // spawnCli copies process.env, so the child sees this PATH
+  const s = spawnCli(repo, ["run"]);
+  try {
+    await s.waitFor(
+      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
+      "the run banner and orchestrator event",
+    );
+    s.child.kill("SIGTERM");
+    const code = await exitCode(s.child);
+    assert.equal(code, 0, `expected clean exit after SIGTERM; output so far:\n${s.out()}`);
+    assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
+  } finally {
+    s.kill();
+    process.env.PATH = oldPath;
   }
 });
 

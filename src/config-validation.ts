@@ -42,6 +42,7 @@ const TOP_LEVEL_KEYS = [
   "model",
   "thinking",
   "baseBranch",
+  "agentBin",
   "piArgs",
   "maxConcurrent",
   "landBatchMax",
@@ -239,6 +240,9 @@ export function validateConfig(raw: unknown): void {
   // An empty baseBranch would silently fall back to the checked-out branch — the one value
   // the operator's explicit setting must never degrade to unannounced.
   checkString(r, "", "baseBranch", false);
+  // An empty agentBin would silently fall back to "pi" — the same silent-ignore class: the
+  // operator named a binary, so a blank value must fail validation, not run the default.
+  checkString(r, "", "agentBin", false);
   checkStringArray(r, "", "piArgs");
   // A piArgs entry that repeats a harness-managed flag is appended after the harness's own and
   // pi's parser is last-wins, so it silently overrides it (see HARNESS_PI_FLAGS). Name the

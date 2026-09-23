@@ -5,6 +5,7 @@ import {
   exampleDrift,
   fallbackPair,
   loadConfig,
+  loadConfigSafe,
 } from "./config.js";
 import { detectBuildCheck } from "./build-check.js";
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
@@ -27,8 +28,10 @@ import {
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
-  PI_MISSING_MESSAGE,
+  agentBinSourceLabel,
+  piMissingMessage,
 } from "./readiness.js";
+import { resolveAgentBin } from "./pi.js";
 import { classifyLock, readLockPid } from "./lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
@@ -84,10 +87,17 @@ export function checkNodeVersion(version: string = process.versions.node): Check
 
 /** Resolve a required binary on PATH: its absolute path when found, else `missing` at fail
  * level — the shared shape of the git and pi checks below, so both resolve and report
- * identically. */
-function checkBinary(name: string, missing: string, pathEnv: string): CheckOutcome {
+ * identically. `describeFound` optionally rewords the ok detail (the agent-binary check
+ * names where a non-default value came from); git passes none and keeps today's text. */
+function checkBinary(
+  name: string,
+  missing: string,
+  pathEnv: string,
+  describeFound?: (found: string) => string,
+): CheckOutcome {
   const found = findOnPath(name, pathEnv);
-  return found ? { level: "ok", detail: found } : { level: "fail", detail: missing };
+  if (!found) return { level: "fail", detail: missing };
+  return { level: "ok", detail: describeFound ? describeFound(found) : found };
 }
 
 /** git binary — fail with the shared GIT_MISSING_MESSAGE so every entry point reports the
@@ -183,9 +193,32 @@ export function checkFallbackModel(
   };
 }
 
-/** pi binary — with cmdRun's existing install hint, so the two entry points cannot drift. */
-export function checkPiBinary(pathEnv: string = process.env.PATH ?? ""): CheckOutcome {
-  return checkBinary("pi", PI_MISSING_MESSAGE, pathEnv);
+/** Agent binary (plans/portability.md §5/7) — resolves TUMWATER_PI_BIN → agentBin → "pi"
+ * through the same resolveAgentBin the spawn uses, so doctor and the harness can never
+ * disagree about which pi runs (a malformed tumwater.json resolves to defaults; checkInit
+ * reports the config problem separately). A bare name resolves through the shared
+ * checkBinary helper — the same PATH resolution the git check uses; a path-shaped value is
+ * tested directly with accessSync(X_OK), already normalized against the process cwd at
+ * resolution time, so what doctor tests is exactly what spawns. The ok detail names the
+ * resolved path AND its source whenever the value is not the PATH default, so a configured
+ * binary is never mistaken for the ambient one; the check label stays "pi binary". */
+export function checkAgentBinary(
+  root: string,
+  pathEnv: string = process.env.PATH ?? "",
+): CheckOutcome {
+  const { config } = loadConfigSafe(root);
+  const resolved = resolveAgentBin(config ?? {});
+  if (resolved.source === "default") return checkBinary("pi", piMissingMessage(resolved), pathEnv);
+  const from = agentBinSourceLabel(resolved.source);
+  const describeFound = (found: string) => `${found} — resolved from ${from}`;
+  if (!resolved.bin.includes("/"))
+    return checkBinary(resolved.bin, piMissingMessage(resolved), pathEnv, describeFound);
+  try {
+    fs.accessSync(resolved.bin, fs.constants.X_OK);
+    return { level: "ok", detail: describeFound(resolved.bin) };
+  } catch {
+    return { level: "fail", detail: piMissingMessage(resolved) };
+  }
 }
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
@@ -298,7 +331,7 @@ export async function runDoctor(root: string, pathEnv: string = process.env.PATH
     { name: "repo", ...(await checkRepo(root, config ?? undefined)) },
     { name: "init", ...checkInit(root) },
     { name: "fallback", ...checkFallbackModel(root) },
-    { name: "pi binary", ...checkPiBinary(pathEnv) },
+    { name: "pi binary", ...checkAgentBinary(root, pathEnv) },
     { name: "state dir", ...checkStateDir(root) },
     { name: "merge lock", ...checkMergeLock(root) },
     { name: "build check", ...checkBuildCheck(root) },

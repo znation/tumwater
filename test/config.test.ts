@@ -109,6 +109,19 @@ test("defaultConfig carries the daily cost budget cap and validation guards it",
     /unknown key "maxDailyCostUss" in tumwater\.json \(valid keys: .*maxDailyCostUsd.*\)/,
   );
 
+  // plans/portability.md §5/7: agentBin is a known top-level key, must be a string, and a
+  // blank value is rejected — it would silently fall back to "pi" instead of the binary
+  // the operator named, the same silent-ignore class baseBranch's emptiness rule covers.
+  assert.doesNotThrow(() => validateConfig({ agentBin: "/opt/pi/bin/pi" }));
+  assert.match(
+    validationError({ agentBin: 42 }),
+    /agentBin must be a string \(got 42\)/,
+  );
+  assert.match(
+    validationError({ agentBin: "  " }),
+    /agentBin must not be empty \(got "  "\)/,
+  );
+
   // loadConfig over an existing file lacking the key picks up the default without editing.
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));

@@ -5,20 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 5/7 — Make the agent binary configurable (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23)
-
-**Goal.** Stop assuming the agent CLI is a binary literally named `pi` on `PATH`. src/pi.ts spawns `spawn("pi", …)`, and both `cmdRun`'s preflight and `checkPiBinary` gate on `findOnPath("pi")`, so a non-PATH install, a wrapper script, or two pi builds side by side are impossible. Resolution order: `TUMWATER_PI_BIN` → `agentBin` → `"pi"`. The shared `PI_MISSING_MESSAGE` in readiness.ts becomes a builder rather than changing at the two call sites, and `cmdRun` must load the config above its preflight. Since the 09-19 audit, `checkPiBinary` delegates to doctor's shared private `checkBinary` helper (commit `73e4f58`) — the resolved binary and its source must flow through that helper, not around it. Re-audit pins and corrections: plans/portability.md §5/7.
-
-**Series.** Part 5/7 of the portability series. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §5/7.
-
-**Files touched.** src/types.ts, src/config-validation.ts, src/pi.ts, src/readiness.ts, src/cli.ts, src/doctor.ts, test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts, test/config.test.ts; and `tumwater.example.json` only when 4a/7 has already created it.
-
-**Acceptance criteria.**
-- With `pi` absent from PATH but `agentBin` set to an absolute path, `tumwater run` starts and ticks normally; `doctor` reports the resolved path and `config` as its source.
-- `TUMWATER_PI_BIN` overrides `agentBin` for one invocation without editing any file.
-- A wrapper script at `agentBin` that exports an env var and execs the real pi produces byte-identical tick behavior (the existing `fakePi` helper already exercises this shape).
-- With none of the three resolving to an executable, `run` and `doctor` both fail naming the resolved value, its source, and the install hint.
-
 ### 6/7 — Make the project's verification command configurable (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-24)
 
 **Goal.** Stop assuming the target project is an npm project. `detectBuildCheck`/`runBuildCheck` walk up for a directory holding both `package.json` and `node_modules`, then run `npm run test|typecheck|build`; against a Python, Rust, or Go repo the walk finds nothing, so the review gate's pre-check, the red-main baseline gate (src/main-red.ts), and redeploy's `mainGreen` all degrade to "no check". Add `check.command` in config with today's npm auto-detection as the fallback; the threading surface is the three `detectBuildCheck` sites (`runScopedBuildCheck`, main-baseline.ts, doctor.ts), `MergeContext`, `checkMainBaseline`'s own callers (src/main-red.ts, src/redeploy.ts), and the gate's build-fix prompt (`buildBuildFixPrompt` names `npm run <script>`; it takes `describeCheck`'s wording instead, as do the rejection reasons — the 09-23 fix-on-the-spot feature added this npm assumption after the 09-21 audit).
@@ -88,6 +74,40 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Done
 
+### 5/7 — Make the agent binary configurable (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23, done 2026-09-24)
+
+Landed per plans/portability.md §5/7 (09-19 + 09-23 audits): `agentBin?: string` on TumwaterConfig
+(validated as a known, non-blank string key); `resolveAgentBin(config)` in src/pi.ts implementing
+`TUMWATER_PI_BIN` → `agentBin` → `"pi"` with whitespace values falling through (an empty export
+cannot wedge the fleet); `runPi` spawns the resolved binary and its spawn-error message names it
+and its source; `cmdRun` loads the config above its preflight and resolves through the same helper
+(accessSync X_OK for path-shaped values, `findOnPath` for bare names); doctor's `checkPiBinary`
+became `checkAgentBinary(root, pathEnv)` resolving via `loadConfigSafe`, flowing bare names through
+the shared `checkBinary` helper (now takes an optional `describeFound` so the git check's text is
+untouched); `PI_MISSING_MESSAGE` gained the `piMissingMessage(resolved)` / `agentBinSourceLabel`
+builders in readiness.ts, default-source text byte-identical.
+
+Deltas from the plan text, made in response to a review rejection of the first landing attempt:
+- **Relative paths are normalized at resolution time** (`absBin`: path.resolve against the
+  harness process's cwd for any value containing a separator). The plan's "used as given,
+  relative to the process cwd" was broken end to end as written: the preflight and doctor
+  evaluate against the process cwd but the spawn runs with each tick's worktree as cwd, so a
+  relative agentBin named different files at the gate and at spawn. Normalizing once in
+  resolveAgentBin makes all three sites agree; documented on the config field and in the helper.
+- **Criterion 1's doctor half is delivered on the success path**: the ok detail reads
+  `<resolved path> — resolved from agentBin in tumwater.json` (or TUMWATER_PI_BIN) whenever the
+  source is not the PATH default; the default source keeps today's detail byte-identical.
+- **tumwater.example.json deliberately does not carry agentBin**: the template is JSON (no
+  comment syntax), the key is machine-specific like provider/model — exactly what the drift
+  check's own remedy note says the template omits — and adding it would flag template drift on
+  every existing install. Correction 6 made the edit conditional; the condition resolves to skip.
+
+Tests: resolveAgentBin precedence and cwd normalization; runPi spawning a wrapper script at
+agentBin with PATH empty (env var exported, byte-identical result shape) and the spawn-error
+message naming the resolved binary and source; cli preflight failures naming value + source +
+install hint for both env and config sources and a full run-lifecycle tick with agentBin and no
+pi on PATH; doctor's three sources on ok and fail, plus the malformed-config fallback; agentBin
+config validation. Full suite 1332/1332 (base 1323 + 9 new tests, 1 renamed).
 ### 4b/7 — Untrack this repo's own config without deleting it (planned 2026-09-14, refined 2026-09-19, re-audited 2026-09-23, done 2026-09-22)
 
 **Landed 2026-09-22 (feature loop) as designed, plus the 09-23 re-audit's restore-only-when-absent pin.** The preserve step lives in ffMainTo's working-tree arm (src/merge.ts): `configBytesToPreserve` saves the live bytes when the config exists, is tracked, and is absent from the incoming ref; `restoreConfigBytes` writes them back only when the file is absent at write-back time (a config request that recreated it mid-merge wins — latest instruction wins, and the step is idempotent). `.gitignore` gains `tumwater.json` and this repo's copy is deleted in the same commit, so the restored file stays out of `git status` and the next `git add -A`. Four new tests in test/merge.test.ts pin the untracking landing (byte-identical restore, untracked, ignored, clean status, parsed config unchanged), the keeps-config landing, the no-config repo, and the write-back race.

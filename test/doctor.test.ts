@@ -10,7 +10,7 @@ import {
   checkInit,
   checkMergeLock,
   checkNodeVersion,
-  checkPiBinary,
+  checkAgentBinary,
   checkRepo,
   checkStateDir,
   renderDoctor,
@@ -79,15 +79,84 @@ test("checkGitBinary resolves git from the given PATH and fails with the shared 
   assert.deepEqual(missing, { level: "fail", detail: GIT_MISSING_MESSAGE });
 });
 
-test("checkPiBinary resolves pi from the given PATH and fails with the install hint when absent", () => {
+test("checkAgentBinary resolves the default pi from the given PATH and fails with the install hint when absent", () => {
+  const root = readyRepo();
   const binDir = fakeBins("pi");
-  const ok = checkPiBinary(binDir);
+  const ok = checkAgentBinary(root, binDir);
   assert.equal(ok.level, "ok");
   assert.equal(ok.detail, path.join(binDir, "pi"));
 
-  const missing = checkPiBinary("");
+  const missing = checkAgentBinary(root, "");
   assert.equal(missing.level, "fail");
   assert.match(missing.detail, /install it/);
+});
+
+// plans/portability.md §5/7: a configured agent binary must be reported with its source, so
+// a configured binary is never mistaken for the ambient one — and a wrong one must not read
+// as "pi is not installed".
+test("checkAgentBinary names the resolved path and TUMWATER_PI_BIN as its source", () => {
+  const root = readyRepo();
+  const binDir = fakeBins("wrapped-pi");
+  const bin = path.join(binDir, "wrapped-pi");
+  process.env.TUMWATER_PI_BIN = bin;
+  try {
+    const ok = checkAgentBinary(root, ""); // PATH deliberately empty: only the override resolves
+    assert.equal(ok.level, "ok");
+    assert.equal(ok.detail, `${bin} — resolved from TUMWATER_PI_BIN`);
+  } finally {
+    delete process.env.TUMWATER_PI_BIN;
+  }
+
+  process.env.TUMWATER_PI_BIN = path.join(binDir, "no-such-bin");
+  try {
+    const missing = checkAgentBinary(root, "");
+    assert.equal(missing.level, "fail");
+    assert.match(missing.detail, new RegExp(`${binDir}/no-such-bin[^ ]* from TUMWATER_PI_BIN`));
+    assert.match(missing.detail, /install it/);
+  } finally {
+    delete process.env.TUMWATER_PI_BIN;
+  }
+});
+
+test("checkAgentBinary resolves agentBin from tumwater.json — bare name via PATH, path via accessSync", () => {
+  const binDir = fakeBins("pi-stub");
+
+  // A bare name resolves through the same PATH lookup the git check uses, and the ok
+  // detail names both the resolved path and the config source.
+  const bareRepo = readyRepo();
+  writeConfig(bareRepo, { agentBin: "pi-stub" });
+  const bareOk = checkAgentBinary(bareRepo, binDir);
+  assert.equal(bareOk.level, "ok");
+  assert.equal(bareOk.detail, `${path.join(binDir, "pi-stub")} — resolved from agentBin in tumwater.json`);
+  const bareMissing = checkAgentBinary(bareRepo, "");
+  assert.equal(bareMissing.level, "fail");
+  assert.match(bareMissing.detail, /"pi-stub" from agentBin in tumwater\.json/);
+
+  // A path-shaped value is tested directly: an existing executable is ok, a missing one
+  // fails naming the value, its source, and the install hint.
+  const pathRepo = readyRepo();
+  writeConfig(pathRepo, { agentBin: path.join(binDir, "pi-stub") });
+  const pathOk = checkAgentBinary(pathRepo, "");
+  assert.equal(pathOk.level, "ok");
+  assert.equal(pathOk.detail, `${path.join(binDir, "pi-stub")} — resolved from agentBin in tumwater.json`);
+
+  const goneRepo = readyRepo();
+  const gone = path.join(binDir, "gone-pi");
+  writeConfig(goneRepo, { agentBin: gone });
+  const goneOut = checkAgentBinary(goneRepo, "");
+  assert.equal(goneOut.level, "fail");
+  assert.match(goneOut.detail, new RegExp(`"${gone}" from agentBin in tumwater\\.json`));
+  assert.match(goneOut.detail, /install it/);
+});
+
+test("checkAgentBinary falls back to the default when tumwater.json is malformed", () => {
+  // A broken config must not throw inside a check: checkInit reports it separately, and the
+  // pi check still stands on its own default resolution.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "tumwater.json"), "{ not json");
+  const out = checkAgentBinary(root, fakeBins("pi"));
+  assert.equal(out.level, "ok");
+  assert.match(out.detail, /pi$/);
 });
 
 test("checkRepo reports not-a-repo, no-commits-yet, and detached HEAD as distinct failures", async () => {

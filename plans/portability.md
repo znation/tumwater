@@ -880,9 +880,12 @@ side are all impossible.
 
 **Design (decided, with rationale).**
 - **Resolution order: `TUMWATER_PI_BIN` → `agentBin` in config → `"pi"`.** A value containing a
-  path separator is used as given (absolute, or relative to the process cwd); a bare name is left
-  to PATH resolution. The env variable exists for one-off runs and for CI, where the value differs
-  per job.
+  path separator is normalized to an absolute path against the harness process's cwd at
+  resolution time (src/pi.ts `resolveAgentBin`/`absBin`) — the spawn runs with each tick's
+  worktree as cwd, so "as given" would name a different file there than the preflight and
+  doctor (which evaluate against the process cwd) had already accepted; a bare name is left
+  to PATH resolution. The env variable exists for one-off runs and for CI, where the value
+  differs per job.
 - **This is deliberately NOT an agent-CLI abstraction.** The argv pi accepts (`--print --mode json
   --session-dir --continue -n --provider --model --thinking`) and its JSON event protocol are
   woven through pi.ts's stream parser, review.ts's verdict contract, and the resume path. What
