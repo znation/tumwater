@@ -70,13 +70,13 @@ test("error strings differing only in volatile parts cluster; exit codes stay di
     { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "pi exited null" },
   ]);
   const data = collectFailureReport(root, 1);
-  assert.equal(data.errorClusters.length, 3);
-  const merged = data.errorClusters.find((c) => c.count === 3);
+  assert.equal(data.errors.clusters.length, 3);
+  const merged = data.errors.clusters.find((c) => c.count === 3);
   assert.equal(merged?.key, "ENOENT <path> <sha>");
   assert.deepEqual(merged?.roles, ["bugfix", "clean", "feature"]);
   assert.equal(merged?.example, "ENOENT /Users/a/one.ts deadbeef0");
-  assert.ok(data.errorClusters.some((c) => c.key === "pi exited 1"));
-  assert.ok(data.errorClusters.some((c) => c.key === "pi exited null"));
+  assert.ok(data.errors.clusters.some((c) => c.key === "pi exited 1"));
+  assert.ok(data.errors.clusters.some((c) => c.key === "pi exited null"));
 });
 
 test("review rejections cluster on (role, reasons[0]), not role alone", () => {
@@ -89,11 +89,11 @@ test("review rejections cluster on (role, reasons[0]), not role alone", () => {
   ]);
   const data = collectFailureReport(root, 1);
   const find = (role: string, example: string) =>
-    data.rejectionClusters.find((c) => c.roles[0] === role && c.example === example);
+    data.rejections.clusters.find((c) => c.roles[0] === role && c.example === example);
   assert.equal(find("feature", "too big")?.count, 2);
   assert.equal(find("feature", "half done")?.count, 1);
   assert.equal(find("bugfix", "no reasons given")?.count, 1);
-  assert.equal(data.rejectionClusters.length, 3);
+  assert.equal(data.rejections.clusters.length, 3);
 });
 
 test("tick errors cluster only on error-result ticks; landing review failures get their own section", () => {
@@ -114,19 +114,19 @@ test("tick errors cluster only on error-result ticks; landing review failures ge
   const errorTotal = data.outcomes.reduce((n, o) => n + (o.counts.error ?? 0), 0);
   assert.equal(errorTotal, 1, "only the error-result tick counts as an error");
   assert.equal(
-    data.errorClusters.reduce((n, c) => n + c.count, 0),
+    data.errors.clusters.reduce((n, c) => n + c.count, 0),
     errorTotal,
     "the error-cluster total equals the Outcome table's error column",
   );
   assert.ok(
-    data.errorClusters.every((c) => !c.key.includes("review failed")),
+    data.errors.clusters.every((c) => !c.key.includes("review failed")),
     "a successful tick's stale lastError is not a tick error",
   );
-  assert.equal(data.reviewFailureClusters.length, 1);
-  assert.equal(data.reviewFailureClusters[0]?.count, 2);
-  assert.deepEqual(data.reviewFailureClusters[0]?.roles, ["clean", "dry"]);
+  assert.equal(data.reviewFailures.clusters.length, 1);
+  assert.equal(data.reviewFailures.clusters[0]?.count, 2);
+  assert.deepEqual(data.reviewFailures.clusters[0]?.roles, ["clean", "dry"]);
   const md = renderFailureMarkdown(data);
-  assert.match(md, /## Review failures/);
+  assert.match(md, /## Top review failure clusters/);
   assert.match(md, /no parseable VERDICT/);
 });
 
@@ -221,7 +221,62 @@ test("deltas count quiet kills and rejections per role, both windows", () => {
 
   // The delta and the rejection cluster read the same source: a window with a rejection shows
   // both, so the delta can never claim "no rejections" while the cluster section lists one.
-  assert.equal(data.rejectionClusters.reduce((n, c) => n + c.count, 0), 2);
+  assert.equal(data.rejections.clusters.reduce((n, c) => n + c.count, 0), 2);
+});
+
+test("the top-N cluster sections mark their cut: remainder line, no silent truncation", () => {
+  // The 2026-09-22 digest bug: 13 review_rejected events in the window, but `## Review
+  // rejections` itemized only the 5 alphabetically-first clusters with no marker — the
+  // section read as a full itemization while half the window's rejections were invisible.
+  const root = tmpdir();
+  const events: object[] = [];
+  const roles = ["bugfix", "coverage", "dry", "feature", "perf", "qa", "telemetry"];
+  roles.forEach((role, i) => {
+    events.push({ ts: at(0), loop: role, type: "review_rejected", head: String(i).padStart(40, String(i)), reasons: [`reject ${role}`] });
+    events.push({ ts: at(0), loop: role, type: "tick_end", result: "queued" });
+  });
+  writeEvents(root, events);
+  const data = collectFailureReport(root, 1);
+
+  // The Deltas table counts every rejection in the window (7 roles × 1).
+  const deltaTotal = data.deltas.reduce((n, d) => n + d.rejections, 0);
+  assert.equal(deltaTotal, 7);
+  // The section itemizes only the top 5 clusters...
+  assert.equal(data.rejections.clusters.length, 5);
+  assert.equal(data.rejections.clusters.reduce((n, c) => n + c.count, 0), 5);
+  assert.equal(data.rejections.total, 7);
+  assert.equal(data.rejections.hiddenClusters, 2);
+  // ...and says so, instead of reading as the whole window.
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /## Top rejection clusters/);
+  assert.match(md, /_\+2 more clusters holding 2 rejections_/);
+  // The review-failure section shares the mechanism.
+  for (const role of roles.slice(0, 7)) {
+    events.push({ ts: at(0), loop: role, type: "review_failed", head: "f".repeat(40), message: `verdict garbled ${role}` });
+  }
+  writeEvents(root, events);
+  const data2 = collectFailureReport(root, 1);
+  assert.equal(data2.reviewFailures.clusters.length, 5);
+  assert.equal(data2.reviewFailures.hiddenClusters, 2);
+  const md2 = renderFailureMarkdown(data2);
+  assert.match(md2, /_\+2 more clusters holding 2 review failures_/);
+});
+
+test("the rejection remainder cross-checks the Deltas column even for reasons-less events", () => {
+  // A secondary divergence path in the same bug: the section clustered only events carrying
+  // a reasons array, while the Deltas column counted every review_rejected — a reasons-less
+  // event was counted above and could never be itemized below. The remainder line closes
+  // that gap: K = the Deltas total minus what is itemized.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "review_rejected", head: "a".repeat(40), reasons: ["too big"] },
+    { ts: at(0), loop: "qa", type: "review_rejected", head: "b".repeat(40) }, // no reasons field at all
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.equal(data.rejections.total, 2, "the section's total matches the Deltas column");
+  assert.equal(data.rejections.clusters.reduce((n, c) => n + c.count, 0), 1);
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /_\+0 more clusters holding 1 rejection_/);
 });
 
 test("the digest renders under 6 KB however bad the window was", () => {

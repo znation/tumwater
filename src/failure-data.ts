@@ -60,6 +60,18 @@ export interface Cluster {
   example: string; // the first verbatim occurrence, trimmed for display
 }
 
+/** One clustered section of the digest: the top-N clusters it itemizes, plus what the cut
+ * hides — `total` counts every event the section owns in the current window (for rejections,
+ * every `review_rejected`, matching the Deltas column even when an event carries no reasons),
+ * and `hiddenClusters` is how many distinct clusters the top-N slice dropped. The render uses
+ * both to print a remainder line, so a capped section says so instead of reading as a full
+ * itemization (BUGS.md 2026-09-22). */
+export interface ClusterSection {
+  clusters: Cluster[];
+  total: number;
+  hiddenClusters: number;
+}
+
 /** One `tick_end` result tally, per role. */
 export interface OutcomeRow {
   role: string;
@@ -108,10 +120,10 @@ export interface FailureReportData {
   oldestEventDate: string | null; // when partial/empty: the oldest retained event's local date
   outcomes: OutcomeRow[];
   deltas: DeltaRow[];
-  errorClusters: Cluster[];
-  warningClusters: Cluster[];
-  reviewFailureClusters: Cluster[];
-  rejectionClusters: Cluster[];
+  errors: ClusterSection;
+  warnings: ClusterSection;
+  reviewFailures: ClusterSection;
+  rejections: ClusterSection;
   landed: LandedCommit[];
   stateChanges: StateChange[];
   stateChangesTotal: number; // all transitions in the window, before the newest-N cut
@@ -145,11 +157,12 @@ interface ClusterDraft {
 
 /** Group messages by their normalized key, newest/oldest tracked per cluster. `keyPrefix`
  * scopes a cluster to something the message itself omits (rejections key on role too) without
- * polluting the verbatim example. */
+ * polluting the verbatim example. Returns the top-N clusters plus how many fell past the cut,
+ * so the render can mark the truncation instead of presenting the survivors as the whole. */
 function clusterMessages(
   messages: Array<{ message: string; role: string; ts: number; keyPrefix?: string }>,
   top: number,
-): Cluster[] {
+): { clusters: Cluster[]; hiddenClusters: number } {
   const drafts = new Map<string, ClusterDraft>();
   for (const { message, role, ts, keyPrefix } of messages) {
     const key = `${keyPrefix ?? ""}${normalizeClusterKey(message)}`;
@@ -170,17 +183,27 @@ function clusterMessages(
       });
     }
   }
-  return [...drafts.values()]
-    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
-    .slice(0, top)
-    .map((d) => ({
+  const sorted = [...drafts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+  return {
+    clusters: sorted.slice(0, top).map((d) => ({
       key: d.key,
       count: d.count,
       roles: [...d.roles].sort((a, b) => a.localeCompare(b)),
       firstSeen: d.firstSeen,
       lastSeen: d.lastSeen,
       example: d.example,
-    }));
+    })),
+    hiddenClusters: Math.max(0, sorted.length - top),
+  };
+}
+
+/** Attach a section's window total (events the section owns, counted before any filter the
+ * clustering applies — for rejections, the reasons-less ones too) to the clustered result. */
+function section(
+  clustered: { clusters: Cluster[]; hiddenClusters: number },
+  total: number,
+): ClusterSection {
+  return { ...clustered, total };
 }
 
 /** One role's window metrics, used for the delta row: ticks/errors/quiet kills from
@@ -282,29 +305,40 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   // lander also writes, so a successful tick's `tick_end` can carry a leftover landing failure's
   // text (BUGS.md 2026-09-21). Clustering by result keeps this section's total equal to the
   // Outcome table's error column; landing failures surface in their own section below.
-  const errorClusters = clusterMessages(
-    tickEvents
-      .filter((ev) => ev.result === "error" && typeof ev.error === "string" && ev.error !== "")
-      .map((ev) => ({ message: ev.error as string, role: eventRole(ev), ts: ev.ts })),
-    ERROR_TOP,
+  const errorEvents = tickEvents.filter(
+    (ev) => ev.result === "error" && typeof ev.error === "string" && ev.error !== "",
   );
-  const warningClusters = clusterMessages(
-    current
-      .filter((ev) => ev.type === "warning" && typeof ev.message === "string" && ev.message !== "")
-      .map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })),
-    WARNING_TOP,
+  const errors = section(
+    clusterMessages(
+      errorEvents.map((ev) => ({ message: ev.error as string, role: eventRole(ev), ts: ev.ts })),
+      ERROR_TOP,
+    ),
+    errorEvents.length,
+  );
+  const warningEvents = current.filter(
+    (ev) => ev.type === "warning" && typeof ev.message === "string" && ev.message !== "",
+  );
+  const warnings = section(
+    clusterMessages(warningEvents.map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })), WARNING_TOP),
+    warningEvents.length,
   );
   // Rejections cluster on (role, reasons[0]) — the field the event feed renders — so two
-  // different rejection reasons from the same role stay separate rows.
-  const rejectionClusters = clusterMessages(
-    current
-      .filter((ev) => ev.type === "review_rejected" && Array.isArray(ev.reasons))
-      .map((ev) => {
-        const reasons = ev.reasons as unknown[];
-        const first = typeof reasons[0] === "string" ? (reasons[0] as string) : "no reasons given";
-        return { message: first, role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
-      }),
-    REJECTION_TOP,
+  // different rejection reasons from the same role stay separate rows. The section's total
+  // counts every `review_rejected` in the window, reasons or not, so it equals the Deltas
+  // column and the render's remainder line cross-checks against it.
+  const rejectedEvents = current.filter((ev) => ev.type === "review_rejected");
+  const rejections = section(
+    clusterMessages(
+      rejectedEvents
+        .filter((ev) => Array.isArray(ev.reasons))
+        .map((ev) => {
+          const reasons = ev.reasons as unknown[];
+          const first = typeof reasons[0] === "string" ? (reasons[0] as string) : "no reasons given";
+          return { message: first, role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
+        }),
+      REJECTION_TOP,
+    ),
+    rejectedEvents.length,
   );
 
   // Landing review failures: a reviewer that could not return a parseable verdict (a dead
@@ -312,11 +346,15 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   // `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
   // `tick_end.error`. Clustered on their own so the telemetry role can see a gate that keeps
   // failing without misreading it as a tick error (BUGS.md 2026-09-21).
-  const reviewFailureClusters = clusterMessages(
-    current
-      .filter((ev) => ev.type === "review_failed" && typeof ev.message === "string" && ev.message !== "")
-      .map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })),
-    REVIEW_FAILURE_TOP,
+  const reviewFailures = section(
+    clusterMessages(
+      current
+        .filter((ev) => ev.type === "review_failed" && typeof ev.message === "string" && ev.message !== "")
+        .map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })),
+      REVIEW_FAILURE_TOP,
+    ),
+    current.filter((ev) => ev.type === "review_failed" && typeof ev.message === "string" && ev.message !== "")
+      .length,
   );
 
   const landed: LandedCommit[] = current
@@ -356,10 +394,10 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     oldestEventDate,
     outcomes,
     deltas,
-    errorClusters,
-    warningClusters,
-    reviewFailureClusters,
-    rejectionClusters,
+    errors,
+    warnings,
+    reviewFailures,
+    rejections,
     landed,
     stateChanges,
     stateChangesTotal: allStateChanges.length,

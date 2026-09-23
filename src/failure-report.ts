@@ -3,7 +3,7 @@
  * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
  * reads — so the byte bound argued at collection holds here unchanged. */
 import type { TickResult } from "./types.js";
-import { collectFailureReport, type Cluster, type FailureReportData, type OutcomeRow } from "./failure-data.js";
+import { collectFailureReport, type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
 import { dayLabel, formatTime, reportWindow, shortSha, formatDate } from "./text.js";
 
 /** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
@@ -143,10 +143,10 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     }
   }
 
-  renderClusters(lines, "Top error clusters", data.errorClusters, "no tick errors in the window");
-  renderClusters(lines, "Top warning clusters", data.warningClusters, "no warnings in the window");
-  renderClusters(lines, "Review failures", data.reviewFailureClusters, "no landing review failures in the window");
-  renderClusters(lines, "Review rejections", data.rejectionClusters, "no review rejections in the window");
+  renderClusters(lines, "Top error clusters", data.errors, "tick errors");
+  renderClusters(lines, "Top warning clusters", data.warnings, "warnings");
+  renderClusters(lines, "Top review failure clusters", data.reviewFailures, "review failures");
+  renderClusters(lines, "Top rejection clusters", data.rejections, "rejections");
 
   lines.push("");
   lines.push("## Landed in the window");
@@ -159,17 +159,27 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   return lines.join("\n");
 }
 
-function renderClusters(lines: string[], title: string, clusters: Cluster[], empty: string): void {
+function renderClusters(lines: string[], title: string, section: ClusterSection, noun: string): void {
   lines.push("");
   lines.push(`## ${title}`);
-  if (clusters.length === 0) {
-    lines.push(`_${empty}_`);
+  if (section.clusters.length === 0) {
+    lines.push(`_no ${noun} in the window_`);
     return;
   }
-  for (const c of clusters) {
+  for (const c of section.clusters) {
     lines.push(
       `- **${c.count}×** ${roleList(c.roles)} · ${dayShort(c.firstSeen)} → ${dayShort(c.lastSeen)} — ${c.example}`,
     );
+  }
+  // Mark the top-N cut the way roleList marks its own: a capped section that stays silent
+  // reads as a full itemization, and an operator cross-checking the Deltas table above sees
+  // counts this section never shows (BUGS.md 2026-09-22).
+  const itemized = section.clusters.reduce((n, c) => n + c.count, 0);
+  if (section.total > itemized) {
+    const remaining = section.total - itemized;
+    const clusters = section.hiddenClusters === 1 ? "cluster" : "clusters";
+    const noun1 = remaining === 1 ? noun.replace(/s$/, "") : noun;
+    lines.push(`_+${section.hiddenClusters} more ${clusters} holding ${remaining} ${noun1}_`);
   }
 }
 

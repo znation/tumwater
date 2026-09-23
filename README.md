@@ -48,9 +48,6 @@ in tumwater.json or by prompting the director.
 Open items:
 - Open bug: the loop suite's quiet-kill resume test flakes under full-suite load — fails 1-in-N
   full runs, passes in isolation (found 2026-09-23).
-- Open bug: the failure digest's Review rejections section silently truncates at 5
-  alphabetically-first clusters, so most of the window's rejections are invisible while the
-  Deltas table reports them (found 2026-09-22).
 - Open bug: a 429 storm still has no fleet-wide hold — each tick now retries its own 429, but
   concurrent loops keep hammering a rate-limited provider instead of backing off together
   (found 2026-09-21; the per-tick retry half was fixed 2026-09-22).

@@ -176,9 +176,11 @@ the bottom of the page:
    example. Top 10 by count.
 6. **Warning clusters** — `warning.message` grouped the same way (harness-scoped warnings carry
    `loop: "harness"`; no special case needed).
-7. **Review rejections** — `review_rejected.reasons` by role, top 5, clustered on `reasons[0]`
+7. **Top rejection clusters** — `review_rejected.reasons` by role, top 5, clustered on `reasons[0]`
    (the same field the event feed renders, src/ui/event-format.ts), so a digest line reads like a
-   `tumwater logs` line.
+   `tumwater logs` line; when more than 5 clusters exist the section ends with a `_+N more clusters
+   holding K rejections_` line whose K equals the Deltas table's rejections column, so the cut is
+   visible and cross-checkable (BUGS.md 2026-09-22).
 8. **What landed in the window** — `merged.summary` (with its `commit`) newest first by `ts`,
    capped at 20, so a cluster that starts on a date can be correlated with the commit that starts
    it. This is the single most important field for the role's charter: it turns "errors spiked" into
