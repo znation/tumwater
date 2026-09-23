@@ -7,7 +7,6 @@ import {
   dueForPrune,
   fairOrder,
   isEligible,
-  workLanded,
 } from "./scheduling.js";
 import { isFleetPaused } from "./fleet-state.js";
 import { budgetGate, budgetPaused, type BudgetGate, fleetDailyCost } from "./budget.js";
@@ -15,7 +14,7 @@ import { saveLoopState } from "./state.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
-import { branchHead, currentBranch, deleteRef, isMergedInto, subjectsBetween } from "./git.js";
+import { branchHead, currentBranch, deleteRef, isMergedInto } from "./git.js";
 import { landBatch } from "./land-batch.js";
 import { landQueuedEntry, landingUsage, readLandingMarker, writeLandingMarker, writeLandingOutcome } from "./landing-slot.js";
 import { dropLanding, headLanding, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
@@ -38,6 +37,7 @@ import {
 } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { p75TickDurationMs, type Redeployer } from "./redeploy.js";
+import { WorkLandedCache } from "./work-landed-cache.js";
 
 const POLL_MS = 2000;
 
@@ -295,36 +295,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // the resolved branch. One warning per episode, re-armed when the checkout returns.
   let warnedBranchDivergence = false;
 
-  // Need-based deferral (PLANS.md "Prioritize loops by need"): work-landed verdicts are cached
-  // per base head so a quiet fleet pays no git cost in steady state. A TRUE verdict is monotone
-  // under fast-forward-only main movement — once work has landed in (sinceHead, main] it stays
-  // there — so true heads never re-evaluate. A FALSE verdict is valid exactly while main sits at
-  // the head it was checked against: the range cannot grow until main moves, so a cached false
-  // skips the `git log` entirely and re-checks once when main's head changes (a false can flip to
-  // true only on such movement — caching it unconditionally would defer a role forever after the
-  // very commit that should wake it). Both caches are bounded, so a long-running fleet cannot
-  // grow them unbounded.
-  const workLandedHeads = new Set<string>();
-  const noWorkAtHead = new Map<string, string>(); // sinceHead -> main head at which "no work" held
-  async function workLandedSince(sinceHead: string, mainHeadNow: string): Promise<boolean> {
-    if (workLandedHeads.has(sinceHead)) return true;
-    const checkedAt = noWorkAtHead.get(sinceHead);
-    // Main has not moved since the last check for this head — the range is unchanged. An empty
-    // mainHead means the ref could not be resolved: never trust or store a cache against it.
-    if (mainHeadNow !== "" && checkedAt === mainHeadNow) return false;
-    const subjects = await subjectsBetween(root, sinceHead, mainBranch);
-    // A range that cannot be evaluated is treated as work landed — conservative: run the tick.
-    const verdict = subjects === null ? true : workLanded(subjects);
-    if (verdict) {
-      noWorkAtHead.delete(sinceHead);
-      if (workLandedHeads.size >= 200) workLandedHeads.clear();
-      workLandedHeads.add(sinceHead);
-    } else if (mainHeadNow !== "") {
-      if (noWorkAtHead.size >= 200) noWorkAtHead.clear();
-      noWorkAtHead.set(sinceHead, mainHeadNow);
-    }
-    return verdict;
-  }
+  // Need-based deferral (PLANS.md "Prioritize loops by need"): whether qualifying work has
+  // landed since a role's last-seen main head, cached per head (see work-landed-cache.ts).
+  const workLandedSince = new WorkLandedCache(root, mainBranch);
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
   // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode
   // logs exactly once — on the transition in, never while merely not-due and never on exit.
@@ -726,7 +699,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           // open backlog defers regardless of what landed.
           const landed =
             !workBacklogOpen && s.lastMainHead !== ""
-              ? await workLandedSince(s.lastMainHead, mainHead)
+              ? await workLandedSince.since(s.lastMainHead, mainHead)
               : true;
           const deferredNow = deferTick(s, runner.role, landed, workBacklogOpen, now);
           if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
