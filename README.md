@@ -49,8 +49,8 @@ come from `customLoops` in tumwater.json or by prompting the director.
 
 Open items:
 - Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its
-  code is hard-reset — the fix's record has been carried to Fixed by markdown-only commits three
-  times (`292f642`, `b65df63`, `8cb5a97`) while the fix's symbols (`isNegatedRefusal`,
+  code is hard-reset — the fix's record has been carried to Fixed by markdown-only commits four
+  times, most recently `cdcc54c`, while the fix's symbols (`isNegatedRefusal`,
   `refusalContradiction`) exist nowhere in the tree (found 2026-09-23).
 - Open bug: the status table's "last result" cell shows `queued` — a tick's live landing status
   rather than its last completed result, duplicating the state column while work sits in the land
@@ -92,7 +92,7 @@ Open items:
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`d964507`): build clean, suite 1372/1372.
+Current main (`22f6f7f`): build clean, suite 1372/1372.
 <!-- tumwater:status:end -->
 
 ## How it works
