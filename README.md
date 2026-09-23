@@ -85,16 +85,19 @@ Open items:
   331–1158 s (found 2026-09-21).
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
+- Open bug: the self-redeploy's shutdown awaits an in-flight batched landing with no
+  deadline — the generation handoff lagged its own swap by 97 minutes (found 2026-09-24).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
   binary (planned 2026-09-14, requested by user; PLANS.md items 6/7 — configurable verify
   command — and 7/7 — adopt an existing repo without hijacking its README — remain; 1–5/7
   landed by 2026-09-24).
-- Planned: cost by role in the usage report — a `Cost by role:` line in `tumwater report` and a
-  fourth stacked chart in the GUI report tab (planned 2026-09-25; PLANS.md has the plan).
+- Planned: optional shared-token auth for the GUI — `gui --token <secret>` requires a
+  credential on every request; the default stays open (planned 2026-09-23, re-audited
+  2026-09-25; PLANS.md has the plan).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`7354f8a`): build clean, suite 1378/1378.
+Current main (`aa9ab83`): build clean, suite 1389/1389.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -274,7 +277,7 @@ tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N
 tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
 tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (the GUI's /api/status payload minus its serverBuildSha)
-tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days; --days bounded to the GUI's shared 1–90 window)
+tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits/cost per day, plus per-role tick and cost breakdowns (default 14 days; --days bounded to the GUI's shared 1–90 window)
 tumwater report --failures [--days N]   # Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
 tumwater doctor       # pre-flight check: node, git, repo, init (incl. a broken tumwater.example.json),
                       #   fallback model, agent binary, locks, build (read-only; exit 0/1)
