@@ -10,6 +10,7 @@ import { landQueuedEntry } from "../src/landing-slot.js";
 import { headLanding } from "../src/land-queue.js";
 import { LoopRunner } from "../src/loop.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
+import { freshLoopState, saveLoopState } from "../src/state.js";
 import type { TickResult, TumwaterConfig } from "../src/types.js";
 
 /** Per-process root for every test temp dir: created on first use, torn down synchronously at
@@ -119,6 +120,20 @@ export function baselineFixture(role: string, testScript: string): { root: strin
 
 /** How many times a fixture's test script actually ran (its appends to `counter`). Zero when
  * the counter was never written — an environmental skip ran nothing. */
+/** Seed a role's state file with non-zero counters plus scheduling fields. */
+export function seedCounters(repo: string, role: string): void {
+  const s = freshLoopState(role);
+  s.ticks = 7;
+  s.commits = 3;
+  s.generatedTokens = 424242;
+  s.totalCostUsd = 1.5;
+  s.peakContextTokens = 65536; // last tick's peak — cleared by the reset
+  s.nextRunAt = Date.now() + 60_000;
+  s.backoffSeconds = 15;
+  s.lastMainHead = "deadbeef";
+  saveLoopState(repo, s);
+}
+
 export function runsOf(counter: string): number {
   try {
     return fs.readFileSync(counter, "utf8").trim().split("\n").length;
