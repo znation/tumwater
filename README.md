@@ -89,17 +89,22 @@ Open items:
   binary (planned 2026-09-14, requested by user; PLANS.md items 6/7 — configurable verify
   command — and 7/7 — adopt an existing repo without hijacking its README — remain; 1–5/7
   landed by 2026-09-24).
+- Planned: cost by role in the usage report — a `Cost by role:` line in `tumwater report` and a
+  fourth stacked chart in the GUI report tab (planned 2026-09-25; PLANS.md has the plan).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`a2de089`): build clean, suite 1372/1372.
+Current main (`7354f8a`): build clean, suite 1378/1378.
 <!-- tumwater:status:end -->
 
 ## How it works
 
 `tumwater init "<prompt>"` seeds a git repo with README.md (your prompt + a status section),
 PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, and tumwater.json, and commits them — the
-initial prompt is capped at 4096 chars, because it rides into every tick's prefill. `tumwater run` then starts
+initial prompt is capped at 4096 chars, because it rides into every tick's prefill. With no
+prompt argument, a bare `tumwater init` instead reads the initial prompt from an existing
+README.md's `tumwater:prompt` markers (in an existing project, add them around your prompt
+before initing). `tumwater run` then starts
 one loop per enabled role. Every loop tick:
 
 1. Resets its persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`) to main.
@@ -374,8 +379,9 @@ npm run test:e2e       # the live-orchestrator e2e tier (test/*.e2e.test.ts) —
 ```
 
 Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `loop-pi.ts` its pi-run plumbing,
-`orchestrator.ts` the scheduler, `pi.ts` the pi subprocess integration, `git.ts` the git plumbing, `worktree.ts` the persistent
-worktree lifecycle, `merge.ts` the
+`orchestrator.ts` the scheduler, `pi.ts` the pi subprocess integration, `git.ts` the git plumbing,
+`git-diff.ts` the git-output parsing,
+`worktree.ts` the persistent worktree lifecycle, `merge.ts` the
 rebase/fast-forward/conflict-resolution landing flow), `src/pi-extension/` the bundled
 bounded-output pi extension, `src/ui/` the observer/presentation layer
 (TUI, GUI dashboard, status table, transcript, and report rendering — imported only by each other
