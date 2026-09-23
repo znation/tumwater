@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { runTimedRoleTick, sleepInterruptible } from "../src/orchestrator.js";
+import { Semaphore } from "../src/semaphore.js";
 import type { TickOutcome } from "../src/types.js";
 
 // The orchestrator's two exported unit-test seams (src/orchestrator.ts): the permit-holding
@@ -90,4 +91,64 @@ test("sleepInterruptible returns without waiting on an already-aborted signal", 
   const start = Date.now();
   await sleepInterruptible(10_000, controller.signal);
   assert.ok(Date.now() - start < 5_000, "a pre-aborted signal must resolve immediately");
+});
+
+// BUGS.md 2026-09-24 — the display fix leans on this wiring: the orchestrator marks a loop
+// `parkedSince` BEFORE the semaphore wait and clears it inside the acquire closure, so a
+// parked waiter renders as an inactive state and the active rows track the real permit
+// holders. Pinned here against the real Semaphore because the landing-holds-a-permit
+// invariant otherwise lives only in the e2e tier.
+test("a parked waiter holds no permit until acquire grants it, which the landing tier shares", async () => {
+  const semaphore = new Semaphore(1);
+  // Permit holder: a role tick that holds the only slot until its (gated) tick completes.
+  let holderAcquired = false;
+  let releaseHolder = () => {};
+  const gate = new Promise<void>((r) => (releaseHolder = r));
+  const holder = runTimedRoleTick(
+    new AbortController().signal,
+    async () => {
+      await semaphore.acquire(0);
+      holderAcquired = true;
+    },
+    () => semaphore.release(),
+    async () => {
+      await gate;
+      return { result: "changed" } as TickOutcome;
+    },
+  );
+  while (!holderAcquired) await new Promise((r) => setTimeout(r, 1));
+
+  // A parked waiter and a landing, both queued behind the one held permit. Each clears its
+  // parked marker exactly as the orchestrator's wrapped acquire does.
+  const parked: Record<string, number | undefined> = { waiter: 1, landing: 1 };
+  const waiter = runTimedRoleTick(
+    new AbortController().signal,
+    async () => {
+      await semaphore.acquire(0);
+      parked.waiter = undefined;
+    },
+    () => semaphore.release(),
+    async () => ({ result: "changed" } as TickOutcome),
+  );
+  const landing = runTimedRoleTick(
+    new AbortController().signal,
+    async () => {
+      await semaphore.acquire(-1); // LANDING_TIER: below every role tier
+      parked.landing = undefined;
+    },
+    () => semaphore.release(),
+    async () => ({ result: "changed" } as TickOutcome),
+  );
+  await new Promise((r) => setTimeout(r, 5));
+  // Neither queued party holds a permit yet — the fleet serves at most the cap.
+  assert.equal(parked.waiter, 1, "the waiter is still parked");
+  assert.equal(parked.landing, 1, "the landing is still parked");
+
+  // Releases hand the permit on: the lower tier number (the landing) goes first, the waiter
+  // follows. Both clear their parked marker at grant, so no loop can stay an inactive row
+  // while holding a permit.
+  releaseHolder();
+  await Promise.all([holder, waiter, landing]);
+  assert.equal(parked.waiter, undefined);
+  assert.equal(parked.landing, undefined);
 });

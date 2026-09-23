@@ -111,6 +111,7 @@ export class LoopRunner {
     // same on disk — pi session and worktree edits in place — so resume it the same way.
     if (this.state.running && role !== DIRECTOR_ROLE) this.state.resumePending = true;
     this.state.running = false;
+    this.state.parkedSince = undefined;
   }
 
   private save(): void {

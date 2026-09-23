@@ -7,12 +7,12 @@ import { dequeuePrompt, submitPrompt } from "../src/inbox.js";
 import { allRoleIds } from "../src/roles.js";
 import { snapshot } from "../src/ui/status.js";
 import { renderStatus } from "../src/ui/status-render.js";
-import { loopPhase } from "../src/ui/status-model.js";
+import { loopPhase, sortLoopsByState } from "../src/ui/status-model.js";
 import { enqueueLanding } from "../src/land-queue.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { recordDailyCost } from "../src/budget.js";
 import { initProject } from "../src/init.js";
-import { landingStatePath, landQueueDir } from "../src/paths.js";
+import { landingStatePath, landQueueDir, orchestratorStatePath } from "../src/paths.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { makeRepo, tmpdir } from "./util.js";
 
@@ -304,6 +304,56 @@ test("loopPhase describes each loop state", () => {
   assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
   const d = freshLoopState("director");
   assert.equal(loopPhase(d, true), "waiting for prompts");
+});
+
+// BUGS.md 2026-09-24 — the display must mirror the concurrency cap: a tick parked in the
+// semaphore queue holds no permit, so it renders its true state (`awaiting slot`) and stays
+// out of the active set an operator counts against maxConcurrent.
+test("a parked waiter renders `awaiting slot` and stays out of the active set", () => {
+  const s = freshLoopState("clean");
+  s.running = true;
+  s.parkedSince = Date.now() - 5_000;
+  assert.match(loopPhase(s, true), /^awaiting slot 5s$/);
+  // Permit granted (the orchestrator clears parkedSince at acquire): the same loop becomes
+  // an active, permit-holding working tick again.
+  s.parkedSince = undefined;
+  assert.equal(loopPhase(s, true), "working");
+  // The parked label is not an active phase: sortLoopsByState puts it behind the working and
+  // landing rows, so active-row counting never includes a waiter.
+  const sorted = sortLoopsByState([
+    { role: "clean", phase: "awaiting slot 5s" },
+    { role: "feature", phase: "working 5s" },
+    { role: "bugfix", phase: "landing 5s" },
+  ]);
+  assert.deepEqual(sorted.map((r) => r.role), ["bugfix", "feature", "clean"]);
+});
+
+test("a rendered fleet shows active rows equal to permit holders: parked waiters read `awaiting slot`", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  // A live-looking orchestrator (this process's pid) so loopPhase renders in-flight states.
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(
+    orchestratorStatePath(repo),
+    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: [] }),
+  );
+  // One permit-holding tick (running, no parkedSince) and two parked waiters.
+  const holder = freshLoopState("feature");
+  holder.running = true;
+  holder.lastTickStartedAt = Date.now() - 5_000; // renders the elapsed working detail
+  saveLoopState(repo, holder);
+  for (const role of ["clean", "organize"]) {
+    const parked = freshLoopState(role);
+    parked.running = true;
+    parked.parkedSince = Date.now() - 5_000;
+    saveLoopState(repo, parked);
+  }
+  const text = renderStatus(repo, snapshot(repo));
+  // The waiters show their true state, not `working`.
+  assert.equal(text.split("\n").filter((l) => l.includes("awaiting slot")).length, 2);
+  // Exactly one active working row: the only real permit holder.
+  assert.equal(text.split("\n").filter((l) => /\bworking \d/.test(l)).length, 1);
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
 
 // Merge queue 4/5 — the snapshot's landQueue: depth from the queue files, and inFlight only

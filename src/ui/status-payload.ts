@@ -56,7 +56,7 @@ export function statusPayload(root: string): object {
     loops: snap.loops.map((s) => {
       // One live tail read per running loop per poll (was up to three — see renderStatus).
       // The kind follows the phase (progressKind) — see renderStatus / BUGS.md 2026-09-22.
-      const live = s.running ? readLiveProgress(root, s.role, progressKind(s)) : null;
+      const live = s.running && !s.parkedSince ? readLiveProgress(root, s.role, progressKind(s)) : null;
       const m = displayTokenMetrics(root, s, live);
       return {
         role: s.role,

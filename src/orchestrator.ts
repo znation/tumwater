@@ -752,13 +752,24 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // across polls too: a work-role arrival jumps ahead of maintenance ticks that queued
         // in an earlier poll (in-flight ticks always run to completion).
         const usesSlot = runner.role !== DIRECTOR_ROLE;
+        // Mark the parked waiter while it waits: it holds no permit yet, so the dashboards
+        // render `awaiting slot` (an inactive state) and the active rows keep tracking
+        // maxConcurrent (BUGS.md 2026-09-24). Cleared the moment the permit is granted. The
+        // director never queues, so it is never a parked waiter.
+        runner.state.parkedSince = usesSlot ? Date.now() : undefined;
         // The tick's own run time (null when it never ran or was cut off): the drain-window
         // sample is taken only for a tick that finished on its own.
         let durationMs: number | null = null;
         const task = (async () => {
           durationMs = await runTimedRoleTick(
             signal,
-            usesSlot ? () => semaphore.acquire(roleTier(runner.role)) : async () => {},
+            usesSlot
+              ? async () => {
+                  await semaphore.acquire(roleTier(runner.role));
+                  // Permit granted: the tick is now an active, permit-holding state.
+                  runner.state.parkedSince = undefined;
+                }
+              : async () => {},
             usesSlot ? () => semaphore.release() : () => {},
             () => runner.tick(),
           );

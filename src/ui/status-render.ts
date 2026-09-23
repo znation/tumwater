@@ -53,7 +53,7 @@ function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgres
   // author's task — don't prepend it; the phase cell already carries the reviewer's live
   // detail. The landing label rides the same guard: the landing role is not running, so the
   // bare phase ("landing <elapsed>") is returned without a work-item prefix.
-  if (!s.running || s.phase === "review") return phase;
+  if (!s.running || s.parkedSince || s.phase === "review") return phase;
   const p = live === undefined ? readLiveProgress(root, s.role) : live;
   const work = p?.currentWork;
   return work ? `${work} · ${phase}` : phase;
@@ -110,7 +110,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   const withMetrics = snap.loops.map((s) => {
     // The tail read names the run kind the loop's phase describes (progressKind) — a gate
     // run's session mid-tick must not reset the working cell's counts (BUGS.md 2026-09-22).
-    const live = s.running ? readLiveProgress(root, s.role, progressKind(s)) : null;
+    const live = s.running && !s.parkedSince ? readLiveProgress(root, s.role, progressKind(s)) : null;
     return {
       s,
       m: displayTokenMetrics(root, s, live),

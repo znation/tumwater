@@ -211,6 +211,13 @@ export interface LoopState {
   lastTickEndedAt?: number;
   /** True while a tick is in flight (best-effort; cleared on orchestrator start). */
   running?: boolean;
+  /** Epoch ms since the orchestrator reserved this loop but its tick still waits in the
+   * semaphore queue: it holds no maxConcurrent permit and runs no pi yet. Transient — set
+   * by the orchestrator, cleared the moment the permit is granted (and defensively on tick
+   * outcome / orchestrator start) — and never persisted, so dashboards can render the
+   * parked waiter as `awaiting slot` and keep the active-state rows equal to the real
+   * permit holders (BUGS.md 2026-09-24). */
+  parkedSince?: number;
   /** True when the last tick was interrupted mid-task — aborted by a harness shutdown, or
    * truncated at the model's context ceiling — with its pi session (and any uncommitted
    * worktree edits, for shutdowns) left in place: the next tick resumes that session

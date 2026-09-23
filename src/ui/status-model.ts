@@ -120,6 +120,11 @@ export function loopPhase(
   // shows it — a dead fleet's marker is stale by definition.
   if (landing) return `landing ${duration(Date.now() - landing.startedAt)}`;
   if (s.running) {
+    // A parked waiter is reserved against double-scheduling but holds no maxConcurrent permit
+    // and runs no pi yet: render its true state and keep it OUT of the active set (isActivePhase)
+    // so the operator can count active rows against the cap — a landing visibly counts, a
+    // parked waiter visibly does not (BUGS.md 2026-09-24).
+    if (s.parkedSince) return `awaiting slot ${duration(Date.now() - s.parkedSince)}`;
     // The tick's work is committed and under adversarial review: the raw log tail now
     // describes the reviewer run — show its live progress with a "reviewing" label. The
     // reviewer's run writes the same role log as the author's (each `session` event names
@@ -215,7 +220,7 @@ export function displayTokenMetrics(
   s: LoopState,
   live?: LiveProgress | null,
 ): { generated: number; peakCtx: number } {
-  const p = s.running ? (live === undefined ? readLiveProgress(root, s.role) : live) : null;
+  const p = s.running && !s.parkedSince ? (live === undefined ? readLiveProgress(root, s.role) : live) : null;
   return {
     generated: s.generatedTokens + (p?.outputTokens ?? 0),
     peakCtx: Math.max(s.peakContextTokens, p?.peakContextTokens ?? 0),
