@@ -31,8 +31,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc && node scripts/stamp-build.mjs",
     "prepack": "npm run build",
-    "test": "npm run build && node dist/src/test-runner.js",
-    "test:e2e": "npm run build && node dist/src/test-runner.js e2e",
+    "test": "tsc --incremental && node scripts/stamp-build.mjs && node dist/src/test-runner.js",
+    "test:e2e": "tsc --incremental && node scripts/stamp-build.mjs && node dist/src/test-runner.js e2e",
     "tumwater": "node dist/src/cli.js"
   },
   "devDependencies": {
