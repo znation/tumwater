@@ -40,7 +40,8 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 `status` (`--json`), `report` (`--days N`; `--failures` for the Markdown failure digest),
 `doctor`, `logs` (`-f`, `--role <id>`, `-n N`, `--prompt`), `prompt "text"` / `--list` /
 `--cancel <n>`, `reset-counters [--role <id>]`, `wake [--role <id>]`, `abort --role <id>`,
-`pause` / `resume`, and `help` / `version`. All thirteen roles — `feature`, `bugfix`, `plan`,
+`pause` / `resume`, and `help` / `version`. The agent binary is configurable
+(`TUMWATER_PI_BIN` → `agentBin` → `pi`). All thirteen roles — `feature`, `bugfix`, `plan`,
 `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`, `qa`, `telemetry`, `improve`,
 `steward` — plus the director are enabled by default; user-defined loops come from `customLoops`
 in tumwater.json or by prompting the director.
@@ -65,9 +66,6 @@ Open items:
 - Open bug: a change rejected early in a batch keeps its role blocked for the rest of the
   batch — the author cannot start the fix tick until every other batched change finishes
   review, build check, and merge (found 2026-09-23).
-- Open bug: the active-state rows an operator counts against `maxConcurrent` do not track the
-  real permit holders — a tick parked in the semaphore queue renders as `working`, so a landing
-  that holds a permit looks like it runs outside the cap (reported 2026-09-22).
 - Open bug: a 429 storm still has no fleet-wide hold — each tick now retries its own 429, but
   concurrent loops keep hammering a rate-limited provider instead of backing off together
   (found 2026-09-21).
@@ -80,8 +78,9 @@ Open items:
 - Open bug: the budget fallback has no liveness check — an unreachable free model turns the
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; the PLANS.md portability series 5/7–7/7 remain;
-  1–4b/7 landed by 2026-09-23).
+  binary (planned 2026-09-14, requested by user; PLANS.md items 6/7 — configurable verify
+  command — and 7/7 — adopt an existing repo without hijacking its README — remain; 1–5/7
+  landed by 2026-09-24).
 - Planned: tell ticks to fan out independent tool calls in one turn (planned 2026-09-23,
   requested by user).
 - Planned: bound tool output head+tail with a tumwater pi extension (planned 2026-09-23,
@@ -89,7 +88,7 @@ Open items:
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`9fe162e`): build clean, suite 1323/1323.
+Current main (`a9933af`): build clean, suite 1343/1343.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -264,7 +263,8 @@ tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (the GUI's /api/status payload minus its serverBuildSha)
 tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits per day (default 14 days; --days bounded to the GUI's shared 1–90 window)
 tumwater report --failures [--days N]   # Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
-tumwater doctor       # pre-flight check: node, git, repo, config, fallback model, pi, locks, build (read-only; exit 0/1)
+tumwater doctor       # pre-flight check: node, git, repo, init (incl. a broken tumwater.example.json),
+                      #   fallback model, agent binary, locks, build (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
 tumwater logs --role feature --prompt   # …and the exact prompt each run received
@@ -349,8 +349,12 @@ a mistyped fallback id takes effect within ~2s.
 
 tumwater runs against any OpenAI-compatible backend pi can reach: `provider`, `model`, and
 `fallbackModel` in `tumwater.json` point at it, and an honest `contextWindow` in pi's model
-catalog is what keeps a tick inside it. See [docs/backends.md](docs/backends.md) for what a
-backend must give tumwater and a worked configuration.
+catalog is what keeps a tick inside it. The agent binary pi itself is resolved per run as
+`TUMWATER_PI_BIN` → `agentBin` in tumwater.json → `pi` on PATH — a blank value falls through to
+the next source, and a path-shaped value is normalized against the directory `tumwater run`
+started from, so the preflight, doctor, and every tick's spawn see the same binary. See
+[docs/backends.md](docs/backends.md) for what a backend must give tumwater and a worked
+configuration.
 
 ## Development
 
