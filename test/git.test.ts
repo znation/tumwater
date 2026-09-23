@@ -3,10 +3,9 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { aheadOfMainDiff, changedFiles, unquotePorcelainPath } from "../src/git-diff.js";
 import {
   aheadOfMain,
-  aheadOfMainDiff,
-  changedFiles,
   commitAll,
   commitPathsAndDiscardRest,
   currentBranch,
@@ -24,7 +23,6 @@ import {
   runGit,
   setRef,
   subjectsBetween,
-  unquotePorcelainPath,
 } from "../src/git.js";
 import {
   abortSync,

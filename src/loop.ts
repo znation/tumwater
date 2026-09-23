@@ -1,13 +1,7 @@
 import type { TumwaterConfig, LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
 import { customRole, DIRECTOR_ROLE, roleById } from "./roles.js";
-import {
-  branchHead,
-  changedFiles,
-  commitAll,
-  deleteRef,
-  isDirty,
-  setRef,
-} from "./git.js";
+import { branchHead, commitAll, deleteRef, isDirty, setRef } from "./git.js";
+import { changedFiles } from "./git-diff.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events.js";
 import { hasResumableSession } from "./pi.js";

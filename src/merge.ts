@@ -4,14 +4,13 @@ import { openQuestions } from "./backlog.js";
 import { logEvent } from "./events.js";
 import {
   COMMIT_IDENT,
-  aheadOfMainFiles,
   currentBranch,
   git,
   gitTry,
   headOf,
   runGit,
-  unquotePorcelainPath,
 } from "./git.js";
+import { aheadOfMainFiles, unquotePorcelainPath } from "./git-diff.js";
 import { abortSync } from "./worktree.js";
 import { runScopedBuildCheck } from "./build-check.js";
 import { noteGreenBaseline } from "./main-baseline.js";
