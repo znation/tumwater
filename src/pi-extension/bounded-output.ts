@@ -159,7 +159,10 @@ export function findTumwaterRoot(startDir: string = process.cwd()): string | nul
 
 /** Persist a full tool output under the harness's gitignored `.tumwater/` area and return
  * its path, or null when there is no harness root (or the write fails). Files are named
- * by `toolCallId` because parallel tool mode can interleave tool_result events. */
+ * by `toolCallId` because parallel tool mode can interleave tool_result events. The
+ * orchestrator's retention passes prune this directory with the fleet's
+ * sessionRetentionDays window (toolOutputDir in src/paths.ts), so a pointer to a full
+ * output stays readable while its tick is recent and never accumulates forever. */
 export function writeFullOutput(
   text: string,
   toolCallId: unknown,

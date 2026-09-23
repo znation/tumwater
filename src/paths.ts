@@ -115,6 +115,14 @@ export function piLogPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "log", `${role}.pi.jsonl`);
 }
 
+/** Root of the full-output files the bundled pi extension writes for oversized tool
+ * results (.tumwater/log/tool-output/<toolCallId>.log). Pruned by the same sessionRetentionDays
+ * window as sessions (orchestrator.ts's two retention passes): a pointer to a tool result is
+ * only useful while its tick is recent, and the files otherwise accumulate without bound. */
+export function toolOutputDir(root: string): string {
+  return path.join(tumwaterDir(root), "log", "tool-output");
+}
+
 /** Root of all pi session dirs under .tumwater/sessions/. */
 export function sessionsRootDir(root: string): string {
   return path.join(tumwaterDir(root), "sessions");

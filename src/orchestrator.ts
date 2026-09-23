@@ -34,6 +34,7 @@ import {
   landingStatePath,
   orchestratorStatePath,
   sessionsRootDir,
+  toolOutputDir,
 } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { p75TickDurationMs, type Redeployer } from "./redeploy.js";
@@ -206,9 +207,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // pruneOldFiles deletes everything older than N days; JSON has no "keep forever" value, so
   // 0 is the off switch rather than "delete all sessions now".)
   if (config.sessionRetentionDays > 0) {
-    const pruned = pruneOldFiles(sessionsRootDir(root), config.sessionRetentionDays);
+    const pruned =
+      pruneOldFiles(sessionsRootDir(root), config.sessionRetentionDays) +
+      pruneOldFiles(toolOutputDir(root), config.sessionRetentionDays);
     if (pruned > 0) {
-      warnEvent(root, "harness", `pruned ${pruned} old pi session file(s)`);
+      warnEvent(root, "harness", `pruned ${pruned} old pi session/tool-output file(s)`);
     }
   }
 
@@ -364,8 +367,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         }
         const pruneNow = Date.now();
         if (retention > 0) {
-          const pruned = pruneOldFiles(sessionsRootDir(root), retention);
-          if (pruned > 0) warnEvent(root, "harness", `pruned ${pruned} old pi session file(s)`);
+          const pruned =
+            pruneOldFiles(sessionsRootDir(root), retention) + pruneOldFiles(toolOutputDir(root), retention);
+          if (pruned > 0) warnEvent(root, "harness", `pruned ${pruned} old pi session/tool-output file(s)`);
           lastPruneAt = pruneNow;
         }
         lastRetention = retention;

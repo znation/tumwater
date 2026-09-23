@@ -449,6 +449,18 @@ function seedOldSession(repo: string, role: string, days: number): string {
   return file;
 }
 
+/** Seed a full-tool-output file under .tumwater/log/tool-output/ (what the bundled pi
+ * extension writes for oversized tool results) backdated `days` days old. */
+function seedOldToolOutput(repo: string, days: number): string {
+  const dir = path.join(repo, ".tumwater", "log", "tool-output");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `call-old-${Date.now()}.log`);
+  fs.writeFileSync(file, "tool output\n");
+  const t = (Date.now() - days * 24 * 3600 * 1000) / 1000;
+  fs.utimesSync(file, t, t);
+  return file;
+}
+
 function pruneWarnings(repo: string): number {
   return readEvents(repo).filter(
     (e) => e.type === "warning" && ((e.message as string | undefined) ?? "").includes("pruned"),
@@ -484,11 +496,13 @@ test("a positive sessionRetentionDays still prunes old sessions at startup", asy
   config.sessionRetentionDays = 7;
   saveConfig(repo, config);
   const session = seedOldSession(repo, "clean", 30);
+  const toolOutput = seedOldToolOutput(repo, 30);
   const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => !fs.existsSync(session), "the old session to be pruned");
-    assert.equal(pruneWarnings(repo), 1, "one prune warning for the deleted file");
+    assert.ok(!fs.existsSync(toolOutput), "the old full-tool-output file is pruned too");
+    assert.equal(pruneWarnings(repo), 1, "one prune warning for the deleted files");
   } finally {
     restore();
     await orch.stop();
