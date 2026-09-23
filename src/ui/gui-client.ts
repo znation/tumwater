@@ -103,10 +103,15 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
 
   // Window totals per role, in the same order renderReportMarkdown's "Ticks by role" line
   // uses — count desc, then name asc — so legend and stack order match the Markdown report.
+  // The fold covers costByRole too (it rides the same tick_end events, so its roles are a
+  // subset in practice) so the single shared order can never drop a spend-bearing role from
+  // the cost chart.
   function reportRoleOrder(data) {
     const byRole = {};
-    for (const d of data.series)
+    for (const d of data.series) {
       for (const [role, n] of Object.entries(d.ticksByRole)) byRole[role] = (byRole[role] || 0) + n;
+      for (const role of Object.keys(d.costByRole || {})) if (!(role in byRole)) byRole[role] = 0;
+    }
     return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
 
@@ -118,7 +123,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   }
 
   // Shared bar geometry: fixed plot box, one slot per day so zero days keep their space and
-  // all three charts' x-axes line up. segmentsOf(day) → [{ value, color, title }] stacked
+  // all four charts' x-axes line up. segmentsOf(day) → [{ value, color, title }] stacked
   // bottom-up; each positive segment becomes a <rect> whose <title> carries the same
   // abbreviated value the stat blocks show — the text the report-tip hover chip displays
   // (zero values leave an empty slot — no rect to hover).
@@ -162,17 +167,29 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   // with more roles than palette entries still renders. The first (highest-count) role sits
   // at the bottom; the legend under the chart lists roles in that same stack order. Role
   // names are dynamic strings (custom loops): escaped like every other dynamic value.
-  function chartTicksByRole(data) {
+  // The ticks and cost charts are the same shape over different fields, so one builder takes
+  // the field name and the tooltip formatter — the two charts share reportRoleOrder's order,
+  // the palette, and the legend byte-for-byte.
+  const fmtUsd = (n) => "$" + n.toFixed(2); // the stat block's cost rule (gui report 2/3)
+  function roleStackChart(data, field, fmt) {
     const roles = reportRoleOrder(data);
     const colorOf = (i) => REPORT_PALETTE[i % REPORT_PALETTE.length];
     const svg = reportSvg(
       data.series,
-      (d) => roles.map(([role], i) => ({ value: d.ticksByRole[role] || 0, color: colorOf(i), title: d.date + " " + role + ": " + fmtTokens(d.ticksByRole[role] || 0) })),
+      (d) => roles.map(([role], i) => ({ value: d[field][role] || 0, color: colorOf(i), title: d.date + " " + role + ": " + fmt(d[field][role] || 0) })),
     );
     const legend = roles.length
       ? "<div class='legend'>" + roles.map(([role], i) => "<span><span class='swatch' style='background:" + colorOf(i) + "'></span>" + esc(role) + "</span>").join("") + "</div>"
       : "";
     return svg + legend;
+  }
+
+  function chartTicksByRole(data) {
+    return roleStackChart(data, "ticksByRole", fmtTokens);
+  }
+
+  function chartCostByRole(data) {
+    return roleStackChart(data, "costByRole", fmtUsd);
   }
   // report-chart:end
 
@@ -241,7 +258,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     ].join("");
   }
 
-  // Fetch the report on tab activation and render summary + three charts into #report.
+  // Fetch the report on tab activation and render summary + four charts into #report.
   async function fetchReport() {
     const panel = document.getElementById("report");
     try {
@@ -250,7 +267,8 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
       panel.innerHTML = "<div class='stats'>" + reportSummary(d) + "</div>" +
         block("Output tokens per day", chartTokens(d)) +
         block("Ticks per day by role", chartTicksByRole(d)) +
-        block("Commits per day", chartCommits(d));
+        block("Commits per day", chartCommits(d)) +
+        block("Cost per day by role", chartCostByRole(d));
     } catch (e) {
       // A failed poll is no longer a bare "unavailable": the apiError message names the
       // endpoint, status, and the server's error (a network failure says Failed to fetch).

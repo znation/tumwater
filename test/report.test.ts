@@ -56,14 +56,16 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   const d0 = data.series[0]; // at(4)
   assert.equal(d0?.tokensOut, 500);
   assert.deepEqual(d0?.ticksByRole, { feature: 1, bugfix: 1 });
+  assert.deepEqual(d0?.costByRole, { feature: 0.5 }, "cost splits by role from the same tick_end event");
   assert.ok(Math.abs((d0?.costUsd ?? -1) - 0.5) < 1e-9);
   const d1 = data.series[1]; // at(3): a commit day with no ticks
   assert.equal(d1?.commits, 1);
   assert.equal(d1?.tokensOut, 0);
   const d2 = data.series[2]; // at(2): zero-filled gap
-  assert.deepEqual(d2, { date: keyOf(at(2)), tokensOut: 0, ticksByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
+  assert.deepEqual(d2, { date: keyOf(at(2)), tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
   const d3 = data.series[3]; // at(1)
   assert.equal(d3?.tokensOut, 1500);
+  assert.deepEqual(d3?.costByRole, { feature: 1.25 });
   assert.ok(Math.abs((d3?.costUsd ?? -1) - 1.25) < 1e-9);
   const d4 = data.series[4]; // today
   assert.equal(d4?.commits, 1);
@@ -73,6 +75,11 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   assert.equal(data.totals.ticks, 4);
   assert.equal(data.totals.commits, 2);
   assert.ok(Math.abs(data.totals.costUsd - 1.75) < 1e-9);
+  // costByRole folds from the same tick_end events as costUsd (never a second pass), so the
+  // per-day split sums exactly to the day's cost — and the window's to the Totals cost.
+  for (const d of data.series) {
+    assert.ok(Math.abs(Object.values(d.costByRole).reduce((a, b) => a + b, 0) - d.costUsd) < 1e-9, `${d.date} costByRole sums to costUsd`);
+  }
   assert.equal(data.totals.featuresDone, 0);
   assert.equal(data.totals.bugsFixed, 0);
 });
@@ -187,6 +194,7 @@ test("collectReport degrades to zeros when every source is missing", () => {
   assert.equal(data.to, keyOf(at(0)));
   for (const d of data.series) {
     assert.deepEqual(d.ticksByRole, {});
+    assert.deepEqual(d.costByRole, {});
     assert.equal(d.tokensOut + d.commits + d.costUsd + d.featuresDone + d.bugsFixed, 0);
   }
   assert.deepEqual(data.totals, { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
@@ -200,9 +208,9 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
     from,
     to,
     series: [
-      { date: "2026-09-08", tokensOut: 0, ticksByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
-      { date: "2026-09-09", tokensOut: 600_000, ticksByRole: { feature: 3, bugfix: 1 }, commits: 2, costUsd: 0.86, featuresDone: 1, bugsFixed: 0 },
-      { date: "2026-09-10", tokensOut: 1_234_567, ticksByRole: { feature: 2 }, commits: 1, costUsd: 1.48, featuresDone: 0, bugsFixed: 1 },
+      { date: "2026-09-08", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-09", tokensOut: 600_000, ticksByRole: { feature: 3, bugfix: 1 }, costByRole: {}, commits: 2, costUsd: 0.86, featuresDone: 1, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 1_234_567, ticksByRole: { feature: 2 }, costByRole: {}, commits: 1, costUsd: 1.48, featuresDone: 0, bugsFixed: 1 },
     ],
     totals: { tokensOut: 1_834_567, ticks: 6, commits: 3, costUsd: 2.34, featuresDone: 1, bugsFixed: 1 },
   };
@@ -226,8 +234,10 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   // Max day: exactly 20 blocks; M suffix above a million.
   assert.equal(lines[10], `| 09-10 | 1.2M ${"█".repeat(20)} | 2 | 1 | $1.48 |`);
   assert.equal(lines[11], "");
-  // Window totals per role: feature 3+2=5 before bugfix 1 (count desc).
+  // Window totals per role: feature 3+2=5 before bugfix 1 (count desc); the cost line under
+  // it renders "-" — no role in this fixture carries spend.
   assert.equal(lines[12], "**Ticks by role:** feature — 5 · bugfix — 1");
+  assert.equal(lines[13], "**Cost by role:** -");
 });
 
 test("renderReportMarkdown renders token counts through the shared compactTokens rule", () => {
@@ -236,7 +246,7 @@ test("renderReportMarkdown renders token counts through the shared compactTokens
     from: "2026-09-10",
     to: "2026-09-10",
     series: [
-      { date: "2026-09-10", tokensOut: 1_500, ticksByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 1_500, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
     totals: { tokensOut: 1_500, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
   };
@@ -253,7 +263,7 @@ test("renderReportMarkdown shows a one-day window as one whole day, matching the
     from: "2026-09-10",
     to: "2026-09-10",
     series: [
-      { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
     totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
   };
@@ -288,12 +298,32 @@ test("renderReportMarkdown orders the role line by count desc then name asc", ()
   const data: ReportData = {
     ...base,
     series: [
-      { date: base.from, tokensOut: 0, ticksByRole: { zeta: 5, alpha: 5 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
-      { date: base.to, tokensOut: 0, ticksByRole: { beta: 2 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: base.from, tokensOut: 0, ticksByRole: { zeta: 5, alpha: 5 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: base.to, tokensOut: 0, ticksByRole: { beta: 2 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
     totals: { ...base.totals, ticks: 12 },
   };
   assert.match(renderReportMarkdown(data), /\*\*Ticks by role:\*\* alpha — 5 · zeta — 5 · beta — 2/);
+});
+
+test("renderReportMarkdown prints a Cost by role line ranked by spend desc then name asc", () => {
+  const base = collectReport(tmpdir(), 2);
+  const data: ReportData = {
+    ...base,
+    series: [
+      { date: base.from, tokensOut: 0, ticksByRole: { feature: 3, zeta: 1 }, costByRole: { feature: 0.3 }, commits: 0, costUsd: 0.3, featuresDone: 0, bugsFixed: 0 },
+      { date: base.to, tokensOut: 0, ticksByRole: { bugfix: 1 }, costByRole: { alpha: 0.9, bugfix: 0.9, feature: 0 }, commits: 0, costUsd: 1.8, featuresDone: 0, bugsFixed: 0 },
+    ],
+    totals: { ...base.totals, ticks: 5, costUsd: 2.1 },
+  };
+  const md = renderReportMarkdown(data);
+  // Ranked by spend (the two $0.90 roles first), not by tick count — feature leads the ticks
+  // line with 3 ticks but sits last on the cost line; equal spend breaks by name asc (alpha
+  // before bugfix). zeta has ticks but no spend, and feature's $0 entry: both omitted.
+  assert.match(md, /\*\*Cost by role:\*\* alpha — \$0\.90 · bugfix — \$0\.90 · feature — \$0\.30/);
+  assert.match(md, /\*\*Ticks by role:\*\* feature — 3 · bugfix — 1 · zeta — 1/);
+  // The window's role split sums exactly to the Totals cost (both sourced from tick_end alone).
+  assert.match(md, /\*\*Totals:\*\* 0 output tokens · 5 ticks · 0 commits · \$2\.10 ·/);
 });
 
 // The CLI runs main() on import and reports failures via process.exit, so it is tested as a

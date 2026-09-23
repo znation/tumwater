@@ -56,6 +56,11 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
     assert.equal(res.status, 200);
     const d = (await res.json()) as ReturnType<typeof collectReport>;
     assert.deepEqual(d, collectReport(repo, 14), "the endpoint serves collectReport's ReportData");
+    // costByRole rides along in the JSON — split from the same tick_end events as costUsd.
+    const spendDay = d.series.find((x) => x.date === localDayKey(atNoon(3)));
+    assert.deepEqual(spendDay?.costByRole, { feature: 0.25 }, "/api/report carries costByRole per role");
+    const todayTick = d.series.find((x) => x.date === localDayKey(atNoon(0)));
+    assert.deepEqual(todayTick?.costByRole, { steward: 1.5 });
     assert.equal(d.totals.featuresDone, 1, "a dated Done heading counts as a feature done");
     assert.equal(d.totals.bugsFixed, 1, "a dated Fixed heading counts as a bug fixed");
 
@@ -214,20 +219,22 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
     chartTokens(d: ReportData): string;
     chartTicksByRole(d: ReportData): string;
     chartCommits(d: ReportData): string;
+    chartCostByRole(d: ReportData): string;
   };
   const escImpl = (s: string) => String(s).replace(/[&<>]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c] as string));
-  const builders = new Function("esc", "fmtTokens", `${m[1]}\nreturn { chartTokens, chartTicksByRole, chartCommits };`) as unknown as (
+  const builders = new Function("esc", "fmtTokens", `${m[1]}\nreturn { chartTokens, chartTicksByRole, chartCommits, chartCostByRole };`) as unknown as (
     esc: (s: string) => string,
     fmtTokens: (n: number) => string,
   ) => ChartBuilders;
-  const { chartTokens, chartTicksByRole, chartCommits } = builders(escImpl, fmtTokens);
+  const { chartTokens, chartTicksByRole, chartCommits, chartCostByRole } = builders(escImpl, fmtTokens);
 
   // Fixture: 14 days — tokens rising to a max on the last day, two roles with distinct window
   // totals (feature > bugfix), one zero day in the middle.
-  const mkDay = (date: string, tokensOut: number, ticksByRole: Record<string, number>, commits: number): ReportDay => ({
+  const mkDay = (date: string, tokensOut: number, ticksByRole: Record<string, number>, commits: number, costByRole: Record<string, number> = {}): ReportDay => ({
     date,
     tokensOut,
     ticksByRole,
+    costByRole,
     commits,
     costUsd: 0.5,
     featuresDone: 0,
@@ -237,7 +244,7 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
   for (let i = 0; i < 14; i++) {
     const date = `2026-09-${String(i + 1).padStart(2, "0")}`;
     if (i === 7) series.push({ ...mkDay(date, 0, {}, 0), costUsd: 0 }); // the zero day
-    else series.push(mkDay(date, (i + 1) * 1000, i % 2 === 0 ? { feature: 3, bugfix: 1 } : { feature: 2 }, i % 3 === 0 ? 2 : 1));
+    else series.push(mkDay(date, (i + 1) * 1000, i % 2 === 0 ? { feature: 3, bugfix: 1 } : { feature: 2 }, i % 3 === 0 ? 2 : 1, i % 2 === 0 ? { feature: 0.06, bugfix: 0.02 } : { feature: 0.04 }));
   }
   const data: ReportData = {
     days: 14,
@@ -287,6 +294,21 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
   assert.match(legend, /style='background:#7ec8ff'><\/span>feature<\/span>/, "first role gets palette[0]");
   assert.match(legend, /style='background:#7fd88f'><\/span>bugfix<\/span>/, "second role gets palette[1]");
 
+  // "Cost per day by role": the fourth chart shares the ticks chart's role order, palette,
+  // and legend byte-for-byte, but its segments and tooltips come from costByRole through
+  // fmtUsd ($ + toFixed(2), the stat block's cost rule).
+  const costRects = parseRects(chartCostByRole(data));
+  assert.equal(costRects.length, 7 * 2 + 6 * 1, "one segment per (day, role) with spend (the zero day carries none)");
+  const costDay0 = costRects.filter((r) => r.title.startsWith("2026-09-01 "));
+  assert.equal(costDay0.length, 2);
+  const costFeat = costDay0.find((r) => r.title.includes("feature"))!;
+  const costBug = costDay0.find((r) => r.title.includes("bugfix"))!;
+  assert.ok(costFeat.y > costBug.y, "the cost stack shares the ticks chart's stack order");
+  assert.equal(costFeat.title, "2026-09-01 feature: $0.06", "cost tooltips format through fmtUsd");
+  assert.ok(Math.abs(costFeat.h - 3 * costBug.h) < 0.05, "segment heights are proportional to spend");
+  const legendOf = (s: string) => s.slice(s.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartCostByRole(data)), legendOf(chartTicksByRole(data)), "the cost chart's legend is identical to the ticks chart's");
+
   // Role names are dynamic strings (custom loops): escaped in legend and tooltips like every
   // other dynamic value — raw HTML in a role name must not render.
   const hostile: ReportData = {
@@ -296,6 +318,11 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
   const hostileSvg = chartTicksByRole(hostile);
   assert.ok(!hostileSvg.includes("<b>x</b>"), "raw HTML in a role name is not rendered");
   assert.match(hostileSvg, /&lt;b&gt;x&lt;\/b&gt;/, "role names are escaped in legend and tooltips");
+  // The cost chart shares the same escaping and renders no segments for a costless day.
+  const hostileCost = chartCostByRole(hostile);
+  assert.ok(!hostileCost.includes("<b>x</b>"), "raw HTML in a role name is not rendered in the cost chart");
+  assert.match(hostileCost, /&lt;b&gt;x&lt;\/b&gt;/);
+  assert.equal(parseRects(hostileCost).length, 0, "a day with no costByRole renders no cost segments");
 });
 
 test("the dashboard page abbreviates millions with M, in lockstep with compactTokens", async () => {

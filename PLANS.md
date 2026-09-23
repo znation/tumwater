@@ -36,21 +36,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ (landed 2026-09-22) and 4b/7 ✓ (landed 2026-09-22) are done. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here — the series has no critical path left.
 
-### Cost by role in the usage report (planned 2026-09-25)
-
-**Goal.** The report answers "how much did the fleet spend" only fleet-wide: `collectReport` sums `costUsd` per day (src/ui/report.ts:112) and `renderReportMarkdown` prints one cost column, while the per-role breakdown stops at tick counts (`**Ticks by role:**`, src/ui/report.ts:172-177) — an operator tuning per-role intervals or disabling roles cannot see which loop burns the budget. The data is already on the wire: every `tick_end` event carries `costUsd` (src/loop.ts:453) and `eventRole` (src/events.ts:110) extracts the loop id, and the landing gate's reviewer/conflict spend folds into the authoring role's tick cost via `foldLandingUsage` (src/loop.ts:359), so `tick_end.costUsd` alone is the complete per-role picture. Add a `costByRole` breakdown mirroring the existing `ticksByRole` one: a `**Cost by role:**` line in the Markdown report and a fourth stacked chart in the GUI report tab.
-
-**Files touched.** src/ui/report.ts, src/ui/gui-client.ts, test/report.test.ts, test/gui-report.test.ts.
-
-**Approach.** In `collectReport`'s existing `tick_end` branch, accumulate `day.costByRole[role]` alongside `day.ticksByRole[role]` (add `costByRole: Record<string, number>` to `ReportDay`; no change to `totals`). In `renderReportMarkdown`, render a `**Cost by role:**` line right after `**Ticks by role:**`, aggregated over the window, ordered by spend desc then name asc — the same deterministic sort the ticks line uses, but ranked by cost (spend is what the operator acts on). In `gui-client.ts`, add `chartCostByRole(data)` reusing `reportRoleOrder` (add cost to its fold and keep one shared role order so legend and stack order stay identical across the two role charts), a `fmtUsd = (n) => "$" + n.toFixed(2)` tooltip formatter matching the stat block's cost rule (gui-client.ts:238), and render it as a fourth `block(...)` after "Commits per day". `/api/report` needs no change — it serves `ReportData` as JSON, so `costByRole` rides along.
-
-**Acceptance criteria.**
-- `tumwater report` prints a `**Cost by role:**` line with per-role spend over the window, ordered by spend desc then name asc; roles with $0 spend are omitted; an all-zero window renders `-`.
-- The GUI report tab shows a fourth stacked chart, "Cost per day by role", sharing the ticks chart's role order, palette, and legend; hovering a segment shows `<date> <role>: $<x.xx>`.
-- `costByRole` sums exactly to the existing per-day `costUsd` and the Totals cost (no double counting: still sourced only from `tick_end`).
-- Custom loop ids appear like built-in ones (no role-name allowlist), matching `ticksByRole`.
-- `npm test` passes with the new tests in test/report.test.ts (aggregation + Markdown line) and test/gui-report.test.ts (`/api/report` JSON carries `costByRole`).
-
 ### Optional shared-token auth for the GUI dashboard — `gui --token <secret>` (planned 2026-09-23, re-audited 2026-09-25)
 
 **Goal.** The dashboard is documented as having no authentication: `--all-interfaces` exposes the director prompt box, the budget editor, and every transcript to anyone who can reach the port (the doc comment above `startGui`, src/ui/gui.ts:253-256, says so explicitly, and the startup banner warns it). An operator who must expose the dashboard on a LAN has no way to protect it short of a reverse proxy. Add an opt-in shared token: `tumwater gui --token <secret>` requires a credential on every request. The default stays open — binding to localhost is the opinionated default, `--all-interfaces` is the caller's deliberate choice, and flipping auth on by default would break curl/scripts hitting `/api/status`; `--token` gives that caller a one-flag protection instead. (Default-on could be a later, separately-planned change if the user asks; not decided here.)
@@ -71,6 +56,34 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm test` passes with new tests in test/gui.test.ts (the file that owns API and page-route behavior; gui-server.test.ts stays survivability-only): open access unchanged, 401 JSON on missing/wrong/empty token for `GET /` and both a GET and a POST `/api/*` route, and access via Bearer header and via `?token=` giving today's responses.
 
 ## Done
+
+### Cost by role in the usage report (planned 2026-09-25, done 2026-09-23)
+
+**Done 2026-09-23 by feature.** Landed as described (all four files from the plan's list, no
+more), with three decisions the implementation pinned:
+- The GUI cost chart shares `reportRoleOrder`'s ticks-based order (count desc, name asc) —
+  the single shared order the acceptance criterion demands — while the Markdown cost line
+  ranks by spend desc, per the plan's own wording; the two are intentionally different ranks.
+  `reportRoleOrder` folds `costByRole`'s keys too, so the shared order can never drop a
+  spend-bearing role.
+- Zero-spend roles are omitted at aggregation time, not display time: a tick_end with no (or
+  zero) `costUsd` leaves no `costByRole` key, so "$0 roles omitted" holds on the data itself.
+- `chartTicksByRole`/`chartCostByRole` are now two thin wrappers over one `roleStackChart`
+  builder (shared order, palette, legend, geometry) — the duplication the fourth chart would
+  otherwise have introduced does not exist.
+
+**Goal.** The report answers "how much did the fleet spend" only fleet-wide: `collectReport` sums `costUsd` per day (src/ui/report.ts:112) and `renderReportMarkdown` prints one cost column, while the per-role breakdown stops at tick counts (`**Ticks by role:**`, src/ui/report.ts:172-177) — an operator tuning per-role intervals or disabling roles cannot see which loop burns the budget. The data is already on the wire: every `tick_end` event carries `costUsd` (src/loop.ts:453) and `eventRole` (src/events.ts:110) extracts the loop id, and the landing gate's reviewer/conflict spend folds into the authoring role's tick cost via `foldLandingUsage` (src/loop.ts:359), so `tick_end.costUsd` alone is the complete per-role picture. Add a `costByRole` breakdown mirroring the existing `ticksByRole` one: a `**Cost by role:**` line in the Markdown report and a fourth stacked chart in the GUI report tab.
+
+**Files touched.** src/ui/report.ts, src/ui/gui-client.ts, test/report.test.ts, test/gui-report.test.ts.
+
+**Approach.** In `collectReport`'s existing `tick_end` branch, accumulate `day.costByRole[role]` alongside `day.ticksByRole[role]` (add `costByRole: Record<string, number>` to `ReportDay`; no change to `totals`). In `renderReportMarkdown`, render a `**Cost by role:**` line right after `**Ticks by role:**`, aggregated over the window, ordered by spend desc then name asc — the same deterministic sort the ticks line uses, but ranked by cost (spend is what the operator acts on). In `gui-client.ts`, add `chartCostByRole(data)` reusing `reportRoleOrder` (add cost to its fold and keep one shared role order so legend and stack order stay identical across the two role charts), a `fmtUsd = (n) => "$" + n.toFixed(2)` tooltip formatter matching the stat block's cost rule (gui-client.ts:238), and render it as a fourth `block(...)` after "Commits per day". `/api/report` needs no change — it serves `ReportData` as JSON, so `costByRole` rides along.
+
+**Acceptance criteria.**
+- `tumwater report` prints a `**Cost by role:**` line with per-role spend over the window, ordered by spend desc then name asc; roles with $0 spend are omitted; an all-zero window renders `-`.
+- The GUI report tab shows a fourth stacked chart, "Cost per day by role", sharing the ticks chart's role order, palette, and legend; hovering a segment shows `<date> <role>: $<x.xx>`.
+- `costByRole` sums exactly to the existing per-day `costUsd` and the Totals cost (no double counting: still sourced only from `tick_end`).
+- Custom loop ids appear like built-in ones (no role-name allowlist), matching `ticksByRole`.
+- `npm test` passes with the new tests in test/report.test.ts (aggregation + Markdown line) and test/gui-report.test.ts (`/api/report` JSON carries `costByRole`).
 
 ### Bound tool output head+tail with a tumwater pi extension (planned 2026-09-23, re-audited 2026-09-24, user request, done 2026-09-24)
 

@@ -13,11 +13,14 @@ export { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
 
 /** One day of a usage report: the local calendar day key plus what the fleet did on it.
  * `ticksByRole` counts tick_end events per loop id (role ids — works for custom loops too);
- * tokensOut sums their `tokens`; commits counts `merged` events; costUsd sums `costUsd`. */
+ * tokensOut sums their `tokens`; commits counts `merged` events; costUsd sums `costUsd`.
+ * `costByRole` splits that same costUsd per loop id — sourced from the same tick_end events
+ * (never a second pass), so its per-day sum equals the day's costUsd by construction. */
 export interface ReportDay {
   date: string; // "YYYY-MM-DD" local day key
   tokensOut: number;
   ticksByRole: Record<string, number>;
+  costByRole: Record<string, number>;
   commits: number;
   costUsd: number;
   featuresDone: number;
@@ -92,6 +95,7 @@ export function collectReport(root: string, days: number): ReportData {
       date: formatDate(dayAt(i, now)),
       tokensOut: 0,
       ticksByRole: {},
+      costByRole: {},
       commits: 0,
       costUsd: 0,
       featuresDone: 0,
@@ -109,7 +113,11 @@ export function collectReport(root: string, days: number): ReportData {
       const role = eventRole(ev);
       day.ticksByRole[role] = (day.ticksByRole[role] ?? 0) + 1;
       day.tokensOut += typeof ev.tokens === "number" ? ev.tokens : 0;
-      day.costUsd += typeof ev.costUsd === "number" ? ev.costUsd : 0;
+      const cost = typeof ev.costUsd === "number" ? ev.costUsd : 0;
+      day.costUsd += cost;
+      // Zero-cost ticks contribute nothing, so they leave no key — the render's "$0 roles are
+      // omitted" rule then holds on the aggregation itself, not just at display time.
+      if (cost !== 0) day.costByRole[role] = (day.costByRole[role] ?? 0) + cost;
     } else if (ev.type === "merged") {
       day.commits++;
     }
@@ -175,5 +183,15 @@ export function renderReportMarkdown(data: ReportData): string {
   const roles = [...byRole.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   lines.push("");
   lines.push(`**Ticks by role:** ${roles.length === 0 ? "-" : roles.map(([r, n]) => `${r} — ${n}`).join(" · ")}`);
+  // The same breakdown for spend: window totals per role from costByRole, ranked by spend
+  // desc then name asc — spend is what the operator acts on (an operator tuning per-role
+  // intervals wants the burning loop first, not the busiest one). Zero-spend roles are
+  // omitted; an all-zero window renders "-" like the ticks line.
+  const byCost = new Map<string, number>();
+  for (const d of data.series) {
+    for (const [role, c] of Object.entries(d.costByRole)) byCost.set(role, (byCost.get(role) ?? 0) + c);
+  }
+  const spenders = [...byCost.entries()].filter(([, c]) => c > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  lines.push(`**Cost by role:** ${spenders.length === 0 ? "-" : spenders.map(([r, c]) => `${r} — ${usd(c)}`).join(" · ")}`);
   return lines.join("\n");
 }
