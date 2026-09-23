@@ -47,6 +47,13 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 in tumwater.json or by prompting the director.
 
 Open items:
+- Open bug: the status table's "last result" cell shows `queued` — a tick's live landing status
+  rather than its last completed result, duplicating the state column while work sits in the land
+  queue or under review (reported by user 2026-09-24).
+- Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its code
+  is hard-reset — `TUMWATER_REFUSED: none` has now discarded three finished bugfix ticks as
+  md-only "refuse — no reason given" commits, the latest of which moved the bug to Fixed claiming
+  its fix had landed (found 2026-09-23; re-opened 2026-09-23 — the recorded fix never landed).
 - Open bug: a `FLOW:` line without a parseable verdict is recorded as a pass — `extractFlow`
   defaults a malformed or truncated verdict to `passed`, advancing qa's rotation on a check that
   never finished (found 2026-09-23).
@@ -86,7 +93,7 @@ Open items:
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`292f642`): build clean, suite 1349/1349.
+Current main (`b65df63`): build clean, suite 1350/1350.
 <!-- tumwater:status:end -->
 
 ## How it works
