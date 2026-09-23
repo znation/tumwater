@@ -128,6 +128,32 @@ test("initProject refuses to drop the initial prompt when README has no tumwater
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");
 });
 
+test("initProject's bare-init refusal names a marker-less README", async () => {
+  // A bare init against a README without markers refused before any seed — and the message
+  // must say why the "bare init reads README" path did not fire (a README exists, but it
+  // carries no tumwater:prompt block), not just the generic "prompt required".
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "README.md"), "# mine\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own readme");
+  await assert.rejects(
+    () => initProject(repo, ""),
+    /initial prompt is required.*README\.md carries none/s,
+  );
+  for (const f of ["PLANS.md", "BUGS.md", "tumwater.json"]) {
+    assert.ok(!fs.existsSync(path.join(repo, f)), `${f} should not exist`);
+  }
+});
+
+test("initProject's bare-init refusal stays generic with no README to read", async () => {
+  // No README means there was nothing for bare init to read — no README hint in the message.
+  const dir = tmpdir();
+  await assert.rejects(
+    () => initProject(dir, "   "),
+    { message: "an initial prompt is required: tumwater init <prompt | --file prompt.md>" },
+  );
+});
+
 test("initProject accepts an existing README that already carries the prompt", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "README.md"), `# mine\n${PROMPT_START}\nmy prompt\n${PROMPT_END}\n`);

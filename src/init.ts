@@ -119,7 +119,17 @@ export async function initProject(
   // (plans/portability.md §4a/7), re-seeds with a bare `tumwater init` — the existing README
   // is never rewritten, so a prompt given here would be dropped anyway.
   if (!prompt && readInitialPrompt(root) === "") {
-    throw new Error("an initial prompt is required: tumwater init <prompt | --file prompt.md>");
+    // A bare init with no prompt is only ever refused for one of two reasons, and they have
+    // different fixes: no README (nothing to read — the message below is the whole story) or a
+    // README that lacks the managed markers (bare init reads them — name the file and the
+    // markers, or the user cannot tell why the README path the not-initialized hint promised
+    // did not fire).
+    const readmeHint = fs.existsSync(path.join(root, "README.md"))
+      ? ` (a bare \`tumwater init\` reads the prompt from README.md between ${PROMPT_START} and ${PROMPT_END}, but README.md carries none)`
+      : "";
+    throw new Error(
+      `an initial prompt is required: tumwater init <prompt | --file prompt.md>${readmeHint}`,
+    );
   }
   // The prompt rides into every tick's and director's prefill (readInitialPrompt), so an
   // unbounded one is a standing per-tick cost — the same reason customLoops.task and
