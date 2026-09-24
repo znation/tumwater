@@ -6,8 +6,9 @@
 and a status section between managed markers), PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md,
 and tumwater.json, and commits them. A bare `tumwater init` reads the prompt from an existing
 README.md's `tumwater:prompt` markers instead. A `TUMWATER.md` with the same markers takes
-precedence over README.md, so an existing project's README can stay untouched. The prompt is
-capped at 4096 characters because it rides into every tick.
+precedence over README.md, so an existing project's README can stay untouched. init never
+rewrites an existing brief: a prompt that differs from the one it carries is refused, naming the
+file to edit instead. The prompt is capped at 4096 characters because it rides into every tick.
 
 `tumwater run` then starts one loop per enabled role.
 

@@ -159,9 +159,28 @@ test("initProject accepts an existing README that already carries the prompt", a
   fs.writeFileSync(path.join(repo, "README.md"), `# mine\n${PROMPT_START}\nmy prompt\n${PROMPT_END}\n`);
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "own readme with markers");
-  const result = await initProject(repo, "prompt");
+  const result = await initProject(repo, "my prompt");
   assert.ok(!result.created.includes("README.md"));
   assert.equal(readInitialPrompt(repo), "my prompt");
+});
+
+test("initProject refuses a prompt that differs from the one a README-owned brief carries", async () => {
+  // The existing brief is never rewritten, so a different prompt used to be accepted and
+  // silently dropped ("already initialized; nothing to do") while every tick kept the old one.
+  const repo = makeRepo();
+  const readme = `# mine\n${PROMPT_START}\nmy prompt\n${PROMPT_END}\n`;
+  fs.writeFileSync(path.join(repo, "README.md"), readme);
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own readme with markers");
+  await assert.rejects(
+    () => initProject(repo, "a different prompt"),
+    /README\.md already carries a different initial prompt.*edit it in README\.md between.*bare `tumwater init`/s,
+  );
+  assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), readme);
+  for (const f of ["PLANS.md", "BUGS.md", "tumwater.json"]) {
+    assert.ok(!fs.existsSync(path.join(repo, f)), `${f} should not exist`);
+  }
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
 });
 
 // Brief resolution (plans/portability.md §7a/7) applies to BOTH init guards: a marked
@@ -201,6 +220,53 @@ test("a marked TUMWATER.md silences init's marker-less-README throw", async () =
   assert.ok(!result.created.includes("README.md"), "README.md is never created on the adopt path");
   assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), before, "README.md byte-identical");
   assert.equal(readInitialPrompt(repo), "adopted prompt");
+});
+
+test("a TUMWATER.md-owned brief refuses a different prompt instead of writing it into a new README.md", async () => {
+  // The bug (BUGS.md 2026-09-23): TUMWATER.md passed the marker guard, then the unconditional
+  // README.md write created a README carrying the NEW prompt — but readInitialPrompt resolves
+  // TUMWATER.md first, so every tick kept running the old one. The refusal names the file that
+  // actually owns the brief, and nothing is created or committed.
+  const repo = makeRepo();
+  const brief = `# mine — project brief\n${PROMPT_START}\nthe original prompt\n${PROMPT_END}\n`;
+  fs.writeFileSync(path.join(repo, "TUMWATER.md"), brief);
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own brief");
+  await assert.rejects(
+    () => initProject(repo, "a different prompt"),
+    /TUMWATER\.md already carries a different initial prompt.*edit it in TUMWATER\.md between/s,
+  );
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")), "no README.md carrying the dropped prompt");
+  for (const f of ["PLANS.md", "BUGS.md", "tumwater.json"]) {
+    assert.ok(!fs.existsSync(path.join(repo, f)), `${f} should not exist`);
+  }
+  assert.equal(fs.readFileSync(path.join(repo, "TUMWATER.md"), "utf8"), brief);
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assert.equal(readInitialPrompt(repo), "the original prompt");
+});
+
+test("a TUMWATER.md-owned brief never gains a duplicate README.md on a matching or bare init", async () => {
+  // With the brief in TUMWATER.md and no README.md, the re-seed paths (the same prompt, or none)
+  // create the backlog files and config but no README.md — one would duplicate the managed
+  // prompt + status sections in a file neither the loops nor the readme role read.
+  const repo = makeRepo();
+  fs.writeFileSync(
+    path.join(repo, "TUMWATER.md"),
+    `# mine — project brief\n${PROMPT_START}\nthe original prompt\n${PROMPT_END}\n`,
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own brief");
+  const result = await initProject(repo, "the original prompt");
+  assert.deepEqual(
+    [...result.created].sort(),
+    [".gitignore", "BUGS.md", "PLANS.md", "PRINCIPLES.md", "QUESTIONS.md", "tumwater.json"],
+  );
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")));
+  fs.rmSync(path.join(repo, "tumwater.json"));
+  const bare = await initProject(repo, "");
+  assert.deepEqual(bare.created, ["tumwater.json"]);
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")));
+  assert.equal(readInitialPrompt(repo), "the original prompt");
 });
 
 test("initProject rejects empty prompts", async () => {

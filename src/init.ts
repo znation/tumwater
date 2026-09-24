@@ -7,6 +7,7 @@ import {
   INITIAL_PROMPT_MAX_CHARS,
   PROMPT_END,
   PROMPT_START,
+  briefFile,
   readInitialPrompt,
   readmeTemplate,
 } from "./readme.js";
@@ -99,10 +100,10 @@ interface InitResult {
   branch?: string;
 }
 
-/** Initialize a repo for tumwater: README (with prompt + status), PLANS, BUGS, QUESTIONS,
- * PRINCIPLES, tumwater.json, .gitignore — then commit whatever was created. When the cwd is
- * not a git repository yet, one is seeded first (`git init -b main`), matching the README's
- * "seeds a git repo" promise for brand-new projects. */
+/** Initialize a repo for tumwater: README (with prompt + status) when no project brief exists
+ * yet, PLANS, BUGS, QUESTIONS, PRINCIPLES, tumwater.json, .gitignore — then commit whatever was
+ * created. When the cwd is not a git repository yet, one is seeded first (`git init -b main`),
+ * matching the README's "seeds a git repo" promise for brand-new projects. */
 export async function initProject(
   root: string,
   initialPrompt: string,
@@ -117,7 +118,7 @@ export async function initProject(
   // A project brief that already carries the prompt makes it optional: a fresh clone of an
   // initialized project, or a checkout that lost its now-untracked tumwater.json
   // (plans/portability.md §4a/7), re-seeds with a bare `tumwater init` — the existing brief
-  // file is never rewritten, so a prompt given here would be dropped anyway.
+  // file is never rewritten, so a prompt given here must match it (refused below otherwise).
   if (!prompt && readInitialPrompt(root) === "") {
     // A bare init with no prompt is only ever refused for one of two reasons, and they have
     // different fixes: no README (nothing to read — the message below is the whole story) or a
@@ -149,6 +150,18 @@ export async function initProject(
       `README.md already exists without an initial prompt between the tumwater:prompt markers, so your prompt would be lost — add it to README.md between ${PROMPT_START} and ${PROMPT_END} (or delete README.md so init creates one), then re-run \`tumwater init\``,
     );
   }
+  // The same loss one step later: a brief that already owns the managed sections is never
+  // rewritten (init only creates what is absent), so a DIFFERENT prompt given here would be
+  // silently dropped while every tick keeps running the old one. Refuse it and name the file
+  // that owns the brief — TUMWATER.md resolves ahead of README.md (plans/portability.md §7a/7),
+  // so pointing at README.md would send the user to edit a file nobody reads. A re-run with the
+  // same prompt, or a bare init, is the idempotent re-seed and passes.
+  const owner = briefFile(root);
+  if (prompt && owner !== null && prompt !== readInitialPrompt(root)) {
+    throw new Error(
+      `${owner} already carries a different initial prompt between the tumwater:prompt markers, and init never rewrites an existing project brief, so your prompt would be lost — to change the prompt, edit it in ${owner} between ${PROMPT_START} and ${PROMPT_END}; to re-seed with the current one, re-run a bare \`tumwater init\``,
+    );
+  }
 
   let repoInitialized = false;
   let createdBranch: string | undefined;
@@ -172,7 +185,12 @@ export async function initProject(
     created.push(name);
   };
 
-  write("README.md", readmeTemplate(path.basename(path.resolve(root)), initialPrompt));
+  // README.md is the brief only when none exists yet (a fresh repo): with TUMWATER.md owning
+  // the managed sections, a created README.md would carry a duplicate prompt + status block
+  // that readInitialPrompt never reaches and the readme role never maintains.
+  if (owner === null) {
+    write("README.md", readmeTemplate(path.basename(path.resolve(root)), initialPrompt));
+  }
   write("PLANS.md", PLANS_TEMPLATE);
   write("BUGS.md", BUGS_TEMPLATE);
   write("QUESTIONS.md", QUESTIONS_TEMPLATE);

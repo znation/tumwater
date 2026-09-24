@@ -25,24 +25,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Suspected cause:** The prompts ask for dates in several places (`NEEDS_REVIEW_NOTE`'s `<YYYY-MM-DD>` in src/roles.ts:66, the "(found by … YYYY-MM-DD)" heading convention, Fixed-entry dates) but never supply one. The model fills them in from the newest dates it finds in the repo, which are themselves drifting, so the error compounds.
 
-### `tumwater init <prompt>` in a repo whose brief already lives in TUMWATER.md silently drops the new prompt (found by clean 2026-09-26)
-
-**Symptom:** A repo whose project brief is TUMWATER.md (plans/portability.md §7a/7) re-runs
-`tumwater init "new prompt"`. init's guard (src/init.ts:147) only refuses when `readInitialPrompt`
-finds nothing — TUMWATER.md carries the markers, so it passes — and the write at src/init.ts:175
-calls `write("README.md", readmeTemplate(...))`, creating a README that carries the new prompt.
-But `readInitialPrompt` resolves TUMWATER.md first (briefCandidates order), so every tick keeps
-running with the OLD prompt; the new one lands in a file nobody reads.
-
-**Reproduce:** Adopt a repo with TUMWATER.md owning the brief (copy README.md's managed sections
-into TUMWATER.md, delete the README block), run `tumwater init "a different prompt"`, then
-`tumwater status --json` / read a tick prefill — the original prompt is still what the fleet runs.
-
-**Suspected cause:** init.ts still hardcodes README.md as the write target and only consults
-readInitialPrompt for its refusal guard, without checking `briefFile(root)` — a brief file that
-already owns the sections should either be rewritten in place or the new prompt should be refused
-with a name-the-file error.
-
 ### The gate's "bounded" build-fix run has no time or resource budget: dry's run load-tested the live host for 90 minutes, stalling the whole fleet, then `pkill`ed every test run on the machine (found by human log analysis 2026-09-23)
 
 **Symptom:** On 2026-09-23 at 03:48:32 dry's leftover-recovery landing failed its gate build check on the load-sensitive `startup latency is not a hung tool call` assertion (test/pi.test.ts:382). The gate started its one build-fix run (session `.tumwater/sessions/_review/dry/2026-09-23T10-48-33-061Z_*.jsonl`), which ran for 1 h 52 m, until 05:40:09. It spent 82 of those minutes running test suites. To reproduce a load flake it created load on the host the whole fleet runs on:
@@ -237,6 +219,28 @@ While this ran, the fleet crawled. From 05:18:00 to 05:37:48 the event log holds
 **Suspected cause:** `plans/fallback-model.md` framed readiness as a property of the *model* ("is it free?"), which is answerable from a static file, and `budgetGate` was built from that single boolean; whether the *backend* can serve is a property of the world that nothing in the gate's inputs represents. `doctor.ts:127` consults the same cost-only predicate, so `tumwater doctor` also reports a dead fallback as ready.
 
 ## Fixed
+
+### `tumwater init <prompt>` in a repo whose brief already lives in TUMWATER.md silently drops the new prompt (found by clean 2026-09-23, fixed 2026-09-24)
+
+**Symptom:** A repo whose project brief is TUMWATER.md (plans/portability.md §7a/7) re-runs
+`tumwater init "new prompt"`. init's guard (src/init.ts:147) only refuses when `readInitialPrompt`
+finds nothing — TUMWATER.md carries the markers, so it passes — and the write at src/init.ts:175
+calls `write("README.md", readmeTemplate(...))`, creating a README that carries the new prompt.
+But `readInitialPrompt` resolves TUMWATER.md first (briefCandidates order), so every tick keeps
+running with the OLD prompt; the new one lands in a file nobody reads.
+
+**Reproduce:** Adopt a repo with TUMWATER.md owning the brief (copy README.md's managed sections
+into TUMWATER.md, delete the README block), run `tumwater init "a different prompt"`, then
+`tumwater status --json` / read a tick prefill — the original prompt is still what the fleet runs.
+
+**Suspected cause:** init.ts still hardcodes README.md as the write target and only consults
+readInitialPrompt for its refusal guard, without checking `briefFile(root)` — a brief file that
+already owns the sections should either be rewritten in place or the new prompt should be refused
+with a name-the-file error.
+
+**Fix:** init now resolves the brief's owner (`briefFile(root)`) before any side effect and acts on that file rather than a hardcoded README.md (src/init.ts). A prompt given against a brief that already carries one must match it: init never rewrites an existing brief (create-if-absent, like every file it seeds), so a different prompt is refused with an error naming the owning file — `TUMWATER.md already carries a different initial prompt … edit it in TUMWATER.md between <markers>; to re-seed with the current one, re-run a bare \`tumwater init\`` — and nothing is created, git-inited, or committed. The README.md write runs only when no brief exists yet (the fresh repo), so a TUMWATER.md-owned repo never gains a README.md duplicating the managed prompt + status sections, on a matching-prompt re-run or a bare re-seed alike. The README-owned case had the same silent drop (a different prompt was accepted and ignored — the old `initProject accepts an existing README that already carries the prompt` test passed one), so it gets the same refusal for consistency; the same-prompt and bare re-runs stay idempotent. docs/how-it-works.md's Setup paragraph states the refusal. Pins in test/init.test.ts: the TUMWATER.md-owned refusal (no README.md, no backlog files, clean tree, old prompt still read), the TUMWATER.md-owned matching and bare inits creating no README.md, the README-owned refusal naming README.md, and the README-owned acceptance now passing the brief's own prompt; the fresh-repo test is unchanged. The three new tests fail on the unfixed code and pass after; test/init.test.ts 26/26, and the cli*, readme and doctor test files 122/122.
+
+**Validation gap:** none — the existing init fixtures (`makeRepo` plus a hand-written TUMWATER.md) reproduced the drop deterministically offline; the gap was only that no test combined a TUMWATER.md-owned brief with a different prompt and a missing README.md.
 
 ### The `review_verdict` event records the reviewer's preamble instead of a finding: `**1.**`-style numbering is not recognized as a list (found by human log analysis 2026-09-23, fixed 2026-09-24)
 
