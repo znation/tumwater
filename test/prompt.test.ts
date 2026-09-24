@@ -1052,15 +1052,17 @@ test("the readme prompt rewrites the status section wholesale instead of appendi
   assert.match(find, /rewrite it wholesale on each sync — never append to it/);
 });
 
-test("the readme prompt names the state-only content: summary, open items, freshness stamp", () => {
+test("the readme prompt names the state-only content: summary, backlog pointer, freshness stamp", () => {
   const find = oneLine(readme!.find);
   assert.match(
     find,
-    /one-line version\/capability summary \(which commands exist, which roles are enabled\)/,
+    /one-line version\/capability summary — no command or flag lists, which belong in the usage docs/,
   );
+  // Open work is pointed at, never copied: PLANS.md/BUGS.md/QUESTIONS.md are read every tick
+  // anyway, so a mirrored list in the brief is duplicate prefill that drifts.
   assert.match(
     find,
-    /open items — planned features not yet done, open bugs, open questions — one line each or "none"/,
+    /one line pointing at PLANS\.md, BUGS\.md, and QUESTIONS\.md for open work — never a copy of their entries/,
   );
   // The freshness-stamp convention verbatim: main's sha plus build/suite state.
   assert.match(find, /Current main \(`<sha>`\): build clean, suite N\/N/);
@@ -1074,12 +1076,18 @@ test("the readme prompt forbids per-tick landing narrative; landings belong in P
   assert.match(find, /stale narrative found in the section is deleted as part of updating it/);
 });
 
-test("the readme prompt carries the ~8KB drift guard", () => {
+test("the readme prompt carries the ~1KB drift guard", () => {
   const find = oneLine(readme!.find);
   assert.match(
     find,
-    /exceeds ~8KB it has drifted back into narrative — prune it to the state-only form/,
+    /exceeds ~1KB it has drifted back into narrative — prune it to the state-only form/,
   );
+});
+
+test("the readme prompt keeps the brief short and moves detail into linked docs", () => {
+  const find = oneLine(readme!.find);
+  assert.match(find, /Keep the brief short: a summary, the status, and brief usage/);
+  assert.match(find, /move detail there instead of growing the brief/);
 });
 
 test("buildTickPrompt for readme carries the find text plus the shared rules", () => {

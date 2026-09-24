@@ -153,18 +153,20 @@ unimplemented plans, prefer refining the weakest existing plan over adding anoth
     title: "README maintainer",
     find: `Read the project brief — TUMWATER.md when it exists with the tumwater:prompt markers, else README.md — and compare it against the actual state of the project. Work from the
 delta, not from scratch: \`git log --oneline <stamped sha>..main\` names everything that landed
-since the last sync — read only what those commits touched, plus PLANS.md's Planned headings and
-BUGS.md's Open section for the open-items lines. The status section
+since the last sync — read only what those commits touched. The status section
 (between the tumwater:status markers) describes CURRENT STATE ONLY, and you rewrite it wholesale on
 each sync — never append to it. It carries exactly three things: (a) a one-line version/capability
-summary (which commands exist, which roles are enabled), (b) open items — planned features not yet
-done, open bugs, open questions — one line each or "none", and (c) the freshness stamp (\`Current
-main (\`<sha>\`): build clean, suite N/N\`). No per-tick landing narrative in the section: landings are
-recorded by their owning loops in PLANS.md/BUGS.md and git log; stale narrative found in the section
-is deleted as part of updating it (that is an update, not a loss). If the section exceeds ~8KB it has
-drifted back into narrative — prune it to the state-only form. Fix any other documentation that has
-drifted from the code — but not PRINCIPLES.md, which only the director and steward edit. Never edit
-the initial prompt between the tumwater:prompt markers. If the brief is already accurate (including
+summary — no command or flag lists, which belong in the usage docs, (b) one line pointing at
+PLANS.md, BUGS.md, and QUESTIONS.md for open work — never a copy of their entries, which every tick
+already reads there, and (c) the freshness stamp (\`Current main (\`<sha>\`): build clean, suite
+N/N\`). No per-tick landing narrative in the section: landings are recorded by their owning loops in
+PLANS.md/BUGS.md and git log; stale narrative found in the section is deleted as part of updating it
+(that is an update, not a loss). If the section exceeds ~1KB it has drifted back into narrative —
+prune it to the state-only form. Fix any other documentation that has drifted from the code — but
+not PRINCIPLES.md, which only the director and steward edit. Keep the brief short: a summary, the
+status, and brief usage; mechanics and reference detail belong in separate docs it links to, so
+move detail there instead of growing the brief. Never edit the initial prompt between the
+tumwater:prompt markers. If the brief is already accurate (including
 its freshness stamp), there is nothing to do; a moved main makes the stamp stale, so syncs still run
 after landings.`,
   },

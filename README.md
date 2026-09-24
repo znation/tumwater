@@ -1,11 +1,62 @@
 # tumwater
 
-An opinionated autonomous development harness built on [pi](https://github.com/badlogic/pi-mono).
-You write the initial prompt; a fleet of role-driven loops builds the project with immense effort.
+tumwater is an opinionated autonomous development harness built on
+[pi](https://github.com/badlogic/pi-mono). You write a short project brief, and a fleet of
+role-driven loops (feature, bugfix, planning, tests, cleanup, docs, and more) builds the project
+one small, reviewed commit at a time. It came from wanting to write only the brief and let a team
+of always-on specialists do the rest: each loop owns one concern, lands one change per tick,
+sleeps when it has nothing to do, and wakes when main moves. All project state lives in the
+local git repo, and no remote is ever touched.
 
 ![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, the shared backlog of planned features and open bugs, the event feed, and the director prompt box](docs/gui.png)
 
-## Initial prompt
+## Status
+
+<!-- tumwater:status:start -->
+**v0.1**: working harness. All 13 roles and the director are enabled by default.
+
+Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
+[QUESTIONS.md](QUESTIONS.md) (open questions).
+
+Current main (`059c3cc`): build clean, suite 1448/1448.
+<!-- tumwater:status:end -->
+
+## Usage
+
+```bash
+npm install -g tumwater     # or run any command with npx tumwater
+                            # from a checkout: npm install && npm run build && npm link
+cd your-project             # a new or existing directory
+tumwater init "Build a tiny markdown-to-html converter CLI in Python."
+tumwater run                # start the loops (Ctrl+C to stop)
+```
+
+Then, from another terminal:
+
+| To | Run |
+| --- | --- |
+| Watch the fleet | `tumwater tui`, or `tumwater gui` for the browser dashboard at http://127.0.0.1:7180 |
+| Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --role <id>` |
+| Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director |
+| Control the loops | `tumwater pause` / `resume`, `tumwater wake` (skip backoff), `tumwater abort --role <id>` |
+| Audit | `tumwater doctor` (pre-flight), `tumwater report` (usage and cost), `tumwater report --failures` |
+
+`tumwater help` lists every command and flag. `gui --all-interfaces` exposes the dashboard, and
+with it the director prompt, to your whole network, so pair it with `--token <secret>`.
+
+Settings live in `tumwater.json`: enabled roles, model, intervals, the daily spend cap
+(`maxDailyCostUsd`), and user-defined `customLoops`. Edits apply live while the fleet runs.
+
+**Backends:** any OpenAI-compatible model pi can reach works; set `provider` and `model` in
+`tumwater.json`. See [docs/backends.md](docs/backends.md) for requirements and a worked setup.
+
+For how the loops, review gate, scheduling, and self-redeploy work, see
+[docs/how-it-works.md](docs/how-it-works.md).
+
+## Appendix: initial prompt
+
+The brief this repository was started from, kept for history. The harness still reads it from
+between the markers below on every tick.
 
 <!-- tumwater:prompt:start -->
 Idea: agentic harness
@@ -32,390 +83,3 @@ Assumptions: run within a git repo dir. Each loop uses a persistent git workspac
 Each loop keeps itself synced up with git main. Don't involve git remotes at all; do everything
 locally and keep all project state within the git repo.
 <!-- tumwater:prompt:end -->
-
-## Status
-
-<!-- tumwater:status:start -->
-v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`, `--token <secret>`),
-`status` (`--json`), `report` (`--days N`; `--failures` for the Markdown failure digest),
-`doctor`, `logs` (`-f`, `--role <id>`, `-n N`, `--prompt`), `prompt "text"` / `--list` /
-`--cancel <n>`, `reset-counters [--role <id>]`, `wake [--role <id>]`, `abort --role <id>`,
-`pause` / `resume`, and `help` / `version`. The agent binary is configurable
-(`TUMWATER_PI_BIN` → `agentBin` → `pi`), and ticks run pi with a bundled bounded-output extension
-(`-e`) that trims oversized tool results to head+tail around a pointer marker. All thirteen roles
-— `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`, `qa`,
-`telemetry`, `improve`, `steward` — plus the director are enabled by default; user-defined loops
-come from `customLoops` in tumwater.json or by prompting the director.
-
-Open items:
-- Open bug: `tumwater init <prompt>` in a repo whose brief already lives in TUMWATER.md
-  silently drops the new prompt (found by clean 2026-09-26).
-- Open bug: the gate's "bounded" build-fix run has no time or resource budget — a dry-run
-  load-test held the live host for 90 minutes and stalled the fleet (found 2026-09-23).
-- Open bug: the reviewer is never told about the gate's own build-fix commit, so a successful
-  fix reads as an unclaimed change and the landing is rejected (found 2026-09-23).
-- Open bug: the batch's one-at-a-time fallback re-reviews changes it already approved — the
-  lander rebases before the gate, so the approved-head short-circuit never hits (found
-  2026-09-23).
-- Open bug: a batch whose base main moves during its build check is discarded wholesale as
-  `merge_blocked` — leftover-recovery landings run outside the land queue and race it (found
-  2026-09-23).
-- Open bug: a batch reviews its changes one after another, so its wall-clock is the sum of
-  every review and one slow reviewer holds the whole queue (found 2026-09-23).
-- Open bug: reviewers re-run the full suite in scratch copies under /tmp even when the harness
-  check already passed (found 2026-09-23).
-- Open bug: the status table's "last result" cell shows `queued` — a tick's live landing status
-  rather than its last completed result, duplicating the state column while work sits in the land
-  queue or under review (reported by user 2026-09-24).
-- Open bug: a live `tumwater.json` that disappears mid-run hot-reloads as built-in defaults —
-  the fleet ran 8.6 hours with zero successful ticks (found 2026-09-23).
-- Open bug: a self-redeploy whose new generation fails a startup precondition takes the whole
-  fleet down with no event (found 2026-09-23).
-- Open bug: the restart drain's `hold` does not stop ticks already parked in the semaphore —
-  they start fresh pi runs mid-drain and are the ticks the restart then aborts (found
-  2026-09-23).
-- Open bug: the landing state cell shows only elapsed time — a landing renders bare
-  `landing <elapsed>` while working/reviewing carry turns, context, and tool (reported
-  2026-09-22; re-opened 2026-09-23 — the recorded fix never landed).
-- Open bug: a batched landing is displayed as the head change's landing for the whole batch —
-  the head role reads `landing 29m` long after its own change was rejected, while the change
-  actually being gated shows nothing (reported 2026-09-23).
-- Open bug: a change rejected early in a batch keeps its role blocked for the rest of the
-  batch — the author cannot start the fix tick until every other batched change finishes
-  review, build check, and merge (found 2026-09-23).
-- Open bug: a 429 storm still has no fleet-wide hold — each tick now retries its own 429, but
-  concurrent loops keep hammering a rate-limited provider instead of backing off together
-  (found 2026-09-21).
-- Open bug: the failure digest's `## Outcome by role` separator row has no cell delimiters,
-  so the table never renders (found 2026-09-21).
-- Open bug: the grandchild-leak fix landed its kill but not its detector — `doctor` reports
-  nothing about orphaned worktree processes (found 2026-09-21).
-- Open bug: the build check's 300 s timeout does not bound it — skipped checks recorded
-  331–1158 s (found 2026-09-21).
-- Open bug: the budget fallback has no liveness check — an unreachable free model turns the
-  spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
-- Open bug: the self-redeploy's shutdown awaits an in-flight batched landing with no
-  deadline — the generation handoff lagged its own swap by 97 minutes (found 2026-09-24).
-- Planned: portability 7b/7 — `tumwater init --adopt`/`--dry-run` to adopt an existing repo
-  without touching its README (planned 2026-09-23, requested by user; 1–6/7 landed by
-  2026-09-25 and 7a/7 landed 2026-09-23 — the brief resolves as `TUMWATER.md` first, README.md
-  as the compatibility path).
-- Planned: land-queue speed 1/3, 2a–2d, 3a–3e — take the gate's build-fix run out of the
-  landing slot, vet queued changes in parallel (serialize only the merge), and the smaller
-  fixes: approvals keyed by patch-id, a process-wide build-check cap, per-change landing
-  markers, give the reviewer a time budget, tell it not to re-run a verified suite, one writer
-  to main, land the passing part of a red stack, optional cheaper per-change gate check
-  (planned 2026-09-23, requested by user; 2/3 was split into standalone entries 2a–2d and
-  3/3 into 3a–3e).
-- Planned: give every failure an automated trace — retire the recurring `no-observability`
-  validation gap by marking every capped/elided digest and transcript cut, distinguishing
-  signal-kill from timeout at the source, and having `doctor` verify claimed fixes against
-  main and detect orphaned worktree processes (planned 2026-09-26, promoted by steward).
-- Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
-  new projects).
-
-Current main (`059c3cc`): build clean, suite 1448/1448.
-<!-- tumwater:status:end -->
-
-## How it works
-
-`tumwater init "<prompt>"` seeds a git repo with README.md (your prompt + a status section),
-PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, and tumwater.json, and commits them — the
-initial prompt is capped at 4096 chars, because it rides into every tick's prefill. With no
-prompt argument, a bare `tumwater init` instead reads the initial prompt from an existing
-README.md's `tumwater:prompt` markers (in an existing project, add them around your prompt
-before initing). The brief's home is resolvable: a `TUMWATER.md` carrying the same two managed
-sections (`tumwater:prompt`, `tumwater:status`) is read ahead of README.md, which stays the
-compatibility path `init` writes and the readme role maintains when no `TUMWATER.md` exists;
-`tumwater doctor` reports which file holds the brief. `tumwater run` then starts
-one loop per enabled role. Every loop tick:
-
-1. Resets its persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`) to main.
-2. Builds a role-specific "find something to do" prompt and runs `pi --print --mode json` in the
-   worktree, starting a FRESH pi session every tick: context never accumulates across ticks, so
-   ticks start with a small, cheap prefill and stay far from the model's context window. Durable
-   knowledge lives in the repo itself (README/PLANS/BUGS/QUESTIONS, read at the start of every tick), not
-   in model context.
-3. If pi changed files: commits (a reply without the SUMMARY block gets one follow-up turn in
-   the same session to produce it; failing that the subject names the changed files), pins the
-   sha by `refs/tumwater/landing/<role>`, and enqueues a landing in `.tumwater/land-queue/` —
-   then the tick ENDS: it holds no slot through review, and the role's branch resets to main
-   the moment its commit exists. Queued landings show as `· land queue: N` in the status header
-   and both dashboard headers, and the landing role's row reads `landing <elapsed>`. The
-   orchestrator drains the queue on a single serial landing
-   slot that takes the same `maxConcurrent` permit as a role tick (at a higher-priority tier,
-   so a queued landing jumps ahead of parked role waiters while authors keep ticking on the
-   remaining slots) — an adversarial review gate over the full ahead-of-main
-   diff, in a harness-owned worktree (`_land-<role>`) off the pinned ref: the pinned tree is
-   first rebased onto main's current head (a no-op when main has not moved — a conflicting
-   advance defers the rebase to the landing itself), so the gate checks what can actually land
-   instead of a stale tree a sibling loop has already fixed: first a deterministic
-   build pre-check (the project's declared check: `check.command` in tumwater.json when set,
-   else the npm walk-up — `npm test` when declared, else typecheck/build; a failure buys one
-   bounded fix run — a fresh-session model run told to
-   reproduce and fix the failure in source, which may not weaken a test, and may not commit —
-   and only a still-red re-check rejects, with the fix attempt's outcome named in the reasons;
-   the fix commit joins the reviewed diff and the pin tracks it, so a merge that cannot finish
-   re-lands the fixed tree), then a fresh-session
-   reviewer against PRINCIPLES.md that replies `VERDICT: approve|reject` (md-only diffs are
-   exempt, except a BUGS.md edit whose new Fixed entries name symbols absent from the tree —
-   a fabricated fix narrative must not land on main); rejects reset the branch with reasons injected into the author's next tick,
-   failures keep the commit for re-review under a 3-strike discard cap. When several landings are
-   queued, the drain reviews each change individually but stacks the approved ones in one lander
-   worktree, runs the declared check once over the combined tree, and fast-forwards main through
-   the whole stack (`landBatchMax`, default 3, caps a batch); a red or un-assemblable stack falls
-   back to one-at-a-time landings, each re-verified by its own gate. Approved work rebases
-   onto main (so main's history stays linear), re-runs the declared check on the rebased tree
-   when main moved under it, and fast-forwards under the merge lock — the only code that ever
-   holds it, so other roles keep ticking behind an in-flight landing. A role with a queued or
-   in-flight landing never starts a new tick, and `tumwater abort --role` reaches the landing
-   itself (a deliberate stop discards the pin; a shutdown keeps it — every interrupted landing
-   re-lands through the same gate on the next tick). The drain runs even while the fleet is
-   paused: a queued landing is committed work, not a new tick. If pi found nothing to do, the
-   loop backs off (exponentially, capped) and sleeps; an observer (`qa`) instead treats a
-   `no_change` as a passing check and re-ticks at its interval, rotating through the documented
-   flows via a gitignored coverage ledger and ending its tick with a `FLOW: <name> — passed|bug`
-   line so its next tick can see what it last exercised. A failed tick retries on a
-   shorter error ladder (capped at ten minutes) instead, so a broken toolchain parks a loop for
-   minutes, not hours.
-4. Sleeping loops wake early when main moves — the world changed, so the answer may have changed.
-
-Scheduling is need-aware: a maintenance role's due tick (scheduled or main-moved) is deferred —
-one `tick_deferred` event per episode in logs, TUI, and GUI — while its last tick did nothing
-and no feature/bugfix/director/human commit has landed on main since; it starts within one poll
-of such work landing. Observer roles (`qa`) are never deferred — an unmoved tree says nothing
-about whether the running product has something new to report. While PLANS.md's Planned section
-or BUGS.md's Open section is non-empty, idle maintenance ticks stay deferred regardless of
-landings — queued feature/bugfix work outranks them until the backlog drains. Slot allocation
-orders the work roles (feature, bugfix, plan) ahead of every maintenance role,
-least-recently-ticked first within a tier — and the same tier order holds for ticks already
-waiting on a slot across polls: a work-role tick that becomes due later jumps ahead of
-maintenance ticks parked from an earlier poll (in-flight ticks always run to completion).
-
-Two operator-visible states sit alongside scheduling. While main's build/test suite is red,
-code-producing roles skip their authoring run and show a `main red` state in both dashboards
-until main is green again — the director, bugfix, and the markdown-only roles keep ticking, since
-bugfix can land the fix and its prompt is pointed at the failure's headline line so it fixes main
-instead of hunting blind. Three consecutive error ticks on one loop raise one `warning`, and that
-loop reads `failing` in both dashboards until a healthy tick.
-
-The fleet's autonomous spend is capped by `maxDailyCostUsd` (default $50; set 0 to disable).
-While the day's total cost has reached the cap, role loops stop starting new ticks — scheduled,
-main-moved wakes, or startup — until local midnight or a live edit raises/disables the cap;
-in-flight ticks finish and the director stays exempt (its spend still counts toward the cap).
-Name a free model as `fallbackModel` and they keep working instead of stopping: at the cap every
-role loop switches to that model — author runs, reviewer, conflict resolution, and any per-role
-model override alike — so the day's paid work ends but the fleet does not. Only a model pi's
-`models.json` prices at zero is ever engaged (an unknown id, a priced model, or a missing
-definitions file is refused, and the fleet pauses as it would without one), so spend cannot climb
-past the cap either way. The operator-intent sibling is `tumwater pause` / `resume`: a persistent
-marker that blocks new role ticks (same wake reasons, same director exemption) until lifted, and
-the GUI header's `· pause` / `· paused — resume` badge toggles that same marker in one click
-(`POST /api/pause`), so an operator watching the dashboard — e.g. over `gui --all-interfaces` —
-can halt the fleet without a shell. Each
-gate transition lands as one `budget_paused`/`budget_fallback`/`budget_resumed` or
-`fleet_paused`/`fleet_resumed` event, visible in `tumwater logs`, the TUI activity pane, and the
-GUI feed.
-
-Every tick prompt also carries the project's `PRINCIPLES.md` — its design principles, the codified
-answer to "what would a senior engineer on this team always do" — so all loops share one standard of
-taste. Only the director and steward roles edit that file; every other loop treats it as read-only.
-
-The prompts are written for the fleet's real model — a mid-sized local model with thinking on
-behind a large but finite window: rules are grouped, with numeric budgets
-(choose the task within ~15 tool calls, in a handful of turns; independent reads and commands
-fan out as sibling tool calls in one turn, since every turn re-sends what was read so far; check a
-file's size before reading it whole; read anything over ~300 lines in ranges; oversized tool
-results come back head+tail around a pointer marker naming the omitted amount and where the full
-output lives; the reply ends with
-plain text, never an announced next step). Roles with
-no backlog to point at (`organize`, `clean`, `dry`, `perf`, `improve`) carry a shortlist-and-decide
-search procedure — cheap signals such as recent churn, size outliers, and targeted grep, with their
-own recent commits as the memory of what they already did — instead of surveying the codebase file
-by file, which is what filled the window on half of all ticks before. Plans are sized to one
-implementation run so the feature loop can land them whole — a plan too large for one run is
-marked and handed to the plan loop to split, not split inline — and the reviewer works through a
-five-point checklist and is told when the gate's deterministic pre-check already passed, so it
-spends its run on what a green suite cannot show rather than re-running it.
-
-Stopping the harness (Ctrl+C) mid-tick loses nothing: the interrupted loop's pi session and its
-worktree's uncommitted edits stay in place, and on the next `tumwater run` that loop resumes the
-same session (`--continue`) with a short bridge prompt and finishes the task it was on. A run the
-quiet watchdog kills for lack of progress (tick result `quiet_killed`) is recovered the same way,
-with the bridge prompt naming the hang instead of claiming a restart — but only up to 3
-consecutive kills, after which the loop drops the starved session, raises one `warning`, reads
-`failing` in both dashboards, and takes a fresh tick on the idle backoff ladder instead of
-re-sending the session the backend could not schedule. A crash
-(power loss, kill -9) is recovered the same way — except an interruption during the review gate,
-where the work is already committed and the next launch recovers and re-reviews it via a fresh
-tick instead of resuming the author session. The director is the exception: its interrupted
-user prompt goes back into the inbox and runs fresh.
-
-`npm run build` stamps `dist/build-info.json` with the commit it compiled, and the orchestrator
-records that stamp in its start event and in `.tumwater/state/orchestrator.json`. When the project
-being built IS tumwater (dogfood), the harness compares the stamp against main whenever main
-moves: a `build_stale` event fires the first time main's `src/`, `package.json`, or
-`tsconfig.json` differ from the running code, both dashboards show `STALE: main +N` in the
-header, and `tumwater doctor` warns. With `autoRestart` (default true) the fleet then redeploys
-itself: it verifies main is green (a green verdict seeded by the landing path — its post-rebase
-check at merge time, or one run of the suite in a detached `_main` worktree), compiles main into
-`.tumwater/build/<sha>` with the project's own
-tsc — borrowed from the nearest ancestor install, since no worktree has one of its own — stops
-starting new ticks while in-flight ones finish (role ticks up to the fleet's observed p75 tick
-duration — a 30-minute cold-start fallback until enough ticks have completed — counted across the
-whole hold even when main moves again meanwhile, after which they are aborted resuably; an in-flight
-director tick is waited for without a cap — a human prompt outranks the redeploy), swaps the compiled tree into `dist/`, and exits so the `tumwater run` supervisor — the
-process you started, which runs the orchestrator as a child — respawns it on the new code.
-Completed auto-restarts are rate-limited to at most one per 12 h: inside that cooldown STALE
-stays visible with a `restart BLOCKED: cooldown until …` deadline and ticks continue on the stale
-build, so sustained churn cannot halt the fleet for a drain over and over. A green
-verdict is reused fleet-wide; a red is provisional until two different worktrees have seen it,
-because a suite can fail for reasons that belong to a worktree rather than to the tree. A red
-main or a failed compile leaves the old build running until main moves again — a warning event,
-and `restart BLOCKED:
-<reason>` in both dashboard headers and `tumwater doctor`, so a restart that will never happen
-does not look like one that is seconds away.
-
-The director loop is special: it executes prompts you type into the TUI (or `tumwater prompt`),
-queued in a file-based inbox. It always has priority — a queued prompt starts immediately,
-outside the `maxConcurrent` limit and ahead of every role loop, and queued prompts run back to
-back with no cooldown between them. Everything is local git; no remotes are ever touched. Runtime state
-lives in `.tumwater/` (gitignored); durable state (plans, bugs, questions, principles, status, config) lives
-in tracked markdown and `tumwater.json`.
-
-## Usage
-
-```
-npm install -g tumwater    # or: npx tumwater — no checkout needed
-
-cd your-project        # existing or new project dir
-tumwater init "Build a tiny markdown-to-html converter CLI in Python."
-#   settings live in an untracked tumwater.json, seeded from a tracked tumwater.example.json —
-#   edit the example to give collaborators your roles/intervals baseline
-tumwater run          # terminal 1: the loops (Ctrl+C to stop)
-tumwater tui          # terminal 2: dashboard + main prompt
-tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N to change)
-tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
-tumwater gui --token <secret>      # require that shared token on every request (see below)
-tumwater status       # one-shot table
-tumwater status --json   # machine-readable fleet state (the GUI's /api/status payload minus its serverBuildSha)
-tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits/cost per day, plus per-role tick and cost breakdowns (default 14 days; --days bounded to the GUI's shared 1–90 window)
-tumwater report --failures [--days N]   # Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
-tumwater doctor       # pre-flight check: node, git, repo, brief, init (incl. a broken
-                      #   tumwater.example.json), fallback model, agent binary, locks, build
-                      #   (read-only; exit 0/1)
-tumwater logs -f      # follow harness events
-tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
-tumwater logs --role feature --prompt   # …and the exact prompt each run received
-tumwater prompt "prefer no third-party deps"
-tumwater prompt --list             # show queued prompts, numbered in execution order
-tumwater prompt --cancel <n>       # remove the Nth queued prompt (as shown by --list)
-tumwater reset-counters            # zero ticks/commits/tokens/cost (a running fleet picks it up within ~2s)
-tumwater reset-counters --role feature   # …or just one loop
-tumwater wake [--role feature]     # wake a backed-off fleet — the named roles (or all) tick within one poll
-tumwater abort --role feature      # kill that loop's in-flight tick now (work discarded; the loop keeps running)
-tumwater pause                     # stop role loops starting new ticks (in-flight finish; the director keeps running)
-tumwater resume                    # lift a fleet pause
-tumwater help                      # print the command reference
-tumwater version                   # print the harness version
-```
-
-Build from source instead (or when developing tumwater itself):
-
-```
-npm install && npm run build && npm link
-```
-
-`reset-counters` starts a fresh observation window (e.g. "cost since today") without touching
-scheduling, backoff, or pi session continuity — loops keep sleeping and waking exactly as before.
-Its operator-side counterpart is `wake`: it touches ONLY the schedule (backoff cleared,
-next run due now), so a fleet parked in backoff after a toolchain outage starts ticking
-within one poll of the fix, instead of sleeping out its backoff.
-
-Review-gate runs are labeled in loop transcripts: each role's raw log interleaves author ticks
-and reviewer runs, and review runs render as `── review @ <timestamp> ──` in `tumwater logs
---role`, the TUI transcript pane, and the GUI detail panel.
-
-`gui --all-interfaces` binds every network interface (IPv4 and IPv6) instead of localhost, and
-prints the LAN URLs it is reachable at. The dashboard's prompt box feeds the director — anyone
-who can reach the port can steer the fleet and read every transcript. By default it has **no
-authentication**; `gui --token <secret>` gates every request with that token (sent as
-`Authorization: Bearer <token>` or `?token=` — the CLI prints token-bearing URLs, and the
-browser client strips the token from the address bar). Use it only on networks where that is
-acceptable. Its `report` tab charts usage
-(served by `GET /api/report?days=N`) and its `failures` tab renders the same Markdown failure
-digest as `tumwater report --failures` (served by `GET /api/failures?days=N`, the sibling
-endpoint sharing the report's clamped 1–90 window; both read files directly, so they work with
-no fleet running).
-
-Roles: `feature`, `bugfix`, `plan`, `readme`, `organize`, `coverage`, `clean`, `dry`, `perf`,
-`qa`, `telemetry`, `improve`, `steward`, `director`. Enable/disable them, pick pi's provider/model/thinking
-level, set a per-role tick interval (by default the steward runs on a ~6 h clock, qa and telemetry
-on ~2 h, readme on 30 min and plan on 1 h — the bookkeeping roles batch a burst of landings into one sync
-instead of restamping after every merge), and tune backoff in
-`tumwater.json`. While the harness is running, edits to `tumwater.json` are picked up
-within ~2s — every setting applies live: enabling/disabling roles, per-role provider/model/
-thinking/instructions, tick intervals, backoff, the `maxConcurrent` cap and `landBatchMax` batch size, `autoRestart`, and
-`sessionRetentionDays` (a mid-run edit re-prunes immediately). A live edit that changes any of
-these logs one `config_changed` event naming the keys that changed (the two settings with their
-own, more informative events — `maxConcurrent` and `sessionRetentionDays` — keep those). A
-`roles.<id>` change is named per role, never as the whole map. User-defined loops (`customLoops` entries in tumwater.json) can be added, removed, or rearranged by prompting the director ("add a loop named X that does Y") or by hand-editing the file (live within ~2 s); they act like any other loop and are marked with `*` beside their name on both dashboards.
-
-Spend is capped by `maxDailyCostUsd` in tumwater.json (default 50; set 0 to disable): once the
-day's total cost across all loops reaches it, role loops stop starting new ticks for the rest of
-the local day — in-flight ticks finish and the director keeps running your prompts. The cap is
-editable from both dashboards (TUI Ctrl+B on the prompt line; GUI header badge click-to-edit) —
-they write tumwater.json like any other edit, so it applies live within ~2s.
-
-`fallbackModel` (optional; `{ "provider": …, "model": …, "thinking": … }`, each field falling
-back to the top-level value) names the free model the role loops switch to at the cap instead of
-stopping — the budgeted model does the day's paid work, the free one keeps the fleet alive
-afterwards:
-
-```json
-"provider": "<paid-provider>", "model": "<paid-model>",
-"fallbackModel": { "provider": "<free-provider>", "model": "<free-model>" }
-```
-
-The switch covers every seam that could spend — author runs, the review gate, conflict
-resolution, and any per-role `provider`/`model` override, which is dropped for the duration — and
-only a pair pi's `models.json` prices at zero is accepted, so a typo or a priced model leaves the
-fleet paused rather than quietly spending past the cap (the `budget_paused` event names the pair
-it refused). The header badge reads `· budget: $10.02/$10 today · fallback: <model> (cost n/a)`
-while the fallback is carrying the fleet, and the loops keep their ordinary state cells — they
-are working, not stopped. The director never switches: an explicit human prompt outranks the
-autonomous-spend cap. Everything is live, so crossing local midnight, raising the cap, or fixing
-a mistyped fallback id takes effect within ~2s.
-
-## Backends
-
-tumwater runs against any OpenAI-compatible backend pi can reach: `provider`, `model`, and
-`fallbackModel` in `tumwater.json` point at it, and an honest `contextWindow` in pi's model
-catalog is what keeps a tick inside it. The agent binary pi itself is resolved per run as
-`TUMWATER_PI_BIN` → `agentBin` in tumwater.json → `pi` on PATH — a blank value falls through to
-the next source, and a path-shaped value is normalized against the directory `tumwater run`
-started from, so the preflight, doctor, and every tick's spawn see the same binary. See
-[docs/backends.md](docs/backends.md) for what a backend must give tumwater and a worked
-configuration.
-
-## Development
-
-```
-npm test               # build + the unit suite (node:test) — what the landing gate runs
-                       # (the gate's check is configurable: check.command in tumwater.json —
-                       # command, optional cwd, optional timeoutSeconds — replaces the npm
-                       # walk-up for non-npm repos)
-npm test <filter>      # …or just the test files whose name contains <filter> (e.g. npm test merge)
-npm run test:e2e       # the live-orchestrator e2e tier (test/*.e2e.test.ts) — kept out of the
-                       # gating suite because its wall-clock waits are not load-proof
-```
-
-Layout: `src/` harness code (`loop.ts` is the tick lifecycle, `loop-pi.ts` its pi-run plumbing,
-`orchestrator.ts` the scheduler, `pi.ts` the pi subprocess integration, `git.ts` the git plumbing,
-`git-diff.ts` the git-output parsing,
-`worktree.ts` the persistent worktree lifecycle, `merge.ts` the
-rebase/fast-forward/conflict-resolution landing flow), `src/pi-extension/` the bundled
-bounded-output pi extension, `src/ui/` the observer/presentation layer
-(TUI, GUI dashboard, status table, transcript, and report rendering — imported only by each other
-and `cli.ts`), `test/` unit tests.
-Tests fake pi with a shell shim on PATH, so they run offline.
