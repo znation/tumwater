@@ -10,12 +10,13 @@ import {
 import {
   BATCH_RESTACK_ATTEMPTS,
   landBatch,
+  PHASE_A_CONCURRENCY,
   type BatchContext,
   type BatchRoleWiring,
 } from "../src/land-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { landingRefName, landingStatePath, landWorktreePath, statePath } from "../src/paths.js";
+import { eventsLogPath, landingRefName, landingStatePath, landWorktreePath, statePath } from "../src/paths.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
@@ -396,10 +397,21 @@ const FIX_PI = (fix: string, review: string) =>
 /** A build check that stays red until the fix run has run: every invocation fails (the
  * pre-check AND the gate's one re-run — a fail-once check is a flake, which never reaches a fix
  * run) until `flag` exists, and the fix shim touches it beside its edit — as if the fix run's
- * edit had made it green. */
-function redUntilFixedCheck(root: string, flag: string): void {
-  declareCheck(root, `if [ -f '${flag}' ]; then exit 0; fi\necho 'error TS2345: boom' >&2\nexit 1\n`);
+ * edit had made it green. `onlyIn` scopes the red to the checks run from one worktree (every
+ * other passes): a batch's Phase-A gates run their pre-checks concurrently, so which gate
+ * meets the red tree first would otherwise be a race. npm runs the script at the package root,
+ * so the invoking worktree is npm's INIT_CWD. */
+function redUntilFixedCheck(root: string, flag: string, onlyIn?: string): void {
+  const scope = onlyIn ? `case "$INIT_CWD" in *'${onlyIn}') ;; *) exit 0;; esac\n` : "";
+  declareCheck(root, `${scope}if [ -f '${flag}' ]; then exit 0; fi\necho 'error TS2345: boom' >&2\nexit 1\n`);
 }
+
+/** Shell that numbers this check run into `$n`, atomically: `mkdir` either creates
+ * `<base>.<n>` or fails, so two gate pre-checks running at once (Phase A runs gates
+ * concurrently) can never both read the same count the way a read-increment-write counter
+ * file does. Runs number 1, 2, … in start order. */
+const checkRunNumber = (base: string): string =>
+  `n=1\nwhile ! mkdir '${base}'.$n 2>/dev/null; do n=$((n+1)); done\n`;
 
 test("a gate fix run commits the fix and the landing carries work AND fix to main", async () => {
   const flag = path.join(tmpdir(), "lander-fix-green");
@@ -580,6 +592,43 @@ function runBatch(
   );
 }
 
+// Phase A runs its gates concurrently, so a batch test that cares WHICH gate does what keys
+// its reviewer on the change under review, and one that cares about order waits on an event
+// rather than guessing a sleep long enough for a loaded host.
+
+/** The shell that prints `reply` as a review run's one assistant turn. */
+const replyLine = (reply: string): string => `printf '%s\\n' '${assistantLine(reply)}'`;
+
+/** A reviewer shim whose review run behaves per change: pi's cwd is the gate's
+ * `_land-<role>` worktree, so `$PWD` names the change under review. `byRole` maps a role to
+ * the shell its review run executes; every other role runs `otherwise` (approve at once). */
+function reviewerByRole(byRole: Record<string, string>, otherwise = replyLine("VERDICT: approve")): string {
+  return [
+    `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
+    `case "$PWD" in`,
+    ...Object.entries(byRole).map(([role, body]) => `*_land-${role}) ${body} ;;`),
+    `*) ${otherwise} ;;`,
+    `esac; exit 0;;`,
+    `esac; done`,
+  ].join("\n");
+}
+
+/** Shell that holds a review run until the events log records `loop`'s `type` event — bounded
+ * at ~30 s, so a regression fails the assertions instead of hanging the suite. */
+const awaitEvent = (root: string, loop: string, type: string): string =>
+  `i=0; until grep -q '"loop":"${loop}","type":"${type}"' '${eventsLogPath(root)}' 2>/dev/null || [ $i -ge 300 ]; do sleep 0.1; i=$((i+1)); done; `;
+
+/** A review run that records how many review runs are in flight as it starts (one line per
+ * run in `<dir>/samples.log`), holds `seconds`, then approves. */
+const countedReview = (dir: string, seconds: number): string =>
+  `d='${dir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX"); ` +
+  `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${dir}/samples.log'; ` +
+  `sleep ${seconds}; rm -f "$f"; ${replyLine("VERDICT: approve")}`;
+
+function readSamples(dir: string): number[] {
+  return fs.readFileSync(path.join(dir, "samples.log"), "utf8").trim().split("\n").map(Number);
+}
+
 test("an all-rejected batch returns a defined result for every request without throwing", async () => {
   // The review re-audit found this exact shape crashing: |S| == 0 made the lander index the
   // empty stack and throw, and the drain's catch kept every entry — a queue leak. Now the
@@ -636,7 +685,7 @@ test("a batch stacks a fixed change's work AND fix commits, not the fix alone", 
   const flag = path.join(tmpdir(), "batch-fix-range");
   fs.rmSync(flag, { force: true });
   const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
-  redUntilFixedCheck(root, flag);
+  redUntilFixedCheck(root, flag, "_land-alpha"); // alpha meets the red tree; beta's gate runs beside it
   const mainBefore = sh(root, "git", "rev-parse", "main");
   const restore = fakePi(
     FIX_PI(`touch '${flag}'; echo 'fixed' >> fix.txt`, `printf '%s\n' '${assistantLine("VERDICT: approve")}'`),
@@ -665,12 +714,13 @@ test("a batch stacks a fixed change's work AND fix commits, not the fix alone", 
 // assembled on the old tip, so its single ff fails; the batch must re-stack on the new tip
 // and go round again rather than send every approved change back through recovery.
 
-/** A counting build check: `$n` is the invocation's 1-based number — runs 1 and 2 are the two
- * Phase A gate pre-checks, run 3 is the batch's first shared check — and `body` runs before
- * the check passes (or fails, if `body` exits nonzero). */
+/** A counting build check: `$n` is the invocation's 1-based number (checkRunNumber — the two
+ * Phase A gate pre-checks run concurrently) — runs 1 and 2 are the two Phase A gate
+ * pre-checks, run 3 is the batch's first shared check — and `body` runs before the check
+ * passes (or fails, if `body` exits nonzero). */
 function countingCheck(root: string, body: string): void {
   const count = path.join(root, ".checkcount");
-  declareCheck(root, `#!/bin/sh\nc=$(cat ${count} 2>/dev/null || echo 0)\nn=$((c+1))\necho "$n" > ${count}\n${body}\necho ok\n`);
+  declareCheck(root, `#!/bin/sh\n${checkRunNumber(count)}${body}\necho ok\n`);
 }
 
 /** Shell that lands one commit on main from inside a running check — the primary checkout
@@ -853,7 +903,7 @@ test("a red stack check abandons to one-at-a-time and both changes still land", 
   const count = path.join(root, ".checkcount");
   declareCheck(
     root,
-    `#!/bin/sh\nc=$(cat ${count} 2>/dev/null || echo 0)\nn=$((c+1))\necho "$n" > ${count}\n[ "$n" = "3" ] && { echo "planted batch failure"; exit 1; }\necho ok\n`,
+    `#!/bin/sh\n${checkRunNumber(count)}[ "$n" = "3" ] && { echo "planted batch failure"; exit 1; }\necho ok\n`,
   );
   const restore = fakePi(APPROVE_PI);
   try {
@@ -901,7 +951,7 @@ test("a red stack check's fallback lands pins from an older main with one review
   const count = path.join(root, ".checkcount");
   declareCheck(
     root,
-    `#!/bin/sh\nc=$(cat ${count} 2>/dev/null || echo 0)\nn=$((c+1))\necho "$n" > ${count}\n[ "$n" = "3" ] && { echo "planted batch failure"; exit 1; }\necho ok\n`,
+    `#!/bin/sh\n${checkRunNumber(count)}[ "$n" = "3" ] && { echo "planted batch failure"; exit 1; }\necho ok\n`,
   );
   const restore = fakePi(APPROVE_PI);
   try {
@@ -951,14 +1001,15 @@ test("Phase A reviews each pin rebased onto main's current tip, so no reviewer's
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     assert.deepEqual(fs.readFileSync(rec, "utf8").trim().split("\n"), ["synced", "synced"], "no reviewer sat behind main");
-    const heads = readEvents(root)
-      .filter((e) => e.type === "review_start")
-      .map((e) => String(e.head));
-    assert.equal(heads.length, 2);
-    for (const [i, role] of (["alpha", "beta"] as const).entries()) {
-      assert.notEqual(heads[i], shas[role], `${role} was reviewed rebased, not as its stale pin`);
-      assert.equal(sh(root, "git", "rev-parse", `${heads[i]}~1`).trim(), mainTip, `${role} sits directly on main's tip`);
-      assert.equal(states[role].lastApprovedHead, heads[i], "the verdict names the head it judged");
+    // Keyed by role: the two gates run concurrently, so their review_start order is a race.
+    const starts = readEvents(root).filter((e) => e.type === "review_start");
+    assert.equal(starts.length, 2);
+    const heads = new Map(starts.map((e) => [e.loop, String(e.head)]));
+    for (const role of ["alpha", "beta"] as const) {
+      const head = heads.get(role)!;
+      assert.notEqual(head, shas[role], `${role} was reviewed rebased, not as its stale pin`);
+      assert.equal(sh(root, "git", "rev-parse", `${head}~1`).trim(), mainTip, `${role} sits directly on main's tip`);
+      assert.equal(states[role].lastApprovedHead, head, "the verdict names the head it judged");
     }
     assert.ok(fs.existsSync(path.join(root, "main.txt")), "main's own commit survived the landing");
   } finally {
@@ -985,12 +1036,12 @@ test("a Phase-A rebase conflict reviews the bare pin and the fallback's resolver
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
-    const heads = readEvents(root)
-      .filter((e) => e.type === "review_start")
-      .map((e) => [e.loop, e.head]);
-    assert.equal(heads.length, 2, "one review per change: the fallback re-reviewed neither");
-    assert.deepEqual(heads[0], ["alpha", shas.alpha!], "alpha's rebase conflicted: its gate judged the restored pin");
-    assert.notEqual(heads[1]![1], shas.beta!, "beta's clean rebase was reviewed synced");
+    // Keyed by role: the two gates run concurrently, so their review_start order is a race.
+    const starts = readEvents(root).filter((e) => e.type === "review_start");
+    assert.equal(starts.length, 2, "one review per change: the fallback re-reviewed neither");
+    const heads = new Map(starts.map((e) => [e.loop, e.head]));
+    assert.equal(heads.get("alpha"), shas.alpha!, "alpha's rebase conflicted: its gate judged the restored pin");
+    assert.notEqual(heads.get("beta"), shas.beta!, "beta's clean rebase was reviewed synced");
     assert.equal(calls.length, 1, "one resolution run, for alpha's conflict with main");
     assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "both\n", "the resolution landed");
     assert.ok(fs.existsSync(path.join(root, "beta.txt")), "and beta on top of it");
@@ -1022,23 +1073,35 @@ test("a cherry-pick conflict abandons to one-at-a-time and the conflicting chang
   }
 });
 
-test("a failed gate stops the batch: the later requests stay unattempted with entry and ref intact", async () => {
+test("a failed gate stops LAUNCHING: the gate in flight beside it still stacks, the unlaunched stay unattempted", async () => {
+  // The concurrent early-stop rule: alpha's reviewer replies without a verdict (an under-cap
+  // review_error), beta's gate is already in flight beside it and runs to its approval, and
+  // gamma — not yet launched when alpha failed — is never attempted (entry + ref intact).
+  // beta's review holds until alpha's failure is on record, so the order is fixed.
+  const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta", "gamma"]);
   const restore = fakePi(
-    reviewerPi("I think this is fine."),
+    reviewerByRole({
+      alpha: replyLine("I think this is fine."),
+      beta: `${awaitEvent(root, "alpha", "review_failed")}${replyLine("VERDICT: approve")}`,
+    }),
   );
   try {
-    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
     const mainBefore = sh(root, "git", "rev-parse", "main");
 
-    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+    const results = await runBatch(root, shas, ["alpha", "beta", "gamma"], wiringFor);
 
-    assert.equal(results[0]!.result, "review_error", "the failed gate is terminal for its request");
-    assert.equal(results[1]!.result, undefined, "the second request was never attempted — the drain keeps its entry");
+    assert.deepEqual(
+      results.map((r) => r.result),
+      ["review_error", "changed", undefined],
+      "the failed gate is terminal, its in-flight neighbour lands, the rest were never launched",
+    );
     assert.ok(states.alpha.lastError?.startsWith("review failed:"), `lastError names the failure: ${states.alpha.lastError}`);
-    assert.equal(folded.get("beta"), undefined, "no reviewer run for the unattempted request");
+    assert.equal(folded.get("gamma"), undefined, "no reviewer run for the unattempted request");
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "under the strike cap the head's ref stays");
-    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "the unattempted request's ref stays");
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(await refSha(root, landingRefName("beta")), null, "the in-flight approval landed");
+    assert.equal(await refSha(root, landingRefName("gamma")), shas.gamma!, "the unattempted request's ref stays");
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "1", "beta alone landed");
+    assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"));
   } finally {
     restore();
   }
@@ -1051,52 +1114,67 @@ test("a lost pin degrades its request to a terminal error instead of starving th
   // healthy head advances — rather than let the throw escape: the drain's catch keeps EVERY
   // entry, so a permanently uncheckable head would re-fail on every poll and starve the queue
   // forever. The single path's landQueuedEntry catch-all already self-heals this exact case.
-  const restore = fakePi(APPROVE_PI);
+  // beta's gate runs beside the lost pin's and outlasts its failed checkout (a lost pin logs
+  // no event to wait on; a checkout failure is two git calls, beta holds 3 s after its own).
+  const restore = fakePi(reviewerByRole({ beta: `sleep 3; ${replyLine("VERDICT: approve")}` }));
   try {
-    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta", "gamma"]);
     sh(root, "git", "update-ref", "-d", landingRefName("alpha")); // the pin is gone
     const mainBefore = sh(root, "git", "rev-parse", "main");
     const lost = "0".repeat(40); // a sha git cannot check out
 
     const results = await landBatch(
       makeBatchCtx(root),
-      [request(lost, { role: "alpha" }), request(shas.beta!, { role: "beta" })],
+      [
+        request(lost, { role: "alpha" }),
+        request(shas.beta!, { role: "beta" }),
+        request(shas.gamma!, { role: "gamma" }),
+      ],
       wiringFor,
     );
 
     assert.equal(results[0]!.result, "error", "the uncheckable pin is terminal, so the drain drops its entry");
     assert.ok(states.alpha.lastError, "the git failure is recorded where the next tick's prompt reads it");
-    assert.equal(results[1]!.result, undefined, "the healthy sibling stays queued with its ref intact");
-    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
-    assert.equal(folded.get("beta"), undefined, "no reviewer run for the unattempted request");
+    assert.equal(results[1]!.result, "changed", "the gate already in flight beside it ran on and landed");
+    assert.equal(results[2]!.result, undefined, "the unlaunched sibling stays queued with its ref intact");
+    assert.equal(await refSha(root, landingRefName("gamma")), shas.gamma!);
+    assert.equal(folded.get("gamma"), undefined, "no reviewer run for the unattempted request");
     assert.equal(folded.get("alpha"), undefined, "and none for the uncheckable pin");
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
-    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0);
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "1", "beta alone landed");
+    assert.deepEqual(readEvents(root).filter((e) => e.type === "merged").map((e) => e.loop), ["beta"]);
 
     // The next drain now sees the healthy head alone and lands it — the queue advanced.
-    const next = await runBatch(root, shas, ["beta"], wiringFor);
+    const next = await runBatch(root, shas, ["gamma"], wiringFor);
     assert.deepEqual(next.map((r) => r.result), ["changed"], "the previously starved head lands on the next drain");
-    assert.equal(await refSha(root, landingRefName("beta")), null, "and its ref is gone after landing");
+    assert.equal(await refSha(root, landingRefName("gamma")), null, "and its ref is gone after landing");
   } finally {
     restore();
   }
 });
 
-test("landBatch reports a rejection to onFinal at its verdict, before the next gate runs; an approval never", async () => {
+test("landBatch reports a rejection to onFinal at its own verdict, while the gate beside it still reviews; an approval never", async () => {
   // BUGS.md 2026-09-23: a final Phase-A verdict must reach the drain the moment it is
   // persisted, so its entry drops and its author ticks while the batch runs on — not after
   // every later review, the stack check, and the ff. An approved change stays unreported: its
-  // author must not tick on top of an unlanded change.
+  // author must not tick on top of an unlanded change. The two gates run concurrently, so
+  // beta's review holds until the report has arrived (a file onFinal drops) — the report
+  // provably fires at alpha's own verdict, not when Phase A as a whole is done.
+  const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+  const reported = path.join(tmpdir(), "on-final-fired");
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) case "$a" in *"work by alpha"*) printf '%s\\n' '${assistantLine("VERDICT: reject\n1. no")}'; exit 0;; esac; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+    reviewerByRole({
+      alpha: replyLine("VERDICT: reject\n1. no"),
+      beta: `i=0; until [ -f '${reported}' ] || [ $i -ge 300 ]; do sleep 0.1; i=$((i+1)); done; ${replyLine("VERDICT: approve")}`,
+    }),
   );
   try {
-    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
     const finals: { index: number; result: string; betaReviewed: boolean; saved: string | undefined }[] = [];
     const ctx: BatchContext = {
       ...makeBatchCtx(root),
-      onFinal: (index, result) =>
-        finals.push({ index, result, betaReviewed: folded.has("beta"), saved: states.alpha.lastReview?.verdict }),
+      onFinal: (index, result) => {
+        finals.push({ index, result, betaReviewed: folded.has("beta"), saved: states.alpha.lastReview?.verdict });
+        fs.writeFileSync(reported, "");
+      },
     };
 
     const results = await landBatch(ctx, ["alpha", "beta"].map((role) => request(shas[role]!, { role })), wiringFor);
@@ -1105,7 +1183,7 @@ test("landBatch reports a rejection to onFinal at its verdict, before the next g
     assert.deepEqual(
       finals,
       [{ index: 0, result: "rejected", betaReviewed: false, saved: "reject" }],
-      "one report, for the rejection only, after its verdict persisted and before beta's gate ran",
+      "one report, for the rejection only, after its verdict persisted and while beta was still in review",
     );
   } finally {
     restore();
@@ -1171,7 +1249,7 @@ test("an unlandable first fallback after a red stack check degrades to error and
   const worktrees = path.join(root, ".tumwater", "worktrees");
   declareCheck(
     root,
-    `#!/bin/sh\nc=$(cat ${count} 2>/dev/null || echo 0)\nn=$((c+1))\necho "$n" > ${count}\nif [ "$n" = "3" ]; then rm -rf ${worktrees}; touch ${worktrees}; echo "error TS2345: boom" >&2; exit 1; fi\necho ok\n`,
+    `#!/bin/sh\n${checkRunNumber(count)}if [ "$n" = "3" ]; then rm -rf ${worktrees}; touch ${worktrees}; echo "error TS2345: boom" >&2; exit 1; fi\necho ok\n`,
   );
   const restore = fakePi(APPROVE_PI);
   try {
@@ -1193,19 +1271,98 @@ test("an unlandable first fallback after a red stack check degrades to error and
 test("an abort mid-batch routes every request without a terminal outcome to aborted, refs kept", async () => {
   const restore = fakePi(`exec sleep 30`); // never reached: the signal is already aborted
   try {
-    const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+    const roles = ["alpha", "beta", "gamma"];
+    const { root, shas, wiringFor, folded } = await batchFixture(roles);
     const mainBefore = sh(root, "git", "rev-parse", "main");
     const controller = new AbortController();
     controller.abort(); // a shutdown (or a user stop for any batched role) before the batch starts
 
-    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
+    const results = await runBatch(root, shas, roles, wiringFor, controller);
 
-    assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
-    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an abort keeps the refs for recovery");
-    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+    assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted", "aborted"]);
+    for (const role of roles) {
+      assert.equal(await refSha(root, landingRefName(role)), shas[role]!, `an abort keeps ${role}'s ref for recovery`);
+    }
     assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
-    assert.equal(folded.get("beta"), undefined, "no reviewer spend on the unattempted request");
+    // The first PHASE_A_CONCURRENCY gates launch together; the abort stops the rest.
+    assert.equal(folded.get("gamma"), undefined, "no reviewer spend on the unlaunched request");
     assert.ok((folded.get("alpha") ?? []).length <= 1, "the head's killed run at most");
+    assert.ok((folded.get("beta") ?? []).length <= 1, "and its concurrent neighbour's");
+  } finally {
+    restore();
+  }
+});
+
+test("Phase A runs its gates concurrently, at most PHASE_A_CONCURRENCY at once: three T-long reviews take ~ceil(3/2)·T, not 3T", async () => {
+  // BUGS.md 2026-09-23: the batch awaited each gate in turn, so its time in the landing slot
+  // was the sum of every review (a 40-minute batch of three) and one slow reviewer held the
+  // whole queue. Each review here holds T and records how many reviews were in flight as it
+  // started. The wall-clock is read off the harness's own review timeline — first
+  // review_start to last review_verdict — and held against the same run's measured review
+  // durations, the floor of any one-after-another schedule: the whole landBatch call also
+  // pays several seconds of git plumbing on a loaded host, which would swamp a bound on it,
+  // while a slowed `sleep` inflates both sides of this comparison alike.
+  assert.equal(PHASE_A_CONCURRENCY, 2, "the bound this test's arithmetic assumes");
+  const T = 5;
+  const dir = tmpdir();
+  const restore = fakePi(reviewerByRole({}, countedReview(dir, T)));
+  try {
+    const roles = ["alpha", "beta", "gamma"];
+    const { root, shas, wiringFor } = await batchFixture(roles);
+
+    const results = await runBatch(root, shas, roles, wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed", "changed"]);
+    const samples = readSamples(dir);
+    assert.equal(samples.length, 3, "one review per change");
+    assert.equal(Math.max(...samples), 2, `two reviews overlapped, never three (in flight at each start: ${samples})`);
+    const events = readEvents(root);
+    const starts = events.filter((e) => e.type === "review_start").map((e) => e.ts);
+    const verdicts = events.filter((e) => e.type === "review_verdict");
+    const spanMs = Math.max(...verdicts.map((e) => e.ts)) - Math.min(...starts);
+    const serialFloorMs = verdicts.reduce((sum, e) => sum + Number(e.durationMs), 0);
+    // ~ceil(3/2)·T: the third review waits for a free lane, so the span is at least 2T ...
+    assert.ok(spanMs >= 2 * T * 1000, `the concurrency cap held: reviews spanned ${spanMs} ms`);
+    // ... and not 3T: one after another, the span could never undercut the reviews' own sum.
+    assert.ok(
+      spanMs < serialFloorMs,
+      `the reviews spanned ${spanMs} ms, no less than their ${serialFloorMs} ms sum — they ran one after another`,
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("the stack follows queue order however the gates finish: a slow head still lands first", async () => {
+  // Concurrent gates finish in any order; stacking must not follow them. The head's review
+  // holds until the last change's verdict is on record, so both later changes are judged
+  // first — and still land behind it.
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"]);
+  const restore = fakePi(
+    reviewerByRole({ alpha: `${awaitEvent(root, "gamma", "review_verdict")}${replyLine("VERDICT: approve")}` }),
+  );
+  try {
+    const roles = ["alpha", "beta", "gamma"];
+    const mainBefore = sh(root, "git", "rev-parse", "main");
+
+    const results = await runBatch(root, shas, roles, wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed", "changed"]);
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "review_verdict").map((e) => e.loop),
+      ["beta", "gamma", "alpha"],
+      "the gates finished out of queue order",
+    );
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "merged").map((e) => e.loop),
+      roles,
+      "one merged event per change, in queue order",
+    );
+    assert.deepEqual(
+      sh(root, "git", "log", "--reverse", "--format=%s", `${mainBefore}..main`).trim().split("\n"),
+      roles.map((r) => `work by ${r}`),
+      "main's history is the queue order",
+    );
   } finally {
     restore();
   }
@@ -1214,7 +1371,10 @@ test("an abort mid-batch routes every request without a terminal outcome to abor
 // The landing cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the batch: the
 // marker names the head, so the head's stage must leave `reviewing` the moment its gate
 // returns — otherwise its finished reviewer's last turns sit in the cell, accruing a false
-// `no pi output` flag, for as long as the batch reviews and checks the other changes.
+// `no pi output` flag, for as long as the batch reviews and checks the other changes. The
+// stage sequence below is a single timeline, so these runs hold Phase A to one lane with a
+// concurrent-gate permit that never comes (the full-semaphore case: the gates then run one
+// after another on the slot's own permit — which also pins that it cannot deadlock).
 for (const headVerdict of ["reject", "approve"] as const) {
   test(`a batch head ${headVerdict === "reject" ? "rejected" : "approved"} mid-batch leaves reviewing when its gate returns; the stack check names itself`, async () => {
     const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
@@ -1234,7 +1394,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
     );
     try {
       const results = await landBatch(
-        makeBatchCtx(root, config),
+        { ...makeBatchCtx(root, config), gatePermit: () => new Promise<() => void>(() => {}) },
         ["alpha", "beta"].map((role) => request(shas[role]!, { role })),
         wiringFor,
       );
@@ -1287,9 +1447,13 @@ test("an aborted batch lands nothing even when every gate would short-circuit on
 });
 
 test("an abort after the last gate approved stops the batch before its shared check", async () => {
-  const restore = fakePi(APPROVE_PI);
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+  // beta's approval is the last gate to finish: the two run concurrently, so its review
+  // holds until alpha's verdict is on record.
+  const restore = fakePi(
+    reviewerByRole({ beta: `${awaitEvent(root, "alpha", "review_verdict")}${replyLine("VERDICT: approve")}` }),
+  );
   try {
-    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
     declareCheck(root, "#!/bin/sh\necho ok\n");
     const mainBefore = sh(root, "git", "rev-parse", "main");
     const controller = new AbortController();

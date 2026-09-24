@@ -71,11 +71,40 @@ export function readLandingMarker(root: string): LandingInFlight | null {
  * detail) and the batch marker names only its first still-queued change (the landing drain
  * re-points it when a final Phase-A verdict drops the one it names), so another batched
  * role's transitions must not touch it. Only the stage changes: sha and startedAt are what the snapshot cross-check and
- * the landing's elapsed read. */
+ * the landing's elapsed read. Every call is recorded for its role either way
+ * (requestedLandingStage), so a marker re-pointed at a batched change whose gate is already
+ * running can show that gate's real stage. */
 export function setLandingStage(root: string, role: string, stage: LandingStage): void {
+  requestedStages.set(stageKey(root, role), stage);
   const marker = readLandingMarker(root);
   if (!marker || marker.role !== role || marker.stage === stage) return;
   writeLandingMarker(root, { ...marker, stage });
+}
+
+/** The stage each role's landing last asked for through setLandingStage — recorded whether or
+ * not the marker named that role at the time, keyed by root and role. A batch runs its
+ * Phase-A gates concurrently (land-batch.ts) while the marker names only one of them, so when
+ * a final verdict drops the marked change and the drain re-points the marker at a change whose
+ * gate is already mid-review, that gate has no further transition to announce until its
+ * reviewer returns: the re-point must carry the stage it already asked for, or the cell reads
+ * `merging` through the whole review. In-process only — the landing path that sets these and
+ * the drain that reads them are the one harness process. */
+const requestedStages = new Map<string, LandingStage>();
+
+function stageKey(root: string, role: string): string {
+  return `${root}\u0000${role}`;
+}
+
+/** The stage `role`'s landing last asked for since the drain last forgot it — undefined when
+ * its gate has not started a stage yet. */
+export function requestedLandingStage(root: string, role: string): LandingStage | undefined {
+  return requestedStages.get(stageKey(root, role));
+}
+
+/** Forget the stages `roles` asked for — the batch drain's reset as a batch starts, so a stage
+ * an earlier landing of the same role asked for can never surface in this one. */
+export function forgetLandingStages(root: string, roles: readonly string[]): void {
+  for (const role of roles) requestedStages.delete(stageKey(root, role));
 }
 
 /** Fold one landing's outcome into its role's state and drop its queue entry — the 3/5

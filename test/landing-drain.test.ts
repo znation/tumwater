@@ -12,7 +12,7 @@ import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { Semaphore } from "../src/semaphore.js";
 import { defaultConfig } from "../src/config.js";
 import { loadLoopState } from "../src/state.js";
-import { assistantLine, fakePi, makeRepo, sh, tmpdir, waitForFile } from "./util.js";
+import { assistantLine, fakePi, makeRepo, sh, tmpdir, waitFor, waitForFile } from "./util.js";
 import type { LandingEntry } from "../src/types.js";
 
 // Unit coverage for src/landing-drain.ts's drainLandingQueue — the scheduler seam between the
@@ -226,7 +226,9 @@ test("a batch's unattempted change keeps its entry queued for re-drain", async (
   // stop leaves it undefined) keeps its queue entry and its pin — the next drain re-runs it.
   // Drive it deterministically: alpha's gate approves, beta's pin names a commit that no
   // longer exists (the land queue outlives its ref by design) so the gate degrades beta to
-  // a terminal "error" and stops, and gamma is never attempted.
+  // a terminal "error" and stops Phase A launching, and gamma is never attempted. alpha's
+  // gate runs beside beta's (Phase A is concurrent), so its review holds a few seconds to
+  // outlast beta's failed checkout — otherwise its lane could pull gamma first.
   const root = makeRepo();
   const alpha = pinnedCommit(root, "alpha");
   const gamma = pinnedCommit(root, "gamma");
@@ -237,7 +239,7 @@ test("a batch's unattempted change keeps its entry queued for re-drain", async (
   enqueueLanding(root, entry("beta", "0123456789abcdef0123456789abcdef01234567"));
   enqueueLanding(root, entry("gamma", gamma));
   const mainBefore = sh(root, "git", "rev-parse", "main");
-  const restore = fakePi(APPROVE());
+  const restore = fakePi(`sleep 3\n${APPROVE()}`);
   try {
     const { ctx, cleared } = makeCtx(root, runnersFor(root, ["alpha", "beta", "gamma"]));
     const landing = await drainLandingQueue(ctx);
@@ -259,7 +261,10 @@ test("a batched change rejected early drops its entry at its verdict, while the 
   // BUGS.md 2026-09-23: a final Phase-A verdict used to wait for the whole batch's
   // write-back, so the rejected author stayed interlocked through every later review, the
   // stack check, and the ff. Alpha's reviewer rejects at once; beta's parks until released,
-  // so everything asserted before the release is the mid-batch state.
+  // so everything asserted before the release is the mid-batch state. The two gates run
+  // concurrently, and alpha's reviewer rejects only once beta's is parked: beta announced
+  // `reviewing` while the marker still named alpha, so the marker re-pointed at beta must carry
+  // the stage beta's own gate asked for, not the `merging` alpha's finished gate left behind.
   const root = makeRepo();
   const alpha = pinnedCommit(root, "alpha");
   const beta = pinnedCommit(root, "beta");
@@ -276,7 +281,9 @@ test("a batched change rejected early drops its entry at its verdict, while the 
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-      `case "$a" in *"work by alpha"*) printf '%s\\n' '${assistantLine("VERDICT: reject\n1. breaks the zero-dep rule")}'; exit 0;; esac`,
+      `case "$a" in *"work by alpha"*)`,
+      `i=0; until [ -e '${held}' ] || [ $i -ge 600 ]; do sleep 0.05; i=$((i+1)); done`,
+      `printf '%s\\n' '${assistantLine("VERDICT: reject\n1. breaks the zero-dep rule")}'; exit 0;; esac`,
       `touch '${held}'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
       `esac; done`,
@@ -288,6 +295,7 @@ test("a batched change rejected early drops its entry at its verdict, while the 
     landing = await drainLandingQueue(ctx);
     assert.ok(landing, "the batch started");
     await waitForFile(held);
+    await waitFor(() => queuedLandingFiles(root).length === 1, "alpha's entry to drop at its verdict", 30_000);
 
     // Mid-batch: beta's review is still running, yet alpha's landing is already complete.
     assert.deepEqual(
@@ -321,5 +329,65 @@ test("a batched change rejected early drops its entry at its verdict, while the 
     await landing?.promise;
     restore();
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/** Resolve true when `p` settles within `ms`, false otherwise — an unref'd timer, so a
+ * resolved race leaves nothing keeping the test process alive. */
+function within(p: Promise<unknown>, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    timer.unref();
+    void p.then(() => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+}
+
+test("a batch's concurrent gates each hold a maxConcurrent permit: two reviews at cap 2, one at a time at cap 1, none leaked", async () => {
+  // A landing's pi runs take the same permit role ticks do (BUGS.md 2026-09-18). The slot's
+  // permit covers ONE Phase-A gate and every gate beside it must win a permit of its own —
+  // so at cap 1, where the slot holds the only one, the gates run one after another on it
+  // (never deadlocking on the lane that waits), and that lane's late grant goes straight back.
+  // Each review records how many reviews were in flight as it started.
+  for (const cap of [2, 1]) {
+    const root = makeRepo();
+    // Pin both before enqueueing either: a pin's `git add -A` would swallow a queue file.
+    const shas = ["alpha", "beta"].map((role) => [role, pinnedCommit(root, role)] as const);
+    for (const [role, sha] of shas) {
+      await setRef(root, landingRefName(role), sha);
+      enqueueLanding(root, entry(role, sha));
+    }
+    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const runDir = tmpdir();
+    const restore = fakePi(
+      [
+        `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
+        `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
+        `sleep 2; rm -f "$f"`,
+        APPROVE(),
+      ].join("\n"),
+    );
+    try {
+      const { ctx } = makeCtx(root, runnersFor(root, ["alpha", "beta"]));
+      const semaphore = new Semaphore(cap);
+      ctx.semaphore = semaphore;
+      const landing = await drainLandingQueue(ctx);
+      assert.ok(landing, `cap ${cap}: the batch started`);
+      await landing!.promise;
+
+      assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", `cap ${cap}: both changes landed`);
+      const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
+      assert.equal(samples.length, 2, `cap ${cap}: one review per change`);
+      assert.equal(Math.max(...samples), cap, `cap ${cap}: reviews in flight at each start never exceed the cap (${samples})`);
+      // Every permit came back — the slot's, the concurrent gate's, and at cap 1 the waiting
+      // lane's late grant: the full cap is acquirable again.
+      for (let k = 0; k < cap; k++) {
+        assert.ok(await within(semaphore.acquire(0), 5_000), `cap ${cap}: permit ${k + 1} was never released`);
+      }
+    } finally {
+      restore();
+    }
   }
 });

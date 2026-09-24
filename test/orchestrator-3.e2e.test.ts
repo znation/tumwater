@@ -18,7 +18,15 @@ import { enqueuePrompt } from "../src/inbox.js";
 import { logEvent, readEvents } from "../src/events.js";
 import { loadLoopState, saveLoopState } from "../src/state.js";
 import { readOrchestratorInfo } from "../src/fleet-state.js";
-import { abortRequestPath, branchName, landQueueDir, landingRefName, landingStatePath, worktreePath } from "../src/paths.js";
+import {
+  abortRequestPath,
+  branchName,
+  eventsLogPath,
+  landQueueDir,
+  landingRefName,
+  landingStatePath,
+  worktreePath,
+} from "../src/paths.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { refSha, setRef } from "../src/git.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
@@ -911,9 +919,9 @@ test("an abort for a NON-HEAD batched role kills the whole batch and discards ev
   try {
     await waitFor(() => fs.existsSync(marker), "the batch's head reviewer run to be in flight", 60_000);
     // What `tumwater abort --role dry` does from the CLI side: a marker for the SECOND
-    // batched role — the one that has never even started its gate. Before 5/5 this request
-    // could only match the head's landing; now it matches ANY batched role and kills the
-    // whole slot unit.
+    // batched role — not the head the marker names (its gate runs beside the head's, in
+    // Phase A's second lane). Before 5/5 this request could only match the head's landing;
+    // now it matches ANY batched role and kills the whole slot unit.
     const markerFile = abortRequestPath(repo, "dry");
     fs.mkdirSync(path.dirname(markerFile), { recursive: true });
     fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
@@ -1088,24 +1096,28 @@ test("an unexpected throw from the batch keeps every entry for re-drain and is c
   // in the stack assembly still throws (unlike Phase A's worktree ensure, the assembly's is
   // unguarded). The catch must keep EVERY entry queued — none dropped: both gates approve,
   // and an approved change writes back only after landBatch returns — and let the next poll
-  // re-drain, instead of escaping startLanding's body as an unhandled rejection. Trigger:
-  // during the SECOND gate run (dry's — the head role's gate already approved), delete the
-  // head role's lander worktree and make its parent unwritable, so the assembly's
-  // ensureDetachedWorktree cannot re-create it and throws.
+  // re-drain, instead of escaping startLanding's body as an unhandled rejection. Trigger: in
+  // dry's gate run, once the head role's gate has approved, delete the head role's lander
+  // worktree and make its parent unwritable, so the assembly's ensureDetachedWorktree cannot
+  // re-create it and throws. Phase A runs the two gates concurrently, so dry's review waits
+  // for clean's verdict to be on record (logged after clean's last use of its worktree)
+  // rather than counting runs.
   const repo = makeRepo();
   await initProject(repo, "batch throw recovery test");
   saveConfig(repo, fastConfig(["clean", "dry"]));
   await seedLandQueue(repo, "clean", "dry");
   const worktrees = path.join(repo, ".tumwater", "worktrees");
   const headWt = path.join(worktrees, "_land-clean");
-  const count = path.join(tmpdir(), "batch-throw-gatecount");
+  const events = eventsLogPath(repo);
   const armed = path.join(tmpdir(), "batch-throw-armed");
   const restore = fakePi(
     [
-      `n=$(cat '${count}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${count}'`,
       `for a in "$@"; do case "$a" in`,
       `*"VERDICT:"*)`,
-      `if [ "$n" = 2 ] && [ ! -e '${armed}' ]; then touch '${armed}'; rm -rf '${headWt}'; chmod 555 '${worktrees}'; fi`,
+      `case "$PWD" in *_land-dry) if [ ! -e '${armed}' ]; then`,
+      `  i=0; until grep -q '"loop":"clean","type":"review_verdict"' '${events}' 2>/dev/null || [ $i -ge 300 ]; do sleep 0.1; i=$((i+1)); done`,
+      `  touch '${armed}'; rm -rf '${headWt}'; chmod 555 '${worktrees}'`,
+      `fi;; esac`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
       `esac; done`,
       `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
@@ -1113,7 +1125,7 @@ test("an unexpected throw from the batch keeps every entry for re-drain and is c
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => fs.existsSync(armed), "the second gate to arm the corruption", 60_000);
+    await waitFor(() => fs.existsSync(armed), "dry's gate to arm the corruption", 60_000);
     // The throw was contained and the re-drain self-terminated: dry's entry survived the
     // throw (kept queued, its gate verdict persisted) and lands on the next poll, while
     // clean's — whose lander worktree can no longer be created — drops as a terminal error

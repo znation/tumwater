@@ -22,6 +22,17 @@ import { setLandingStage } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "./types.js";
 
+/** How many Phase-A gates run at once. The gates are independent — each in its own role's
+ * `_land-<role>` worktree, review session dir, pinned ref, pi log and LoopState — so a batch's
+ * slot time is bounded by its slowest reviews rather than their sum (BUGS.md 2026-09-23: a
+ * 40-minute batch was three reviews back to back). But every gate first runs the project's
+ * FULL declared check on the one shared host, and the suite carries load-sensitive tests
+ * (BUGS.md 2026-09-21: a live-orchestrator test failed and passed on the same sha two minutes
+ * apart), so a wide fan-out would trade reviewer wait for false-red gate checks. Two overlaps
+ * the dominant cost — the model review — while adding at most one concurrent suite. A
+ * constant, not a knob: one sensible default first. */
+export const PHASE_A_CONCURRENCY = 2;
+
 /** The identity a batch needs from the harness: root, main branch, live config, and the
  * slot's abort signal. Deliberately thinner than LanderContext — no single `state` and no
  * `runPi`, because a batch spans N ROLES (invariant 3 caps a role at one in-flight change, so
@@ -33,7 +44,8 @@ export interface BatchContext {
   /** The slot's abort signal (harness shutdown or a deliberate `abort --role` for any
    * batched role), fresh per call. */
   signal(): AbortSignal;
-  /** Called once per request whose Phase-A outcome is FINAL, the moment it is — rejected or a
+  /** Called once per request whose Phase-A outcome is FINAL, the moment its own gate settles
+   * (in whatever order the concurrent gates finish) — rejected or a
    * strike-cap review_error discard (verdict persisted, ref deleted), or an "error" for a pin
    * that cannot even be checked out — with its index into `requests`. Nothing later in the
    * batch can change that outcome, so the drain writes it back and drops the entry right
@@ -44,6 +56,14 @@ export interface BatchContext {
    * review_error (its kept ref is the next tick's leftover recovery, which must not race this
    * batch's fast-forward), or "aborted". */
   onFinal?(index: number, result: TickResult): void;
+  /** Take one more backend permit for a concurrent Phase-A gate, resolving to its release.
+   * The slot's own permit covers ONE gate; a landing's pi runs cost the backend what an
+   * author run costs, so each gate running beside it holds a `maxConcurrent` permit of its
+   * own (BUGS.md 2026-09-18 — the drain passes the shared semaphore at LANDING_TIER). The
+   * grant may arrive after Phase A has finished without it (every permit was held all
+   * along); runPhaseA then releases it at once. Absent (the unit tests' direct calls):
+   * concurrent gates take no permit. */
+  gatePermit?(): Promise<() => void>;
 }
 
 /** One batched change's wiring, resolved by the drain exactly as the landed drain resolves
@@ -56,6 +76,127 @@ export interface BatchRoleWiring {
   foldUsage(run: PiRunResult): void;
   /** Run one pi run in `wt` with this role's shared wiring (the fallback landings' conflict resolver). */
   runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
+}
+
+/** One Phase-A gate's verdict for its request: `stack` — approved or exempt, to land at `sha`
+ * (the synced pin, or it + a build-fix commit); `result` — an outcome that keeps the change
+ * out of the stack: rejected, review_error (`discarded` on a strike-cap discard), a lost-pin
+ * "error", or aborted. */
+type PhaseAVerdict = { kind: "stack"; sha: string } | { kind: "result"; result: TickResult; discarded?: true };
+
+/** One request's Phase-A gate: check its pin out detached in the role's own lander worktree,
+ * rebase it onto main's current tip — landChange's own pre-gate rebase (syncPinToMain), so the
+ * head approved here is the head a landing starts from, and a conflict leaves the pin for the
+ * gate exactly as there — and run the SAME review gate landChange runs, the verdict persisted
+ * immediately by reviewPinnedChange (the drain's write-back of every non-final outcome happens
+ * only in-process at batch completion, so a mid-batch crash must not lose what the batch
+ * earned). The rebase touches only this role's worktree and ref, onto main itself, so two
+ * gates rebasing at once cannot interfere. */
+async function gateRequest(ctx: BatchContext, req: LandRequest, w: BatchRoleWiring): Promise<PhaseAVerdict> {
+  let wt: string;
+  try {
+    wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
+  } catch (err) {
+    // The queue entry outlived its pinned commit — the land queue outlives the ref by design
+    // (a crash between pin and drop, or an outside gc), so a checkout of `req.sha` can fail
+    // with the commit gone. Degrade to a terminal "error" for this request so the drain
+    // drops its entry and the queue advances; the single path's landQueuedEntry catch-all
+    // does exactly this. Without it the throw escapes to the drain, which keeps EVERY entry
+    // — a lost head pin would then starve the healthy queue forever. It stops Phase A like a
+    // review_error (stopsPhaseA): the unlaunched stay unattempted, entry + ref intact. The
+    // error is on the state before the caller settles it, so the drain's write-back persists it.
+    w.state.lastError = errorMessage(err);
+    return { kind: "result", result: "error" };
+  }
+  const synced = await syncPinToMain(ctx, wt, req);
+  const outcome = await reviewPinnedChange(ctx, synced, wt, w.state, w.foldUsage);
+  return outcome.kind === "gate" ? { kind: "stack", sha: outcome.sha } : outcome;
+}
+
+/** Whether a Phase-A verdict is FINAL — settled for good the moment it is persisted, so the
+ * drain may write it back and drop its entry mid-batch (BatchContext.onFinal): a rejection or
+ * a strike-cap discard (verdict persisted, ref deleted), or an uncheckable pin's "error". */
+function isFinal(v: PhaseAVerdict): boolean {
+  return v.kind === "result" && (v.result === "rejected" || v.result === "error" || v.discarded === true);
+}
+
+/** Whether a verdict stops Phase A from LAUNCHING further gates. A rejection is a verdict
+ * about one change, so the batch carries on. A failed review (a suspect reviewer backend
+ * would fail the rest the same way), a lost pin, and an abort (a shutdown, a user stop, or a
+ * quiet-killed reviewer run) stop it: the gates not yet launched stay unattempted — entry +
+ * ref intact, re-drained next poll. Gates already in flight run to their verdict, which is
+ * persisted work; an approval among them still stacks. */
+function stopsPhaseA(v: PhaseAVerdict): boolean {
+  return v.kind === "result" && v.result !== "rejected";
+}
+
+/** Phase A's scheduler: launch `gate` for each request index in queue order, at most
+ * PHASE_A_CONCURRENCY at once, and return every request's verdict by queue index —
+ * `undefined` means never launched. Completion order never reaches the caller's stack: it
+ * folds this array in queue order, so the stack is deterministic however the reviews race.
+ *
+ * Lane 0 runs under the landing slot's own permit and always makes progress, so Phase A can
+ * never deadlock on a full semaphore. Each further lane first takes a permit through
+ * `gatePermit`, then pulls from the same cursor. A lane still waiting for its permit when the
+ * cursor runs out is not waited for: its late grant finds nothing to launch and is released
+ * at once — a hop, never a leak. The early stop (stopsPhaseA) stops only launching: this
+ * returns once every LAUNCHED gate has settled, never with a reviewer still running behind the
+ * slot's back. A gate that throws (git plumbing — a failed checkout is already a verdict)
+ * stops launching too, and is rethrown once the rest settle, so it still propagates to the
+ * drain as before. Two gates never share a worktree, ref, state, session dir or pi log: a
+ * batch is N distinct roles (invariant 3), and each of those is per-role. */
+async function runPhaseA(
+  count: number,
+  gate: (i: number) => Promise<PhaseAVerdict>,
+  gatePermit: BatchContext["gatePermit"],
+): Promise<Array<PhaseAVerdict | undefined>> {
+  const verdicts: Array<PhaseAVerdict | undefined> = Array.from({ length: count }, () => undefined);
+  let next = 0;
+  let stopped = false;
+  let thrown: { err: unknown } | undefined;
+  const launchable = (): boolean => !stopped && next < count;
+  // Launch the next request in queue order and record its verdict. Never rejects.
+  const runNext = async (): Promise<void> => {
+    const i = next++;
+    try {
+      const v = await gate(i);
+      verdicts[i] = v;
+      if (stopsPhaseA(v)) stopped = true;
+    } catch (err) {
+      thrown ??= { err };
+      stopped = true;
+    }
+  };
+  // The gates the permit-holding lanes launched, awaited once lane 0 runs out of work.
+  const inFlight = new Set<Promise<void>>();
+  for (let lane = 1; lane < Math.min(PHASE_A_CONCURRENCY, count); lane++) {
+    void (async () => {
+      let release = (): void => {};
+      if (gatePermit) {
+        try {
+          release = await gatePermit();
+        } catch {
+          return; // no permit, no lane: lane 0 still runs every gate
+        }
+      }
+      try {
+        while (launchable()) {
+          const run = runNext();
+          inFlight.add(run);
+          await run;
+          inFlight.delete(run);
+        }
+      } finally {
+        release();
+      }
+    })();
+  }
+  while (launchable()) await runNext();
+  // Lane 0 is out of work, so nothing launches any more (the cursor only advances and the
+  // stop only latches): every gate still running is in `inFlight`.
+  await Promise.all(inFlight);
+  if (thrown) throw thrown.err;
+  return verdicts;
 }
 
 /** How many times a batch whose fast-forward lost the race to a moved main re-stacks onto the
@@ -141,19 +282,24 @@ async function exemptTreeDelta(
 /** Land a whole batch of queued changes (plans/merge-queue.md, entry 5/5): stop paying one
  * full build check per landing when several are queued. The flow:
  *
- * Phase A — for each request in queue order, the SAME review gate landChange runs, in that
- * role's own `_land-<role>` worktree, on the pin rebased onto main's current tip exactly as
- * landChange rebases it (syncPinToMain — a reviewer whose checkout sits behind main reads
- * main's newer commits as reverts), with the verdict persisted right after (a mid-batch
- * crash must not lose what the batch earned). approved/exempt → into the stack S (each entry
- * recorded with the head its gate judged — the synced pin, or it + a build-fix commit); rejected →
- * terminal (ref deleted), continue; failed → stop (this request "review_error": a strike-cap
- * discard deletes the ref, an under-cap failure keeps it tracking any build-fix commit; the
- * rest stay unattempted); a rejection, a strike-cap discard, and an uncheckable pin are FINAL
- * and reach the drain at once through `ctx.onFinal`; aborted (a shutdown
- * mid-gate or a quiet-killed reviewer run) → every request without a terminal outcome reads
- * "aborted" and keeps its ref. |S| == 0 means nothing was approved — all results are already
- * defined (or unattempted after an early stop) and there is nothing to land: return as-is.
+ * Phase A — for each request, the SAME review gate landChange runs, in that role's own
+ * `_land-<role>` worktree, on the pin rebased onto main's current tip exactly as landChange
+ * rebases it (syncPinToMain — a reviewer whose checkout sits behind main reads main's newer
+ * commits as reverts), with the verdict persisted right after (a mid-batch crash must not
+ * lose what the batch earned). Up to PHASE_A_CONCURRENCY gates run at once, launched in queue
+ * order (runPhaseA), so a batch's slot time is its slowest reviews plus the check rather than
+ * the sum of every review; the verdicts fold back in queue order however the reviews race.
+ * approved/exempt → into the stack S (each entry recorded with the head its gate judged — the
+ * synced pin, or it + a build-fix commit); rejected → terminal (ref deleted), keep launching;
+ * failed → this request "review_error" (a strike-cap discard deletes the ref, an under-cap
+ * failure keeps it tracking any build-fix commit) and STOP LAUNCHING: gates already in flight
+ * finish and their verdicts stand (an approval still stacks), the unlaunched stay unattempted;
+ * a rejection, a strike-cap discard, and an uncheckable pin are FINAL and reach the drain
+ * through `ctx.onFinal` the moment their own gate settles, in whatever order the gates finish;
+ * aborted (a shutdown mid-gate or a quiet-killed reviewer run) → stop launching likewise, and
+ * every request without a terminal outcome reads "aborted" and keeps its ref. |S| == 0 means
+ * nothing was approved — all results are already defined (or unattempted after an early
+ * stop) and there is nothing to land: return as-is.
  *
  * |S| == 1 — land it through landApprovedChange (no second gate, so this costs git + ff
  * only, plus an in-lock re-check if main moved since Phase A judged it): the degenerate case
@@ -202,15 +348,16 @@ async function exemptTreeDelta(
  * the batch's bounded commit point.
  *
  * One entry per request comes back in order; `result === undefined` means "unattempted — the
- * drain keeps that queue entry" (a failed Phase-A gate or a fallback early stop), and a
+ * drain keeps that queue entry" (never launched after a Phase-A early stop, or a fallback
+ * early stop), and a
  * defined result drops its entry through the drain's write-back (for the results `ctx.onFinal`
  * already reported, done mid-batch — the drain skips them here). Never throws for a failed
  * landing: per-change landApprovedChange failures degrade to "error" results, and a Phase-A checkout
  * that cannot resolve the pinned sha (the queue entry outlived its commit) also degrades to
  * a terminal "error" so the drain drops that entry and the queue advances — exactly the
- * single path's catch-all (landQueuedEntry). Remaining git-level failures from the
- * assembly/ff plumbing still propagate like any other tick failure (the drain's catch keeps
- * every entry for re-drain). */
+ * single path's catch-all (landQueuedEntry). Remaining git-level failures from a gate's or the
+ * assembly/ff plumbing still propagate like any other tick failure — a gate's only once every
+ * other launched gate has settled — and the drain's catch keeps every entry for re-drain. */
 export async function landBatch(
   ctx: BatchContext,
   requests: LandRequest[],
@@ -254,52 +401,36 @@ export async function landBatch(
     ctx.onFinal?.(i, result);
   };
 
-  // ── Phase A: the per-change review gate, in queue order ────────────────────────────────
+  // ── Phase A: the per-change review gates, concurrently (runPhaseA) ─────────────────────
+  const verdicts = await runPhaseA(
+    requests.length,
+    async (i) => {
+      const v = await gateRequest(ctx, requests[i]!, wiringForRole(requests[i]!.role));
+      // A FINAL outcome reaches the drain the moment its own gate settles — whatever order
+      // the concurrent gates finish in — not when the whole of Phase A does.
+      if (v.kind === "result" && isFinal(v)) settleFinal(i, v.result);
+      return v;
+    },
+    ctx.gatePermit,
+  );
+  // Fold the verdicts in QUEUE order, whatever order the gates finished in: the stack — and
+  // with it the cherry-picks, the ff and the merged events — follows the queue deterministically.
   const stack: number[] = []; // request indices of the approved/exempt changes, queue order
   const stackSha: string[] = []; // each stack entry's head to land (pin, or pin + build fix)
-  for (let i = 0; i < requests.length; i++) {
-    const req = requests[i]!;
-    const w = wiringForRole(req.role);
-    let wt: string;
-    try {
-      wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
-    } catch (err) {
-      // The queue entry outlived its pinned commit — the land queue outlives the ref by design
-      // (a crash between pin and drop, or an outside gc), so a checkout of `req.sha` can fail
-      // with the commit gone. Degrade to a terminal "error" for this request so the drain
-      // drops its entry and the queue advances; the single path's landQueuedEntry catch-all
-      // does exactly this. Without it the throw escapes to the drain, which keeps EVERY entry
-      // — a lost head pin would then starve the healthy queue forever. The rest stay
-      // unattempted (entry + ref intact), like a mid-batch review_error. The error is on the
-      // state before the settle, so the drain's write-back persists it.
-      w.state.lastError = errorMessage(err);
-      settleFinal(i, "error");
-      break;
-    }
-    // The shared gate over the pin rebased onto main's current tip — landChange's own
-    // pre-gate rebase, so the head approved here is the head a landing starts from, and a
-    // conflict leaves the pin for the gate exactly as there — with the verdict persisted
-    // immediately (the drain's write-back of every non-final outcome happens only
-    // in-process at batch completion, so a mid-batch crash must not lose what the batch
-    // earned).
-    const synced = await syncPinToMain(ctx, wt, req);
-    const outcome = await reviewPinnedChange(ctx, synced, wt, w.state, w.foldUsage);
-    if (outcome.kind === "gate") {
+  verdicts.forEach((v, i) => {
+    if (v === undefined) return; // never launched: the drain keeps its entry, the ref stays
+    if (v.kind === "stack") {
       stack.push(i); // approved or exempt
-      stackSha.push(outcome.sha);
-      continue;
+      stackSha.push(v.sha);
+    } else if (v.result === "aborted") {
+      aborted = true; // every request without a terminal outcome reads "aborted"; refs kept
+    } else if (!isFinal(v)) {
+      // An under-cap review_error keeps its ref for recovery, so it waits for the batch's own
+      // write-back. (A final outcome — "rejected", a strike-cap discard, a lost pin's
+      // "error" — was already recorded and reported by settleFinal as its gate settled.)
+      results[i]!.result = v.result;
     }
-    if (outcome.result === "aborted") {
-      aborted = true;
-      break; // the rest get "aborted" via finishAborted; refs kept
-    }
-    // "rejected": terminal for this sha — the gate already reset its worktree to main and
-    // deleted the ref; a strike-cap discard deleted it too. Both are final. An under-cap
-    // review_error keeps its ref for recovery, so it waits for the batch's own write-back.
-    if (outcome.result === "rejected" || outcome.discarded) settleFinal(i, outcome.result);
-    else results[i]!.result = outcome.result;
-    if (outcome.result === "review_error") break; // stop: the unattempted keep entry + ref
-  }
+  });
   finishAborted();
   if (aborted || stack.length === 0) return results;
 

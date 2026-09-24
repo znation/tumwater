@@ -5,9 +5,11 @@ import { LoopRunner } from "./loop.js";
 import { deleteRef, isMergedInto } from "./git.js";
 import { landBatch } from "./land-batch.js";
 import {
+  forgetLandingStages,
   landQueuedEntry,
   landingUsage,
   readLandingMarker,
+  requestedLandingStage,
   writeLandingMarker,
   writeLandingOutcome,
   type LandingStage,
@@ -70,7 +72,11 @@ export interface LandingDrainContext {
    * (BUGS.md 2026-09-18). Exempting them let total load float to maxConcurrent + landing +
    * director on a single-GPU backend, where the extra stream is what starves sessions into the
    * quiet watchdog's kills. The landing's wait is bounded by one in-flight tick, and a queued
-   * landing that is aborted while parked still aborts (with its ref rules) once a slot frees. */
+   * landing that is aborted while parked still aborts (with its ref rules) once a slot frees.
+   * A batch's concurrent Phase-A gates take one permit EACH: the slot's covers the first, and
+   * every gate beside it waits for its own at the same tier (landBatch's gatePermit) — so two
+   * reviewers at once never ride one permit, and at a full semaphore the gates simply run one
+   * after another on the slot's. */
   semaphore: Semaphore;
   /** Live runners, searched first when resolving a landing's author. */
   runners: LoopRunner[];
@@ -205,7 +211,8 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
     });
   }
   // The batch slot: land `batch` as ONE stack through the shared landBatch —
-  // per-change review gates, one shared build check over the stacked tree, one
+  // per-change review gates (up to PHASE_A_CONCURRENCY at once, each beyond the
+  // first on a permit of its own), one shared build check over the stacked tree, one
   // fast-forward. The 4/5 marker names the first batched entry still queued — the
   // queue head: batch[0] at the start, re-pointed when a final Phase-A verdict drops
   // the entry it names (the cross-check needs a queued entry to validate its sha
@@ -226,6 +233,8 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
           startedAt,
           stage,
         });
+      // No stage an earlier landing of these roles asked for may surface in this batch's re-points.
+      forgetLandingStages(root, batch.map((b) => b.entry.role));
       markLanding(first, "merging"); // Phase A's checkout comes first; the head's gate advances it
       const authors = new Map(batch.map((b) => [b.entry.role, authorFor(b.entry.role)]));
       const usages = new Map<string, { tokens: number; cost: number }>();
@@ -264,18 +273,36 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
         // The role has left the batch (InFlightLanding.roles): it may tick again now.
         const at = landing.roles.indexOf(batch[i]!.entry.role);
         if (at >= 0) landing.roles.splice(at, 1);
-        // The re-point keeps the batch's startedAt and the stage the marker already shows;
-        // the new subject's own gate advances it from there (setLandingStage follows the
-        // marker's role).
+        // The re-point keeps the batch's startedAt. Its stage is the one the new subject's
+        // own gate last asked for — Phase A runs gates concurrently, so that gate may already
+        // be mid-review with no transition left to announce — or, when its gate has not begun
+        // yet, the stage the marker already shows; the gate advances it from there
+        // (setLandingStage follows the marker's role).
         if (batch[i] === marked) {
           marked = firstQueued();
-          if (marked) markLanding(marked, readLandingMarker(root)?.stage ?? "merging");
-          else removeQuiet(landingStatePath(root));
+          if (marked) {
+            markLanding(
+              marked,
+              requestedLandingStage(root, marked.entry.role) ?? readLandingMarker(root)?.stage ?? "merging",
+            );
+          } else {
+            removeQuiet(landingStatePath(root));
+          }
         }
       };
       try {
         const outcomes = await landBatch(
-          { root, mainBranch, config: roleConfig, signal: () => landing.controller.signal, onFinal },
+          {
+            root,
+            mainBranch,
+            config: roleConfig,
+            signal: () => landing.controller.signal,
+            onFinal,
+            gatePermit: async () => {
+              await semaphore.acquire(LANDING_TIER);
+              return () => semaphore.release();
+            },
+          },
           batch.map((b) => ({
             role: b.entry.role,
             sha: b.entry.sha,
