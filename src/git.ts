@@ -188,11 +188,16 @@ export async function branchExists(root: string, branch: string): Promise<boolea
   return (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
 }
 
+/** The non-empty lines of a completed git command's stdout — the shape every
+ * porcelain/log/list parser starts from. Null output (a failed run) yields no lines. */
+export function gitLines(out: string | null): string[] {
+  return out ? out.split("\n").filter(Boolean) : [];
+}
+
 /** The repo's local branch names — what an error message lists when a named branch does not
  * exist, so the fix is visible in the failure itself. Empty when the repo has no branches. */
 export async function listBranches(root: string): Promise<string[]> {
-  const out = await gitTry(root, "for-each-ref", "--format=%(refname:short)", "refs/heads");
-  return out ? out.split("\n").filter(Boolean) : [];
+  return gitLines(await gitTry(root, "for-each-ref", "--format=%(refname:short)", "refs/heads"));
 }
 
 /** The git directory backing `dir`'s checkout, resolved from files without spawning git:
@@ -286,7 +291,7 @@ export async function subjectsBetween(
 ): Promise<string[] | null> {
   const out = await gitTry(root, "log", "--format=%s", `${sinceHead}..${mainBranch}`);
   if (out === null) return null;
-  return out.split("\n").filter(Boolean);
+  return gitLines(out);
 }
 
 /** The full commit message (subject, body, trailer) of `sha`; null when it cannot be read. */

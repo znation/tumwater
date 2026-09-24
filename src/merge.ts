@@ -6,6 +6,7 @@ import {
   COMMIT_IDENT,
   currentBranch,
   git,
+  gitLines,
   gitTry,
   headOf,
   runGit,
@@ -205,7 +206,7 @@ async function resolveConflict(ctx: MergeContext, wt: string): Promise<boolean> 
  * committed its markers to main. */
 export async function conflictedFiles(wt: string): Promise<string[]> {
   const out = await gitTry(wt, "diff", "--name-only", "--diff-filter=U");
-  return out ? out.split("\n").filter(Boolean).map(unquotePorcelainPath) : [];
+  return gitLines(out).map(unquotePorcelainPath);
 }
 
 /** Attempt to rebase the worktree branch onto main and classify the outcome WITHOUT

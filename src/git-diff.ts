@@ -2,7 +2,7 @@
  * in git.ts and its callers: porcelain-status path decoding, worktree change listing, and
  * ahead-of-main diff extraction (including its oversized-diff truncation). Everything here
  * interprets git output; spawning git stays in git.ts. */
-import { gitTry } from "./git.js";
+import { gitLines, gitTry } from "./git.js";
 
 /** Decode a path from `git status --porcelain` output. Git C-quotes paths containing special
  * characters (control characters, quotes, non-ASCII under core.quotePath) and escapes them —
@@ -109,7 +109,7 @@ export async function changedFiles(wt: string): Promise<string[]> {
  * merge-base, so commits main gained during the tick are not included). */
 export async function aheadOfMainFiles(wt: string, mainBranch: string): Promise<string[]> {
   const out = await gitTry(wt, "diff", "--name-only", `${mainBranch}...HEAD`);
-  return out ? out.split("\n").filter(Boolean) : [];
+  return gitLines(out);
 }
 
 /** Split a unified diff into one section per file, each starting at its own
