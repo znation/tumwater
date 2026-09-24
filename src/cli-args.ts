@@ -123,7 +123,7 @@ function failStrayArg(args: string[], reason: string, ...claimed: number[]): voi
  * `--branch`, each given at most once; with `--file` present nothing else may follow it; a
  * `--branch <name>` pair is never prompt content; single-dash positionals are prompt content,
  * not flags. Without these checks a misspelled --file would be baked into the initial prompt —
- * injected into every tick of every loop until someone edits README.md. */
+ * injected into every tick of every loop until someone edits the project brief. */
 export function parseInitArgs(args: string[]): { prompt: string; branch: string | null } {
   for (const arg of args) {
     if (arg.startsWith("--") && arg !== "--file" && arg !== "--branch") {

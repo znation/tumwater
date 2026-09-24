@@ -5,6 +5,24 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### `tumwater init <prompt>` in a repo whose brief already lives in TUMWATER.md silently drops the new prompt (found by clean 2026-09-26)
+
+**Symptom:** A repo whose project brief is TUMWATER.md (plans/portability.md §7a/7) re-runs
+`tumwater init "new prompt"`. init's guard (src/init.ts:147) only refuses when `readInitialPrompt`
+finds nothing — TUMWATER.md carries the markers, so it passes — and the write at src/init.ts:175
+calls `write("README.md", readmeTemplate(...))`, creating a README that carries the new prompt.
+But `readInitialPrompt` resolves TUMWATER.md first (briefCandidates order), so every tick keeps
+running with the OLD prompt; the new one lands in a file nobody reads.
+
+**Reproduce:** Adopt a repo with TUMWATER.md owning the brief (copy README.md's managed sections
+into TUMWATER.md, delete the README block), run `tumwater init "a different prompt"`, then
+`tumwater status --json` / read a tick prefill — the original prompt is still what the fleet runs.
+
+**Suspected cause:** init.ts still hardcodes README.md as the write target and only consults
+readInitialPrompt for its refusal guard, without checking `briefFile(root)` — a brief file that
+already owns the sections should either be rewritten in place or the new prompt should be refused
+with a name-the-file error.
+
 ### The gate's "bounded" build-fix run has no time or resource budget: dry's run load-tested the live host for 90 minutes, stalling the whole fleet, then `pkill`ed every test run on the machine (found by human log analysis 2026-09-23)
 
 **Symptom:** On 2026-09-23 at 03:48:32 dry's leftover-recovery landing failed its gate build check on the load-sensitive `startup latency is not a hung tool call` assertion (test/pi.test.ts:382). The gate started its one build-fix run (session `.tumwater/sessions/_review/dry/2026-09-23T10-48-33-061Z_*.jsonl`), which ran for 1 h 52 m, until 05:40:09. It spent 82 of those minutes running test suites. To reproduce a load flake it created load on the host the whole fleet runs on:

@@ -114,10 +114,10 @@ export async function initProject(
   // Validate everything that is pure validation before any side effect, so a bad prompt or
   // README never leaves a half-seeded repo behind.
   const prompt = initialPrompt.trim();
-  // A README that already carries the prompt makes it optional: a fresh clone of an
+  // A project brief that already carries the prompt makes it optional: a fresh clone of an
   // initialized project, or a checkout that lost its now-untracked tumwater.json
-  // (plans/portability.md §4a/7), re-seeds with a bare `tumwater init` — the existing README
-  // is never rewritten, so a prompt given here would be dropped anyway.
+  // (plans/portability.md §4a/7), re-seeds with a bare `tumwater init` — the existing brief
+  // file is never rewritten, so a prompt given here would be dropped anyway.
   if (!prompt && readInitialPrompt(root) === "") {
     // A bare init with no prompt is only ever refused for one of two reasons, and they have
     // different fixes: no README (nothing to read — the message below is the whole story) or a
@@ -140,8 +140,8 @@ export async function initProject(
       `the initial prompt is ${prompt.length} chars — shorten it to at most ${INITIAL_PROMPT_MAX_CHARS}: it rides into every tick's prefill`,
     );
   }
-  // The loops read the project's reason to exist back out of README.md on every tick
-  // (readInitialPrompt). If a README already exists without the managed section, it would be
+  // The loops read the project's reason to exist back out of the project brief on every
+  // tick (readInitialPrompt). If a README already exists without the managed section, it would be
   // left untouched and the prompt silently dropped — every loop would then run blind. Fail
   // before creating anything so the user fixes the README and re-runs.
   if (fs.existsSync(path.join(root, "README.md")) && readInitialPrompt(root) === "") {
