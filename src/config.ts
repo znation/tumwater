@@ -385,6 +385,24 @@ export function buildFixConfig(config: TumwaterConfig): TumwaterConfig {
   };
 }
 
+/** Default wall-clock budget for one reviewer run (`review.timeoutSeconds`). The reviewer holds
+ * the landing slot the whole queue waits on, and its only other limits were the tick's budget
+ * and the quiet watchdog: reviews measured 2026-09-22/23 ran 2.3 min median, 9.2 min p90 and
+ * 24.6 min max, while earlier days had 1.5–3.5 h reviews. 15 min clears the ordinary review and
+ * kills a wedged one in minutes instead of the tick's hours. */
+export const REVIEW_TIMEOUT_S = 900;
+
+/** The config as seen by the gate's reviewer run: the reviewer's model wiring (reviewConfig)
+ * with its own time budget — `review.timeoutSeconds`, default REVIEW_TIMEOUT_S — overriding
+ * the tick's, the same shape as buildFixConfig above. A smaller tickTimeoutSeconds still wins. */
+export function reviewRunConfig(config: TumwaterConfig): TumwaterConfig {
+  const cfg = reviewConfig(config);
+  return {
+    ...cfg,
+    tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S),
+  };
+}
+
 /** The provider/model pair a configured fallback resolves to — its own fields over the
  * top-level ones, the same precedence every other override section uses — or null when no
  * fallback is configured. One definition so the freeness check (src/pi-models.ts), the

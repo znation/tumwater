@@ -20,6 +20,8 @@ import {
   loadConfigCached,
   loadConfigSafe,
   reviewConfig,
+  reviewRunConfig,
+  REVIEW_TIMEOUT_S,
   seedConfig,
   saveConfig,
 } from "../src/config.js";
@@ -232,6 +234,22 @@ test("buildFixConfig caps the gate's fix run at its own short budget over the re
   assert.equal(buildFixConfig(tight).quietTimeoutSeconds, 30);
   const noWatchdog = { ...defaultConfig(), quietTimeoutSeconds: 0 };
   assert.equal(buildFixConfig(noWatchdog).quietTimeoutSeconds, BUILD_FIX_QUIET_S);
+});
+
+test("reviewRunConfig gives the reviewer its own time budget over the reviewer wiring", () => {
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 54_000;
+  config.review.model = "strong-model";
+  const run = reviewRunConfig(config);
+  assert.equal(run.tickTimeoutSeconds, REVIEW_TIMEOUT_S, "the tick's hours-long budget never reaches the reviewer");
+  assert.equal(run.model, "strong-model", "the run keeps the reviewer's model wiring");
+  assert.equal(run.quietTimeoutSeconds, config.quietTimeoutSeconds, "only the wall-clock budget changes");
+
+  // A configured review.timeoutSeconds replaces the default; a smaller tick budget still wins.
+  config.review.timeoutSeconds = 120;
+  assert.equal(reviewRunConfig(config).tickTimeoutSeconds, 120);
+  config.tickTimeoutSeconds = 60;
+  assert.equal(reviewRunConfig(config).tickTimeoutSeconds, 60);
 });
 
 function validationError(raw: unknown): string {
@@ -480,7 +498,7 @@ test("validateConfig guards the review section like its sibling sections", () =>
   // to point its reviewers at a strong model would review with the default and never know.
   assert.match(
     validationError({ review: { modle: "strong" } }),
-    /unknown key "modle" in review \(valid keys: enabled, exemptPaths, provider, model, thinking\)/,
+    /unknown key "modle" in review \(valid keys: enabled, exemptPaths, provider, model, thinking, timeoutSeconds\)/,
   );
 
   // Inner values are type-checked like their siblings elsewhere in the file.
@@ -503,9 +521,21 @@ test("validateConfig guards the review section like its sibling sections", () =>
     );
   }
 
+  // The reviewer's time budget is a positive number of seconds: 0 or a negative would kill
+  // every review at spawn, and a string would be NaN — each named by its key.
+  for (const bad of [0, -30, "900"]) {
+    assert.match(
+      validationError({ review: { timeoutSeconds: bad } }),
+      new RegExp(`review\\.timeoutSeconds must be a number greater than 0 \\(got ${JSON.stringify(bad)}\\)`),
+      `review.timeoutSeconds: ${JSON.stringify(bad)}`,
+    );
+  }
+
   // A fully valid section still passes.
   assert.doesNotThrow(() =>
-    validateConfig({ review: { enabled: false, exemptPaths: ["*.md"], provider: "p", model: "m", thinking: "high" } }),
+    validateConfig({
+      review: { enabled: false, exemptPaths: ["*.md"], provider: "p", model: "m", thinking: "high", timeoutSeconds: 600 },
+    }),
   );
 
   // The live-reload path (the orchestrator's config poll) surfaces the same message without

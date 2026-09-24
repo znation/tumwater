@@ -407,6 +407,35 @@ test("gate does not discard the commit when the reviewer run itself fails", asyn
   }
 });
 
+test("a reviewer that outruns review.timeoutSeconds fails in its own budget: commit kept, no strike", async () => {
+  // A wedged reviewer must not hold the land queue for a whole authoring tick: its own budget
+  // kills it long before tickTimeoutSeconds, and the kill is a failed RUN (like a dead backend),
+  // so the pin stays and the per-HEAD discard counter does not move.
+  const { root, wt, head } = await gateFixture();
+  const restore = fakePi(`exec sleep 60`); // exec so the kill signal reaches the sleeper directly
+  try {
+    const config = defaultConfig();
+    config.review.timeoutSeconds = 2;
+    assert.ok(config.tickTimeoutSeconds > 60); // only the review budget can end this run in time
+    const state = freshLoopState(ROLE);
+    const startedAt = Date.now();
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+    const elapsedMs = Date.now() - startedAt;
+    assert.equal(result.decision, "failed");
+    assert.match(result.detail ?? "", /timed out after 2s/);
+    assert.ok(elapsedMs < 20_000, `the review ended in its 2 s budget, not the sleeper's 60 s (took ${elapsedMs} ms)`);
+    assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for the next tick's re-review
+    assert.equal(state.unreviewFailures ?? 0, 0); // a timed-out run is not a strike against the commit
+    assert.equal(state.lastApprovedHead, undefined);
+    const failed = readEvents(root).filter((e) => e.type === "review_failed");
+    assert.equal(failed.length, 1);
+    assert.equal(failed[0]?.head, head);
+    assert.match(String(failed[0]?.message), /timed out after 2s/);
+  } finally {
+    restore();
+  }
+});
+
 test("a stalled tool call during review warns in the event feed while the watchdog counts down", async () => {
   // The reviewer hangs on an interactive tool call; the gate must surface the stall in the
   // feed — the same guarantee as the author-side warning (test/loop-2.test.ts) — rather than

@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult } from "./types.js";
-import { buildFixConfig, reviewConfig } from "./config.js";
+import { buildFixConfig, reviewRunConfig } from "./config.js";
 import { logEvent, warnEvent } from "./events.js";
 import { commitAll, git, gitLines, gitTry, headOf } from "./git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "./git-diff.js";
@@ -440,7 +440,11 @@ export async function reviewAheadOfMain(
       undefined,
       buildFix,
     ),
-    config: reviewConfig(config),
+    // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a
+    // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend
+    // path below — commit kept, no strike — and re-lands through the author's next tick
+    // instead of holding the land queue for a whole authoring tick.
+    config: reviewRunConfig(config),
     // Fresh session every time (no --continue): the reviewer must not inherit the author's
     // context. Unique name per run — a fixed name would let pi resume an old review's
     // context; old files are cleaned by the age-based prune at orchestrator start.

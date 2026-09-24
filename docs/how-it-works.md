@@ -40,7 +40,9 @@ loops keep ticking while a change is under review.
   as a flake and proceeds. A failure that repeats gets one fix run, capped at 20 minutes; only
   a still-red check rejects.
 - **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
-  `VERDICT: approve|reject`. Markdown-only diffs skip review.
+  `VERDICT: approve|reject`. Markdown-only diffs skip review. Each reviewer run is capped at
+  `review.timeoutSeconds` (default 900, never above `tickTimeoutSeconds`); one that runs over
+  fails without a strike and the change re-lands on the author's next tick.
 - **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear.
 - **Batching.** When several changes are queued, each is reviewed alone, then up to
   `landBatchMax` (default 3) land together under one check. A red batch falls back to one at a

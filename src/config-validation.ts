@@ -73,7 +73,7 @@ const ROLE_ENTRY_KEYS = [
   "thinking",
   "minTickIntervalSeconds",
 ];
-const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking"];
+const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking", "timeoutSeconds"];
 /** The `check` section's keys (plans/portability.md §6/7): the project's own verification
  * command, its working directory (relative to the worktree), and its timeout. */
 const CHECK_KEYS = ["command", "cwd", "timeoutSeconds"];
@@ -334,6 +334,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
         });
       }
       checkModelTriple(o, "review.");
+      checkNumber(o, "review.", "timeoutSeconds", POSITIVE);
     }
   }
 

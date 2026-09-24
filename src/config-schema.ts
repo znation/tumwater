@@ -54,6 +54,10 @@ interface ReviewConfig {
   model?: string;
   /** pi thinking-level override for reviewer runs; falls back to the top-level value. */
   thinking?: string;
+  /** Wall-clock budget for one reviewer run, in seconds (default 900, capped by
+   * tickTimeoutSeconds). A review that outruns it is a failed run — commit kept, no strike —
+   * so one wedged reviewer cannot hold the land queue for a whole authoring tick. */
+  timeoutSeconds?: number;
 }
 
 /** The free ("cost n/a") model the fleet falls back to once the daily cost budget is spent
