@@ -32,10 +32,29 @@ export function labeledLine(text: string, label: string): string | null {
 
 /** Extract the one-line reason from a TUMWATER_REFUSED sentinel line; null when no such line
  * exists. Anchored at line start like the VERDICT line, so prose that merely mentions the
- * sentinel mid-sentence cannot set the reason (pi.ts's boolean detection is deliberately
- * looser — a whole-reply scan, matching the nothing-to-do sentinel). */
+ * sentinel mid-sentence cannot set the reason. THE ONLY source of a refusal (BUGS.md
+ * 2026-09-23): a bare sentinel and a mid-sentence mention are not refusals, and a reason
+ * that negates the refusal is not one either (isNegatedRefusal) — four ticks ended ordinary
+ * work-completed replies with `TUMWATER_REFUSED: none` and the harness destroyed their
+ * tested work. */
 export function extractRefusal(text: string): string | null {
   return labeledLine(text, REFUSED_SENTINEL);
+}
+
+/** True when a TUMWATER_REFUSED reason negates the refusal instead of carrying it: empty,
+ * `none`, or `n/a` — including a parenthesized form of either, with or without an appended
+ * explanation (`(none — no entry refused this run)`). A refusal is a deliberate, affirmative
+ * declaration; classifying a reply as one must not depend on the model never naming the
+ * sentinel (BUGS.md 2026-09-23 — the prompt lists the line beside the reply-contract fields,
+ * so a compliant model fills it in on every reply). */
+export function isNegatedRefusal(reason: string | null | undefined): boolean {
+  const raw = (reason ?? "").trim().toLowerCase();
+  const unwrapped = raw.replace(/^[([{]+\s*|\s*[)\]}]+$/g, "").trim();
+  for (const candidate of [raw, unwrapped]) {
+    if (candidate === "" || candidate === "none" || candidate === "n/a") return true;
+    if (/^(none|n\/a)\b([ \t]*[—–-].*)?$/.test(candidate)) return true;
+  }
+  return false;
 }
 
 /** The result of one `qa` flow check: which flow, and how it went. */

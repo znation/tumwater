@@ -6,6 +6,7 @@ import {
   extractFlow,
   extractRefusal,
   hasVerdictLine,
+  isNegatedRefusal,
   isNothingToDo,
   labeledLine,
   verdictLines,
@@ -38,6 +39,26 @@ test("extractRefusal returns null for a bare sentinel with no reason", () => {
 test("extractRefusal ignores mid-sentence mentions (line-start anchor)", () => {
   const text = `I considered ${REFUSED_SENTINEL}: no, that is not what I meant`;
   assert.equal(extractRefusal(text), null);
+});
+
+// isNegatedRefusal (BUGS.md 2026-09-23): four ticks ended ordinary work-completed replies
+// with `TUMWATER_REFUSED: none` — the prompt lists the line beside the reply-contract fields,
+// so a compliant model fills it in — and the harness destroyed their tested work. A reason
+// that negates the refusal is not a refusal.
+
+test("isNegatedRefusal negates empty, none, and n/a in every recorded shape", () => {
+  for (const reason of [undefined, null, "", "   ", "none", "NONE", "n/a", "N/A", "(none)", "(n/a)", "(none — no entry refused this run)", "none — bug filed normally"])
+    assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
+});
+
+test("isNegatedRefusal keeps a real reason a refusal", () => {
+  for (const reason of [
+    "it would delete user data",
+    "conflicts with PRINCIPLES.md",
+    "nonone of the above",
+    "annotation, not refusal",
+  ])
+    assert.ok(!isNegatedRefusal(reason), `a refusal: ${JSON.stringify(reason)}`);
 });
 
 test("extractRefusal returns the first parseable line when several exist", () => {

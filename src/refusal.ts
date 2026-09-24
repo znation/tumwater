@@ -2,6 +2,7 @@ import { commitPathsAndDiscardRest } from "./git.js";
 import { changedFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { buildCommitMessage, commitTrailer } from "./commit-message.js";
+import { labeledLine } from "./reply-contract.js";
 import type { LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
 
 /** Handling a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended
@@ -16,6 +17,22 @@ import type { LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js
  * policy and its own git surface (commit-only-the-notes / reset); the only things it borrows
  * from the loop are identity, the pre-commit counters for the trailer, and the loop's shared
  * merge wiring. */
+
+/** A self-contradicted refusal: the reply declares a refusal yet also carries a SUMMARY —
+ * the contract field of a work-completed reply — beside non-markdown work in the worktree.
+ * BUGS.md 2026-09-23: discarding half-done work is fine for a genuine objection, but a reply
+ * that both reports its work and "refuses" it is discrediting itself — the destruction a
+ * refusal performs (reset --hard / clean) would throw away finished, tested output. Returns
+ * the offending work files (empty when the refusal stands: no non-markdown work, or no
+ * SUMMARY beside it). */
+export async function refusalContradiction(
+  wt: string,
+  finalText: string | undefined,
+): Promise<string[]> {
+  const workFiles = (await changedFiles(wt)).filter((f) => !f.toLowerCase().endsWith(".md"));
+  if (workFiles.length === 0) return [];
+  return labeledLine(finalText ?? "", "SUMMARY") ? workFiles : [];
+}
 
 /** What handleRefusal needs from its owning loop: identity, this tick's assistant-turn count
  * (deliberately not on LoopState — see loop.ts), and the loop's shared merge landing so a

@@ -48,10 +48,6 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 come from `customLoops` in tumwater.json or by prompting the director.
 
 Open items:
-- Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its
-  code is hard-reset — the fix's record has been carried to Fixed by markdown-only commits four
-  times, most recently `cdcc54c`, while the fix's symbols (`isNegatedRefusal`,
-  `refusalContradiction`) exist nowhere in the tree (found 2026-09-23).
 - Open bug: the status table's "last result" cell shows `queued` — a tick's live landing status
   rather than its last completed result, duplicating the state column while work sits in the land
   queue or under review (reported by user 2026-09-24).

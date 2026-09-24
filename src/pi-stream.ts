@@ -1,4 +1,4 @@
-import { extractRefusal, hasVerdictLine, isNothingToDo, REFUSED_SENTINEL } from "./reply-contract.js";
+import { extractRefusal, hasVerdictLine, isNegatedRefusal, isNothingToDo } from "./reply-contract.js";
 import { applyToolExecutionEvent, piEventType, type OpenToolCall } from "./pi-event-line.js";
 import { describeToolCall } from "./text.js";
 import { isJsonObject } from "./json-object.js";
@@ -222,10 +222,21 @@ export class PiStreamParser {
     );
     if (text.trim()) this.finalText = text;
     if (isNothingToDo(text)) this.declaredNothingToDo = true;
-    if (text.includes(REFUSED_SENTINEL)) {
-      this.refused = true;
-      // First reason wins: a compliant run emits the sentinel once, in its final message.
-      if (!this.refusedReason) this.refusedReason = extractRefusal(text) ?? "";
+    // The refusal comes only from an anchored `TUMWATER_REFUSED: <reason>` line: a bare
+    // sentinel and a mid-sentence mention are not refusals, and a negating reason ("none",
+    // "(n/a …)") clears one — BUGS.md 2026-09-23, four ticks ended ordinary replies with
+    // `TUMWATER_REFUSED: none` and the harness destroyed their tested work. The last anchored
+    // line wins (the run's final declaration is its verdict); a message WITHOUT a line leaves
+    // an earlier declaration standing, so a closing remark cannot erase it.
+    const refusal = extractRefusal(text);
+    if (refusal !== null) {
+      if (isNegatedRefusal(refusal)) {
+        this.refused = false;
+        this.refusedReason = "";
+      } else {
+        this.refused = true;
+        this.refusedReason = refusal;
+      }
     }
     if (hasVerdictLine(text)) this.verdictText = text;
     this.turns += 1;

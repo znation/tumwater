@@ -188,6 +188,74 @@ test("falseFixReason passes an md-only edit with no Fixed transition or a backed
   assert.equal(await falseFixReason(root, "main", ["docs/notes.md"]), undefined);
 });
 
+// ── The two holes the phantom-markdown carries exploited (BUGS.md 2026-09-23) ───────────
+
+test("falseFixReason checks an already-Fixed entry whose narrative the diff rewrites", async () => {
+  // Hole 1: the old code skipped any heading already under ## Fixed in the base, so an
+  // in-place rewrite of a phantom record's narrative — the exact shape a second phantom
+  // landing takes — evaded the symbol check.
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### A bug (found 2026-09-22, fixed 2026-09-23)\n\n" +
+      "**Fix:** `runScriptGroup` now signals the tree.\n",
+  );
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "the phantom record being rewritten");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### A bug (found 2026-09-22, fixed 2026-09-23)\n\n" +
+      "**Fix:** rewritten: `runScriptGroup` and `refusalContradiction` landed.\n",
+  );
+  const reason = await falseFixReason(root, "main", ["BUGS.md"]);
+  assert.match(reason!, /runScriptGroup/);
+});
+
+test("falseFixReason leaves an already-Fixed entry with an untouched body alone", async () => {
+  // The skip survives only for a body-identical entry: history prose (and a record whose
+  // symbols were since renamed) must keep landing md-only when the diff does not touch it.
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "old.ts"), "const real = 1;\n");
+  const fixedDoc =
+    "## Fixed\n\n### An old bug (found 2026-09-20, fixed 2026-09-21)\n\n**Fix:** `ghostSymbol` handled.\n";
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n" + fixedDoc);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed");
+  // The diff only adds a new Open bug; the Fixed entry is byte-identical to the base.
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### New (found 2026-09-23)\n\n" + fixedDoc,
+  );
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+});
+
+test("falseFixReason measures an Open→Fixed restoration against the merge-base, not main's tip", async () => {
+  // Hole 2: comparing against main's tip let a stacked batch's predecessor (which moved the
+  // entry Fixed→Open) be undone by a restoration whose base still read (falsely) Fixed —
+  // the record slipped through as "already done". The base is the diff's own merge-base.
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### A bug (found 2026-09-22)\n\n**Symptom:** x.\n",
+  );
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed: entry is Open");
+  const wt = await ensureWorktree(root, ROLE, "main"); // branch cut while the entry is Open
+  // Main advances: a phantom landing put the record in Fixed (as b65df63 did).
+  const fixedDoc =
+    "## Fixed\n\n### A bug (found 2026-09-22, fixed 2026-09-23)\n\n**Fix:** `runScriptGroup` now signals the tree.\n";
+  fs.writeFileSync(path.join(root, "BUGS.md"), fixedDoc);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "main gains the phantom record");
+  // The stacked md-only change restores the same Fixed record relative to its merge-base.
+  fs.writeFileSync(path.join(wt, "BUGS.md"), fixedDoc);
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "bugfix: mark the bug fixed again");
+  const reason = await falseFixReason(wt, "main", ["BUGS.md"]);
+  assert.match(reason!, /runScriptGroup/);
+});
+
 // ── Gate orchestration ────────────────────────────────────────────────────────────────────
 
 const ROLE = "improve";
@@ -229,6 +297,36 @@ test("gate rejects an md-only BUGS.md fix claim with no code behind it, without 
     assert.match(result.detail!, /runScriptGroup/);
     assert.match(state.lastReview!.reasons[0]!, /Fixed/);
     assert.equal(await aheadOfMain(wt, "main"), 0); // the false record is discarded
+  } finally {
+    restore();
+  }
+});
+
+test("gate rejects an md-only rewrite of an already-Fixed record's narrative", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### A leak (found 2026-09-22, fixed 2026-09-23)\n\n" +
+      "**Fix:** the group kill now goes through `runScriptGroup`.\n",
+  );
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "the phantom record");
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(
+    path.join(wt, "BUGS.md"),
+    "## Fixed\n\n### A leak (found 2026-09-22, fixed 2026-09-23)\n\n" +
+      "**Fix:** rewritten: the kill now goes through `runScriptGroup` and `signalTree`.\n",
+  );
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "bugfix: refresh the record");
+  const marker = path.join(tmpdir(), "pi-ran");
+  const restore = fakePi(`touch '${marker}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "rejected", "the rewrite faces the same symbol check");
+    assert.ok(!fs.existsSync(marker));
+    assert.match(result.detail!, /runScriptGroup/);
   } finally {
     restore();
   }

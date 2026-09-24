@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { handleRefusal, type RefusalContext } from "../src/refusal.js";
+import { handleRefusal, refusalContradiction, type RefusalContext } from "../src/refusal.js";
 import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { freshLoopState } from "../src/state.js";
@@ -121,6 +121,32 @@ test("a bare sentinel falls back to a generic reason", async () => {
   assert.equal(outcome.result, "refused");
   assert.equal(outcome.summary, "no reason given", "a bare sentinel falls back to a generic reason");
   assert.match(sh(wt, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): refuse — no reason given/);
+});
+
+test("a refusal contradicted by its own reply keeps its work (BUGS.md 2026-09-23)", async () => {
+  // A refusal beside a SUMMARY and non-markdown work discredits itself: the harness must
+  // surface it, not discard finished output.
+  const { wt } = await setup();
+  fs.writeFileSync(path.join(wt, "broken.ts"), "export const fixed = true;\n");
+  fs.appendFileSync(path.join(wt, "seed.txt"), "tweak\n");
+
+  const contradiction = await refusalContradiction(wt, "did it\nSUMMARY: fixed the leak\nTUMWATER_REFUSED: none needed");
+  assert.deepEqual(contradiction.sort(), ["broken.ts", "seed.txt"], "the work files are named");
+
+  // No SUMMARY beside the work: a real objection over half-done scribbling stands — the
+  // ordinary refusal path applies.
+  assert.deepEqual(await refusalContradiction(wt, "it would delete user data\nTUMWATER_REFUSED: too risky"), []);
+
+  // Work that is md-only: a note is all a refusal should leave, never flagged.
+  fs.rmSync(path.join(wt, "broken.ts"));
+  fs.writeFileSync(path.join(wt, "seed.txt"), "seed\n"); // revert to clean before the md edit
+  fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** x\n");
+  assert.deepEqual(await refusalContradiction(wt, "SUMMARY: note only"), []);
+});
+
+test("refusalContradiction returns empty when the worktree is clean", async () => {
+  const { wt } = await setup();
+  assert.deepEqual(await refusalContradiction(wt, "SUMMARY: nothing changed"), []);
 });
 
 test("a failed note merge records lastError and still reports the commit", async () => {

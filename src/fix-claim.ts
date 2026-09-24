@@ -6,7 +6,14 @@
  * the diff must name at least one symbol or path that exists on the tree — identifier-like
  * backticked spans are substring-matched against the tree's code files, path-like spans
  * against the tree itself. An entry whose Fix paragraph names nothing checkable is left
- * alone: pure-documentation fixes are legitimate and must keep landing md-only. */
+ * alone: pure-documentation fixes are legitimate and must keep landing md-only.
+ *
+ * Two holes this check closed after its first landing (BUGS.md 2026-09-23): an ALREADY-Fixed
+ * entry is skipped only when its body is untouched — an md-only edit that rewrites an
+ * existing Fixed record's narrative (the exact shape a second phantom landing takes) faces
+ * the same symbol check a new entry does; and the comparison base is the diff's own
+ * merge-base, not main's tip, so a stacked batch's earlier change (which moved the entry
+ * Fixed→Open) is what an Open→Fixed restoration is measured against. */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -128,12 +135,23 @@ export async function falseFixReason(
   if (!files.includes("BUGS.md")) return undefined;
   const head = readFileSync(join(wt, "BUGS.md"), "utf8");
   if (!head.includes("## Fixed")) return undefined;
-  const base = (await gitTry(wt, "show", `${mainBranch}:BUGS.md`)) ?? "";
-  const baseFixed = new Set(fixedHeadings(base).map(normalizeFixedHeading));
+  // The diff's own base, not main's tip: the gate diffs `mainBranch...HEAD` against the
+  // merge-base, and the entry's Open/Fixed state lives in the tree the change builds on —
+  // pre-batch main can still carry the record as (falsely) Fixed and make an Open→Fixed
+  // restoration in a stacked batch compare as already done (BUGS.md 2026-09-23).
+  const baseRev = (await gitTry(wt, "merge-base", "HEAD", mainBranch)) ?? mainBranch;
+  const base = (await gitTry(wt, "show", `${baseRev}:BUGS.md`)) ?? "";
+  // An already-Fixed entry is skipped only when its body is unchanged: an md-only edit that
+  // rewrites an existing Fixed record's narrative must face the symbol check too (BUGS.md
+  // 2026-09-23 — the in-place narrative rewrite is how a second phantom landing evaded it).
+  const baseBodies = new Map(
+    fixedHeadings(base).map((h) => [normalizeFixedHeading(h), bugEntryBody(base, h)]),
+  );
   const haystack = sourceHaystack(wt);
   for (const heading of fixedHeadings(head)) {
-    if (baseFixed.has(normalizeFixedHeading(heading))) continue;
-    const missing = unbackedSymbols(wt, fixSymbols(bugEntryBody(head, heading)), haystack);
+    const body = bugEntryBody(head, heading);
+    if (baseBodies.get(normalizeFixedHeading(heading)) === body) continue;
+    const missing = unbackedSymbols(wt, fixSymbols(body), haystack);
     if (missing.length === 0) continue;
     const names = missing.length <= 3 ? missing.join(", ") : `${missing.slice(0, 3).join(", ")}…`;
     return (

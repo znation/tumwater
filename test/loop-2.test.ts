@@ -316,7 +316,10 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
 // Refusal handling (plans/refusal-and-thrash.md): the TUMWATER_REFUSED sentinel routes a
 // tick to handleRefusal, where only the markdown objection note may land — it is the durable
 // record that blocks the entry for later ticks. Non-markdown half-work is discarded and the
-// note commit merges directly (md-only diffs are review-exempt by construction).
+// note commit merges directly (md-only diffs are review-exempt by construction). The sentinel
+// is detected ONLY as an anchored line with a non-negating reason (BUGS.md 2026-09-23): a
+// bare sentinel or a `TUMWATER_REFUSED: none` on an ordinary reply is not a refusal, and a
+// refusal contradicted by its own SUMMARY beside real work keeps the work.
 
 test("a refused tick lands only its markdown note, discards code changes, and skips review", async () => {
   const repo = await initializedRepo();
@@ -359,9 +362,10 @@ test("a refused tick lands only its markdown note, discards code changes, and sk
   }
 });
 
-test("a refused tick with no note resets the worktree and reports a fallback reason", async () => {
+test("a bare sentinel over work is not a refusal: the tick runs the normal flow (regression)", async () => {
+  // BUGS.md 2026-09-23: the old whole-reply substring scan treated a bare sentinel mention
+  // as a refusal and destroyed the work. An anchored line with no reason declares nothing.
   const repo = await initializedRepo();
-  // Bare sentinel (no parseable reason) and only non-markdown half-work: nothing may land.
   const restore = fakePi(
     [
       `printf '%s\\n' '${assistantLine("TUMWATER_REFUSED")}'`,
@@ -370,23 +374,58 @@ test("a refused tick with no note resets the worktree and reports a fallback rea
   );
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
-    const before = sh(repo, "git", "rev-parse", "main");
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "refused");
-    assert.equal(outcome.summary, "no reason given", "a bare sentinel falls back to a generic reason");
+    assert.equal(outcome.result, "queued", "the work is not discarded as a refusal");
+    // The edit survived — committed on the branch, headed for the normal gate, no refusal note.
+    const subjects = sh(repo, "git", "log", "--format=%s", "-5");
+    assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);
+  } finally {
+    restore();
+  }
+});
 
-    // Nothing landed on main and the worktree is reset clean for the next tick.
-    assert.equal(sh(repo, "git", "rev-parse", "main"), before, "no commit without a note");
-    const wt = worktreePath(repo, "improve");
-    assert.ok(!fs.existsSync(path.join(wt, "broken.ts")), "the half-work was discarded");
-    assert.equal(sh(wt, "git", "status", "--porcelain"), "", "the worktree is clean after the reset");
+test("a reply ending TUMWATER_REFUSED: none lands its work instead of refusing (regression)", async () => {
+  // The exact shape that discarded two tested bugfix ticks (BUGS.md 2026-09-23): an ordinary
+  // work-completed reply whose trailing line fills the sentinel in like a report field.
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [
+      `printf '%s\\n' '${assistantLine("all done\nSUMMARY: shipped the fix\nTUMWATER_REFUSED: none")}'`,
+      `echo fixed > src-fix.ts`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued", "a negated refusal never discards the work");
+    const subjects = sh(repo, "git", "log", "--format=%s", "-5");
+    assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);
+  } finally {
+    restore();
+  }
+});
 
-    // The generic end-of-tick event carries the refusal's result and fallback reason —
-    // handleRefusal logs nothing of its own, so tick_end is where a no-note refusal shows up.
-    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
-    assert.equal(ends.length, 1, "one tick ran");
-    assert.equal(ends[0]!.result, "refused");
-    assert.equal(ends[0]!.summary, "no reason given", "the fallback reason rides on the event");
+test("a refusal contradicted by its own SUMMARY beside work keeps the work behind a warning", async () => {
+  // A real reason beside a SUMMARY and non-markdown work is self-contradictory: the work is
+  // surfaced behind a warning and the normal flow judges it — not discarded (BUGS.md 2026-09-23).
+  const repo = await initializedRepo();
+  const restore = fakePi(
+    [
+      `printf '%s\\n' '${assistantLine("did the work\nSUMMARY: fixed the leak\nTUMWATER_REFUSED: it would delete user data")}'`,
+      `echo bad >> seed.txt`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued", "contradicted work runs the normal flow");
+    const subjects = sh(repo, "git", "log", "--format=%s", "-5");
+    assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);
+    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.some((w) => /refusal contradicted by its own reply/.test(w) && w.includes("seed.txt")),
+      `warning names the kept work: ${JSON.stringify(warnings)}`,
+    );
   } finally {
     restore();
   }

@@ -36,7 +36,7 @@ import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
-import { handleRefusal } from "./refusal.js";
+import { handleRefusal, refusalContradiction } from "./refusal.js";
 import { extractFlow } from "./reply-contract.js";
 import { readQaCoverage, recordFlow, renderCoverageBlock } from "./qa-coverage.js";
 import { landingRefName, sessionDir } from "./paths.js";
@@ -609,18 +609,30 @@ export class LoopRunner {
 
     // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel
     // and any note it left are the run's verdict — classify what it left behind (src/refusal.ts).
-    if (pi.refused)
-      return handleRefusal(
-        {
-          role: this.role,
-          mainBranch: this.mainBranch,
-          turns: this.tickTurns,
-          merge: (w, sum) => this.merge(w, sum),
-        },
-        this.state,
-        wt,
-        pi,
-      );
+    if (pi.refused) {
+      // A refusal contradicted by its own reply — a SUMMARY beside non-markdown work — is
+      // surfaced, not obeyed: the work is finished output a discard would destroy, so the
+      // normal flow keeps it and the review gate judges it (BUGS.md 2026-09-23).
+      const contradicted = await refusalContradiction(wt, pi.finalText);
+      if (contradicted.length > 0) {
+        this.warn(
+          `refusal contradicted by its own reply: SUMMARY beside non-markdown work ` +
+            `(${contradicted.slice(0, 3).join(", ")}) — keeping the work; the normal flow judges it`,
+        );
+      } else {
+        return handleRefusal(
+          {
+            role: this.role,
+            mainBranch: this.mainBranch,
+            turns: this.tickTurns,
+            merge: (w, sum) => this.merge(w, sum),
+          },
+          this.state,
+          wt,
+          pi,
+        );
+      }
+    }
 
     const changed = await isDirty(wt);
     if (!pi.ok && !changed) {

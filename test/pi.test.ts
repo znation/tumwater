@@ -138,25 +138,51 @@ test("parser keeps a refusal declared in an intermediate message (regression)", 
   assert.equal(parser.refusedReason, "too risky to land");
 });
 
-test("parser sets refused with an empty reason for a bare sentinel", () => {
+test("parser does not treat a bare sentinel as a refusal", () => {
+  // BUGS.md 2026-09-23: the refusal comes only from an anchored line with a reason — a bare
+  // sentinel is a mention, not a declaration, and must not route the tick to handleRefusal.
   const parser = new PiStreamParser();
   parser.feed(assistantLine(`${REFUSED_SENTINEL}`) + "\n");
-  assert.equal(parser.refused, true);
-  assert.equal(parser.refusedReason, "", "no parseable reason — the loop falls back to 'no reason given'");
+  assert.equal(parser.refused, false);
+  assert.equal(parser.refusedReason, "");
 });
 
-test("parser flags a mid-sentence mention but leaves the reason empty", () => {
+test("parser does not treat a mid-sentence mention as a refusal", () => {
   const parser = new PiStreamParser();
   parser.feed(assistantLine(`I would say ${REFUSED_SENTINEL}: no, let me keep going`) + "\n");
-  assert.equal(parser.refused, true, "boolean scan is deliberately loose (whole-reply includes)");
-  assert.equal(parser.refusedReason, "", "anchored extraction rejects the mid-sentence mention");
+  assert.equal(parser.refused, false, "only an anchored line declares a refusal");
+  assert.equal(parser.refusedReason, "");
 });
 
-test("parser keeps the first parseable reason across messages", () => {
+test("parser clears the refusal when a negating reason follows it, last line wins both ways", () => {
+  // BUGS.md 2026-09-23: `TUMWATER_REFUSED: none` on an ordinary work-completed reply must not
+  // refuse; and the run's FINAL anchored line is its verdict in both directions — a real
+  // reason after a negation refuses again, a negation after a real reason clears.
   const parser = new PiStreamParser();
-  parser.feed(assistantLine(`${REFUSED_SENTINEL}: original objection`) + "\n");
-  parser.feed(assistantLine(`${REFUSED_SENTINEL}: a later, different line`) + "\n");
-  assert.equal(parser.refusedReason, "original objection", "first reason wins; a compliant run emits the sentinel once");
+  parser.feed(assistantLine(`${REFUSED_SENTINEL}: too risky to land`) + "\n");
+  parser.feed(assistantLine(`reconsidered\n${REFUSED_SENTINEL}: none`) + "\n");
+  assert.equal(parser.refused, false, "a negating reason clears an earlier refusal");
+  assert.equal(parser.refusedReason, "");
+  parser.feed(assistantLine(`${REFUSED_SENTINEL}: on reflection, still too risky`) + "\n");
+  assert.equal(parser.refused, true, "a real reason after a negation refuses again");
+  assert.equal(parser.refusedReason, "on reflection, still too risky");
+});
+
+test("parser never refuses on a negating reason alone, in every recorded shape", () => {
+  // The exact shapes the discarded ticks emitted (BUGS.md 2026-09-23): `none`, `(none — no
+  // entry refused this run)`, and the empty reason a bare labeled line leaves.
+  for (const text of [
+    `${REFUSED_SENTINEL}: none`,
+    `${REFUSED_SENTINEL}: (none — no entry refused this run)`,
+    `${REFUSED_SENTINEL}: n/a`,
+    `${REFUSED_SENTINEL}: N/A`,
+    `${REFUSED_SENTINEL}:`,
+  ]) {
+    const parser = new PiStreamParser();
+    parser.feed(assistantLine(`all done\nSUMMARY: shipped it\n${text}`) + "\n");
+    assert.equal(parser.refused, false, `not a refusal: ${JSON.stringify(text)}`);
+    assert.equal(parser.refusedReason, "");
+  }
 });
 
 test("parser does not set refused when no message carries the sentinel", () => {

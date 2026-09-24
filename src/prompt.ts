@@ -132,7 +132,11 @@ When to ask, when to refuse:
   a refusing run should leave. When choosing work, skip entries carrying a Refused note — do not
   pick them and do not re-refuse them; the objection stands until a human or the director edits
   the entry (a fully blocked backlog is a legitimate nothing-to-do state). End your reply with a
-  line in exactly this form: ${REFUSED_SENTINEL}: <the same one-line reason>.
+  line in exactly this form:
+  ${REFUSED_SENTINEL}: <the same one-line reason> — and emit that line ONLY when refusing: it
+  is not a reply-contract field, and an ordinary reply that reports completed work must never
+  name the sentinel (not even as "${REFUSED_SENTINEL}: none"), or the harness treats the whole
+  tick as a refusal.
 
 How to end your reply — the harness parses it, so the form matters:
 - Your last message is plain text: never a tool call, and never an announcement of what you would
