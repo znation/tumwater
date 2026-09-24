@@ -225,9 +225,21 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     // A run that has not yet produced progress is starting, not hung: process creation and
     // model connect are legitimately slow on a loaded machine (a full test suite, a busy
     // fleet), and charging that startup latency as pi silence quiet-kills runs that never
-    // had the chance to speak (BUGS.md 2026-09-23). Such a run gets one extra full quiet
-    // window before the kill; once it has spoken, quietTimeoutSeconds applies unchanged.
-    const allowedSilenceMs = () => (parser.progressCount > 0 ? quietMs : quietMs * 2);
+    // had the chance to speak (BUGS.md 2026-09-23). The one extra quiet window that fix
+    // granted a zero-progress run still false-killed under merge-check load: the kill runs
+    // on an interval against the wall clock, so the firing check can predate the child's
+    // first bytes entirely — fork/exec starved by the same load, or bytes already written
+    // but not yet drained (a firing timer phase precedes the poll phase that delivers
+    // stdout, and a suspended machine resumes the same way). Startup latency is unbounded,
+    // so no finite window bounds it: a run that has not emitted a single byte has not
+    // demonstrably begun, and gets no quiet kill at all — the tick timeout bounds it (at
+    // the production defaults the tick already fired before the old doubled window, so
+    // nothing changes there). Once bytes have flowed the run has begun; bytes without
+    // progress keep the doubled window (the zombie-stream case), and once real progress
+    // has landed quietTimeoutSeconds applies unchanged.
+    let sawOutput = false;
+    const allowedSilenceMs = () =>
+      parser.progressCount > 0 ? quietMs : sawOutput ? quietMs * 2 : Infinity;
     // The stall warning's threshold (distinct from the kill above): one hung tool call is
     // surfaced by name even while sibling calls keep streaming, so total silence is not
     // required. One warning per stalled call — the interval keeps firing until the kill or
@@ -242,7 +254,11 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
               if (parser.progressCount > lastProgressCount) {
                 lastProgressCount = parser.progressCount;
                 lastProgressAt = Date.now();
-              } else if (quietMs > 0 && Date.now() - lastProgressAt > allowedSilenceMs()) {
+              } else if (
+                quietMs > 0 &&
+                sawOutput &&
+                Date.now() - lastProgressAt > allowedSilenceMs()
+              ) {
                 quietKilled = true;
                 terminateChild(child);
               }
@@ -267,10 +283,12 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
         : undefined;
 
     child.stdout.on("data", (chunk: Buffer) => {
+      sawOutput = true; // any byte ends the starting phase, progress or not
       parser.feed(decoder.write(chunk), (line) => rawLog.write(line + "\n"));
     });
     child.stderr.on("data", (chunk: Buffer) => {
       // stderr is rare and meaningful (crash traces, warnings): treat it as progress.
+      sawOutput = true;
       lastProgressAt = Date.now();
       stderr += chunk.toString("utf8");
       if (stderr.length > 64 * 1024) stderr = stderr.slice(-64 * 1024);

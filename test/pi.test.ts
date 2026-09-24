@@ -376,16 +376,22 @@ test("a stalled run is reported as quiet-killed, not timed out", async () => {
 
 // BUGS.md 2026-09-23: under full-suite load a run's first output could land past the quiet
 // window measured from runPi's start — the OS had not yet scheduled the process, so the
-// watchdog killed a run that never had the chance to speak. A run with zero progress gets
-// one extra full quiet window before the kill; this pins that a slow-to-speak run completes
-// where the old single window killed it.
+// watchdog killed a run that never had the chance to speak. The doubled window that fix
+// granted a zero-progress run still false-killed under merge-check load: the kill check can
+// fire before the child's first bytes exist at all (fork/exec starved by the same load, or
+// bytes written but not yet drained — a firing timer phase precedes the poll phase that
+// delivers stdout). Since startup latency is unbounded, the fix gives a run that has not
+// emitted a single byte NO quiet kill at all (the tick timeout bounds it); bytes without
+// progress keep the doubled window (zombie streams). This pins that a slow-to-speak run
+// completes where the old single window killed it — and where the doubled window would
+// kill it too, so reverting to any finite startup window re-reddens this test.
 test("a run that is slow to speak is not quiet-killed during startup", async () => {
   const dir = tmpdir();
   const config = defaultConfig();
   config.quietTimeoutSeconds = 5; // old single window killed a silent run at the ~7.5 s check
   const restore = fakePi(
     [
-      `sleep 8`, // speaks past the old kill point, inside the doubled startup window
+      `sleep 12`, // speaks past even the doubled startup window (10 s) — byte-silent until then
       `printf '%s\n' '${assistantLine("done\nSUMMARY: spoke late")}'`,
     ].join("\n"),
   );
