@@ -230,6 +230,33 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Series.** Sibling of 3a, 3b, 3c, 3d — independent, any order.
 
+### Give every failure an automated trace: retire the recurring `no-observability` validation gap (planned 2026-09-26, promoted from the Fixed validation-gap tally by steward)
+
+**Why.** The Fixed backlog's validation-gap tally is dominated by one tag — `gap: no-observability` — the failure mode where nothing automated could see the bug: seven recorded repairs were confirmed only by a human reading raw logs or running `git log -S` / `ps` forensics. Six retained Fixed entries carry it:
+
+- "A build check killed by a signal is reported as \"timed out after 300s\"" (fixed 2026-09-23) — the skip warning named a timeout that never fired; a false trace.
+- "Any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal" (fixed 2026-09-23) — finished work was discarded with no automated trace.
+- "The digest's Review rejections section silently truncates at 5 alphabetically-first clusters" (fixed 2026-09-23) — a capped section rendered as a complete-looking itemization.
+- "The digest's Fleet state changes section silently keeps only the newest 6 transitions" (fixed 2026-09-23) — same silent-cut shape, no marker.
+- "A fix narrative can land on main without its fix" (fixed 2026-09-23) — a false Fixed record was indistinguishable from a real one to every role and gate.
+- "A timed-out build check leaks its entire test process tree" (fixed 2026-09-22) — the only evidence was orphaned processes in `ps`.
+- (compressed) "Every Fixed entry lacks the `**Validation gap:**` trace" (fixed 2026-09-21; commit bd8f3e6) — the repair-trace itself had to be bootstrapped first.
+
+The shared shape: a bounded, silent, or mislabeled record — digest caps, skip warnings, Fixed paragraphs, kill-vs-timeout classification — renders as honest output while discarding or hiding the fact. Each fix added a local pin; none made the *class* of silent failure visible.
+
+**Approach (directions; the plan loop should refine into one focused change).**
+- Traceability for caps and elisions: every place the harness caps or drops output (digest sections, transcript tails, log rotation) records the cut — a marker in the artifact plus an event — so a truncated view can never read as complete.
+- Honest classification: build-check and process outcomes distinguish signal-kill from timeout at the source and emit the distinguishing event, instead of downstream code guessing from a shared message.
+- Claim-vs-tree checks: `doctor` (or a suite helper) verifies that a recorded fix's claimed code change exists in main's history, and reports orphaned worktree processes — automating the two forensics humans had to run by hand.
+
+**Files touched.** The digest/report renderer, the event feed, `doctor`, and the suite pins over them — exact list refined by the plan loop.
+
+**Acceptance criteria.**
+- Each silent-cut site named above marks its own truncation in the artifact it produces, and a rendering test over an over-cap window reddens without it.
+- A signal-killed build check is recorded as killed-by-signal, never as a timeout, at the point of recording.
+- `doctor` detects a fix paragraph whose claimed code change has no corresponding commit on main, and detects orphaned worktree processes.
+- The gap tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sort | uniq -c`) stops growing `no-observability` for failure classes these traces cover.
+
 ## Done
 
 ### 7a/7 — Resolve the project brief as `TUMWATER.md`, with README.md as the compatibility path (planned 2026-09-23, split from 7/7, done 2026-09-23)
