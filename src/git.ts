@@ -305,6 +305,36 @@ export async function aheadOfMain(wt: string, mainBranch: string): Promise<numbe
   return parseInt(out, 10);
 }
 
+/** The patch-id of the change `head` makes on top of `base`: `git diff` over `base...head` (from
+ * their merge-base, the same range aheadOfMainDiff hands the reviewer) piped into
+ * `git patch-id`. Two shas carrying the same diff — an approved head and its clean rebase onto
+ * a moved main — share it, since patch-id ignores hunk line numbers; a rebase that changed any
+ * line of the patch, context included, does not. `--verbatim` over `--stable`: `--stable` also
+ * strips whitespace, so a whitespace-only difference would reuse an approval. `--binary` puts
+ * binary content in the hash (without it every binary change reads "Binary files differ"), and
+ * `--no-ext-diff --no-textconv` keep user diff config out of it. The raw stdout goes to
+ * patch-id untrimmed: runGit's trimEnd would drop the last line's trailing whitespace. Null on
+ * any failure or an empty diff (a git too old for `--verbatim` included), so a caller treats it
+ * as "no match", never an error. */
+export async function patchId(wt: string, base: string, head: string): Promise<string | null> {
+  try {
+    const { stdout: diff } = await execFileAsync(
+      "git",
+      ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--binary", `${base}...${head}`],
+      { cwd: wt, maxBuffer: 32 * 1024 * 1024 },
+    );
+    if (diff === "") return null;
+    const run = execFileAsync("git", ["patch-id", "--verbatim"], { cwd: wt });
+    // A patch-id that dies before reading its input must not surface as an unhandled EPIPE.
+    run.child.stdin?.on("error", () => {});
+    run.child.stdin?.end(diff);
+    const { stdout } = await run;
+    return stdout.split(" ")[0]?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Stage and commit everything in the worktree. Returns the new commit hash. */
 export async function commitAll(wt: string, message: string): Promise<string> {
   await git(wt, "add", "-A");

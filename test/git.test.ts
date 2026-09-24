@@ -16,6 +16,7 @@ import {
   isGitRepo,
   isMergedInto,
   listBranches,
+  patchId,
   readBranchHead,
   refSha,
   repoToplevel,
@@ -888,6 +889,88 @@ test("subjectsBetween lists main's subjects since a head, newest first; null for
     await subjectsBetween(repo, "0000000000000000000000000000000000000000", "main"),
     null,
   );
+});
+
+// --- patchId (land-queue speed 2a: approvals keyed by the diff, not the sha) ---
+
+/** A repo whose `side` branch edits line 6 of a ten-line file on top of main, checked out on
+ * `side`. Returns the side head. */
+function patchFixture(): { repo: string; side: string } {
+  const repo = makeRepo();
+  const lines = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`);
+  fs.writeFileSync(path.join(repo, "a.txt"), lines.join("\n") + "\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "ten lines");
+  sh(repo, "git", "checkout", "-q", "-b", "side");
+  fs.writeFileSync(path.join(repo, "a.txt"), lines.map((l, i) => (i === 5 ? "changed" : l)).join("\n") + "\n");
+  sh(repo, "git", "commit", "-am", "side change");
+  return { repo, side: sh(repo, "git", "rev-parse", "HEAD") };
+}
+
+/** Advance main by one commit that rewrites a.txt with `edit`, then return to `side`. */
+function advanceMain(repo: string, edit: (text: string) => string): void {
+  sh(repo, "git", "checkout", "-q", "main");
+  const file = path.join(repo, "a.txt");
+  fs.writeFileSync(file, edit(fs.readFileSync(file, "utf8")));
+  sh(repo, "git", "commit", "-am", "main moves");
+  sh(repo, "git", "checkout", "-q", "side");
+}
+
+test("patchId is the same for one diff at two shas: a clean rebase onto a moved main keeps it", async () => {
+  const { repo, side } = patchFixture();
+  const before = await patchId(repo, "main", side);
+  assert.match(before ?? "", /^[0-9a-f]{40,64}$/);
+  // Main grows above the hunk, outside its context: every line number shifts, the patch does not.
+  advanceMain(repo, (t) => "new top 1\nnew top 2\n" + t);
+  // The old head, against the moved main, still reads its own change (the merge-base range).
+  assert.equal(await patchId(repo, "main", side), before);
+  sh(repo, "git", "rebase", "-q", "main");
+  const rebased = sh(repo, "git", "rev-parse", "HEAD");
+  assert.notEqual(rebased, side, "the rebase rewrote the sha");
+  assert.equal(await patchId(repo, "main", rebased), before, "same diff, same patch-id");
+});
+
+test("patchId differs when a rebase changes the patch: new context, or whitespace alone", async () => {
+  const { repo, side } = patchFixture();
+  const before = await patchId(repo, "main", side);
+  // Main edits a line inside the hunk's context: the rebase is clean, the patch is not the same.
+  advanceMain(repo, (t) => t.replace("line 4\n", "line four\n"));
+  sh(repo, "git", "rebase", "-q", "main");
+  assert.notEqual(await patchId(repo, "main", "HEAD"), before);
+
+  // A whitespace-only difference in the added line is a different patch too (`--stable` would
+  // strip it and match).
+  const other = patchFixture();
+  const base = await patchId(other.repo, "main", other.side);
+  const file = path.join(other.repo, "a.txt");
+  sh(other.repo, "git", "reset", "--hard", "main");
+  fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("line 6\n", "changed  \n"));
+  sh(other.repo, "git", "commit", "-am", "side change, trailing spaces");
+  assert.notEqual(await patchId(other.repo, "main", "HEAD"), base);
+});
+
+test("patchId is null, never a throw, when there is nothing to identify or git fails", async () => {
+  const { repo, side } = patchFixture();
+  assert.equal(await patchId(repo, "main", "main"), null, "an empty diff has no patch");
+  assert.equal(await patchId(repo, "main", "0".repeat(40)), null, "an unknown head");
+  assert.equal(await patchId(tmpdir(), "main", side), null, "not a repository");
+
+  // `git patch-id` itself failing (a git too old for --verbatim, say): a shim git on PATH
+  // passes everything through to the real one except patch-id, which dies.
+  const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+  const bin = tmpdir();
+  fs.writeFileSync(
+    path.join(bin, "git"),
+    `#!/bin/sh\nif [ "$1" = patch-id ]; then echo 'unknown option' >&2; exit 129; fi\nexec '${realGit}' "$@"\n`,
+  );
+  fs.chmodSync(path.join(bin, "git"), 0o755);
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${oldPath ?? ""}`;
+  try {
+    assert.equal(await patchId(repo, "main", side), null, "a failed patch-id");
+  } finally {
+    process.env.PATH = oldPath;
+  }
 });
 
 // --- repoToplevel / branchExists / listBranches (portability 2/7) ---

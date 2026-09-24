@@ -47,7 +47,9 @@ loops keep ticking while a change is under review.
 - **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
   `VERDICT: approve|reject`. Markdown-only diffs skip review. Each reviewer run is capped at
   `review.timeoutSeconds` (default 900, never above `tickTimeoutSeconds`); one that runs over
-  fails without a strike and the change re-lands on the author's next tick.
+  fails without a strike and the change re-lands on the author's next tick. An approval is keyed by the
+  diff's patch-id, so an approved change re-landed after a clean rebase is not reviewed again;
+  its build check still runs.
 - **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear.
 - **Batching.** When several changes are queued, each is reviewed alone, then up to
   `landBatchMax` (default 3) land together under one check. A red batch falls back to one at a

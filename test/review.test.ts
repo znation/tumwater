@@ -1121,6 +1121,101 @@ test("a green pre-check hands its verified head to the landing path", async () =
   }
 });
 
+// Land-queue speed 2a: a review judges a diff, not a sha. landChange rebases the pin onto main
+// before its gate, so an approved change re-drained after main moved arrives at a new sha with
+// the same patch — the approval is reused (no second reviewer run), the build pre-check is not.
+
+/** Move main past the fixture's worktree with a commit to a file the change never touches,
+ * then rebase the worktree onto it — the clean rebase landChange's syncPinToMain does. Returns
+ * the rebased head. Only other.txt is staged: the root's package.json and node_modules are the
+ * fixture's untracked install. */
+async function moveMainAndRebase(root: string, wt: string): Promise<string> {
+  fs.writeFileSync(path.join(root, "other.txt"), "someone else's change\n");
+  sh(root, "git", "add", "other.txt");
+  sh(root, "git", "commit", "-m", "main moves");
+  sh(wt, "git", "rebase", "-q", "main");
+  return headOf(wt, "HEAD");
+}
+
+test("an approved change cleanly rebased onto a moved main reuses its approval: no reviewer run, one check", async () => {
+  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n");
+  const runs = path.join(tmpdir(), "pi-runs");
+  const restore = fakePi(`echo run >> '${runs}'\nprintf '%s\n' '${assistantLine("VERDICT: approve\n1. solid")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const approvedHead = await headOf(wt, "HEAD");
+    assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
+    assert.ok(state.lastApprovedPatchId, "the approval is keyed by its patch-id too");
+    const checksBefore = readEvents(root).filter((e) => e.type === "build_check").length;
+
+    const rebased = await moveMainAndRebase(root, wt);
+    assert.notEqual(rebased, approvedHead, "the rebase rewrote the sha: the exact-sha short-circuit misses");
+    const result = await reviewAheadOfMain(gateCtx(root, wt, 2), state);
+    assert.equal(result.decision, "approved");
+    assert.equal(result.run, undefined, "no reviewer run was spent");
+    assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 1, "one reviewer run across both gates");
+    // The model review is reused; the check that the new tree still builds is not.
+    const checks = readEvents(root).filter((e) => e.type === "build_check").slice(checksBefore);
+    assert.deepEqual(checks.map((e) => `${e.scope}:${e.status}`), ["gate:passed"]);
+    // The landing path trusts exactly this tree (its in-lock rebase is then a no-op), so the
+    // pre-check is the only check the re-landing pays.
+    assert.equal(result.verifiedHead, rebased);
+    assert.equal(state.lastApprovedHead, rebased, "a retry of the rebased head is an exact-sha hit");
+    assert.equal(
+      readEvents(root).filter((e) => e.type === "review_start").length,
+      1,
+      "the reused approval never shows as reviewing",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a rebase that changes the patch is re-reviewed", async () => {
+  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n");
+  const runs = path.join(tmpdir(), "pi-runs");
+  const restore = fakePi(`echo run >> '${runs}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
+    const approvedPatch = state.lastApprovedPatchId;
+    await moveMainAndRebase(root, wt);
+    // What a conflict resolution does: the rebased commit carries a hunk the reviewer never saw.
+    fs.appendFileSync(path.join(wt, "seed.txt"), "resolved differently\n");
+    sh(wt, "git", "commit", "-a", "--amend", "--no-edit");
+    const result = await reviewAheadOfMain(gateCtx(root, wt, 2), state);
+    assert.equal(result.decision, "approved");
+    assert.ok(result.run, "the changed patch got its own reviewer run");
+    assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 2);
+    assert.notEqual(state.lastApprovedPatchId, approvedPatch, "the new approval names the new patch");
+  } finally {
+    restore();
+  }
+});
+
+test("a reused approval still rejects a tree whose pre-check now fails", async () => {
+  // The same patch, but main moved under it and the rebased tree no longer builds: the
+  // approval covers the diff's review, never the check.
+  const red = path.join(tmpdir(), "red");
+  const { root, wt } = await gateBuildFixture(`test ! -f '${red}'`);
+  const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
+    await moveMainAndRebase(root, wt);
+    fs.writeFileSync(red, "");
+    // Main's own verdict at its new tip is green (what its landing left behind), so the
+    // repeat failure is the change's own and the gate rejects it.
+    seedGreenMain(root);
+    const result = await reviewAheadOfMain(gateCtx(root, wt, 2), state);
+    assert.equal(result.decision, "rejected");
+    assert.match(result.detail ?? "", /^build check failed/);
+    assert.equal(await aheadOfMain(wt, "main"), 0, "branch reset to main");
+  } finally {
+    restore();
+  }
+});
+
 // The reviewer's prompt names the harness's own green pre-check so the model reviewer does not
 // spend its run re-running `npm test` — and stays silent about it when no check ran (no declared
 // script, or a skipped run), so the reviewer is never told a suite passed that never executed.

@@ -122,6 +122,10 @@ export interface LoopState {
   /** Branch HEAD that passed review most recently. Leftover commits at exactly this HEAD
    * merge without re-review (a merge_blocked retry must not burn another review run). */
   lastApprovedHead?: string;
+  /** git.ts patchId of the change at lastApprovedHead against main — the diff the reviewer
+   * judged. A different head carrying the same patch (a clean rebase onto a moved main) reuses
+   * the approval: no second model review, though the gate's build pre-check still runs. */
+  lastApprovedPatchId?: string;
   /** Consecutive failed reviews of the SAME branch HEAD (reset when the reviewed HEAD
    * changes or a review succeeds). Past the limit the leftover is discarded with a warning,
    * so a misconfigured reviewer cannot wedge a loop re-reviewing one commit forever. */

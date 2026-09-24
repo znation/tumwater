@@ -2,7 +2,7 @@ import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult } from "./types.js";
 import { reviewRunConfig } from "./config.js";
 import { logEvent, warnEvent } from "./events.js";
-import { git, headOf } from "./git.js";
+import { git, headOf, patchId } from "./git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
@@ -155,7 +155,7 @@ export interface GateResult {
   /** Failure message ("failed") or first rejection reason ("rejected"), for lastSummary. */
   detail?: string;
   /** The reviewer's pi run, for usage folding into the loop totals — absent when no review
-   * ran (gate disabled, exempt diff, or an already-approved HEAD). */
+   * ran (gate disabled, exempt diff, or an already-approved HEAD or patch). */
   run?: PiRunResult;
 }
 
@@ -165,8 +165,10 @@ export interface GateResult {
  * that can move a commit into main routes through here, so no crash or abort path smuggles
  * unreviewed work in:
  * - gate disabled, or an already-approved HEAD, or an exempt (doc-only) diff → merge as-is;
- * - approve → record lastApprovedHead and discard the reviewer's stray working-tree edits
- *   (its only output channel is the verdict);
+ * - a new HEAD carrying the last approved patch (lastApprovedPatchId) → approved after the
+ *   build pre-check, with no reviewer run;
+ * - approve → record lastApprovedHead and its patch-id, and discard the reviewer's stray
+ *   working-tree edits (its only output channel is the verdict);
  * - reject → reset the branch to main, record reasons in state.lastReview (injected into the
  *   role's next tick prompt), log review_rejected;
  * - fail with an unparseable reply (the reviewer ran to completion but emitted no VERDICT) →
@@ -334,6 +336,18 @@ export async function reviewAheadOfMain(
     }
   }
 
+  // A review judges a diff, not a sha: a head carrying exactly the patch this role's last
+  // approval judged (the approved head cleanly rebased onto a moved main) reuses that verdict
+  // instead of paying a second reviewer run. Only the model review is reused — the pre-check
+  // above has just run on this tree (a failure rejected it there), and its verifiedHead rides
+  // on the result as for any approval.
+  if (state.lastApprovedPatchId !== undefined) {
+    if ((await patchId(wt, mainBranch, head)) === state.lastApprovedPatchId) {
+      state.lastApprovedHead = head;
+      return { decision: "approved", verifiedHead };
+    }
+  }
+
   logEvent(root, { loop: role, type: "review_start", head });
   // Persist the phase BEFORE the run so a dashboard mid-review shows "reviewing" and a crash
   // mid-review is distinguishable from a crash mid-author-run on resume (stray edits are the
@@ -431,8 +445,10 @@ export async function reviewAheadOfMain(
   }
 
   // Approve: record the reviewed HEAD and discard any stray working-tree edits the reviewer
-  // made while reading around — its only output channel is the verdict.
+  // made while reading around — its only output channel is the verdict. The patch-id keys the
+  // approval to the diff it judged; unreadable, it clears any older one (no reuse at all).
   state.lastApprovedHead = head;
+  state.lastApprovedPatchId = (await patchId(wt, mainBranch, head)) ?? undefined;
   state.lastReview = { verdict: "approve", reasons: verdict.reasons, head, at: Date.now() };
   state.unreviewFailures = 0;
   await git(wt, "reset", "--hard", "HEAD");

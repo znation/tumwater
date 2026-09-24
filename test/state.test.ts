@@ -258,11 +258,13 @@ test("applyTickOutcome records the outcome and schedules a changed tick at the r
   s.running = true;
   s.phase = "review"; // set around the gate's run — must not linger after the tick
   s.commits = 4;
+  s.lastApprovedPatchId = "p1"; // a leftover-recovery landing's approval, spent once it lands
   const cfg = testConfig();
   const before = Date.now();
   applyTickOutcome(s, cfg, "feature", { result: "changed", summary: "did it" });
   assert.equal(s.running, false);
   assert.equal(s.phase, undefined);
+  assert.equal(s.lastApprovedPatchId, undefined);
   assert.equal(s.lastResult, "changed");
   assert.equal(s.lastSummary, "did it");
   const endedAt = s.lastTickEndedAt;
@@ -321,19 +323,25 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
   // A landed change counts the commit the tick queued and clears the gate's phase marker.
   const s = freshLoopState("feature");
   s.phase = "review";
+  s.lastApprovedPatchId = "p1";
   applyLandingOutcome(s, "changed", change);
   assert.equal(s.lastResult, "changed");
   assert.equal(s.commits, 1);
   assert.equal(s.phase, undefined);
+  // The landed patch's approval is spent: the same patch authored again is a new change.
+  assert.equal(s.lastApprovedPatchId, undefined);
 
   // Non-terminal outcomes record the failure, count no commit, and clear the marker — the
   // retry rides next-tick leftover recovery, so the state just has to show the failure.
   for (const result of ["rejected", "review_error", "merge_conflict", "merge_blocked", "error"] as const) {
     const n = freshLoopState("feature");
+    n.lastApprovedPatchId = "p1";
     applyLandingOutcome(n, result, change);
     assert.equal(n.lastResult, result);
     assert.equal(n.commits, 0, `${result} lands nothing on main`);
     assert.equal(n.phase, undefined);
+    // Nothing landed, so the approval stands: a re-land whose rebase leaves the patch alone reuses it.
+    assert.equal(n.lastApprovedPatchId, "p1", `${result} keeps the patch-id approval`);
   }
 
   // An aborted landing keeps the marker: a shutdown mid-review must re-review the pinned work

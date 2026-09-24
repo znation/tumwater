@@ -167,6 +167,9 @@ export function applyTickOutcome(
     // applyLandingOutcome increments it when the change actually lands. The phase-clear above
     // (`result !== "aborted"`) covers both.
     if (outcome.result === "changed") s.commits += 1;
+    // A landed change's patch-id approval has done its job: the same patch authored again
+    // later (after a revert, say) is a new change and gets its own review.
+    if (outcome.result === "changed") s.lastApprovedPatchId = undefined;
     s.backoffSeconds = 0;
     s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
   } else if (outcome.result === "rejected") {
@@ -269,6 +272,7 @@ export function applyLandingOutcome(
   s.lastSummary = s.queuedSummary?.sha === change.sha ? s.queuedSummary.summary : change.summary;
   s.queuedSummary = undefined;
   if (result === "changed") s.commits += 1;
+  if (result === "changed") s.lastApprovedPatchId = undefined; // see applyTickOutcome
   if (result !== "aborted") s.phase = undefined;
 }
 
