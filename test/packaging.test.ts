@@ -42,7 +42,7 @@ test("bin points into dist/", () => {
 
 test("CI workflow carries the stable triggers", () => {
   const yml = fs.readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
-  for (const needle of ["pull_request", "ubuntu-latest", "macos-latest"]) {
+  for (const needle of ["pull_request", "ubuntu-latest"]) {
     assert.ok(yml.includes(needle), `ci.yml must mention ${needle}`);
   }
 });

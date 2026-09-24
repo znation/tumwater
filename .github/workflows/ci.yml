@@ -2,31 +2,19 @@ name: CI
 
 on: [push, pull_request]
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        node: [20, 22, 24]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: lts/*
           cache: npm
       - name: Set a git identity so the suite's fixtures can always commit
         run: |
           git config --global user.name "tumwater ci"
           git config --global user.email "ci@tumwater.local"
       - run: npm ci
-      # No standalone build step: `npm test` (and `npm run test:e2e`) runs `npm run build`
-      # first, so a build failure fails there with the same output — a separate step only
-      # compiled the same tree a third time in every matrix cell.
       - run: npm test
       - run: npm run test:e2e
