@@ -50,8 +50,6 @@ come from `customLoops` in tumwater.json or by prompting the director.
 Open items:
 - Open bug: the gate's "bounded" build-fix run has no time or resource budget — a dry-run
   load-test held the live host for 90 minutes and stalled the fleet (found 2026-09-23).
-- Open bug: a build check killed by a signal is reported as "timed out after 300 s", and at
-  gate scope the change then goes to review unverified (found 2026-09-23).
 - Open bug: the reviewer is never told about the gate's own build-fix commit, so a successful
   fix reads as an unclaimed change and the landing is rejected (found 2026-09-23).
 - Open bug: the batch's one-at-a-time fallback re-reviews changes it already approved — the
@@ -100,16 +98,14 @@ Open items:
 - Open bug: the self-redeploy's shutdown awaits an in-flight batched landing with no
   deadline — the generation handoff lagged its own swap by 97 minutes (found 2026-09-24).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; PLANS.md item 7/7 — adopt an existing repo
-  without hijacking its README — remains; 1–6/7 landed by 2026-09-25, 6/7 being the
-  configurable `check.command`).
-- Planned: wake and abort controls on the GUI dashboard — per-loop `wake`/`abort` buttons
-  backed by `POST /api/wake` and `POST /api/abort` that reuse the CLI's marker-writing logic
-  (planned 2026-09-25; PLANS.md has the plan).
+  binary (planned 2026-09-14, requested by user; PLANS.md items 7a/7 — resolve the brief as
+  `TUMWATER.md` with README.md as the compatibility path — and 7b/7 — `init --adopt`/`--dry-run`
+  to adopt an existing repo without touching its README — remain, split from 7/7 on
+  2026-09-26; 1–6/7 landed by 2026-09-25, 6/7 being the configurable `check.command`).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`9ed7c6c`): build clean, suite 1412/1412.
+Current main (`2e50185`): build clean, suite 1423/1423.
 <!-- tumwater:status:end -->
 
 ## How it works
