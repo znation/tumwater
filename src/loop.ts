@@ -760,7 +760,9 @@ export class LoopRunner {
     });
     logEvent(this.root, { loop: this.role, type: "land_queued", commit, summary });
     // The flag's durable record is the Friction trailer line stamped on the commit above;
-    // lastSummary and the tick_end event carry it too for dashboards and logs.
+    // the tick_end event carries it too for logs, and lastSummary for dashboards once the
+    // landing resolves (state.ts stashes this summary until then — a `queued` tick is not a
+    // completed result).
     const finalSummary = highFriction
       ? `${summary} (high friction: ${authoringTurns} turns / ${Math.round(minutes)}m)`
       : summary;

@@ -145,7 +145,11 @@ export function loopPhase(
   // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
   // because it explains why the loop keeps waking and landing nothing; self-correcting, since
   // each blocked tick re-records main_red while red and a green wake overwrites lastResult.
-  if (s.lastResult === "main_red") return "main red";
+  // Except a green wake that queues a change: `queued` is in flight, not a completed result,
+  // so it leaves the main_red pair in place until its landing resolves (state.ts's
+  // applyTickOutcome) — its stashed summary is the tell that the loop's latest tick got past
+  // the red-main gate, so main was green then and "main red" would be stale.
+  if (s.lastResult === "main_red" && s.queuedSummary === undefined) return "main red";
   // An error streak at or past the warning threshold (state.ts's ERROR_STREAK_WARN): the
   // loop is retrying the same failure on the error ladder, and the operator must see
   // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak

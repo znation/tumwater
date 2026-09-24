@@ -243,6 +243,9 @@ test("nextBackoffSeconds caps an initial above max and treats non-positive curre
 
 // --- Post-tick outcome recording + next-run scheduling (extracted from LoopRunner.tick) ---
 
+/** A queued tick's pinned commit — the key its stashed summary is filed under. */
+const PINNED = "a".repeat(40);
+
 /** A config with a small idle backoff so the assertions below stay readable. */
 function testConfig(): TumwaterConfig {
   const cfg = defaultConfig(); // minTickIntervalSeconds: 20
@@ -294,9 +297,17 @@ test("applyTickOutcome: a queued tick schedules like a change without counting a
   const s = freshLoopState("feature");
   s.commits = 4;
   s.phase = "review"; // any marker from around the pin — must not linger after the tick
-  applyTickOutcome(s, testConfig(), "feature", { result: "queued", summary: "did it" });
-  assert.equal(s.lastResult, "queued");
-  assert.equal(s.lastSummary, "did it");
+  s.lastResult = "refused";
+  s.lastSummary = "objected to the plan";
+  applyTickOutcome(s, testConfig(), "feature", { result: "queued", summary: "did it", commit: PINNED });
+  // `queued` is in-flight work, not a completed result (BUGS.md 2026-09-23): the last-result
+  // pair keeps the prior outcome WITH its own summary — the queued tick's summary must not be
+  // shown beside a result it did not produce — and the summary is stashed, keyed by the pinned
+  // sha, for the landing to pair with its result.
+  assert.equal(s.lastResult, "refused", "the prior completed result stays while the change is pending");
+  assert.equal(s.lastSummary, "objected to the plan", "…next to its own summary");
+  assert.deepEqual(s.queuedSummary, { sha: PINNED, summary: "did it" });
+  assert.ok(s.lastTickEndedAt !== undefined, "the tick itself did end");
   assert.equal(s.commits, 4, "the commit is not counted until it lands");
   assert.equal(s.backoffSeconds, 0);
   assert.ok(
@@ -306,10 +317,11 @@ test("applyTickOutcome: a queued tick schedules like a change without counting a
 });
 
 test("applyLandingOutcome folds the landing's result into the authoring state", () => {
+  const change = { sha: PINNED, summary: "did it" };
   // A landed change counts the commit the tick queued and clears the gate's phase marker.
   const s = freshLoopState("feature");
   s.phase = "review";
-  applyLandingOutcome(s, "changed");
+  applyLandingOutcome(s, "changed", change);
   assert.equal(s.lastResult, "changed");
   assert.equal(s.commits, 1);
   assert.equal(s.phase, undefined);
@@ -318,7 +330,7 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
   // retry rides next-tick leftover recovery, so the state just has to show the failure.
   for (const result of ["rejected", "review_error", "merge_conflict", "merge_blocked", "error"] as const) {
     const n = freshLoopState("feature");
-    applyLandingOutcome(n, result);
+    applyLandingOutcome(n, result, change);
     assert.equal(n.lastResult, result);
     assert.equal(n.commits, 0, `${result} lands nothing on main`);
     assert.equal(n.phase, undefined);
@@ -328,10 +340,57 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
   // fresh on the next launch, and the dashboard shows the landing as interrupted, not done.
   const a = freshLoopState("feature");
   a.phase = "review";
-  applyLandingOutcome(a, "aborted");
+  applyLandingOutcome(a, "aborted", change);
   assert.equal(a.lastResult, "aborted");
   assert.equal(a.commits, 0);
   assert.equal(a.phase, "review");
+});
+
+test("a resolved landing pairs its result with the summary of the change it landed", () => {
+  // BUGS.md 2026-09-23, the second window: the queued tick held its summary back, so the
+  // landing's result must arrive with THAT summary — never beside the prior tick's.
+  for (const result of ["changed", "rejected", "merge_conflict", "aborted"] as const) {
+    const s = freshLoopState("feature");
+    applyTickOutcome(s, testConfig(), "feature", { result: "no_change", summary: "found nothing" });
+    applyTickOutcome(s, testConfig(), "feature", {
+      result: "queued",
+      summary: "did it (high friction: 90 turns / 45m)",
+      commit: PINNED,
+    });
+    applyLandingOutcome(s, result, { sha: PINNED, summary: "did it" });
+    assert.equal(s.lastResult, result);
+    assert.equal(
+      s.lastSummary,
+      "did it (high friction: 90 turns / 45m)",
+      `the tick's own summary — annotation included — pairs with ${result}`,
+    );
+    assert.equal(s.queuedSummary, undefined, "the stash is consumed by the landing");
+  }
+
+  // No stash for this sha — a crash between enqueue and the tick's state save, or a landing
+  // that resolved before its tick's outcome was applied: the entry's own summary names the
+  // change, so the prior tick's summary still never pairs with the landing's result.
+  const lost = freshLoopState("feature");
+  lost.lastResult = "no_change";
+  lost.lastSummary = "found nothing";
+  applyLandingOutcome(lost, "changed", { sha: PINNED, summary: "did it" });
+  assert.equal(lost.lastSummary, "did it");
+  const other = freshLoopState("feature");
+  other.queuedSummary = { sha: "c".repeat(40), summary: "some other change" };
+  applyLandingOutcome(other, "changed", { sha: PINNED, summary: "did it" });
+  assert.equal(other.lastSummary, "did it", "a stash naming another sha is not this change's");
+  assert.equal(other.queuedSummary, undefined);
+});
+
+test("any completed tick clears a stale queued-summary stash", () => {
+  // A role with a queued landing never ticks, so a stash that survives to a later tick names a
+  // change that is no longer waiting: the completed tick records its own pair and drops it.
+  const s = freshLoopState("feature");
+  s.queuedSummary = { sha: PINNED, summary: "did it" };
+  applyTickOutcome(s, testConfig(), "feature", { result: "no_change", summary: "found nothing" });
+  assert.equal(s.lastResult, "no_change");
+  assert.equal(s.lastSummary, "found nothing");
+  assert.equal(s.queuedSummary, undefined);
 });
 
 test("applyTickOutcome: an aborted tick resumes promptly — role via resumePending, director via re-queue", () => {

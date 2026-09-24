@@ -11,7 +11,7 @@ import { landingUsage, landQueuedEntry, readLandingMarker, writeLandingOutcome }
 import { landingRefName } from "../src/paths.js";
 import { refSha } from "../src/git.js";
 import { defaultConfig } from "../src/config.js";
-import { freshLoopState, loadLoopState } from "../src/state.js";
+import { applyTickOutcome, freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { readEvents } from "../src/events.js";
 import type { LoopRunner } from "../src/loop.js";
@@ -137,6 +137,31 @@ test("an unexpected throw inside the landing degrades to an error outcome — th
   assert.equal(await refSha(root, landingRefName("improve")), null, "no pin existed and the error path fabricates none");
   assert.equal(readLandingMarker(root), null, "the in-flight marker is removed even on the error path");
   assert.equal(loadLoopState(root, "improve").lastResult, "error", "the outcome is persisted, not just folded in memory");
+});
+
+test("the write-back pairs the landing's result with the queued tick's summary, across a reload", () => {
+  // BUGS.md 2026-09-23: the queued tick left the prior last-result pair in place and stashed
+  // its own summary; the landing — here resolving in a later process on a disk-loaded state,
+  // as a durable queue entry can — records its result beside THAT summary and consumes it.
+  const root = makeRepo();
+  const { entry, file } = queued(root);
+  const tick = freshLoopState("improve");
+  applyTickOutcome(tick, defaultConfig(), "improve", { result: "no_change", summary: "found nothing" });
+  applyTickOutcome(tick, defaultConfig(), "improve", {
+    result: "queued",
+    summary: `${entry.summary} (high friction: 90 turns / 45m)`,
+    commit: entry.sha,
+  });
+  saveLoopState(root, tick);
+  const pending = loadLoopState(root, "improve");
+  assert.equal(pending.lastResult, "no_change", "fixture sanity: the prior pair is what persisted");
+
+  writeLandingOutcome(root, entry, pending, "rejected", 10, { tokens: 0, cost: 0 }, file);
+
+  const saved = loadLoopState(root, "improve");
+  assert.equal(saved.lastResult, "rejected");
+  assert.equal(saved.lastSummary, "add a thing (high friction: 90 turns / 45m)");
+  assert.equal(saved.queuedSummary, undefined, "the persisted stash is consumed");
 });
 
 test("a failed landing logs land_failed with its usage and counts no commit", () => {

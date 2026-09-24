@@ -1,5 +1,5 @@
 import type { BackoffConfig, TumwaterConfig } from "./config-schema.js";
-import type { LoopState, TickOutcome, TickResult } from "./types.js";
+import type { LandingEntry, LoopState, TickOutcome, TickResult } from "./types.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "./roles.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { statePath } from "./paths.js";
@@ -145,8 +145,22 @@ export function applyTickOutcome(
   // already committed.
   if (outcome.result !== "aborted") s.phase = undefined;
   s.lastTickEndedAt = Date.now();
-  s.lastResult = outcome.result;
-  if (outcome.summary) s.lastSummary = outcome.summary;
+  // `lastResult`/`lastSummary` are the last COMPLETED result, the pair the dashboards' "last
+  // result" cell renders. A `queued` tick is not one: its change is committed but in flight —
+  // the state column shows that (`landing <elapsed>`, the land-queue badge) — so the pair keeps
+  // the prior outcome WITH its own summary while the change waits (BUGS.md 2026-09-23), and the
+  // tick's summary is stashed under the pinned sha for applyLandingOutcome to pair with the
+  // landing's result. Every other outcome is completed and clears the stash: a role with a
+  // queued or in-flight landing never ticks (the orchestrator's interlock), so a stash that
+  // survives to a later tick names a change that is no longer waiting.
+  if (outcome.result === "queued") {
+    s.queuedSummary =
+      outcome.commit && outcome.summary ? { sha: outcome.commit, summary: outcome.summary } : undefined;
+  } else {
+    s.queuedSummary = undefined;
+    s.lastResult = outcome.result;
+    if (outcome.summary) s.lastSummary = outcome.summary;
+  }
   if (outcome.result === "changed" || outcome.result === "queued") {
     // "queued" schedules exactly like "changed" — the tick committed and enqueued — but the
     // commit count waits for the landing: `commits` keeps meaning "landed on main", and
@@ -237,10 +251,23 @@ export function applyTickOutcome(
  * did inside a tick, so the label must not linger past the landing (mirroring
  * applyTickOutcome's rule: every outcome except "aborted" clears it — an aborted landing
  * keeps it, because the interruption hit mid-review and the next launch must recover and
- * re-review the pinned work). `lastSummary` is left untouched: the tick's summary stays, and
- * the failure detail rides in `lastReview` and the landed/land_failed events. */
-export function applyLandingOutcome(s: LoopState, result: TickResult): void {
+ * re-review the pinned work). `lastSummary` becomes the summary of the change this landing
+ * resolved — `change` is its land-queue entry — so the landing's result, success or failure,
+ * reads beside the work it names (BUGS.md 2026-09-23: the queued tick held its summary back
+ * rather than pair it with the prior result). The tick's stashed `queuedSummary` wins when it
+ * names this sha: it is the text the tick reported, high-friction annotation included. The
+ * entry's own summary (the commit subject) covers a stash that is missing or names another
+ * change — a crash between enqueue and the tick's state save, or a landing that finished before
+ * its tick's outcome was applied. Either way the stash is consumed. The failure detail rides
+ * in `lastReview` and the landed/land_failed events. */
+export function applyLandingOutcome(
+  s: LoopState,
+  result: TickResult,
+  change: Pick<LandingEntry, "sha" | "summary">,
+): void {
   s.lastResult = result;
+  s.lastSummary = s.queuedSummary?.sha === change.sha ? s.queuedSummary.summary : change.summary;
+  s.queuedSummary = undefined;
   if (result === "changed") s.commits += 1;
   if (result !== "aborted") s.phase = undefined;
 }

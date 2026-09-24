@@ -597,10 +597,14 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
     const runner = new LoopRunner(repo, "improve", config, "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
+    assert.equal(runner.state.lastResult, undefined, "a queued tick records no completed result");
     assert.equal(await landHead(repo, runner, config, "improve"), "changed");
     assert.ok(outcome.highFriction, "the tick is flagged high-friction");
-    // The flag annotates the summary for dashboards and lastSummary.
+    // The flag annotates the summary for dashboards and lastSummary — the latter once the
+    // landing resolves, paired with the landing's result (BUGS.md 2026-09-23).
     assert.match(String(outcome.summary), /^slow change \(high friction: 2 turns \/ \d+m\)$/);
+    assert.equal(runner.state.lastResult, "changed");
+    assert.equal(runner.state.lastSummary, outcome.summary);
 
     // The warning event carries both thresholds.
     const events = readEvents(repo);

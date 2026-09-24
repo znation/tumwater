@@ -46,7 +46,8 @@ export function readLandingMarker(root: string): LandingInFlight | null {
 
 /** Fold one landing's outcome into its role's state and drop its queue entry — the 3/5
  * write-back shared by the single path (landQueuedEntry) and the 5/5 batch slot: apply the
- * result to the live state object, persist it, log landed/land_failed with the landing's own
+ * result to the live state object (paired with the entry's change for the last-result cell —
+ * applyLandingOutcome), persist it, log landed/land_failed with the landing's own
  * duration and usage (omitted when zero — the 4/5 idiom, so review-exempt landings render
  * bare; for a batched change that is the batch's wall clock and its own role's spend), and
  * drop the entry: EVERY defined result drops. The 4/5 marker is each caller's own concern —
@@ -61,7 +62,7 @@ export function writeLandingOutcome(
   usage: { tokens: number; cost: number },
   file: string,
 ): void {
-  applyLandingOutcome(state, result);
+  applyLandingOutcome(state, result, entry);
   saveLoopState(root, state);
   // `merged` still fires from merge.ts itself — these events mark the QUEUE's bookkeeping:
   // the slot picked the entry up (land_queued, logged at enqueue) and finished with or

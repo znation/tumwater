@@ -7,7 +7,7 @@
 
 export type TickResult =
   | "changed" // a landing completed: the change is merged to main
-  | "queued" // the tick's change is committed and pinned; the orchestrator's landing slot will pick it up from the durable land queue (plans/merge-queue.md 3/5) — the commit count and final outcome are recorded when the landing completes
+  | "queued" // the tick's change is committed and pinned; the orchestrator's landing slot will pick it up from the durable land queue (plans/merge-queue.md 3/5) — the commit count and final outcome are recorded when the landing completes; never stored as `lastResult`, which keeps the last completed outcome
   | "refused" // pi declined the work (TUMWATER_REFUSED); only its markdown objection note landed
   | "no_change" // pi decided there was nothing to do
   | "merge_conflict" // change was made but could not be merged; discarded next tick
@@ -57,8 +57,19 @@ export interface LoopState {
   backoffSeconds: number;
   /** main HEAD observed at the end of the last tick; a different HEAD wakes the loop. */
   lastMainHead: string;
+  /** The last COMPLETED result and its summary — the pair the dashboards' "last result" cell
+   * renders. A `queued` tick never writes it (state.ts's applyTickOutcome): its change is still
+   * in flight, which the state column already shows, so the pair keeps the prior outcome until
+   * the landing resolves and applyLandingOutcome records the landing's own. */
   lastResult?: TickResult;
   lastSummary?: string;
+  /** The summary a `queued` tick reported for the change it pinned (the text its tick_end
+   * carries, high-friction annotation included), keyed by that change's sha. Held back from
+   * `lastSummary` while the change waits, then paired with the landing's result by
+   * applyLandingOutcome, which clears it — so after a landing the cell reads the landing's
+   * outcome next to the summary of the change it landed, never next to the prior tick's.
+   * Persisted: the land queue is durable, so the landing can resolve in a later process. */
+  queuedSummary?: { sha: string; summary: string };
   lastTickStartedAt?: number;
   lastTickEndedAt?: number;
   /** True while a tick is in flight (best-effort; cleared on orchestrator start). */

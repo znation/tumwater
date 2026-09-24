@@ -51,6 +51,13 @@ function landingRefExists(repo: string, role: string): boolean {
   }
 }
 
+/** Has `role`'s tick ended `queued` — committed and enqueued its landing? The tick_end event is
+ * where that outcome lives: `lastResult` records only completed results, so a queued tick
+ * leaves it at the prior outcome until the landing resolves (BUGS.md 2026-09-23). */
+function tickQueued(repo: string, role: string): boolean {
+  return readEvents(repo).some((e) => e.type === "tick_end" && e.loop === role && e.result === "queued");
+}
+
 test("a user abort during a landing kills it and discards the pinned ref", async () => {
   const repo = makeRepo();
   await initProject(repo, "abort landing e2e test");
@@ -74,10 +81,7 @@ test("a user abort during a landing kills it and discards the pinned ref", async
   try {
     // The tick commits + enqueues; the landing slot picks the entry up and starts its
     // reviewer run — by merge queue 3/5 this is where `tumwater abort --role` reaches it.
-    await waitFor(
-      () => loadLoopState(repo, "clean").lastResult === "queued",
-      "the tick to enqueue its landing",
-    );
+    await waitFor(() => tickQueued(repo, "clean"), "the tick to enqueue its landing");
     await waitFor(() => fs.existsSync(marker), "the landing's reviewer run to be in flight");
 
     // What `tumwater abort --role clean` does from the CLI side: drop the per-role marker.
@@ -128,10 +132,7 @@ test("a role with a queued or in-flight landing never starts a new tick (interlo
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // The tick commits + enqueues; the landing slot picks the entry up and its reviewer hangs.
-    await waitFor(
-      () => loadLoopState(repo, "clean").lastResult === "queued",
-      "the tick to enqueue its landing",
-    );
+    await waitFor(() => tickQueued(repo, "clean"), "the tick to enqueue its landing");
     await waitFor(() => fs.existsSync(hang), "the landing's reviewer run to be in flight");
 
     // ~10 poll cycles pass with the role due on every one — yet no second tick starts: the
@@ -140,6 +141,10 @@ test("a role with a queued or in-flight landing never starts a new tick (interlo
     await new Promise((r) => setTimeout(r, 1_200));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while its own landing is in flight");
     assert.equal(queueDepth(repo), 1, "the entry stays queued until the landing settles");
+    // The pending change is not a completed result: the role's first tick had no prior one,
+    // so the persisted last-result pair stays empty through the whole window (BUGS.md
+    // 2026-09-23 — it used to read `queued`).
+    assert.equal(loadLoopState(repo, "clean").lastResult, undefined, "the in-flight landing is not a last result");
 
     // Settle the test: a deliberate stop kills the hung landing and drops its entry.
     const markerFile = abortRequestPath(repo, "clean");

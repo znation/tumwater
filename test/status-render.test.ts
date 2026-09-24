@@ -6,7 +6,8 @@ import { parseProgress, stalledToolLabel } from "../src/ui/progress.js";
 import { lastTickCell, renderStatus } from "../src/ui/status-render.js";
 import { budgetBadge, buildBadge, landingBadge, loopPhase, workingDetail } from "../src/ui/status-model.js";
 import type { StatusSnapshot } from "../src/ui/status.js";
-import { freshLoopState } from "../src/state.js";
+import { applyLandingOutcome, applyTickOutcome, freshLoopState } from "../src/state.js";
+import { defaultConfig } from "../src/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget.js";
 import { piLogPath, landWorktreePath } from "../src/paths.js";
 import { assistantLine, tmpdir } from "./util.js";
@@ -801,6 +802,75 @@ test("renderStatus shows the main-red blockage in a blocked loop's state cell an
   assert.match(out, /feature\s+main red/);
   assert.match(out, /main_red — code merges blocked until main is green/);
   assert.match(out, /bugfix\s+queued/);
+});
+
+// The "last result" cell is the last COMPLETED outcome (BUGS.md 2026-09-23). A tick that commits
+// and enqueues its change ends `queued`, which is in-flight work — the state column's `landing
+// <elapsed>` and the header's land-queue badge already show it — so the cell must keep the prior
+// result WITH the prior summary while the change is pending. Driven through the real
+// applyTickOutcome so the pin covers the state write, not a hand-built fixture.
+
+/** A queued tick's pinned commit — the sha its stashed summary and the land-queue entry share. */
+const PENDING_SHA = "b".repeat(40);
+
+/** The rendered row for `role`, trailing padding trimmed: its last cell is "last result". */
+function rowOf(out: string, role: string): string {
+  const row = out.split("\n").find((l) => l.startsWith(`${role} `));
+  assert.ok(row, `a row for ${role}`);
+  return row.trimEnd();
+}
+
+/** A feature loop whose prior completed tick was a refusal and whose latest tick queued a change. */
+function pendingFeature(): ReturnType<typeof freshLoopState> {
+  const s = freshLoopState("feature");
+  applyTickOutcome(s, defaultConfig(), "feature", { result: "refused", summary: "objected to the plan" });
+  applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
+  return s;
+}
+
+test("the last-result cell keeps the prior completed result and its summary while a change is pending", () => {
+  const s = pendingFeature();
+  // Queued behind another landing, then in flight on the landing slot: both windows render
+  // the prior pair, and the live landing state stays in the state column.
+  const queuedOnly = renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } });
+  const inFlight = renderStatus(tmpdir(), {
+    ...snapshotWith([s]),
+    running: true,
+    landQueue: { depth: 1, inFlight: { role: "feature", sha: PENDING_SHA, summary: "add the widget", startedAt: Date.now() - 60_000 } },
+  });
+  for (const out of [queuedOnly, inFlight]) {
+    const row = rowOf(out, "feature");
+    assert.ok(row.endsWith("refused — objected to the plan"), `prior pair in the last-result cell: ${row}`);
+    assert.doesNotMatch(row, /\bqueued\b/, "the live landing status is not a last result");
+    assert.doesNotMatch(row, /add the widget/, "the pending change's summary is not paired with the prior result");
+  }
+  assert.match(rowOf(inFlight, "feature"), /^feature\s+landing\b/, "the state column carries the in-flight landing");
+});
+
+test("the last-result cell shows the landing's outcome beside the summary of the change it landed", () => {
+  // The second window: once the landing resolves, its result — success or failure — takes the
+  // cell, paired with the queued change's summary, never with the prior tick's.
+  for (const result of ["changed", "rejected"] as const) {
+    const s = pendingFeature();
+    applyLandingOutcome(s, result, { sha: PENDING_SHA, summary: "add the widget" });
+    const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true }), "feature");
+    assert.ok(row.endsWith(`${result} — add the widget`), `landing pair in the last-result cell: ${row}`);
+    assert.doesNotMatch(row, /objected to the plan/, "the prior summary does not outlive its result");
+  }
+});
+
+test("a pending change after a main-red tick does not keep the state cell reading main red", () => {
+  // The last-result cell keeps the main_red pair (it IS the last completed outcome), but the
+  // state cell's "main red" claims the loop is blocked NOW — and a tick that queued a change
+  // got past the red-main gate, so main was green at its tick.
+  const s = freshLoopState("feature");
+  applyTickOutcome(s, defaultConfig(), "feature", { result: "main_red", summary: "code merges blocked until main is green" });
+  assert.equal(loopPhase(s, true), "main red", "fixture sanity: the blocked tick reads main red");
+  applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
+  assert.match(loopPhase(s, true), /^sleeping/, "the pending change's tick was not blocked");
+  const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } }), "feature");
+  assert.doesNotMatch(row, /main red/);
+  assert.ok(row.endsWith("main_red — code merges blocked until main is green"), `prior pair kept: ${row}`);
 });
 
 test("renderStatus shows budget paused in idle role loops' state cells while the cap is reached", () => {
