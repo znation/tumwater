@@ -1,15 +1,14 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult } from "./types.js";
-import { buildFixConfig, reviewRunConfig } from "./config.js";
+import { reviewRunConfig } from "./config.js";
 import { logEvent, warnEvent } from "./events.js";
-import { commitAll, git, gitLines, gitTry, headOf } from "./git.js";
+import { git, headOf } from "./git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
 import { runPi } from "./pi.js";
 import { readPrinciples } from "./prompt.js";
-import type { BuildFixCommit } from "./gate-prompts.js";
-import { buildBuildFixPrompt, buildReviewPrompt } from "./gate-prompts.js";
+import { buildReviewPrompt } from "./gate-prompts.js";
 import type { VerdictMatch } from "./reply-contract.js";
 import { verdictLines } from "./reply-contract.js";
 import { saveLoopState } from "./state.js";
@@ -25,6 +24,7 @@ import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 import { setLandingStage } from "./landing-slot.js";
+import { mainTipVerdict } from "./main-red.js";
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
  * a warning: a misconfigured reviewer model must not be able to wedge a loop into re-reviewing
@@ -114,32 +114,6 @@ function textWithoutVerdictLines(text: string, matches: VerdictMatch[]): string 
   return out + text.slice(pos);
 }
 
-/** The gate's build-fix commit(s) between the author's head and the fixed head, for the
- * reviewer's prompt: the whole range, not just the harness's own commit, so a commit the fix run
- * made itself despite its prompt is named too. A git read that fails falls back to the fixed
- * head alone and no file list — the block still tells the reviewer the harness added a commit,
- * which is what keeps it from reading as the author's unclaimed change. */
-async function buildFixCommit(
-  wt: string,
-  authorHead: string,
-  fixedHead: string,
-  failure: string[],
-  rechecked: boolean,
-): Promise<BuildFixCommit> {
-  const range = `${authorHead}..${fixedHead}`;
-  const [commits, files] = await Promise.all([
-    gitTry(wt, "rev-list", "--reverse", range),
-    gitTry(wt, "diff", "--name-only", authorHead, fixedHead),
-  ]);
-  const shas = gitLines(commits);
-  return {
-    commits: shas.length > 0 ? shas : [fixedHead],
-    files: gitLines(files),
-    failure,
-    rechecked,
-  };
-}
-
 /** Everything reviewAheadOfMain needs from its caller (a LoopRunner tick or recovery). */
 interface ReviewContext {
   root: string;
@@ -173,17 +147,10 @@ export interface GateResult {
   /** The reviewer run was killed by harness shutdown mid-review: fail closed, leave the
    * commit, and let the tick report aborted (resume re-reviews via the combined diff). */
   aborted?: boolean;
-  /** The gate's build-fix run (a pre-check failure that survives one re-run gets one model run,
-   * capped at BUILD_FIX_TIMEOUT_S wall-clock, to turn the check green before rejecting).
-   * Present on every outcome the fix run reached — approve, reject, and failure alike — so its
-   * spend folds into the loop totals exactly once per invocation, whichever way the gate then
-   * decided. */
-  fixRun?: PiRunResult;
   /** The strike-cap discard fired: the gate itself reset the worktree off the reviewed head,
    * so the commit is gone and any pin naming the old head must go too. An under-cap failure
-   * leaves this absent — its commit (possibly with a build-fix commit on top) stays for
-   * re-review. The discard is invisible in the decision alone, which is the same "failed"
-   * shape an under-cap failure reports. */
+   * leaves this absent — its commit stays for re-review. The discard is invisible in the
+   * decision alone, which is the same "failed" shape an under-cap failure reports. */
   discarded?: boolean;
   /** Failure message ("failed") or first rejection reason ("rejected"), for lastSummary. */
   detail?: string;
@@ -207,7 +174,10 @@ export interface GateResult {
  *   failures per HEAD; past REVIEW_FAILURE_LIMIT discard the leftover with a warning.
  * - fail because the run itself failed (transport/spawn/timeout, pi.ok false) → leave the
  *   commit and do NOT advance the count: the reviewer never judged the diff, so the failure
- *   is evidence about the backend, never about the commit (BUGS.md 2026-09-20). Never throws.
+ *   is evidence about the backend, never about the commit (BUGS.md 2026-09-20).
+ * - the declared check fails, and fails again on its one re-run → reject with the check's
+ *   reasons, no pi run, when main's own tip is green (or has no verdict); when main is red too,
+ *   fail without advancing the count and leave the commit — the failure is main's. Never throws.
  * `highFriction` marks a change whose authoring run burned more than the configured turn/time
  * thresholds (plans/refusal-and-thrash.md): the flag rides along in the review prompt so the
  * reviewer applies extra scrutiny to whether the work should exist at all. */
@@ -221,9 +191,7 @@ export async function reviewAheadOfMain(
   const { root, role, wt, mainBranch, config } = ctx;
   if (!config.review.enabled) return { decision: "exempt" };
 
-  // `let` because a build-fix run may commit on top of it: everything downstream (lastReview,
-  // events, lastApprovedHead, verifiedHead) must name the tree the verdict actually judged.
-  let head = await headOf(wt, "HEAD");
+  const head = await headOf(wt, "HEAD");
 
   // The one reject path: every rejection of this HEAD — deterministic build-check failure or
   // model verdict — shares this bookkeeping. Record lastReview (injected into the role's next
@@ -272,16 +240,9 @@ export async function reviewAheadOfMain(
   // The head the pre-check just verified (see GateResult.verifiedHead) — handed to the landing
   // path, which owns the baseline seeding for the SHA that actually becomes main.
   let verifiedHead: string | undefined;
-  // A build-fix run the gate spent (see GateResult.fixRun) — set once, carried on EVERY
-  // subsequent return so its spend folds no matter how the gate then decided.
-  let fixRun: PiRunResult | undefined;
-  // The commit(s) that run left on the branch, named in the reviewer's prompt: the diff below
-  // now carries a harness-authored change the author's summary and body cannot claim, and an
-  // unexplained one reads as unclaimed scope (BUGS.md 2026-09-23 — b020f67 turned dry's check
-  // green and the reviewer rejected the landing for it).
-  let buildFix: BuildFixCommit | undefined;
   // The landing cell's stage (a no-op outside a queued landing — see setLandingStage): the
-  // pre-check, and any build-fix run it triggers, is the gate's first long phase.
+  // pre-check, its one re-run, and any attribution check behind them are the gate's first
+  // long phase.
   setLandingStage(root, role, "build-check");
   const preCheck = await runScopedBuildCheck(
     root,
@@ -296,13 +257,13 @@ export async function reviewAheadOfMain(
     let { outcome } = preCheck;
     if (outcome.status === "failed") {
       // A failure that does not reproduce on one immediate re-run is a flake, not a red tree:
-      // the suite has load-sensitive assertions, and a fix run handed a flake hunts it with
-      // stress runs on the host the whole fleet shares (BUGS.md 2026-09-23). The re-run is one
-      // more check, priced as its own build_check event; if it passes, the tree is verified
-      // exactly like a first-time pass and the flake is named in a warning (the headline
-      // clusters in the digest, so telemetry and bugfix can go after the flaky test). A
-      // re-run that fails again is the observation the fix run gets; a skipped one says
-      // nothing about the tree, so the first failure stands.
+      // the suite has load-sensitive assertions, and most failures the gate met on the loaded
+      // host were exactly that (BUGS.md 2026-09-23). The re-run is one more check, priced as
+      // its own build_check event; if it passes, the tree is verified exactly like a
+      // first-time pass and the flake is named in a warning (the headline clusters in the
+      // digest, so telemetry and bugfix can go after the flaky test). A re-run that fails
+      // again goes to attribution below; a skipped one says nothing about the tree, so the
+      // first failure stands.
       const retry = await runScopedBuildCheck(
         root,
         role,
@@ -324,9 +285,7 @@ export async function reviewAheadOfMain(
       // compiler error sits right after it in the injected next-tick note). The headline is
       // failureHeadline's — the first line that is not a stack frame — not outputTail[0]: a
       // suite that dies on an unhandled rejection opens mid-stack, and naming the frame tells
-      // the author where it broke, never what (BUGS.md 2026-09-19). The rejection itself routes
-      // through the shared reject path — no pi run consumed, unreviewFailures resetting exactly
-      // like a model reject.
+      // the author where it broke, never what (BUGS.md 2026-09-19).
       const tail = outcome.outputTail ?? [];
       const headline = failureHeadline(tail);
       const what = describeCheck(check);
@@ -334,67 +293,35 @@ export async function reviewAheadOfMain(
         headline !== undefined
           ? [`build check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
           : [`build check failed (${what})`];
-      // One fix run before rejecting a failure that reproduced: a red tree otherwise rejects
-      // every queued landing for a failure none of their authors caused. Bounded in count (one
-      // run, no retry loop), in wall-clock (buildFixConfig's BUILD_FIX_TIMEOUT_S and quiet caps
-      // in place of the tick's hours-long budget — the run holds the landing slot), and in
-      // blast radius only by its prompt's shared-host rules. The run edits the worktree; the
-      // harness commits whatever it produced — even from a capped run, since the re-check
-      // below judges the tree, not the run. Its spend folds through GateResult.fixRun on
-      // EVERY outcome it reached — abort, no-change reject, still-red reject, and approval
-      // alike — so accounting never drops a consumed run.
-      const fixPi = await runPi({
-        cwd: wt,
-        prompt: buildBuildFixPrompt(role, describeCheck(check), reasons),
-        config: buildFixConfig(config),
-        sessionDir: reviewSessionDir(root, role),
-        sessionName: `tumwater-buildfix-${role}-${ctx.tick}${ctx.sessionSuffix ?? ""}`,
-        rawLogFile: piLogPath(root, role),
-        label: "build-fix",
-        signal: ctx.signal,
-        onToolCallStalled: (message) => warnEvent(root, role, message),
-      });
-      if (fixPi.aborted) {
-        // Shutdown mid-fix: fail closed — the (still-failing) commit stays on the branch and
-        // the ref with it; the next tick re-lands it through this same gate.
-        return { decision: "failed", aborted: true, fixRun: fixPi };
+      // A failure that reproduced is attributed, never fixed here: the one landing slot the
+      // whole queue waits on is no place for a model run (the in-slot build-fix run this
+      // replaces held it for hours and never once led to a landing — PLANS.md "Land-queue
+      // speed 1/3"). The question is whose failure it is, and main's own verdict at its tip
+      // answers it — usually a cache hit, since every landing seeds the SHA it moved main to.
+      // A shutdown already under way skips the question and fails closed like any abort.
+      if (ctx.signal?.aborted) return { decision: "failed", aborted: true };
+      const main = await mainTipVerdict(root, role, mainBranch, config);
+      // A check killed by that shutdown reads as a skip, never as evidence against the author.
+      if (ctx.signal?.aborted) return { decision: "failed", aborted: true };
+      if (main.status === "red") {
+        // Main fails too: not this change's failure. Leave the commit (and with it the pin) and
+        // do not advance the discard counter — the transport-failure rule (BUGS.md 2026-09-20):
+        // nothing judged this diff. main-red.ts's gate and the bugfix handoff own the repair,
+        // and the author's next tick re-lands the change once main is green again.
+        const detail = `main ${shortSha(main.sha)} is red — not this change's failure`;
+        state.lastReview = { verdict: "failed", reasons: [detail], head, at: Date.now() };
+        warnEvent(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; landing kept`);
+        return { decision: "failed", detail };
       }
-      fixRun = fixPi;
-      // A run that hit a cap (timeout, quiet kill) or failed goes on to the same judgement as a
-      // finished one; the warning makes the bound visible in the feed instead of leaving a
-      // silent reject or a half-done fix commit to explain itself.
-      if (!fixPi.ok) warnEvent(root, role, `build-fix run ended early: ${fixPi.errorMessage ?? "pi failed"}`);
-      if ((await git(wt, "status", "--porcelain")).trim() === "") {
-        // No changes: the fix run had nothing to offer — reject exactly as before, one run
-        // spent, no retry loop.
-        return { ...(await reject(reasons)), fixRun };
-      }
-      const authorHead = head;
-      head = await commitAll(wt, `tumwater(${role}): fix failing build check`);
-      const recheck = await runScopedBuildCheck(
-        root,
-        role,
-        "gate",
-        wt,
-        config,
-        ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
+      // Main green: the change broke the check — rejected deterministically through the shared
+      // reject path, no pi run consumed, reasons injected into the author's next tick. With no
+      // verdict for main the author's failure is still the safe default, and the reasons say
+      // the attribution could not be made.
+      return reject(
+        main.status === "green"
+          ? reasons
+          : [...reasons, `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`],
       );
-      if (recheck && recheck.outcome.status === "failed") {
-        return {
-          ...(await reject([...reasons, "the fix attempt did not turn the check green"])),
-          fixRun,
-        };
-      }
-      if (recheck && recheck.outcome.status === "passed") {
-        // The fix turned the check green: this exact tree just went green under the declared
-        // check — carry it to the landing path the way an initial pass would.
-        verifiedHead = head;
-        verifiedByHarness = `${describeCheck(recheck.check)} (the project's declared check) passed`;
-      }
-      // A skipped re-check (environmental) proceeds like an initial skip: unverified tree, the
-      // model reviewer and the landing path's own in-lock check still stand behind it. Either
-      // way the reviewer is told which commit the harness added and why (see buildFix above).
-      buildFix = await buildFixCommit(wt, authorHead, head, reasons, recheck?.outcome.status === "passed");
     }
     if (outcome.status === "passed") {
       // Passed: this exact tree just went green under the project's own declared check. Hand
@@ -430,16 +357,7 @@ export async function reviewAheadOfMain(
   // them from the pinned commit's message).
   const pi = await runPi({
     cwd: wt,
-    prompt: buildReviewPrompt(
-      diff,
-      summary,
-      commitBody,
-      readPrinciples(root),
-      highFriction,
-      verifiedByHarness,
-      undefined,
-      buildFix,
-    ),
+    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction, verifiedByHarness),
     // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a
     // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend
     // path below — commit kept, no strike — and re-lands through the author's next tick
@@ -475,7 +393,7 @@ export async function reviewAheadOfMain(
   if (pi.aborted) {
     // Shutdown mid-review: fail closed without bookkeeping — the commit stays on the branch
     // and the resumed/following tick re-reviews it via the combined ahead-of-main diff.
-    return { decision: "failed", aborted: true, run: pi, fixRun };
+    return { decision: "failed", aborted: true, run: pi };
   }
 
   const verdict = parseVerdict(pi.verdictText ?? "");
@@ -489,7 +407,7 @@ export async function reviewAheadOfMain(
     // completed and replied without a parseable VERDICT is a strike against this HEAD.
     if (!pi.ok) {
       state.lastReview = { verdict: "failed", reasons: [message], head, at: Date.now() };
-      return { decision: "failed", detail: message, run: pi, fixRun };
+      return { decision: "failed", detail: message, run: pi };
     }
     // Consecutive failures of THIS HEAD only: a new commit (new HEAD) starts fresh. Read
     // *before* overwriting lastReview with this failure.
@@ -504,12 +422,12 @@ export async function reviewAheadOfMain(
       discarded = true;
       warnEvent(root, role, `discarding unreviewed leftover after ${REVIEW_FAILURE_LIMIT} failed reviews (${shortSha(head)})`);
     }
-    return { decision: "failed", detail: message, run: pi, fixRun, ...(discarded ? { discarded: true } : {}) };
+    return { decision: "failed", detail: message, run: pi, ...(discarded ? { discarded: true } : {}) };
   }
 
   if (verdict.verdict === "reject") {
     const rejected = await reject(verdict.reasons, Date.now() - reviewStartedAt);
-    return { ...rejected, run: pi, fixRun };
+    return { ...rejected, run: pi };
   }
 
   // Approve: record the reviewed HEAD and discard any stray working-tree edits the reviewer
@@ -525,5 +443,5 @@ export async function reviewAheadOfMain(
     reason: verdict.reasons[0],
     durationMs: Date.now() - reviewStartedAt,
   });
-  return { decision: "approved", run: pi, verifiedHead, fixRun };
+  return { decision: "approved", run: pi, verifiedHead };
 }

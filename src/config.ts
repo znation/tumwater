@@ -355,39 +355,6 @@ export function reviewConfig(config: TumwaterConfig): TumwaterConfig {
   return withModelOverrides(config, config.review);
 }
 
-/** Hard wall-clock cap on the review gate's build-fix run (src/review.ts). The run holds the
- * landing slot the whole queue waits on, so it never gets the tick's budget — 54 000 s in the
- * live tumwater.json, under which two fix runs held the slot for 1 h 52 m and 4 h 35 m while
- * load-testing the shared host to reproduce a flake (BUGS.md 2026-09-23). Sized from what a real
- * fix needs: the full suite takes ~2.5 min on an unloaded host (the gate's own checks log
- * 70–170 s under fleet load; the harness allows one 300 s, BUILD_CHECK_TIMEOUT_MS), and a fix is
- * reading the failure, an edit, a few incremental builds and targeted runs of the failing test
- * file, then ONE full run of the check — ~5 min of commands plus ten-odd model turns, well
- * inside 20 min even on a slow model. The fleet's genuine fixes (a compile error, a missing
- * fixture) finished in 3–5 min; every fix run on record past 25 min was hunting a load flake. */
-export const BUILD_FIX_TIMEOUT_S = 1200;
-
-/** The build-fix run's quiet-watchdog cap: two full-suite budgets. A full run piped through
- * `tail` reports progress only when its tool call ends, so one silent full run of the check
- * (≤ 300 s) never trips it, while a hung tool call dies at 10 min instead of idling out the
- * whole BUILD_FIX_TIMEOUT_S. */
-export const BUILD_FIX_QUIET_S = 600;
-
-/** The config as seen by the gate's build-fix run: the reviewer's model wiring (reviewConfig)
- * with BUILD_FIX_*'s hard caps overriding the tick's budget — the same shape as the SUMMARY
- * follow-up's caps in src/loop-pi.ts. A smaller configured value still wins, and a disabled
- * quiet watchdog (0) is armed at the cap: the fix run's bound must not hang on an operator
- * setting tuned for hours-long authoring runs. */
-export function buildFixConfig(config: TumwaterConfig): TumwaterConfig {
-  const cfg = reviewConfig(config);
-  return {
-    ...cfg,
-    tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, BUILD_FIX_TIMEOUT_S),
-    quietTimeoutSeconds:
-      cfg.quietTimeoutSeconds > 0 ? Math.min(cfg.quietTimeoutSeconds, BUILD_FIX_QUIET_S) : BUILD_FIX_QUIET_S,
-  };
-}
-
 /** Default wall-clock budget for one reviewer run (`review.timeoutSeconds`). The reviewer holds
  * the landing slot the whole queue waits on, and its only other limits were the tick's budget
  * and the quiet watchdog: reviews measured 2026-09-22/23 ran 2.3 min median, 9.2 min p90 and
@@ -397,7 +364,7 @@ export const REVIEW_TIMEOUT_S = 900;
 
 /** The config as seen by the gate's reviewer run: the reviewer's model wiring (reviewConfig)
  * with its own time budget — `review.timeoutSeconds`, default REVIEW_TIMEOUT_S — overriding
- * the tick's, the same shape as buildFixConfig above. A smaller tickTimeoutSeconds still wins. */
+ * the tick's. A smaller tickTimeoutSeconds still wins. */
 export function reviewRunConfig(config: TumwaterConfig): TumwaterConfig {
   const cfg = reviewConfig(config);
   return {

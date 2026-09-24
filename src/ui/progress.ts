@@ -279,7 +279,7 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
       // line before spawning pi, and the landing cell reads the gate accumulator as soon as
       // the marker's stage says `reviewing` — a poll that can land before the session event.
       // Resetting at the label means a previous gate run's turns/context (the last review,
-      // or this gate's build-fix run) can never show in the new review's cell. Safe for the
+      // or another run the gate spent) can never show in the new review's cell. Safe for the
       // in-tick reviewing cell too: a role's gate is serial, so a label ends the previous run.
       tail.cur = "gate";
       tail.gate = freshProgress(tail.gate.quietMs);

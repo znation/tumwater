@@ -12,7 +12,6 @@ import {
   readPrinciples,
 } from "../src/prompt.js";
 import {
-  buildBuildFixPrompt,
   buildConflictPrompt,
   buildMainRedNote,
   buildRejectedReviewNote,
@@ -20,7 +19,6 @@ import {
 } from "../src/gate-prompts.js";
 import { parseVerdict } from "../src/review.js";
 import { todayStamp } from "../src/budget.js";
-import { BUILD_FIX_TIMEOUT_S } from "../src/config.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
 import { customRole, DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, ROLES, roleById, searchGuidance, VALIDATION_GAP_GUIDANCE, VALIDATION_GAP_TAGS } from "../src/roles.js";
@@ -332,81 +330,6 @@ test("buildConflictPrompt keeps the project building and ends by stopping", () =
   // no sentinel or SUMMARY line (this flow parses neither from pi's reply).
   assert.match(p, /just stop/i);
   assert.ok(!p.includes(NOTHING_TO_DO), "no tick sentinel in a conflict run");
-});
-
-// The build-fix prompt drives the gate's one time-capped run against a deterministic pre-check
-// failure that survived a re-run. Its contract: pi knows which script failed and why, may not
-// fake a pass by weakening the suite, may not commit — the harness commits the fix it made —
-// and keeps its footprint off the host the fleet shares.
-
-test("buildBuildFixPrompt names the role, the failing check, and every failure line", () => {
-  const p = buildBuildFixPrompt("feature", "`npm run test`", [
-    "build check failed (`npm run test`): 1 failing of 3 tests: assert.equal",
-    "at TestContext.<anonymous> (file:///w/dist/test/x.test.js:3:35)",
-  ]);
-  assert.match(p, /"feature" loop/);
-  assert.match(p, /`npm run test`/);
-  assert.match(p, /FAILED/);
-  assert.ok(
-    p.includes("- build check failed (`npm run test`): 1 failing of 3 tests: assert.equal") &&
-      p.includes("- at TestContext.<anonymous>"),
-    "every reason line as its own bullet, headline first",
-  );
-
-  // The check's description rides in verbatim (describeCheck's output) — a configured
-  // command, not an npm script name the check union may not have.
-  const configured = buildBuildFixPrompt("feature", "`pytest -q`", ["build check failed (`pytest -q`): boom"]);
-  assert.match(configured, /check, `pytest -q`, FAILED/);
-  assert.match(configured, /ONE full run of `pytest -q`; when it passes, stop/);
-});
-
-test("buildBuildFixPrompt forbids deleting, skipping, or weakening tests", () => {
-  const p = buildBuildFixPrompt("bugfix", "`npm run build`", ["build check failed (`npm run build`): error TS2345"]);
-  // A fix that makes the check pass without the code being right is worse than no fix —
-  // it would land a red tree behind a green headline.
-  assert.match(p, /Never delete a test/);
-  assert.match(p, /weaken an assertion/);
-  assert.match(p, /Fix the underlying cause in source/);
-  assert.match(p, /Keep the change minimal/);
-});
-
-test("buildBuildFixPrompt forbids state-changing git commands (the harness commits)", () => {
-  const p = buildBuildFixPrompt("clean", "`npm run test`", ["build check failed (`npm run test`): boom"]);
-  assert.match(p, /no add, commit, merge, rebase/);
-  assert.match(p, /the harness commits your fix/i);
-  // The run's exit condition: the check passes, then it stops — no retry loop, no new task.
-  assert.match(p, /when it passes, stop/i);
-  assert.match(p, /Never touch the \.tumwater directory/);
-});
-
-// BUGS.md 2026-09-23: the old prompt said "Reproduce the failure … Re-run until it passes", and
-// two fix runs turned load flakes into hours-long load tests of the host the whole fleet runs
-// on — 24 busy-loop spinners beside 6 concurrent suites, detached `setsid`/`nohup` spinners, a
-// `pkill -f test-runner` that killed every other loop's check, patched dist/ files, and a
-// ~1.5M-entry directory in $TMPDIR. The prompt now bounds the run's blast radius and states its
-// wall-clock budget; a failure that passes one re-run of its test file gets no change at all.
-test("buildBuildFixPrompt keeps the run off the shared host and makes a flake a no-change stop", () => {
-  const p = buildBuildFixPrompt("dry", "`npm run test`", [
-    "build check failed (`npm run test`): AssertionError [ERR_ASSERTION]: startup latency is not a hung tool call",
-  ]);
-  // The flake rule: one re-run of the failing file; passing means no change, said so.
-  assert.match(p, /re-running only the failing test file \(for a compile error, the build\) ONCE/);
-  assert.match(p, /flake, not a defect: make no change, reply that it did not\s+reproduce, and stop/);
-  assert.match(p, /Never hunt a flake — no repeated runs, no parallel copies, no load/);
-  // The shared-host rules, each naming what the incident runs actually did.
-  assert.match(p, /shared with a running fleet/);
-  assert.match(p, /Generate no load: no busy loops or spinners/);
-  assert.match(p, /Start no background or detached process \(`&`, `nohup`, `setsid`, `disown`\)/);
-  assert.match(p, /Never kill a process you did not start: no `kill`, `pkill`, or `killall`/);
-  assert.match(p, /Write only inside this worktree: create nothing under the system temp directory/);
-  assert.match(p, /never edit build output such as\s+dist\//);
-  // The wall-clock cap the harness enforces is the one the prompt states.
-  assert.match(p, new RegExp(`stops this run after ${BUILD_FIX_TIMEOUT_S / 60} minutes at\\s+most`));
-  // Verification is bounded by count too: the failing file, then ONE full run — never "re-run
-  // until it passes", the retry loop that turned a flake into a load test.
-  assert.match(p, /Verify with the failing test file, then ONE full run of `npm run test`/);
-  assert.ok(!/until it passes/i.test(p), "no open-ended re-run loop");
-  assert.ok(!/Reproduce the failure/.test(p), "no instruction to reproduce a flake");
 });
 
 // The rejected-review note is the ONLY cross-tick memory of a failed change: every tick
@@ -1455,49 +1378,6 @@ test("the review prompt's no-re-run rule is one rules-list line, present only be
   assert.equal([...without.matchAll(/VERDICT:/g)].length, 2);
 });
 
-// BUGS.md 2026-09-23 (b020f67): the gate's own build-fix commit must be named to the reviewer —
-// sha, files, the failure it answered — and judged as a fix to that failure, not as author scope.
-test("buildReviewPrompt names the gate's build-fix commit, its files and failure, and how to judge it", () => {
-  const fix = {
-    commits: ["b020f67aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
-    files: ["src/pi.ts"],
-    failure: ["build check failed (`npm run test`): startup latency is not a hung tool call", "at pi.test.ts:382"],
-    rechecked: true,
-  };
-  const prompt = buildReviewPrompt("diff", "summary", "body", undefined, undefined, "`npm run test` passed", undefined, fix);
-  assert.match(prompt, /The harness itself added a commit to this branch, on top of the author's work,\nand it is part of the diff below/);
-  assert.match(prompt, /\nBuild-fix commit: b020f67a\nFiles it touched:\n- src\/pi\.ts\n/);
-  assert.match(
-    prompt,
-    /The failure it was fixing \(headline first, then the clipped tail\):\n- build check failed \(`npm run test`\): startup latency is not a hung tool call\n- at pi\.test\.ts:382\n/,
-  );
-  assert.match(prompt, /The harness then re-ran the check on this tree and it passed\./);
-  const flat = oneLine(prompt);
-  assert.match(flat, /Judge it as the harness's fix to that failure, not as the author's change/);
-  assert.match(flat, /its absence from them is not an unclaimed change/);
-  // Still rejectable on its merits: wrong, check-gaming, or broader than the failure.
-  assert.match(flat, /reject if the fix is wrong, if it makes the check pass without the code being right/);
-  assert.match(flat, /or if it changes more than that failure requires/);
-  // The block sits with the author's claims, ahead of the diff it explains.
-  assert.ok(prompt.indexOf("The harness itself added") > prompt.indexOf("The author's commit body"));
-  assert.ok(prompt.indexOf("The harness itself added") < prompt.indexOf("<diff>"));
-  assert.equal([...prompt.matchAll(/VERDICT:/g)].length, 2, "the verdict contract is untouched");
-
-  // A skipped re-check never claims the fix passed; several commits are named in the plural.
-  const unverified = buildReviewPrompt("diff", undefined, undefined, undefined, undefined, undefined, undefined, {
-    ...fix,
-    commits: ["1111111111", "2222222222"],
-    rechecked: false,
-  });
-  assert.match(unverified, /added 2 commits to this branch/);
-  assert.match(unverified, /\nBuild-fix commits: 11111111, 22222222\nFiles they touched:\n/);
-  assert.match(oneLine(unverified), /re-check could not reach a verdict \(skipped\), so nothing has verified the fix/);
-  assert.ok(!unverified.includes("it passed."), "no passing claim for a skipped re-check");
-
-  // No fix commit, no block.
-  assert.ok(!buildReviewPrompt("diff", "summary", "body").includes("The harness itself added"));
-});
-
 test("the cut-off resume bridge carries a numeric re-reading budget and the plain-text ending rule", () => {
   const p = oneLine(buildResumePrompt("feature", "cut-off"));
   assert.match(p, /at most ~10 tool calls of re-reading, and never the same file twice/);
@@ -1520,7 +1400,7 @@ test("buildConflictPrompt bounds reading to the conflicted files", () => {
 // now states the local day once; tick and director (the roles that write dated records) are also
 // told to date them from it. An explicit `today` pins the date so these checks are exact.
 
-test("every tick, director, conflict, build-fix, and review prompt states the given date exactly once", () => {
+test("every tick, director, conflict, and review prompt states the given date exactly once", () => {
   const today = "2031-02-03";
   const line = "Today's date is 2031-02-03 (local time).";
   const role = roleById("bugfix");
@@ -1530,11 +1410,7 @@ test("every tick, director, conflict, build-fix, and review prompt states the gi
     buildDirectorPrompt("the tui flickers", "Make a CLI.", undefined, undefined, undefined, today),
   ];
   const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, today);
-  const gatePrompts = [
-    buildConflictPrompt("bugfix", ["a.txt"], today),
-    buildBuildFixPrompt("bugfix", "`npm run test`", ["build check failed (`npm run test`): boom"], today),
-    review,
-  ];
+  const gatePrompts = [buildConflictPrompt("bugfix", ["a.txt"], today), review];
   for (const p of [...loopPrompts, ...gatePrompts]) {
     assert.ok(p.includes(line), `missing the date line: ${p.slice(0, 60)}…`);
     assert.equal(p.split("Today's date is").length - 1, 1, "the date is stated once, in one place");
@@ -1560,7 +1436,6 @@ test("an omitted date defaults to todayStamp's local day — the daily budget wi
     buildTickPrompt({ role, initialPrompt: "" }),
     buildDirectorPrompt("add x", "a project"),
     buildConflictPrompt("feature", ["a.txt"]),
-    buildBuildFixPrompt("feature", "`npm run test`", ["boom"]),
     buildReviewPrompt("diff body"),
   ];
   const after = todayStamp();

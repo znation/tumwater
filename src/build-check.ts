@@ -351,7 +351,7 @@ function runScriptGroup(
 }
 
 /** The human/prompt-facing name of a check (plans/portability.md §6/7): the tick prompt and
- * the build-fix prompt name the actual verification command instead of asserting npm —
+ * the gate's check reasons name the actual verification command instead of asserting npm —
  * "verify with `pytest -q`" in a Python repo, "`npm run test`" in an npm one. */
 export function describeCheck(check: BuildCheck): string {
   return check.kind === "npm" ? `\`npm run ${check.script}\`` : `\`${check.command}\``;

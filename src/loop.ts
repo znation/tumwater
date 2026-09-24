@@ -52,7 +52,7 @@ export class LoopRunner {
    * tick intervals, backoff, and role enablement for subsequent ticks. */
   config: TumwaterConfig;
   /** This loop's most recent pi run that ended on a provider 429 — author run, retry,
-   * reviewer, build-fix or landing run alike, since every one folds through foldUsage — with
+   * reviewer or landing run alike, since every one folds through foldUsage — with
    * the provider's Retry-After hint when it sent one. The orchestrator reads it every poll as
    * this role's input to the fleet-wide 429 hold (src/rate-limit-hold.ts): the per-run retry
    * has no cross-role view, and a field on a runner the orchestrator already holds carries the

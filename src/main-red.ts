@@ -6,7 +6,11 @@ import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./gate-prompts.js";
 import { logEvent, warnEvent } from "./events.js";
 import type { TickOutcome } from "./types.js";
-import { shortSha } from "./text.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import { errorMessage, shortSha } from "./text.js";
+import { gitTry } from "./git.js";
+import { gateMainWorktreePath } from "./paths.js";
+import { ensureDetachedWorktree } from "./worktree.js";
 
 /** Red-main baseline gate for fresh authoring ticks (PLANS.md "Red-main baseline check"):
  * before an authoring run is spent on top of pristine main, verify that MAIN ITSELF is green —
@@ -111,4 +115,65 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
     return { result: "main_red", summary: "code merges blocked until main is green" };
   }
   return null;
+}
+
+/** What the review gate learns about main's current tip when a change's check failed twice
+ * (mainTipVerdict): `green` — main passes, so the change broke the check; `red` — main fails
+ * too, so the failure is not the change's and this module's gate and bugfix handoff own the
+ * repair; `unavailable` — no verdict could be had, with `why` for the rejection's reasons. */
+export type MainTipVerdict =
+  | { status: "green"; sha: string }
+  | { status: "red"; sha: string }
+  | { status: "unavailable"; why: string };
+
+/** Serializes mainTipVerdict's use of its one worktree: a batch's Phase-A gates run
+ * concurrently, and a second gate re-pointing the checkout at a newer main while the first's
+ * check ran in it would measure a tree that is neither. Each link is bounded — a few git
+ * commands plus at most one check run, which runBuildCheck kills at its timeout — and takes no
+ * other lock, so a waiter waits at most for the gates queued ahead of it. */
+let gateMainQueue: Promise<unknown> = Promise.resolve();
+
+/** Main's baseline verdict at its current tip, for attributing a gate check that failed twice
+ * (src/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked through
+ * checkMainBaseline — the same per-SHA, fleet-wide cache mainRedGate reads, which every landing
+ * seeds green for the SHA it moved main to, so the common case is a cache hit. A miss (or a
+ * provisional red from another worktree) runs the declared check once here, bounded by its
+ * timeout. A red is warned fleet-wide once per SHA, exactly as mainRedGate warns it. Never
+ * throws: an unreadable main, a checkout that fails, no declared check on main, or a skipped
+ * run all read as `unavailable`. */
+export function mainTipVerdict(
+  root: string,
+  role: string,
+  mainBranch: string,
+  config: TumwaterConfig,
+): Promise<MainTipVerdict> {
+  const run = gateMainQueue.then(() => verdictAtMainTip(root, role, mainBranch, config));
+  gateMainQueue = run.catch(() => undefined);
+  return run;
+}
+
+async function verdictAtMainTip(
+  root: string,
+  role: string,
+  mainBranch: string,
+  config: TumwaterConfig,
+): Promise<MainTipVerdict> {
+  try {
+    const tip = await gitTry(root, "rev-parse", mainBranch);
+    if (!tip) return { status: "unavailable", why: `${mainBranch} is unreadable` };
+    const wt = await ensureDetachedWorktree(root, gateMainWorktreePath(root), tip);
+    const check = await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
+    const baseline = check.baseline;
+    if (baseline?.status === "green") return { status: "green", sha: baseline.sha };
+    if (baseline?.status === "red") {
+      warnMainRedOnce(root, baseline);
+      return { status: "red", sha: baseline.sha };
+    }
+    return {
+      status: "unavailable",
+      why: check.skipReason ? `its check was skipped (${check.skipReason})` : "it declares no check",
+    };
+  } catch (err) {
+    return { status: "unavailable", why: errorMessage(err) };
+  }
 }

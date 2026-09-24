@@ -66,7 +66,7 @@ const CONTEXT_BUDGET_RULE = `- Your context window is finite and everything you 
   with \`offset\`/\`limit\`, or open the full-output file path) instead of retrying the same read.`;
 
 /** The date line every pi prompt carries — tick and director (via sharedPreamble) and the gate's
- * conflict, build-fix and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
+ * conflict and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
  * used to say what day it is, so a run that had to write one (a BUGS.md heading's "(found by …
  * YYYY-MM-DD)", a Fixed or Refused date, NEEDS_REVIEW_NOTE's <YYYY-MM-DD>, a plan deadline)
  * inferred it from the newest dates in the repo, which were themselves drifting: the fleet

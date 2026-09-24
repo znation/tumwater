@@ -20,8 +20,8 @@ import type { LoopRunner } from "./loop.js";
 
 /** Where a landing is in its flow, as far as an observer can tell: `merging` — the git steps
  * (lander checkout, rebase onto main, the in-lock re-check and fast-forward); `build-check` —
- * a deterministic check over the change's tree (the gate's pre-check and any build-fix run it
- * triggers, or a batch's shared stack check); `reviewing` — the adversarial reviewer's pi run,
+ * a deterministic check (the gate's pre-check over the change's tree, its one re-run, and the
+ * attribution check of main's tip behind a repeat failure, or a batch's shared stack check); `reviewing` — the adversarial reviewer's pi run,
  * whose live turns/context/tool the dashboards read from the role's raw log. Everything else a
  * landing does (verdict parsing, state saves) is sub-second bookkeeping between these. */
 export type LandingStage = "merging" | "build-check" | "reviewing";

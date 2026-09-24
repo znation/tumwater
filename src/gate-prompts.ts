@@ -1,14 +1,12 @@
-import { BUILD_FIX_TIMEOUT_S } from "./config.js";
 import { shortSha } from "./text.js";
 import { dateLine } from "./prompt.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
- * (merge.ts), the one time-capped build-fix run (review.ts), the adversarial pre-merge review
- * (review.ts), and the notes that carry the gate's verdicts back to the loop that authored the
- * change (loop.ts, main-red.ts). The machine-detectable half of the gate's reply contract —
- * verdict constants and detection for parsing a reviewer's VERDICT line — lives in
- * reply-contract.ts. */
+ * (merge.ts), the adversarial pre-merge review (review.ts), and the notes that carry the gate's
+ * verdicts back to the loop that authored the change (loop.ts, main-red.ts). The
+ * machine-detectable half of the gate's reply contract — verdict constants and detection for
+ * parsing a reviewer's VERDICT line — lives in reply-contract.ts. */
 
 /** The prompt for resolving merge conflicts left in a loop's worktree. `today` pins the date
  * line (prompt.ts's dateLine) for tests; omitted, it is the local day. */
@@ -35,98 +33,6 @@ Rules for this run:
 - When every marker is resolved and the project is consistent, just stop.`;
 }
 
-/** The prompt for the gate's build-fix run: the deterministic pre-check failed on the tree
- * about to land (the harness re-runs a failure once first, so one that passed its re-run never
- * gets here), and this run gets one chance to make it green before the landing is rejected — a
- * red main otherwise rejects every queued landing for a failure none of their authors caused.
- * The harness bounds the run's wall-clock (BUILD_FIX_TIMEOUT_S, stated here so the run can plan
- * for it); nothing but this prompt bounds its blast radius. The host is shared with the running
- * fleet, and the runs these rules answer load-tested it for hours with spinners and parallel
- * suites, `pkill`ed every test runner on it, patched dist/, and left a ~1.5M-entry directory in
- * $TMPDIR (BUGS.md 2026-09-23) — so: one re-run of the failing file, and a flake that passes it
- * gets no change. The harness commits whatever the run produces; the run must not. `today`
- * pins the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. */
-export function buildBuildFixPrompt(roleId: string, check: string, reasons: string[], today?: string): string {
-  return `You are the "${roleId}" loop of tumwater, an autonomous development harness. The
-project's declared check, ${check}, FAILED on the tree that is about to be merged
-to main. Find the cause, fix the source, and make the check pass.
-
-${dateLine(today)}
-
-Failure output (headline first, then the clipped tail):
-${reasons.map((r) => `- ${r}`).join("\n")}
-
-Start by re-running only the failing test file (for a compile error, the build) ONCE. If it
-passes, the failure was a flake, not a defect: make no change, reply that it did not
-reproduce, and stop. Never hunt a flake — no repeated runs, no parallel copies, no load to
-provoke it.
-
-This machine is shared with a running fleet: other loops are building, testing, and landing
-on it right now, and the harness stops this run after ${BUILD_FIX_TIMEOUT_S / 60} minutes at
-most. Keep your footprint to what the fix needs:
-- Generate no load: no busy loops or spinners (\`yes\`, \`while :; do :; done\`), no stress
-  scripts, no parallel or repeated runs of the suite.
-- Start no background or detached process (\`&\`, \`nohup\`, \`setsid\`, \`disown\`): every
-  command you run finishes before you run the next.
-- Never kill a process you did not start: no \`kill\`, \`pkill\`, or \`killall\` by name or
-  pattern — \`pkill -f test-runner\` kills every other loop's check.
-- Write only inside this worktree: create nothing under the system temp directory or anywhere
-  else outside it (the suite's own temp files are fine), and never edit build output such as
-  dist/ — the check rebuilds it from source.
-
-Rules for this run:
-- Fix the underlying cause in source. Never delete a test, skip a test, weaken an assertion, or
-  otherwise make the check pass without the code being right.
-- Keep the change minimal: only what the failure requires.
-- Verify with the failing test file, then ONE full run of ${check}; when it passes, stop. Do
-  not start other work.
-- Never run any git command that changes state (no add, commit, merge, rebase, reset,
-  checkout) — the harness commits your fix. Reading git state is fine.
-- Never touch the .tumwater directory or tumwater.json.`;
-}
-
-/** The gate's own build-fix commit(s) on the tree under review — what the reviewer must be told
- * so a harness-authored fix is not read as a change the author forgot to claim (BUGS.md
- * 2026-09-23: b020f67 turned dry's red check green and the reviewer rejected it as unclaimed). */
-export interface BuildFixCommit {
-  /** Every commit the fix added on top of the author's head, oldest first — normally the
-   * harness's one `fix failing build check` commit. */
-  commits: string[];
-  /** The files those commits touched (not the author's — the diff carries both). */
-  files: string[];
-  /** The failure the fix run was handed: the headline reason, then the clipped tail — already
-   * bounded (clipBuildTail keeps ten lines of at most MAX_REASON_CHARS each). */
-  failure: string[];
-  /** The post-fix re-check ran green on this tree. False when it skipped (environmental): the
-   * fix then stands unverified, and the reviewer is told so rather than told it passed. */
-  rechecked: boolean;
-}
-
-/** The self-contained review-prompt block naming the gate's build-fix commit(s): which commits,
- * which files, the failure they answer, and how to judge them — as the harness's fix to that
- * failure (never unclaimed author scope), still rejectable when wrong or broader than it. */
-function buildFixSection(fix: BuildFixCommit): string {
-  const one = fix.commits.length === 1;
-  const [it, them, its] = one ? ["it", "it", "its"] : ["they", "them", "their"];
-  const recheck = fix.rechecked
-    ? "The harness then re-ran the check on this tree and it passed."
-    : "The harness's re-check could not reach a verdict (skipped), so nothing has verified the fix.";
-  return `The harness itself added ${one ? "a commit" : `${fix.commits.length} commits`} to this branch, on top of the author's work,
-and ${one ? "it is" : "they are"} part of the diff below: the project's declared check failed on the author's tree at
-the gate, the gate's one build-fix run edited the tree to make it pass, and the harness committed
-the result. ${recheck}
-Build-fix ${one ? "commit" : "commits"}: ${fix.commits.map(shortSha).join(", ")}
-Files ${it} touched:
-${fix.files.map((f) => `- ${f}`).join("\n")}
-The failure ${it} ${one ? "was" : "were"} fixing (headline first, then the clipped tail):
-${fix.failure.map((r) => `- ${r}`).join("\n")}
-Judge ${them} as the harness's fix to that failure, not as the author's change: the author's summary
-and commit body could not claim ${them}, so ${its} absence from them is not an unclaimed change. Still
-judge ${them} on ${its} merits — reject if the fix is wrong, if it makes the check pass without the
-code being right (a deleted or skipped test, a weakened assertion), or if it changes more than
-that failure requires.`;
-}
-
 /** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees
  * only the diff and project context — never the author's session — and replies with exactly
  * one VERDICT line plus numbered reasons (see parseVerdict in src/review.ts). `verifiedByHarness`
@@ -137,10 +43,8 @@ that failure requires.`;
  * the suite in scratch copies under /tmp while holding the landing slot (BUGS.md 2026-09-23). It
  * appears only when a verified result exists: after a timed-out, killed, or skipped pre-check no
  * green run stands behind the tree, and a reviewer running the suite itself is doing its job.
- * `today` pins the date line (prompt.ts's dateLine) for tests; omitted, it is the local day.
- * `buildFix` names the gate's own build-fix commit(s) when its one fix run changed the tree, so
- * checklist item 1 does not reject a harness fix as a change the author never claimed. The text
- * must contain the literal "VERDICT:" exactly twice — the two advertised forms — because a
+ * `today` pins the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The
+ * text must contain the literal "VERDICT:" exactly twice — the two advertised forms — because a
  * prompt test derives the accepted forms from it. */
 export function buildReviewPrompt(
   diff: string,
@@ -150,7 +54,6 @@ export function buildReviewPrompt(
   highFriction?: boolean,
   verifiedByHarness?: string,
   today?: string,
-  buildFix?: BuildFixCommit,
 ): string {
   const parts = [
     `You are an adversarial code reviewer for tumwater, an autonomous development harness. A
@@ -171,7 +74,6 @@ not just whether it is correct.`,
     parts.push(
       `The author's commit body (claimed motivation, risk, verification — check these claims against the diff):\n${commitBody}`,
     );
-  if (buildFix) parts.push(buildFixSection(buildFix));
   if (verifiedByHarness)
     parts.push(
       `The harness already ran the project's own check on this exact tree and it passed:

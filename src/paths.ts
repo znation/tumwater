@@ -181,6 +181,15 @@ export function mirrorWorktreePath(root: string): string {
   return path.join(tumwaterDir(root), "worktrees", "_main");
 }
 
+/** Detached worktree pinned at main's head for the review gate's attribution check
+ * (main-red.ts's mainTipVerdict): asked whether main itself is green when a change's check
+ * failed twice. Its own checkout, not the redeploy mirror above: the redeployer compiles in
+ * the mirror at the head it verified, and a gate re-pointing that checkout at a newer main
+ * mid-compile would stamp the wrong tree. */
+export function gateMainWorktreePath(root: string): string {
+  return path.join(tumwaterDir(root), "worktrees", "_gate-main");
+}
+
 /** A role's lander worktree (src/lander.ts): the detached checkout where its pinned commit is
  * reviewed and rebased onto main, outside the role's own worktree. One per role so two roles'
  * landings never wait on each other; the leading underscore follows the _main convention above,

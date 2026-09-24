@@ -86,7 +86,7 @@ export interface BatchRoleWiring {
 }
 
 /** One Phase-A gate's verdict for its request: `stack` — approved or exempt, to land at `sha`
- * (the synced pin, or it + a build-fix commit); `result` — an outcome that keeps the change
+ * (the synced pin); `result` — an outcome that keeps the change
  * out of the stack: rejected, review_error (`discarded` on a strike-cap discard), a lost-pin
  * "error", or aborted. */
 type PhaseAVerdict = { kind: "stack"; sha: string } | { kind: "result"; result: TickResult; discarded?: true };
@@ -222,7 +222,7 @@ type StackEntry = { role: string; sha: string; summary: string };
 
 /** Assemble a batch's stack in `wtPath` (S[0]'s lander worktree) on main's CURRENT tip, once
  * per attempt — a re-stack after a lost fast-forward race is the same assembly on the tip that
- * won. `entries` carry each change's head to land (pin, or pin + build fix); the result
+ * won. `entries` carry each change's head to land (its synced pin); the result
  * carries each one's captured post-pick sha instead, in queue order — the stack ffStackToMain
  * lands. Returns null when the stack cannot be assembled on this tip: main is unreadable, or a
  * pick conflicts (or applies nothing — the crash-window re-drain); the caller abandons to
@@ -247,13 +247,12 @@ async function assembleStack(
   const wt = await ensureDetachedWorktree(root, wtPath, base);
   const landed: StackEntry[] = [];
   for (const entry of entries) {
-    // Cherry-pick the whole RANGE from main's tip to the entry's head to land — not just
-    // that head's own diff. A gate build-fix run commits on top of the work commit and the
-    // pin moves to the fixed head, whose own diff is only the fix: picking the single head
-    // would land the fix without the work it fixes and orphan the work commit. `base..sha`
-    // picks every commit ahead of main, in queue order — one commit normally, work + fix
-    // after a build-fix run. (Not a rebase: after 2/5 the role branches sit at main and
-    // each landing lives only in its pinned ref — there is nothing to rebase.)
+    // Cherry-pick the whole RANGE from main's tip to the entry's head to land — `base..sha`,
+    // every commit ahead of main, in queue order. A pin is normally one commit, so the range is
+    // that commit; picking the range rather than the head alone keeps a pin that carries more
+    // from landing only its last diff and orphaning the work beneath it. (Not a
+    // rebase: after 2/5 the role branches sit at main and each landing lives only in its
+    // pinned ref — there is nothing to rebase.)
     const pick = await gitTry(wt, ...COMMIT_IDENT, "cherry-pick", `${base}..${entry.sha}`);
     if (pick === null) {
       // A conflict (or an already-applied patch — the crash-window re-drain): abort the
@@ -297,9 +296,9 @@ async function exemptTreeDelta(
  * order (runPhaseA), so a batch's slot time is its slowest reviews plus the check rather than
  * the sum of every review; the verdicts fold back in queue order however the reviews race.
  * approved/exempt → into the stack S (each entry recorded with the head its gate judged — the
- * synced pin, or it + a build-fix commit); rejected → terminal (ref deleted), keep launching;
+ * synced pin); rejected → terminal (ref deleted), keep launching;
  * failed → this request "review_error" (a strike-cap discard deletes the ref, an under-cap
- * failure keeps it tracking any build-fix commit) and STOP LAUNCHING: gates already in flight
+ * failure — a red main's included — keeps it) and STOP LAUNCHING: gates already in flight
  * finish and their verdicts stand (an approval still stacks), the unlaunched stay unattempted;
  * a rejection, a strike-cap discard, and an uncheckable pin are FINAL and reach the drain
  * through `ctx.onFinal` the moment their own gate settles, in whatever order the gates finish;
@@ -314,8 +313,8 @@ async function exemptTreeDelta(
  *
  * |S| >= 2 — assemble the stack in S[0]'s lander worktree, checked out detached at main's
  * CURRENT tip, then cherry-pick each S entry's full range from that tip to its head to land,
- * in queue order — `base..sha`, every commit ahead of main (one normally; work + build fix
- * after a gate fix run), capturing each post-pick tip — one check over the combined tree, one
+ * in queue order — `base..sha`, every commit ahead of main (normally one), capturing each
+ * post-pick tip — one check over the combined tree, one
  * fast-forward through those captured shas. ONE scope-`batch` runScopedBuildCheck over the combined tree
  * — the expensive, deterministic half the batch shares (the model review already ran per
  * change in Phase A, because an adversarial review of a stack would blur which change a

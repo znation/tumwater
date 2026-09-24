@@ -57,8 +57,7 @@ export interface LanderContext {
 }
 
 /** A gate invocation's outcome: `gate` when the change is approved/exempt and may be landed
- * (`sha` is the head to land — the pinned sha, or a later head carrying a build-fix commit
- * the gate added), `result` when it is already terminal (aborted, rejected, or review_error).
+ * (`sha` is the head to land — the pin as the gate judged it), `result` when it is already terminal (aborted, rejected, or review_error).
  * `discarded` tells a strike-cap review_error (ref deleted — as final as a rejection) from an
  * under-cap one (ref kept for recovery): the batch reports only final verdicts to its drain
  * mid-batch (land-batch.ts, BatchContext.onFinal). */
@@ -108,9 +107,8 @@ export async function syncPinToMain(
  * and the batch's Phase A. Persists the verdict at once, folds the reviewer's usage, and routes
  * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-lands it),
  * rejected (ref deleted — final for this sha), and failed (a strike-cap discard — the gate
- * reports it as `discarded` — deletes the ref; an under-cap failure keeps it, tracking any
- * build-fix commit the gate added, so the pin names the fixed tree the next re-land reviews —
- * an unreadable head keeps it too, fail closed). Returns
+ * reports it as `discarded` — deletes the ref; an under-cap failure, a red main's included,
+ * keeps it for the next re-land). Returns
  * the gate result only when the change may be landed, alongside the head to land it at. An
  * abort that has already fired is observed HERE, before the gate starts, not only by the
  * gate's pi runs: a gate that short-circuits on an already-approved head (a re-drained batch's)
@@ -150,13 +148,10 @@ export async function reviewPinnedChange(
   // and re-inject a superseded rejection even though its replacement is already on main.
   saveLoopState(root, state);
   if (gate.run) foldUsage(gate.run);
-  // The gate's build-fix run is its own pi invocation — fold it on every outcome it reached
-  // (abort, no-change reject, still-red reject, approval), never only on the happy path.
-  if (gate.fixRun) foldUsage(gate.fixRun);
 
-  // Shutdown/user abort mid-review (or mid-build-fix): fail closed — the ref stays and the next
-  // tick re-lands it. The caller routes "aborted" through its own abort handling (which
-  // discards the pin too when the abort was a deliberate user stop).
+  // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-lands it.
+  // The caller routes "aborted" through its own abort handling (which discards the pin too when
+  // the abort was a deliberate user stop).
   if (gate.aborted) return { kind: "result", result: "aborted" };
 
   if (gate.decision === "rejected") {
@@ -168,29 +163,20 @@ export async function reviewPinnedChange(
   if (gate.decision === "failed") {
     state.lastError = `review failed: ${gate.detail}`;
     // Strike-cap discard: the gate says so directly (it reset the worktree off the pin) — the
-    // commit is gone and the ref goes too. An under-cap failure keeps the pin, TRACKING any
-    // build-fix commit the gate added: the worktree head moved past `req.sha` only by that
-    // fix (an under-cap failure never resets the worktree), so the pin names the fixed tree
-    // the next re-land reviews — without this, a fix followed by an under-cap reviewer
-    // failure would delete the pin on strike 1 and discard the author's work with it. An
-    // unreadable head keeps the ref (fail closed): the next tick re-lands through this gate.
+    // commit is gone and the ref goes too. An under-cap failure — a dead reviewer, or a check
+    // that failed on a red main — keeps the pin as it is: the gate never commits, so the pin
+    // still names the tree the next re-land reviews.
     if (gate.discarded) {
       await deleteRef(root, ref);
       return { kind: "result", result: "review_error", discarded: true };
-    }
-    const head = await headOf(wt, "HEAD").catch(() => null);
-    if (head !== null && head !== req.sha) {
-      await setRef(root, ref, head);
-      req = { ...req, sha: head };
     }
     return { kind: "result", result: "review_error" };
   }
 
   // Approved or exempt: track the pin to the head the verdict judged, so a merge that cannot
-  // finish (conflict/blocked) leaves recovery re-landing the fixed tree, not the stale pin.
-  // verifiedHead carries it when the re-check ran green; the worktree head covers the skipped
-  // re-check corner (a fix was committed but the tree was never verified — still unmergeable
-  // work worth keeping pinned). An unreadable head keeps the old pin (fail closed).
+  // finish (conflict/blocked) leaves recovery re-landing that tree, not a stale pin.
+  // verifiedHead carries it when the pre-check ran green; otherwise the worktree head does. An
+  // unreadable head keeps the old pin (fail closed).
   const sha = gate.verifiedHead ?? (await headOf(wt, "HEAD").catch(() => req.sha));
   if (sha !== req.sha) {
     await setRef(root, ref, sha);

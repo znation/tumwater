@@ -4,9 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   applyFallbackModel,
-  BUILD_FIX_QUIET_S,
-  BUILD_FIX_TIMEOUT_S,
-  buildFixConfig,
   changedConfigKeys,
   configForRole,
   customLoopNames,
@@ -211,31 +208,6 @@ test("reviewConfig applies the review section's overrides over top-level pi sett
   assert.equal(plain.provider, undefined);
   assert.equal(plain.model, undefined);
   assert.equal(plain.thinking, undefined);
-});
-
-// The gate's build-fix run holds the landing slot, so it never inherits the tick's budget: the
-// live fleet's 54 000 s tick and 3600 s watchdog let two fix runs hold the slot for 1 h 52 m and
-// 4 h 35 m (BUGS.md 2026-09-23). Its own caps override them, like the SUMMARY follow-up's.
-test("buildFixConfig caps the gate's fix run at its own short budget over the reviewer wiring", () => {
-  const config = defaultConfig();
-  config.tickTimeoutSeconds = 54_000;
-  config.quietTimeoutSeconds = 3600;
-  config.review = { enabled: true, exemptPaths: [], model: "strong-model" };
-  const fix = buildFixConfig(config);
-  assert.equal(fix.tickTimeoutSeconds, BUILD_FIX_TIMEOUT_S, "the tick's hours-long budget never reaches the fix run");
-  assert.equal(fix.quietTimeoutSeconds, BUILD_FIX_QUIET_S);
-  assert.equal(fix.model, "strong-model", "the run keeps the reviewer's model wiring");
-  // The sizing the caps are justified by: minutes, not hours, and room for one silent full
-  // suite run (≤ 300 s, BUILD_CHECK_TIMEOUT_MS) under the quiet watchdog.
-  assert.ok(BUILD_FIX_TIMEOUT_S <= 1800, "a fix run is bounded in minutes");
-  assert.ok(BUILD_FIX_QUIET_S > 300, "one silent full-suite run never trips the quiet watchdog");
-
-  // A smaller configured value still wins; a disabled watchdog (0) is armed at the cap.
-  const tight = { ...defaultConfig(), tickTimeoutSeconds: 60, quietTimeoutSeconds: 30 };
-  assert.equal(buildFixConfig(tight).tickTimeoutSeconds, 60);
-  assert.equal(buildFixConfig(tight).quietTimeoutSeconds, 30);
-  const noWatchdog = { ...defaultConfig(), quietTimeoutSeconds: 0 };
-  assert.equal(buildFixConfig(noWatchdog).quietTimeoutSeconds, BUILD_FIX_QUIET_S);
 });
 
 test("reviewRunConfig gives the reviewer its own time budget over the reviewer wiring", () => {

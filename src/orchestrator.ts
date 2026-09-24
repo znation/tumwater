@@ -62,9 +62,9 @@ const POLL_MS = 2000;
  * (awaitLandingForHandoff; BUGS.md 2026-09-23). By the time a restart reaches its `finally` the
  * new build is already in dist/ and every role tick is done or aborted, so the landing is all
  * the fleet is still running: each minute spent on it is a minute nothing else ticks. A
- * landing's unbounded part is model work — a reviewer or a gate build-fix run; the 2026-09-23
- * build-fix run held the slot for 4 h 35 m and that day's hand-off sat through 97 minutes of
- * it. Its deterministic part is bounded: at most one build check (BUILD_CHECK_TIMEOUT_MS) plus
+ * landing's unbounded part is model work — its reviewer run (and, until 2026-09-24, a gate
+ * build-fix run: the 2026-09-23 one held the slot for 4 h 35 m and that day's hand-off sat
+ * through 97 minutes of it). Its deterministic part is bounded: at most one build check (BUILD_CHECK_TIMEOUT_MS) plus
  * git steps. So a check's bound plus a minute lets a landing already past its model runs — in
  * its last check and fast-forward — land, and gives an aborted landing's current step (a check,
  * which no abort reaches) time to end, so the hand-off does not leave a check running in a
