@@ -1061,3 +1061,86 @@ test("exampleDrift names template keys the local config lacks, and nothing else"
   assert.deepEqual(exampleDrift(root), []);
   assert.deepEqual(exampleDrift(tmpdir()), []);
 });
+
+// --- the `check` section: the gate's configurable verification command (plans/portability.md) ---
+// validateConfig's check block had no direct tests: a regression there would silently accept a
+// typo'd or wrongly-typed check section (the exact silent-ignore class the schema exists to
+// catch), or crash on a non-object check.
+test("validateConfig accepts a valid check section and its absence", () => {
+  assert.doesNotThrow(() => validateConfig({ provider: "p", model: "m" })); // No check at all.
+  assert.doesNotThrow(() =>
+    validateConfig({ provider: "p", model: "m", check: { command: "cargo test" } }),
+  );
+  assert.doesNotThrow(() =>
+    validateConfig({
+      provider: "p",
+      model: "m",
+      check: { command: "cargo fmt --check && cargo test", cwd: "server", timeoutSeconds: 300 },
+    }),
+  );
+});
+
+test("validateConfig rejects a non-object check section", () => {
+  // A string is the plausible typo (`"check": "cargo test"`); an array and null are named too.
+  assert.match(
+    validationError({ provider: "p", model: "m", check: "cargo test" }),
+    /check must be an object \(got "cargo test"\)/,
+  );
+  assert.match(
+    validationError({ provider: "p", model: "m", check: ["cargo test"] }),
+    /check must be an object \(got \["cargo test"\]\)/,
+  );
+  assert.match(
+    validationError({ provider: "p", model: "m", check: null }),
+    /check must be an object \(got null\)/,
+  );
+});
+
+test("validateConfig rejects a typo'd key inside check", () => {
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { command: "cargo test", timeOut: 5 } }),
+    /unknown key "timeOut" in check \(valid keys: command, cwd, timeoutSeconds\)/,
+  );
+});
+
+test("validateConfig rejects a blank or non-string check.command", () => {
+  // A blank command is the silent-ignore class: the operator named a check, so an empty value
+  // must fail validation, not quietly fall back to npm detection.
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { command: "   " } }),
+    /check\.command must not be empty \(got "   "\)/,
+  );
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { command: 42 } }),
+    /check\.command must be a string \(got 42\)/,
+  );
+});
+
+test("validateConfig rejects a wrongly-typed check.cwd and non-positive timeoutSeconds", () => {
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { command: "x", cwd: 7 } }),
+    /check\.cwd must be a string \(got 7\)/,
+  );
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { command: "x", timeoutSeconds: 0 } }),
+    /check\.timeoutSeconds must be a number greater than 0 \(got 0\)/,
+  );
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { command: "x", timeoutSeconds: -30 } }),
+    /check\.timeoutSeconds must be a number greater than 0 \(got -30\)/,
+  );
+});
+
+test("validateConfig collects every check-section problem into one message", () => {
+  const err = validationError({
+    provider: "p",
+    model: "m",
+    check: { command: 5, cwd: 7, timeoutSeconds: -1, timoutSeconds: 2 },
+  });
+  assert.match(err, /unknown key "timoutSeconds" in check/);
+  assert.match(err, /check\.command must be a string/);
+  assert.match(err, /check\.cwd must be a string/);
+  assert.match(err, /check\.timeoutSeconds must be a number greater than 0/);
+  // All four named in one throw, so a single edit fixes them all — one bullet per problem.
+  assert.equal(err.split("\n").filter((l) => l.trim().startsWith("-")).length, 4);
+});
