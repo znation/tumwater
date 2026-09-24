@@ -2,16 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { drainLandingQueue, type LandingDrainContext } from "../src/landing-drain.js";
+import { drainLandingQueue, type InFlightLanding, type LandingDrainContext } from "../src/landing-drain.js";
 import { LoopRunner } from "../src/loop.js";
-import { enqueueLanding, queueDepth } from "../src/land-queue.js";
+import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/land-queue.js";
 import { landQueueDir, landingRefName } from "../src/paths.js";
 import { isMergedInto, refSha, setRef } from "../src/git.js";
 import { readEvents } from "../src/events.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { Semaphore } from "../src/semaphore.js";
 import { defaultConfig } from "../src/config.js";
-import { assistantLine, fakePi, makeRepo, sh } from "./util.js";
+import { loadLoopState } from "../src/state.js";
+import { assistantLine, fakePi, makeRepo, sh, tmpdir, waitForFile } from "./util.js";
 import type { LandingEntry } from "../src/types.js";
 
 // Unit coverage for src/landing-drain.ts's drainLandingQueue — the scheduler seam between the
@@ -251,5 +252,74 @@ test("a batch's unattempted change keeps its entry queued for re-drain", async (
     assert.equal(cleared.n, 1, "the slot cleared exactly once");
   } finally {
     restore();
+  }
+});
+
+test("a batched change rejected early drops its entry at its verdict, while the rest of the batch is still in review", async () => {
+  // BUGS.md 2026-09-23: a final Phase-A verdict used to wait for the whole batch's
+  // write-back, so the rejected author stayed interlocked through every later review, the
+  // stack check, and the ff. Alpha's reviewer rejects at once; beta's parks until released,
+  // so everything asserted before the release is the mid-batch state.
+  const root = makeRepo();
+  const alpha = pinnedCommit(root, "alpha");
+  const beta = pinnedCommit(root, "beta");
+  await setRef(root, landingRefName("alpha"), alpha);
+  await setRef(root, landingRefName("beta"), beta);
+  enqueueLanding(root, entry("alpha", alpha));
+  enqueueLanding(root, entry("beta", beta));
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const dir = tmpdir("early-drop-");
+  const held = path.join(dir, "beta-reviewing");
+  const release = path.join(dir, "release");
+  // The reviewer tells the two apart by the diff each prompt carries (`+work by alpha`);
+  // beta's park is bounded (~60 s) so a failed assert can never leave it spinning.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
+      `case "$a" in *"work by alpha"*) printf '%s\\n' '${assistantLine("VERDICT: reject\n1. breaks the zero-dep rule")}'; exit 0;; esac`,
+      `touch '${held}'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done`,
+      `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
+      `esac; done`,
+    ].join("\n"),
+  );
+  let landing: InFlightLanding | null = null;
+  try {
+    const { ctx, cleared } = makeCtx(root, runnersFor(root, ["alpha", "beta"]));
+    landing = await drainLandingQueue(ctx);
+    assert.ok(landing, "the batch started");
+    await waitForFile(held);
+
+    // Mid-batch: beta's review is still running, yet alpha's landing is already complete.
+    assert.deepEqual(
+      queuedLandingFiles(root).map((q) => q.entry.role),
+      ["beta"],
+      "alpha's entry dropped at its verdict — the interlock's queued-roles set no longer holds alpha",
+    );
+    assert.equal(loadLoopState(root, "alpha").lastResult, "rejected", "the outcome is saved before the drop");
+    const alphaFailed = () => readEvents(root).filter((e) => e.type === "land_failed" && e.loop === "alpha");
+    assert.equal(alphaFailed().length, 1, "and logged");
+    assert.equal(alphaFailed()[0]!.result, "rejected");
+    assert.deepEqual(landing!.roles, ["beta"], "alpha left the slot's record: an abort for its next tick spares the batch");
+    const marker = readLandingMarker(root);
+    assert.equal(marker?.role, "beta", "the marker moved off the dropped head to the entry still queued");
+    assert.equal(marker?.sha, beta, "so the snapshot cross-check still finds a queued entry with its sha");
+    assert.equal(marker?.stage, "reviewing", "and the re-pointed marker follows beta's own gate");
+
+    fs.writeFileSync(release, "");
+    await landing!.promise;
+
+    assert.ok(await isMergedInto(root, beta, "main"), "the rest of the batch still landed");
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "1", "beta alone");
+    assert.equal(queueDepth(root), 0, "beta's entry dropped at batch end");
+    assert.equal(alphaFailed().length, 1, "the end-of-batch write-back did not write alpha's outcome twice");
+    assert.equal(readEvents(root).filter((e) => e.type === "landed" && e.loop === "beta").length, 1);
+    assert.equal(readLandingMarker(root), null, "the batch's marker was cleared");
+    assert.equal(cleared.n, 1, "the whole batch used the slot once");
+  } finally {
+    // Release the parked reviewer and let the batch settle even when an assert failed.
+    fs.writeFileSync(release, "");
+    await landing?.promise;
+    restore();
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

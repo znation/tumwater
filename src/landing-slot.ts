@@ -68,8 +68,9 @@ export function readLandingMarker(root: string): LandingInFlight | null {
  * flag while a batch works through its other changes), and land-batch.ts around the batch's
  * shared stack check. A no-op unless a marker naming THIS role is live: the shared gate also
  * runs inside ticks (leftover recovery — no marker; that tick's own reviewing cell carries its
- * detail) and the batch marker names only its head, so another batched role's transitions must
- * not touch it. Only the stage changes: sha and startedAt are what the snapshot cross-check and
+ * detail) and the batch marker names only its first still-queued change (the landing drain
+ * re-points it when a final Phase-A verdict drops the one it names), so another batched
+ * role's transitions must not touch it. Only the stage changes: sha and startedAt are what the snapshot cross-check and
  * the landing's elapsed read. */
 export function setLandingStage(root: string, role: string, stage: LandingStage): void {
   const marker = readLandingMarker(root);
@@ -82,10 +83,11 @@ export function setLandingStage(root: string, role: string, stage: LandingStage)
  * result to the live state object (paired with the entry's change for the last-result cell —
  * applyLandingOutcome), persist it, log landed/land_failed with the landing's own
  * duration and usage (omitted when zero — the 4/5 idiom, so review-exempt landings render
- * bare; for a batched change that is the batch's wall clock and its own role's spend), and
- * drop the entry: EVERY defined result drops. The 4/5 marker is each caller's own concern —
- * landQueuedEntry writes/removes it around this call, the batch slot writes it for its head
- * and removes it in its finally. */
+ * bare; for a batched change that is the batch's wall clock up to its outcome and its own
+ * role's spend), and drop the entry: EVERY defined result drops. The 4/5 marker is each
+ * caller's own concern — landQueuedEntry writes/removes it around this call, the batch slot
+ * writes it for its head, re-points it when a final Phase-A verdict drops that entry
+ * mid-batch, and removes it in its finally. */
 export function writeLandingOutcome(
   root: string,
   entry: LandingEntry,

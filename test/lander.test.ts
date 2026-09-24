@@ -19,6 +19,7 @@ import { landingRefName, landingStatePath, landWorktreePath, statePath } from ".
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
+import { REVIEW_FAILURE_LIMIT } from "../src/review.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LoopState, PiRunResult } from "../src/types.js";
@@ -1076,6 +1077,82 @@ test("a lost pin degrades its request to a terminal error instead of starving th
     const next = await runBatch(root, shas, ["beta"], wiringFor);
     assert.deepEqual(next.map((r) => r.result), ["changed"], "the previously starved head lands on the next drain");
     assert.equal(await refSha(root, landingRefName("beta")), null, "and its ref is gone after landing");
+  } finally {
+    restore();
+  }
+});
+
+test("landBatch reports a rejection to onFinal at its verdict, before the next gate runs; an approval never", async () => {
+  // BUGS.md 2026-09-23: a final Phase-A verdict must reach the drain the moment it is
+  // persisted, so its entry drops and its author ticks while the batch runs on — not after
+  // every later review, the stack check, and the ff. An approved change stays unreported: its
+  // author must not tick on top of an unlanded change.
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) case "$a" in *"work by alpha"*) printf '%s\\n' '${assistantLine("VERDICT: reject\n1. no")}'; exit 0;; esac; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+  );
+  try {
+    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+    const finals: { index: number; result: string; betaReviewed: boolean; saved: string | undefined }[] = [];
+    const ctx: BatchContext = {
+      ...makeBatchCtx(root),
+      onFinal: (index, result) =>
+        finals.push({ index, result, betaReviewed: folded.has("beta"), saved: states.alpha.lastReview?.verdict }),
+    };
+
+    const results = await landBatch(ctx, ["alpha", "beta"].map((role) => request(shas[role]!, { role })), wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["rejected", "changed"], "the returned array still carries the rejection");
+    assert.deepEqual(
+      finals,
+      [{ index: 0, result: "rejected", betaReviewed: false, saved: "reject" }],
+      "one report, for the rejection only, after its verdict persisted and before beta's gate ran",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a strike-cap discard and an uncheckable pin are final for onFinal; an under-cap review_error is not", async () => {
+  // Final means nothing later in the batch — or in leftover recovery — can change the
+  // outcome. An under-cap review_error keeps its ref for the next tick's recovery, so its
+  // author must stay interlocked until the batch's own write-back: ticking now would race
+  // that recovery landing against this batch's fast-forward.
+  const restore = fakePi(reviewerPi("I think this is fine."));
+  try {
+    const finalsOf = (root: string) => {
+      const finals: { index: number; result: string }[] = [];
+      return { finals, ctx: { ...makeBatchCtx(root), onFinal: (index: number, result: string) => finals.push({ index, result }) } };
+    };
+
+    const under = await batchFixture(["alpha", "beta"]);
+    const u = finalsOf(under.root);
+    const underResults = await landBatch(u.ctx, [request(under.shas.alpha!, { role: "alpha" }), request(under.shas.beta!, { role: "beta" })], under.wiringFor);
+    assert.equal(underResults[0]!.result, "review_error");
+    assert.equal(await refSha(under.root, landingRefName("alpha")), under.shas.alpha!, "under the cap the ref stays");
+    assert.deepEqual(u.finals, [], "an under-cap failure is not final: its entry waits for the batch's write-back");
+
+    // Two strikes already against alpha's head: this third verdict-less reply discards it.
+    const cap = await batchFixture(["alpha", "beta"]);
+    cap.states.alpha.unreviewFailures = REVIEW_FAILURE_LIMIT - 1;
+    cap.states.alpha.lastReview = { verdict: "failed", reasons: ["no verdict"], head: cap.shas.alpha!, at: Date.now() };
+    const c = finalsOf(cap.root);
+    await landBatch(c.ctx, [request(cap.shas.alpha!, { role: "alpha" }), request(cap.shas.beta!, { role: "beta" })], cap.wiringFor);
+    assert.equal(await refSha(cap.root, landingRefName("alpha")), null, "the strike cap discarded the ref");
+    assert.deepEqual(c.finals, [{ index: 0, result: "review_error" }], "a strike-cap discard is final");
+
+    const lost = await batchFixture(["alpha", "beta"]);
+    const l = finalsOf(lost.root);
+    let errorOnState: string | undefined;
+    const lostCtx: BatchContext = {
+      ...l.ctx,
+      onFinal: (index, result) => {
+        errorOnState = lost.states.alpha.lastError;
+        l.ctx.onFinal(index, result);
+      },
+    };
+    await landBatch(lostCtx, [request("0".repeat(40), { role: "alpha" }), request(lost.shas.beta!, { role: "beta" })], lost.wiringFor);
+    assert.deepEqual(l.finals, [{ index: 0, result: "error" }], "an uncheckable pin is final");
+    assert.ok(errorOnState, "the git failure is on the state before the drain writes it back");
   } finally {
     restore();
   }

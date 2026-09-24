@@ -58,10 +58,13 @@ export interface LanderContext {
 
 /** A gate invocation's outcome: `gate` when the change is approved/exempt and may be landed
  * (`sha` is the head to land — the pinned sha, or a later head carrying a build-fix commit
- * the gate added), `result` when it is already terminal (aborted, rejected, or review_error). */
+ * the gate added), `result` when it is already terminal (aborted, rejected, or review_error).
+ * `discarded` tells a strike-cap review_error (ref deleted — as final as a rejection) from an
+ * under-cap one (ref kept for recovery): the batch reports only final verdicts to its drain
+ * mid-batch (land-batch.ts, BatchContext.onFinal). */
 type GateOutcome =
   | { kind: "gate"; gate: GateResult; sha: string }
-  | { kind: "result"; result: TickResult };
+  | { kind: "result"; result: TickResult; discarded?: true };
 
 /** The identity every gate invocation needs from whichever landing path calls it. The
  * single-change path's LanderContext and the batch's BatchContext both satisfy this, so one
@@ -173,7 +176,7 @@ export async function reviewPinnedChange(
     // unreadable head keeps the ref (fail closed): the next tick re-lands through this gate.
     if (gate.discarded) {
       await deleteRef(root, ref);
-      return { kind: "result", result: "review_error" };
+      return { kind: "result", result: "review_error", discarded: true };
     }
     const head = await headOf(wt, "HEAD").catch(() => null);
     if (head !== null && head !== req.sha) {

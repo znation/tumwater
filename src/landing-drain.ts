@@ -10,6 +10,7 @@ import {
   readLandingMarker,
   writeLandingMarker,
   writeLandingOutcome,
+  type LandingStage,
 } from "./landing-slot.js";
 import { dropLanding, headLanding, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
 import { warnEvent } from "./events.js";
@@ -18,6 +19,7 @@ import { Semaphore } from "./semaphore.js";
 import { landingRefName, landingStatePath } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { saveLoopState } from "./state.js";
+import type { TickResult } from "./types.js";
 
 /** The semaphore tier a landing's pi runs acquire at, below every roleTier (0/1): committed
  * work whose author the interlock has already blocked jumps ahead of parked role waiters
@@ -28,7 +30,10 @@ const LANDING_TIER = -1;
  * that aborts it (harness shutdown OR `tumwater abort --role` for any of its roles), and
  * whether the abort was a deliberate user stop — which decides what happens to the pinned
  * refs when it ends. Since merge queue 5/5 `roles` is every role the slot is landing: one for
- * the single path, up to landBatchMax for a batch. */
+ * the single path, up to landBatchMax for a batch. A batched role leaves it the moment its
+ * change reaches a final Phase-A verdict and its entry drops: that role may tick again at
+ * once, so an abort for its new tick must not kill the batch, and a user-aborted batch must
+ * not discard the pin of the role's next change. */
 export interface InFlightLanding {
   promise: Promise<void>;
   controller: AbortController;
@@ -173,8 +178,10 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
     // A crash between the 4/5 marker write and its removal can leave a marker with
     // no live landing — this branch runs only when the slot is free, so a marker naming
     // this entry is stale; clear it so the idle fleet reads clean. (Any marker naming
-    // another entry cannot exist: that entry's landing would own the slot, and this one
-    // is the queue head.)
+    // another QUEUED entry cannot exist: that entry's landing would own the slot, and this
+    // one is the queue head. One naming an entry no longer queued — a crash between a
+    // batch's mid-batch drop and its marker re-point — never displays through the
+    // snapshot cross-check, and the next landing overwrites it.)
     const marker = readLandingMarker(root);
     if (marker && marker.sha === head.entry.sha) removeQuiet(landingStatePath(root));
     return null;
@@ -199,29 +206,76 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
   }
   // The batch slot: land `batch` as ONE stack through the shared landBatch —
   // per-change review gates, one shared build check over the stacked tree, one
-  // fast-forward. The 4/5 marker names the HEAD request (the cross-check needs
-  // a queued entry to validate its sha against, and batch[0] stays queued until
-  // the batch completes); the other batched roles show their queued state in the
-  // queue itself. Per-role wiring is resolved exactly as the single path resolves
-  // its author, and usage accumulates per role (a reviewer's run charges to its
-  // change's authoring role, like landQueuedEntry).
+  // fast-forward. The 4/5 marker names the first batched entry still queued — the
+  // queue head: batch[0] at the start, re-pointed when a final Phase-A verdict drops
+  // the entry it names (the cross-check needs a queued entry to validate its sha
+  // against); the other batched roles show their queued state in the queue itself.
+  // Per-role wiring is resolved exactly as the single path resolves its author, and
+  // usage accumulates per role (a reviewer's run charges to its change's authoring
+  // role, like landQueuedEntry).
   const first = batch[0]!;
   return startLanding(
     batch.map((b) => b.entry.role),
     async (landing) => {
       const startedAt = Date.now();
-      writeLandingMarker(root, {
-        role: first.entry.role,
-        sha: first.entry.sha,
-        summary: first.entry.summary,
-        startedAt,
-        stage: "merging", // Phase A's checkout comes first; the head's gate advances it
-      });
+      const markLanding = (b: (typeof batch)[number], stage: LandingStage): void =>
+        writeLandingMarker(root, {
+          role: b.entry.role,
+          sha: b.entry.sha,
+          summary: b.entry.summary,
+          startedAt,
+          stage,
+        });
+      markLanding(first, "merging"); // Phase A's checkout comes first; the head's gate advances it
       const authors = new Map(batch.map((b) => [b.entry.role, authorFor(b.entry.role)]));
       const usages = new Map<string, { tokens: number; cost: number }>();
+      // The batch indices whose outcome is already written back and entry dropped, so no
+      // outcome is applied, logged, or dropped twice: a final Phase-A verdict writes back
+      // mid-batch (onFinal below), and the end-of-batch write-back skips it.
+      const written = new Set<number>();
+      const writeBack = (i: number, result: TickResult, durationMs: number): void => {
+        if (written.has(i)) return;
+        written.add(i);
+        const b = batch[i]!;
+        writeLandingOutcome(
+          root,
+          b.entry,
+          authors.get(b.entry.role)!.state,
+          result,
+          durationMs,
+          usages.get(b.entry.role) ?? { tokens: 0, cost: 0 },
+          b.file,
+        );
+      };
+      // The first batched entry still queued — the queue head while the slot is busy.
+      const firstQueued = () => batch.find((_, i) => !written.has(i));
+      let marked: (typeof batch)[number] | undefined = first;
+      // A final Phase-A verdict (rejected, strike-cap discard, uncheckable pin) needs
+      // nothing more from the batch: write its outcome and drop its entry the moment it is
+      // persisted, so the interlock frees its author on the next poll instead of holding the
+      // role with the most urgent work until every other change has reviewed, checked, and
+      // merged (BUGS.md 2026-09-23). Approved changes stay queued — their authors must not
+      // tick on top of an unlanded change. The drop comes first and the marker re-point
+      // after, as in landQueuedEntry: a crash between them leaves a marker naming a dropped
+      // sha, which the snapshot cross-check never displays; a crash after the drop cannot
+      // resurrect the entry, and the outcome it carried is already saved and logged.
+      const onFinal = (i: number, result: TickResult): void => {
+        writeBack(i, result, Date.now() - startedAt);
+        // The role has left the batch (InFlightLanding.roles): it may tick again now.
+        const at = landing.roles.indexOf(batch[i]!.entry.role);
+        if (at >= 0) landing.roles.splice(at, 1);
+        // The re-point keeps the batch's startedAt and the stage the marker already shows;
+        // the new subject's own gate advances it from there (setLandingStage follows the
+        // marker's role).
+        if (batch[i] === marked) {
+          marked = firstQueued();
+          if (marked) markLanding(marked, readLandingMarker(root)?.stage ?? "merging");
+          else removeQuiet(landingStatePath(root));
+        }
+      };
       try {
         const outcomes = await landBatch(
-          { root, mainBranch, config: roleConfig, signal: () => landing.controller.signal },
+          { root, mainBranch, config: roleConfig, signal: () => landing.controller.signal, onFinal },
           batch.map((b) => ({
             role: b.entry.role,
             sha: b.entry.sha,
@@ -241,35 +295,27 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
             };
           },
         );
-        // One slot unit landed: the batch's wall time is every change's
-        // durationMs, each change's event carries its own role's spend. A
+        // One slot unit landed: the batch's wall time is the durationMs of every
+        // change still queued (a final Phase-A verdict already wrote its own, up to
+        // its verdict), each change's event carries its own role's spend. A
         // `result === undefined` means unattempted (an early stop ran before it)
         // — its entry and ref stay queued, so the write-back skips it.
         const durationMs = Date.now() - startedAt;
         outcomes.forEach((outcome, i) => {
-          if (outcome.result === undefined) return;
-          const b = batch[i]!;
-          writeLandingOutcome(
-            root,
-            b.entry,
-            authors.get(b.entry.role)!.state,
-            outcome.result,
-            durationMs,
-            usages.get(b.entry.role) ?? { tokens: 0, cost: 0 },
-            b.file,
-          );
+          if (outcome.result !== undefined) writeBack(i, outcome.result, durationMs);
         });
       } catch (err) {
         // An unexpected throw escapes the batch (git plumbing — landBatch degrades
-        // failed LANDINGS to results): the 3/5 semantics keep EVERY entry for
-        // re-drain (none was dropped — the write-back runs after landBatch
-        // returns), with the error on the head role's state. Re-drain is bounded
-        // and self-terminating: the gate short-circuits an already-approved head
-        // that Phase A's re-sync leaves unchanged (a pin already on main's tip —
-        // its persisted verdict), a stale pin re-syncs to a fresh sha and is
-        // reviewed once more, and a fast-forward that already happened re-lands
-        // as no-ops through each change's own gate + in-lock check.
-        const author = authors.get(first.entry.role)!;
+        // failed LANDINGS to results): the 3/5 semantics keep every entry still
+        // queued for re-drain (only the final Phase-A verdicts already left through
+        // onFinal — the rest write back after landBatch returns), with the error on
+        // the queue head's role state. Re-drain is bounded and self-terminating: the
+        // gate short-circuits an already-approved head that Phase A's re-sync leaves
+        // unchanged (a pin already on main's tip — its persisted verdict), a stale pin
+        // re-syncs to a fresh sha and is reviewed once more, and a fast-forward that
+        // already happened re-lands as no-ops through each change's own gate + in-lock
+        // check.
+        const author = authors.get((firstQueued() ?? first).entry.role)!;
         author.state.lastError = errorMessage(err);
         saveLoopState(root, author.state);
       } finally {

@@ -948,6 +948,64 @@ test("an abort for a NON-HEAD batched role kills the whole batch and discards ev
   }
 });
 
+test("a batched role rejected early ticks again while the rest of its batch is still in review", async () => {
+  // BUGS.md 2026-09-23: a final Phase-A verdict used to keep its entry queued until the whole
+  // batch wrote back, so the interlock skipped the rejected author's due tick every poll
+  // through every later review, the stack check, and the ff. clean's reviewer rejects at once;
+  // dry's parks until released, holding the batch open while the test watches clean.
+  const repo = makeRepo();
+  await initProject(repo, "batch early drop e2e test");
+  saveConfig(repo, fastConfig(["clean", "dry"])); // minTickInterval 0: due on every poll
+  await seedLandQueue(repo, "clean", "dry");
+  const dir = tmpdir("early-drop-");
+  const held = path.join(dir, "dry-reviewing");
+  const release = path.join(dir, "release");
+  // Reviews tell the changes apart by their diff; dry's park is bounded (~60 s) so a failed
+  // assert can never leave it spinning. Author runs (clean's fix tick): nothing to do.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
+      `case "$a" in *"clean.txt"*) printf '%s\\n' '${assistantLine("VERDICT: reject\n1. not needed")}'; exit 0;; esac`,
+      `touch '${held}'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done`,
+      `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
+      `esac; done`,
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(() => fs.existsSync(held), "dry's review to be in flight — clean's verdict is already in", 60_000);
+    // The interlock frees clean while dry's review is still parked: its due tick runs.
+    await waitFor(() => loadLoopState(repo, "clean").ticks >= 1, "the rejected role's fix tick to start mid-batch", 30_000);
+    assert.ok(!fs.existsSync(release), "the batch is still in flight: dry's review never returned");
+    assert.equal(loadLoopState(repo, "dry").ticks, 0, "dry's entry is still queued, so the interlock still holds it");
+    assert.deepEqual(
+      readEvents(repo)
+        .filter((e) => e.type === "land_failed")
+        .map((e) => [e.loop, e.result]),
+      [["clean", "rejected"]],
+      "clean's outcome was written at its verdict",
+    );
+
+    fs.writeFileSync(release, "");
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "landed" && e.loop === "dry"),
+      "the rest of the batch to land",
+      60_000,
+    );
+    assert.equal(
+      readEvents(repo).filter((e) => e.type === "land_failed" && e.loop === "clean").length,
+      1,
+      "the batch's own write-back did not write clean's outcome twice",
+    );
+  } finally {
+    fs.writeFileSync(release, ""); // never leave dry's review parked
+    restore();
+    await orch.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("landBatchMax caps the stack and live-reloads: five queue as 3+2 batches, then singles at cap 1", async () => {
   const repo = makeRepo();
   await initProject(repo, "batch cap e2e test");
@@ -1028,12 +1086,12 @@ test("landBatchMax caps the stack and live-reloads: five queue as 3+2 batches, t
 test("an unexpected throw from the batch keeps every entry for re-drain and is contained", async () => {
   // The drain's catch: landBatch degrades failed landings to results, but a git-level failure
   // in the stack assembly still throws (unlike Phase A's worktree ensure, the assembly's is
-  // unguarded). The catch must keep EVERY entry queued — none dropped, the write-back runs
-  // only after landBatch returns — and let the next poll re-drain, instead of escaping
-  // startLanding's body as an unhandled rejection. Trigger: during the SECOND gate run
-  // (dry's — the head role's gate already approved), delete the head role's lander worktree
-  // and make its parent unwritable, so the assembly's ensureDetachedWorktree cannot
-  // re-create it and throws.
+  // unguarded). The catch must keep EVERY entry queued — none dropped: both gates approve,
+  // and an approved change writes back only after landBatch returns — and let the next poll
+  // re-drain, instead of escaping startLanding's body as an unhandled rejection. Trigger:
+  // during the SECOND gate run (dry's — the head role's gate already approved), delete the
+  // head role's lander worktree and make its parent unwritable, so the assembly's
+  // ensureDetachedWorktree cannot re-create it and throws.
   const repo = makeRepo();
   await initProject(repo, "batch throw recovery test");
   saveConfig(repo, fastConfig(["clean", "dry"]));

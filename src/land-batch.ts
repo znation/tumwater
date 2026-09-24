@@ -33,6 +33,17 @@ export interface BatchContext {
   /** The slot's abort signal (harness shutdown or a deliberate `abort --role` for any
    * batched role), fresh per call. */
   signal(): AbortSignal;
+  /** Called once per request whose Phase-A outcome is FINAL, the moment it is — rejected or a
+   * strike-cap review_error discard (verdict persisted, ref deleted), or an "error" for a pin
+   * that cannot even be checked out — with its index into `requests`. Nothing later in the
+   * batch can change that outcome, so the drain writes it back and drops the entry right
+   * away: the author can start its fix tick instead of waiting out every other review, the
+   * stack check, and the fast-forward (BUGS.md 2026-09-23). The returned array still carries
+   * the result. Never called for an approved/exempt change (its author must not tick on top
+   * of an unlanded change, so it stays queued until the stack lands or fails), an under-cap
+   * review_error (its kept ref is the next tick's leftover recovery, which must not race this
+   * batch's fast-forward), or "aborted". */
+  onFinal?(index: number, result: TickResult): void;
 }
 
 /** One batched change's wiring, resolved by the drain exactly as the landed drain resolves
@@ -138,7 +149,8 @@ async function exemptTreeDelta(
  * recorded with the head its gate judged — the synced pin, or it + a build-fix commit); rejected →
  * terminal (ref deleted), continue; failed → stop (this request "review_error": a strike-cap
  * discard deletes the ref, an under-cap failure keeps it tracking any build-fix commit; the
- * rest stay unattempted); aborted (a shutdown
+ * rest stay unattempted); a rejection, a strike-cap discard, and an uncheckable pin are FINAL
+ * and reach the drain at once through `ctx.onFinal`; aborted (a shutdown
  * mid-gate or a quiet-killed reviewer run) → every request without a terminal outcome reads
  * "aborted" and keeps its ref. |S| == 0 means nothing was approved — all results are already
  * defined (or unattempted after an early stop) and there is nothing to land: return as-is.
@@ -191,7 +203,8 @@ async function exemptTreeDelta(
  *
  * One entry per request comes back in order; `result === undefined` means "unattempted — the
  * drain keeps that queue entry" (a failed Phase-A gate or a fallback early stop), and a
- * defined result drops its entry through the drain's write-back. Never throws for a failed
+ * defined result drops its entry through the drain's write-back (for the results `ctx.onFinal`
+ * already reported, done mid-batch — the drain skips them here). Never throws for a failed
  * landing: per-change landApprovedChange failures degrade to "error" results, and a Phase-A checkout
  * that cannot resolve the pinned sha (the queue entry outlived its commit) also degrades to
  * a terminal "error" so the drain drops that entry and the queue advances — exactly the
@@ -233,6 +246,14 @@ export async function landBatch(
     }
   };
 
+  // A FINAL Phase-A outcome is settled for good the moment it is persisted: record it and
+  // hand it to the drain at once, so that request's entry drops and its author is free to
+  // tick while the rest of the batch runs on.
+  const settleFinal = (i: number, result: TickResult): void => {
+    results[i]!.result = result;
+    ctx.onFinal?.(i, result);
+  };
+
   // ── Phase A: the per-change review gate, in queue order ────────────────────────────────
   const stack: number[] = []; // request indices of the approved/exempt changes, queue order
   const stackSha: string[] = []; // each stack entry's head to land (pin, or pin + build fix)
@@ -249,16 +270,18 @@ export async function landBatch(
       // drops its entry and the queue advances; the single path's landQueuedEntry catch-all
       // does exactly this. Without it the throw escapes to the drain, which keeps EVERY entry
       // — a lost head pin would then starve the healthy queue forever. The rest stay
-      // unattempted (entry + ref intact), like a mid-batch review_error.
-      results[i]!.result = "error";
+      // unattempted (entry + ref intact), like a mid-batch review_error. The error is on the
+      // state before the settle, so the drain's write-back persists it.
       w.state.lastError = errorMessage(err);
+      settleFinal(i, "error");
       break;
     }
     // The shared gate over the pin rebased onto main's current tip — landChange's own
     // pre-gate rebase, so the head approved here is the head a landing starts from, and a
     // conflict leaves the pin for the gate exactly as there — with the verdict persisted
-    // immediately (the drain's write-back happens only in-process at batch completion, so a
-    // mid-batch crash must not lose what the batch earned).
+    // immediately (the drain's write-back of every non-final outcome happens only
+    // in-process at batch completion, so a mid-batch crash must not lose what the batch
+    // earned).
     const synced = await syncPinToMain(ctx, wt, req);
     const outcome = await reviewPinnedChange(ctx, synced, wt, w.state, w.foldUsage);
     if (outcome.kind === "gate") {
@@ -270,9 +293,12 @@ export async function landBatch(
       aborted = true;
       break; // the rest get "aborted" via finishAborted; refs kept
     }
-    results[i]!.result = outcome.result;
+    // "rejected": terminal for this sha — the gate already reset its worktree to main and
+    // deleted the ref; a strike-cap discard deleted it too. Both are final. An under-cap
+    // review_error keeps its ref for recovery, so it waits for the batch's own write-back.
+    if (outcome.result === "rejected" || outcome.discarded) settleFinal(i, outcome.result);
+    else results[i]!.result = outcome.result;
     if (outcome.result === "review_error") break; // stop: the unattempted keep entry + ref
-    // "rejected": terminal for this sha — the gate already reset its worktree to main.
   }
   finishAborted();
   if (aborted || stack.length === 0) return results;
