@@ -4,6 +4,7 @@ import { describeCheck } from "./build-check.js";
 import type { BuildCheck } from "./build-check-detect.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, type Role } from "./roles.js";
 import { NOTHING_TO_DO, REFUSED_SENTINEL } from "./reply-contract.js";
+import { todayStamp } from "./budget.js";
 
 /** Prompt construction for the role loops' pi runs (tick, director, resume, summary recovery),
  * declaring in prose the reply contract those runs must follow:
@@ -63,6 +64,19 @@ const CONTEXT_BUDGET_RULE = `- Your context window is finite and everything you 
   with the test that checks it. Oversized tool results come back as head+tail around a marker
   that names the omitted amount and where the full output lives — follow the pointer (re-read
   with \`offset\`/\`limit\`, or open the full-output file path) instead of retrying the same read.`;
+
+/** The date line every pi prompt carries — tick and director (via sharedPreamble) and the gate's
+ * conflict, build-fix and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
+ * used to say what day it is, so a run that had to write one (a BUGS.md heading's "(found by …
+ * YYYY-MM-DD)", a Fixed or Refused date, NEEDS_REVIEW_NOTE's <YYYY-MM-DD>, a plan deadline)
+ * inferred it from the newest dates in the repo, which were themselves drifting: the fleet
+ * stamped entries days into the future and each wrong date seeded the next. The day is
+ * todayStamp's — the same local-day computation as the daily cost budget window — and every
+ * builder takes it as an optional trailing `today` that falls through to this default, so tests
+ * pin an exact date and a new call site cannot forget it. */
+export function dateLine(today: string = todayStamp()): string {
+  return `Today's date is ${today} (local time).`;
+}
 
 /** The rules every loop prompt carries — tick and director alike, so the two cannot drift.
  * `check` — the project's resolved check (plans/portability.md §6/7) — names the actual
@@ -196,13 +210,20 @@ interface TickPromptInput {
    * Omitted: the README.md compatibility default, exactly as prompts read before the brief
    * became resolvable. */
   briefFile?: string;
+  /** Today's local date as YYYY-MM-DD (see dateLine). Omitted: todayStamp() — tests pin it. */
+  today?: string;
 }
 
-/** Shared opening of every loop prompt: where the run happens and why the project exists.
- * Defined once so the tick and director prompts cannot drift. */
-function sharedPreamble(initialPrompt: string): string[] {
+/** Shared opening of every loop prompt: where the run happens, what day it is, and why the
+ * project exists. Defined once so the tick and director prompts cannot drift — and so the one
+ * sentence telling every role to date its records from dateLine, not from the repo, reaches
+ * each of them without editing any role text. */
+function sharedPreamble(initialPrompt: string, today?: string): string[] {
   const parts = [
     `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by the harness after you finish.`,
+    `${dateLine(today)} Stamp it on anything you record now — a new BUGS.md or PLANS.md heading's
+"(found by … YYYY-MM-DD)", a Fixed or Done date, a Refused or Needs-review note — and count plan
+deadlines from it; never infer the date from the repo.`,
   ];
   if (initialPrompt) {
     parts.push(`The project's initial prompt — its reason to exist — is:\n<project-prompt>\n${initialPrompt}\n</project-prompt>`);
@@ -212,10 +233,10 @@ function sharedPreamble(initialPrompt: string): string[] {
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, extraInstructions, check, briefFile } = input;
+  const { role, initialPrompt, principles, digest, coverage, extraInstructions, check, briefFile, today } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
-    ...sharedPreamble(initialPrompt),
+    ...sharedPreamble(initialPrompt, today),
   ];
   if (principles) parts.push(principlesBlock(principles));
   if (coverage) parts.push(coverage);
@@ -236,12 +257,14 @@ export function buildDirectorPrompt(
   check?: BuildCheck,
   /** The resolved brief file's name (plans/portability.md §7a/7) — same threading again. */
   briefFile?: string,
+  /** Today's local date (see dateLine). Omitted: todayStamp() — tests pin it. */
+  today?: string,
 ): string {
   const parts = [
     `You are the "director" loop of tumwater, an autonomous development harness. The user steers
 the project by sending it requests; one has just arrived. Other specialist loops continuously
 implement planned features from PLANS.md and fix bugs from BUGS.md.`,
-    ...sharedPreamble(initialPrompt),
+    ...sharedPreamble(initialPrompt, today),
   ];
   if (principles) parts.push(principlesBlock(principles));
   parts.push(`The user's request:\n<user-request>\n${userPrompt.trim()}\n</user-request>`);

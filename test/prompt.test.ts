@@ -19,6 +19,7 @@ import {
   buildReviewPrompt,
 } from "../src/gate-prompts.js";
 import { parseVerdict } from "../src/review.js";
+import { todayStamp } from "../src/budget.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
 import { customRole, DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, ROLES, roleById, searchGuidance, VALIDATION_GAP_GUIDANCE, VALIDATION_GAP_TAGS } from "../src/roles.js";
@@ -1387,6 +1388,64 @@ test("buildConflictPrompt bounds reading to the conflicted files", () => {
   const p = oneLine(buildConflictPrompt("dry", ["src/a.ts"]));
   assert.match(p, /Read only the conflicted files and what they directly reference/);
   assert.match(p, /`grep -n '<<<<<<<' FILE`/);
+});
+
+// No prompt used to say what day it is (BUGS.md "Loops are never told the date…"), so every
+// "(found by … YYYY-MM-DD)" heading, Fixed date, and Needs-review marker was inferred from the
+// newest dates in the repo — and the fleet stamped entries days into the future. Every pi prompt
+// now states the local day once; tick and director (the roles that write dated records) are also
+// told to date them from it. An explicit `today` pins the date so these checks are exact.
+
+test("every tick, director, conflict, build-fix, and review prompt states the given date exactly once", () => {
+  const today = "2031-02-03";
+  const line = "Today's date is 2031-02-03 (local time).";
+  const role = roleById("bugfix");
+  assert.ok(role);
+  const loopPrompts = [
+    buildTickPrompt({ role, initialPrompt: "Make a CLI.", today }),
+    buildDirectorPrompt("the tui flickers", "Make a CLI.", undefined, undefined, undefined, today),
+  ];
+  const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, today);
+  const gatePrompts = [
+    buildConflictPrompt("bugfix", ["a.txt"], today),
+    buildBuildFixPrompt("bugfix", "`npm run test`", ["build check failed (`npm run test`): boom"], today),
+    review,
+  ];
+  for (const p of [...loopPrompts, ...gatePrompts]) {
+    assert.ok(p.includes(line), `missing the date line: ${p.slice(0, 60)}…`);
+    assert.equal(p.split("Today's date is").length - 1, 1, "the date is stated once, in one place");
+  }
+  // The roles that write dated records are told to use it — once, in the shared preamble, so no
+  // role text repeats it — and never to infer one from the repo's own (drifting) dates.
+  for (const p of loopPrompts) {
+    assert.match(
+      oneLine(p),
+      /Today's date is 2031-02-03 \(local time\)\. Stamp it on anything you record now — a new BUGS\.md or PLANS\.md heading's "\(found by … YYYY-MM-DD\)", a Fixed or Done date, a Refused or Needs-review note — and count plan deadlines from it; never infer the date from the repo\./,
+    );
+  }
+  // The verdict contract survives the extra line: still exactly the two advertised forms.
+  assert.equal([...review.matchAll(/VERDICT:/g)].length, 2);
+});
+
+test("an omitted date defaults to todayStamp's local day — the daily budget window's own day", () => {
+  const role = roleById("feature");
+  assert.ok(role);
+  // Stamps read on both sides of the builds, so a run straddling local midnight still passes.
+  const before = todayStamp();
+  const prompts = [
+    buildTickPrompt({ role, initialPrompt: "" }),
+    buildDirectorPrompt("add x", "a project"),
+    buildConflictPrompt("feature", ["a.txt"]),
+    buildBuildFixPrompt("feature", "`npm run test`", ["boom"]),
+    buildReviewPrompt("diff body"),
+  ];
+  const after = todayStamp();
+  for (const p of prompts) {
+    assert.ok(
+      p.includes(`Today's date is ${before} (local time).`) || p.includes(`Today's date is ${after} (local time).`),
+      `no default date line: ${p.slice(0, 60)}…`,
+    );
+  }
 });
 
 // --- User-defined loops (plans/user-defined-loops.md, PLANS.md "User-defined loops 1/3") ---

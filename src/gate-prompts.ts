@@ -1,4 +1,5 @@
 import { shortSha } from "./text.js";
+import { dateLine } from "./prompt.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
@@ -8,11 +9,14 @@ import { shortSha } from "./text.js";
  * verdict constants and detection for parsing a reviewer's VERDICT line — lives in
  * reply-contract.ts. */
 
-/** The prompt for resolving merge conflicts left in a loop's worktree. */
-export function buildConflictPrompt(roleId: string, files: string[]): string {
+/** The prompt for resolving merge conflicts left in a loop's worktree. `today` pins the date
+ * line (prompt.ts's dateLine) for tests; omitted, it is the local day. */
+export function buildConflictPrompt(roleId: string, files: string[], today?: string): string {
   return `You are the "${roleId}" loop of tumwater, an autonomous development harness. A rebase of
 your work branch onto main stopped on conflicts; the conflict markers are sitting in the
 worktree now. Resolve them.
+
+${dateLine(today)}
 
 Conflicted files:
 ${files.map((f) => `- ${f}`).join("\n")}
@@ -33,11 +37,14 @@ Rules for this run:
 /** The prompt for the gate's one bounded build-fix run: the deterministic pre-check failed on
  * the tree about to land, and this run gets one chance to make it green before the landing is
  * rejected — a red main otherwise rejects every queued landing for a failure none of their
- * authors caused. The harness commits whatever the run produces; the run must not. */
-export function buildBuildFixPrompt(roleId: string, check: string, reasons: string[]): string {
+ * authors caused. The harness commits whatever the run produces; the run must not. `today`
+ * pins the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. */
+export function buildBuildFixPrompt(roleId: string, check: string, reasons: string[], today?: string): string {
   return `You are the "${roleId}" loop of tumwater, an autonomous development harness. The
 project's declared check, ${check}, FAILED on the tree that is about to be merged
 to main. Reproduce the failure, fix the source, and make the check pass.
+
+${dateLine(today)}
 
 Failure output (headline first, then the clipped tail):
 ${reasons.map((r) => `- ${r}`).join("\n")}
@@ -57,7 +64,8 @@ Rules for this run:
  * one VERDICT line plus numbered reasons (see parseVerdict in src/review.ts). `verifiedByHarness`
  * names the project's own check the gate's deterministic pre-check already ran green on this
  * exact tree (e.g. "`npm run test` passed"), so the reviewer spends its run on what a green suite
- * cannot show instead of re-running it. The text must contain the literal "VERDICT:" exactly
+ * cannot show instead of re-running it. `today` pins the date line (prompt.ts's dateLine) for
+ * tests; omitted, it is the local day. The text must contain the literal "VERDICT:" exactly
  * twice — the two advertised forms — because a prompt test derives the accepted forms from it. */
 export function buildReviewPrompt(
   diff: string,
@@ -66,12 +74,14 @@ export function buildReviewPrompt(
   principles?: string,
   highFriction?: boolean,
   verifiedByHarness?: string,
+  today?: string,
 ): string {
   const parts = [
     `You are an adversarial code reviewer for tumwater, an autonomous development harness. A
 loop's change is about to be merged to main; you decide whether it may land. You have no context
 from the authoring run — judge only what is in front of you, and assume nothing until you have
 checked it.`,
+    dateLine(today),
   ];
   if (highFriction)
     parts.push(
