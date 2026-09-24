@@ -4,45 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { recoverLeftover, type LeftoverContext } from "../src/leftover.js";
 import { commitTrailer } from "../src/commit-message.js";
+import { readEvents } from "../src/events.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
-import { eventsLogPath, landingRefName } from "../src/paths.js";
+import { enqueueLanding, queuedLandings } from "../src/land-queue.js";
+import { landingRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
-import type { TickResult } from "../src/types.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
-// Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that re-lands a commit
-// a previous tick left unlanded (merge queue 2/5): normally pinned by
-// refs/tumwater/landing/<role>, or unpinned on the branch when a crash landed in the commit→pin
-// window. The lander seam is faked; the ref mechanics are real git. The loop e2e tests
-// (test/loop.test.ts) exercise the full recovery flow end-to-end through a live tick.
+// Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that puts a commit a
+// previous tick left unlanded back on the durable land queue (land-queue speed 3c: the slot is
+// main's one writer): normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch
+// when a crash landed in the commit→pin window. The queue and the ref mechanics are real; no
+// landing runs here. The loop e2e tests (test/loop-3.test.ts) drive the queued entry through
+// the landing slot end-to-end.
 
 const ROLE = "improve";
 
-/** A LeftoverContext whose land records every call (sha + recovered metadata) and returns
- * `landResult`. */
-function makeCtx(
-  root: string,
-  wt: string,
-  landResult: TickResult = "changed",
-): {
-  ctx: LeftoverContext;
-  landed: string[];
-  metas: Array<{ subject?: string; body?: string; highFriction?: boolean }>;
-} {
-  const landed: string[] = [];
-  const metas: Array<{ body?: string; highFriction?: boolean }> = [];
-  const ctx: LeftoverContext = {
-    root,
-    role: ROLE,
-    mainBranch: "main",
-    wt,
-    land: async (sha, meta) => {
-      landed.push(sha);
-      metas.push(meta);
-      return landResult;
-    },
-  };
-  return { ctx, landed, metas };
+function makeCtx(root: string, wt: string): LeftoverContext {
+  return { root, role: ROLE, mainBranch: "main", tick: 7, wt };
 }
 
 /** A repo with one commit NOT contained in main, pinned by the landing ref — the leftover to
@@ -59,29 +38,53 @@ async function pinnedFixture(): Promise<{ root: string; sha: string }> {
   return { root, sha };
 }
 
-test("no landing ref and nothing ahead of main: no-op without calling the lander", async () => {
+test("no landing ref and nothing ahead of main: no-op, nothing queued", async () => {
   const root = makeRepo(); // nothing pinned, branch at main
   const wt = await ensureWorktree(root, ROLE, "main");
-  const { ctx, landed } = makeCtx(root, wt);
 
-  assert.equal(await recoverLeftover(ctx), null);
+  assert.equal(await recoverLeftover(makeCtx(root, wt)), null);
 
-  assert.equal(landed.length, 0, "the lander never runs when there is no pin and nothing ahead");
+  assert.deepEqual(queuedLandings(root), [], "nothing is queued when there is no pin and nothing ahead");
 });
 
-test("a pinned commit not in main is re-landed through the lander", async () => {
+test("a pinned commit not in main is put on the land queue, not landed", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main"); // branch at main: only the pin matters
-  const { ctx, landed, metas } = makeCtx(root, wt);
 
-  assert.equal(await recoverLeftover(ctx), "changed", "the lander's outcome passes through");
-  assert.deepEqual(landed, [sha], "the lander gets exactly the pinned sha");
-  // A routine hand-made commit still names what landed — its whole subject, un-stamped.
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+
+  assert.equal(recovered?.kind, "enqueued");
+  const queued = queuedLandings(root);
+  assert.equal(queued.length, 1, "exactly one entry is queued");
+  // A routine hand-made commit still names what lands — its whole subject, un-stamped — and
+  // carries no recovered body or flag.
   assert.deepEqual(
-    metas,
-    [{ subject: "stranded work", body: undefined, highFriction: undefined }],
-    "a routine commit carries no recovered metadata",
+    { ...queued[0], enqueuedAt: 0 },
+    { role: ROLE, sha, tick: 7, summary: "recovered leftover work from improve: stranded work", enqueuedAt: 0 },
   );
+  assert.ok(!(await isMergedInto(root, sha, "main")), "nothing was written to main");
+  assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin stays for the landing slot");
+  const events = readEvents(root);
+  assert.deepEqual(
+    events.filter((e) => e.type === "land_queued").map((e) => [e.commit, e.summary]),
+    [[sha, "recovered leftover work from improve: stranded work"]],
+    "the enqueue is logged like a fresh tick's",
+  );
+  assert.equal(events.filter((e) => e.type === "merged").length, 0, "no in-tick merge");
+});
+
+test("a role whose landing is already queued is not enqueued twice", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  enqueueLanding(root, { role: ROLE, sha, tick: 3, summary: "the original entry", enqueuedAt: Date.now() });
+
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+
+  assert.equal(recovered?.kind, "already_queued");
+  assert.equal(recovered?.kind === "already_queued" && recovered.entry.summary, "the original entry");
+  assert.equal(queuedLandings(root).length, 1, "the queue still holds one entry for the role");
+  assert.equal(readEvents(root).filter((e) => e.type === "land_queued").length, 0, "no second land_queued");
+  assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin is untouched");
 });
 
 // BUGS.md 2026-09-19: recovery re-landed a high-friction commit without its flag (and its
@@ -111,49 +114,37 @@ test("recovery reads the pinned commit's body and high-friction flag back out of
   sh(root, "git", "checkout", "main");
   await setRef(root, landingRefName(ROLE), sha);
   const wt = await ensureWorktree(root, ROLE, "main");
-  const { ctx, landed, metas } = makeCtx(root, wt);
 
-  assert.equal(await recoverLeftover(ctx), "changed");
-  assert.deepEqual(landed, [sha]);
-  assert.equal(metas[0]?.highFriction, true, "the Friction trailer sets the review flag");
+  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
+  const [entry] = queuedLandings(root);
+  assert.equal(entry?.sha, sha);
+  assert.equal(entry?.highFriction, true, "the Friction trailer sets the review flag");
   assert.equal(
-    metas[0]?.body,
+    entry?.body,
     "WHY: the fix was fiddly\nRISK: touches the landing path\nVERIFIED: npm test, all pass",
     "the commit body rides into the review gate",
   );
   assert.equal(
-    metas[0]?.subject,
-    "slow but worthwhile",
+    entry?.summary,
+    "recovered leftover work from improve: slow but worthwhile",
     "the subject rides into the merged summary with the harness stamp stripped",
   );
 });
 
-test("a stale ref already contained in main is deleted without a landing run", async () => {
+test("a stale ref already contained in main is deleted without queuing anything", async () => {
   const { root, sha } = await pinnedFixture();
   // Simulate the crash window: the work landed on main but the ref deletion never ran.
   sh(root, "git", "merge", "--ff-only", "stray");
   assert.ok(await isMergedInto(root, sha, "main"), "fixture sanity: the pin is now contained in main");
   const wt = await ensureWorktree(root, ROLE, "main");
-  const { ctx, landed } = makeCtx(root, wt);
 
-  assert.equal(await recoverLeftover(ctx), null);
+  assert.equal(await recoverLeftover(makeCtx(root, wt)), null);
 
-  assert.equal(landed.length, 0, "contained work is never re-landed");
+  assert.deepEqual(queuedLandings(root), [], "contained work is never re-queued");
   assert.equal(await refSha(root, landingRefName(ROLE)), null, "the stale pin was cleaned up");
 });
 
-test("a non-terminal landing outcome passes through unchanged (no throw)", async () => {
-  const { root } = await pinnedFixture();
-  // merge_conflict keeps the ref for next-tick recovery — that bookkeeping is the lander's;
-  // recoverLeftover must neither swallow it nor treat it as an error.
-  const wt = await ensureWorktree(root, ROLE, "main");
-  const { ctx, landed } = makeCtx(root, wt, "merge_conflict");
-
-  assert.equal(await recoverLeftover(ctx), "merge_conflict", "the caller sees the abort/conflict to act on");
-  assert.equal(landed.length, 1);
-});
-
-test("an unpinned commit ahead of main (crash in the commit→pin window) is adopted and recovered from the branch tip", async () => {
+test("an unpinned commit ahead of main (crash in the commit→pin window) is adopted and queued from the branch tip", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.appendFileSync(path.join(wt, "seed.txt"), "unpinned work\n");
@@ -161,17 +152,19 @@ test("an unpinned commit ahead of main (crash in the commit→pin window) is ado
   sh(wt, "git", "commit", "-m", "committed but the pin write never happened");
   const tip = sh(wt, "git", "rev-parse", "HEAD").trim();
   assert.equal(await refSha(root, landingRefName(ROLE)), null, "fixture sanity: no pin exists");
-  const { ctx, landed } = makeCtx(root, wt);
 
-  assert.equal(await recoverLeftover(ctx), "changed");
-  assert.deepEqual(landed, [tip], "the branch tip is the sha to re-land when no pin survived");
-  // The unpinned commit was adopted into the pin scheme: an under-cap review failure would keep
-  // this ref for the strike cap's retry exactly as for a normally pinned one. (The fake lander
-  // does not delete it, so it is still here.)
+  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
+  assert.deepEqual(
+    queuedLandings(root).map((e) => e.sha),
+    [tip],
+    "the branch tip is the sha to queue when no pin survived",
+  );
+  // The unpinned commit was adopted into the pin scheme: an under-cap review failure keeps this
+  // ref for the strike cap's retry exactly as for a normally pinned one.
   assert.equal(await refSha(root, landingRefName(ROLE)), tip, "the fallback adopts the pin");
 });
 
-test("a failed pin adoption is logged, and the landing proceeds with the branch tip anyway", async () => {
+test("a failed pin adoption is logged and queues nothing: the commit stays on the branch", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.appendFileSync(path.join(wt, "seed.txt"), "unpinned work\n");
@@ -183,18 +176,14 @@ test("a failed pin adoption is logged, and the landing proceeds with the branch 
   // write. Recursive: git needs write permission on the specific ref directory it locks.
   sh(root, "chmod", "-R", "a-w", ".git");
   try {
-    const { ctx, landed } = makeCtx(root, wt);
+    const recovered = await recoverLeftover(makeCtx(root, wt));
 
-    assert.equal(await recoverLeftover(ctx), "changed", "a failed adoption never stops the landing");
-    assert.deepEqual(landed, [tip], "the lander still gets the branch tip");
+    assert.deepEqual(recovered, { kind: "unpinned", sha: tip }, "the caller learns the commit is still unpinned");
+    assert.deepEqual(queuedLandings(root), [], "a landing without its pin is never queued");
     assert.equal(await refSha(root, landingRefName(ROLE)), null, "no pin was created");
+    assert.equal(sh(wt, "git", "rev-parse", "HEAD").trim(), tip, "the commit is still on the branch");
     // The failed adoption is recorded for the transcript, not swallowed.
-    const events = fs
-      .readFileSync(eventsLogPath(root), "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => JSON.parse(l));
-    const warn = events.find((e) => e.type === "warning");
+    const warn = readEvents(root).find((e) => e.type === "warning");
     assert.ok(warn, "the adoption failure is logged as a warning event");
     assert.match(String(warn.message), /failed to adopt unpinned leftover/);
     assert.equal(warn.loop, ROLE);
@@ -203,13 +192,12 @@ test("a failed pin adoption is logged, and the landing proceeds with the branch 
   }
 });
 
-test("an unreadable ref read and an unreadable worktree both read as no leftover: no lander call", async () => {
+test("an unreadable ref read and an unreadable worktree both read as no leftover: nothing queued", async () => {
   const root = tmpdir(); // not a git repo at all — every git command in it fails
   const bogusWt = tmpdir();
-  const { ctx, landed } = makeCtx(root, bogusWt);
 
-  assert.equal(await recoverLeftover(ctx), null, "a failed ref read never reaches the lander");
-  assert.equal(landed.length, 0);
+  assert.equal(await recoverLeftover(makeCtx(root, bogusWt)), null, "a failed ref read never queues anything");
+  assert.deepEqual(queuedLandings(root), []);
 });
 
 test("deleteRef is idempotent (terminal-outcome cleanup can run twice)", async () => {

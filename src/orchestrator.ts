@@ -798,12 +798,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               // A role tick that starts while a fallback is engaged runs on it (the config and
               // the breaker are updated in the same synchronous poll step), so its outcome is
               // the breaker's evidence. Read at tick start, not at admission: a tick parked in
-              // the semaphore starts on whatever the gate says by then.
+              // the semaphore starts on whatever the gate says by then. A tick that ended on
+              // leftover recovery ran no model, so it folds as `skipped` — no evidence either way.
               const ranOn = runner.role === DIRECTOR_ROLE ? null : fallbackBreaker;
               const outcome = await runner.tick();
               if (ranOn?.pair) {
                 const at = Date.now();
-                fallbackBreaker = recordFallbackTick(fallbackBreaker, ranOn, outcome.result, probe, at, breakerPolicy);
+                const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;
+                fallbackBreaker = recordFallbackTick(fallbackBreaker, ranOn, evidence, probe, at, breakerPolicy);
               }
               return outcome;
             },

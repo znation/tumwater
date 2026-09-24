@@ -37,13 +37,17 @@ export interface TickOutcome {
    * survives in the pi session, which pi compacted at end of run — so the loop resumes
    * it promptly instead of backing off as if the role were idle. */
   cutOff?: boolean;
-  /** A leftover-recovery landing failed and kept the pin for another attempt (review_error,
-   * merge_conflict, merge_blocked): the tick's own authoring run may be healthy, but the
-   * persistent landing failure must still feed the error streak so a dead reviewer backend
-   * raises the alarm instead of resetting it every tick (BUGS.md 2026-09-21). Carries the
-   * failure detail for the warning: `lastError` is deliberately cleared off the tick so the
-   * failure never rides its `tick_end` (the sibling mislabel fix). */
+  /** The tick's leftover recovery re-queued a pin whose last landing failed and kept it for
+   * another attempt (review_error, merge_conflict, merge_blocked): the tick itself ends
+   * `queued`, but the persistent landing failure must still feed the error streak so a dead
+   * reviewer backend raises the alarm instead of resetting it every tick (BUGS.md 2026-09-21).
+   * Carries the failure detail for the warning: `lastError` is deliberately cleared off the tick
+   * so the failure never rides its `tick_end` (the sibling mislabel fix). */
   recoveryFailure?: string;
+  /** The tick ended on leftover recovery (src/leftover.ts) — the leftover went on the land queue
+   * (or already was there, or could not be pinned) — without an authoring run. No model ran, so
+   * the orchestrator's fallback breaker takes the tick as no evidence about the backend. */
+  recoveredLeftover?: boolean;
 }
 
 /** Persisted per-loop state in .tumwater/state/<role>.json. */

@@ -1182,7 +1182,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
 // happily removes an EMPTY directory at a ref's path before creating the file, but not a
 // non-empty one — the stray blocker file makes `git update-ref` fail, like an un-writable
 // .git would. Tick 2's leftover recovery then adopts the unpinned tip
-// into the pin scheme and re-lands it through the same review gate — invariant 1 must hold
+// into the pin scheme and queues it for the same review gate — invariant 1 must hold
 // whether or not the pin survived (plans/merge-queue.md).
 test("a failed pin leaves the commit on the branch; the next tick recovers and lands it", async () => {
   const repo = await initializedRepo();
@@ -1227,8 +1227,9 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     fs.rmSync(blockedRef, { recursive: true, force: true });
   }
 
-  // Unblock done (finally); tick 2's authoring run finds nothing to do, but the leftover
-  // recovery re-lands the unpinned commit first — through the same gate, with the approve.
+  // Unblock done (finally); tick 2's leftover recovery adopts the unpinned commit and puts it on
+  // the land queue — the tick ends there, like a fresh changed tick — and the landing slot lands
+  // it through the same gate, with the approve.
   const restore2 = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
@@ -1238,15 +1239,16 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "no_change", "the authoring run did nothing; the recovery did the work");
+    assert.equal(outcome.result, "queued", "recovery queued the unpinned commit; no authoring run");
+    assert.equal(fs.existsSync(path.join(repo, "hello.txt")), false, "nothing lands inside the tick");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the recovered commit landed on main");
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve").trim(), "0", "the branch is back at main");
     assert.equal(await refSha(repo, landingRefName("improve")), null, "the landed pin is deleted");
     assert.equal(queueDepth(repo), 0);
     // Like the pinned-recovery case, the landing is recorded as a merged event (what the
-    // usage report counts) rather than via the tick outcome — tick 2's own authoring run
-    // found nothing to do.
+    // usage report counts), from the landing slot rather than the tick.
     const merged = readEvents(repo).filter((e) => e.type === "merged");
     assert.equal(merged.length, 1);
     // The merged summary names what landed — the recovered commit's own subject — not

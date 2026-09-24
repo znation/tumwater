@@ -1,48 +1,66 @@
 import { aheadOfMain, commitMessage, deleteRef, headOf, isMergedInto, refSha, setRef } from "./git.js";
 import { parseCommitMetadata, type CommitMetadata } from "./commit-message.js";
-import { warnEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events.js";
+import { enqueueLanding, queuedLandings } from "./land-queue.js";
 import { landingRefName } from "./paths.js";
 import { shortSha } from "./text.js";
-import type { TickResult } from "./types.js";
+import type { LandingEntry } from "./types.js";
 
 /** Salvaging a commit a previous tick left unlanded (plans/merge-queue.md). Since merge queue
  * 2/5 the role's branch is reset to main the moment its commit is pinned, so the leftover
- * normally lives in `refs/tumwater/landing/<role>`: recovery re-lands that sha through the SAME
- * lander a fresh tick uses (same review gate, same strike cap), so no crash or abort path
- * smuggles unreviewed work into main (invariant 1). A commit with NO pin — a crash in the window
- * between the tick's commit and its pin write, or a failed pin write itself — still sits on the
- * branch ahead of main; recovery adopts that tip into the pin scheme and re-lands it, so
- * invariant 1 holds whether or not the pin survived. Split out of loop.ts — which keeps the
- * tick lifecycle around it — because this is a self-contained concern with its own entry
- * condition and git surface; the only things it borrows from the loop are identity, the
- * worktree (for the no-pin fallback), and the lander wiring so a recovery run folds into the
- * same tick counters as an authoring run. */
+ * normally lives in `refs/tumwater/landing/<role>`: recovery puts that sha back on the durable
+ * land queue, so it lands through the SAME slot, gate, and strike cap a fresh tick's change
+ * does — no crash or abort path smuggles unreviewed work into main (invariant 1), and main keeps
+ * exactly one writer, the orchestrator's landing slot (an in-tick recovery landing used to race
+ * the slot's batches into `merge_blocked`). A commit with NO pin — a crash in the window between
+ * the tick's commit and its pin write, or a failed pin write itself — still sits on the branch
+ * ahead of main; recovery adopts that tip into the pin scheme and queues it, so invariant 1
+ * holds whether or not the pin survived. Split out of loop.ts — which keeps the tick lifecycle
+ * around it — because this is a self-contained concern with its own entry condition and git
+ * surface; the only things it borrows from the loop are identity, the tick number, and the
+ * worktree (for the no-pin fallback). */
 
-/** What recoverLeftover needs from its owning loop: identity, the role's worktree (needed only
- * for the no-pin ahead-of-main fallback), and the lander closure that re-lands a sha through the
- * full gate + landing flow (loop.ts wires it to landChange with the "-recovery" session suffix). */
+/** What recoverLeftover needs from its owning loop: identity, the current tick number, and the
+ * role's worktree (needed only for the no-pin ahead-of-main fallback). */
 export interface LeftoverContext {
   root: string;
   role: string;
   mainBranch: string;
+  /** The current tick number — the queued landing's review and conflict-resolution sessions
+   * are named by it, exactly as a fresh tick's are. */
+  tick: number;
   /** The role's worktree — read for the no-pin fallback only. */
   wt: string;
-  /** Land `sha` through the shared lander (review gate, rebase, ff-merge). `meta` carries
-   * the recovered commit's subject + body + high-friction flag, read back from its message
-   * because the authoring run that set them is gone. */
-  land(sha: string, meta: CommitMetadata): Promise<TickResult>;
 }
 
-/** Re-land a commit a previous tick left unlanded. Entry condition: the landing ref exists and
+/** What recovery did with a leftover, for the tick to end on:
+ * - `enqueued`: the pin went onto the land queue and `land_queued` was logged — the tick ends
+ *   `queued`, exactly like a fresh changed tick, and the land-queue interlock holds the role
+ *   until the slot has landed it;
+ * - `already_queued`: the role already has a landing on the queue (the interlock normally keeps
+ *   such a role from ticking at all) — nothing is enqueued twice and no ref is touched;
+ * - `unpinned`: the commit sits on the branch ahead of main and adopting it into the landing
+ *   ref failed — a landing without a pin loses the ref lifecycle the queue depends on, so the
+ *   commit stays on the branch for the next tick, like a fresh tick's failed pin. */
+export type LeftoverRecovery =
+  | { kind: "enqueued"; entry: LandingEntry }
+  | { kind: "already_queued"; entry: LandingEntry }
+  | { kind: "unpinned"; sha: string };
+
+/** Queue a commit a previous tick left unlanded. Entry condition: the landing ref exists and
  * its sha is not yet contained in main — or, with no pin at all, the role's branch is ahead of
  * main (crash between the commit and the pin). A present-but-contained ref is stale — a crash
- * between the ff-merge and the ref deletion — and is deleted without any landing run. Returns
- * null when there was nothing to salvage, otherwise the lander's outcome: the caller discards
- * the pin on a user-aborted recovery (a deliberate stop must not be resurrected by the next
- * tick). Whatever lands or fails, nothing is left on the role's branch — the commit lives in
- * its ref (kept by landChange on every non-terminal outcome) or, unpinned, on the branch until
- * it lands. Never throws for a failed landing — only git-level errors propagate. */
-export async function recoverLeftover(ctx: LeftoverContext): Promise<TickResult | null> {
+ * between the ff-merge and the ref deletion — and is deleted without queuing anything. Returns
+ * null when there was nothing to salvage. The queued entry carries the pin's sha plus the
+ * summary, body, and high-friction flag read back from its commit message, because the
+ * authoring run that set them is gone; from there the landing slot keeps or deletes the ref per
+ * the lander's usual policy. An unreadable ref or worktree reads as no leftover — only git-level
+ * errors in the stale-pin cleanup propagate. */
+export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRecovery | null> {
+  // One landing ref per role, so at most one outstanding landing per role: a second entry beside
+  // one the slot has yet to finish would share — and fight over — the same ref.
+  const queued = queuedLandings(ctx.root).find((e) => e.role === ctx.role);
+  if (queued) return { kind: "already_queued", entry: queued };
   const ref = landingRefName(ctx.role);
   let sha = await refSha(ctx.root, ref).catch(() => null);
   if (sha) {
@@ -64,13 +82,31 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<TickResult 
     // Adopt the unpinned commit into the pin scheme so every downstream outcome — kept on an
     // under-cap review failure (the strike cap's retry), deleted on reject/land/discard,
     // discarded on a user abort — behaves exactly as for a normally pinned one. A failed
-    // adoption is logged and harmless: the landing proceeds anyway, with the branch still
-    // holding the commit until the caller's post-recovery reset.
+    // adoption is logged and leaves the commit on the branch (see `unpinned`).
     if (!(await setRef(ctx.root, ref, sha))) {
       warnEvent(ctx.root, ctx.role, `failed to adopt unpinned leftover ${shortSha(sha)} into its landing ref`);
+      return { kind: "unpinned", sha };
     }
   }
-  return await ctx.land(sha, await recoveredMetadata(ctx.root, sha));
+  const meta = await recoveredMetadata(ctx.root, sha);
+  const entry: LandingEntry = {
+    role: ctx.role,
+    sha,
+    tick: ctx.tick,
+    // Name what lands, not merely that a recovery happened: the recovered commit's own subject
+    // rides the landing, so the failure digest's "Landed in the window" can correlate a
+    // recovered merge with the work it names (BUGS.md 2026-09-21). Unreadable messages fall
+    // back to the bare provenance label.
+    summary: meta.subject
+      ? `recovered leftover work from ${ctx.role}: ${meta.subject}`
+      : `recovered leftover work from ${ctx.role}`,
+    body: meta.body,
+    highFriction: meta.highFriction || undefined,
+    enqueuedAt: Date.now(),
+  };
+  enqueueLanding(ctx.root, entry);
+  logEvent(ctx.root, { loop: ctx.role, type: "land_queued", commit: sha, summary: entry.summary });
+  return { kind: "enqueued", entry };
 }
 
 /** The review-gate metadata a pinned leftover commit carries in its own message: its

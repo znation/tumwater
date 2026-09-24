@@ -91,7 +91,9 @@ discards a role's in-flight landing.
 Stopping the fleet mid-tick loses nothing: on the next `tumwater run`, the loop resumes its pi
 session and uncommitted edits. Crashes recover the same way, and so do runs the watchdog kills for
 going quiet, up to three in a row. An interrupted landing re-lands through the gate, and an
-interrupted director prompt goes back to its inbox.
+interrupted director prompt goes back to its inbox. A commit left unlanded (a landing error that
+kept it, or a crash before it was queued) goes back on the land queue at the role's next tick,
+which ends there instead of authoring, so the single lander stays main's only writer.
 
 ## Self-redeploy
 

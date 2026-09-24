@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
 import { customRole, DIRECTOR_ROLE, roleById } from "./roles.js";
-import { branchHead, commitAll, deleteRef, isDirty, setRef } from "./git.js";
+import { branchHead, commitAll, isDirty, setRef } from "./git.js";
 import { changedFiles } from "./git-diff.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events.js";
@@ -27,12 +27,12 @@ import { briefFile, readInitialPrompt } from "./readme.js";
 import { telemetryDigest } from "./failure-report.js";
 import { configForRole } from "./config.js";
 import { applyConfigRequest } from "./config-write.js";
-import { RETRIABLE_LANDING_RESULTS, landChange, type LandRequest } from "./lander.js";
+import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
 import { enqueueLanding } from "./land-queue.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
 import { recordDailyCost } from "./budget.js";
-import { recoverLeftover } from "./leftover.js";
+import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { mergeToMain } from "./merge.js";
@@ -82,10 +82,10 @@ export class LoopRunner {
    * to main, no director-prompt requeue, "user_aborted" result with normal backoff. Cleared
    * at the next tick start so a stale request can never leak into a later tick. */
   private userAborted = false;
-  /** This tick's leftover-recovery landing failure, if any (a retriable lander outcome that
-   * kept the pin): captured in runTick and attached to the returned TickOutcome so
-   * applyTickOutcome can feed it into the error streak even when the tick's own authoring run
-   * is healthy (BUGS.md 2026-09-21). Reset at every tick start. */
+  /** The landing failure this tick's leftover recovery is retrying, if any (a retriable lander
+   * outcome that kept the pin, which recovery re-queued): set in finishRecoveryTick and
+   * attached to the returned TickOutcome so applyTickOutcome can feed it into the error streak
+   * even though the tick itself ends `queued` (BUGS.md 2026-09-21). Reset at every tick start. */
   private recoveryFailure?: string;
   /** This loop's pi-run plumbing (src/loop-pi.ts): shared per-run wiring, the transient
    * retry policy, and the SUMMARY follow-up. Host accessors are read live at every call, so
@@ -317,25 +317,42 @@ export class LoopRunner {
     return true;
   }
 
-  /** Review and land a pinned commit in this role's lander worktree (src/lander.ts) with this
-   * loop's shared wiring: the reviewer run folds via foldUsage, merge.ts's conflict resolver
-   * goes through runRolePi (which folds internally), and aborts ride on the tick's signal.
-   * Since merge queue 3/5 this serves the leftover-recovery path only — a fresh tick's change
-   * is ENQUEUED for the orchestrator's landing slot instead of landed inside the tick. Returns
-   * the same TickResult values a tick returns. */
-  private async land(req: LandRequest): Promise<TickResult> {
-    return landChange(
-      {
-        root: this.root,
-        mainBranch: this.mainBranch,
-        config: this.config,
-        state: this.state,
-        runPi: (w, prompt, sessionName) => this.pi.runRolePi(w, prompt, sessionName),
-        foldUsage: (run) => this.foldUsage(run),
-        signal: () => this.runSignal(),
-      },
-      req,
-    );
+  /** End a tick whose leftover recovery found work to salvage (src/leftover.ts) without an
+   * authoring run — the leftover owns the role's one landing ref until its landing resolves. A
+   * director tick's dequeued prompt goes back to the inbox, since nothing ran it. A pin put on
+   * the land queue ends the tick `queued` exactly like a fresh changed tick (the land-queue
+   * interlock then holds the role until the slot lands it) and frees the worktree, the pin now
+   * holding the commit. When the pin is left over from a landing that failed non-terminally
+   * (`priorLandingFailure`), re-queuing it is a retry of a PERSISTENT failure the `queued` result
+   * cannot express, so it rides the outcome's recoveryFailure into the error streak and the
+   * warning that names the stuck gate (BUGS.md 2026-09-21). A role whose landing is still queued
+   * ends `queued` on that entry — nothing enqueued twice, nothing reset. A leftover that could
+   * not be pinned stays on the branch and the tick fails like a fresh tick's failed pin. Every
+   * arm is `recoveredLeftover`: no model ran, so the tick is no evidence about the backend. */
+  private async finishRecoveryTick(
+    recovered: LeftoverRecovery,
+    userPrompt: string | null,
+    wt: string,
+    priorLandingFailure: string | undefined,
+  ): Promise<TickOutcome> {
+    this.pendingUserPrompt = null;
+    this.requeueUnfulfilledPrompt(userPrompt);
+    if (recovered.kind === "unpinned") {
+      this.state.lastError = `failed to pin leftover ${shortSha(recovered.sha)} by its landing ref; left for next-tick recovery`;
+      return { result: "error", summary: this.state.lastError, recoveredLeftover: true };
+    }
+    const { entry } = recovered;
+    if (recovered.kind === "enqueued") {
+      this.recoveryFailure = priorLandingFailure;
+      await resetWorktreeToMain(wt, this.mainBranch);
+    }
+    return {
+      result: "queued",
+      summary: entry.summary,
+      commit: entry.sha,
+      highFriction: entry.highFriction,
+      recoveredLeftover: true,
+    };
   }
 
   /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost / turns). Every
@@ -424,7 +441,7 @@ export class LoopRunner {
       outcome = { result: "error" };
       s.lastError = errorMessage(err);
     }
-    // A leftover-recovery landing failure is not the tick's own result, so it rides the
+    // A re-queued leftover's landing failure is not the tick's own result, so it rides the
     // outcome separately: applyTickOutcome feeds it into the error streak, and the warning
     // below names it — even though runTick cleared `lastError` so it never latched onto
     // `tick_end` (BUGS.md 2026-09-21).
@@ -480,6 +497,14 @@ export class LoopRunner {
 
   private async runTick(): Promise<TickOutcome> {
     const s = this.state;
+    // The last landing's failure, read before the clear below: a landing that failed
+    // non-terminally kept its pin (the lander's own vocabulary — review_error, merge_conflict,
+    // merge_blocked — with the detail it wrote into `lastError`), and when this tick's recovery
+    // re-queues that pin, the failure must still feed the error streak (finishRecoveryTick).
+    const priorLandingFailure =
+      s.lastResult !== undefined && RETRIABLE_LANDING_RESULTS.has(s.lastResult)
+        ? (s.lastError ?? `landing failed: ${s.lastResult}`)
+        : undefined;
     s.lastError = undefined;
 
     // A tick interrupted by a harness shutdown left its pi session and its worktree's
@@ -517,56 +542,21 @@ export class LoopRunner {
       await abortSync(wt);
       logEvent(this.root, { loop: this.role, type: "resume", cause: resumeCause });
     } else {
-      // Salvage a commit a previous tick left unlanded (src/leftover.ts): it re-lands through
-      // the same lander as fresh ticks, so no crash or abort path smuggles unreviewed work into
-      // main. Whatever recovery does, nothing is left on this branch — the leftover lives in
-      // its landing ref + _land-<role> (or, unpinned, on the branch until it lands) — so the
-      // reset below always runs and the red-main gate sees pristine main.
+      // Salvage a commit a previous tick left unlanded (src/leftover.ts): recovery puts it back
+      // on the land queue, so it lands through the orchestrator's single landing slot — the same
+      // gate as a fresh tick's change, and main keeps exactly one writer (an in-tick recovery
+      // landing raced the slot's batches into `merge_blocked`). A salvaged leftover ENDS the
+      // tick: the role holds one landing ref, and the leftover owns it until its landing
+      // resolves. With nothing to salvage the branch holds nothing either, so the reset below
+      // leaves pristine main for the red-main gate.
       const recovered = await recoverLeftover({
         root: this.root,
         role: this.role,
         mainBranch: this.mainBranch,
+        tick: s.ticks,
         wt,
-        land: (sha, meta) =>
-          this.land({
-            role: this.role,
-            sha,
-            tick: s.ticks,
-            // Name what landed, not merely that a recovery happened: the recovered commit's
-            // own subject rides the landing, so the failure digest's "Landed in the window"
-            // can correlate a recovered merge with the work it names (BUGS.md 2026-09-21).
-            // Unreadable messages fall back to the bare provenance label.
-            summary: meta.subject
-              ? `recovered leftover work from ${this.role}: ${meta.subject}`
-              : `recovered leftover work from ${this.role}`,
-            body: meta.body,
-            highFriction: meta.highFriction,
-            sessionSuffix: "-recovery",
-          }),
       });
-      // A failed recovery landing keeps the pin for another attempt, and a run of them is a
-      // PERSISTENT failure the tick's own result cannot express (its authoring run may be fine):
-      // capture it here, before the `lastError` clear below, so applyTickOutcome can feed the
-      // error streak and one warning names the stuck gate (BUGS.md 2026-09-21). The set is the
-      // lander's own non-terminal failure vocabulary — review_error, merge_conflict, merge_blocked.
-      this.recoveryFailure =
-        recovered !== null && RETRIABLE_LANDING_RESULTS.has(recovered)
-          ? (s.lastError ?? `landing failed: ${recovered}`)
-          : undefined;
-      if (recovered === "aborted" && this.userAborted) {
-        // A deliberate stop during recovery discards the pinned work — exactly like the tick's
-        // own landing path. Keeping it would let next-tick recovery resurrect what the operator
-        // explicitly killed (`tumwater abort`: "work discarded"). Shutdowns keep it: fail-closed
-        // re-review is the point.
-        await deleteRef(this.root, landingRefName(this.role));
-      }
-      // A recovery landing's failure belongs to the LANDING, not to this tick: the lander wrote
-      // it into the shared `state.lastError` (src/lander.ts), but this tick's own authoring run
-      // may well succeed, and `tick_end` reports `lastError` whatever the result. Clear it so a
-      // `queued`/`no_change` tick never wears the recovery gate's `review failed: …` — the
-      // landing's own `review_failed`/`land_failed` events already carry the reason
-      // (BUGS.md 2026-09-21).
-      s.lastError = undefined;
+      if (recovered) return this.finishRecoveryTick(recovered, userPrompt, wt, priorLandingFailure);
       await resetWorktreeToMain(wt, this.mainBranch);
       // Red-main baseline gate (src/main-red.ts): the worktree is pristine main right now —
       // verify main's own suite before spending an authoring run on top of it. Only roles whose

@@ -15,7 +15,7 @@ import type { LoopState, PiRunResult, TickResult } from "./types.js";
  * path uses — so no diff reaches main unreviewed (invariant 1) and nothing is rebased inside a
  * role worktree any more. Since merge queue 3/5 the fresh-tick path calls this from the
  * ORCHESTRATOR's landing slot (its drain of the durable land queue, outside the author
- * semaphore); the leftover-recovery path still calls it inside the tick. This is harness code,
+ * semaphore), and leftover recovery re-queues its pin onto that same slot. This is harness code,
  * never a role: the only model runs it starts are the reviewer and
  * merge.ts's conflict resolver. */
 

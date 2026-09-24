@@ -488,8 +488,8 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
   // now routes through): approve, so the leftover may land. Phase 1 (tick 1): edit
   // seed.txt on the branch AND advance main with a conflicting edit. Phase 2 (tick 1's
   // resolution run): leave the markers — the merge fails and the tick's commit is left
-  // stranded on the branch. Phase 3 (tick 2's recovery run): resolve them this time.
-  // Phase 4 (tick 2's own tick): nothing to do.
+  // stranded on the branch. Phase 3 (the re-queued landing's resolution run): resolve them
+  // this time.
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve\n1. checked the diff; it holds")}'; exit 0;; esac; done`,
@@ -519,8 +519,10 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
     const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
     assert.ok(pinned.length === 40, "the failed merge's commit is pinned for recovery");
 
-    const second = await runner.tick();
-    assert.equal(second.result, "no_change", "tick 2 itself found nothing to do");
+    // Tick 2's recovery puts the pin back on the land queue and ends the tick there; the
+    // landing slot then lands it.
+    assert.equal((await runner.tick()).result, "queued", "tick 2 re-queued the leftover instead of authoring");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     // The stranded work landed on main via recovery.
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
     const merged = readEvents(repo).filter((e) => e.type === "merged");
@@ -550,17 +552,42 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
   sh(repo, "git", "checkout", "main");
   await setRef(repo, landingRefName("improve"), sha);
 
-  // The next tick's recovery re-lands the pin through the full gate: approve → land.
+  // The next tick's recovery puts the pin on the land queue; the landing slot re-lands it
+  // through the full gate: approve → land. The authoring branch would make a change, so a tick
+  // that authored instead of ending on the recovery would show up as a second queued entry.
+  const authored = path.join(tmpdir(), "authored");
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `touch "${authored}"`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: new work")}'`,
+      `echo new > new.txt`,
     ].join("\n"),
   );
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
-    assert.equal((await runner.tick()).result, "no_change", "the tick's own authoring run found nothing to do");
+    const outcome = await runner.tick();
 
+    // Land-queue speed 3c — main has one writer: the tick QUEUES the leftover like a fresh
+    // changed tick and never lands it itself.
+    assert.equal(outcome.result, "queued");
+    assert.equal(outcome.commit, sha);
+    assert.equal(outcome.summary, "recovered leftover work from improve: interrupted tick's commit");
+    assert.ok(!fs.existsSync(authored), "the recovery tick ran no authoring pass");
+    assert.notEqual(sh(repo, "git", "rev-parse", "main").trim(), sha, "nothing landed inside the tick");
+    const tickEvents = readEvents(repo);
+    assert.deepEqual(
+      tickEvents.filter((e) => e.type === "land_queued").map((e) => e.commit),
+      [sha],
+      "the tick logged exactly one land_queued, for the pin",
+    );
+    assert.equal(tickEvents.filter((e) => e.type === "merged").length, 0, "no in-tick merged");
+    assert.equal(queueDepth(repo), 1);
+    assert.equal(headLanding(repo)?.entry.sha, sha);
+    // The interlock state the orchestrator reads: the queued summary waits for the landing.
+    assert.equal(runner.state.queuedSummary?.sha, sha);
+
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     // The interrupted work landed on main via recovery — reviewed, not smuggled in.
     assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
     assert.ok(fs.existsSync(path.join(repo, "crash.txt")), "the recovered file is on main");
@@ -623,7 +650,10 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
   );
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
-    assert.equal((await runner.tick()).result, "no_change", "the tick's own authoring run found nothing to do");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued", "recovery queued the pin");
+    assert.equal(outcome.highFriction, true, "the queued outcome keeps the recovered flag");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
 
     // The re-review carried both the flag and the author's reasoning, reconstructed from the pin.
     const prompt = fs.readFileSync(reviewArgs, "utf8");
@@ -635,50 +665,30 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
   }
 });
 
-// The user-abort sibling of the crash-pin test above: a `tumwater abort` that lands in the
-// leftover-recovery window (the pin exists BEFORE the tick starts) must discard the pinned work
-// exactly like an abort in the tick's own landing path — keeping it would let next-tick recovery
-// resurrect what the operator explicitly killed (`abort`: "work discarded").
-test("a user-abort during leftover recovery discards the pinned work too", async () => {
+// A director tick dequeues its user prompt before recovery runs; a tick that ends on the
+// recovery never ran that prompt, so it must go back to the inbox — the same policy as every
+// other unfulfilled director outcome. (A user abort of the queued recovery landing is the
+// landing slot's to handle now: landing-drain.test.ts pins that it discards the pin.)
+test("a director tick that ends on leftover recovery puts its user prompt back", async () => {
   const repo = await initializedRepo();
-  // Simulate the crash: a commit not contained in main, pinned by the landing ref, with the
-  // role branch back at main — exactly what an interrupted tick leaves behind.
   sh(repo, "git", "checkout", "--detach");
   fs.writeFileSync(path.join(repo, "crash.txt"), "interrupted work\n");
   sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "interrupted tick's commit");
+  sh(repo, "git", "commit", "-m", "interrupted director commit");
   const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
   sh(repo, "git", "checkout", "main");
-  await setRef(repo, landingRefName("improve"), sha);
-
-  // The recovery review (its prompt contains VERDICT): hang until the abort kills it. The tick's
-  // own authoring run then starts with an already-aborted signal and returns aborted at once.
-  const restore = fakePi(
-    [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-    ].join("\n"),
-  );
+  await setRef(repo, landingRefName("director"), sha);
+  const ran = path.join(tmpdir(), "ran");
+  const restore = fakePi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
-    const tick = runner.tick();
-    // Abort only once recovery has checked the pin out into its lander worktree: an earlier
-    // abort would take the same path, but this pins the window under test.
-    await waitForFile(path.join(repo, ".tumwater/worktrees/_land-improve"));
-    runner.abortTick();
-    const outcome = await tick;
-    assert.equal(outcome.result, "user_aborted", "a mid-recovery user abort is an abort, not a failed review");
-
-    // A deliberate stop discards the pinned work: nothing landed on main and the pin is gone —
-    // next-tick recovery must NOT resurrect it.
-    assert.ok(!fs.existsSync(path.join(repo, "crash.txt")), "nothing landed on main");
-    let refGone = false;
-    try {
-      sh(repo, "git", "rev-parse", "--verify", landingRefName("improve"));
-    } catch {
-      refGone = true; // a missing ref makes rev-parse --verify exit nonzero
-    }
-    assert.ok(refGone, "the pinned commit was discarded with the abort");
+    enqueuePrompt(repo, "important request");
+    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued", "the director's leftover went on the land queue");
+    assert.equal(headLanding(repo)?.entry.sha, sha);
+    assert.ok(!fs.existsSync(ran), "no pi run: the prompt was never executed");
+    assert.equal(inboxSize(repo), 1, "the prompt is back in the inbox");
+    assert.equal(dequeuePrompt(repo), "important request");
   } finally {
     restore();
   }
@@ -706,7 +716,10 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
   );
   try {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
-    assert.equal((await runner.tick()).result, "no_change", "the tick's own authoring run found nothing to do");
+    assert.equal((await runner.tick()).result, "queued", "recovery adopted and queued the tip");
+    // The role worktree is freed as soon as the adopted pin holds the commit.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
 
     // The unpinned work landed on main via recovery — reviewed, not smuggled in.
     assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
@@ -754,10 +767,11 @@ test("an unmergeable leftover is retried on the next tick and keeps its landing 
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
 
-    // Tick 2: recovery re-lands the pin through the same gate (the early approved return — no
-    // reviewer run — since the first landing's gate already signed off on this HEAD) and hits
-    // the same unresolvable conflict; the tick's own authoring run then finds nothing to do.
-    assert.equal((await runner.tick()).result, "no_change");
+    // Tick 2: recovery re-queues the pin, and its landing goes through the same gate (the early
+    // approved return — no reviewer run — since the first landing's gate already signed off on
+    // this HEAD) and hits the same unresolvable conflict.
+    assert.equal((await runner.tick()).result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
 
     // merge_conflict is non-terminal: a fresh-context retry may resolve what two consecutive
     // attempts could not (a bounded attempt count lands with merge queue 3/5; review failures
@@ -780,7 +794,6 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
   // leaves an untracked stray file in the worktree it runs in (_land-improve) — guarded so the
   // recovery review does not recreate it and mask the cleanup assertion below. Phase 1 (tick
   // 1): edit seed.txt on the branch — its commit is pinned when the tick's own review fails.
-  // Phase 2 (tick 2's own tick): nothing to do.
   const strayOnce = path.join(tmpdir(), "stray-once");
   const restore = fakePi(
     [
@@ -806,8 +819,8 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
     const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
     assert.ok(pinned.length === 40, "the failed review's commit is pinned for re-review");
 
-    const second = await runner.tick();
-    assert.equal(second.result, "no_change", "tick 2 itself found nothing to do");
+    assert.equal((await runner.tick()).result, "queued", "tick 2 re-queued the pin");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "review_error");
 
     // The failed recovery review (under the strike cap) deliberately kept its pin for
     // re-review — a plain ref deletion would have discarded it. The role worktree stays
@@ -825,14 +838,13 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
       failed.some((e) => /no parseable VERDICT/.test(String(e.message))),
       `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,
     );
-    // Tick 2's own result was `no_change`; the recovery review's failure must not latch onto
-    // its `tick_end` as the tick's error (BUGS.md 2026-09-21). The review_failed event above
-    // is where the landing failure lives.
-    assert.equal(runner.state.lastError, undefined, "the recovery review failure is not latched onto tick 2");
+    // Tick 2's own result was `queued`; the first landing's review failure (still in the shared
+    // `lastError` when tick 2 started) must not latch onto its `tick_end` as the tick's error
+    // (BUGS.md 2026-09-21). The review_failed events above are where the landing failures live.
     const tickEnds = readEvents(repo).filter((e) => e.type === "tick_end");
     const tick2End = tickEnds[tickEnds.length - 1]!;
-    assert.equal(tick2End.result, "no_change");
-    assert.equal(tick2End.error, undefined, "a successful tick's tick_end carries no stale landing error");
+    assert.equal(tick2End.result, "queued");
+    assert.equal(tick2End.error, undefined, "a healthy tick's tick_end carries no stale landing error");
   } finally {
     restore();
   }
@@ -844,9 +856,9 @@ test("a persistent recovery review failure feeds the error streak and reads fail
   // Phase 0 (a run whose prompt asks for a VERDICT — the review gate): the backend is down, so
   // pi exits nonzero with no reply. That is a FAILED run, not a strike against the HEAD, so the
   // pin is kept indefinitely (src/review.ts) — the "dead reviewer backend" of the bug. Phase 1
-  // (tick 1): commit and pin. Phase 2 (every later tick): nothing to do, so only leftover
-  // recovery touches the gate. Before the fix the streak reset on each no_change recovery tick
-  // and nothing ever named the wedged pin (BUGS.md 2026-09-21).
+  // (tick 1): commit and pin. Every later tick ends on leftover recovery, which re-queues the
+  // pin. Before the fix the streak reset on each recovery tick and nothing ever named the
+  // wedged pin (BUGS.md 2026-09-21).
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) echo "reviewer backend down" >&2; exit 1;; esac; done`,
@@ -864,9 +876,12 @@ test("a persistent recovery review failure feeds the error streak and reads fail
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "review_error");
 
-    // Each following tick recovers the still-pinned commit and its review fails again.
+    // Each following tick re-queues the still-pinned commit, and its landing's review fails
+    // again. The ticks themselves end `queued` — healthy on their face — so only the re-queued
+    // landing failure they carry can grow the streak.
     for (let i = 0; i < ERROR_STREAK_WARN; i++) {
-      assert.equal((await runner.tick()).result, "no_change", "the tick's own authoring run found nothing to do");
+      assert.equal((await runner.tick()).result, "queued", "the tick re-queued the leftover");
+      assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "review_error");
     }
     assert.equal(runner.state.consecutiveErrors, ERROR_STREAK_WARN, "the landing failures fed the error streak");
 
@@ -881,8 +896,7 @@ test("a persistent recovery review failure feeds the error streak and reads fail
       ),
       `expected one warning naming the review failure, got: ${JSON.stringify(warnings)}`,
     );
-    // Both dashboards read their phase from loopPhase, so a healthy lastResult must not hide it.
-    assert.equal(runner.state.lastResult, "no_change");
+    // Both dashboards read their phase from loopPhase.
     assert.equal(loopPhase(runner.state, true), "failing", "the dashboards read failing, not sleeping");
     // The failure kept the pin for another attempt.
     assert.equal(

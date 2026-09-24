@@ -127,11 +127,11 @@ export function applyTickOutcome(
   s.cutOffStreak = outcome.cutOff ? (s.cutOffStreak ?? 0) + 1 : 0;
   // The error streak counts consecutive failed ticks; any other result resets it
   // (BUGS.md 2026-09-15: 44 identical failures raised no alarm). A tick whose leftover
-  // recovery left a pin behind counts too, even when its own authoring run is healthy
-  // (outcome.recoveryFailure): a dead reviewer backend would otherwise reset the streak
-  // every tick and never raise the alarm (BUGS.md 2026-09-21). loop.ts emits one warning
-  // when the streak crosses ERROR_STREAK_WARN — once per episode, since the reset re-arms
-  // it — and the dashboards read "failing" from the same field.
+  // recovery re-queued a pin its last landing failed to land counts too, even though the tick
+  // itself ends `queued` (outcome.recoveryFailure): a dead reviewer backend would otherwise
+  // reset the streak every tick and never raise the alarm (BUGS.md 2026-09-21). loop.ts emits
+  // one warning when the streak crosses ERROR_STREAK_WARN — once per episode, since the reset
+  // re-arms it — and the dashboards read "failing" from the same field.
   const failed = outcome.result === "error" || outcome.recoveryFailure !== undefined;
   s.consecutiveErrors = failed ? (s.consecutiveErrors ?? 0) + 1 : 0;
   // The quiet-kill streak counts consecutive watchdog kills; any other result resets it.
