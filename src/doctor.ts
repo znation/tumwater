@@ -40,6 +40,7 @@ import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "./proces
 import { errorMessage, formatTime, shortSha, truncate } from "./text.js";
 import type { FallbackDemotion } from "./budget.js";
 import { briefFile } from "./readme.js";
+import { bugEntryBody, fixSymbols, fixedHeadings, sourceHaystack, unbackedSymbols } from "./fix-claim.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -328,6 +329,65 @@ export function checkBuildCheck(
   return { level: "ok", detail: where ? `npm ${check.script} in ${where}` : `npm ${check.script}` };
 }
 
+/** How many Fixed records the fix-claims check verifies: the newest, since the section is
+ * newest-first by template convention. Older records drift as the code evolves — a symbol
+ * legitimately fixed long ago gets renamed later — so a whole-section scan would warn forever
+ * on records nobody should rewrite. */
+const FIX_CLAIMS_CHECKED = 10;
+
+/** A second or later suspect record's heading is trimmed to this many characters in the warn —
+ * the first is named in full, the rest only enough to find them in BUGS.md. */
+const FIX_CLAIM_HEADING_MAX = 60;
+
+/** Fix claims — the standalone half of the landing gate's false-fix check (src/fix-claim.ts):
+ * that gate fires only when an md-only diff moves a BUGS.md entry to Fixed, so a phantom fix
+ * that reached main any other way (landed before the gate existed, or through a path it never
+ * sees) was visible only to a human reading raw history. This re-verifies the newest Fixed
+ * records against the tree at `root` — the primary checkout IS main's tree — with the gate's
+ * own parsing and existence rules. Deliberately looser than the gate: a record warns only
+ * when EVERY symbol its Fix paragraph names is absent (one live symbol passes — the phantom
+ * signature, not a half-stale narrative), and a record naming no symbols is skipped, since
+ * pure-documentation fixes are legitimate. A warn, never a fail (the checkFallbackModel
+ * precedent): a suspicious record is operator signal, not a broken environment. */
+export function checkFixClaims(root: string): CheckOutcome {
+  const bugsPath = path.join(root, "BUGS.md");
+  if (!fs.existsSync(bugsPath)) return { level: "ok", detail: "no BUGS.md — nothing to verify" };
+  let doc: string;
+  try {
+    doc = fs.readFileSync(bugsPath, "utf8");
+  } catch (err) {
+    return { level: "warn", detail: `cannot read BUGS.md — ${errorMessage(err)}` };
+  }
+  const headings = fixedHeadings(doc).slice(0, FIX_CLAIMS_CHECKED);
+  // The haystack walks src/, test/ and scripts/: build it only once a record names something.
+  let haystack: string | undefined;
+  const phantoms: Array<{ heading: string; missing: string[] }> = [];
+  for (const heading of headings) {
+    const symbols = fixSymbols(bugEntryBody(doc, heading));
+    if (symbols.length === 0) continue;
+    haystack ??= sourceHaystack(root);
+    const missing = unbackedSymbols(root, symbols, haystack);
+    if (missing.length === symbols.length) phantoms.push({ heading, missing });
+  }
+  const [first, ...rest] = phantoms;
+  if (!first)
+    return { level: "ok", detail: `newest ${headings.length} Fixed record(s) name code that exists on this tree` };
+  // falseFixReason's message shape: the heading, then up to 3 missing names.
+  const { heading, missing } = first;
+  const names = missing.length <= 3 ? missing.join(", ") : `${missing.slice(0, 3).join(", ")}…`;
+  // Every other suspect is still named, shortened: a doctor check is one line.
+  const more =
+    rest.length > 0
+      ? ` (and ${rest.length} more record(s): ${rest.map((p) => `"${truncate(p.heading, FIX_CLAIM_HEADING_MAX)}"`).join(", ")})`
+      : "";
+  return {
+    level: "warn",
+    detail:
+      `BUGS.md records "${heading}" as Fixed, but none of the symbols its Fix paragraph names ` +
+      `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`,
+  };
+}
+
 /** Build provenance — is the harness about to run (this process's dist/) the code main
  * describes? Only meaningful when this project IS the harness (isSelfHosted); elsewhere the
  * stamp is reported as-is. A stale build is a warning, not a failure: the fleet runs, just not
@@ -568,6 +628,7 @@ export async function runDoctor(
     { name: "state dir", ...checkStateDir(root) },
     { name: "merge lock", ...checkMergeLock(root) },
     { name: "project check", ...checkBuildCheck(root, config) },
+    { name: "fix claims", ...checkFixClaims(root) },
     // The running fleet's own view of its build (staleness and what auto-restart made of it)
     // when there is one; without it the check still stands on its own git comparison.
     { name: "build", ...(await checkBuild(root, undefined, undefined, (orchestratorAlive(root, info) && info?.build) || null)) },

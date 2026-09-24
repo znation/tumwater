@@ -7,6 +7,7 @@ import {
   checkBuild,
   checkBuildCheck,
   checkFallbackModel,
+  checkFixClaims,
   checkGitBinary,
   checkInit,
   checkMergeLock,
@@ -460,7 +461,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "build", "orphans"],
+    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "fix claims", "build", "orphans"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.
@@ -837,4 +838,83 @@ test("runDoctor fails the verdict on an orphan — the exit code a scripted doct
   const report = await runDoctor(root, fakeBins("git", "pi"), probe);
   assert.equal(report.checks.find((c) => c.name === "orphans")?.level, "fail");
   assert.equal(report.verdict, "1 problem");
+});
+
+// checkFixClaims — the standalone false-fix detector: the newest Fixed records of BUGS.md are
+// re-verified against the tree with src/fix-claim.ts's parsing (the document shapes below
+// follow test/fix-claim.test.ts). A record warns only when every symbol its Fix paragraph
+// names is absent; the gate-strength rule (any missing symbol) belongs to md-only landings.
+
+/** A fixture tree whose code defines `liveSymbol`, plus a BUGS.md whose Fixed section holds
+ * one entry per given Fix paragraph, newest first (the template convention). */
+function fixClaimsRepo(fixes: string[]): string {
+  const root = tmpdir("doctor-fix-claims-");
+  fs.mkdirSync(path.join(root, "src"));
+  fs.writeFileSync(path.join(root, "src", "real.ts"), "export function liveSymbol() {}\n");
+  const entries = fixes.map(
+    (fix, i) => `### Entry ${i}: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n**Fix:** ${fix}\n`,
+  );
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n### Still broken (found by qa 2026-09-22)\n\n**Fix:** \`openOnlyPhantom\` someday.\n\n## Fixed\n\n${entries.join("\n")}`,
+  );
+  return root;
+}
+
+test("checkFixClaims reads ok for a record whose symbols exist — one live symbol is enough", () => {
+  const r = checkFixClaims(fixClaimsRepo(["`liveSymbol()` now does it.", "`liveSymbol` and `renamedSinceThen` both changed."]));
+  assert.equal(r.level, "ok", r.detail);
+  assert.match(r.detail, /newest 2 Fixed record/);
+});
+
+test("checkFixClaims warns naming the heading and missing symbols of a record whose symbols are all absent", () => {
+  const root = fixClaimsRepo([
+    "`liveSymbol` is real.",
+    "`runScriptGroup` now signals via `signalTree` in `src/build-check.ts`, bounded by `killAfter`.",
+    "`anotherPhantom` landed.",
+  ]);
+  const r = checkFixClaims(root);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /"Entry 1: details \(found by qa 2026-09-20, fixed 2026-09-21\)" as Fixed/);
+  // Up to three names, falseFixReason's shape — the fourth is elided.
+  assert.ok(r.detail.includes("runScriptGroup, signalTree, src/build-check.ts…"), r.detail);
+  assert.ok(!r.detail.includes("killAfter"), r.detail);
+  // A second suspect is still named, so fixing the first does not hide it.
+  assert.match(r.detail, /and 1 more record\(s\): "Entry 2:/);
+  assert.match(r.detail, /land the fix or keep the bug Open \/ refresh a stale record/);
+  // Open entries are never verified — an Open bug has no fix to back.
+  assert.ok(!r.detail.includes("openOnlyPhantom"), r.detail);
+});
+
+test("checkFixClaims verifies only the newest 10 Fixed records", () => {
+  const live = Array.from({ length: 10 }, () => "`liveSymbol` fixed it.");
+  const old = checkFixClaims(fixClaimsRepo([...live, "`longRenamedSymbol` fixed it."]));
+  assert.equal(old.level, "ok", "a stale 11th record is outside the window");
+  assert.match(old.detail, /newest 10 Fixed record/);
+  const recent = checkFixClaims(fixClaimsRepo(["`longRenamedSymbol` fixed it.", ...live]));
+  assert.equal(recent.level, "warn", "the same record as the newest is inside it");
+  assert.match(recent.detail, /longRenamedSymbol/);
+});
+
+test("checkFixClaims reads ok with no BUGS.md and for a record naming no symbols", () => {
+  assert.deepEqual(checkFixClaims(tmpdir("doctor-fix-claims-")), {
+    level: "ok",
+    detail: "no BUGS.md — nothing to verify",
+  });
+  // Pure-documentation fixes are legitimate: spans with whitespace are not symbols either.
+  const r = checkFixClaims(fixClaimsRepo(["documented the behavior; `npm test` covers it."]));
+  assert.equal(r.level, "ok", r.detail);
+});
+
+test("runDoctor reports a phantom fix record as a warn that never fails the verdict", async () => {
+  const root = readyRepo();
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "# Bugs\n\n## Open\n\n## Fixed\n\n### A phantom (found by qa 2026-09-22, fixed 2026-09-22)\n\n**Fix:** `runScriptGroup` signals the tree.\n",
+  );
+  const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
+  const claims = report.checks.find((c) => c.name === "fix claims");
+  assert.equal(claims?.level, "warn");
+  assert.match(claims?.detail ?? "", /runScriptGroup/);
+  assert.equal(report.verdict, "ready to run");
 });
