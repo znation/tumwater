@@ -25,16 +25,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Suspected cause:** The prompts ask for dates in several places (`NEEDS_REVIEW_NOTE`'s `<YYYY-MM-DD>` in src/roles.ts:66, the "(found by … YYYY-MM-DD)" heading convention, Fixed-entry dates) but never supply one. The model fills them in from the newest dates it finds in the repo, which are themselves drifting, so the error compounds.
 
-### The `review_verdict` event records the reviewer's preamble instead of a finding: `**1.**`-style numbering is not recognized as a list (found by human log analysis 2026-09-23)
-
-**Symptom:** Since 2026-09-22, 11 approvals were logged with a preamble as their `reason`, for example "I checked the diff against the code, its callers, and its tests. Findings:" (bugfix, 2026-09-23 23:46), "All checks complete. Here is what I verified:" (organize, 20:48), and "## Review" (clean, 22:06). The 23:46 reply numbered its findings `**1. Scope matches the claim.**`, `**2. …**`, and none of that reached the event log or the feed.
-
-**Repro:** `parseVerdict` on a reply that opens with a one-line preamble and then bold-numbered paragraphs (`**1. X.** …`), ending `VERDICT: approve`. `reasons[0]` is the preamble.
-
-**Expected:** Recognize bold or heading-wrapped numbering (`**1.`, `**1)`, `### 1.`) as list items, and skip trailing-colon preambles and bare headings in the prose fallback, so `reasons[0]` is the first real finding. The same list feeds `review_rejected` and the author's rejection note, so rejections get the fix too.
-
-**Suspected cause:** `reasonsFrom` (src/review.ts:65) matches only `^(?:\d+[.)]|[-*])\s+`. A leading `**` fails the match, the reply falls back to "every non-empty line", and `review_verdict` logs `verdict.reasons[0]` (src/review.ts:389).
-
 ### `tumwater init <prompt>` in a repo whose brief already lives in TUMWATER.md silently drops the new prompt (found by clean 2026-09-26)
 
 **Symptom:** A repo whose project brief is TUMWATER.md (plans/portability.md §7a/7) re-runs
@@ -247,6 +237,20 @@ While this ran, the fleet crawled. From 05:18:00 to 05:37:48 the event log holds
 **Suspected cause:** `plans/fallback-model.md` framed readiness as a property of the *model* ("is it free?"), which is answerable from a static file, and `budgetGate` was built from that single boolean; whether the *backend* can serve is a property of the world that nothing in the gate's inputs represents. `doctor.ts:127` consults the same cost-only predicate, so `tumwater doctor` also reports a dead fallback as ready.
 
 ## Fixed
+
+### The `review_verdict` event records the reviewer's preamble instead of a finding: `**1.**`-style numbering is not recognized as a list (found by human log analysis 2026-09-23, fixed 2026-09-24)
+
+**Symptom:** Since 2026-09-22, 11 approvals were logged with a preamble as their `reason`, for example "I checked the diff against the code, its callers, and its tests. Findings:" (bugfix, 2026-09-23 23:46), "All checks complete. Here is what I verified:" (organize, 20:48), and "## Review" (clean, 22:06). The 23:46 reply numbered its findings `**1. Scope matches the claim.**`, `**2. …**`, and none of that reached the event log or the feed.
+
+**Repro:** `parseVerdict` on a reply that opens with a one-line preamble and then bold-numbered paragraphs (`**1. X.** …`), ending `VERDICT: approve`. `reasons[0]` is the preamble.
+
+**Expected:** Recognize bold or heading-wrapped numbering (`**1.`, `**1)`, `### 1.`) as list items, and skip trailing-colon preambles and bare headings in the prose fallback, so `reasons[0]` is the first real finding. The same list feeds `review_rejected` and the author's rejection note, so rejections get the fix too.
+
+**Suspected cause:** `reasonsFrom` (src/review.ts:65) matches only `^(?:\d+[.)]|[-*])\s+`. A leading `**` fails the match, the reply falls back to "every non-empty line", and `review_verdict` logs `verdict.reasons[0]` (src/review.ts:389).
+
+**Fix:** `reasonsFrom` (src/review.ts) now reads list items through a `LIST_ITEM` pattern that also accepts a heading-wrapped marker (`### 1. X`) and a bold opener around the number (`**1.** X`, `**1) X**`, `**1. X.** body`), and a new `listItemText` strips the list's own markup — marker, heading hashes, and the bold pair around the marker, wherever its closer falls — so `**1. Scope matches the claim.** The diff…` records `Scope matches the claim. The diff…` with no dangling `**`; emphasis inside an item (`1. **X** body`) is the reviewer's own and is kept. The prose fallback now skips lead-ins and headings (`isPreamble`: an ATX heading or a line ending in `:`/`:**`), and a region of nothing but those still yields them rather than no reason at all. `parseVerdict` and every consumer are unchanged: `review_verdict`'s `reason`, `review_rejected`'s list and the feed line that renders its first entry, the author's rejection note (which used to double-number, `2. **1. X.** …`), the gate's `detail`, and the digest's `reasons[0]` clustering all read the same list, so rejections get the fix too. test/review.test.ts pins it with a table of the real reply shapes quoted above (bugfix 23:46, organize 20:48, clean 22:06, the bold-lead-alone-on-its-line organize shape, `**1.**`, `**1)`, `### 1.`, colon and heading prose), plus preservation rows for `1. **X**` and a lead-in-only reply; a rejection-note test; and a gate test asserting the logged `review_verdict` reason is the first finding. 11 of the 13 new tests fail on the old parser (the two preservation rows pass on both). Re-parsing the 413 archived reviewer replies under `.tumwater/sessions/_review` turns all 12 preamble-, heading- or bold-number-shaped first reasons into the reply's first finding. Ran `npm test review` 56/56 and `npm test prompt event-format failure` 158/158.
+
+**Validation gap:** none (closest fit) — a one-line `parseVerdict` call on the logged reply shape reproduced it; the suite missed it only because every fixture used the bare `1.` numbering the review prompt advertises, never the bold numbering reviewers actually write.
 
 ### The failure digest's `## Outcome by role` separator row has no cell delimiters, so the table never renders (found by human investigation 2026-09-21, fixed 2026-09-24)
 

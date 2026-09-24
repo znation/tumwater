@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { parseVerdict, reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review.js";
+import { buildRejectedReviewNote } from "../src/gate-prompts.js";
 import { clipBuildTail, runBuildCheck } from "../src/build-check.js";
 import { detectBuildCheck } from "../src/build-check-detect.js";
 import { aheadOfMain, headOf } from "../src/git.js";
@@ -113,6 +114,116 @@ test("parseVerdict clips long reasons and caps the count at ten", () => {
   assert.equal(parseVerdict(`VERDICT: reject\n${many}`)?.reasons.length, 10);
 });
 
+// Reply shapes the fleet's reviewers really wrote (BUGS.md 2026-09-23: 11 approvals logged a
+// preamble as their `review_verdict` reason). Reviewers number findings in bold or under
+// headings and open with a colon-terminated lead-in or a bare heading; a bare-marker list
+// match missed every such item, so the whole reply fell to the prose fallback and its first
+// line — the preamble — became reasons[0], the field review_verdict logs, the feed renders,
+// and the digest clusters rejections on. Each row: reasons[0] is the first real finding, and
+// no reason keeps the list's own markup.
+const REPLY_SHAPES: { shape: string; reply: string; reasons: string[] }[] = [
+  {
+    shape: "colon preamble, then bold-wrapped numbered leads (bugfix, 2026-09-23 23:46)",
+    reply:
+      "I checked the diff against the code, its callers, and its tests. Findings:\n\n" +
+      "**1. Scope matches the claim.** The diff touches exactly the five things the summary enumerates.\n\n" +
+      "**2. Both record paths really decline.** `extractFlow` has exactly one consumer.\n\n" +
+      "VERDICT: approve",
+    reasons: [
+      "Scope matches the claim. The diff touches exactly the five things the summary enumerates.",
+      "Both record paths really decline. `extractFlow` has exactly one consumer.",
+    ],
+  },
+  {
+    shape: "\"Here is what I verified:\" preamble (organize, 2026-09-23 20:48)",
+    reply:
+      "All checks complete. Here is what I verified:\n\n" +
+      "**1. Scope — the diff is exactly what's claimed.** The merge diff is precisely the 5-file change.\n\n" +
+      "**2. The extraction is verbatim.** I mechanically diffed the moved block.\n\n" +
+      "VERDICT: approve",
+    reasons: [
+      "Scope — the diff is exactly what's claimed. The merge diff is precisely the 5-file change.",
+      "The extraction is verbatim. I mechanically diffed the moved block.",
+    ],
+  },
+  {
+    shape: "bare heading, then bold numbered questions (clean, 2026-09-23 22:06)",
+    reply:
+      "## Review\n\n**1. Does the diff match the claims?** Yes. The diff is four files.\n\n" +
+      "**2. VERIFIED claims hold.** Tests only match `/not initialized/`.\n\nVERDICT: approve",
+    reasons: [
+      "Does the diff match the claims? Yes. The diff is four files.",
+      "VERIFIED claims hold. Tests only match `/not initialized/`.",
+    ],
+  },
+  {
+    shape: "bold lead alone on its line, its body on the next (organize, 2026-09-23 14:24)",
+    reply:
+      "I verified the change against the repo. Summary of what I checked:\n\n" +
+      "**1. Diff matches the claim — no more, no less.**\n`git show --stat HEAD` confirms the 7 files.\n\n" +
+      "**2. The move is verbatim, as the RISK claim states.**\nI diffed the block line-by-line.\n\n" +
+      "VERDICT: approve",
+    reasons: ["Diff matches the claim — no more, no less.", "The move is verbatim, as the RISK claim states."],
+  },
+  {
+    shape: "bold number only (`**1.** X`)",
+    reply: "All checks done. Summary of what I verified:\n**1.** The helper drops errors.\n**2.** No test covers it.\nVERDICT: reject",
+    reasons: ["The helper drops errors.", "No test covers it."],
+  },
+  {
+    shape: "bold number with a paren (`**1) X**`)",
+    reply: "Findings:\n**1) The helper drops errors.**\n**2) No test covers it.**\nVERDICT: reject",
+    reasons: ["The helper drops errors.", "No test covers it."],
+  },
+  {
+    shape: "heading-wrapped numbering (`### 1. X`)",
+    reply: "## Review\n### 1. Scope matches the claim\nNothing unclaimed.\n### 2) Tests pin the fix\nBoth ways.\nVERDICT: approve",
+    reasons: ["Scope matches the claim", "Tests pin the fix"],
+  },
+  {
+    shape: "plain numbering with a bold lead keeps the reviewer's own emphasis (`1. **X** body`)",
+    reply: "Findings:\n1. **Scope matches.** Nothing unclaimed.\n2. **Tests pin it.**\nVERDICT: approve",
+    reasons: ["**Scope matches.** Nothing unclaimed.", "**Tests pin it.**"],
+  },
+  {
+    shape: "prose fallback skips a colon preamble",
+    reply: "All checks complete. Here is what I verified:\nThe diff is exactly the claimed split.\nVERDICT: approve",
+    reasons: ["The diff is exactly the claimed split."],
+  },
+  {
+    shape: "prose fallback skips a bare heading and a bold lead-in",
+    reply: "## Review\n**Summary:**\nThe move is byte-identical.\n**Diff matches the claim exactly.** Nothing unclaimed.\nVERDICT: approve",
+    reasons: ["The move is byte-identical.", "**Diff matches the claim exactly.** Nothing unclaimed."],
+  },
+  {
+    shape: "a reply of nothing but lead-ins still records them rather than no reason",
+    reply: "## Review\nHere is what I verified:\nVERDICT: approve",
+    reasons: ["## Review", "Here is what I verified:"],
+  },
+];
+
+for (const { shape, reply, reasons } of REPLY_SHAPES) {
+  test(`parseVerdict reads the first finding, not the preamble: ${shape}`, () => {
+    assert.deepEqual(parseVerdict(reply)?.reasons, reasons);
+  });
+}
+
+test("a bold-numbered rejection reaches the author's next-tick note numbered once, markup-free", () => {
+  // The rejection path shares the list: before the fix the prose fallback kept every line
+  // whole, so the note read "1. Findings:" then "2. **1. The helper drops errors.** …".
+  const v = parseVerdict(
+    "I checked the diff. Findings:\n\n**1. The helper drops errors.** `run` swallows the throw.\n\n" +
+      "**2. No test covers it.**\n\nVERDICT: reject",
+  );
+  assert.equal(v?.verdict, "reject");
+  assert.equal(
+    buildRejectedReviewNote(v!.reasons),
+    "Your previous change was rejected in review:\n" +
+      "1. The helper drops errors. `run` swallows the throw.\n2. No test covers it.\n" +
+      "Address the objections or take a different approach.",
+  );
+});
+
 // ── Gate orchestration (reviewAheadOfMain) ────────────────────────────────────────────────
 // Each fixture is a real git repo whose worktree sits one commit ahead of main, and the
 // reviewer is a fake pi on PATH that prints a canned JSON verdict line. A marker file OUTSIDE
@@ -175,6 +286,26 @@ test("gate rejects a bad diff: branch reset to main, reasons recorded", async ()
     assert.deepEqual(state.lastReview?.reasons, ["breaks the build", "no regression test"]);
     assert.equal(state.unreviewFailures, 0); // a parseable verdict is a successful review
     assert.equal(state.lastApprovedHead, undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("gate logs a bold-numbered approval's first finding as the review_verdict reason, not its preamble", async () => {
+  // The event the 2026-09-23 log audit read (BUGS.md): a reviewer that opens with a lead-in
+  // and numbers its findings `**1. X.** …` logged "…Findings:" as the approval's reason.
+  const { root, wt } = await gateFixture();
+  const reply =
+    "I checked the diff against the code, its callers, and its tests. Findings:\n\n" +
+    "**1. Scope matches the claim.** No unclaimed changes.\n\n**2. Tests pin it.** Both ways.\n\nVERDICT: approve";
+  const restore = fakePi(`printf '%s\n' '${assistantLine(reply)}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "approved");
+    const verdict = readEvents(root).find((e) => e.type === "review_verdict");
+    assert.equal(verdict?.reason, "Scope matches the claim. No unclaimed changes.");
+    assert.deepEqual(state.lastReview?.reasons, ["Scope matches the claim. No unclaimed changes.", "Tests pin it. Both ways."]);
   } finally {
     restore();
   }
