@@ -5,6 +5,36 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### The digest's `## Landed in the window` list caps at 10 with no remainder marker: a busy window reads as a 10-merge day (found by telemetry loop 2026-09-26)
+
+**Symptom:** The 2026-09-23 digest reports 155 ticks with 107 changes queued for landing and
+only 17 rejections, yet its `## Landed in the window` section lists exactly 10 commits —
+LANDED_TOP (src/failure-data.ts:20) — with no indication anything was cut. The construction at
+src/failure-data.ts:360-368 sorts `merged` events newest-first and `.slice(0, LANDED_TOP)`s,
+discarding the total, and the renderer (src/failure-report.ts:154-160) prints whatever survived
+as a plain bullet list. Every other capped section in the same report marks its remainder —
+transitions print `+18 older transitions hidden` (src/failure-report.ts:116), clusters print
+`+N more clusters holding M warnings` — and the digest's own stated convention
+(src/failure-data.ts:67) is that a capped section "prints a remainder line, so a capped section
+says so instead of reading as a full" record. The landed list is the one section that breaks it.
+Practical cost: an operator reconciling `107 queued − 17 rejected` against a 10-item landed list
+cannot tell how many of the other ~90 landed, sit in the queue, or were dropped by the cap — and
+an older merge they are looking for (e.g. verifying a specific role's tick landed) is silently
+absent, reading as never-merged.
+
+**Reproduce:** Deterministic, no model needed: build a window's events.jsonl carrying 11
+`merged` events and render the digest — the `## Landed in the window` section shows 10 bullets
+(the newest ten) and no remainder line; delete one merge from the input and the section is
+byte-identical in shape, so complete and truncated reports are indistinguishable. The 2026-09-23
+digest itself is the live instance.
+
+**Expected:** failure-data keeps the untrimmed merged count alongside the newest-10 slice (the
+same pattern the deltas table already uses — it retains a total at src/failure-data.ts:328 for
+the renderer to cross-check), and failure-report prints e.g. `+N older merges not listed` when
+the cap cut. Correlated: `bade093` added exactly these remainder markers for the cluster sections
+and the transitions got theirs via `606523e`/`6c2d904`, but the landed list was left
+uncapped-unmarked.
+
 ## Fixed
 
 ### A batched landing is displayed as the head change's landing for the whole batch: the head role reads `landing 29m` long after its own change was rejected, while the change actually being gated shows nothing (reported by user 2026-09-23, fixed 2026-09-24)
