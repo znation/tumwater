@@ -11,7 +11,8 @@ import { runScopedBuildCheck } from "./build-check.js";
 import { noteGreenBaseline } from "./main-baseline.js";
 import { landChange, reviewPinnedChange, type LandRequest, type LanderContext } from "./lander.js";
 import { errorMessage } from "./text.js";
-import type { LoopState, PiRunResult, TickResult, TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import type { LoopState, PiRunResult, TickResult } from "./types.js";
 
 /** The identity a batch needs from the harness: root, main branch, live config, and the
  * slot's abort signal. Deliberately thinner than LanderContext — no single `state` and no

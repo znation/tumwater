@@ -4,7 +4,8 @@ import { ensureDetachedWorktree } from "./worktree.js";
 import { mergeToMain, rebaseOntoMain } from "./merge.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { saveLoopState } from "./state.js";
-import type { LoopState, PiRunResult, TickResult, TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import type { LoopState, PiRunResult, TickResult } from "./types.js";
 
 /** Reviewing and landing a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A tick commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,

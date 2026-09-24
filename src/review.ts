@@ -1,4 +1,5 @@
-import type { LoopState, PiRunResult, TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import type { LoopState, PiRunResult } from "./types.js";
 import { reviewConfig } from "./config.js";
 import { logEvent, warnEvent } from "./events.js";
 import { commitAll, git, headOf } from "./git.js";

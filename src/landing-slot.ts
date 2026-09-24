@@ -1,4 +1,5 @@
-import type { LandingEntry, LoopState, PiRunResult, TickResult, TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import type { LandingEntry, LoopState, PiRunResult, TickResult } from "./types.js";
 import { applyLandingOutcome, saveLoopState } from "./state.js";
 import { logEvent } from "./events.js";
 import { dropLanding } from "./land-queue.js";

@@ -1,4 +1,5 @@
-import type { TickOutcome, TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import type { TickOutcome } from "./types.js";
 import type { OrchestratorInfo } from "./fleet-state.js";
 import { applyFallbackModel, changedConfigKeys, enabledRoleIds, fallbackPair, loadConfigCached } from "./config.js";
 import {

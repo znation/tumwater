@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import type { TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
 import { configForRole, enabledRoleIds, fallbackPair, reviewConfig } from "./config.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { isJsonObject } from "./json-object.js";

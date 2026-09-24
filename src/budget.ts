@@ -6,7 +6,8 @@
  * depend on it without importing either — the one-way rule that previously kept these
  * functions in state.ts. */
 
-import type { TumwaterConfig, LoopState } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import type { LoopState } from "./types.js";
 import { formatDate } from "./text.js";
 
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other

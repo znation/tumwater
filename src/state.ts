@@ -1,4 +1,5 @@
-import type { TumwaterConfig, LoopState, TickOutcome, TickResult, BackoffConfig } from "./types.js";
+import type { BackoffConfig, TumwaterConfig } from "./config-schema.js";
+import type { LoopState, TickOutcome, TickResult } from "./types.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "./roles.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { statePath } from "./paths.js";

@@ -13,7 +13,8 @@ import { headLanding } from "../src/land-queue.js";
 import { LoopRunner } from "../src/loop.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
-import type { TickResult, TumwaterConfig } from "../src/types.js";
+import type { TumwaterConfig } from "../src/config-schema.js";
+import type { TickResult } from "../src/types.js";
 import { startGui } from "../src/ui/gui.js";
 
 /** Per-process root for every test temp dir: created on first use, torn down synchronously at

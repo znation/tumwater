@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { deleteRef, isMergedInto } from "./git.js";

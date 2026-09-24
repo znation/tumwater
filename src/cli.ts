@@ -31,7 +31,7 @@ import {
   piMissingMessage,
 } from "./readiness.js";
 import { resolveAgentBin } from "./pi.js";
-import type { TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
 import { initProject } from "./init.js";
 import {
   type CancelOutcome,

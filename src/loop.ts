@@ -1,4 +1,5 @@
-import type { TumwaterConfig, LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import type { LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
 import { customRole, DIRECTOR_ROLE, roleById } from "./roles.js";
 import { branchHead, commitAll, deleteRef, isDirty, setRef } from "./git.js";
 import { changedFiles } from "./git-diff.js";

@@ -20,7 +20,8 @@ import { falseFixReason } from "./fix-claim.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";
 import { CONFIG_BASENAME, configPath, mergeLockDir } from "./paths.js";
-import type { PiRunResult, TumwaterConfig, TickResult } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import type { PiRunResult, TickResult } from "./types.js";
 
 /** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased
  * tree with the project's declared check when main moved under it, fast-forward, and —

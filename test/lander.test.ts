@@ -18,7 +18,8 @@ import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
-import type { LoopState, PiRunResult, TumwaterConfig } from "../src/types.js";
+import type { TumwaterConfig } from "../src/config-schema.js";
+import type { LoopState, PiRunResult } from "../src/types.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 // Unit coverage for src/lander.ts's landChange — the harness-owned review-and-land of a pinned

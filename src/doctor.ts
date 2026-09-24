@@ -10,7 +10,7 @@ import {
 } from "./config.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
-import type { TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo } from "./build-info.js";
 import { STALE_INPUTS_LABEL } from "./redeploy.js";
 import { findOnPath } from "./files.js";

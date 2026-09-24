@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { FallbackModelConfig, TumwaterConfig, RoleConfig } from "./types.js";
+import type { FallbackModelConfig, TumwaterConfig, RoleConfig } from "./config-schema.js";
 import { allRoleIds } from "./roles.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { CONFIG_BASENAME, configPath, EXAMPLE_CONFIG_BASENAME, exampleConfigPath } from "./paths.js";

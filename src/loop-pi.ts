@@ -1,4 +1,5 @@
-import type { TumwaterConfig, PiRunResult } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
+import type { PiRunResult } from "./types.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
 import { configForRole } from "./config.js";
 import { buildSummaryRequestPrompt } from "./prompt.js";

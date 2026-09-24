@@ -4,7 +4,7 @@
  * atomically, because readers poll tumwater.json every ~2 s. The read side — defaults,
  * loading, saving, and the role/model derivations — lives in config.ts. */
 import fs from "node:fs";
-import type { TumwaterConfig } from "./types.js";
+import type { TumwaterConfig } from "./config-schema.js";
 import { configPath, configRequestPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";

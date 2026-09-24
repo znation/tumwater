@@ -21,7 +21,7 @@ import { GIT_MISSING_MESSAGE } from "../src/git.js";
 import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
-import type { TumwaterConfig } from "../src/types.js";
+import type { TumwaterConfig } from "../src/config-schema.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
 // Unit coverage for the pre-flight environment check (src/doctor.ts): every check's ok/fail/warn

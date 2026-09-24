@@ -21,7 +21,8 @@ import {
   resumeFleet,
 } from "../src/fleet-state.js";
 import { dailyCost, todayStamp } from "../src/budget.js";
-import type { LoopState, TumwaterConfig } from "../src/types.js";
+import type { TumwaterConfig } from "../src/config-schema.js";
+import type { LoopState } from "../src/types.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
 import { OBSERVER_ROLES } from "../src/roles.js";
