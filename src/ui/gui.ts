@@ -49,23 +49,35 @@ function validRoleIds(root: string): string[] {
   return config ? knownRoleIds(config) : allRoleIds();
 }
 
+/** Validate one request's loop-targeting role against validRoleIds, sending the shared 400 on
+ * a miss and reporting whether the request should stop: an absent id reads "role required
+ * (valid ids: …)" — unless `allowMissing`, the wake endpoint's `{}` → all-roles default, which
+ * only a truly absent `undefined` may ride; an explicit null is always rejected — and a
+ * present-but-unknown one reads "unknown role X (valid ids: …)". /api/transcript and the
+ * wake/abort operator endpoints share it so their validation and 400 wording cannot drift. */
+function rejectBadRole(root: string, res: http.ServerResponse, role: unknown, allowMissing = false): boolean {
+  const validIds = validRoleIds(root);
+  if (role === undefined || role === null) {
+    if (role === undefined && allowMissing) return false;
+    sendJson(res, 400, { error: `role required (valid ids: ${validIds.join(", ")})` });
+    return true;
+  }
+  if (typeof role !== "string" || !validIds.includes(role)) {
+    sendJson(res, 400, { error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})` });
+    return true;
+  }
+  return false;
+}
+
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
  * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
- * one must open its transcript: ids validate through validRoleIds. The 400 message lists
+ * one must open its transcript: ids validate through rejectBadRole. The 400 message lists
  * exactly the ids accepted. */
 function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
   const q = new URL(req.url ?? "", "http://localhost").searchParams;
   const role = q.get("role");
-  const validIds = validRoleIds(root);
-  if (role === null) {
-    sendJson(res, 400, { error: `role required (valid ids: ${validIds.join(", ")})` });
-    return;
-  }
-  if (!validIds.includes(role)) {
-    sendJson(res, 400, { error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})` });
-    return;
-  }
+  if (rejectBadRole(root, res, role)) return;
   let n = 50;
   const nRaw = q.get("n");
   if (nRaw !== null) {
@@ -76,7 +88,7 @@ function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, r
     }
     n = parsed;
   }
-  sendJson(res, 200, { lines: readTranscript(root, role, n) });
+  sendJson(res, 200, { lines: readTranscript(root, role as string, n) });
 }
 
 /** Handle GET /api/backlog?file=<plans|bugs|questions>&index=N: one backlog entry's full
@@ -390,13 +402,11 @@ export function startGui(
         // discipline as /api/pause (readJsonObject → 400 malformed/non-object, 413 oversized).
         const body = await readJsonObject(req, res, '{"role": "feature"}');
         if (!body) return; // 4xx already sent — oversized or not a JSON object
-        const validIds = validRoleIds(root);
-        const role = body.role;
-        if (role !== undefined && (typeof role !== "string" || !validIds.includes(role))) {
-          sendJson(res, 400, { error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})` });
-          return;
-        }
-        sendJson(res, 200, { ok: true, message: requestWake(root, role === undefined ? validIds : [role]) });
+        if (rejectBadRole(root, res, body.role, true)) return;
+        sendJson(res, 200, {
+          ok: true,
+          message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string]),
+        });
       } else if (req.method === "POST" && pathname === "/api/abort") {
         // The dashboard's per-row abort control: the same marker-writing core `tumwater abort`
         // calls (requestAbort). The role is required and validated like /api/transcript;
@@ -405,12 +415,8 @@ export function startGui(
         // (the discarded-prompt note) rides through verbatim.
         const body = await readJsonObject(req, res, '{"role": "feature"}');
         if (!body) return; // 4xx already sent — oversized or not a JSON object
-        const validIds = validRoleIds(root);
-        if (typeof body.role !== "string" || !validIds.includes(body.role)) {
-          sendJson(res, 400, { error: `unknown role ${JSON.stringify(body.role)} (valid ids: ${validIds.join(", ")})` });
-          return;
-        }
-        const result = requestAbort(root, body.role);
+        if (rejectBadRole(root, res, body.role)) return;
+        const result = requestAbort(root, body.role as string);
         if (!result.ok) {
           sendJson(res, 409, { error: result.error });
           return;
