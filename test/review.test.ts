@@ -1073,3 +1073,58 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
     restoreBare();
   }
 });
+
+// The suite-rerun tripwire (BUGS.md 2026-09-23): a reviewer told the harness's pre-check passed
+// that runs the full suite anyway — in a scratch copy under /tmp, like organize's and improve's
+// reviews that day — is named in the event feed, while a filtered run (one test file) is not.
+// After a timed-out pre-check no verified result exists: the prompt carries no no-re-run rule,
+// and the same tool calls draw no warning.
+test("a reviewer that re-runs the suite behind a green pre-check is warned about; after a timed-out pre-check it is not", async () => {
+  const toolCalls = [
+    { toolCallId: "c1", command: "cd /tmp/revrun && npm test 2>&1 | tail -15" },
+    { toolCallId: "c2", command: "npm test gui 2>&1 | tail -5" },
+  ]
+    .flatMap(({ toolCallId, command }) => [
+      { type: "tool_execution_start", toolCallId, toolName: "bash", args: { command } },
+      { type: "tool_execution_end", toolCallId, result: {}, isError: false },
+    ])
+    .map((event) => `printf '%s\n' '${JSON.stringify(event)}'`)
+    .join("\n");
+  const reviewer = (prompts: string) =>
+    fakePi(`printf '%s\n' "$@" >> "${prompts}"\n${toolCalls}\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const rerunWarnings = (root: string) =>
+    readEvents(root)
+      .filter((e) => e.type === "warning")
+      .map((e) => String(e.message))
+      .filter((m) => m.startsWith("reviewer re-ran the suite"));
+
+  const green = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", "test");
+  const greenPrompts = path.join(tmpdir(), "prompts.log");
+  const restore = reviewer(greenPrompts);
+  try {
+    const result = await reviewAheadOfMain(gateCtx(green.root, green.wt), freshLoopState(ROLE));
+    assert.equal(result.decision, "approved", "the tripwire warns; it never changes the verdict");
+    assert.match(fs.readFileSync(greenPrompts, "utf8"), /^- Do not re-run the check named above/m);
+    assert.deepEqual(rerunWarnings(green.root), [
+      "reviewer re-ran the suite the harness's pre-check already verified: cd /tmp/revrun && npm test 2>&1 | tail -15",
+    ]);
+  } finally {
+    restore();
+  }
+
+  const timed = await gateBuildFixture("sleep 5"); // hangs past the shortened cap
+  const timedPrompts = path.join(tmpdir(), "prompts.log");
+  const restoreTimed = reviewer(timedPrompts);
+  try {
+    const result = await reviewAheadOfMain(
+      { ...gateCtx(timed.root, timed.wt), buildCheckTimeoutMs: 400 },
+      freshLoopState(ROLE),
+    );
+    assert.equal(result.decision, "approved");
+    assert.equal(result.verifiedHead, undefined, "the pre-check timed out — no verified result");
+    assert.ok(!fs.readFileSync(timedPrompts, "utf8").includes("Do not re-run"), "no verified result, no rule");
+    assert.deepEqual(rerunWarnings(timed.root), [], "running the suite is the reviewer's job here");
+  } finally {
+    restoreTimed();
+  }
+});

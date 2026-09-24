@@ -136,6 +136,12 @@ export class PiStreamParser {
   openToolCalls: OpenToolCall[] = [];
   private buffer = "";
 
+  /** `onToolCallStart` observes every tool call as it starts, with pi's tool name ("" when pi
+   * omitted it) and raw args — a hook for a caller that audits what a run did (the review
+   * gate's suite-rerun tripwire, src/suite-rerun.ts) without the parser storing every call of
+   * every run. */
+  constructor(private readonly onToolCallStart?: (toolName: string, args: unknown) => void) {}
+
   feed(chunk: string, onLine?: (line: string) => void): void {
     this.buffer += chunk;
     // Scan with an offset instead of slicing the remainder off after every line: each old
@@ -213,6 +219,7 @@ export class PiStreamParser {
         // fallback progress.ts uses for its stall flag.
         describeToolCall(event.toolName ?? "", event.args) || "tool",
       );
+      if (event.type === "tool_execution_start") this.onToolCallStart?.(event.toolName ?? "", event.args);
     }
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;

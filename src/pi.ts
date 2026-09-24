@@ -43,6 +43,10 @@ export interface PiRunOptions {
    * while the quiet watchdog still counts down (the dashboards derive their own flag from the
    * raw log, so only the event needs wiring). */
   onToolCallStalled?: (message: string) => void;
+  /** Called once per tool call as it starts, with pi's tool name and raw args (see
+   * PiStreamParser) — the review gate collects its reviewer's calls through this to notice a
+   * full-suite re-run the harness's green pre-check made redundant. */
+  onToolCallStart?: (toolName: string, args: unknown) => void;
 }
 
 /** Path to the bundled bounded-output pi extension, resolved from this module's own
@@ -174,7 +178,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       // on a failed spawn finish() still ends the stream and flushes it.
       rawLog.write(JSON.stringify({ type: "tumwater_run", label: opts.label }) + "\n");
     }
-    const parser = new PiStreamParser();
+    const parser = new PiStreamParser(opts.onToolCallStart);
     // Decode stdout incrementally instead of per chunk: a raw Buffer.toString("utf8")
     // replaces any multi-byte character whose bytes straddle two 'data' events with U+FFFD,
     // corrupting that line's text (commit subjects, summaries, transcripts). StringDecoder

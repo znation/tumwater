@@ -23,6 +23,7 @@ import {
 } from "./build-check.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
+import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
  * a warning: a misconfigured reviewer model must not be able to wedge a loop into re-reviewing
@@ -263,7 +264,8 @@ export async function reviewAheadOfMain(
   // itself (build_check event, environmental-skip warning) lives in runScopedBuildCheck,
   // shared with the landing path's in-lock re-check.
   // Named in the reviewer's prompt when the pre-check ran green: the model reviewer then spends
-  // its run on what a passing suite cannot show instead of re-running `npm test` itself.
+  // its run on what a passing suite cannot show instead of re-running `npm test` itself (the
+  // prompt's no-re-run rule, and the suite-rerun tripwire after the reviewer run, both key on it).
   let verifiedByHarness: string | undefined;
   // The head the pre-check just verified (see GateResult.verifiedHead) — handed to the landing
   // path, which owns the baseline seeding for the SHA that actually becomes main.
@@ -377,6 +379,9 @@ export async function reviewAheadOfMain(
   // The reviewer run's wall time rides on its verdict event: a reviewer that takes an hour per
   // merge on local hardware is a fleet-level cost an operator must be able to see.
   const reviewStartedAt = Date.now();
+  // The reviewer's started tool calls, collected only when the no-re-run rule stands (a verified
+  // pre-check) — the one case the suite-rerun tripwire below can fire.
+  const reviewerCalls: ToolCallStart[] = [];
   // The author's claimed WHY/RISK/VERIFIED ride along when present — checking those claims
   // against the actual diff is exactly the adversarial angle (recovery landings reconstruct
   // them from the pinned commit's message).
@@ -406,7 +411,19 @@ export async function reviewAheadOfMain(
     // A stalled tool call during review hangs the gate just like one during authoring —
     // name it in the event feed while the quiet watchdog still counts down.
     onToolCallStalled: (message) => warnEvent(root, role, message),
+    onToolCallStart: verifiedByHarness
+      ? (toolName, args) => {
+          reviewerCalls.push({ toolName, args });
+        }
+      : undefined,
   });
+
+  // A reviewer told the pre-check passed that re-ran the full suite anyway held the landing
+  // slot and loaded the shared host for a result the harness already had (BUGS.md 2026-09-23:
+  // scratch copies under /tmp, `npm ci` and `npm test` there). Warned on every outcome, abort
+  // included — the run happened either way; the verdict itself is not touched.
+  const rerun = suiteRerunWarning(reviewerCalls);
+  if (rerun) warnEvent(root, role, rerun);
 
   if (pi.aborted) {
     // Shutdown mid-review: fail closed without bookkeeping — the commit stays on the branch

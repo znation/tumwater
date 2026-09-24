@@ -1366,12 +1366,43 @@ test("buildReviewPrompt names the harness's green pre-check when given, and omit
     withCheck,
     /The harness already ran the project's own check on this exact tree and it passed:\n`npm run test` passed\./,
   );
-  assert.match(oneLine(withCheck), /Do not spend your run re-running it/);
+  assert.match(oneLine(withCheck), /Spend your run on what a green check cannot show/);
   const without = buildReviewPrompt("diff");
   assert.ok(!without.includes("The harness already ran"), "no pre-check section without a verdict");
   // The verdict-form contract survives the extra section: still exactly the two advertised forms.
   const advertised = [...oneLine(withCheck).matchAll(/VERDICT:\s*(\w+)/g)].map((m) => m[1]);
   assert.deepEqual(advertised, ["approve", "reject"]);
+  assert.equal([...withCheck.matchAll(/VERDICT:/g)].length, 2);
+});
+
+// BUGS.md 2026-09-23: reviewers told "Do not spend your run re-running it" in the context
+// paragraph re-ran the suite in scratch copies under /tmp anyway. The rule is now its own line in
+// the rules list — naming the scratch-copy route as a re-run and allowing one specific test — and
+// it exists only behind a verified pre-check: with no green run (timed out, killed, skipped, no
+// declared check) a reviewer running the suite itself is doing its job.
+test("the review prompt's no-re-run rule is one rules-list line, present only behind a verified pre-check", () => {
+  const withCheck = buildReviewPrompt("diff", undefined, undefined, undefined, undefined, "`npm run test` passed");
+  const rules = withCheck.slice(withCheck.indexOf("Rules for this run:"));
+  assert.match(
+    rules,
+    /\n- Do not re-run the check named above or the project's full test suite: the harness's green run\n  is the verified result\./,
+    "a rules-list item of its own",
+  );
+  const flat = oneLine(rules);
+  assert.match(flat, /Copying the tree elsewhere to run it — rsync or cp into a temp directory, reinstalling dependencies there \(`npm ci`\) — counts as re-running it\./);
+  assert.match(flat, /Running one specific test file for a concrete reason you can name is fine\./);
+  // It qualifies the scratch-copy allowance, so it follows it directly.
+  assert.match(flat, /directory is fine when you need to run something\. - Do not re-run the check named above/);
+  // Stated once: the old in-paragraph sentence is gone, and no other "re-run" instruction repeats it.
+  const flatAll = oneLine(withCheck);
+  assert.doesNotMatch(flatAll, /Do not spend your run re-running it/);
+  assert.equal([...flatAll.matchAll(/Do not re-run/g)].length, 1);
+  assert.equal([...withCheck.matchAll(/VERDICT:/g)].length, 2);
+
+  const without = oneLine(buildReviewPrompt("diff"));
+  assert.doesNotMatch(without, /Do not re-run|re-running it/, "no verified result, no rule");
+  assert.match(without, /directory is fine when you need to run something\. - Weigh the change/);
+  assert.equal([...without.matchAll(/VERDICT:/g)].length, 2);
 });
 
 // BUGS.md 2026-09-23 (b020f67): the gate's own build-fix commit must be named to the reviewer —

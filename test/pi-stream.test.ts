@@ -44,3 +44,22 @@ test("an assistant message_end with no content array is handled as an empty, con
   assert.equal(parser.outputTokens, 3);
   assert.equal(parser.peakContextTokens, 7);
 });
+
+test("onToolCallStart observes each tool call once, at its start, with pi's name and raw args", () => {
+  const seen: Array<[string, unknown]> = [];
+  const parser = new PiStreamParser((toolName, args) => seen.push([toolName, args]));
+  const line = (event: Record<string, unknown>) => JSON.stringify(event) + "\n";
+  parser.feed(
+    line({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "npm test" } }) +
+      line({ type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [{ type: "text", text: "ok" }] } }) +
+      line({ type: "tool_execution_end", toolCallId: "c1", result: {}, isError: false }) +
+      // pi omits toolName on some start events: the hook still fires, with an empty name.
+      line({ type: "tool_execution_start", toolCallId: "c2", args: { command: "ls" } }),
+  );
+  assert.deepEqual(seen, [
+    ["bash", { command: "npm test" }],
+    ["", { command: "ls" }],
+  ]);
+  // The hook only observes: the parser's own open-call tracking runs exactly as without it.
+  assert.deepEqual(parser.openToolCalls.map((c) => c.id), ["c2"]);
+});

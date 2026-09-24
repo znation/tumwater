@@ -106,11 +106,16 @@ that failure requires.`;
  * one VERDICT line plus numbered reasons (see parseVerdict in src/review.ts). `verifiedByHarness`
  * names the project's own check the gate's deterministic pre-check already ran green on this
  * exact tree (e.g. "`npm run test` passed"), so the reviewer spends its run on what a green suite
- * cannot show instead of re-running it. `today` pins the date line (prompt.ts's dateLine) for
- * tests; omitted, it is the local day. `buildFix` names the gate's own build-fix commit(s) when
- * its one fix run changed the tree, so checklist item 1 does not reject a harness fix as a change
- * the author never claimed. The text must contain the literal "VERDICT:" exactly twice — the two
- * advertised forms — because a prompt test derives the accepted forms from it. */
+ * cannot show instead of re-running it. The no-re-run instruction is its own line in the rules
+ * list, not a clause in the context paragraph: stated there, reviewers read past it and re-ran
+ * the suite in scratch copies under /tmp while holding the landing slot (BUGS.md 2026-09-23). It
+ * appears only when a verified result exists: after a timed-out, killed, or skipped pre-check no
+ * green run stands behind the tree, and a reviewer running the suite itself is doing its job.
+ * `today` pins the date line (prompt.ts's dateLine) for tests; omitted, it is the local day.
+ * `buildFix` names the gate's own build-fix commit(s) when its one fix run changed the tree, so
+ * checklist item 1 does not reject a harness fix as a change the author never claimed. The text
+ * must contain the literal "VERDICT:" exactly twice — the two advertised forms — because a
+ * prompt test derives the accepted forms from it. */
 export function buildReviewPrompt(
   diff: string,
   summary?: string,
@@ -144,8 +149,8 @@ not just whether it is correct.`,
   if (verifiedByHarness)
     parts.push(
       `The harness already ran the project's own check on this exact tree and it passed:
-${verifiedByHarness}. Do not spend your run re-running it — spend it on what a green check cannot
-show: wrong behavior the tests never exercise, claims the diff does not back, work left half-done.`,
+${verifiedByHarness}. Spend your run on what a green check cannot show: wrong behavior the tests
+never exercise, claims the diff does not back, work left half-done.`,
     );
   if (principles) {
     parts.push(
@@ -153,6 +158,15 @@ show: wrong behavior the tests never exercise, claims the diff does not back, wo
     );
   }
   parts.push(`The full diff this merge will land (everything the branch is ahead of main):\n<diff>\n${diff}\n</diff>`);
+  // Right after the scratch-copy allowance it qualifies: a scratch copy stays fine for measuring
+  // something, but a copy made to run the suite is the re-run this line forbids.
+  const noRerunRule = verifiedByHarness
+    ? `
+- Do not re-run the check named above or the project's full test suite: the harness's green run
+  is the verified result. Copying the tree elsewhere to run it — rsync or cp into a temp
+  directory, reinstalling dependencies there (\`npm ci\`) — counts as re-running it. Running one
+  specific test file for a concrete reason you can name is fine.`
+    : "";
   parts.push(
     `Review adversarially: hunt for correctness bugs, violations of the project's principles,
 unjustified complexity growth, and incomplete or half-done work. Read surrounding code in the
@@ -183,7 +197,7 @@ Rules for this run:
 - Do not edit any file in the worktree. Never run a command that changes state (no git
   add/commit/merge/rebase/reset, no writes in the worktree) — your only output channel is the
   verdict below. Reading files and git history is fine; a scratch copy under the system temp
-  directory is fine when you need to run something.
+  directory is fine when you need to run something.${noRerunRule}
 - Weigh the change against its stated purpose; do not approve work you did not actually check.
 - End your reply with exactly one line in this form:
   VERDICT: approve   or   VERDICT: reject
