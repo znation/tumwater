@@ -10,6 +10,14 @@ export const CONFIG_BASENAME = "tumwater.json";
  * tumwater.json is seeded from (plans/portability.md §4a/7). */
 export const EXAMPLE_CONFIG_BASENAME = "tumwater.example.json";
 
+/** The files the project brief (the managed initial prompt + status sections) may live in,
+ * candidates in resolution order: TUMWATER.md first, so an adopted repo's own README.md stays
+ * untouched (plans/portability.md §7a/7); README.md is the compatibility path every repo
+ * tumwater has created so far. */
+export function briefCandidates(root: string): string[] {
+  return [path.join(root, "TUMWATER.md"), path.join(root, "README.md")];
+}
+
 function tumwaterDir(root: string): string {
   return path.join(root, STATE_DIR);
 }

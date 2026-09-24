@@ -135,7 +135,7 @@ within that budget, there is nothing to do.`,
   {
     id: "plan",
     title: "feature planner",
-    find: `Think about what this project needs next, guided by its initial prompt in README.md and
+    find: `Think about what this project needs next, guided by its initial prompt in the project brief (TUMWATER.md when it exists with the tumwater:prompt markers, else README.md) and
 what already exists. Choose ONE unplanned feature or improvement worth doing and write a concrete
 plan for it: a short markdown section in PLANS.md (goal, approach, files touched, acceptance
 criteria). Do not implement it. Before planning, confirm with grep that the capability does not
@@ -151,7 +151,7 @@ unimplemented plans, prefer refining the weakest existing plan over adding anoth
   {
     id: "readme",
     title: "README maintainer",
-    find: `Read README.md and compare it against the actual state of the project. Work from the
+    find: `Read the project brief — TUMWATER.md when it exists with the tumwater:prompt markers, else README.md — and compare it against the actual state of the project. Work from the
 delta, not from scratch: \`git log --oneline <stamped sha>..main\` names everything that landed
 since the last sync — read only what those commits touched, plus PLANS.md's Planned headings and
 BUGS.md's Open section for the open-items lines. The status section
@@ -164,7 +164,7 @@ recorded by their owning loops in PLANS.md/BUGS.md and git log; stale narrative 
 is deleted as part of updating it (that is an update, not a loss). If the section exceeds ~8KB it has
 drifted back into narrative — prune it to the state-only form. Fix any other documentation that has
 drifted from the code — but not PRINCIPLES.md, which only the director and steward edit. Never edit
-the initial prompt between the tumwater:prompt markers. If the README is already accurate (including
+the initial prompt between the tumwater:prompt markers. If the brief is already accurate (including
 its freshness stamp), there is nothing to do; a moved main makes the stamp stale, so syncs still run
 after landings.`,
   },

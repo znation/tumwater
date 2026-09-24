@@ -594,8 +594,8 @@ test("every role prompt carries the section-aware read-first rule", () => {
   const role = roleById("feature");
   assert.ok(role);
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  // README is read in full; QUESTIONS.md keeps its place in the read set.
-  assert.match(prompt, /First read README\.md in full/);
+  // The brief file is named; with no briefFile given it is the README.md compatibility default.
+  assert.match(prompt, /First read the project brief \(README\.md\) in full/);
   assert.match(prompt, /plus QUESTIONS\.md when present/);
   // PLANS.md and BUGS.md are never read wholesale — their actionable sections come first by
   // template convention, so only the top of each file is read.
@@ -609,6 +609,24 @@ test("every role prompt carries the section-aware read-first rule", () => {
   );
   // The steward curates those files and must see them whole.
   assert.match(prompt, /The steward role is the exception: it curates those files and must see them whole/);
+});
+
+test("both prompt builders name the resolved brief file instead of a hardcoded README.md", () => {
+  const role = roleById("feature");
+  assert.ok(role);
+  const tick = oneLine(buildTickPrompt({ role, initialPrompt: "", briefFile: "TUMWATER.md" }));
+  assert.match(tick, /First read the project brief \(TUMWATER\.md\) in full/);
+  assert.match(tick, /Never edit the initial prompt block in TUMWATER\.md/);
+  assert.ok(!tick.includes("in README.md"), `no README.md left in the rules: ${tick.includes("README.md")}`);
+
+  const director = oneLine(buildDirectorPrompt("add x", "a project", undefined, undefined, "TUMWATER.md"));
+  assert.match(director, /First read the project brief \(TUMWATER\.md\) in full/);
+  assert.match(director, /Never edit the initial prompt block in TUMWATER\.md/);
+
+  // Omitted briefFile keeps the README.md compatibility default in both builders.
+  const directorDefault = oneLine(buildDirectorPrompt("add x", "a project"));
+  assert.match(directorDefault, /First read the project brief \(README\.md\) in full/);
+  assert.match(directorDefault, /Never edit the initial prompt block in README\.md/);
 });
 
 test("every role prompt carries the ask-don't-guess rule", () => {

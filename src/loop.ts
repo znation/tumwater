@@ -22,7 +22,7 @@ import {
   readPrinciples,
 } from "./prompt.js";
 import { LoopPi } from "./loop-pi.js";
-import { readInitialPrompt } from "./readme.js";
+import { briefFile, readInitialPrompt } from "./readme.js";
 import { telemetryDigest } from "./failure-report.js";
 import { configForRole } from "./config.js";
 import { applyConfigRequest } from "./config-write.js";
@@ -169,6 +169,11 @@ export class LoopRunner {
   /** Decide the prompt for this tick, or null to skip (director with empty inbox). */
   private tickPrompt(): string | null {
     const initialPrompt = readInitialPrompt(this.root);
+    // The brief's owning file (TUMWATER.md first, README.md as the compatibility path —
+    // plans/portability.md §7a/7), named in both prompt builders' rules instead of a hardcoded
+    // README.md. "README.md" is the fallback for a repo with no marked file yet — the fleet
+    // runs blind on prompts either way, so the name in the rules should still point somewhere.
+    const brief = briefFile(this.root) ?? "README.md";
     // The project's design principles ride along in every prompt — tick and director alike — so
     // all loops share one standard of taste. Empty when the repo has no PRINCIPLES.md.
     const principles = readPrinciples(this.root);
@@ -181,7 +186,7 @@ export class LoopRunner {
       const userPrompt = dequeuePrompt(this.root);
       if (!userPrompt) return null;
       this.pendingUserPrompt = userPrompt;
-      prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check);
+      prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief);
     } else {
       // Catalog first, then user-defined loops (plans/user-defined-loops.md): a custom's task
       // is its entire find-something-to-do text and the title identifies it in the prompt.
@@ -210,6 +215,7 @@ export class LoopRunner {
         coverage,
         extraInstructions: this.config.roles[this.role]?.instructions,
         check,
+        briefFile: brief,
       });
     }
     // A change rejected in review is the only cross-tick memory of what was built and why it

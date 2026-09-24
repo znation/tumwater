@@ -37,6 +37,7 @@ import { classifyLock, readLockPid } from "./lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
 import { errorMessage, shortSha } from "./text.js";
+import { briefFile } from "./readme.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -171,6 +172,25 @@ export function checkInit(root: string): CheckOutcome {
   } catch (err) {
     return { level: "fail", detail: errorMessage(err) };
   }
+}
+
+/** Which file holds the project brief (the managed initial prompt + status sections,
+ * plans/portability.md §7a/7): TUMWATER.md first, README.md as the compatibility path. A repo
+ * whose README carries no markers — or that has no brief at all — still boots, but every loop
+ * runs without its project prompt, so that state is a warning, not an error: it is exactly
+ * what a repo looks like between `git clone` and `tumwater init` on purpose (e.g. 7b's
+ * `--dry-run`). */
+export function checkBrief(root: string): CheckOutcome {
+  const owner = briefFile(root);
+  if (owner) return { level: "ok", detail: `brief in ${owner}` };
+  if (fs.existsSync(path.join(root, "README.md"))) {
+    return {
+      level: "warn",
+      detail:
+        `README.md carries no tumwater:prompt markers — the fleet would run without its project brief; add the block or re-run \`tumwater init\``,
+    };
+  }
+  return { level: "warn", detail: "no brief file — run `tumwater init <prompt>` to seed one" };
 }
 
 /** Fallback model readiness — the daily-cost budget's third state (plans/fallback-model.md):
@@ -358,6 +378,7 @@ export async function runDoctor(root: string, pathEnv: string = process.env.PATH
     { name: "git binary", ...checkGitBinary(pathEnv) },
     { name: "repo", ...(await checkRepo(root, config ?? undefined)) },
     { name: "init", ...checkInit(root) },
+    { name: "brief", ...checkBrief(root) },
     { name: "fallback", ...checkFallbackModel(root) },
     { name: "pi binary", ...checkAgentBinary(root, pathEnv) },
     { name: "state dir", ...checkStateDir(root) },

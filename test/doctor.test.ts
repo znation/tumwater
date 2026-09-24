@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  checkBrief,
   checkBuild,
   checkBuildCheck,
   checkFallbackModel,
@@ -231,6 +232,35 @@ test("checkInit carries the config error verbatim — invalid JSON and validatio
   assert.match(fail.detail, /unknown key "bogusKey" in tumwater\.json/);
 });
 
+test("checkBrief reports which file holds the managed sections, and warns when none does", () => {
+  // No brief at all: a warn (a repo between clone and init is legitimate but blind).
+  const bare = makeRepo();
+  assert.deepEqual(checkBrief(bare), { level: "warn", detail: "no brief file — run `tumwater init <prompt>` to seed one" });
+
+  // README.md without markers: warn, naming what is missing — this is what 7b's adopt path
+  // fixes by writing TUMWATER.md instead.
+  const readmeOnly = makeRepo();
+  fs.writeFileSync(path.join(readmeOnly, "README.md"), "# mine\n");
+  const readmeWarn = checkBrief(readmeOnly);
+  assert.equal(readmeWarn.level, "warn");
+  assert.match(readmeWarn.detail, /README\.md carries no tumwater:prompt markers/);
+
+  // A marked README.md — the compatibility path every tumwater-created repo has — is ok.
+  const marked = makeRepo();
+  fs.writeFileSync(
+    path.join(marked, "README.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\nbrief\n<!-- tumwater:prompt:end -->\n`,
+  );
+  assert.deepEqual(checkBrief(marked), { level: "ok", detail: "brief in README.md" });
+
+  // A marked TUMWATER.md outranks it: the resolution order is visible in the report.
+  fs.writeFileSync(
+    path.join(marked, "TUMWATER.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\nbrief\n<!-- tumwater:prompt:end -->\n`,
+  );
+  assert.deepEqual(checkBrief(marked), { level: "ok", detail: "brief in TUMWATER.md" });
+});
+
 /** A models.json with one unpriced (free) model and one paid model, for the fallback check. */
 function writeModels(): string {
   const dir = tmpdir("doctor-models-");
@@ -380,6 +410,12 @@ test("runDoctor composes the full report — fixed check order, not-running head
   // An npm check so the report's all-ok sweep below holds — a repo with neither a configured
   // check nor an npm script reads a project-check warn (the warn case has its own test).
   fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }));
+  // A marked brief so the report's all-ok sweep below holds — no brief file reads a brief warn
+  // (the warn case has its own test).
+  fs.writeFileSync(
+    path.join(root, "README.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\nbrief\n<!-- tumwater:prompt:end -->\n`,
+  );
   fs.mkdirSync(path.join(root, "node_modules"));
   fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
   fs.writeFileSync(path.join(root, ".tumwater", "keep.txt"), "x\n");
@@ -389,7 +425,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "fallback", "pi binary", "state dir", "merge lock", "project check", "build"],
+    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "build"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.

@@ -66,7 +66,7 @@ const CONTEXT_BUDGET_RULE = `- Your context window is finite and everything you 
  * in a repo with no node_modules anywhere (a Python, Rust, or Go repo, or one with no check
  * at all). Undefined keeps the generic wording, exactly as prompts read before a check could
  * be configured. */
-function commonRules(check?: BuildCheck): string {
+function commonRules(check?: BuildCheck, briefFile: string = "README.md"): string {
   const verify = check
     ? `verify with ${describeCheck(check)} (the project's declared check) — run it after your
   change and fix what you broke.`
@@ -81,7 +81,8 @@ function commonRules(check?: BuildCheck): string {
 Rules for this run:
 
 Orientation — read this much before choosing your task, and no more:
-- First read README.md in full to understand the project, plus QUESTIONS.md when present.
+- First read the project brief (${briefFile}) in full to understand the project, plus
+  QUESTIONS.md when present.
   PLANS.md and BUGS.md grow without bound — never read them wholesale: their actionable sections
   come first by template convention (## Planned before ## Done; ## Open before ## Fixed), so read
   only the top of each file that exists — Planned plus recent Done entries, Open plus recent
@@ -108,7 +109,7 @@ Boundaries:
 - Never create, amend, or revert git commits, branches, or merges — the harness handles all git
   operations. Reading git history is fine.
 - Never touch the .tumwater directory or tumwater.json.
-- Never edit the initial prompt block in README.md (between the tumwater:prompt markers).
+- Never edit the initial prompt block in ${briefFile} (between the tumwater:prompt markers).
 - PRINCIPLES.md holds this project's design principles; only the director and steward roles may
   edit it. Treat it as read-only — if a principle seems wrong or outdated, record your objection
   in PLANS.md rather than editing the file.
@@ -185,6 +186,11 @@ interface TickPromptInput {
    * configured or detected (plans/portability.md §6/7) — names the verify command in the
    * rules instead of asserting npm. Omitted: no check — generic wording, no npm assertion. */
   check?: BuildCheck;
+  /** The file the project brief (the managed initial prompt + status) is read from —
+   * TUMWATER.md when it owns the sections, else README.md (plans/portability.md §7a/7).
+   * Omitted: the README.md compatibility default, exactly as prompts read before the brief
+   * became resolvable. */
+  briefFile?: string;
 }
 
 /** Shared opening of every loop prompt: where the run happens and why the project exists.
@@ -201,7 +207,7 @@ function sharedPreamble(initialPrompt: string): string[] {
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, extraInstructions, check } = input;
+  const { role, initialPrompt, principles, digest, coverage, extraInstructions, check, briefFile } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt),
@@ -211,7 +217,7 @@ export function buildTickPrompt(input: TickPromptInput): string {
   if (digest) parts.push(digestBlock(digest));
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
-  parts.push(commonRules(check).trim());
+  parts.push(commonRules(check, briefFile).trim());
   return parts.join("\n\n");
 }
 
@@ -223,6 +229,8 @@ export function buildDirectorPrompt(
   /** The project's resolved check (plans/portability.md §6/7) — same threading as the tick
    * prompt, since commonRules is shared by both builders. */
   check?: BuildCheck,
+  /** The resolved brief file's name (plans/portability.md §7a/7) — same threading again. */
+  briefFile?: string,
 ): string {
   const parts = [
     `You are the "director" loop of tumwater, an autonomous development harness. The user steers
@@ -273,7 +281,7 @@ work yourself:
   implementation itself.
 - ${DECOMPOSITION_GUIDANCE}`,
   );
-  parts.push(commonRules(check).trim());
+  parts.push(commonRules(check, briefFile).trim());
   parts.push(
     `Note on one boundary above, director only: user-defined-loop requests are executed by
 writing .tumwater-config-request.json in your worktree (shape and worked example above) — never

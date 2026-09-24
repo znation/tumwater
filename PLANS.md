@@ -5,9 +5,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 7a/7 — Resolve the project brief as `TUMWATER.md`, with README.md as the compatibility path (planned 2026-09-26, split from 7/7)
+### 7b/7 — `tumwater init --adopt` and `--dry-run`: adopt an existing repo without touching its README (planned 2026-09-26, split from 7/7)
 
-**Needs review 2026-09-23 by feature: too large for one run** (14 source/test files touched) — resolved 2026-09-26 by splitting 7/7 into this plan (7a) and 7b/7.
+**Goal.** Today `initProject` hard-fails when README.md exists without the `tumwater:prompt` markers (src/init.ts:147), which is why tumwater has only ever been pointed at repos it created itself. Add the adoption path — write `TUMWATER.md`, leave README.md and any existing backlog files untouched — plus `--dry-run` and an ecosystem-neutral PRINCIPLES template. Depends on 7a/7 (the adopted repo's loops must resolve `TUMWATER.md` first, or adoption creates a brief nobody reads). Design rationale and audit pins: plans/portability.md §7/7 (corrections 1, 4, 5, 6, 7).
+
+**Series.** Part 7/7 of the portability series, second half. Depends on: 2/7 ✓ and 7a/7.
+
+**Approach.**
+- src/cli-args.ts — `parseInitArgs` (returns `{ prompt: string; branch: string | null }` at :127) gains `--adopt` and `--dry-run` as valueless booleans: both join the allowed double-dash set (:129), the per-flag once-checks (:135–136), `--file`'s claimed pair (:142–144), and the join-skip list (:200–204) so they are never baked into the prompt text; the return type becomes `{ prompt; branch; adopt; dryRun }`.
+- src/cli.ts — `cmdInit` (:130) destructures four fields and passes `opts` through.
+- src/init.ts — `initProject` gains a fourth positional `opts?: { adopt?: boolean; dryRun?: boolean }` (branch stays third, :106). The README-without-markers guard (:147) becomes the adoption path: write `TUMWATER.md` via `briefTemplate`, one informational line, no throw — and the same path is taken with or without `--adopt` when README.md lacks markers. `write("README.md", …)` does not run on the adopt path (briefTemplate writes TUMWATER.md instead); the existing create-if-absent `write` helper (:159) keeps PLANS/BUGS/QUESTIONS/PRINCIPLES safe from overwrite. `--dry-run` prints the created/left-alone list and exits 0 with zero writes — no .gitignore edit, no `git add`/commit (the `committable` filter at :176–190 and 4a/7's create-if-absent config seeding (:168–171) are reused unchanged when it does run). `PRINCIPLES_TEMPLATE` (:61) is trimmed to ecosystem-neutral principles with a note that director and steward own the list (correction 7 — trimmed unconditionally; this repo's own tracked PRINCIPLES.md is only read, never re-seeded).
+- Tests: test/cli-args.test.ts (the flag rules above, including `--file` + booleans combining and a duplicate boolean failing by name); test/init.test.ts (adopt in a clone with its own README.md and PLANS.md; `--dry-run` writes nothing and exits 0; the old-failure test — audit pin :118 — inverts to assert the adoption path; a bare re-seed of a README-only repo still round-trips through README.md).
+
+**Files touched.** src/cli-args.ts, src/init.ts, src/cli.ts, test/cli-args.test.ts, test/init.test.ts.
+
+**Acceptance criteria.**
+- `tumwater init --adopt "<brief>"` in a clone of an unrelated repo (existing README.md, existing PLANS.md) creates only `TUMWATER.md`, `QUESTIONS.md`, `PRINCIPLES.md`, `tumwater.json` and the `.gitignore` entries — README.md and PLANS.md byte-identical afterwards; the same path fires automatically without the flag when README.md lacks markers.
+- `tumwater init --dry-run` prints the file list and exits 0 having written nothing (no gitignore edit, no commit).
+- A repo tumwater created before this change keeps reading its brief from README.md with no migration step.
+- A repo that only gained tumwater.json reports it and stays uncommitted (4a/7's rule, unchanged).
+
+**Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ and 4b/7 ✓ (landed 2026-09-22), 5/7 ✓ (2026-09-24), 6/7 ✓ (2026-09-25), 7a/7 ✓ (2026-09-23) are done. 7b/7 has no unmet dependency left.
+
+
+## Done
+
+### 7a/7 — Resolve the project brief as `TUMWATER.md`, with README.md as the compatibility path (planned 2026-09-26, split from 7/7, done 2026-09-23)
 
 **Goal.** `readInitialPrompt` (src/readme.ts) reads the brief only out of README.md's managed section, so the readme role owns a status block inside the project's own README — a non-starter for adopting an existing codebase (7b/7). Make the brief's home resolvable: `TUMWATER.md` first, README.md as the compatibility path, with no behavior change for repos that only have README.md. Design rationale and the 09-18/09-24 audit pins live in plans/portability.md §7/7 (its corrections 2, 3 and 8); line anchors below were re-verified 2026-09-26 and some have drifted a few lines since the audit — treat the audit's pins as indicative and re-`grep` before editing.
 
@@ -31,30 +54,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Both `buildTickPrompt` and `buildDirectorPrompt` name the actual brief file (no hardcoded README.md remains in COMMON_RULES).
 - No init flags change in this sub-plan: `tumwater init` still writes README.md on a fresh repo; `--adopt`/`--dry-run` are 7b/7.
 
-### 7b/7 — `tumwater init --adopt` and `--dry-run`: adopt an existing repo without touching its README (planned 2026-09-26, split from 7/7)
+**Implemented 2026-09-23.** All criteria met. Deltas from the written approach: `TickPromptInput.briefFile` and `buildDirectorPrompt`'s fifth parameter are optional with a README.md default (byte-for-byte compat for every existing caller and test, criterion 2); `commonRules(check?, briefFile?)` carries the name into both builders; `init.ts` is untouched — both of its guards resolve through `readInitialPrompt`, so a marked `TUMWATER.md` satisfies the bare-init re-seed path and silences the marker-less-README throw automatically; `roles.ts`' static `find` strings name the brief as "TUMWATER.md when it exists with the tumwater:prompt markers, else README.md" rather than receiving a substituted filename. `readInitialPrompt` now resolves per candidate and returns the first well-formed block.
 
-**Goal.** Today `initProject` hard-fails when README.md exists without the `tumwater:prompt` markers (src/init.ts:147), which is why tumwater has only ever been pointed at repos it created itself. Add the adoption path — write `TUMWATER.md`, leave README.md and any existing backlog files untouched — plus `--dry-run` and an ecosystem-neutral PRINCIPLES template. Depends on 7a/7 (the adopted repo's loops must resolve `TUMWATER.md` first, or adoption creates a brief nobody reads). Design rationale and audit pins: plans/portability.md §7/7 (corrections 1, 4, 5, 6, 7).
-
-**Series.** Part 7/7 of the portability series, second half. Depends on: 2/7 ✓ and 7a/7.
-
-**Approach.**
-- src/cli-args.ts — `parseInitArgs` (returns `{ prompt: string; branch: string | null }` at :127) gains `--adopt` and `--dry-run` as valueless booleans: both join the allowed double-dash set (:129), the per-flag once-checks (:135–136), `--file`'s claimed pair (:142–144), and the join-skip list (:200–204) so they are never baked into the prompt text; the return type becomes `{ prompt; branch; adopt; dryRun }`.
-- src/cli.ts — `cmdInit` (:130) destructures four fields and passes `opts` through.
-- src/init.ts — `initProject` gains a fourth positional `opts?: { adopt?: boolean; dryRun?: boolean }` (branch stays third, :106). The README-without-markers guard (:147) becomes the adoption path: write `TUMWATER.md` via `briefTemplate`, one informational line, no throw — and the same path is taken with or without `--adopt` when README.md lacks markers. `write("README.md", …)` does not run on the adopt path (briefTemplate writes TUMWATER.md instead); the existing create-if-absent `write` helper (:159) keeps PLANS/BUGS/QUESTIONS/PRINCIPLES safe from overwrite. `--dry-run` prints the created/left-alone list and exits 0 with zero writes — no .gitignore edit, no `git add`/commit (the `committable` filter at :176–190 and 4a/7's create-if-absent config seeding (:168–171) are reused unchanged when it does run). `PRINCIPLES_TEMPLATE` (:61) is trimmed to ecosystem-neutral principles with a note that director and steward own the list (correction 7 — trimmed unconditionally; this repo's own tracked PRINCIPLES.md is only read, never re-seeded).
-- Tests: test/cli-args.test.ts (the flag rules above, including `--file` + booleans combining and a duplicate boolean failing by name); test/init.test.ts (adopt in a clone with its own README.md and PLANS.md; `--dry-run` writes nothing and exits 0; the old-failure test — audit pin :118 — inverts to assert the adoption path; a bare re-seed of a README-only repo still round-trips through README.md).
-
-**Files touched.** src/cli-args.ts, src/init.ts, src/cli.ts, test/cli-args.test.ts, test/init.test.ts.
-
-**Acceptance criteria.**
-- `tumwater init --adopt "<brief>"` in a clone of an unrelated repo (existing README.md, existing PLANS.md) creates only `TUMWATER.md`, `QUESTIONS.md`, `PRINCIPLES.md`, `tumwater.json` and the `.gitignore` entries — README.md and PLANS.md byte-identical afterwards; the same path fires automatically without the flag when README.md lacks markers.
-- `tumwater init --dry-run` prints the file list and exits 0 having written nothing (no gitignore edit, no commit).
-- A repo tumwater created before this change keeps reading its brief from README.md with no migration step.
-- A repo that only gained tumwater.json reports it and stays uncommitted (4a/7's rule, unchanged).
-
-**Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ and 4b/7 ✓ (landed 2026-09-22), 5/7 ✓ (2026-09-24), 6/7 ✓ (2026-09-25) are done. 7a/7 has no unmet dependency; 7b/7 waits on 7a/7 only.
-
-
-## Done
 
 ### Wake and abort from the GUI dashboard (planned 2026-09-25, done 2026-09-23)
 

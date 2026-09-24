@@ -164,6 +164,45 @@ test("initProject accepts an existing README that already carries the prompt", a
   assert.equal(readInitialPrompt(repo), "my prompt");
 });
 
+// Brief resolution (plans/portability.md §7a/7) applies to BOTH init guards: a marked
+// TUMWATER.md satisfies the bare-init re-seed path AND silences the marker-less-README throw.
+
+test("a marked TUMWATER.md satisfies init's bare-init re-seed path", async () => {
+  // A checkout with a marked TUMWATER.md but no tumwater.json re-seeds the config bare, same
+  // as a marked README.md does — the prompt is not required on the command line. README.md
+  // exists too (an ordinary repo), so only the config is created.
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "README.md"), "# mine\n");
+  fs.writeFileSync(
+    path.join(repo, "TUMWATER.md"),
+    `# mine\n${PROMPT_START}\nthe original prompt\n${PROMPT_END}\n`,
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own brief");
+  const again = await initProject(repo, "");
+  assert.ok(again.created.includes("tumwater.json"));
+  assert.ok(!again.created.includes("README.md"), "README.md is never rewritten");
+  assert.equal(readInitialPrompt(repo), "the original prompt");
+});
+
+test("a marked TUMWATER.md silences init's marker-less-README throw", async () => {
+  // An adopted repo (7b/7): its own README.md stays untouched — the brief lives in TUMWATER.md,
+  // so init neither throws nor rewrites the README.
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "README.md"), "# mine\n");
+  fs.writeFileSync(
+    path.join(repo, "TUMWATER.md"),
+    `# mine\n${PROMPT_START}\nadopted prompt\n${PROMPT_END}\n`,
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own readme and brief");
+  const before = fs.readFileSync(path.join(repo, "README.md"), "utf8");
+  const result = await initProject(repo, "adopted prompt");
+  assert.ok(!result.created.includes("README.md"), "README.md is never created on the adopt path");
+  assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), before, "README.md byte-identical");
+  assert.equal(readInitialPrompt(repo), "adopted prompt");
+});
+
 test("initProject rejects empty prompts", async () => {
   await assert.rejects(() => initProject(makeRepo(), "   "), /initial prompt is required/);
 });
