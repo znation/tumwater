@@ -442,6 +442,16 @@ test("status and init fail fast with a clear message when git is missing from PA
   assert.match(r.stderr, /git not found on PATH/);
 });
 
+/** A fresh ephemeral port for live-server spawns: grab one from the OS, hand it back, and
+ * use it before anything else claims it. */
+async function freeTcpPort(): Promise<number> {
+  const probe = http.createServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const port = (probe.address() as { port: number }).port;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  return port;
+}
+
 test("gui --port validates its range instead of listening on an unexpected port", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli gui validation");
@@ -468,18 +478,8 @@ test("gui starts, prints its banner, and --all-interfaces names the LAN exposure
   const repo = makeRepo();
   await initProject(repo, "cli gui serve");
 
-  // A fresh ephemeral port for each spawn: grab one from the OS, hand it back, and use it
-  // before anything else claims it (the same trick as the busy-port test below, inverted).
-  const freePort = async (): Promise<number> => {
-    const probe = http.createServer();
-    await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-    const port = (probe.address() as { port: number }).port;
-    await new Promise<void>((resolve) => probe.close(() => resolve()));
-    return port;
-  };
-
   // Default binding: the banner names localhost only, with no all-interfaces warning.
-  const localPort = await freePort();
+  const localPort = await freeTcpPort();
   const local = spawnCli(repo, ["gui", "--port", String(localPort)]);
   try {
     await local.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${localPort}`), "the gui banner", 30_000);
@@ -489,7 +489,7 @@ test("gui starts, prints its banner, and --all-interfaces names the LAN exposure
   }
 
   // --all-interfaces: the concrete LAN URLs and the no-auth warning join the banner.
-  const lanPort = await freePort();
+  const lanPort = await freeTcpPort();
   const lan = spawnCli(repo, ["gui", "--port", String(lanPort), "--all-interfaces"]);
   try {
     await lan.waitFor((b) => b.includes("listening on ALL interfaces"), "the all-interfaces warning", 30_000);
@@ -520,6 +520,46 @@ test("gui reports a friendly error when the port is already in use", async () =>
     assert.match(r.stderr, /tumwater gui --port <n>/);
   } finally {
     blocker.close();
+  }
+});
+
+test("gui --token demands a non-empty secret instead of serving unauthenticated", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli gui token validation");
+
+  // A valueless --token is the same mistake as an empty one: an operator who asked for
+  // protection must get a CLI error, never a server with no auth (this test also bounds a
+  // regression that started serving — the spawn helper's timeout kills it and the exit
+  // code / stderr assertions fail).
+  const valueless = await cli(repo, "gui", "--token");
+  assert.equal(valueless.code, 1);
+  assert.match(valueless.stderr, /--token requires a non-empty secret/);
+
+  const empty = await cli(repo, "gui", "--token", "");
+  assert.equal(empty.code, 1);
+  assert.match(empty.stderr, /--token requires a non-empty secret/);
+});
+
+test("gui --token serves behind the gate and prints the token-bearing URL", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli gui token serve");
+
+  const port = await freeTcpPort();
+  const gui = spawnCli(repo, ["gui", "--port", String(port), "--token", "s3cret"]);
+  try {
+    // The banner URL carries the token: an operator pasting the printed link must land
+    // inside the gate, not on a bare 401 with no hint of what is missing.
+    await gui.waitFor(
+      (b) => b.includes(`tumwater gui at http://127.0.0.1:${port}/?token=s3cret`),
+      "the token-bearing banner",
+      30_000,
+    );
+    // The gate is live from the first response: without the token, even the page is 401.
+    const bare = await fetch(`http://127.0.0.1:${port}/`);
+    assert.equal(bare.status, 401);
+    assert.deepEqual(await bare.json(), { error: "token required" });
+  } finally {
+    gui.kill();
   }
 });
 
