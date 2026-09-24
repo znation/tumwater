@@ -129,7 +129,7 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
  * Unlike abort, no live harness is required; when none runs, say where the pause takes effect
  * instead of failing. Idempotent: a second pause reports the existing marker as-is. */
 export async function cmdPause(root: string): Promise<void> {
-  // pauseFleet in src/state.ts is the single writer of the pause marker — the GUI's
+  // pauseFleet in src/fleet-state.ts is the single writer of the pause marker — the GUI's
   // /api/pause toggle calls it too, so the CLI and the dashboard cannot drift on format
   // or idempotence; a false return means the marker was already there.
   if (!pauseFleet(root)) {
@@ -146,7 +146,7 @@ export async function cmdPause(root: string): Promise<void> {
  * no marker there is nothing to do. No live harness required — resuming before startup just
  * means the next `tumwater run` starts unpaused. */
 export async function cmdResume(root: string): Promise<void> {
-  // resumeFleet (src/state.ts) is the single remover, shared with the GUI toggle; a false
+  // resumeFleet (src/fleet-state.ts) is the single remover, shared with the GUI toggle; a false
   // return means there was no marker to lift.
   if (!resumeFleet(root)) {
     process.stdout.write("not paused\n");
