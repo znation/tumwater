@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WorkLandedCache } from "../src/work-landed-cache.js";
@@ -16,6 +17,25 @@ import { makeRepo, sh } from "./util.js";
 function commit(root: string, subject: string): string {
   sh(root, "git", "commit", "--allow-empty", "-q", "-m", subject);
   return sh(root, "git", "rev-parse", "HEAD").trim();
+}
+
+/** The 200-entry bound tests below need 201 distinct since-heads; a commit()+rev-parse spawn
+ * pair per head put ~50 s of fork/exec into the gate suite. One `git fast-import` stream
+ * builds the whole empty-commit history instead — author/committer matching makeRepo's user
+ * config, all timestamps epoch 0 (subjects are the only thing the verdicts read). Returns the
+ * new commits' shas, oldest first. */
+function bulkCommits(root: string, subjects: string[]): string[] {
+  const base = sh(root, "git", "rev-parse", "HEAD");
+  let stream = "";
+  for (const [i, subject] of subjects.entries()) {
+    // `from` on the first commit chains the history onto the repo's existing head; later
+    // commits default their parent to the stream's previous commit on the branch.
+    stream +=
+      `commit refs/heads/main\nauthor test <test@example.com> 0 +0000\ncommitter test <test@example.com> 0 +0000\ndata ${Buffer.byteLength(subject)}\n${subject}\n` +
+      (i === 0 ? `from ${base}\n` : "");
+  }
+  execFileSync("git", ["fast-import", "--quiet"], { cwd: root, input: stream });
+  return sh(root, "git", "rev-list", "--reverse", "refs/heads/main").split("\n");
 }
 
 test("a false verdict is cached at the main head it was checked against, and re-checked once main moves", async () => {
@@ -80,8 +100,10 @@ test("a range that cannot be evaluated reads as work landed — conservative", a
 
 test("the true-verdict cache stays correct past its 200-entry bound", async () => {
   const root = makeRepo();
-  const heads = [sh(root, "git", "rev-parse", "HEAD").trim()];
-  for (let i = 1; i <= 201; i++) heads.push(commit(root, `tumwater(feature): work ${i}`));
+  const heads = [
+    sh(root, "git", "rev-parse", "HEAD").trim(),
+    ...bulkCommits(root, Array.from({ length: 201 }, (_, i) => `tumwater(feature): work ${i + 1}`)),
+  ];
   const end = heads[heads.length - 1]!;
   const cache = new WorkLandedCache(root, "main");
 
@@ -94,8 +116,10 @@ test("the true-verdict cache stays correct past its 200-entry bound", async () =
 
 test("the false-verdict cache stays correct past its 200-entry bound", async () => {
   const root = makeRepo();
-  const heads = [sh(root, "git", "rev-parse", "HEAD").trim()];
-  for (let i = 1; i <= 200; i++) heads.push(commit(root, `tumwater(organize): tidy ${i}`));
+  const heads = [
+    sh(root, "git", "rev-parse", "HEAD").trim(),
+    ...bulkCommits(root, Array.from({ length: 200 }, (_, i) => `tumwater(organize): tidy ${i + 1}`)),
+  ];
   const end = heads[heads.length - 1]!;
   const cache = new WorkLandedCache(root, "main");
 
