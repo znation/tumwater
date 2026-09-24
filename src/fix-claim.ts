@@ -17,6 +17,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { sectionLines } from "./backlog.js";
 import { gitTry } from "./git.js";
 
 /** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix tick appends
@@ -30,16 +31,13 @@ export function normalizeFixedHeading(heading: string): string {
 }
 
 /** Headings (as written, `### ` stripped) under the `## Fixed` section of a BUGS.md
- * document. Empty when the document has no Fixed section. */
+ * document. Empty when the document has no Fixed section. Walks the section through
+ * sectionLines — backlog.ts's single home of "where a `## ` section starts and ends" — so
+ * this reader and the backlog browsers can never disagree about the boundary. */
 export function fixedHeadings(doc: string): string[] {
-  const lines = doc.split("\n");
-  const headings: string[] = [];
-  let inFixed = false;
-  for (const line of lines) {
-    if (/^## /.test(line)) inFixed = line.trim() === "## Fixed";
-    else if (inFixed && /^### /.test(line)) headings.push(line.replace(/^###\s+/, "").trim());
-  }
-  return headings;
+  return sectionLines(doc, "Fixed")
+    .filter((line) => /^### /.test(line))
+    .map((line) => line.replace(/^###\s+/, "").trim());
 }
 
 /** The body of one `### ` entry in a BUGS.md document: everything from after its heading to
