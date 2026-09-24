@@ -52,8 +52,9 @@ loops keep ticking while a change is under review.
   its build check still runs.
 - **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear.
 - **Batching.** When several changes are queued, each is reviewed alone, then up to
-  `landBatchMax` (default 3) land together under one check. A red batch falls back to one at a
-  time.
+  `landBatchMax` (default 3) land together under one check. A red batch lands its longest
+  passing prefix and checks the rest again. A change that is red on its own is rejected, unless
+  main is red too, in which case its pin is kept for later.
 - **Parallel vetting.** `maxConcurrentLandings` (default 1) sets how many queued changes are
   rebased, checked and reviewed at once, each in its own lander worktree. At 1 the single lander
   does everything, one landing or batch at a time. Above 1, a change that fails vetting frees
