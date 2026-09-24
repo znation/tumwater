@@ -28,6 +28,7 @@ import {
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import {
+  configPath,
   orchestratorStatePath,
   sessionsRootDir,
   toolOutputDir,
@@ -182,16 +183,18 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   let landingInFlight: InFlightLanding | null = null;
 
   // Live-reload bookkeeping: the last config error already warned about (a broken file must
-  // warn once per distinct text, not every poll), and the previous cycle's enabled set (for
+  // warn once per distinct text, not every poll), whether the file is currently missing (one
+  // warning per vanish, one line when it reappears), and the previous cycle's enabled set (for
   // one-shot enable/disable transition warnings).
   let lastConfigError: string | null = null;
+  let configMissing = false;
   let prevEnabled = new Set<string>(enabled);
   // The previous poll's budget gate, for one-shot transition events. Three-valued since
   // plans/fallback-model.md: open → fallback → paused are distinct states, and every crossing
   // between two of them is worth exactly one event.
   let prevGate: BudgetGate = "open";
   // The live config the last successful reload produced (last-known-good while the file is
-  // broken) and, derived from it, the view role loops run under while the fallback gate holds
+  // broken or missing) and, derived from it, the view role loops run under while the fallback gate holds
   // — recomputed only when the config object itself changes.
   let liveConfig = config;
   // The previous successful reload's config, for the one-shot config_changed event. Seeded from
@@ -231,6 +234,22 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // file keeps the last-known-good config and warns once per distinct error text.
       // Unchanged files are served from a stat-keyed cache (one stat per poll, no read).
       const reloaded = loadConfigCached(root);
+      // A missing file keeps the last-known-good config too, and never reloads as defaults: the
+      // fleet was started on a real file (startup refuses to run without one), so its vanishing
+      // mid-run is an incident — a landing's fast-forward deleted it on 2026-09-22 and the fleet
+      // silently ran 8.6 h on defaults (BUGS.md 2026-09-23). One warning per vanish, not per
+      // poll; its return logs one line, then the normal reload below diffs it against the
+      // retained config — so config_changed names only what the returned file really changed.
+      if (reloaded.missing) {
+        if (!configMissing) {
+          warnEvent(root, "harness", `tumwater.json missing — keeping current config until it returns (${configPath(root)})`);
+          configMissing = true;
+          lastConfigError = null; // Whatever state it returns in is stated afresh.
+        }
+      } else if (configMissing) {
+        warnEvent(root, "harness", "tumwater.json reappeared — reloading it");
+        configMissing = false;
+      }
       if (reloaded.config) {
         liveConfig = reloaded.config;
         // A live edit that changes behavior elsewhere logs one event naming the settings that
@@ -272,7 +291,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // re-prunes immediately; independently of edits, an unchanged fleet prunes at most once
       // per day so a never-restarted fleet still honors its window. Both paths log the startup
       // warning shape only when files were actually deleted — quiet polls stay silent. The live
-      // config (last-known-good while the file is broken) drives both checks, like the budget gate.
+      // config (last-known-good while the file is broken or missing) drives both checks, like the
+      // budget gate.
       const retention = liveConfig.sessionRetentionDays;
       if (retention !== lastRetention || dueForPrune(lastPruneAt, Date.now(), retention)) {
         // A change to a positive window prunes immediately even inside the daily window — an

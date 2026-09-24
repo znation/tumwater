@@ -1310,6 +1310,11 @@ test("the plan role and the director size plans to one implementation run via th
   assert.match(sizing, /Size every plan to ONE implementation run by a mid-sized model working alone/);
   assert.match(sizing, /at most a few hundred lines of change including tests/);
   assert.match(sizing, /split into independently landable sub-plans/);
+  // The self-hosting build lag (BUGS.md 2026-09-23): a landing that changes how landings behave
+  // must not also depend on that change, since the fleet lands it with the previous build.
+  assert.match(sizing, /every commit lands under the build that predates it/);
+  assert.match(sizing, /a change to how landings behave and any step that depends on it are separate sub-plans/);
+  assert.match(sizing, /the second landing only once the first is the running build/);
   // The plan role also grounds plans in the code and checks for duplicates first.
   const find = oneLine(roleById("plan")!.find);
   assert.match(find, /confirm with grep that the capability does not already exist/);

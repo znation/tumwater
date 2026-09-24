@@ -620,6 +620,47 @@ test("a broken tumwater.json is not cached: every poll retries and a repair reco
   assert.equal(loadConfigCached(dir).config?.model, "haiku"); // repaired — fresh load
 });
 
+test("a vanished tumwater.json is reported missing, never as defaults, and its return reloads fresh", () => {
+  // BUGS.md 2026-09-23: a landing's fast-forward deleted the live file and the hot-reload served
+  // defaultConfig(), silently resetting the fleet. Missing is its own answer — no config, no
+  // error — so the orchestrator can keep its last-known-good exactly as for a broken file.
+  const dir = tmpdir();
+  assert.deepEqual(loadConfigCached(dir), { missing: true }, "never present: missing too");
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet", maxConcurrent: 3 }));
+  assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // healthy baseline is cached
+  fs.rmSync(path.join(dir, "tumwater.json"));
+  assert.deepEqual(loadConfigCached(dir), { missing: true });
+  assert.deepEqual(loadConfigCached(dir), { missing: true }, "still missing on the next poll");
+  // loadConfig keeps its first-run contract: an absent file is the bare defaults.
+  assert.deepEqual(loadConfig(dir), defaultConfig());
+  // The file returning is a fresh load (the stale cache entry was dropped with the vanish).
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet", maxConcurrent: 3 }));
+  assert.equal(loadConfigCached(dir).config?.maxConcurrent, 3);
+});
+
+test("a tumwater.json deleted between the cache's stat and its read is an error, not defaults", () => {
+  // The stat is loadConfigCached's one presence check: a deletion landing just after it (a git
+  // checkout unlinking the file mid-poll) must not be re-checked into loadConfig's
+  // missing-means-defaults answer — that would reset the fleet for one poll, the very bug.
+  const dir = tmpdir();
+  const file = path.join(dir, "tumwater.json");
+  fs.writeFileSync(file, JSON.stringify({ model: "sonnet" }));
+  const originalStatSync = fs.statSync.bind(fs);
+  try {
+    (fs as unknown as { statSync: unknown }).statSync = (...args: unknown[]) => {
+      const st = (originalStatSync as (...a: unknown[]) => fs.Stats)(...args);
+      if (args[0] === file) fs.rmSync(file); // Vanishes right after the stat saw it.
+      return st;
+    };
+    const raced = loadConfigCached(dir);
+    assert.equal(raced.config, undefined, "no defaults config for a file that was just there");
+    assert.match(raced.error ?? "", /ENOENT/);
+  } finally {
+    (fs as unknown as { statSync: unknown }).statSync = originalStatSync;
+  }
+  assert.deepEqual(loadConfigCached(dir), { missing: true }, "the next poll sees it missing");
+});
+
 test("autoRestart defaults on and is validated as a boolean", () => {
   // Self-redeploy (src/redeploy.ts) is the opinionated default for a self-hosting fleet: the
   // alternative — a process that never reloads its own code — ran ten days stale in dogfood.

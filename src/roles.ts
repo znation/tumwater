@@ -22,11 +22,17 @@ them up independently; if the parts are not truly independent, keep a single ent
 /** Shared sizing rule for anyone writing a plan (the plan role and the director): the feature
  * loop is one mid-sized local model working alone in one run, and the review gate rejects a
  * change that lands less than its entry promises — so a plan must fit that run. Oversized plans
- * were the pattern behind "half-done against its own plan" rejections. */
+ * were the pattern behind "half-done against its own plan" rejections. The last sentence is the
+ * self-hosting build lag (BUGS.md 2026-09-23): plan 4b bundled "the merge preserves the live
+ * tumwater.json" with the `git rm` that needed it, the running build predated the preservation,
+ * and its own fast-forward deleted the config. */
 export const PLAN_SIZING = `Size every plan to ONE implementation run by a mid-sized model working
 alone: a handful of files, at most a few hundred lines of change including tests, and no design
 question left open for the implementer. Anything larger is split into independently landable
-sub-plans that cross-reference each other, each with its own acceptance criteria.`;
+sub-plans that cross-reference each other, each with its own acceptance criteria. When the project
+is the harness running the fleet, every commit lands under the build that predates it, so a
+change to how landings behave and any step that depends on it are separate sub-plans, the second
+landing only once the first is the running build.`;
 
 /** The closed vocabulary for the validation-gap trace (plans/repair-traces.md): what made a bug
  * hard to *confirm*, which is the only evidence of where this project's test infrastructure is

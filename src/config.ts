@@ -173,15 +173,24 @@ export function exampleDrift(root: string): string[] {
 }
 
 /** Load tumwater.json, filling in defaults for anything missing. Throws an Error with an
- * actionable message when the file is malformed or holds invalid values (see validateConfig). */
+ * actionable message when the file is malformed or holds invalid values (see validateConfig).
+ * An absent file is the bare defaults — the startup and one-shot view; the live-reload poll
+ * goes through loadConfigCached instead, where an absent file is an incident, not defaults. */
 export function loadConfig(root: string): TumwaterConfig {
   const file = configPath(root);
-  const base = defaultConfig();
-  if (!fs.existsSync(file)) return base;
+  if (!fs.existsSync(file)) return defaultConfig();
+  return loadPresentConfig(file);
+}
+
+/** loadConfig past its existence check: parse, validate, and default-fill a file the caller
+ * has already seen. Split out so loadConfigCached's stat stays its ONE presence check — a file
+ * deleted between that stat and this read throws (a broken file for that one poll, so
+ * last-known-good holds) instead of re-checking existence and coming back as the defaults. */
+function loadPresentConfig(file: string): TumwaterConfig {
   const { raw, problem } = parseJsonConfig(file, CONFIG_BASENAME);
   if (problem !== undefined) throw new Error(problem);
   validateConfig(raw);
-  return overlayDefaults(base, raw as Partial<TumwaterConfig>);
+  return overlayDefaults(defaultConfig(), raw as Partial<TumwaterConfig>);
 }
 
 /** Load tumwater.json without throwing: either the validated config or the error message.
@@ -221,18 +230,21 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
   };
 }
 
-/** loadConfigSafe with a stat-keyed cache for unchanged files (see above): the same return
- * shape and last-known-good contract at the call sites, but a steady-state poll of an unedited
- * file costs one stat instead of a read + parse + validate. A successful load is cached; a
- * broken file is never cached — each poll retries it fresh so a torn live edit or a repair is
- * picked up on the next cycle, and a missing file still yields defaults without touching the
- * cache. */
-export function loadConfigCached(root: string): { config?: TumwaterConfig; error?: string } {
+/** loadConfigSafe with a stat-keyed cache for unchanged files (see above): the same
+ * last-known-good contract at the call sites, but a steady-state poll of an unedited file costs
+ * one stat instead of a read + parse + validate. A successful load is cached; a broken file is
+ * never cached — each poll retries it fresh so a torn live edit or a repair is picked up on the
+ * next cycle. A missing file is `missing` — neither a config nor an error — and never the
+ * defaults: once a fleet has loaded its config, the file vanishing is an incident, not a
+ * reconfiguration (BUGS.md 2026-09-23: a landing's fast-forward deleted it and the fleet ran
+ * 8.6 h on defaults), so callers keep their last-known-good exactly as for a broken file, or
+ * fall back to defaults only when they never saw one. Startup's "missing ⇒ not initialized"
+ * gate (cli.ts) and loadConfig's first-run defaults are unaffected. */
+export function loadConfigCached(root: string): { config?: TumwaterConfig; error?: string; missing?: true } {
   const file = configPath(root);
   try {
-    const cfg = cachedByStat(configCache, root, file, () => loadConfig(root), cloneConfig);
-    if (cfg) return { config: cfg };
-    return { config: defaultConfig() }; // Missing — defaults, as loadConfig does.
+    const cfg = cachedByStat(configCache, root, file, () => loadPresentConfig(file), cloneConfig);
+    return cfg ? { config: cfg } : { missing: true }; // null only when the stat found no file.
   } catch (err) {
     return { error: errorMessage(err) }; // Broken — retry next poll.
   }

@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { saveConfig } from "../src/config.js";
+import { defaultConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
@@ -285,6 +285,67 @@ test("a live config edit logs one config_changed naming the keys, and an identic
     saveConfig(repo, cfg);
     await waitFor(() => changeds().length === 2, "the roles.<id> event");
     assert.deepEqual(changeds()[1]!.keys, ["roles.clean"]);
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a tumwater.json that vanishes mid-run keeps the last-known-good config, warns once, and reloads on return", async () => {
+  // BUGS.md 2026-09-23: a landing's fast-forward deleted the live file and the next poll
+  // reloaded defaultConfig() — config_changed naming every non-default key, the cap reset to
+  // the default, every role enabled — and the fleet ran 8.6 h on it with no word of why.
+  const repo = makeRepo();
+  await initProject(repo, "config vanish test");
+  // bugfix is never need-deferred, so it keeps ticking through the whole incident. The cap is
+  // off-default so a reload-as-defaults would log max_concurrent_changed.
+  const cfg = fastConfig(["bugfix"], "kept-model");
+  cfg.maxConcurrent = defaultConfig().maxConcurrent + 1;
+  saveConfig(repo, cfg);
+  const argsFile = path.join(tmpdir(), "argv.log");
+  const restore = recordingFakePi(argsFile);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    const runs = (): string[] => {
+      try {
+        return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
+      } catch {
+        return [];
+      }
+    };
+    const ofType = (type: string) => readEvents(repo).filter((e) => e.type === type);
+    const warningsWith = (text: string) =>
+      ofType("warning").filter((e) => ((e.message as string | undefined) ?? "").includes(text));
+    await waitFor(() => runs().length >= 1, "a startup pi run");
+
+    fs.rmSync(path.join(repo, "tumwater.json"));
+    await waitFor(() => warningsWith("tumwater.json missing").length === 1, "the missing-file warning");
+    const warning = warningsWith("tumwater.json missing")[0]!;
+    assert.equal(warning.loop, "harness");
+    assert.ok(
+      (warning.message as string).includes(path.join(repo, "tumwater.json")),
+      `the warning names the missing file: ${warning.message as string}`,
+    );
+    // The fleet keeps running on the retained config, not on defaults.
+    const runsAtVanish = runs().length;
+    await waitFor(() => runs().length > runsAtVanish, "a further pi run while the file is missing");
+    assert.ok(runs().at(-1)!.includes("model=kept-model"), `retained model: ${runs().at(-1)}`);
+    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 4));
+    assert.equal(warningsWith("tumwater.json missing").length, 1, "one warning per vanish, not per poll");
+    assert.equal(ofType("config_changed").length, 0, "a vanish is not a reconfiguration");
+    assert.equal(ofType("max_concurrent_changed").length, 0, "the cap is retained");
+    assert.equal(warningsWith("enabled — starting ticks").length, 0, "no default-enabled role starts");
+
+    // The file returning logs one line and reloads normally, diffed against the retained config:
+    // config_changed names only what the returned file really changed.
+    const back = fastConfig(["bugfix"], "returned-model");
+    back.maxConcurrent = cfg.maxConcurrent;
+    saveConfig(repo, back);
+    await waitFor(() => runs().at(-1)?.includes("model=returned-model") === true, "a pi run on the returned file");
+    assert.equal(warningsWith("tumwater.json reappeared").length, 1, "one line when the file returns");
+    assert.deepEqual(ofType("config_changed").map((e) => e.keys), [["model"]]);
+    assert.equal(ofType("max_concurrent_changed").length, 0);
+    assert.equal(warningsWith("tumwater.json missing").length, 1, "no further missing warnings");
   } finally {
     restore();
     await orch.stop();
