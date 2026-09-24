@@ -99,25 +99,92 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Self-hosting note.** The fleet lands each step with the *previous* build (the 4b/7 lesson, BUGS.md tumwater.json entry). 2a is safe to land on its own. 2b must default to `maxConcurrentLandings: 1`, and this repo's tumwater.json is only raised after the 2b build is the one running (check `tumwater doctor`'s running-build line).
 
-### Land-queue speed 3/3 — The smaller fixes: bound reviews, one writer to main, land the passing part of a red stack (planned 2026-09-23, requested by user)
+### Land-queue speed 3a — Give the reviewer its own time budget (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
 
-**Why.** Each item below cuts landing time or waste on its own, and none depends on 2/3; most make 2/3 better. Measured 2026-09-22/23: reviews ran 2.3 min median, 9.2 min p90 and 24.6 min max after the 12:19 restart, and earlier days had reviews of 1.5–3.5 h. Two batches (09-22 12:44 and 13:12) threw away every approved change as `merge_blocked` because a leftover-recovery landing moved main during the batch check. A red batch check drops the whole stack to one-at-a-time landing. Reviewers re-ran the full suite in `/tmp` copies despite being told it passed.
+**Why.** Measured 2026-09-22/23: reviews ran 2.3 min median, 9.2 min p90 and 24.6 min max after the 12:19 restart, and earlier days had reviews of 1.5–3.5 h. The reviewer's only limits are `tickTimeoutSeconds` (54000 s here) and the quiet watchdog, so one wedged reviewer holds the land queue for as long as an authoring tick.
 
-**Approach — independent items, any order:**
+**Approach.**
+- src/config.ts — add `timeoutSeconds` to the `review` section's type, alongside `enabled`/`exemptPaths`/`provider`/`model`/`thinking` (`reviewConfig` at :333 keeps merging them; no behavior change there).
+- src/config-validation.ts — add `"timeoutSeconds"` to `REVIEW_KEYS` (:76), validated as a positive integer the way `check.timeoutSeconds` (:79) is.
+- src/review.ts — the reviewer's `runPi` (:317) passes `config: reviewConfig(config)` (:321). Make it a config whose `tickTimeoutSeconds` is `Math.min(config.tickTimeoutSeconds, review.timeoutSeconds ?? 900)` — the `SUMMARY_REQUEST_TIMEOUT_S` idiom at src/loop-pi.ts:138. Default 900, so a review today finishes no later than it already does on the p99 and a wedged one dies in 15 min instead of 15 h.
+- A timed-out review is a failed run (`pi.ok` false): keep the pin, do not advance `unreviewFailures` (the BUGS.md 2026-09-20 transport-failure rule), log `review_failed` naming the timeout. The change re-lands through the author's next tick.
+- README.md — document `review.timeoutSeconds` under the review-gate config.
+- Tests: test/review.test.ts — a fake reviewer that sleeps past a 2 s `review.timeoutSeconds` ends `review_failed` in about 2 s with the pin kept and no strike.
 
-- **3a. Give the reviewer its own time budget.** src/review.ts's reviewer `runPi` (:318) runs with `reviewConfig(config)`, so its only limits are `tickTimeoutSeconds` (54000 s here) and the quiet watchdog. Add `review.timeoutSeconds` (default 900; validated as a positive integer; add it to `REVIEW_KEYS`, src/config-validation.ts:76) and pass `tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, review.timeoutSeconds)` in the reviewer's config. This is the `SUMMARY_REQUEST_TIMEOUT_S` idiom at src/loop-pi.ts:138. A review that times out is a failed run (`pi.ok` false). It keeps the pin and does not advance `unreviewFailures` (the BUGS.md 2026-09-20 rule), and it logs `review_failed` with the timeout. The change re-lands through the author's next tick.
-  - Criteria: a fake reviewer that sleeps past a 2 s `review.timeoutSeconds` ends `review_failed` in about 2 s with the pin kept and no strike.
-- **3b. Tell the reviewer, as a rule, not to re-run a verified suite.** The "Do not spend your run re-running it" sentence sits inside the context paragraph (src/prompt.ts:445). When `verifiedByHarness` is set, add a line to the review prompt's `Rules for this run:` list (:480): no full-suite runs, no `npm ci`, no copies of the tree outside the worktree; running a single named test file is allowed. This fixes BUGS.md's "Reviewers re-run the full suite in scratch copies" entry.
-  - Criteria: test/prompt.test.ts pins the rule's presence exactly when `verifiedByHarness` is passed.
-- **3c. One writer to main: route leftover recovery through the land queue.** `recoverLeftover` (src/leftover.ts:45, called from the tick at src/loop.ts:509) lands inside the tick through `landChange`, racing the orchestrator's slot. Instead, when recovery finds an unlanded pin, enqueue it (`enqueueLanding` with the pin's sha, summary and body read back from the commit as the recovery path does today) and end the tick `queued`, exactly like a fresh changed tick. The interlock then holds the role until it lands. Also, as a backstop for human commits: when `ffStackToMain` (src/merge.ts:292) fails because main moved since `base`, re-stack the same shas onto the new tip once and re-run the batch check, instead of marking the whole stack `merge_blocked` (src/land-batch.ts:249). This fixes BUGS.md's "A batch whose base main moves during its build check is discarded wholesale".
-  - Criteria: a tick whose role has a leftover pin produces a `land_queued` event and no in-tick `merged`. A batch whose main moves during its check (a test commit landed mid-check) re-stacks once and lands, with one extra check event and no `merge_blocked`.
-- **3d. When a batch check is red, land the largest passing prefix.** Today a red scope-`batch` check abandons to one-at-a-time landing (src/land-batch.ts:253), re-gating each change. Instead, bisect the stack in queue order: check the first half, land the longest prefix that passes (one ff), and keep splitting the remainder. Once a single change fails on a green-baselined main, reject that change with the check's reasons. With 2a, no approved change is re-reviewed along the way. Cost: about log2(N) extra checks instead of N full gates.
-  - Criteria: a stack of 3 whose second change breaks the check lands change 1, rejects change 2 with the check output, and lands or re-queues change 3, with 2–3 check runs in total and zero reviewer re-runs.
-- **3e. Optional cheaper per-change check with the full suite once per stack.** Add config `check.gateCommand`, used by the scope-`gate` pre-check when set, while scope `batch` / `landing` / baseline keep running the full `check.command`. This repo would point it at a fast selection, e.g. the test files of the modules a diff touches, via src/test-runner.ts's existing name filters (`selectTestFiles`). The full suite then runs once per stack instead of once per change plus once per stack. Opt-in and off by default, since a weaker gate means a red stack check (3d) catches more; lowest priority of the five.
-  - Criteria: with `gateCommand` set, the gate runs it and the batch check still runs `check.command`; unset → today's behavior byte-for-byte.
+**Files touched.** src/config.ts, src/config-validation.ts, src/review.ts, README.md, test/review.test.ts, test/config-validation.test.ts.
 
-**Files touched.** src/review.ts, src/config.ts, src/config-validation.ts (3a, 3e); src/prompt.ts (3b); src/leftover.ts, src/loop.ts, src/merge.ts, src/land-batch.ts (3c); src/land-batch.ts (3d); src/build-check.ts, src/build-check-detect.ts (3e); matching tests; README.md for the new config keys.
+**Acceptance criteria.**
+- The slow-reviewer test above passes; a review inside the budget behaves byte-for-byte as today.
+- `review.timeoutSeconds: 0` and negatives are rejected by config validation with a named key.
 
+**Series.** Part of the land-queue speed series (1/3 and 2/3 planned above; both independent of this one). Siblings 3b–3e below are independent of this entry and of each other — any order.
+
+### Land-queue speed 3b — Tell the reviewer, as a rule, not to re-run a verified suite (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
+
+**Why.** When the gate's own check passed, the review prompt mentions it only in a context paragraph (src/prompt.ts:442–448), and reviewers still burn their runs re-running the full suite in scratch copies under /tmp — BUGS.md's open "Reviewers re-run the full suite in scratch copies" entry. The instruction must sit in the rules list, where the reviewer's other hard rules live, to bind.
+
+**Approach.**
+- src/prompt.ts — `buildReviewPrompt`'s `verifiedByHarness` branch (:442) already adds the context paragraph. When `verifiedByHarness` is set, also append one rule to the `Rules for this run:` list (:480): the harness already ran the project's check on this exact tree — no full-suite runs, no `npm ci`, no copies of the tree outside the worktree; running a single named test file is allowed.
+- test/prompt.test.ts — pin the rule's presence exactly when `verifiedByHarness` is passed, and its absence when the argument is null (the prompt is otherwise unchanged).
+
+**Files touched.** src/prompt.ts, test/prompt.test.ts.
+
+**Acceptance criteria.**
+- With `verifiedByHarness` set, the review prompt's rules list contains the no-rerun rule; without it, the prompt is byte-identical to today's.
+
+**Series.** Sibling of 3a, 3c, 3d, 3e — independent, any order.
+
+### Land-queue speed 3c — One writer to main: route leftover recovery through the land queue (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
+
+**Why.** `recoverLeftover` (src/leftover.ts:45, called from the tick at src/loop.ts:510) lands inside the tick through `landChange`, racing the orchestrator's slot — the extra writer to main is what turned two batches (2026-09-22 12:44 and 13:12) into wholesale `merge_blocked` (BUGS.md's "A batch whose base main moves during its build check is discarded wholesale" entry).
+
+**Approach.**
+- src/leftover.ts — when recovery finds an unlanded pin, enqueue it (`enqueueLanding`, src/land-queue.ts:23; the entry carries the pin's sha, with summary and body read back from the commit message the way the recovery path reconstructs them today) and end the tick `queued`, exactly like a fresh changed tick. The land-queue interlock then holds the role until it lands, and main has exactly one writer.
+- src/land-batch.ts — backstop for human commits: when `ffStackToMain` (src/merge.ts:293) fails because main moved since `base` (the `merge_blocked` marking at :249), re-stack the same shas onto the new tip once and re-run the batch check, instead of marking the whole stack `merge_blocked`.
+- README.md — the leftover-recovery paragraph says recovery landings go through the land queue.
+
+**Files touched.** src/leftover.ts, src/land-queue.ts (reuse only), src/loop.ts, src/merge.ts, src/land-batch.ts, README.md, test/leftover.test.ts, test/lander.test.ts.
+
+**Acceptance criteria.**
+- A tick whose role has a leftover pin produces a `land_queued` event and no in-tick `merged`.
+- A batch whose main moves during its check (a test commit landed mid-check) re-stacks once and lands, with one extra check event and no `merge_blocked`.
+
+**Series.** Sibling of 3a, 3b, 3d, 3e — independent, any order.
+
+### Land-queue speed 3d — When a batch check is red, land the largest passing prefix (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
+
+**Why.** Today a red scope-`batch` check abandons to one-at-a-time landing (src/land-batch.ts:253), re-gating every change — one broken change in a stack of N costs N full gates, all inside the one landing slot.
+
+**Approach.**
+- src/land-batch.ts — replace the abandon at :253 with a bisect in queue order: check the first half of the remaining stack; land the longest passing prefix with one ff (the same in-lock invariant as the full-stack ff — nothing rewrites between the check and the ff); split the remainder and continue. When a single change fails, consult `checkMainBaseline` (src/main-baseline.ts:125): main green → reject that change with the check's reasons (deterministic, no pi run); main red → keep its pin for a re-land after main moves green (the same attribution rule 1/3 gives the gate).
+- Without 2a in place, an already-reviewed prefix still re-reviews once on the prefix ff — acceptable; 2a removes it. No dependency on landing order.
+- Tests: test/lander.test.ts (which owns the `ffStackToMain` batch coverage) gains the prefix case.
+
+**Files touched.** src/land-batch.ts, src/main-baseline.ts (reuse only), test/lander.test.ts.
+
+**Acceptance criteria.**
+- A stack of 3 whose second change breaks the check lands change 1, rejects change 2 with the check's output, and lands or re-queues change 3 — 2–3 check runs in total and zero reviewer runs for the changes that pass.
+- A stack whose every change passes still takes exactly one batch check.
+
+**Series.** Sibling of 3a, 3b, 3c, 3e — independent, any order. Pairs well with 2a but does not depend on it.
+
+### Land-queue speed 3e — Optional cheaper per-change gate check; the full suite runs once per stack (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
+
+**Why.** Every landing runs the full check suite at the gate plus once more over the whole stacked tree; the per-change gate work duplicates what the batch check does moments later. Opt-in and off by default, since a weaker gate means the red batch check (3d) catches more — no repo gets it implicitly. Lowest priority of the five siblings.
+
+**Approach.**
+- src/config.ts + src/config-validation.ts — add `gateCommand` to `CHECK_KEYS` (:78), validated like `command` (a string; empty or unset = off).
+- src/build-check.ts — `runScopedBuildCheck` (the shared detect → run → event helper at :403) uses `check.gateCommand` for scope `gate` when set; scopes `batch`, `landing` and the main-baseline check keep running `check.command`.
+- README.md — document `check.gateCommand`.
+- This repo may point its own gateCommand at a fast selection afterwards (src/test-runner.ts:43's `selectTestFiles` name filters over the files a diff touches) — but as a separate config edit after this change lands, never in the same landing (the 4b/7 lesson: the fleet lands each step with the previous build).
+- Tests: test/config-validation.test.ts (key validation) and test/build-check.test.ts (scope selection).
+
+**Files touched.** src/config.ts, src/config-validation.ts, src/build-check.ts, src/build-check-detect.ts as needed, README.md, test/config-validation.test.ts, test/build-check.test.ts.
+
+**Acceptance criteria.**
+- With `gateCommand` set, the gate runs it while the batch, landing and baseline checks still run `check.command`; unset → today's behavior byte-for-byte.
+
+**Series.** Sibling of 3a, 3b, 3c, 3d — independent, any order.
 
 ## Done
 
