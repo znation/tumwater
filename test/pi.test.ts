@@ -5,7 +5,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { TRANSIENT_PI_CRASH, piArgs, resolveAgentBin, runPi } from "../src/pi.js";
+import { TRANSIENT_PI_CRASH, piArgs, resolveAgentBin, runPi, type PiRunOptions } from "../src/pi.js";
 import { PiStreamParser } from "../src/pi-stream.js";
 import { toolUpdateHasContent } from "../src/pi-event-line.js";
 import type { PiRunResult } from "../src/types.js";
@@ -338,14 +338,7 @@ test("a stalled run is reported as quiet-killed, not timed out", async () => {
     ].join("\n"),
   );
   try {
-    const result = await runPi({
-      cwd: dir,
-      prompt: "p",
-      config,
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-    });
+    const result = await runPi(runPiFixture(dir, { config }));
     assert.equal(result.ok, false);
     assert.equal(result.quietKilled, true, "the watchdog kill is reported as quiet-killed");
     assert.equal(result.timedOut, false, "a hung tool call is not a tick timeout");
@@ -371,14 +364,7 @@ test("a run that is slow to speak is not quiet-killed during startup", async () 
     ].join("\n"),
   );
   try {
-    const result = await runPi({
-      cwd: dir,
-      prompt: "p",
-      config,
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-    });
+    const result = await runPi(runPiFixture(dir, { config }));
     assert.equal(result.quietKilled, false, "startup latency is not a hung tool call");
     assert.equal(result.ok, true, "the run completes once pi finally speaks");
   } finally {
@@ -415,14 +401,7 @@ test("runPi spawns the configured agentBin — a wrapper script behaves like the
   const oldPath = process.env.PATH;
   process.env.PATH = ""; // no pi anywhere on PATH — only agentBin can resolve
   try {
-    const result = await runPi({
-      cwd: dir,
-      prompt: "p",
-      config,
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-    });
+    const result = await runPi(runPiFixture(dir, { config }));
     assert.equal(result.ok, true, `expected the wrapper-run pi to succeed: ${result.errorMessage}`);
     assert.match(result.finalText, /wrapped:1/, "the wrapper exported its env var before exec");
   } finally {
@@ -434,14 +413,7 @@ test("runPi's spawn-error message names the resolved binary and its source", asy
   const dir = tmpdir();
   const config = defaultConfig();
   config.agentBin = "/no/such/dir-xyz/pi-here";
-  const result = await runPi({
-    cwd: dir,
-    prompt: "p",
-    config,
-    sessionDir: path.join(dir, "sessions"),
-    sessionName: "t",
-    rawLogFile: path.join(dir, "raw.jsonl"),
-  });
+  const result = await runPi(runPiFixture(dir, { config }));
   assert.equal(result.ok, false);
   assert.match(result.errorMessage ?? "", /failed to spawn \/no\/such\/dir-xyz\/pi-here/);
   assert.match(result.errorMessage ?? "", /resolved from agentBin in tumwater\.json/);
@@ -521,15 +493,9 @@ test("a stalled call without toolName warns with the bare command named", async 
     ].join("\n"),
   );
   try {
-    const result = await runPi({
-      cwd: dir,
-      prompt: "p",
-      config,
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-      onToolCallStalled: (message) => warnings.push(message),
-    });
+    const result = await runPi(
+      runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
+    );
     assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
     assert.match(
       warnings[0] ?? "",
@@ -568,15 +534,9 @@ test("a stalled tool call warns once with the command named", async () => {
     ].join("\n"),
   );
   try {
-    const result = await runPi({
-      cwd: dir,
-      prompt: "p",
-      config,
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-      onToolCallStalled: (message) => warnings.push(message),
-    });
+    const result = await runPi(
+      runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
+    );
     assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
     assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
     assert.match(warnings[0] ?? "", /^tool call stalled: bash sleep 999 — no output for \d+[sm]/);
@@ -602,15 +562,9 @@ test("no stall warning when the tool call ends before the threshold", async () =
     ].join("\n"),
   );
   try {
-    const result = await runPi({
-      cwd: dir,
-      prompt: "p",
-      config,
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-      onToolCallStalled: (message) => warnings.push(message),
-    });
+    const result = await runPi(
+      runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
+    );
     assert.equal(result.ok, true);
     assert.deepEqual(warnings, []);
   } finally {
@@ -631,15 +585,9 @@ test("toolCallStallSeconds 0 disables the stall warning", async () => {
     ].join("\n"),
   );
   try {
-    const result = await runPi({
-      cwd: dir,
-      prompt: "p",
-      config,
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-      onToolCallStalled: (message) => warnings.push(message),
-    });
+    const result = await runPi(
+      runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
+    );
     assert.equal(result.quietKilled, true);
     assert.deepEqual(warnings, []);
   } finally {
@@ -678,15 +626,7 @@ test("a killed run leaves no grandchild behind (regression)", async () => {
   );
   const controller = new AbortController();
   let pid = 0;
-  const run = runPi({
-    cwd: dir,
-    prompt: "p",
-    config,
-    sessionDir: path.join(dir, "sessions"),
-    sessionName: "t",
-    rawLogFile: path.join(dir, "raw.jsonl"),
-    signal: controller.signal,
-  });
+  const run = runPi(runPiFixture(dir, { config, signal: controller.signal }));
   try {
     // Wait until the grandchild has recorded itself — the write the old version raced.
     const recordDeadline = Date.now() + 10_000;
@@ -784,19 +724,29 @@ test("role overrides flow through to the pi argv and round-trip via config files
   assert.ok(!cheap.includes("anthropic"));
 });
 
+/** The standard runPi fixture: a run against `dir` with the minimal prompt, a fresh
+ * defaultConfig(), and throwaway session/raw-log paths — the shape every test starts from,
+ * stated once so a new required runPi field lands in one place. `over` overrides any field
+ * (config included), so a test states only what differs from this default; the returned
+ * options object is passed to runPi or runPiVerified by the caller. */
+function runPiFixture(dir: string, over: Partial<PiRunOptions> = {}): PiRunOptions {
+  return {
+    cwd: dir,
+    prompt: "p",
+    config: defaultConfig(),
+    sessionDir: path.join(dir, "sessions"),
+    sessionName: "t",
+    rawLogFile: path.join(dir, "raw.jsonl"),
+    ...over,
+  };
+}
+
 /** Run the fake pi through runPi with throwaway dirs and return the distilled result. */
 async function runFakePi(script: string) {
   const dir = tmpdir();
   const restore = fakePi(script);
   try {
-    return await runPi({
-      cwd: dir,
-      prompt: "p",
-      config: defaultConfig(),
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-    });
+    return await runPi(runPiFixture(dir));
   } finally {
     restore();
   }
@@ -854,14 +804,7 @@ test("a multi-byte character straddling a stdout chunk boundary survives intact"
     ].join("\n"),
   );
   try {
-    const result = await runPi({
-      cwd: dir,
-      prompt: "p",
-      config: defaultConfig(),
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-    });
+    const result = await runPi(runPiFixture(dir));
     assert.equal(result.ok, true);
     assert.equal(result.finalText, "héllo", "the split character decodes intact");
     assert.equal(result.turns, 1);
@@ -955,15 +898,7 @@ test("runPi with a label writes exactly one marker line as the raw log's first l
   const dir = tmpdir();
   const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve", { tokens: 5 })}'`);
   try {
-    await runPiVerified({
-      cwd: dir,
-      prompt: "p",
-      config: defaultConfig(),
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-      label: "review",
-    });
+    await runPiVerified(runPiFixture(dir, { label: "review" }));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
     assert.equal(
       content,
@@ -979,14 +914,7 @@ test("runPi without a label leaves the raw log byte-identical to today's shape",
   const dir = tmpdir();
   const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
   try {
-    await runPiVerified({
-      cwd: dir,
-      prompt: "p",
-      config: defaultConfig(),
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-    });
+    await runPiVerified(runPiFixture(dir));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
     assert.equal(content, `${assistantLine("done", { tokens: 5 })}\n`, "no marker line for unlabeled runs");
   } finally {
@@ -1001,15 +929,7 @@ test("a failed labeled run still flushes its marker (the stale-marker case)", as
   const dir = tmpdir();
   const restore = fakePi("exit 1");
   try {
-    await runPi({
-      cwd: dir,
-      prompt: "p",
-      config: defaultConfig(),
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: path.join(dir, "raw.jsonl"),
-      label: "review",
-    });
+    await runPi(runPiFixture(dir, { label: "review" }));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
     assert.equal(content, `{"type":"tumwater_run","label":"review"}\n`);
   } finally {
@@ -1048,14 +968,7 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
   };
   (fs as unknown as { createWriteStream: unknown }).createWriteStream = () => makeStalled();
   try {
-    await runPiVerified({
-      cwd: dir,
-      prompt: "p",
-      config: defaultConfig(),
-      sessionDir: path.join(dir, "sessions"),
-      sessionName: "t",
-      rawLogFile: file,
-    });
+    await runPiVerified(runPiFixture(dir, { rawLogFile: file }));
     const content = fs.readFileSync(file, "utf8");
     assert.equal(
       content,
@@ -1084,14 +997,7 @@ test("a broken raw log degrades to a lost log, never a stuck tick", async () => 
   (fs as unknown as { createWriteStream: unknown }).createWriteStream = () => broken;
   try {
     const result = await Promise.race([
-      runPi({
-        cwd: dir,
-        prompt: "p",
-        config: defaultConfig(),
-        sessionDir: path.join(dir, "sessions"),
-        sessionName: "t",
-        rawLogFile: path.join(dir, "raw.jsonl"),
-      }),
+      runPi(runPiFixture(dir)),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("runPi hung on a broken raw log")), 5000),
       ),
