@@ -2,10 +2,26 @@ import fs from "node:fs";
 import type { FallbackModelConfig, TumwaterConfig, RoleConfig } from "./types.js";
 import { allRoleIds } from "./roles.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { configPath, EXAMPLE_CONFIG_BASENAME, exampleConfigPath } from "./paths.js";
+import { CONFIG_BASENAME, configPath, EXAMPLE_CONFIG_BASENAME, exampleConfigPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { isJsonObject } from "./json-object.js";
 import { validateConfig } from "./config-validation.js";
+
+/** Read and parse one of the config JSON files, phrasing a parse failure as
+ * `<basename> is not valid JSON: <reason>` — the one wording every consumer of these files
+ * surfaces (loadConfig throws it, exampleConfigProblem returns it, seedConfig/exampleDrift
+ * fall back on it). `problem` is set exactly when parsing failed; `raw` is the parsed value
+ * otherwise (never null on failure paths, so callers need no separate existence check). */
+function parseJsonConfig(
+  file: string,
+  basename: string,
+): { raw?: unknown; problem?: string } {
+  try {
+    return { raw: JSON.parse(fs.readFileSync(file, "utf8")) };
+  } catch (err) {
+    return { problem: `${basename} is not valid JSON: ${errorMessage(err)}` };
+  }
+}
 
 /** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick, qa and
  * telemetry on ~2 h, readme on 30 min, plan on 1 h), with defaults for concurrency, timeouts, log size,
@@ -113,7 +129,10 @@ export function seedConfig(root: string): TumwaterConfig {
   const file = exampleConfigPath(root);
   // Absent and broken both seed the bare defaults: no template, or one that cannot serve.
   if (!fs.existsSync(file) || exampleConfigProblem(root) !== null) return base;
-  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  // The template already passed exampleConfigProblem's read; reparse here instead of threading
+  // the earlier raw through, so a file torn between the two reads seeds the bare defaults.
+  const { raw, problem } = parseJsonConfig(file, EXAMPLE_CONFIG_BASENAME);
+  if (problem !== undefined) return base;
   return overlayDefaults(base, raw as Partial<TumwaterConfig>);
 }
 
@@ -126,12 +145,8 @@ export function seedConfig(root: string): TumwaterConfig {
 export function exampleConfigProblem(root: string): string | null {
   const file = exampleConfigPath(root);
   if (!fs.existsSync(file)) return null;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch (err) {
-    return `${EXAMPLE_CONFIG_BASENAME} is not valid JSON: ${errorMessage(err)}`;
-  }
+  const { raw, problem } = parseJsonConfig(file, EXAMPLE_CONFIG_BASENAME);
+  if (problem !== undefined) return problem;
   try {
     validateConfig(raw, EXAMPLE_CONFIG_BASENAME);
   } catch (err) {
@@ -150,16 +165,11 @@ export function exampleDrift(root: string): string[] {
   const example = exampleConfigPath(root);
   const config = configPath(root);
   if (!fs.existsSync(example) || !fs.existsSync(config)) return [];
-  let template: unknown;
-  let local: unknown;
-  try {
-    template = JSON.parse(fs.readFileSync(example, "utf8"));
-    local = JSON.parse(fs.readFileSync(config, "utf8"));
-  } catch {
-    return [];
-  }
-  if (!isJsonObject(template) || !isJsonObject(local)) return [];
-  return Object.keys(template).filter((k) => !(k in local));
+  const template = parseJsonConfig(example, EXAMPLE_CONFIG_BASENAME);
+  const local = parseJsonConfig(config, CONFIG_BASENAME);
+  if (template.problem !== undefined || local.problem !== undefined) return [];
+  if (!isJsonObject(template.raw) || !isJsonObject(local.raw)) return [];
+  return Object.keys(template.raw).filter((k) => !(k in (local.raw as object)));
 }
 
 /** Load tumwater.json, filling in defaults for anything missing. Throws an Error with an
@@ -168,12 +178,8 @@ export function loadConfig(root: string): TumwaterConfig {
   const file = configPath(root);
   const base = defaultConfig();
   if (!fs.existsSync(file)) return base;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch (err) {
-    throw new Error(`tumwater.json is not valid JSON: ${errorMessage(err)}`);
-  }
+  const { raw, problem } = parseJsonConfig(file, CONFIG_BASENAME);
+  if (problem !== undefined) throw new Error(problem);
   validateConfig(raw);
   return overlayDefaults(base, raw as Partial<TumwaterConfig>);
 }
