@@ -97,15 +97,18 @@ Open items:
   spend cap into an hour of 100% tick failure instead of a pause (found 2026-09-20).
 - Open bug: the self-redeploy's shutdown awaits an in-flight batched landing with no
   deadline — the generation handoff lagged its own swap by 97 minutes (found 2026-09-24).
-- Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; PLANS.md items 7a/7 — resolve the brief as
-  `TUMWATER.md` with README.md as the compatibility path — and 7b/7 — `init --adopt`/`--dry-run`
-  to adopt an existing repo without touching its README — remain, split from 7/7 on
-  2026-09-26; 1–6/7 landed by 2026-09-25, 6/7 being the configurable `check.command`).
+- Planned: portability 7b/7 — `tumwater init --adopt`/`--dry-run` to adopt an existing repo
+  without touching its README (planned 2026-09-23, requested by user; 1–6/7 landed by
+  2026-09-25 and 7a/7 landed 2026-09-23 — the brief resolves as `TUMWATER.md` first, README.md
+  as the compatibility path).
+- Planned: land-queue speed 1/3–3/3 — take the gate's build-fix run out of the landing slot,
+  vet queued changes in parallel (serialize only the merge), and the smaller fixes: bound
+  reviews, one writer to main, land the passing part of a red stack (planned 2026-09-23,
+  requested by user).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`2e50185`): build clean, suite 1423/1423.
+Current main (`b067f0e`): build clean, suite 1438/1438.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -115,7 +118,10 @@ PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, and tumwater.json, and commits t
 initial prompt is capped at 4096 chars, because it rides into every tick's prefill. With no
 prompt argument, a bare `tumwater init` instead reads the initial prompt from an existing
 README.md's `tumwater:prompt` markers (in an existing project, add them around your prompt
-before initing). `tumwater run` then starts
+before initing). The brief's home is resolvable: a `TUMWATER.md` carrying the same two managed
+sections (`tumwater:prompt`, `tumwater:status`) is read ahead of README.md, which stays the
+compatibility path `init` writes and the readme role maintains when no `TUMWATER.md` exists;
+`tumwater doctor` reports which file holds the brief. `tumwater run` then starts
 one loop per enabled role. Every loop tick:
 
 1. Resets its persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`) to main.
@@ -289,8 +295,9 @@ tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (the GUI's /api/status payload minus its serverBuildSha)
 tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits/cost per day, plus per-role tick and cost breakdowns (default 14 days; --days bounded to the GUI's shared 1–90 window)
 tumwater report --failures [--days N]   # Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
-tumwater doctor       # pre-flight check: node, git, repo, init (incl. a broken tumwater.example.json),
-                      #   fallback model, agent binary, locks, build (read-only; exit 0/1)
+tumwater doctor       # pre-flight check: node, git, repo, brief, init (incl. a broken
+                      #   tumwater.example.json), fallback model, agent binary, locks, build
+                      #   (read-only; exit 0/1)
 tumwater logs -f      # follow harness events
 tumwater logs --role feature   # that loop's pi transcript (also supports -f, -n N)
 tumwater logs --role feature --prompt   # …and the exact prompt each run received
