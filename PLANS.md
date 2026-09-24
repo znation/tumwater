@@ -36,6 +36,29 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ (landed 2026-09-22) and 4b/7 ✓ (landed 2026-09-22) are done. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here — the series has no critical path left.
 
+### Wake and abort from the GUI dashboard (planned 2026-09-25)
+
+**Goal.** An operator watching the dashboard can pause the fleet, edit the budget, and prompt the director — but `tumwater wake` and `tumwater abort` exist only as CLI commands (src/operator-commands.ts), so clearing a stuck role's backoff or killing its runaway tick means leaving the browser. Give the dashboard per-loop `wake` and `abort` controls backed by two new POST endpoints that reuse the CLI's marker-writing logic.
+
+**Approach.**
+- src/operator-commands.ts — extract the marker-writing cores into exported, message-returning functions: `requestWake(root, roles: string[])` (the `cmdWake` body minus `targetRoles` arg-parsing and stdout — the per-role state-file rewrite via `clearBackoff`/`loadLoopState`/`saveLoopState` plus the `wakeRequestPath(root)` marker, returning the same confirmation string), `requestResetCounters(root, roles)` (same shape over `zeroCounters` — extracted even though the GUI skips it, so the three marker commands share one pattern and `cmdResetCounters` keeps printing its result), and `requestAbort(root, role)` returning `{ ok: true; message: string }` or `{ ok: false; error: string }` (the `orchestratorAlive` check and the DIRECTOR_ROLE prompt-discard note move inside; `fail()` stays in the CLI wrapper). `cmdWake`/`cmdAbort`/`cmdResetCounters` become thin wrappers that resolve targets via `targetRoles`/`namedRole`, call the core, and print — their output text stays byte-identical, pinned by the existing cli-operators tests.
+- src/ui/gui.ts — two endpoints in the `createServer` handler chain, behind the existing token gate and using the same role validation as `handleTranscript` (validIds from `knownRoleIds(config)` with the broken-config fallback to `allRoleIds()`, 400 naming the accepted ids):
+  - `POST /api/wake` body `{ role?: string }` — `{}` or a missing `role` targets every configured role (the CLI's all-roles default); a role is validated like `/api/transcript`. Calls `requestWake`, answers `{ ok: true, message }`.
+  - `POST /api/abort` body `{ role: string }` — required; unknown/missing role → 400; `requestAbort`'s not-live error → 409 `{ error }` (a wrong-method-style conflict, not a client 400, since the marker is valid but nothing can consume it); success → `{ ok: true, message }` (the director message rides through verbatim).
+  Body discipline via `readJsonObject` like `/api/prompt`.
+- src/ui/status-payload.ts — each loop row gains `inFlight: boolean` from `isActivePhase` (src/ui/status-model.ts:185), so the client does not re-derive the three phase prefixes.
+- src/ui/gui-client.ts — each row of the loop table (the map at :474) gains a trailing controls cell: `wake` always; `abort` only when `l.inFlight`. Both `data-role` links handled by one delegated click listener beside the existing `.looplink` one (comment-tagged `row-actions:start/end` like the pause-control block): `postJson("/api/wake", { role })` or `/api/abort`, no confirmation dialog, the returned message flashed in the header the way a failed budget/pause POST flashes, the 1 s poll re-renders state. `postJson`'s error path (gui-client.ts:50) already surfaces a JSON `{error}` body.
+- src/ui/gui-page.ts — untouched unless the static markup needs the new column; the table is client-rendered.
+
+**Files touched.** src/operator-commands.ts, src/ui/gui.ts, src/ui/status-payload.ts, src/ui/gui-client.ts, test/gui-server.test.ts, test/gui-operator.test.ts, test/cli-operators.test.ts (assertions only if the extraction perturbs them — output text is pinned to stay identical).
+
+**Acceptance criteria.**
+- `POST /api/wake` with `{}` (or `{"role":"feature"}`) returns `{ok:true}` and writes the same state-file + marker state as `tumwater wake [--role feature]`; a running fleet consumes it within one poll (covered by the existing operator-requests tests' mechanism, asserted here by marker-file presence).
+- `POST /api/abort {"role":"feature"}` on a live fleet writes the abort marker and returns the CLI's confirmation text; with no harness running it answers 409 with the "no harness is running" error; the director variant's message mentions the discarded prompt.
+- Unknown or missing role ids on both endpoints → 400 naming every valid id (built-ins + customLoops), same as `/api/transcript`; both endpoints sit behind the `--token` gate.
+- The dashboard's loop rows show `wake` on every row and `abort` only on in-flight ones; clicking flashes the server message and the next poll reflects the effect (abort → the row's phase drops to idle on a live fleet).
+- `tumwater wake`, `abort`, and `reset-counters` print exactly today's text in both the live and not-live cases (existing cli-operators tests pass unmodified).
+
 ## Done
 
 ### Optional shared-token auth for the GUI dashboard — `gui --token <secret>` (planned 2026-09-23, re-audited 2026-09-25, done 2026-09-23)
