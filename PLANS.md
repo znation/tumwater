@@ -219,18 +219,28 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 The shared shape: a bounded, silent, or mislabeled record — digest caps, skip warnings, Fixed paragraphs, kill-vs-timeout classification — renders as honest output while discarding or hiding the fact. Each fix added a local pin; none made the *class* of silent failure visible.
 
-**Approach (directions; the plan loop should refine into one focused change).**
-- Traceability for caps and elisions: every place the harness caps or drops output (digest sections, transcript tails, log rotation) records the cut — a marker in the artifact plus an event — so a truncated view can never read as complete.
-- Honest classification: build-check and process outcomes distinguish signal-kill from timeout at the source and emit the distinguishing event, instead of downstream code guessing from a shared message.
-- Claim-vs-tree checks: `doctor` (or a suite helper) verifies that a recorded fix's claimed code change exists in main's history, and reports orphaned worktree processes — automating the two forensics humans had to run by hand.
+**Refinement audit (2026-09-26, plan loop).** Of the three directions the promotion named, two already landed:
+- Honest classification: src/build-check.ts classifies a declared check's fate at source — `BuildSkipReason` is `"timeout" | "killed" | "no-npm" | "toolchain"` (:63) and a skip carries `killedBy` (:83–85) — so a signal kill is never recorded as a timeout downstream.
+- Cut-marking: src/failure-report.ts marks its caps (the state-change cut names the remainder, :88–107; the top-N cluster cut is marked, :176); src/event-window.ts reports `coversFullWindow` (:19–24), so a rotation-truncated window cannot read as complete; src/ui/transcript-tail.ts and src/events.ts document their byte bounds in-file.
+The third direction splits into two independent parts: the orphaned-worktree-process detector already has its own Open bug (BUGS.md, "The grandchild-leak fix landed its kill but not its detector", found 2026-09-21) and stays there, owned by bugfix. The only unowned remainder is the fix-record-vs-tree check, planned concretely below.
 
-**Files touched.** The digest/report renderer, the event feed, `doctor`, and the suite pins over them — exact list refined by the plan loop.
+**Plan: `checkFixClaims` — `tumwater doctor` verifies recorded fixes against the tree.** The landing gate's false-fix check (src/fix-claim.ts `falseFixReason`, :127) fires only when an md-only diff moves a BUGS.md entry to Fixed; a phantom fix that reached main any other way — landed before that gate existed, or via a path it never sees — is detectable only by a human reading raw history. doctor runs standalone, so it closes that gap for everything already on main.
+
+**Approach.**
+- src/doctor.ts — new `export function checkFixClaims(root: string): CheckOutcome` (sync, the `checkInit` shape, :150). Reads `join(root, "BUGS.md")` (absent → `{ level: "ok", detail: "no BUGS.md — nothing to verify" }`). Reuses src/fix-claim.ts's exports unmodified: `fixedHeadings` (:34) for the Fixed entries, `bugEntryBody` (:47) for each record, `fixSymbols` (:67) for the claimed symbols, and `sourceHaystack(root)` + `unbackedSymbols` (:83, :121) for existence on the tree — the repo-root checkout IS main's tree, which is the "no corresponding commit on main" standard the promotion asked for, at the same strength the landing gate applies.
+- Scope and level (decided, no knob): only the newest 10 Fixed entries — the section is newest-first by template convention, and older records drift as code evolves (a symbol legitimately fixed in the past gets renamed later), so a whole-section scan would cry wolf forever. An entry warns only when EVERY symbol its Fix paragraph names is unbacked (the phantom signature — one live symbol passes it); an entry naming no symbols is skipped (pure-documentation fixes are legitimate, the fix-claim.ts rule). Verdict is `warn`, never `fail` — the `checkFallbackModel` precedent (:200): a suspicious record is operator signal, not a broken environment. The warn names the entry heading and up to 3 missing symbols, `falseFixReason`'s message shape (:157–159), plus the remedy "land the fix or keep the bug Open / refresh a stale record".
+- Wire the check into `runDoctor`'s array (src/doctor.ts:376) after "project check", name `"fix claims"`.
+- Tests: test/doctor.test.ts gains cases — a Fixed entry naming a live symbol reads ok; an entry whose symbols are all absent warns naming heading and symbols; an entry outside the newest-10 window is ignored; no BUGS.md reads ok; a symbol-free entry reads ok. Fixtures follow test/fix-claim.test.ts's document shapes.
+
+**Files touched.** src/doctor.ts, test/doctor.test.ts.
 
 **Acceptance criteria.**
-- Each silent-cut site named above marks its own truncation in the artifact it produces, and a rendering test over an over-cap window reddens without it.
-- A signal-killed build check is recorded as killed-by-signal, never as a timeout, at the point of recording.
-- `doctor` detects a fix paragraph whose claimed code change has no corresponding commit on main, and detects orphaned worktree processes.
-- The gap tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sort | uniq -c`) stops growing `no-observability` for failure classes these traces cover.
+- `tumwater doctor` reports a "fix claims" check: a Fixed record whose claimed symbols all exist on the tree reads ok; one whose symbols are all absent warns naming the entry heading and the missing symbols; a missing BUGS.md and a symbol-free entry both read ok.
+- The check is read-only and runs identically with or without a running harness (runDoctor's stated rule, :362).
+- A warn never changes doctor's exit code (only `fail` does, per the CheckOutcome contract at :53).
+- With this landed, the three forensic gaps behind the `no-observability` tally are each covered by an automated detector (this check, the cut-markers, the source classification) — the tally's remaining growth should come only from genuinely new gap classes.
+
+**Series.** Sibling part: the orphaned-worktree-process doctor check (BUGS.md open bug, 2026-09-21) — independent, either can land first; together they complete the promotion's third direction.
 
 ## Done
 
