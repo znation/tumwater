@@ -21,7 +21,7 @@ import {
   buildTickPrompt,
   readPrinciples,
 } from "./prompt.js";
-import { buildRejectedReviewNote } from "./gate-prompts.js";
+import { buildConflictDiscardNote, buildRejectedReviewNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 import { briefFile, readInitialPrompt } from "./readme.js";
 import { telemetryDigest } from "./failure-report.js";
@@ -233,6 +233,10 @@ export class LoopRunner {
     if (this.state.lastReview?.verdict === "reject") {
       prompt += `\n\n${buildRejectedReviewNote(this.state.lastReview.reasons)}`;
     }
+    // Likewise a change leftover recovery discarded as unmergeable: named until the role queues
+    // its next change (the discarding tick itself appends it after recovery — see runTick).
+    const discard = this.state.conflictDiscard;
+    if (discard) prompt += `\n\n${buildConflictDiscardNote(discard.summary, discard.attempts)}`;
     // A fresh tick after the previous run(s) were cut off at the context ceiling (the loop
     // stopped resuming, or never resumed — the director re-runs its prompt fresh): the only
     // memory that the last attempt was too big for the window is this note.
@@ -330,7 +334,7 @@ export class LoopRunner {
    * not be pinned stays on the branch and the tick fails like a fresh tick's failed pin. Every
    * arm is `recoveredLeftover`: no model ran, so the tick is no evidence about the backend. */
   private async finishRecoveryTick(
-    recovered: LeftoverRecovery,
+    recovered: Exclude<LeftoverRecovery, { kind: "discarded" }>,
     userPrompt: string | null,
     wt: string,
     priorLandingFailure: string | undefined,
@@ -555,8 +559,15 @@ export class LoopRunner {
         mainBranch: this.mainBranch,
         tick: s.ticks,
         wt,
+        mergeConflicts: s.mergeConflicts,
       });
-      if (recovered) return this.finishRecoveryTick(recovered, userPrompt, wt, priorLandingFailure);
+      if (recovered?.kind === "discarded") {
+        // The pin hit the conflict cap and is gone: nothing holds the role any more, so this
+        // tick authors on a fresh main like any other — told what was dropped and why.
+        s.mergeConflicts = undefined;
+        s.conflictDiscard = { sha: recovered.sha, summary: recovered.summary, attempts: recovered.attempts, at: Date.now() };
+        prompt += `\n\n${buildConflictDiscardNote(recovered.summary, recovered.attempts)}`;
+      } else if (recovered) return this.finishRecoveryTick(recovered, userPrompt, wt, priorLandingFailure);
       await resetWorktreeToMain(wt, this.mainBranch);
       // Red-main baseline gate (src/main-red.ts): the worktree is pristine main right now —
       // verify main's own suite before spending an authoring run on top of it. Only roles whose

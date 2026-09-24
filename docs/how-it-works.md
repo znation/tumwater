@@ -93,7 +93,9 @@ session and uncommitted edits. Crashes recover the same way, and so do runs the 
 going quiet, up to three in a row. An interrupted landing re-lands through the gate, and an
 interrupted director prompt goes back to its inbox. A commit left unlanded (a landing error that
 kept it, or a crash before it was queued) goes back on the land queue at the role's next tick,
-which ends there instead of authoring, so the single lander stays main's only writer.
+which ends there instead of authoring, so the single lander stays main's only writer. A commit
+whose last three landings all hit merge conflicts that conflict resolution could not settle is
+dropped instead, and the role's next prompt says so.
 
 ## Self-redeploy
 

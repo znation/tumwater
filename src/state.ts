@@ -170,6 +170,8 @@ export function applyTickOutcome(
     // A landed change's patch-id approval has done its job: the same patch authored again
     // later (after a revert, say) is a new change and gets its own review.
     if (outcome.result === "changed") s.lastApprovedPatchId = undefined;
+    // The role committed new work, so the note about its discarded change has been delivered.
+    s.conflictDiscard = undefined;
     s.backoffSeconds = 0;
     s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
   } else if (outcome.result === "rejected") {
@@ -273,6 +275,14 @@ export function applyLandingOutcome(
   s.queuedSummary = undefined;
   if (result === "changed") s.commits += 1;
   if (result === "changed") s.lastApprovedPatchId = undefined; // see applyTickOutcome
+  // The conflict streak counts failed resolutions of one pinned sha; a landing or a rejection
+  // ends that pin's life. Every other outcome kept the pin as it was, so its count stands.
+  if (result === "merge_conflict") {
+    const prior = s.mergeConflicts?.sha === change.sha ? s.mergeConflicts.count : 0;
+    s.mergeConflicts = { sha: change.sha, count: prior + 1 };
+  } else if (result === "changed" || result === "rejected") {
+    s.mergeConflicts = undefined;
+  }
   if (result !== "aborted") s.phase = undefined;
 }
 

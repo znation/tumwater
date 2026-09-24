@@ -2,12 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { recoverLeftover, type LeftoverContext } from "../src/leftover.js";
+import { MERGE_CONFLICT_LIMIT, recoverLeftover, type LeftoverContext } from "../src/leftover.js";
 import { commitTrailer } from "../src/commit-message.js";
 import { readEvents } from "../src/events.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
 import { enqueueLanding, queuedLandings } from "../src/land-queue.js";
-import { landingRefName } from "../src/paths.js";
+import { landQueueDir, landingRefName } from "../src/paths.js";
+import { shortSha } from "../src/text.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { makeRepo, sh, tmpdir } from "./util.js";
 
@@ -71,6 +72,34 @@ test("a pinned commit not in main is put on the land queue, not landed", async (
     "the enqueue is logged like a fresh tick's",
   );
   assert.equal(events.filter((e) => e.type === "merged").length, 0, "no in-tick merge");
+});
+
+test("a pin whose landings hit the merge-conflict cap is discarded, not re-queued", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+
+  // One short of the cap: still a retry.
+  const below = { ...makeCtx(root, wt), mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT - 1 } };
+  assert.equal((await recoverLeftover(below))?.kind, "enqueued");
+  fs.rmSync(landQueueDir(root), { recursive: true, force: true }); // the slot took the entry
+  assert.deepEqual(queuedLandings(root), []);
+
+  // A streak for another sha says nothing about this pin.
+  const other = { ...makeCtx(root, wt), mergeConflicts: { sha: "0".repeat(40), count: MERGE_CONFLICT_LIMIT } };
+  assert.equal((await recoverLeftover(other))?.kind, "enqueued");
+  fs.rmSync(landQueueDir(root), { recursive: true, force: true });
+
+  const atCap = { ...makeCtx(root, wt), mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT } };
+  const recovered = await recoverLeftover(atCap);
+
+  assert.deepEqual(recovered, { kind: "discarded", sha, summary: "stranded work", attempts: MERGE_CONFLICT_LIMIT });
+  assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin is deleted");
+  assert.deepEqual(queuedLandings(root), [], "nothing is queued");
+  const warned = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
+  assert.ok(
+    warned.some((m) => m.includes(`discarding leftover ${shortSha(sha)} after ${MERGE_CONFLICT_LIMIT} landings`)),
+    "the discard is warned, naming the sha",
+  );
 });
 
 test("a role whose landing is already queued is not enqueued twice", async () => {

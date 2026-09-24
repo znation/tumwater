@@ -354,6 +354,47 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
   assert.equal(a.phase, "review");
 });
 
+// A pin that keeps failing to merge used to re-queue forever (land-queue speed 3c made recovery
+// re-queue instead of the next authored commit dropping it): the streak leftover recovery caps
+// counts consecutive merge_conflict landings of ONE sha.
+test("applyLandingOutcome counts consecutive merge conflicts per pinned sha", () => {
+  const s = freshLoopState("feature");
+  applyLandingOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
+  applyLandingOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
+  assert.deepEqual(s.mergeConflicts, { sha: "aaa", count: 2 });
+  // Outcomes that keep the pin as it was leave the count standing.
+  for (const result of ["review_error", "merge_blocked", "main_red", "aborted"] as const) {
+    applyLandingOutcome(s, result, { sha: "aaa", summary: "x" });
+  }
+  assert.deepEqual(s.mergeConflicts, { sha: "aaa", count: 2 });
+  applyLandingOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
+  assert.deepEqual(s.mergeConflicts, { sha: "aaa", count: 3 });
+  // A different sha (the pin rebased cleanly onto a moved main) is a new attempt.
+  applyLandingOutcome(s, "merge_conflict", { sha: "bbb", summary: "x" });
+  assert.deepEqual(s.mergeConflicts, { sha: "bbb", count: 1 });
+  // Landing or rejection ends the pin's life, and the streak with it.
+  for (const result of ["changed", "rejected"] as const) {
+    const n = freshLoopState("feature");
+    n.mergeConflicts = { sha: "aaa", count: 2 };
+    applyLandingOutcome(n, result, { sha: "aaa", summary: "x" });
+    assert.equal(n.mergeConflicts, undefined, `${result} clears the streak`);
+  }
+});
+
+test("the conflict-discard note is cleared once the role queues or lands its next change", () => {
+  for (const result of ["queued", "changed"] as const) {
+    const s = freshLoopState("feature");
+    s.conflictDiscard = { sha: "aaa", summary: "old work", attempts: 3, at: 1 };
+    applyTickOutcome(s, testConfig(), "feature", { result, summary: "new work", commit: "ccc" });
+    assert.equal(s.conflictDiscard, undefined, `${result} delivers the note`);
+  }
+  // A tick that produced nothing keeps it for the next prompt.
+  const s = freshLoopState("feature");
+  s.conflictDiscard = { sha: "aaa", summary: "old work", attempts: 3, at: 1 };
+  applyTickOutcome(s, testConfig(), "feature", { result: "error", summary: "pi died" });
+  assert.deepEqual(s.conflictDiscard, { sha: "aaa", summary: "old work", attempts: 3, at: 1 });
+});
+
 test("a resolved landing pairs its result with the summary of the change it landed", () => {
   // BUGS.md 2026-09-23, the second window: the queued tick held its summary back, so the
   // landing's result must arrive with THAT summary — never beside the prior tick's.

@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { LoopRunner } from "../src/loop.js";
+import { MERGE_CONFLICT_LIMIT } from "../src/leftover.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
@@ -605,6 +606,48 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
       refGone = true; // a missing ref makes rev-parse --verify exit nonzero
     }
     assert.ok(refGone, "the pin was deleted once the work landed");
+  } finally {
+    restore();
+  }
+});
+
+// A pin whose every landing ended in a conflict the resolver could not settle used to re-queue
+// forever once recovery stopped landing in-tick (3c): the role never authored again. At
+// MERGE_CONFLICT_LIMIT recovery drops the pin and the tick authors on fresh main, told why.
+test("a pin at the merge-conflict cap is discarded and the tick authors, told what was dropped", async () => {
+  const repo = await initializedRepo();
+  sh(repo, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(repo, "stuck.txt"), "unmergeable work\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "work main outgrew");
+  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+  sh(repo, "git", "checkout", "main");
+  await setRef(repo, landingRefName("improve"), sha);
+
+  const prompts = path.join(tmpdir(), "prompts.log");
+  const restore = fakePi(
+    [
+      `printf '%s\n' "$@" >> "${prompts}"`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: fresh work")}'`,
+      `echo new > new.txt`,
+    ].join("\n"),
+  );
+  try {
+    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
+    const outcome = await runner.tick();
+
+    assert.equal(outcome.result, "queued", "the tick authored and queued its own change");
+    assert.notEqual(outcome.commit, sha);
+    assert.equal(outcome.recoveredLeftover, undefined, "not a recovery tick");
+    const prompt = fs.readFileSync(prompts, "utf8");
+    assert.match(prompt, /Your previous change \("work main outgrew"\) was discarded without landing/);
+    assert.match(prompt, new RegExp(`conflicted with main ${MERGE_CONFLICT_LIMIT} times`));
+    const queued = readEvents(repo).filter((e) => e.type === "land_queued").map((e) => e.commit);
+    assert.deepEqual(queued, [outcome.commit], "only the fresh change was queued, never the discarded pin");
+    assert.equal(headLanding(repo)?.entry.sha, outcome.commit);
+    assert.equal(runner.state.mergeConflicts, undefined, "the streak ended with the pin");
+    assert.equal(runner.state.conflictDiscard, undefined, "the note was delivered with the queued change");
   } finally {
     restore();
   }

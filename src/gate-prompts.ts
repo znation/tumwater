@@ -143,6 +143,19 @@ export function buildRejectedReviewNote(reasons: string[]): string {
   return `Your previous change was rejected in review:\n${list}\nAddress the objections or take a different approach.`;
 }
 
+/** The note injected into a role's prompt after leftover recovery discarded its pinned change
+ * at MERGE_CONFLICT_LIMIT (src/leftover.ts): the landing failures were harness-level, so without
+ * it the author would never learn its work is gone — or that redoing it from memory of the old
+ * diff would conflict again. A pure function so its shape is pinned in tests. */
+export function buildConflictDiscardNote(summary: string, attempts: number): string {
+  return (
+    `Your previous change ("${summary}") was discarded without landing: it conflicted with main ` +
+    `${attempts} times and conflict resolution could not reconcile it. Main has moved on since you ` +
+    `wrote it. If the change is still needed, redo it against current main, starting from main's ` +
+    `current version of the files it touched rather than your earlier diff.`
+  );
+}
+
 /** The note injected into the `bugfix` healer's prompt when main's own suite is red (PLANS.md
  * "Red-main handoff"): the gate's warning event is harness-level and no role prompt reads it, so
  * the one role allowed to author on a red main is told what failed and that fixing it is this

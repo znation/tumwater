@@ -10,7 +10,7 @@ export type TickResult =
   | "queued" // the tick's change is committed and pinned; the orchestrator's landing slot will pick it up from the durable land queue (plans/merge-queue.md 3/5) — the commit count and final outcome are recorded when the landing completes; never stored as `lastResult`, which keeps the last completed outcome
   | "refused" // pi declined the work (TUMWATER_REFUSED); only its markdown objection note landed
   | "no_change" // pi decided there was nothing to do
-  | "merge_conflict" // change was made but could not be merged; discarded next tick
+  | "merge_conflict" // change was made but could not be merged; the pin is re-queued next tick, and discarded after MERGE_CONFLICT_LIMIT in a row
   | "merge_blocked" // fast-forward into main failed (e.g. dirty primary checkout)
   | "rejected" // the review gate rejected the change; branch reset, reasons recorded
   | "review_error" // the review gate failed (no parseable verdict); commit left for retry
@@ -134,6 +134,15 @@ export interface LoopState {
    * changes or a review succeeds). Past the limit the leftover is discarded with a warning,
    * so a misconfigured reviewer cannot wedge a loop re-reviewing one commit forever. */
   unreviewFailures?: number;
+  /** Consecutive landings of the SAME pinned sha that ended `merge_conflict` — each one a failed
+   * conflict-resolution run. Keyed by sha: a pin that rebased cleanly onto a moved main is a new
+   * attempt and starts fresh. At MERGE_CONFLICT_LIMIT leftover recovery discards the pin instead
+   * of re-queuing it, so an unmergeable change cannot hold its role off authoring forever. */
+  mergeConflicts?: { sha: string; count: number };
+  /** The change leftover recovery discarded at MERGE_CONFLICT_LIMIT, named in the role's
+   * prompts until its next change is queued — the author's only memory that the work is gone
+   * and must be redone against current main if it is still wanted. */
+  conflictDiscard?: { sha: string; summary: string; attempts: number; at: number };
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick
    * window (loop.ts resets it at tick start), not a lifetime total. */
   generatedTokens: number;

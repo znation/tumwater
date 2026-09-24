@@ -4,7 +4,14 @@ import { logEvent, warnEvent } from "./events.js";
 import { enqueueLanding, queuedLandings } from "./land-queue.js";
 import { landingRefName } from "./paths.js";
 import { shortSha } from "./text.js";
-import type { LandingEntry } from "./types.js";
+import type { LandingEntry, LoopState } from "./types.js";
+
+/** Consecutive landings of one pinned sha that may end `merge_conflict` before recovery
+ * discards the pin instead of re-queuing it (LoopState.mergeConflicts). Each attempt costs a
+ * conflict-resolution run, and a role holding a pin never authors: without a cap an
+ * unmergeable change would re-queue forever, burning one resolution run per drain. The same
+ * three strikes as the review gate's REVIEW_FAILURE_LIMIT. */
+export const MERGE_CONFLICT_LIMIT = 3;
 
 /** Salvaging a commit a previous tick left unlanded (plans/merge-queue.md). Since merge queue
  * 2/5 the role's branch is reset to main the moment its commit is pinned, so the leftover
@@ -31,6 +38,9 @@ export interface LeftoverContext {
   tick: number;
   /** The role's worktree — read for the no-pin fallback only. */
   wt: string;
+  /** The role's conflict streak (LoopState.mergeConflicts): a pin at MERGE_CONFLICT_LIMIT is
+   * discarded instead of re-queued. */
+  mergeConflicts?: LoopState["mergeConflicts"];
 }
 
 /** What recovery did with a leftover, for the tick to end on:
@@ -41,11 +51,15 @@ export interface LeftoverContext {
  *   such a role from ticking at all) — nothing is enqueued twice and no ref is touched;
  * - `unpinned`: the commit sits on the branch ahead of main and adopting it into the landing
  *   ref failed — a landing without a pin loses the ref lifecycle the queue depends on, so the
- *   commit stays on the branch for the next tick, like a fresh tick's failed pin. */
+ *   commit stays on the branch for the next tick, like a fresh tick's failed pin;
+ * - `discarded`: the pin's last MERGE_CONFLICT_LIMIT landings all ended in a conflict the
+ *   resolver could not settle — the ref is deleted with a warning and nothing is queued, so the
+ *   tick goes on to author on a fresh main and the prompt says what was dropped. */
 export type LeftoverRecovery =
   | { kind: "enqueued"; entry: LandingEntry }
   | { kind: "already_queued"; entry: LandingEntry }
-  | { kind: "unpinned"; sha: string };
+  | { kind: "unpinned"; sha: string }
+  | { kind: "discarded"; sha: string; summary: string; attempts: number };
 
 /** Queue a commit a previous tick left unlanded. Entry condition: the landing ref exists and
  * its sha is not yet contained in main — or, with no pin at all, the role's branch is ahead of
@@ -89,6 +103,19 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     }
   }
   const meta = await recoveredMetadata(ctx.root, sha);
+  const attempts = ctx.mergeConflicts?.sha === sha ? ctx.mergeConflicts.count : 0;
+  if (attempts >= MERGE_CONFLICT_LIMIT) {
+    // Main has moved too far under this change for the resolver to reconcile it, and every
+    // re-land would pay another resolution run for the same outcome. Drop the pin (the warning
+    // names its sha) and let the author start over.
+    await deleteRef(ctx.root, ref);
+    warnEvent(
+      ctx.root,
+      ctx.role,
+      `discarding leftover ${shortSha(sha)} after ${attempts} landings ended in unresolved merge conflicts with main`,
+    );
+    return { kind: "discarded", sha, summary: meta.subject ?? `leftover ${shortSha(sha)}`, attempts };
+  }
   const entry: LandingEntry = {
     role: ctx.role,
     sha,
