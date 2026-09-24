@@ -5,7 +5,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The digest's `## Landed in the window` list caps at 10 with no remainder marker: a busy window reads as a 10-merge day (found by telemetry loop 2026-09-23)
+## Fixed
+
+### The digest's `## Landed in the window` list caps at 10 with no remainder marker: a busy window reads as a 10-merge day (found by telemetry loop 2026-09-23, fixed 2026-09-24)
 
 **Symptom:** The 2026-09-23 digest reports 155 ticks with 107 changes queued for landing and
 only 17 rejections, yet its `## Landed in the window` section lists exactly 10 commits —
@@ -35,7 +37,10 @@ the cap cut. Correlated: `bade093` added exactly these remainder markers for the
 and the transitions got theirs via `606523e`/`6c2d904`, but the landed list was left
 uncapped-unmarked.
 
-## Fixed
+**Fix:** `collectFailureReport` (src/failure-data.ts) keeps the untrimmed count beside the newest-`LANDED_TOP` slice as `FailureReportData.landedTotal`, the same pre-slice total `stateChangesTotal` carries for the transitions, and `renderFailureMarkdown` (src/failure-report.ts) closes a cut list with `+N older merges not listed`. At or under the cap the section is the plain itemization it was, with no false marker. The render doc's byte-bound note now names the landed cap and its remainder line. Pinned by test/failure-report.test.ts "a landed list over the newest-10 cap names its remainder instead of reading as the whole window": 12 merges list the newest 10 plus `+2 older merges not listed`, and 10 merges print no marker. It failed before the fix. failure-report + gui-report + tui + report 85/85; full suite green.
+
+**Validation gap:** none — the digest's existing event-log fixture reproduced it deterministically; the gap was that no test fed the landed list more than its cap.
+
 
 ### A batched landing is displayed as the head change's landing for the whole batch: the head role reads `landing 29m` long after its own change was rejected, while the change actually being gated shows nothing (reported by user 2026-09-23, fixed 2026-09-24)
 

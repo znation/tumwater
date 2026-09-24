@@ -87,7 +87,8 @@ function rate(errors: number, ticks: number): string {
  * sliced to 32 chars (config validation already refuses longer custom-loop ids, so the slice is
  * a guard rather than the real bound). Cluster counts are capped at top-N, and the Fleet state
  * changes section is capped at STATE_CHANGE_TOP lines with each payload at STATE_CHANGE_MAX and
- * each free field at STATE_CHANGE_FIELD_MAX. Nothing here grows with how bad the window was:
+ * each free field at STATE_CHANGE_FIELD_MAX; the landed list at LANDED_TOP lines, each capped
+ * section closing with one remainder line when its cut dropped anything. Nothing here grows with how bad the window was:
  * measured 6,017 bytes at the CLI's default 14 days on the live fleet, and the worst-case
  * byte-bound fixture in test/failure-report.test.ts covers transition events too. Pure function
  * of FailureReportData: no I/O, no clock reads. */
@@ -160,6 +161,10 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     lines.push("_nothing merged in the window_");
   } else {
     for (const c of data.landed) lines.push(`- ${shortSha(c.commit)} — ${c.summary}`);
+    // Like the transitions' remainder line: a cut list says so, so a busy window's newest ten
+    // are not mistaken for everything that merged.
+    const hidden = data.landedTotal - data.landed.length;
+    if (hidden > 0) lines.push(`+${hidden} older merges not listed`);
   }
 
   return lines.join("\n");

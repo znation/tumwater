@@ -129,6 +129,7 @@ export interface FailureReportData {
   reviewFailures: ClusterSection;
   rejections: ClusterSection;
   landed: LandedCommit[];
+  landedTotal: number; // all merges in the window, before the newest-LANDED_TOP cut
   stateChanges: StateChange[];
   stateChangesTotal: number; // all transitions in the window, before the newest-N cut
 }
@@ -361,15 +362,18 @@ export function collectFailureReport(root: string, days: number): FailureReportD
       .length,
   );
 
-  const landed: LandedCommit[] = current
+  // The newest LANDED_TOP merges, newest first. The pre-slice count rides along, as it does for
+  // the state changes below, so the render can name what the cut left out — a busy window must
+  // not read as a LANDED_TOP-merge day (BUGS.md 2026-09-23).
+  const allLanded: LandedCommit[] = current
     .filter((ev) => ev.type === "merged")
     .map((ev) => ({
       ts: ev.ts,
       commit: typeof ev.commit === "string" ? ev.commit : "?",
       summary: (typeof ev.summary === "string" ? ev.summary : "").trim().slice(0, SUMMARY_MAX),
     }))
-    .sort((a, b) => b.ts - a.ts)
-    .slice(0, LANDED_TOP);
+    .sort((a, b) => b.ts - a.ts);
+  const landed = allLanded.slice(0, LANDED_TOP);
 
   // The harness's own decisions, newest STATE_CHANGE_TOP kept in chronological order. The
   // description is bounded at collection so render stays a pure function of this data. The
@@ -403,6 +407,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     reviewFailures,
     rejections,
     landed,
+    landedTotal: allLanded.length,
     stateChanges,
     stateChangesTotal: allStateChanges.length,
   };

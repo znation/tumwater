@@ -405,6 +405,30 @@ test("a state changes section over the newest-6 cap names its remainder instead 
   assert.doesNotMatch(renderFailureMarkdown(collectFailureReport(quiet, 1)), /older transitions hidden/);
 });
 
+test("a landed list over the newest-10 cap names its remainder instead of reading as the whole window", () => {
+  const root = tmpdir();
+  // 12 merges an hour apart, oldest first: the digest lists the newest 10 and must say that 2
+  // older ones were cut — a busy window must not read as a 10-merge day (BUGS.md 2026-09-23).
+  const merges = Array.from({ length: 12 }, (_, i) => ({
+    ts: at(0, 8 + i),
+    loop: "feature",
+    type: "merged",
+    commit: `${String(i).padStart(2, "0")}${"a".repeat(38)}`,
+    summary: `change ${i}`,
+  }));
+  writeEvents(root, merges);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  const section = md.slice(md.indexOf("## Landed in the window"));
+  assert.equal(section.split("\n").filter((l) => l.startsWith("- ")).length, 10, "the newest ten are itemized");
+  assert.match(section, /change 11/, "the newest merge is kept");
+  assert.doesNotMatch(section, /change 0\b|change 1\b/, "the two oldest are the ones cut");
+  assert.match(section, /^\+2 older merges not listed$/m);
+  // At or under the cap the list stays a plain itemization — no false truncation marker.
+  const quiet = tmpdir();
+  writeEvents(quiet, merges.slice(0, 10));
+  assert.doesNotMatch(renderFailureMarkdown(collectFailureReport(quiet, 1)), /older merges not listed/);
+});
+
 test("each harness state transition renders its own bounded line", () => {
   // describeStateChange owns the whole transition vocabulary, but the digest tests above reach
   // only budget_fallback, fleet_paused, build_stale, config_changed and tick_deferred. Each
