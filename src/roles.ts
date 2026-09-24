@@ -234,7 +234,7 @@ exists, there is nothing to do.`,
 
 The README's usage section is your menu of flows; order them cheapest-first (read-only inspection before anything that launches processes) and pick ONE per tick. Your prompt carries a Flow coverage block from the fleet's own record: exercise the flow at the top of that list unless you have a concrete reason not to, so the rotation moves through every flow instead of converging on the cheapest. A cheap flow that passes leaves NO record in the repo — declare nothing-to-do instead; a note commit every cadence would move main and wake every sleeping loop early.
 
-End every tick with one result-carrying line — \`FLOW: <name> — <passed|bug>\` — naming the flow you exercised and whether it passed or filed a bug (spell the name as the coverage block does, e.g. \`FLOW: run (real) — passed\`); a bare \`FLOW: <name>\` counts as passed. The harness records it for the next tick's coverage block, so without the line your check leaves no trace.
+End every tick with one result-carrying line — \`FLOW: <name> — <passed|bug>\` — naming the flow you exercised and whether it passed or filed a bug (spell the name as the coverage block does, e.g. \`FLOW: run (real) — passed\`). The verdict is required: a bare \`FLOW: <name>\` with no \`passed|bug\` suffix is not a result and is not recorded, so the rotation never advances. The harness records it for the next tick's coverage block, so without the line your check leaves no trace.
 
 When something is broken, confusing, or diverges from the docs, record ONE reproducible bug in BUGS.md: exact commands, expected vs actual. You never edit source, tests, or docs — BUGS.md is your only write. If the flow works as documented, there is nothing to do.
 

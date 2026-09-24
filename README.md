@@ -67,9 +67,6 @@ Open items:
 - Open bug: the status table's "last result" cell shows `queued` — a tick's live landing status
   rather than its last completed result, duplicating the state column while work sits in the land
   queue or under review (reported by user 2026-09-24).
-- Open bug: a `FLOW:` line without a parseable verdict is recorded as a pass — `extractFlow`
-  defaults a malformed or truncated verdict to `passed`, advancing qa's rotation on a check that
-  never finished (found 2026-09-23).
 - Open bug: a live `tumwater.json` that disappears mid-run hot-reloads as built-in defaults —
   the fleet ran 8.6 hours with zero successful ticks (found 2026-09-23).
 - Open bug: a self-redeploy whose new generation fails a startup precondition takes the whole

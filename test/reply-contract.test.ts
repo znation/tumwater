@@ -137,8 +137,8 @@ test("verdictLines is empty when no line matches", () => {
 
 // The `qa` observer ends each tick with a result-carrying FLOW line (plans/observer-roles.md
 // 2/2); the harness parses it to rotate the flow menu. Anchored at line start through
-// labeledLine, so a mid-sentence mention cannot advance the ledger, and a bare name is a pass
-// (the result token is optional).
+// labeledLine, so a mid-sentence mention cannot advance the ledger, and the verdict is
+// required: a bare name is not a pass the run never declared.
 
 test("extractFlow parses a result-carrying FLOW line", () => {
   assert.deepEqual(extractFlow("ran the flow\nFLOW: status — passed"), { flow: "status", result: "passed" });
@@ -146,9 +146,11 @@ test("extractFlow parses a result-carrying FLOW line", () => {
   assert.deepEqual(extractFlow("FLOW: run (real) — passed"), { flow: "run (real)", result: "passed" });
 });
 
-test("extractFlow tolerates a bare name as passed and keeps hyphens in the name", () => {
-  assert.deepEqual(extractFlow("FLOW: status"), { flow: "status", result: "passed" });
-  assert.deepEqual(extractFlow("FLOW: reset-counters"), { flow: "reset-counters", result: "passed" });
+test("extractFlow requires the verdict and keeps hyphens in the name", () => {
+  // A bare `FLOW: <name>` — or a reply truncated mid-verdict — is not a result (BUGS.md
+  // 2026-09-23): returning null leaves the rotation unadvanced instead of latching a pass.
+  assert.equal(extractFlow("FLOW: status"), null);
+  assert.equal(extractFlow("FLOW: gui-budget-cap — pa"), null);
   assert.deepEqual(extractFlow("FLOW: reset-counters — passed"), {
     flow: "reset-counters",
     result: "passed",

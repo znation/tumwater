@@ -739,7 +739,13 @@ test("the qa prompt rotates through the coverage block and carries the FLOW cont
   assert.match(find, /exercise the flow at the top of that list/);
   assert.match(find, /leaves NO record in the repo — declare nothing-to-do/);
   assert.match(find, /FLOW: <name> — <passed\|bug>/);
-  assert.match(find, /bare `FLOW: <name>` counts as passed/);
+  // The verdict is required (BUGS.md 2026-09-23): the sole FLOW producer must not be taught
+  // that a bare `FLOW: <name>` counts as passed — the parser rejects exactly that form.
+  assert.match(
+    find,
+    /verdict is required: a bare `FLOW: <name>` with no `passed\|bug` suffix is not a result and is not recorded/,
+  );
+  assert.doesNotMatch(find, /counts as passed/);
 });
 
 test("the qa prompt guards the expensive real run: constrained, capped, once per day", () => {

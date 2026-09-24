@@ -65,15 +65,17 @@ interface FlowResult {
 
 /** Extract the `qa` tick's result-carrying `FLOW: <name> — <passed|bug>` line (plans/observer-
  * roles.md 2/2); null when absent. Built on `labeledLine`, so the label is anchored at line
- * start and a mid-sentence mention is ignored. A bare `FLOW: <name>` is tolerated as `passed`
- * (the result token is optional; the flow name is not). Splits on the final dash/em-dash token
- * before the result so a name that itself contains a hyphen (`reset-counters`) stays intact. */
+ * start and a mid-sentence mention is ignored. The verdict is required: a bare `FLOW: <name>`
+ * — or a reply truncated mid-verdict (`FLOW: gui-budget-cap — pa`) — is not a result, and
+ * returning null leaves the rotation unadvanced rather than latching a pass the run never
+ * declared (BUGS.md 2026-09-23). Splits on the final dash/em-dash token before the result so a
+ * name that itself contains a hyphen (`reset-counters`) stays intact. */
 export function extractFlow(text: string): FlowResult | null {
   const value = labeledLine(text, "FLOW");
   if (!value) return null;
   const match = value.match(/^(.*)\s*[—-]\s*(passed|bug)\s*$/i);
-  if (match?.[1]) return { flow: match[1].trim(), result: match[2]!.toLowerCase() as "passed" | "bug" };
-  return { flow: value, result: "passed" };
+  if (!match?.[1]) return null;
+  return { flow: match[1].trim(), result: match[2]!.toLowerCase() as "passed" | "bug" };
 }
 
 // The review gate's verdict line as stated in buildReviewPrompt (prompt.ts): the reviewer
