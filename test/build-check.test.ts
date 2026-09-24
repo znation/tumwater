@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  buildCheckSkipWarning,
   clipBuildTail,
   failureHeadline,
   runBuildCheck,
@@ -359,6 +360,39 @@ test("a merge-scope check killed by an external signal rejects, naming the signa
   const warning = readEvents(root).find((e) => e.type === "warning");
   assert.match(String(warning?.message ?? ""), /was killed by SIGKILL after \d+(?:\.\d+)?s/);
   assert.doesNotMatch(String(warning?.message ?? ""), /timed out/);
+});
+
+test("a gate check killed on every attempt stays skipped, and the warning names the signal — not the timeout", async () => {
+  // The killed-skip warning's with-info arm: the gate scope (fail-open, one retry) is the only
+  // surface that can still be "skipped" after a kill — a merge scope remaps the kill to a
+  // deterministic failure and a single kill that recovers on retry never warns at all, so
+  // without this test the message the operator actually reads had no coverage.
+  const { root, wt } = buildCheckFixture();
+  fs.mkdirSync(path.join(wt, "node_modules"));
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "kill -9 $$" } }),
+  );
+  const result = await runScopedBuildCheck(root, ROLE, "gate", wt, undefined, 30_000);
+  assert.equal(result!.outcome.status, "skipped", "the gate stays fail-open on an environmental kill");
+  assert.equal(result!.outcome.skipReason, "killed");
+  assert.equal(result!.outcome.killedBy, "SIGKILL");
+  // Both attempts are priced as build_check events (the feed answers how long a check took).
+  const checks = readEvents(root).filter((e) => e.type === "build_check");
+  assert.equal(checks.length, 2, "the killed attempt and the retry each priced one event");
+  const warning = readEvents(root).find((e) => e.type === "warning");
+  assert.match(String(warning?.message ?? ""),
+    /build check was killed by SIGKILL after \d+(?:\.\d+)?s; proceeding to model review/);
+  assert.doesNotMatch(String(warning?.message ?? ""), /timed out/);
+});
+
+test("the killed skip warning without signal info names an external signal, never the timeout", () => {
+  // The main-red baseline passes no killed info: its wording must still say "killed by an
+  // external signal" rather than claiming the timeout bound fired (BUGS.md 2026-09-23).
+  assert.equal(
+    buildCheckSkipWarning("killed", "main baseline check", "proceeding with authoring unverified", 30_000),
+    "main baseline check was killed by an external signal; proceeding with authoring unverified",
+  );
 });
 
 test("runBuildCheck skips (not fails closed) when npm is missing from PATH", async () => {
