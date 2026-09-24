@@ -16,13 +16,7 @@ import { readEvents } from "../src/events.js";
 import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/land-queue.js";
 import { landingRefName, sessionDir, worktreePath } from "../src/paths.js";
-import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir, waitForFile } from "./util.js";
-
-async function initializedRepo(): Promise<string> {
-  const repo = makeRepo();
-  await initProject(repo, "A test project.");
-  return repo;
-}
+import { assistantLine, errorLine, fakePi, initializedRepo, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir, waitForFile } from "./util.js";
 
 const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
 test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {

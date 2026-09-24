@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { LoopRunner } from "../src/loop.js";
-import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
@@ -19,13 +18,7 @@ import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
 import { landQueuedEntry } from "../src/landing-slot.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { assistantLine, errorLine, fakePi, landHead, makeRepo, sh, tmpdir, waitForFile } from "./util.js";
-
-async function initializedRepo(): Promise<string> {
-  const repo = makeRepo();
-  await initProject(repo, "A test project.");
-  return repo;
-}
+import { assistantLine, errorLine, fakePi, initializedRepo, landHead, sh, tmpdir, waitForFile } from "./util.js";
 
 test("resume falls back to a fresh tick when there is no session to continue", async () => {
   const repo = await initializedRepo();

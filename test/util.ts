@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { strict as assert } from "node:assert";
 import { defaultConfig, loadConfig } from "../src/config.js";
+import { initProject } from "../src/init.js";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { landQueuedEntry } from "../src/landing-slot.js";
 import { headLanding } from "../src/land-queue.js";
@@ -95,6 +96,15 @@ export function makeRepo(dir = tmpdir()): string {
   sh(dir, "git", "add", "-A");
   sh(dir, "git", "commit", "-m", "seed");
   return dir;
+}
+
+/** A makeRepo'd repo that has run initProject — the standard fixture for tests that drive a
+ * full tick or lander against an initialized tumwater project. Shared by the loop e2e slices,
+ * which each used to carry their own identical copy. */
+export async function initializedRepo(): Promise<string> {
+  const repo = makeRepo();
+  await initProject(repo, "A test project.");
+  return repo;
 }
 
 /** Scratch project for the build-check tests (build-check.test.ts and review.test.ts's gate

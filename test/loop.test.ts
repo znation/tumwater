@@ -15,13 +15,8 @@ import { readEvents } from "../src/events.js";
 import { loadLoopState } from "../src/state.js";
 import { configRequestPath, sessionDir, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
-import { assistantLine, fakePi, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir, waitForFile } from "./util.js";
+import { assistantLine, fakePi, initializedRepo, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir, waitForFile } from "./util.js";
 
-async function initializedRepo(): Promise<string> {
-  const repo = makeRepo();
-  await initProject(repo, "A test project.");
-  return repo;
-}
 
 test("a tick that changes files commits and merges to main", async () => {
   const repo = await initializedRepo();
