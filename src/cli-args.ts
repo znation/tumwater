@@ -117,24 +117,38 @@ function failStrayArg(args: string[], reason: string, ...claimed: number[]): voi
   if (extra !== undefined) fail(`unexpected argument ${JSON.stringify(extra)} — ${reason}`);
 }
 
+/** init's valueless flags (plans/portability.md §7/7, correction 1): each at most once, and
+ * never prompt content. */
+const INIT_BOOLEAN_FLAGS: readonly string[] = ["--adopt", "--dry-run"];
+
 /** `tumwater init` argument handling. Every other command runs rejectUnknownArgs, but init's
  * positionals are free-form prompt text, so that helper (which rejects ANY unconsumed token)
- * can't be used wholesale. The rules instead: a double-dash token must be `--file` or
- * `--branch`, each given at most once; with `--file` present nothing else may follow it; a
- * `--branch <name>` pair is never prompt content; single-dash positionals are prompt content,
- * not flags. Without these checks a misspelled --file would be baked into the initial prompt —
- * injected into every tick of every loop until someone edits the project brief. */
-export function parseInitArgs(args: string[]): { prompt: string; branch: string | null } {
+ * can't be used wholesale. The rules instead: a double-dash token must be `--file`,
+ * `--branch`, `--adopt` or `--dry-run`, each given at most once; with `--file` present nothing
+ * but the other flags may accompany it; a `--branch <name>` pair and the two booleans are never
+ * prompt content; single-dash positionals are prompt content, not flags. Without these checks a
+ * misspelled --file would be baked into the initial prompt — injected into every tick of every
+ * loop until someone edits the project brief. */
+export function parseInitArgs(args: string[]): {
+  prompt: string;
+  branch: string | null;
+  adopt: boolean;
+  dryRun: boolean;
+} {
+  const known = ["--file", "--branch", ...INIT_BOOLEAN_FLAGS];
   for (const arg of args) {
-    if (arg.startsWith("--") && arg !== "--file" && arg !== "--branch") {
+    if (arg.startsWith("--") && !known.includes(arg)) {
       fail(
-        `unknown argument: ${arg} (valid flags for tumwater init: --file <path>, --branch <name>)`,
+        `unknown argument: ${arg} (valid flags for tumwater init: --file <path>, --branch <name>, --adopt, --dry-run)`,
       );
     }
   }
-  if (args.filter((a) => a === "--file").length > 1) fail("--file may only be given once");
-  if (args.filter((a) => a === "--branch").length > 1) fail("--branch may only be given once");
+  for (const flag of known) {
+    if (args.filter((a) => a === flag).length > 1) fail(`${flag} may only be given once`);
+  }
   const branch = parseBranchFlag(args);
+  const adopt = args.includes("--adopt");
+  const dryRun = args.includes("--dry-run");
   const fileFlag = args.indexOf("--file");
   if (fileFlag >= 0) {
     const file = args[fileFlag + 1];
@@ -142,22 +156,27 @@ export function parseInitArgs(args: string[]): { prompt: string; branch: string 
     const claimed = [fileFlag, fileFlag + 1];
     const branchFlag = args.indexOf("--branch");
     if (branchFlag >= 0) claimed.push(branchFlag, branchFlag + 1);
+    for (const flag of INIT_BOOLEAN_FLAGS) {
+      if (args.includes(flag)) claimed.push(args.indexOf(flag));
+    }
     failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
     try {
-      return { prompt: fs.readFileSync(file, "utf8"), branch };
+      return { prompt: fs.readFileSync(file, "utf8"), branch, adopt, dryRun };
     } catch (err) {
       // A raw ENOENT/EISDIR names the path but not its role; say this was the --file prompt.
       fail(`cannot read prompt file ${JSON.stringify(file)}: ${errorMessage(err)}`);
     }
   }
-  // Everything except the --branch pair is prompt text; the join keeps single-dash tokens as
-  // content, exactly as before — with no --branch present this is the old args.join(" ").
+  // Everything except the --branch pair and the booleans is prompt text; the join keeps
+  // single-dash tokens as content, exactly as before — with no flag present this is the old
+  // args.join(" ").
   const promptTokens: string[] = [];
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--branch") i++; // Skip the pair's value too.
-    else promptTokens.push(args[i] as string);
+    const arg = args[i] as string;
+    if (arg === "--branch") i++; // Skip the pair's value too.
+    else if (!INIT_BOOLEAN_FLAGS.includes(arg)) promptTokens.push(arg);
   }
-  return { prompt: promptTokens.join(" "), branch };
+  return { prompt: promptTokens.join(" "), branch, adopt, dryRun };
 }
 
 /** The three modes of `tumwater prompt`: enqueue free-form text (the default), list the

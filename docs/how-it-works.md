@@ -6,7 +6,11 @@
 and a status section between managed markers), PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md,
 and tumwater.json, and commits them. A bare `tumwater init` reads the prompt from an existing
 README.md's `tumwater:prompt` markers instead. A `TUMWATER.md` with the same markers takes
-precedence over README.md, so an existing project's README can stay untouched. init never
+precedence over README.md, so an existing project's README can stay untouched. Pointed at an
+existing repo whose README.md has no markers, init adopts it: the brief goes in `TUMWATER.md`,
+README.md and any existing backlog files are left byte-identical, and only the missing files are
+created (`--adopt` asks for this path explicitly). `--dry-run` prints what init would create and
+leave alone, then exits without writing or committing anything. init never
 rewrites an existing brief: a prompt that differs from the one it carries is refused, naming the
 file to edit instead. The prompt is capped at 4096 characters because it rides into every tick.
 

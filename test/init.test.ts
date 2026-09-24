@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START, readInitialPrompt } from "../src/readme.js";
+import {
+  INITIAL_PROMPT_MAX_CHARS,
+  PROMPT_END,
+  PROMPT_START,
+  briefFile,
+  readInitialPrompt,
+} from "../src/readme.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { VALIDATION_GAP_TAGS } from "../src/roles.js";
 import { exampleConfigPath } from "../src/paths.js";
@@ -41,6 +47,10 @@ test("initProject seeds PRINCIPLES.md with positive starter principles", async (
   // Starter principles are phrased positively ("prefer…", "keep…", "every… ships").
   assert.match(seeded, /Prefer the standard library/);
   assert.match(seeded, /Every behavior change ships with a test/);
+  // Ecosystem-neutral (plans/portability.md §7/7): init writes this into someone else's repo,
+  // so no codebase-specific size rule, and the file says the list is the director's to tune.
+  assert.doesNotMatch(seeded, /500 lines/);
+  assert.match(seeded, /This list is a starting point: the director and steward own it/);
 });
 
 test("initProject seeds BUGS.md with the validation-gap convention", async () => {
@@ -115,17 +125,107 @@ test("initProject appends both ignore entries to an existing .gitignore on their
   assert.equal(fs.readFileSync(path.join(bare, ".gitignore"), "utf8"), ".tumwater\ntumwater.json\n");
 });
 
-test("initProject refuses to drop the initial prompt when README has no tumwater markers", async () => {
+// Adoption (plans/portability.md §7/7): an existing repo's README.md is its real documentation,
+// so the brief goes in TUMWATER.md and README.md is never touched.
+
+/** An unrelated repo with its own README.md (no tumwater markers) and PLANS.md, committed. */
+function foreignRepo(): string {
   const repo = makeRepo();
-  fs.writeFileSync(path.join(repo, "README.md"), "# mine\n");
+  fs.writeFileSync(path.join(repo, "README.md"), "# mine\n\nThe project's own docs.\n");
+  fs.writeFileSync(path.join(repo, "PLANS.md"), "# my roadmap\n");
   sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "own readme");
-  await assert.rejects(() => initProject(repo, "prompt"), /tumwater:prompt/);
-  // Nothing was created or committed — the user fixes README.md and re-runs.
-  for (const f of ["PLANS.md", "BUGS.md", "tumwater.json"]) {
+  sh(repo, "git", "commit", "-m", "own readme and plans");
+  return repo;
+}
+
+test("initProject adopts a repo whose README has no tumwater markers instead of refusing", async () => {
+  // This used to throw "your prompt would be lost"; now the same README-without-markers case
+  // is the adoption path, taken automatically without --adopt.
+  const repo = foreignRepo();
+  const readme = fs.readFileSync(path.join(repo, "README.md"));
+  const plans = fs.readFileSync(path.join(repo, "PLANS.md"));
+  const result = await initProject(repo, "Adopted brief.");
+  assert.ok(result.adopted);
+  // Only the missing files are created — never README.md or the repo's own PLANS.md.
+  assert.deepEqual(
+    [...result.created].sort(),
+    [".gitignore", "BUGS.md", "PRINCIPLES.md", "QUESTIONS.md", "TUMWATER.md", "tumwater.json"],
+  );
+  assert.deepEqual(fs.readFileSync(path.join(repo, "README.md")), readme, "README.md byte-identical");
+  assert.deepEqual(fs.readFileSync(path.join(repo, "PLANS.md")), plans, "PLANS.md byte-identical");
+  assert.ok(result.leftAlone.includes("README.md") && result.leftAlone.includes("PLANS.md"));
+  // The brief round-trips from TUMWATER.md, and the adopted repo is committed clean.
+  assert.equal(briefFile(repo), "TUMWATER.md");
+  assert.equal(readInitialPrompt(repo), "Adopted brief.");
+  assert.ok(result.committed);
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  // A re-run finds the marked brief and has nothing to do.
+  const again = await initProject(repo, "Adopted brief.", undefined, { adopt: true });
+  assert.deepEqual(again.created, []);
+  assert.ok(!again.adopted);
+});
+
+test("initProject --adopt writes TUMWATER.md even with no README, and never creates one", async () => {
+  const repo = makeRepo();
+  const result = await initProject(repo, "Explicitly adopted.", undefined, { adopt: true });
+  assert.ok(result.adopted);
+  assert.ok(result.created.includes("TUMWATER.md"));
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")), "no README.md on the adopt path");
+  assert.equal(briefFile(repo), "TUMWATER.md");
+
+  // Against a repo tumwater created (marked README.md), --adopt is today's no-op: the brief
+  // already has a home, so no TUMWATER.md appears to shadow it.
+  const created = makeRepo();
+  await initProject(created, "Original.");
+  const again = await initProject(created, "Original.", undefined, { adopt: true });
+  assert.deepEqual(again.created, []);
+  assert.ok(!fs.existsSync(path.join(created, "TUMWATER.md")));
+  assert.equal(briefFile(created), "README.md");
+});
+
+test("initProject refuses to adopt over a TUMWATER.md without markers", async () => {
+  // Create-if-absent would leave the marker-less file alone and drop the prompt — every loop
+  // would run blind — so this is the one case adoption still refuses, before any side effect.
+  const repo = foreignRepo();
+  fs.writeFileSync(path.join(repo, "TUMWATER.md"), "# notes\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "unrelated TUMWATER.md");
+  await assert.rejects(() => initProject(repo, "prompt"), /TUMWATER\.md already exists.*tumwater:prompt/);
+  for (const f of ["BUGS.md", "QUESTIONS.md", "tumwater.json"]) {
     assert.ok(!fs.existsSync(path.join(repo, f)), `${f} should not exist`);
   }
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+});
+
+test("initProject --dry-run writes nothing: no files, no gitignore edit, no commit", async () => {
+  const repo = foreignRepo();
+  fs.writeFileSync(path.join(repo, ".gitignore"), "node_modules\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own gitignore");
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const listing = fs.readdirSync(repo).sort();
+  const result = await initProject(repo, "Dry brief.", undefined, { dryRun: true });
+  assert.ok(result.dryRun);
+  assert.ok(!result.committed);
+  // The same lists a real run computes...
+  assert.deepEqual(
+    [...result.created].sort(),
+    [".gitignore", "BUGS.md", "PRINCIPLES.md", "QUESTIONS.md", "TUMWATER.md", "tumwater.json"],
+  );
+  assert.deepEqual([...result.leftAlone].sort(), ["PLANS.md", "README.md"]);
+  // ...and none of it on disk: same directory listing, same tree, same HEAD.
+  assert.deepEqual(fs.readdirSync(repo).sort(), listing);
+  assert.equal(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), "node_modules\n");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
+
+  // Outside a git repo, a dry run reports the repo it would seed without running `git init`.
+  const dir = tmpdir();
+  const fresh = await initProject(dir, "Fresh.", "trunk", { dryRun: true });
+  assert.ok(fresh.repoInitialized);
+  assert.equal(fresh.branch, "trunk");
+  assert.ok(fresh.created.includes("README.md"));
+  assert.deepEqual(fs.readdirSync(dir), []);
 });
 
 test("initProject's bare-init refusal names a marker-less README", async () => {
@@ -282,6 +382,11 @@ test("a bare init re-seeds a lost config from the README's prompt (portability 4
   const again = await initProject(repo, "");
   assert.deepEqual(again.created, ["tumwater.json"]);
   assert.equal(readInitialPrompt(repo), "the original prompt");
+  // A repo tumwater created before adoption existed keeps its brief in README.md: the marked
+  // README is not an adoption case, so no TUMWATER.md appears and no migration is needed.
+  assert.ok(!again.adopted);
+  assert.equal(briefFile(repo), "README.md");
+  assert.ok(!fs.existsSync(path.join(repo, "TUMWATER.md")));
 });
 
 test("initProject seeds a git repo when the cwd is not one yet (BUGS.md 2026-09-08)", async () => {

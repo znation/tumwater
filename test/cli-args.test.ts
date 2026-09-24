@@ -221,11 +221,15 @@ test("parseInitArgs joins positionals (single-dash tokens are content, not flags
   assert.deepEqual(expectOk(() => parseInitArgs(["Build", "a", "todo CLI."])), {
     prompt: "Build a todo CLI.",
     branch: null,
+    adopt: false,
+    dryRun: false,
   });
   // Bullets and other single-dash tokens stay prompt content.
   assert.deepEqual(expectOk(() => parseInitArgs(["- Build A", "- Build B"])), {
     prompt: "- Build A - Build B",
     branch: null,
+    adopt: false,
+    dryRun: false,
   });
 });
 
@@ -236,6 +240,8 @@ test("parseInitArgs --file reads the exact file contents", () => {
   assert.deepEqual(expectOk(() => parseInitArgs(["--file", file])), {
     prompt: "Build a thing.\nWith care.\n",
     branch: null,
+    adopt: false,
+    dryRun: false,
   });
 });
 
@@ -295,6 +301,8 @@ test("parseInitArgs --branch: never prompt content, combined with --file, duplic
   assert.deepEqual(expectOk(() => parseInitArgs(["Build", "a", "todo CLI.", "--branch", "trunk"])), {
     prompt: "Build a todo CLI.",
     branch: "trunk",
+    adopt: false,
+    dryRun: false,
   });
 
   // Both flags at once: the file is the prompt, the branch the initial branch.
@@ -304,6 +312,8 @@ test("parseInitArgs --branch: never prompt content, combined with --file, duplic
   assert.deepEqual(expectOk(() => parseInitArgs(["--file", file, "--branch", "trunk"])), {
     prompt: "From a file.",
     branch: "trunk",
+    adopt: false,
+    dryRun: false,
   });
 
   // A doubled --branch is a mistake, not a name collision.
@@ -313,6 +323,51 @@ test("parseInitArgs --branch: never prompt content, combined with --file, duplic
   // With --file, anything besides the two flag pairs is a stray token.
   const stray = expectFail(() => parseInitArgs(["--file", file, "--branch", "trunk", "extra"]));
   assert.match(stray.stderr, /unexpected argument "extra"/);
+});
+
+test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine with --file, duplicates rejected", () => {
+  // Both booleans are stripped before the join, wherever they sit — `init --adopt "brief"`
+  // must not bake "--adopt" into the brief every tick reads.
+  assert.deepEqual(expectOk(() => parseInitArgs(["--adopt", "Build", "--dry-run", "a thing."])), {
+    prompt: "Build a thing.",
+    branch: null,
+    adopt: true,
+    dryRun: true,
+  });
+  // A boolean is valueless: the token after it stays prompt text, even beside --branch.
+  assert.deepEqual(expectOk(() => parseInitArgs(["--dry-run", "--branch", "trunk", "Go."])), {
+    prompt: "Go.",
+    branch: "trunk",
+    adopt: false,
+    dryRun: true,
+  });
+
+  // With --file, the booleans are claimed alongside it — only a truly stray token fails.
+  const dir = tmpdir();
+  const file = path.join(dir, "prompt.md");
+  fs.writeFileSync(file, "From a file.");
+  assert.deepEqual(
+    expectOk(() => parseInitArgs(["--adopt", "--file", file, "--dry-run", "--branch", "trunk"])),
+    { prompt: "From a file.", branch: "trunk", adopt: true, dryRun: true },
+  );
+  const stray = expectFail(() => parseInitArgs(["--file", file, "--adopt", "extra"]));
+  assert.match(stray.stderr, /unexpected argument "extra"/);
+
+  // A doubled boolean fails by name, like the valued flags.
+  assert.match(
+    expectFail(() => parseInitArgs(["--adopt", "x", "--adopt"])).stderr,
+    /--adopt may only be given once/,
+  );
+  assert.match(
+    expectFail(() => parseInitArgs(["--dry-run", "--dry-run", "x"])).stderr,
+    /--dry-run may only be given once/,
+  );
+
+  // The unknown-flag message lists every valid flag.
+  assert.match(
+    expectFail(() => parseInitArgs(["--adpot", "x"])).stderr,
+    /valid flags for tumwater init: --file <path>, --branch <name>, --adopt, --dry-run/,
+  );
 });
 
 // --- parsePromptArgs ---

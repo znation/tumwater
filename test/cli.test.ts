@@ -125,6 +125,30 @@ test("init --branch names the branch a new repo is seeded on", async () => {
   assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
 });
 
+test("init --dry-run prints the file lists and exits 0 without writing; --adopt then applies", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "README.md"), "# theirs\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own readme");
+  const listing = fs.readdirSync(repo).sort();
+  const dry = await cli(repo, "init", "--adopt", "--dry-run", "Adopt me.");
+  assert.equal(dry.code, 0, dry.stderr);
+  assert.match(dry.stdout, /would adopt an existing repo: the project brief goes in TUMWATER\.md/);
+  assert.match(dry.stdout, /dry run — would create: .*TUMWATER\.md/);
+  assert.match(dry.stdout, /would leave alone: README\.md/);
+  assert.match(dry.stdout, /nothing written; re-run without --dry-run to apply/);
+  assert.deepEqual(fs.readdirSync(repo).sort(), listing, "nothing written");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+
+  // The real run takes the path the dry run described, and the flag never reaches the brief.
+  const r = await cli(repo, "init", "--adopt", "Adopt me.");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /adopting an existing repo/);
+  assert.match(r.stdout, /created .*TUMWATER\.md/);
+  assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), "# theirs\n");
+  assert.equal(readInitialPrompt(repo), "Adopt me.");
+});
+
 test("run --branch fails at startup when the branch does not exist, listing what does", async () => {
   const repo = makeRepo();
   await cli(repo, "init", "Ready repo.");

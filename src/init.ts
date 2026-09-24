@@ -8,6 +8,7 @@ import {
   PROMPT_END,
   PROMPT_START,
   briefFile,
+  briefTemplate,
   readInitialPrompt,
   readmeTemplate,
 } from "./readme.js";
@@ -64,10 +65,11 @@ const PRINCIPLES_TEMPLATE = `# Principles
 Design principles this project holds — the codified answer to "what would a senior engineer on
 this team always do." Every loop's prompt carries these; uphold them in everything you produce.
 Only the director and steward roles may edit this file. Phrase new principles positively: state
-what to do, not what to avoid.
+what to do, not what to avoid. This list is a starting point: the director and steward own it
+and will tune it to this project.
 
 - Prefer the standard library over a new dependency.
-- Keep every module under ~500 lines; split when it grows past that.
+- Keep each file focused on one responsibility, and small enough to read in one sitting.
 - Every behavior change ships with a test.
 - Small, complete, and correct beats big and half-done: one focused change per tick.
 `;
@@ -75,14 +77,15 @@ what to do, not what to avoid.
 /** Add both tumwater entries to .gitignore independently — the state dir and the config file —
  * so a .gitignore that already carries one still gains the other (plans/portability.md §4a/7;
  * the old single-entry early return left a pre-existing `.tumwater/` line hiding the config).
- * Returns true when the file changed. */
-function ensureGitignore(root: string): boolean {
+ * Returns true when the file changed — or, with `dryRun`, would change (nothing is written). */
+function ensureGitignore(root: string, dryRun = false): boolean {
   const file = path.join(root, ".gitignore");
   const wanted = [`${STATE_DIR}/`, CONFIG_BASENAME];
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
   const lines = existing.split("\n").map((l) => l.trim());
   const missing = wanted.filter((e) => !lines.some((l) => l === e || l === e.replace(/\/$/, "")));
   if (missing.length === 0) return false;
+  if (dryRun) return true;
   fs.writeFileSync(
     file,
     existing + (existing && !existing.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n",
@@ -91,24 +94,38 @@ function ensureGitignore(root: string): boolean {
 }
 
 interface InitResult {
+  /** Files init created — or, on a dry run, would create. */
   created: string[];
+  /** Files init looked for and found already present, so left byte-identical. */
+  leftAlone: string[];
   committed: boolean;
-  /** True when the cwd was not a git repository and init created one. */
+  /** True when the cwd was not a git repository and init created one (on a dry run: would). */
   repoInitialized: boolean;
   /** The branch a newly created repo was seeded on; undefined when the repo already
    * existed (its checked-out branch is the fleet's business, not init's). */
   branch?: string;
+  /** True when the brief went to TUMWATER.md and README.md was left untouched
+   * (plans/portability.md §7/7) — asked for with `--adopt`, or automatic for a README.md
+   * without the tumwater markers. */
+  adopted: boolean;
+  /** True when nothing was written: `created` is what a real run would create. */
+  dryRun: boolean;
 }
 
 /** Initialize a repo for tumwater: README (with prompt + status) when no project brief exists
  * yet, PLANS, BUGS, QUESTIONS, PRINCIPLES, tumwater.json, .gitignore — then commit whatever was
  * created. When the cwd is not a git repository yet, one is seeded first (`git init -b main`),
- * matching the README's "seeds a git repo" promise for brand-new projects. */
+ * matching the README's "seeds a git repo" promise for brand-new projects. An existing repo
+ * whose README.md carries no tumwater markers (or any repo without a brief, with `adopt`) is
+ * adopted instead: the brief goes in TUMWATER.md and README.md is never touched. `dryRun` runs
+ * the same validation and computes the same lists, but writes, inits and commits nothing. */
 export async function initProject(
   root: string,
   initialPrompt: string,
   branch?: string,
+  opts: { adopt?: boolean; dryRun?: boolean } = {},
 ): Promise<InitResult> {
+  const dryRun = opts.dryRun === true;
   // Fail fast on a missing binary before the probe below can misread it as "not a git
   // repository" — the same preflight every other command gets in cli.ts.
   if (!findOnPath("git")) throw new Error(GIT_MISSING_MESSAGE);
@@ -142,12 +159,20 @@ export async function initProject(
     );
   }
   // The loops read the project's reason to exist back out of the project brief on every
-  // tick (readInitialPrompt). If a README already exists without the managed section, it would be
-  // left untouched and the prompt silently dropped — every loop would then run blind. Fail
-  // before creating anything so the user fixes the README and re-runs.
-  if (fs.existsSync(path.join(root, "README.md")) && readInitialPrompt(root) === "") {
+  // tick (readInitialPrompt). A README.md without the managed section is the project's own
+  // documentation, so it is never rewritten: the repo is adopted instead, with the brief in
+  // TUMWATER.md (plans/portability.md §7/7) — the same path `--adopt` asks for explicitly.
+  // A brief that is already marked (in either file) wins over both: nothing brief-shaped is
+  // written, so a README.md is never created beside a TUMWATER.md that owns the brief.
+  const brief = briefFile(root);
+  const readmeExists = fs.existsSync(path.join(root, "README.md"));
+  const adopted = brief === null && (opts.adopt === true || readmeExists);
+  // A TUMWATER.md without the markers is create-if-absent's blind spot: it would be left
+  // untouched and the prompt silently dropped — every loop would then run blind. Fail before
+  // creating anything so the user fixes it and re-runs.
+  if (adopted && fs.existsSync(path.join(root, "TUMWATER.md"))) {
     throw new Error(
-      `README.md already exists without an initial prompt between the tumwater:prompt markers, so your prompt would be lost — add it to README.md between ${PROMPT_START} and ${PROMPT_END} (or delete README.md so init creates one), then re-run \`tumwater init\``,
+      `TUMWATER.md already exists without an initial prompt between the tumwater:prompt markers, so your prompt would be lost — add it to TUMWATER.md between ${PROMPT_START} and ${PROMPT_END} (or delete TUMWATER.md so init creates one), then re-run \`tumwater init\``,
     );
   }
   // The same loss one step later: a brief that already owns the managed sections is never
@@ -156,10 +181,9 @@ export async function initProject(
   // that owns the brief — TUMWATER.md resolves ahead of README.md (plans/portability.md §7a/7),
   // so pointing at README.md would send the user to edit a file nobody reads. A re-run with the
   // same prompt, or a bare init, is the idempotent re-seed and passes.
-  const owner = briefFile(root);
-  if (prompt && owner !== null && prompt !== readInitialPrompt(root)) {
+  if (prompt && brief !== null && prompt !== readInitialPrompt(root)) {
     throw new Error(
-      `${owner} already carries a different initial prompt between the tumwater:prompt markers, and init never rewrites an existing project brief, so your prompt would be lost — to change the prompt, edit it in ${owner} between ${PROMPT_START} and ${PROMPT_END}; to re-seed with the current one, re-run a bare \`tumwater init\``,
+      `${brief} already carries a different initial prompt between the tumwater:prompt markers, and init never rewrites an existing project brief, so your prompt would be lost — to change the prompt, edit it in ${brief} between ${PROMPT_START} and ${PROMPT_END}; to re-seed with the current one, re-run a bare \`tumwater init\``,
     );
   }
 
@@ -172,34 +196,44 @@ export async function initProject(
     // expects `git init`-compatible behavior, and the fleet then targets that branch.
     const preferred =
       branch ?? ((await gitTry(root, "config", "--get", "init.defaultBranch")) || "main");
-    await git(root, "init", "-b", preferred);
+    if (!dryRun) await git(root, "init", "-b", preferred);
     repoInitialized = true;
     createdBranch = preferred;
   }
 
   const created: string[] = [];
+  const leftAlone: string[] = [];
   const write = (name: string, content: string) => {
     const file = path.join(root, name);
-    if (fs.existsSync(file)) return;
-    fs.writeFileSync(file, content);
+    if (fs.existsSync(file)) {
+      leftAlone.push(name);
+      return;
+    }
+    if (!dryRun) fs.writeFileSync(file, content);
     created.push(name);
   };
 
-  // README.md is the brief only when none exists yet (a fresh repo): with TUMWATER.md owning
-  // the managed sections, a created README.md would carry a duplicate prompt + status block
-  // that readInitialPrompt never reaches and the readme role never maintains.
-  if (owner === null) {
-    write("README.md", readmeTemplate(path.basename(path.resolve(root)), initialPrompt));
-  }
+  // README.md is the brief only when none exists yet and there is no README to adopt (a fresh
+  // repo): with TUMWATER.md owning the managed sections, a created README.md would carry a
+  // duplicate prompt + status block that readInitialPrompt never reaches and the readme role
+  // never maintains.
+  const projectName = path.basename(path.resolve(root));
+  if (brief !== null) leftAlone.push(brief);
+  else if (adopted) {
+    if (readmeExists) leftAlone.push("README.md");
+    write("TUMWATER.md", briefTemplate(projectName, initialPrompt));
+  } else write("README.md", readmeTemplate(projectName, initialPrompt));
   write("PLANS.md", PLANS_TEMPLATE);
   write("BUGS.md", BUGS_TEMPLATE);
   write("QUESTIONS.md", QUESTIONS_TEMPLATE);
   write("PRINCIPLES.md", PRINCIPLES_TEMPLATE);
-  if (!fs.existsSync(configPath(root))) {
-    saveConfig(root, seedConfig(root));
+  if (fs.existsSync(configPath(root))) leftAlone.push(CONFIG_BASENAME);
+  else {
+    if (!dryRun) saveConfig(root, seedConfig(root));
     created.push(CONFIG_BASENAME);
   }
-  if (ensureGitignore(root)) created.push(".gitignore");
+  if (ensureGitignore(root, dryRun)) created.push(".gitignore");
+  else if (fs.existsSync(path.join(root, ".gitignore"))) leftAlone.push(".gitignore");
 
   // The config stays out of the commit pathspec: `git add -- tumwater.json` fails on a path
   // the just-written .gitignore ignores (plans/portability.md §4a/7). It still heads the
@@ -208,7 +242,7 @@ export async function initProject(
   // to commit: a repo that only gained a config reports it and stays uncommitted.
   const committable = created.filter((name) => name !== CONFIG_BASENAME);
   let committed = false;
-  if (committable.length > 0) {
+  if (!dryRun && committable.length > 0) {
     await git(root, "add", "--", ...committable);
     const staged = await gitTry(root, "diff", "--cached", "--quiet");
     if (staged === null) {
@@ -218,5 +252,5 @@ export async function initProject(
       committed = true;
     }
   }
-  return { created, committed, repoInitialized, branch: createdBranch };
+  return { created, leftAlone, committed, repoInitialized, branch: createdBranch, adopted, dryRun };
 }

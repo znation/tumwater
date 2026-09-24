@@ -42,7 +42,8 @@ import { errorMessage, shortSha } from "./text.js";
 const HELP = `tumwater — autonomous development harness built on pi
 
 Usage:
-  tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --branch <name>)
+  tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --branch <name>,
+                                   --adopt: brief in TUMWATER.md, --dry-run: write nothing)
   tumwater run [--branch <name>]   Run all enabled loops (headless; Ctrl+C stops)
   tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
   tumwater gui [--port N] [--all-interfaces]
@@ -84,8 +85,23 @@ async function requireReadyRepo(root: string): Promise<void> {
 }
 
 async function cmdInit(root: string, args: string[]): Promise<void> {
-  const { prompt, branch } = parseInitArgs(args);
-  const result = await initProject(root, prompt, branch ?? undefined);
+  const { prompt, branch, adopt, dryRun } = parseInitArgs(args);
+  const result = await initProject(root, prompt, branch ?? undefined, { adopt, dryRun });
+  if (result.adopted) {
+    process.stdout.write(
+      `${result.dryRun ? "would adopt" : "adopting"} an existing repo: the project brief goes in TUMWATER.md and README.md is left untouched\n`,
+    );
+  }
+  if (result.dryRun) {
+    if (result.repoInitialized && result.branch) {
+      process.stdout.write(`dry run — would initialize a new git repository on branch ${result.branch}\n`);
+    }
+    const list = (names: string[]) => (names.length > 0 ? names.join(", ") : "nothing");
+    process.stdout.write(`dry run — would create: ${list(result.created)}\n`);
+    process.stdout.write(`would leave alone: ${list(result.leftAlone)}\n`);
+    process.stdout.write("nothing written; re-run without --dry-run to apply\n");
+    return;
+  }
   if (result.created.length === 0) {
     process.stdout.write("already initialized; nothing to do\n");
     return;
