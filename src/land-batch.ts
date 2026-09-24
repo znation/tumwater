@@ -9,7 +9,13 @@ import { ensureDetachedWorktree } from "./worktree.js";
 import { ffStackToMain } from "./merge.js";
 import { runScopedBuildCheck } from "./build-check.js";
 import { noteGreenBaseline } from "./main-baseline.js";
-import { landChange, reviewPinnedChange, type LandRequest, type LanderContext } from "./lander.js";
+import {
+  landApprovedChange,
+  reviewPinnedChange,
+  syncPinToMain,
+  type LandRequest,
+  type LanderContext,
+} from "./lander.js";
 import { errorMessage } from "./text.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "./types.js";
@@ -30,7 +36,7 @@ export interface BatchContext {
 /** One batched change's wiring, resolved by the drain exactly as the landed drain resolves
  * its author: the live state object the gate updates and the drain folds the outcome into,
  * this role's usage fold (reviewer spend charges to the authoring role), and the role's
- * shared pi wiring for landChange's conflict resolver on the one-at-a-time paths. */
+ * shared pi wiring for landApprovedChange's conflict resolver on the one-at-a-time paths. */
 export interface BatchRoleWiring {
   state: LoopState;
   /** Fold one pi run's usage into this role's landing counters (the reviewer's run). */
@@ -43,9 +49,11 @@ export interface BatchRoleWiring {
  * full build check per landing when several are queued. The flow:
  *
  * Phase A — for each request in queue order, the SAME review gate landChange runs, in that
- * role's own `_land-<role>` worktree, with the verdict persisted right after (a mid-batch
+ * role's own `_land-<role>` worktree, on the pin rebased onto main's current tip exactly as
+ * landChange rebases it (syncPinToMain — a reviewer whose checkout sits behind main reads
+ * main's newer commits as reverts), with the verdict persisted right after (a mid-batch
  * crash must not lose what the batch earned). approved/exempt → into the stack S (each entry
- * recorded with the head its gate judged — pin, or pin + build-fix commit); rejected →
+ * recorded with the head its gate judged — the synced pin, or it + a build-fix commit); rejected →
  * terminal (ref deleted), continue; failed → stop (this request "review_error": a strike-cap
  * discard deletes the ref, an under-cap failure keeps it tracking any build-fix commit; the
  * rest stay unattempted); aborted (a shutdown
@@ -53,9 +61,9 @@ export interface BatchRoleWiring {
  * "aborted" and keeps its ref. |S| == 0 means nothing was approved — all results are already
  * defined (or unattempted after an early stop) and there is nothing to land: return as-is.
  *
- * |S| == 1 — land it through landChange (the gate short-circuits the already-approved head,
- * so this costs git + ff only): the degenerate case is 2/5's single path byte-for-byte, which
- * is what makes landBatchMax=1 reproduce 3/5 exactly.
+ * |S| == 1 — land it through landApprovedChange (no second gate, so this costs git + ff
+ * only, plus an in-lock re-check if main moved since Phase A judged it): the degenerate case
+ * lands the same bytes 2/5's single path would, with the same events and ref lifecycle.
  *
  * |S| >= 2 — assemble the stack in S[0]'s lander worktree, checked out detached at main's
  * CURRENT tip, then cherry-pick each S entry's full range from that tip to its head to land,
@@ -74,19 +82,21 @@ export interface BatchRoleWiring {
  * which carries the in-lock check.
  *
  * Red or un-assemblable (a cherry-pick conflict) → ABANDON to one-at-a-time, not
- * blame-the-batch: every approved change lands through landChange in queue order, stopping
- * at the first non-terminal outcome (the rest keep entry + ref and re-drain). Each fallback
- * gate short-circuits on `state.lastApprovedHead === head` — the short-circuit covers only
- * APPROVED heads, so a fallback for a change Phase A never approved would re-review (that
- * cannot happen inside one batch: only approved/exempt changes enter S); a fallback whose
- * base moved under it since its Phase A gate pays one bounded scope-`landing` check in-lock.
- * main is never left red: the only bytes this path ff's are the checked tip or per-change
- * landings re-verified by their own gate.
+ * blame-the-batch: every approved change lands on its own in queue order, stopping at the
+ * first non-terminal outcome (the rest keep entry + ref and re-drain), each through
+ * landApprovedChange: no second gate and no model run, because only approved/exempt changes
+ * enter S. landChange would re-gate instead: its pre-gate rebase onto the main the earlier
+ * entries just moved rewrites the approved sha, so the exact-sha `lastApprovedHead`
+ * short-circuit misses and every fallback paid a second build check and review (BUGS.md
+ * 2026-09-23). A fallback whose base moved under it since its Phase A gate pays one bounded
+ * scope-`landing` check in-lock instead. main is never left red: the only bytes this path
+ * ff's are the checked tip or per-change landings re-verified in-lock whenever they differ
+ * from what their gate judged.
  *
  * One entry per request comes back in order; `result === undefined` means "unattempted — the
  * drain keeps that queue entry" (a failed Phase-A gate or a fallback early stop), and a
  * defined result drops its entry through the drain's write-back. Never throws for a failed
- * landing: per-change landChange failures degrade to "error" results, and a Phase-A checkout
+ * landing: per-change landApprovedChange failures degrade to "error" results, and a Phase-A checkout
  * that cannot resolve the pinned sha (the queue entry outlived its commit) also degrades to
  * a terminal "error" so the drain drops that entry and the queue advances — exactly the
  * single path's catch-all (landQueuedEntry). Remaining git-level failures from the
@@ -148,9 +158,13 @@ export async function landBatch(
       w.state.lastError = errorMessage(err);
       break;
     }
-    // The shared gate, verdict persisted immediately (the drain's write-back happens only
-    // in-process at batch completion, so a mid-batch crash must not lose what the batch earned).
-    const outcome = await reviewPinnedChange(ctx, req, wt, w.state, w.foldUsage);
+    // The shared gate over the pin rebased onto main's current tip — landChange's own
+    // pre-gate rebase, so the head approved here is the head a landing starts from, and a
+    // conflict leaves the pin for the gate exactly as there — with the verdict persisted
+    // immediately (the drain's write-back happens only in-process at batch completion, so a
+    // mid-batch crash must not lose what the batch earned).
+    const synced = await syncPinToMain(ctx, wt, req);
+    const outcome = await reviewPinnedChange(ctx, synced, wt, w.state, w.foldUsage);
     if (outcome.kind === "gate") {
       stack.push(i); // approved or exempt
       stackSha.push(outcome.sha);
@@ -172,7 +186,7 @@ export async function landBatch(
     const i = stack[0]!;
     const req = { ...requests[i]!, sha: stackSha[0]! };
     try {
-      results[i]!.result = await landChange(landerCtx(wiringForRole(req.role)), req);
+      results[i]!.result = await landApprovedChange(landerCtx(wiringForRole(req.role)), req);
     } catch (err) {
       results[i]!.result = "error";
       wiringForRole(req.role).state.lastError = errorMessage(err);
@@ -252,17 +266,18 @@ export async function landBatch(
     }
   }
   if (abandon) {
-    // One-at-a-time through the existing single path, queue order, stopping at the first
+    // One-at-a-time through the single path's landing half, queue order, stopping at the first
     // non-terminal outcome (the rest keep entry + ref and re-drain). Each request lands its
-    // Phase-A head to land (pin + build fix, not the bare pin) — its lander worktree then
-    // holds the exact tree its gate approved. The already-approved gate short-circuits, so
-    // each fallback burns no model run; main is never left red — the single path's own gate
-    // + in-lock re-check cover every change.
+    // Phase-A head to land (the synced pin + any build fix, not the bare pin) through
+    // landApprovedChange — no second gate, so no model run: re-gating would rebase onto the
+    // main the earlier entries just moved, and the rewritten sha misses the approved
+    // short-circuit. main is never left red — mergeToMain's in-lock rebase + verifyLanding
+    // re-check every change whose tree differs from the one its gate judged.
     for (let s = 0; s < stack.length; s++) {
       const i = stack[s]!;
       const req = { ...requests[i]!, sha: stackSha[s]! };
       try {
-        const result = await landChange(landerCtx(wiringForRole(req.role)), req);
+        const result = await landApprovedChange(landerCtx(wiringForRole(req.role)), req);
         results[i]!.result = result;
         if (result === "aborted") aborted = true;
       } catch (err) {

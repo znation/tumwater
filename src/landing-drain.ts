@@ -261,9 +261,11 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
         // failed LANDINGS to results): the 3/5 semantics keep EVERY entry for
         // re-drain (none was dropped — the write-back runs after landBatch
         // returns), with the error on the head role's state. Re-drain is bounded
-        // and self-terminating: the gate short-circuits the already-approved
-        // heads (its persisted verdict), and a fast-forward that already happened
-        // re-lands as no-ops through each change's own gate + in-lock check.
+        // and self-terminating: the gate short-circuits an already-approved head
+        // that Phase A's re-sync leaves unchanged (a pin already on main's tip —
+        // its persisted verdict), a stale pin re-syncs to a fresh sha and is
+        // reviewed once more, and a fast-forward that already happened re-lands
+        // as no-ops through each change's own gate + in-lock check.
         const author = authors.get(first.entry.role)!;
         author.state.lastError = errorMessage(err);
         saveLoopState(root, author.state);

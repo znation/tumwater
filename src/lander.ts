@@ -73,6 +73,32 @@ interface ReviewGateContext {
   signal(): AbortSignal;
 }
 
+/** Rebase a pinned change's lander worktree `wt` (checked out detached at `req.sha`) onto
+ * main's CURRENT head before its review gate, and return the request that gate must judge.
+ * The gate must review main's current tree, not the main the author started from: when main
+ * moved after the pin (the common queued-landing case), a pre-check against the stale tree
+ * fails on a failure main already fixed and every queued landing rejects in a cascade — and a
+ * reviewer whose checkout is behind main reads main's newer commits as the change deleting
+ * them (BUGS.md 2026-09-23: d13cf2e, a sound feature, rejected for "reverting" five commits
+ * that landed after its pin). A no-op when main has not moved; on a clean rebase the ref and
+ * the request track the synced head so the strike-cap tell and the landing ref name the tree
+ * that can actually land. On a conflict rebaseOntoMain has already aborted and restored the
+ * detached pin — the gate reviews the pinned tree and mergeToMain's resolver lands it. Both
+ * gate callers run it (landChange, and the batch's Phase A), so a gate never judges a stale
+ * pin; each call rebases only its own worktree, onto main itself — never onto another queued
+ * change — so concurrent gates in distinct lander worktrees cannot interfere. */
+export async function syncPinToMain(
+  ctx: Pick<ReviewGateContext, "root" | "mainBranch">,
+  wt: string,
+  req: LandRequest,
+): Promise<LandRequest> {
+  if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return req;
+  const syncedHead = await headOf(wt, "HEAD");
+  if (syncedHead === req.sha) return req;
+  await setRef(ctx.root, landingRefName(req.role), syncedHead);
+  return { ...req, sha: syncedHead };
+}
+
 /** Run one pinned change through the review gate in its lander worktree `wt` and handle the
  * immediate bookkeeping both landing paths otherwise copy — the single-change path (landChange)
  * and the batch's Phase A. Persists the verdict at once, folds the reviewer's usage, and routes
@@ -176,37 +202,53 @@ export const RETRIABLE_LANDING_RESULTS: ReadonlySet<TickResult> = new Set([
  * recovery re-lands through this same gate. Never throws for a failed landing: git-level
  * failures propagate as errors like any other tick failure. */
 export async function landChange(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
-  const ref = landingRefName(req.role);
   // The role's own worktree is already clean at main (its caller pinned the sha and reset it);
   // this detached checkout holds exactly the pinned tree for review and rebase.
   const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
-
-  // The gate must review main's CURRENT tree, not the main the author started from: when main
-  // moved after the pin (the common queued-landing case), a pre-check against the stale tree
-  // fails on a failure main already fixed and every queued landing rejects in a cascade. Rebase
-  // onto main BEFORE the gate (a no-op when main has not moved); on a clean rebase the ref and
-  // the request track the synced head so the strike-cap tell and the landing ref name the tree
-  // that can actually land. On a conflict rebaseOntoMain has already aborted and restored the
-  // detached pin — the gate reviews the pinned tree and mergeToMain's resolver lands it as today.
-  if (await rebaseOntoMain(wt, ctx.mainBranch)) {
-    const syncedHead = await headOf(wt, "HEAD");
-    if (syncedHead !== req.sha) {
-      await setRef(ctx.root, ref, syncedHead);
-      req = { ...req, sha: syncedHead };
-    }
-  }
+  req = await syncPinToMain(ctx, wt, req);
 
   const outcome = await reviewPinnedChange(ctx, req, wt, ctx.state, ctx.foldUsage);
   // A terminal outcome (aborted / rejected / review_error) is already handled: the helper kept
   // or deleted the ref per policy. The caller routes "aborted" through its own abort handling
   // (which discards the pin too when the abort was a deliberate user stop).
   if (outcome.kind === "result") return outcome.result;
-  const gate = outcome.gate;
 
   // Approved or exempt: land it. verifiedHead is the tree this gate's pre-check just ran green
   // on — when the rebase turns out to be a no-op it names the exact tree about to land, so the
   // in-lock re-check skips and seeds the red-main baseline with the SHA that becomes main; when
   // main moved under the landing, verifyLanding runs one bounded scope-`landing` check instead.
+  return landOnMain(ctx, wt, req, outcome.gate.verifiedHead);
+}
+
+/** Land a head that already passed its OWN gate earlier in the same batch — landBatch's
+ * stack entries, on its one-change path and its one-at-a-time fallback — without a second
+ * gate. landChange would rebase first, and by then main has usually moved (the fallback's
+ * earlier entries just landed): the rebase rewrites the approved sha, the gate's exact-sha
+ * `lastApprovedHead` short-circuit misses, and every fallback paid a second build check and
+ * model review of a change it had already approved (BUGS.md 2026-09-23). Here a clean rebase
+ * of the approved head is accepted as-is: mergeToMain's own in-lock rebase moves it onto
+ * main's tip, and because the pre-merge head it captures is the approved `req.sha`,
+ * verifyLanding runs one bounded scope-`landing` check whenever that rebase rewrote anything
+ * (and skips only for the exact bytes the gate judged). A conflicting rebase gets
+ * mergeToMain's resolver — what landChange does for a pin whose pre-gate rebase conflicted.
+ * `lastApprovedHead` is neither read nor widened: the caller vouches for `req.sha` (only
+ * approved/exempt changes enter a batch's stack). Same ref lifecycle and TickResults as
+ * landChange's landing half. */
+export async function landApprovedChange(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
+  const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
+  return landOnMain(ctx, wt, req);
+}
+
+/** The landing half shared by landChange and landApprovedChange once a head may land:
+ * mergeToMain from the lander worktree, then the ref lifecycle — deleted on landing, KEPT on
+ * merge_conflict / merge_blocked (with lastError) so the next tick's recovery re-lands it.
+ * `verifiedHead` is the head a gate pre-check just ran green on, if any (see mergeToMain). */
+async function landOnMain(
+  ctx: LanderContext,
+  wt: string,
+  req: LandRequest,
+  verifiedHead?: string,
+): Promise<TickResult> {
   const result = await mergeToMain(
     {
       root: ctx.root,
@@ -219,10 +261,10 @@ export async function landChange(ctx: LanderContext, req: LandRequest): Promise<
     },
     wt,
     req.summary,
-    gate.verifiedHead,
+    verifiedHead,
   );
   if (result === "changed") {
-    await deleteRef(ctx.root, ref); // landed: the pin has done its job
+    await deleteRef(ctx.root, landingRefName(req.role)); // landed: the pin has done its job
   } else {
     // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-lands it.
     ctx.state.lastError = `merge failed: ${result}`;

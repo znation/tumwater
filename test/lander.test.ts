@@ -728,12 +728,132 @@ test("a red stack check abandons to one-at-a-time and both changes still land", 
         ["gate", "passed"],
         ["gate", "passed"],
         ["batch", "failed"],
-        ["gate", "passed"],
+        ["landing", "passed"],
       ],
-      "two gate pre-checks, the red batch check, and the fallback's re-check on the synced tree",
+      "two gate pre-checks, the red batch check, and beta's in-lock re-check of its rebase onto alpha",
     );
-    assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run for alpha: its rebase is a no-op, the gate short-circuits");
-    assert.equal(folded.get("beta")!.length, 2, "beta's fallback re-lands on the moved main, so the gate reviews the synced tree");
+    assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run for alpha: the fallback lands its approved head");
+    assert.equal(folded.get("beta")!.length, 1, "nor for beta: a clean rebase onto alpha is re-checked, not re-reviewed");
+  } finally {
+    restore();
+  }
+});
+
+/** Advance main past the fixture's pins with one commit touching only `file` — the "pins
+ * based on an older main" shape: the queue's pins were taken before other landings moved
+ * main. Only `file` is staged, so an untracked declared check at the root stays untracked. */
+function advanceMain(root: string, file: string, content: string): string {
+  fs.writeFileSync(path.join(root, file), content);
+  sh(root, "git", "add", file);
+  sh(root, "git", "commit", "-m", `main moves: ${file}`);
+  return sh(root, "git", "rev-parse", "main").trim();
+}
+
+test("a red stack check's fallback lands pins from an older main with one review per change, not two", async () => {
+  // BUGS.md 2026-09-23 (the Repro): the fallback's landChange rebased each approved head
+  // before its gate — main had moved (the entries before it landed, and here main was ahead
+  // of every pin to begin with) — so the exact-sha approved short-circuit never hit and each
+  // change paid a second full gate: the reviewer count ended at 2N. It must end at N.
+  const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+  advanceMain(root, "main.txt", "landed after the pins\n");
+  // Runs 1-2 are the Phase-A gate pre-checks (pass), run 3 the shared batch check (fails);
+  // every later run — a fallback's in-lock re-check — passes.
+  const count = path.join(root, ".checkcount");
+  declareCheck(
+    root,
+    `#!/bin/sh\nc=$(cat ${count} 2>/dev/null || echo 0)\nn=$((c+1))\necho "$n" > ${count}\n[ "$n" = "3" ] && { echo "planted batch failure"; exit 1; }\necho ok\n`,
+  );
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "the fallback lands both");
+    const reviews = readEvents(root).filter((e) => e.type === "review_start");
+    assert.equal(reviews.length, 2, "one model review per change (N), not a second one in the fallback (2N)");
+    assert.equal(folded.get("alpha")!.length, 1);
+    assert.equal(folded.get("beta")!.length, 1);
+    assert.deepEqual(
+      readEvents(root)
+        .filter((e) => e.type === "build_check")
+        .map((e) => [e.scope, e.status]),
+      [
+        ["gate", "passed"],
+        ["gate", "passed"],
+        ["batch", "failed"],
+        ["landing", "passed"],
+      ],
+      "alpha's approved head lands as judged; beta's clean rebase onto alpha is re-checked in-lock",
+    );
+    for (const f of ["main.txt", "alpha.txt", "beta.txt"]) {
+      assert.ok(fs.existsSync(path.join(root, f)), `main holds ${f}`);
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("Phase A reviews each pin rebased onto main's current tip, so no reviewer's checkout is behind main", async () => {
+  // BUGS.md 2026-09-23: d13cf2e was reviewed as its bare pin, five main commits behind; the
+  // reviewer's checks against current main read those commits as the change deleting them
+  // and rejected sound work as "reverts landed main work". Phase A must run landChange's
+  // pre-gate rebase: every review_start names a synced head, and the reviewer's own checkout
+  // contains main's tip.
+  const rec = path.join(tmpdir("batch-rec-"), "seen");
+  const restore = fakePi(
+    `if git merge-base --is-ancestor main HEAD; then echo synced >> ${rec}; else echo behind >> ${rec}; fi\n` +
+      APPROVE_PI,
+  );
+  try {
+    const { root, shas, states, wiringFor } = await batchFixture(["alpha", "beta"]);
+    const mainTip = advanceMain(root, "main.txt", "landed after the pins\n");
+
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+    assert.deepEqual(fs.readFileSync(rec, "utf8").trim().split("\n"), ["synced", "synced"], "no reviewer sat behind main");
+    const heads = readEvents(root)
+      .filter((e) => e.type === "review_start")
+      .map((e) => String(e.head));
+    assert.equal(heads.length, 2);
+    for (const [i, role] of (["alpha", "beta"] as const).entries()) {
+      assert.notEqual(heads[i], shas[role], `${role} was reviewed rebased, not as its stale pin`);
+      assert.equal(sh(root, "git", "rev-parse", `${heads[i]}~1`).trim(), mainTip, `${role} sits directly on main's tip`);
+      assert.equal(states[role].lastApprovedHead, heads[i], "the verdict names the head it judged");
+    }
+    assert.ok(fs.existsSync(path.join(root, "main.txt")), "main's own commit survived the landing");
+  } finally {
+    restore();
+  }
+});
+
+test("a Phase-A rebase conflict reviews the bare pin and the fallback's resolver lands it, like landChange", async () => {
+  // landChange's rule for a pin whose pre-gate rebase conflicts: rebaseOntoMain aborts and
+  // restores the pin, the gate reviews the pinned tree, and mergeToMain's resolver lands it.
+  // Phase A must follow the same rule — and the fallback, landing an approved head, must
+  // neither re-review the resolved change nor the one behind it.
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const { root, shas, wiringFor, calls } = await batchFixture(["alpha", "beta"], {
+      edit: (root, role) =>
+        role === "alpha"
+          ? fs.writeFileSync(path.join(root, "seed.txt"), "alpha\n")
+          : fs.appendFileSync(path.join(root, "beta.txt"), "work by beta\n"),
+      resolve: (wt) => fs.writeFileSync(path.join(wt, "seed.txt"), "both\n"),
+    });
+    advanceMain(root, "seed.txt", "main\n"); // conflicts with alpha's rewrite of the same line
+
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+    const heads = readEvents(root)
+      .filter((e) => e.type === "review_start")
+      .map((e) => [e.loop, e.head]);
+    assert.equal(heads.length, 2, "one review per change: the fallback re-reviewed neither");
+    assert.deepEqual(heads[0], ["alpha", shas.alpha!], "alpha's rebase conflicted: its gate judged the restored pin");
+    assert.notEqual(heads[1]![1], shas.beta!, "beta's clean rebase was reviewed synced");
+    assert.equal(calls.length, 1, "one resolution run, for alpha's conflict with main");
+    assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "both\n", "the resolution landed");
+    assert.ok(fs.existsSync(path.join(root, "beta.txt")), "and beta on top of it");
   } finally {
     restore();
   }
