@@ -1432,6 +1432,15 @@ test` 1401 pass.
 
 ## 7/7 — Adopt an existing repository without hijacking its README
 
+> **Split 2026-09-26 (plan loop).** This entry was oversized for one implementation run (12
+> files touched) and sat unplucked through three audits, so PLANS.md now carries it as two
+> independently landable sub-plans: **7a/7** (brief resolution — `TUMWATER.md` first,
+> README compat path, `briefFile`/`briefTemplate`, prompt/roles/doctor threading; the audit's
+> corrections 2, 3 and 8) and **7b/7** (`init --adopt` / `--dry-run` and the trimmed
+> PRINCIPLES template; corrections 1, 4, 5, 6, 7), which depends on 7a/7. Everything below —
+> design, rationale, and the per-audit pin corrections — still describes both halves
+> together; treat PLANS.md's sub-entries as the scoping source of truth.
+
 **Goal.** Let `tumwater init` run against a repo that already exists and already has a README.
 Today it hard-fails when `README.md` exists without the `tumwater:prompt` markers ("your prompt
 would be lost"), because `readInitialPrompt` (src/readme.ts) reads the project brief only out of
