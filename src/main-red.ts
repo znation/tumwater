@@ -1,6 +1,6 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles.js";
 import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
-import { BUILD_CHECK_TIMEOUT_MS, buildCheckSkipWarning, failureHeadline } from "./build-check.js";
+import { BUILD_CHECK_TIMEOUT_MS, buildCheckRunFields, buildCheckSkipWarning, failureHeadline } from "./build-check.js";
 import type { BuildCheckOutcome } from "./build-check.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./gate-prompts.js";
@@ -55,6 +55,7 @@ function baselineCheckLogger(
       status: outcome.status,
       script: outcome.script,
       durationMs,
+      ...buildCheckRunFields(outcome),
     });
 }
 
@@ -99,6 +100,8 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
         "main baseline check",
         "proceeding with authoring unverified",
         BUILD_CHECK_TIMEOUT_MS,
+        undefined,
+        baseline.run,
       ),
     );
     return null;

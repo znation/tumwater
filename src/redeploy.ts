@@ -9,7 +9,7 @@ import {
   isSelfHosted,
   readBuildInfo,
 } from "./build-info.js";
-import { type BuildCheckOutcome } from "./build-check.js";
+import { type BuildCheckOutcome, buildCheckRunFields } from "./build-check.js";
 import { defaultConfig, loadConfigCached } from "./config.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { compileStaged, swapDist } from "./build-stage.js";
@@ -526,7 +526,15 @@ export async function createRedeployer(
         await mirror(mainHead),
         loadConfigCached(root).config ?? defaultConfig(),
         ({ outcome, durationMs }) =>
-          log({ loop: "harness", type: "build_check", scope: "baseline", status: outcome.status, script: outcome.script, durationMs }),
+          log({
+            loop: "harness",
+            type: "build_check",
+            scope: "baseline",
+            status: outcome.status,
+            script: outcome.script,
+            durationMs,
+            ...buildCheckRunFields(outcome),
+          }),
       ),
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
     swap: (mainHead) => swapDist(root, dist, mainHead),

@@ -13,6 +13,28 @@ import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
 import { buildCheckFixture, sh, tmpdir } from "./util.js";
 
+/** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
+function groupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** Poll `cond` every 10 ms for at most `ms` (performance.now, so a test that mocks Date can
+ * still bound its wait). */
+async function until(cond: () => boolean, ms: number): Promise<void> {
+  const deadline = performance.now() + ms;
+  while (!cond() && performance.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+}
+
+/** A pid/pgid a fixture command wrote to `file` (0 when it never did). */
+function readPid(file: string): number {
+  return fs.existsSync(file) ? Number(fs.readFileSync(file, "utf8").trim()) : 0;
+}
+
 // Unit coverage for the deterministic build pre-check (src/build-check.ts): detection by
 // walk-up to the installed root and execution/outcome classification. The gate's integration
 // with this check (a healthy build reaching the reviewer) is covered in review.test.ts, where
@@ -115,8 +137,8 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
     const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 4_000, 700);
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "timeout");
-    // The check resolves at timeout-fire and the pid write races the read under the same
-    // load: wait briefly for the file rather than assuming it is there.
+    // The check settles only once its tree is gone, so a pid the grandchild wrote is already on
+    // disk; the bounded wait just keeps a slow filesystem from failing the read.
     const pidDeadline = Date.now() + 5_000;
     while (!fs.existsSync(pidFile) && Date.now() < pidDeadline) {
       await new Promise((r) => setTimeout(r, 50));
@@ -124,8 +146,8 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
     assert.ok(fs.existsSync(pidFile), "the grandchild recorded its pid before the timeout");
     pid = Number(fs.readFileSync(pidFile, "utf8").trim());
     assert.ok(pid > 0, "the grandchild recorded its pid before the timeout");
-    // The escalation is asynchronous relative to the check's resolution: poll until the OS
-    // has reaped the grandchild (or the assertion below fails on the leak this test pins).
+    // The SIGKILL lands before the check settles, but launchd reaps the orphan asynchronously:
+    // poll until it is gone (or the assertion below fails on the leak this test pins).
     const deadline = Date.now() + 5_000;
     while (pidAlive(pid) && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 50));
@@ -155,6 +177,113 @@ test("a healthy check that outlasts the SIGKILL grace is not mistaken for a time
   );
   const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 30_000, 500);
   assert.equal(outcome.status, "passed");
+});
+
+// BUGS.md 2026-09-21 (the 300 s timeout that did not bound the check): a timed-out check
+// settles within its deadline plus the SIGKILL grace whatever its tree does, and the tree is
+// gone when it settles — no teardown left running behind the caller's retry or next check.
+// Pre-fix the check resolved AT the deadline with the SIGKILL still pending in the background.
+// `trap '' TERM` in the group-leading shell is inherited as ignored by the backgrounded sleep,
+// which also holds the check's stdout/stderr: neither the SIGTERM nor a close can end this
+// run, only the SIGKILL at the grace.
+test("a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)", async () => {
+  const wt = tmpdir();
+  const command = "trap '' TERM; echo $$ > pgid; sleep 30 & echo $! > sleep.pid; wait";
+  let pgid = 0;
+  try {
+    const started = performance.now();
+    const outcome = await runBuildCheck(wt, { kind: "command", command, cwd: wt, timeoutMs: 1_000 }, 30_000, 800);
+    const elapsed = performance.now() - started;
+    pgid = readPid(path.join(wt, "pgid"));
+    const sleepPid = readPid(path.join(wt, "sleep.pid"));
+    assert.equal(outcome.status, "skipped");
+    assert.equal(outcome.skipReason, "timeout");
+    assert.ok(pgid > 0 && sleepPid > 0, "the fixture's tree started before the deadline");
+    const ran = outcome.run!.settledAt - outcome.run!.spawnedAt;
+    assert.ok(ran >= 1_700, `the tree outlived the SIGTERM, so the check waited for the SIGKILL (ran ${ran}ms)`);
+    assert.ok(elapsed < 1_800 + 2_500, `bounded at deadline + grace (settled after ${Math.round(elapsed)}ms)`);
+    // SIGKILLed before the check settled; launchd reaps the orphan a moment later. Pre-fix
+    // the SIGKILL was still ~800 ms away here, so this window cannot hide the leak.
+    await until(() => !groupAlive(pgid), 300);
+    assert.equal(groupAlive(pgid), false, "nothing in the check's process group survives it");
+    assert.equal(pidAlive(sleepPid), false, "the SIGTERM-ignoring pipe holder is dead");
+  } finally {
+    if (pgid > 0 && groupAlive(pgid)) process.kill(-pgid, "SIGKILL");
+  }
+});
+
+// The leader's close is not the tree's death: a grandchild that ignores SIGTERM and holds none
+// of the check's pipes survives the close, and settling on that close would cancel the SIGKILL
+// it still needs. The run settles only once the whole group is gone.
+test("a timed-out check does not settle on its leader's close while a grandchild survives", async () => {
+  const wt = tmpdir();
+  const command =
+    "(trap '' TERM; exec sleep 30) </dev/null >/dev/null 2>&1 & echo $! > sleep.pid; echo $$ > pgid; sleep 30";
+  let pgid = 0;
+  try {
+    const outcome = await runBuildCheck(wt, { kind: "command", command, cwd: wt, timeoutMs: 1_000 }, 30_000, 800);
+    pgid = readPid(path.join(wt, "pgid"));
+    const sleepPid = readPid(path.join(wt, "sleep.pid"));
+    assert.equal(outcome.skipReason, "timeout");
+    assert.ok(pgid > 0 && sleepPid > 0, "the fixture's tree started before the deadline");
+    await until(() => !pidAlive(sleepPid), 300);
+    assert.equal(pidAlive(sleepPid), false, "the surviving grandchild was SIGKILLed before the check settled");
+  } finally {
+    if (pgid > 0 && groupAlive(pgid)) process.kill(-pgid, "SIGKILL");
+  }
+});
+
+// The other half of the bound: a tree the SIGTERM takes down does not wait out the grace, so
+// the common timeout costs the deadline and not the deadline plus ten seconds.
+test("a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace", async () => {
+  const wt = tmpdir();
+  const started = performance.now();
+  const outcome = await runBuildCheck(
+    wt,
+    { kind: "command", command: "echo $$ > pgid; sleep 30", cwd: wt, timeoutMs: 1_000 },
+    30_000,
+    5_000,
+  );
+  const elapsed = performance.now() - started;
+  const pgid = readPid(path.join(wt, "pgid"));
+  assert.equal(outcome.skipReason, "timeout");
+  assert.ok(elapsed < 1_000 + 2_500, `settled ${Math.round(elapsed)}ms after the call, not after the 5 s grace`);
+  assert.ok(pgid > 0 && !groupAlive(pgid), "the group was already gone when the check settled");
+});
+
+// The measured cause of BUGS.md 2026-09-21: the host slept through the deadline. libuv's clock
+// on macOS counts sleep, so the timer fires at the first wake — minutes past the bound, often
+// after seconds of real work — and the warning still said "timed out after 300s". A Date-only
+// mock makes the wall clock jump the way it does across that sleep while the real timer keeps
+// its schedule; the run must report when its deadline really fired, on the event and in the
+// warning.
+test("a deadline the host slept through is reported as when it really fired, on the event and in the warning (regression)", async (t) => {
+  const { root } = buildCheckFixture();
+  const wt = tmpdir();
+  const marker = path.join(wt, "started");
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const pending = runScopedBuildCheck(root, ROLE, "gate", wt, {
+    check: { command: "touch started; sleep 30", timeoutSeconds: 2 },
+  });
+  await until(() => fs.existsSync(marker), 10_000);
+  assert.ok(fs.existsSync(marker), "the check spawned before the deadline");
+  t.mock.timers.tick(412_000); // the host sleeps 412 s through the 2 s deadline
+  const result = await pending;
+  assert.equal(result!.outcome.skipReason, "timeout");
+  assert.equal(result!.outcome.run?.deadlineLateMs, 410_000, "the deadline fired 410 s past its 2 s bound");
+  const events = readEvents(root);
+  const check = events.find((e) => e.type === "build_check");
+  assert.equal(check?.durationMs, 412_000);
+  assert.equal(check?.timeoutMs, 2_000, "the event names the bound that was armed");
+  assert.equal(check?.deadlineLateMs, 410_000, "and how late it actually fired");
+  assert.equal(typeof check?.spawnedAt, "number");
+  assert.equal(typeof check?.settledAt, "number");
+  const warning = events.find((e) => e.type === "warning");
+  assert.equal(
+    warning?.message,
+    "build check timed out after 412s (its 2s deadline fired 410s late: the host was asleep or " +
+      "the harness stalled); proceeding to model review",
+  );
 });
 
 test("a landing- or batch-scope timeout is a deterministic reject, not an environmental skip", async () => {

@@ -168,7 +168,7 @@ export interface HarnessEvent {
     | "review_verdict" // approved; carries durationMs of the reviewer run
     | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
     | "review_failed"
-    | "build_check" // the project's declared check ran: scope gate|baseline|landing|batch (landing is the merge lock's post-rebase re-check; batch is the batch lander's one check over the stacked tree), status, script, durationMs
+    | "build_check" // the project's declared check ran: scope gate|baseline|landing|batch (landing is the merge lock's post-rebase re-check; batch is the batch lander's one check over the stacked tree), status, script, durationMs; spawnedAt/settledAt when a process ran, plus timeoutMs/deadlineLateMs when its deadline fired (build-check.ts buildCheckRunFields)
     | "budget_paused" // fleet daily spend reached maxDailyCostUsd with no usable free fallback; role loops stop starting ticks
     | "budget_fallback" // fleet daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again

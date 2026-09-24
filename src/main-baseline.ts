@@ -1,4 +1,4 @@
-import { type BuildCheckOutcome, type BuildSkipReason, runBuildCheck } from "./build-check.js";
+import { type BuildCheckOutcome, type BuildCheckRun, type BuildSkipReason, runBuildCheck } from "./build-check.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { gitTry } from "./git.js";
 
@@ -47,6 +47,9 @@ interface MainBaselineCheck {
   /** Set when a detected check could not be run (timeout, an external signal kill, no npm on
    * PATH, or a broken toolchain). */
   skipReason?: BuildSkipReason;
+  /** A skipped run's timing (the bound it was armed with, and how late its deadline fired), so
+   * the caller's skip warning reports the bound actually enforced. */
+  run?: BuildCheckRun;
 }
 
 /** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is
@@ -157,7 +160,7 @@ export async function checkMainBaseline(
       if (outcome.status === "skipped") {
         // Environmental (timeout/no-npm): warn-and-proceed semantics like the gate's pre-check;
         // never cache red for a skip.
-        return { baseline: null, skipReason: outcome.skipReason };
+        return { baseline: null, skipReason: outcome.skipReason, run: outcome.run };
       }
       const prior = baselineCache.get(sha);
       const priorRedFrom = prior?.status === "red" ? (prior.redFrom ?? []) : [];

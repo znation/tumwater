@@ -181,6 +181,29 @@ test("mainRedGate warns under the role and proceeds when npm is missing", async 
   }
 });
 
+// The baseline's timeout warning names the bound the run was armed with — a configured
+// command's own timeoutSeconds — not the npm default: pre-fix it always said "300s" (BUGS.md
+// 2026-09-21, the warning that named a bound the check did not run under). The event carries
+// the armed bound too, beside how late the deadline fired.
+test("mainRedGate's timeout warning names the bound the baseline check actually ran under", async () => {
+  const { root, wt } = baselineFixture(ROLE, "echo baseline-timeout-bound; exit 0");
+  fs.writeFileSync(
+    path.join(root, "tumwater.json"),
+    JSON.stringify({ check: { command: "sleep 30", timeoutSeconds: 0.5 } }),
+  );
+  assert.equal(await mainRedGate(root, ROLE, wt), null, "a timed-out baseline never blocks authoring");
+  const events = readEvents(root);
+  const check = events.find((e) => e.type === "build_check");
+  assert.equal(check?.status, "skipped");
+  assert.equal(check?.timeoutMs, 500, "the event names the armed bound");
+  assert.equal(typeof check?.deadlineLateMs, "number");
+  const warning = events.find((e) => e.type === "warning");
+  assert.equal(
+    warning?.message,
+    "main baseline check timed out after 0.5s; proceeding with authoring unverified",
+  );
+});
+
 test("bugfixMainRedNote hands the healer the failing script and headline, warning once", async () => {
   const counter = path.join(tmpdir(), "runs");
   const script = `echo healer-failure-line; echo run >> ${counter}; exit 1`;
