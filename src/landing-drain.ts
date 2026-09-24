@@ -83,10 +83,12 @@ export interface LandingDrainContext {
  * A queued landing is COMMITTED work awaiting completion, not a new tick, so the budget and
  * user-pause gates deliberately do not hold it (pausing it would leave main behind while
  * the interlock below blocks that role's next tick forever); the caller DOES suppress it
- * while `holdForRestart`, like ticks — a restart lands within minutes and the entry drains on
- * the next start (a pending-restart break precedes this). One landing at a time: the promise
- * is stored, never awaited in the poll loop, and cleared on completion — authors keep ticking
- * behind it, which is the entire point. The head is deduped against main first: a crash
+ * while `holdForRestart`, like ticks — a landing started now would only lengthen the restart's
+ * hand-off (whose wait on the one already in flight is bounded — orchestrator.ts's
+ * awaitLandingForHandoff), and the entry drains on the next start (a pending-restart break
+ * precedes this). One landing at a time: the promise is stored, never awaited in the poll
+ * loop, and cleared on completion — authors keep ticking behind it, which is the entire
+ * point. The head is deduped against main first: a crash
  * between the ff-merge and the entry drop leaves an entry whose sha main already holds, and
  * that is dropped without a landing run (leftover.ts's stale-pin idiom); a crash mid-review
  * leaves both entry and ref, so the drain re-runs landChange — re-reviews — the established

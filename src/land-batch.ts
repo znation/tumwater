@@ -162,7 +162,7 @@ async function exemptTreeDelta(
  * the stacked tip (the exact future main head). ff failure (main moved while the check ran:
  * the window is the whole check, and a role's in-tick leftover-recovery landing still writes
  * main outside the land queue) → RE-STACK: assemble the same S afresh on main's new tip and
- * go round again, up to BATCH_RESTACK_ATTEMPTS times, stopping between attempts on an abort.
+ * go round again, up to BATCH_RESTACK_ATTEMPTS times, stopping before any attempt on an abort.
  * A re-stacked tree that differs from the last tree a check ran on only in review-exempt
  * paths (the gate's doc-only test, which verifyLanding applies to a moved landing too) goes
  * straight to the ff; any other re-stack pays one more scope-`batch` check. A re-stack
@@ -181,6 +181,13 @@ async function exemptTreeDelta(
  * scope-`landing` check in-lock instead. main is never left red: the only bytes this path
  * ff's are the checked tip or per-change landings re-verified in-lock whenever they differ
  * from what their gate judged.
+ *
+ * An abort is observed between steps, not only by the pi runs it kills: before every Phase A
+ * gate (reviewPinnedChange), before each assembly-and-check attempt, and before each
+ * one-change or fallback landing (landApprovedChange), so a stopping batch ends at its next
+ * step boundary instead of walking its remaining gates, checks and merges (BUGS.md
+ * 2026-09-23). A shared check that has already run is followed through: its fast-forward is
+ * the batch's bounded commit point.
  *
  * One entry per request comes back in order; `result === undefined` means "unattempted — the
  * drain keeps that queue entry" (a failed Phase-A gate or a fallback early stop), and a
@@ -301,9 +308,11 @@ export async function landBatch(
   let checkedTip: string | null = null;
   const exemptPaths = ctx.config.review.exemptPaths;
   for (let attempt = 0; attempt <= BATCH_RESTACK_ATTEMPTS; attempt++) {
-    // A shutdown (or a user stop for any batched role) between attempts: stop re-stacking.
-    // Every S result is still undefined, so finishAborted reads them "aborted", refs kept.
-    if (attempt > 0 && ctx.signal().aborted) {
+    // A shutdown (or a user stop for any batched role) before an attempt — the first one
+    // included, so a stop that arrived after the last gate (a restart hand-off past its
+    // deadline, BUGS.md 2026-09-23) never starts the batch's one expensive shared step: stop
+    // here. Every S result is still undefined, so finishAborted reads them "aborted", refs kept.
+    if (ctx.signal().aborted) {
       aborted = true;
       break;
     }

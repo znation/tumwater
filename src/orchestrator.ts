@@ -46,14 +46,31 @@ import { fallbackModelFree, piModelsPath } from "./pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import {
   configPath,
+  landingStatePath,
   orchestratorStatePath,
   sessionsRootDir,
   toolOutputDir,
 } from "./paths.js";
 import { p75TickDurationMs, type Redeployer } from "./redeploy.js";
 import { WorkLandedCache } from "./work-landed-cache.js";
+import { BUILD_CHECK_TIMEOUT_MS } from "./build-check.js";
 
 const POLL_MS = 2000;
+
+/** How long a restart's hand-off waits on an in-flight landing, per phase: one window for it to
+ * finish on its own, then — having aborted it — one more for the step it was in to end
+ * (awaitLandingForHandoff; BUGS.md 2026-09-23). By the time a restart reaches its `finally` the
+ * new build is already in dist/ and every role tick is done or aborted, so the landing is all
+ * the fleet is still running: each minute spent on it is a minute nothing else ticks. A
+ * landing's unbounded part is model work — a reviewer or a gate build-fix run; the 2026-09-23
+ * build-fix run held the slot for 4 h 35 m and that day's hand-off sat through 97 minutes of
+ * it. Its deterministic part is bounded: at most one build check (BUILD_CHECK_TIMEOUT_MS) plus
+ * git steps. So a check's bound plus a minute lets a landing already past its model runs — in
+ * its last check and fast-forward — land, and gives an aborted landing's current step (a check,
+ * which no abort reaches) time to end, so the hand-off does not leave a check running in a
+ * lander worktree the next generation is about to reset. Not the drain's window: that is the
+ * p75 of whole role ticks (over an hour on this fleet) — the very lag this bounds. */
+const HANDOFF_LANDING_WINDOW_MS = BUILD_CHECK_TIMEOUT_MS + 60_000;
 
 /** Run one role tick under the concurrency semaphore and return how long the tick itself ran,
  * in ms — null when it never started (the harness is already stopping, or `held`) or was cut
@@ -145,6 +162,73 @@ export function pollRateLimitHold(
   return next;
 }
 
+/** Wait for `promise` to settle, for at most `ms`: true when it settled in time (fulfilled or
+ * rejected alike — the caller only needs to know it is over), false when the deadline lapsed
+ * first. The timer is cleared on settle, so a prompt settle leaves nothing behind to hold the
+ * process open. Never rejects. */
+function settlesWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    const done = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    promise.then(done, done);
+  });
+}
+
+/** How the restart hand-off's wait on the in-flight landing ended: it finished inside the first
+ * window, it settled once aborted, or it was still running a window after the abort and the
+ * hand-off went ahead without it. */
+type HandoffLandingOutcome = "finished" | "aborted" | "abandoned";
+
+/** The restart hand-off's bounded wait on the in-flight landing (BUGS.md 2026-09-23): the
+ * shutdown `finally`'s landing await when this process is about to exit for the next
+ * generation. A batched landing re-enters review and build check once per change, so an
+ * unbounded await here is a fleet-wide drain in disguise — the 2026-09-23 hand-off lagged its
+ * own swap by 97 minutes, in silence. The wait is announced as it starts (one warning naming
+ * the landing's roles), so the feed says why `restarting onto build …` is not yet followed by
+ * `orchestrator stopped`. Past `windowMs` the landing is stopped the way the drain gives up on
+ * role ticks: `abort` fires the harness's internal stop, which kills its pi runs at once and
+ * makes it stop at its next step boundary (lander.ts and land-batch.ts check the signal before
+ * every gate, every approved landing, and each of a batch's check attempts), and a warning
+ * names what was still awaited.
+ * An aborted landing records `aborted` like any shutdown abort — pins kept, entries dropped,
+ * marker removed — for its roles' leftover recovery on the new build. One still running a
+ * window after the abort (a step wedged past its own bound) is left behind: its 4/5 marker is
+ * cleared here, since this process exits the moment the hand-off returns, and its entries and
+ * pins survive exactly as a crash leaves them — the next generation's first drain re-lands
+ * them. Exported as a unit-test seam, like runTimedRoleTick. */
+export async function awaitLandingForHandoff(
+  root: string,
+  landing: Pick<InFlightLanding, "promise" | "roles">,
+  windowMs: number,
+  abort: () => void,
+): Promise<HandoffLandingOutcome> {
+  const roles = landing.roles.join(", ");
+  const deadline = `${windowMs / 1000}s`;
+  warnEvent(
+    root,
+    "harness",
+    `restart hand-off waiting on the in-flight landing of ${roles} (deadline ${deadline})`,
+  );
+  if (await settlesWithin(landing.promise, windowMs)) return "finished";
+  abort();
+  warnEvent(
+    root,
+    "harness",
+    `restart hand-off: the landing of ${roles} outlived its ${deadline} deadline — aborted; its pinned commits survive for the next generation`,
+  );
+  if (await settlesWithin(landing.promise, windowMs)) return "aborted";
+  removeQuiet(landingStatePath(root));
+  warnEvent(
+    root,
+    "harness",
+    `restart hand-off: the aborted landing of ${roles} was still running ${deadline} later — handing off without it; its queue entries and pinned commits survive for the next generation`,
+  );
+  return "abandoned";
+}
+
 interface RunOptions {
   root: string;
   config: TumwaterConfig;
@@ -162,6 +246,10 @@ interface RunOptions {
   /** The fallback breaker's thresholds (src/budget.ts, default FALLBACK_BREAKER_POLICY) — a
    * test seam, like pollMs: e2e tests shrink the cool-down so a probe fits in a test. */
   fallbackBreakerPolicy?: FallbackBreakerPolicy;
+  /** The restart hand-off's per-phase wait on an in-flight landing (default
+   * HANDOFF_LANDING_WINDOW_MS) — a test seam, like pollMs: tests pass a short window so the
+   * deadline path resolves quickly. */
+  handoffLandingWindowMs?: number;
 }
 
 /** How runOrchestrator ended: `restart` means dist/ now holds a newer build and the caller should
@@ -187,10 +275,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     );
 
   // Runners and sleeps watch a combined signal: the caller's (Ctrl+C/SIGTERM) plus an internal
-  // one the redeploy path fires when its drain of ROLE ticks runs out of patience — those
-  // in-flight role ticks then end as `aborted` (resumable on the new build), exactly like a
-  // shutdown. A director tick is never aborted this way: poll holds for it without a cap, so by
-  // the time `restart` lands only role ticks can remain.
+  // one the restart path fires when it runs out of patience — the drain, with permit-holding
+  // ROLE ticks still in flight (they then end as `aborted`, resumable on the new build, exactly
+  // like a shutdown), and the hand-off, with a landing still in flight (awaitLandingForHandoff). A
+  // director tick is never aborted this way: poll holds for it without a cap, so by the time
+  // `restart` lands only role ticks and the landing can remain.
   const internalStop = new AbortController();
   const signal = AbortSignal.any([externalSignal, internalStop.signal]);
   const redeploy = opts.redeploy ?? null;
@@ -229,8 +318,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // window but waits for a director tick without one — an explicit human prompt outranks the
   // self-redeploy (BUGS.md 2026-09-08). The landing slot is deliberately OUTSIDE this split:
   // it is a single in-process task (one at a time, since 2026-09-18 under the same maxConcurrent
-  // permit as role ticks) that graceful shutdown still awaits — an aborted landing keeps its ref
-  // and drops its entry, recovering on next start. roleInFlight holds every RESERVED role tick
+  // permit as role ticks) that shutdown still awaits — to the end on an operator stop, and for a
+  // bounded hand-off on a restart (the `finally` below) — an aborted landing keeps its ref and
+  // drops its entry, recovering on next start. roleInFlight holds every RESERVED role tick
   // (permit holders and waiters parked in the semaphore queue alike), since shutdown awaits
   // both; what the restart drain waits on, aborts, and reports as abortedTicks is only
   // rolePermitHolders, the role ticks actually holding a permit. A parked waiter has nothing to
@@ -527,12 +617,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const rateHeld = rateHold.until !== null;
 
       // Self-redeploy (src/redeploy.ts): with main's head in hand, let the policy observe it.
-      // `hold` starts no new ticks at all — director included; a restart lands within minutes
-      // and its prompt waits in the inbox — while the green check/compile/drain run in the
-      // background. That covers ticks reserved before the hold too: a waiter parked in the
-      // semaphore queue that is granted a permit mid-drain meets the closed start gate
-      // (tickStartHeld), releases the permit, and hands its reservation back so it re-schedules
-      // once the hold lifts or on the new build. `restart` means dist/ already holds the new
+      // `hold` starts no new ticks at all — director included; a restart lands within the drain's
+      // window plus a bounded landing hand-off, and its prompt waits in the inbox for the new
+      // build — while the green check/compile/drain run in the background. That covers ticks
+      // reserved before the hold too: a waiter parked in the semaphore queue that is granted a
+      // permit mid-drain meets the closed start gate (tickStartHeld), releases the permit, and
+      // hands its reservation back so it re-schedules once the hold lifts or on the new build.
+      // `restart` means dist/ already holds the new
       // build: stop scheduling, abort whatever role ticks the drain gave up waiting for — the
       // permit holders; they resume on the new build — and return. A director tick can never be
       // in flight here — poll only returns `restart` once it has finished. (holdForRestart keeps
@@ -745,13 +836,38 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       await sleepInterruptible(pollMs, signal);
     }
   } finally {
-    // The in-flight landing is awaited too: graceful shutdown waits for it, and a shutdown
-    // abort reaches its pi runs through the harness signal — the landing then ends "aborted",
-    // keeps its ref, and drops its entry for next-start recovery. (The landing is one
-    // reviewer run plus a bounded merge, not a fleet-wide drain.)
-    await Promise.allSettled(
-      landingInFlight ? [...roleInFlight, ...directorInFlight, landingInFlight.promise] : [...roleInFlight, ...directorInFlight],
-    );
+    // The in-flight landing is awaited beside the ticks, and how depends on what comes next.
+    // On an operator stop the harness signal has already aborted it — its pi runs die and it
+    // stops at its next step boundary, ending "aborted" with its ref kept and its entry dropped
+    // for next-start recovery — and it is waited out: returning early would remove
+    // orchestrator.json while this process still lands, letting a second `tumwater run` start
+    // a concurrent lander (a second Ctrl+C still forces the exit). On a restart the caller exits
+    // for the next generation the moment this returns, and a landing is not bounded by one
+    // reviewer run — a batch re-enters review and build check once per change — so the wait is
+    // a bounded hand-off that announces itself (awaitLandingForHandoff; BUGS.md 2026-09-23).
+    const ticks = Promise.allSettled([...roleInFlight, ...directorInFlight]);
+    const landing = landingInFlight;
+    if (landing && restart) {
+      // The abort is the internal stop, not just the landing's own controller: startLanding
+      // wires the harness signal to that controller, and a conflict-resolution run watches the
+      // harness signal alone (runLandingPi). Nothing else it reaches can start work here — the
+      // director has finished, permit holders were aborted at the restart, and a parked waiter
+      // meets the closed start gate (tickStartHeld) whenever it is granted a permit.
+      const outcome = await awaitLandingForHandoff(
+        root,
+        landing,
+        opts.handoffLandingWindowMs ?? HANDOFF_LANDING_WINDOW_MS,
+        () => internalStop.abort(),
+      );
+      // An abandoned landing still holds its permit, so a waiter parked behind it would never be
+      // granted one and never settle. The ticks have had both windows beside the hand-off, so
+      // whatever is still reserved then started nothing (or is wedged like the landing): the
+      // hand-off goes ahead without it too.
+      if (outcome !== "abandoned") await ticks;
+    } else {
+      if (landing) warnEvent(root, "harness", `shutdown waiting on the in-flight landing of ${landing.roles.join(", ")}`);
+      await Promise.allSettled([ticks, landing?.promise]);
+    }
     logEvent(root, { loop: "harness", type: "orchestrator_stop" });
     removeQuiet(infoFile);
   }

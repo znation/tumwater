@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { runOrchestrator } from "../src/orchestrator.js";
-import { landQueuedEntry, writeLandingMarker } from "../src/landing-slot.js";
+import { landQueuedEntry, readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
@@ -1085,5 +1085,68 @@ test("an unexpected throw from the batch keeps every entry for re-drain and is c
     fs.chmodSync(worktrees, 0o755);
     restore();
     await orch.stop();
+  }
+});
+
+test("a restart's hand-off aborts a batched landing that outlives its deadline instead of waiting it out", async () => {
+  // BUGS.md 2026-09-23, the 97-minute hand-off: a self-redeploy swaps while a multi-entry batch
+  // is mid-review and no role tick is in flight, so poll returns `restart` at once with the
+  // landing still running. Its reviewers each take a minute; the unbounded shutdown await sat
+  // through every one of them in silence. Bounded, the hand-off announces the wait, aborts the
+  // batch when the window lapses, and exits — the pins surviving for the new build.
+  const repo = makeRepo();
+  await initProject(repo, "restart hand-off test");
+  saveConfig(repo, fastConfig(["clean", "dry"]));
+  // Both batched roles are interlocked by their queued entries, so no role tick ever starts:
+  // the drain has nothing to wait for and the restart lands mid-batch — the incident's shape.
+  await seedLandQueue(repo, "clean", "dry");
+  const reviewing = path.join(tmpdir(), "handoff-reviewing");
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${reviewing}'; exec sleep 60;; esac; done`,
+  );
+  // Staleness is re-evaluated only when main moves: stale once the batch's first reviewer is
+  // running, and the test moves main after that — so the restart arrives mid-batch.
+  const { redeployer, swaps } = scriptedRedeployer(repo, { stale: () => fs.existsSync(reviewing) });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
+  try {
+    const run = runOrchestrator({
+      root: repo,
+      config: loadConfig(repo),
+      mainBranch: "main",
+      signal: controller.signal,
+      pollMs: FAST_POLL_MS,
+      redeploy: redeployer,
+      handoffLandingWindowMs: 500,
+    });
+    await waitFor(() => fs.existsSync(reviewing), "the batch's first reviewer run to be in flight");
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the batch");
+    const exit = await run;
+    assert.deepEqual(exit, { restart: true });
+    assert.equal(swaps.length, 1, "the new build was swapped in");
+    assert.ok(!controller.signal.aborted, "the hand-off ended the run, not the test's safety stop");
+
+    const events = readEvents(repo);
+    const index = (pattern: RegExp) =>
+      events.findIndex((e) => e.type === "warning" && pattern.test(String(e.message)));
+    const restartAt = events.findIndex((e) => e.type === "restart");
+    const waitAt = index(/^restart hand-off waiting on the in-flight landing of clean, dry/);
+    const lapseAt = index(/the landing of clean, dry outlived its 0\.5s deadline — aborted/);
+    const stopAt = events.findIndex((e) => e.type === "orchestrator_stop");
+    assert.ok(restartAt >= 0 && waitAt > restartAt, "the wait is announced once the swap is done");
+    assert.ok(lapseAt > waitAt && stopAt > lapseAt, "the lapse names what was awaited, before the stop");
+    const handoffMs = events[stopAt]!.ts - events[restartAt]!.ts;
+    assert.ok(handoffMs < 20_000, `the hand-off did not wait out the minute-long reviewers (${handoffMs}ms)`);
+
+    // The aborted batch is recorded like any shutdown abort: both changes `aborted`, their pins
+    // kept for the new build's recovery, nothing landed, and no in-flight marker left behind.
+    const failed = events.filter((e) => e.type === "land_failed").map((e) => `${e.loop}:${String(e.result)}`);
+    assert.deepEqual(failed.sort(), ["clean:aborted", "dry:aborted"]);
+    assert.ok(landingRefExists(repo, "clean") && landingRefExists(repo, "dry"), "both pins survive for the next generation");
+    assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed");
+    assert.equal(readLandingMarker(repo), null, "no stale in-flight marker is left for the next generation");
+  } finally {
+    clearTimeout(timeout);
+    restore();
   }
 });

@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pollRateLimitHold, runTimedRoleTick, sleepInterruptible } from "../src/orchestrator.js";
+import { awaitLandingForHandoff, pollRateLimitHold, runTimedRoleTick, sleepInterruptible } from "../src/orchestrator.js";
 import { Semaphore } from "../src/semaphore.js";
 import { readEvents } from "../src/events.js";
 import { RATE_LIMIT_HOLD_BASE_MS, RATE_LIMIT_OPEN } from "../src/rate-limit-hold.js";
+import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import type { TickOutcome } from "../src/types.js";
 import { tmpdir } from "./util.js";
 
@@ -285,4 +286,66 @@ test("pollRateLimitHold trips on two roles' 429s, logs one event per crossing, a
   assert.deepEqual(relapse?.roles, ["bugfix", "director"]);
   assert.equal(relapse?.escalation, 1);
   assert.equal(relapse?.holdMs, 2 * RATE_LIMIT_HOLD_BASE_MS);
+});
+
+// BUGS.md 2026-09-23 — the restart hand-off's bounded wait on an in-flight landing. A landing
+// promise stands in for the slot's task, so each phase (finished, aborted, abandoned) is
+// reached deterministically: the e2e tier drives the real batch through the first abort.
+
+/** The warning messages logged under `root`, in order. */
+function warnings(root: string): string[] {
+  return readEvents(root)
+    .filter((e) => e.type === "warning")
+    .map((e) => String(e.message));
+}
+
+test("awaitLandingForHandoff announces the wait and lets a landing that finishes in time land", async () => {
+  const root = tmpdir();
+  let aborts = 0;
+  const outcome = await awaitLandingForHandoff(
+    root,
+    { promise: new Promise((r) => setTimeout(r, 20)), roles: ["clean", "dry"] },
+    5_000,
+    () => void aborts++,
+  );
+  assert.equal(outcome, "finished");
+  assert.equal(aborts, 0, "a landing inside its window is never aborted");
+  const w = warnings(root);
+  assert.equal(w.length, 1, "only the wait itself is announced");
+  assert.match(w[0]!, /^restart hand-off waiting on the in-flight landing of clean, dry \(deadline 5s\)$/);
+});
+
+test("awaitLandingForHandoff aborts a landing past its window and waits for it to stop", async () => {
+  const root = tmpdir();
+  let stop = () => {};
+  const promise = new Promise<void>((r) => (stop = r));
+  let aborts = 0;
+  const startedAt = Date.now();
+  const outcome = await awaitLandingForHandoff(root, { promise, roles: ["organize"] }, 200, () => {
+    aborts++;
+    setTimeout(stop, 20); // the aborted landing reaches its next step boundary and settles
+  });
+  assert.equal(outcome, "aborted");
+  assert.equal(aborts, 1, "aborted exactly once, when the window lapsed");
+  assert.ok(Date.now() - startedAt >= 200, "the landing had its whole window first");
+  const w = warnings(root);
+  assert.equal(w.length, 2);
+  assert.match(w[1]!, /the landing of organize outlived its 0\.2s deadline — aborted/, "the lapse names what was awaited");
+});
+
+test("awaitLandingForHandoff hands off without a landing still running after the abort, clearing its marker", async () => {
+  const root = tmpdir();
+  writeLandingMarker(root, { role: "clean", sha: "a".repeat(40), summary: "wedged", startedAt: Date.now(), stage: "build-check" });
+  let aborts = 0;
+  const startedAt = Date.now();
+  // Never settles: a step wedged past its own bound, which no abort reaches.
+  const outcome = await awaitLandingForHandoff(root, { promise: new Promise(() => {}), roles: ["clean"] }, 100, () => void aborts++);
+  const elapsed = Date.now() - startedAt;
+  assert.equal(outcome, "abandoned");
+  assert.equal(aborts, 1);
+  assert.ok(elapsed >= 200 && elapsed < 5_000, `the hand-off is bounded by two windows (${elapsed}ms)`);
+  assert.equal(readLandingMarker(root), null, "the exiting process's marker is cleared for the next generation");
+  const w = warnings(root);
+  assert.equal(w.length, 3);
+  assert.match(w[2]!, /the aborted landing of clean was still running 0\.1s later — handing off without it/);
 });

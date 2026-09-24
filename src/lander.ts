@@ -108,7 +108,12 @@ export async function syncPinToMain(
  * reports it as `discarded` — deletes the ref; an under-cap failure keeps it, tracking any
  * build-fix commit the gate added, so the pin names the fixed tree the next re-land reviews —
  * an unreadable head keeps it too, fail closed). Returns
- * the gate result only when the change may be landed, alongside the head to land it at. */
+ * the gate result only when the change may be landed, alongside the head to land it at. An
+ * abort that has already fired is observed HERE, before the gate starts, not only by the
+ * gate's pi runs: a gate that short-circuits on an already-approved head (a re-drained batch's)
+ * runs no pi at all, and one that does still spends its build pre-check first — so a stopping
+ * landing (a restart hand-off past its deadline, BUGS.md 2026-09-23) would otherwise sail
+ * through those gates into their checks and merges. */
 export async function reviewPinnedChange(
   ctx: ReviewGateContext,
   req: LandRequest,
@@ -119,6 +124,9 @@ export async function reviewPinnedChange(
   const { root, mainBranch, config } = ctx;
   const { role } = req;
   const ref = landingRefName(role);
+  // Already stopping: the gate never starts, so nothing is persisted or folded — the ref stays
+  // (fail closed) exactly as for an abort mid-review below.
+  if (ctx.signal().aborted) return { kind: "result", result: "aborted" };
   const gate = await reviewAheadOfMain(
     { root, role, wt, mainBranch, config, tick: req.tick, sessionSuffix: req.sessionSuffix, signal: ctx.signal() },
     state,
@@ -239,8 +247,11 @@ export async function landChange(ctx: LanderContext, req: LandRequest): Promise<
  * mergeToMain's resolver — what landChange does for a pin whose pre-gate rebase conflicted.
  * `lastApprovedHead` is neither read nor widened: the caller vouches for `req.sha` (only
  * approved/exempt changes enter a batch's stack). Same ref lifecycle and TickResults as
- * landChange's landing half. */
+ * landChange's landing half. An abort that has already fired returns "aborted" before anything
+ * starts, ref kept — the batch's step-boundary stop (BUGS.md 2026-09-23): with no gate here,
+ * nothing else on this path would notice it before the in-lock check and the merge. */
 export async function landApprovedChange(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
+  if (ctx.signal().aborted) return "aborted";
   const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
   return landOnMain(ctx, wt, req);
 }

@@ -1179,3 +1179,97 @@ for (const headVerdict of ["reject", "approve"] as const) {
     }
   });
 }
+
+// BUGS.md 2026-09-23 — a stopping batch ends at its next step boundary, not only where a pi
+// run notices the abort: the restart hand-off aborts a landing that outlived its deadline, and
+// steps that spawn no pi (an approved-head short-circuit, the stack's assembly and shared
+// check) must not carry on regardless.
+
+test("an aborted batch lands nothing even when every gate would short-circuit on an approved head", async () => {
+  const restore = fakePi(`exec sleep 30`); // never reached: no gate starts
+  try {
+    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+    // Both heads already approved (a re-drained batch): every gate would short-circuit with
+    // no pi run, so only the between-steps check can see the abort.
+    states.alpha.lastApprovedHead = shas.alpha!;
+    states.beta.lastApprovedHead = shas.beta!;
+    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const controller = new AbortController();
+    controller.abort();
+
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
+
+    assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
+    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the refs survive for recovery");
+    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+    assert.equal(folded.size, 0, "no gate ran a pi");
+  } finally {
+    restore();
+  }
+});
+
+test("an abort after the last gate approved stops the batch before its shared check", async () => {
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+    declareCheck(root, "#!/bin/sh\necho ok\n");
+    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const controller = new AbortController();
+    // The stop lands the moment beta's gate hands back its approval — after every gate, before
+    // the stack is assembled and checked.
+    const stopAfterBeta = (role: string): BatchRoleWiring => {
+      const w = wiringFor(role);
+      return role === "beta"
+        ? {
+            ...w,
+            foldUsage: (run) => {
+              w.foldUsage(run);
+              controller.abort();
+            },
+          }
+        : w;
+    };
+
+    const results = await runBatch(root, shas, ["alpha", "beta"], stopAfterBeta, controller);
+
+    assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"], "both approved changes read aborted");
+    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the refs survive for recovery");
+    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+    const checks = readEvents(root).filter((e) => e.type === "build_check");
+    assert.equal(checks.filter((e) => e.scope === "gate").length, 2, "both gates ran their pre-check");
+    assert.equal(checks.filter((e) => e.scope === "batch").length, 0, "the shared check never started");
+  } finally {
+    restore();
+  }
+});
+
+test("an abort after the gate stops a one-change batch before it lands", async () => {
+  // The one-change (and fallback) landings go through landApprovedChange, which runs no gate
+  // of its own — only its own abort check sees a stop that arrived after Phase A.
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const { root, shas, wiringFor } = await batchFixture(["alpha"]);
+    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const controller = new AbortController();
+    const stopAfterGate = (role: string): BatchRoleWiring => {
+      const w = wiringFor(role);
+      return {
+        ...w,
+        foldUsage: (run) => {
+          w.foldUsage(run);
+          controller.abort();
+        },
+      };
+    };
+
+    const results = await runBatch(root, shas, ["alpha"], stopAfterGate, controller);
+
+    assert.deepEqual(results.map((r) => r.result), ["aborted"]);
+    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the ref survives for recovery");
+  } finally {
+    restore();
+  }
+});
