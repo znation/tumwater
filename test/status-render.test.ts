@@ -1106,6 +1106,11 @@ test("loopPhase renders the landing cell ahead of every idle state, only when th
     loopPhase(s, true, undefined, false, undefined, false, { status: "approved", startedAt, stage: "merging" }),
     "approved, awaiting batch",
   );
+  // A change the vetting stage approved (maxConcurrentLandings above 1) waits for the merge slot.
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, { status: "vetted", startedAt, stage: "merging" }),
+    "vetted, awaiting merge",
+  );
 });
 
 test("the build-check and merging landing stages render their label and never read the log", () => {

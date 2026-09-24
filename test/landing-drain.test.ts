@@ -2,10 +2,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { drainLandingQueue, type InFlightLanding, type LandingDrainContext } from "../src/landing-drain.js";
+import {
+  abortableLandings,
+  drainLandingQueue,
+  drainLandings,
+  landingTasks,
+  newLandingPipeline,
+  settleAbortedVetted,
+  type InFlightLanding,
+  type LandingDrainContext,
+  type LandingPipeline,
+  type LandingPipelineContext,
+} from "../src/landing-drain.js";
+import { consumeAbortRequests } from "../src/operator-requests.js";
 import { LoopRunner } from "../src/loop.js";
 import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/land-queue.js";
-import { landQueueDir, landingRefName, orchestratorStatePath } from "../src/paths.js";
+import { abortRequestPath, landQueueDir, landingRefName, orchestratorStatePath } from "../src/paths.js";
 import { isMergedInto, refSha, setRef } from "../src/git.js";
 import { readEvents } from "../src/events.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
@@ -20,7 +32,8 @@ import type { LandingEntry } from "../src/types.js";
 
 // Unit coverage for src/landing-drain.ts's drainLandingQueue — the scheduler seam between the
 // durable land queue and the single landing slot: queue-head dedupe against main, torn-head
-// recovery, the single-landing path, the coalesced batch, and the abort-ref rules. The review
+// recovery, the single-landing path, the coalesced batch, and the abort-ref rules — and, at the
+// end, drainLandings' vetting stage and merge slot (maxConcurrentLandings above 1). The review
 // gate's pi runs are real subprocesses behind the fake shim, exactly as lander.test.ts drives
 // landChange and landBatch directly.
 
@@ -490,6 +503,339 @@ test("a batched row shows its own change's state: a rejected change stops readin
     // no fake pi outlives the test.
     for (const role of roles) fs.writeFileSync(flag(`${role}-release`), "");
     await landing?.promise;
+    restore();
+  }
+});
+
+// ── Land-queue speed 2c: the vetting stage and its merge slot (maxConcurrentLandings > 1) ──
+
+/** A pipeline context at `width` concurrent vets over makeCtx's single-slot context, plus a
+ * fresh pipeline — the scheduler's pair, driven here by pump/pumpUntil like its poll loop. */
+function makePipeline(
+  root: string,
+  runners: LoopRunner[],
+  width: number,
+  signal?: AbortSignal,
+): { ctx: LandingPipelineContext; pipeline: LandingPipeline } {
+  const { ctx } = makeCtx(root, runners, signal);
+  const { onSlotCleared: _unused, ...rest } = ctx;
+  return {
+    ctx: { ...rest, vetSemaphore: new Semaphore(width), maxConcurrentLandings: width },
+    pipeline: newLandingPipeline(),
+  };
+}
+
+/** Poll the pipeline every 50 ms, as the scheduler does every poll, until `done` holds right
+ * after a drain. */
+async function pumpUntil(
+  ctx: LandingPipelineContext,
+  p: LandingPipeline,
+  done: () => boolean,
+  what: string,
+  ms = 60_000,
+): Promise<void> {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    await drainLandings(ctx, p);
+    if (done()) return;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+/** Keep polling in the background (for mid-flight assertions); `stop` ends the loop. */
+function pump(ctx: LandingPipelineContext, p: LandingPipeline): { stop: () => Promise<void> } {
+  let running = true;
+  const loop = (async () => {
+    while (running) {
+      await drainLandings(ctx, p);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  })();
+  return {
+    stop: async () => {
+      running = false;
+      await loop;
+    },
+  };
+}
+
+/** The queue is empty and no vet or merge is running. */
+const drained = (root: string, p: LandingPipeline) => () => queueDepth(root) === 0 && landingTasks(p).length === 0;
+
+/** Pin and enqueue one change per role, every pin before any enqueue (a pin's `git add -A`
+ * would sweep an already-written queue file into the next pin). */
+async function queueChanges(root: string, roles: string[]): Promise<Record<string, string>> {
+  const shas = Object.fromEntries(roles.map((role) => [role, pinnedCommit(root, role)]));
+  for (const role of roles) {
+    await setRef(root, landingRefName(role), shas[role]!);
+    enqueueLanding(root, entry(role, shas[role]!));
+  }
+  return shas;
+}
+
+/** A fake reviewer that tells the roles apart by their lander worktree: each touches
+ * `<role>-reviewing`, a `held` role then waits (bounded, ~60 s) for `<role>-release`, and each
+ * replies with its own verdict (approve by default). */
+function reviewers(flags: string, roles: string[], verdicts: Record<string, string> = {}, held: string[] = []): string {
+  return [
+    `case "$PWD" in`,
+    ...roles.map(
+      (role) =>
+        `*_land-${role}) touch '${path.join(flags, `${role}-reviewing`)}'; ` +
+        (held.includes(role)
+          ? `i=0; while [ ! -f '${path.join(flags, `${role}-release`)}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; `
+          : "") +
+        `printf '%s\\n' '${assistantLine(verdicts[role] ?? "VERDICT: approve")}'; exit 0;;`,
+    ),
+    `esac`,
+  ].join("\n");
+}
+
+/** A stand-in for a merge already holding the slot, so an approved change has to wait for it. */
+function busySlot(): InFlightLanding {
+  return { promise: new Promise<void>(() => {}), controller: new AbortController(), roles: [], userAborted: false };
+}
+
+test("maxConcurrentLandings 3: three T-long reviews run at once, so all three merge in about T, not 3T", async () => {
+  // Acceptance for land-queue speed 2c. Each review holds T and records how many reviews were
+  // in flight as it started. As in lander.test.ts's Phase A timing test, the span is read off
+  // the harness's own timeline — first review_start to last `merged` — and held against the
+  // reviews' own summed durations (the floor of any one-after-another schedule), so a loaded
+  // host's git plumbing cannot swamp the bound.
+  const T = 4;
+  const root = makeRepo();
+  const roles = ["alpha", "beta", "gamma"];
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  await queueChanges(root, roles);
+  const runDir = tmpdir();
+  const restore = fakePi(
+    [
+      `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
+      `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
+      `sleep ${T}; rm -f "$f"`,
+      APPROVE(),
+    ].join("\n"),
+  );
+  try {
+    const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), 3);
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to land");
+
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3", "all three landed");
+    const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
+    assert.equal(samples.length, 3, "one review per change");
+    assert.equal(Math.max(...samples), 3, `all three reviews overlapped (in flight at each start: ${samples})`);
+    const events = readEvents(root);
+    const firstStart = Math.min(...events.filter((e) => e.type === "review_start").map((e) => e.ts));
+    const lastMerged = Math.max(...events.filter((e) => e.type === "merged").map((e) => e.ts));
+    const serialFloorMs = events
+      .filter((e) => e.type === "review_verdict")
+      .reduce((sum, e) => sum + Number(e.durationMs), 0);
+    assert.ok(
+      lastMerged - firstStart < serialFloorMs,
+      `review to last merge took ${lastMerged - firstStart} ms, no less than the reviews' ${serialFloorMs} ms sum — they ran one after another`,
+    );
+    assert.equal(events.filter((e) => e.type === "landed").length, 3, "each change's outcome written once");
+    assert.equal(readLandingMarker(root), null, "the marker is gone once nothing is in flight");
+  } finally {
+    restore();
+  }
+});
+
+test("a vetting rejection drops its entry at once — its role may tick next poll — while the other vet runs on", async () => {
+  const root = makeRepo();
+  const roles = ["alpha", "beta"];
+  const shas = await queueChanges(root, roles);
+  const flags = tmpdir("vet-reject-");
+  const restore = fakePi(reviewers(flags, roles, { alpha: "VERDICT: reject\n1. no" }, ["beta"]));
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), 2);
+  const bg = pump(ctx, pipeline);
+  try {
+    await waitForFile(path.join(flags, "beta-reviewing"));
+    await waitFor(() => queuedLandingFiles(root).length === 1, "alpha's entry to drop at its verdict", 30_000);
+
+    assert.deepEqual(
+      queuedLandingFiles(root).map((q) => q.entry.role),
+      ["beta"],
+      "alpha's entry is gone: the scheduler's interlock no longer holds alpha",
+    );
+    assert.equal(loadLoopState(root, "alpha").lastResult, "rejected", "the outcome is saved before the drop");
+    assert.equal(readEvents(root).filter((e) => e.type === "land_failed" && e.loop === "alpha").length, 1);
+    assert.equal(await refSha(root, landingRefName("alpha")), null, "a rejection deletes the pin");
+    assert.deepEqual([...pipeline.vetting.keys()], ["beta"], "beta's vet is still running");
+    assert.deepEqual(
+      readLandingMarker(root)?.changes?.map((c) => [c.role, c.status, c.stage]),
+      [["beta", "landing", "reviewing"]],
+      "the marker holds only the change still in flight, at its own stage",
+    );
+
+    fs.writeFileSync(path.join(flags, "beta-release"), "");
+    await waitFor(drained(root, pipeline), "beta to land", 30_000);
+    assert.ok(await isMergedInto(root, shas.beta!, "main"), "beta landed");
+  } finally {
+    fs.writeFileSync(path.join(flags, "beta-release"), "");
+    await bg.stop();
+    await Promise.allSettled(landingTasks(pipeline).map((t) => t.promise));
+    restore();
+  }
+});
+
+test("a vetted change merges while an earlier queue entry is still in review", async () => {
+  const root = makeRepo();
+  const roles = ["alpha", "beta"];
+  const shas = await queueChanges(root, roles);
+  // The observers show a landing only for a live orchestrator: this process stands in for it.
+  writeJsonFile(orchestratorStatePath(root), { pid: process.pid, startedAt: Date.now(), roles });
+  const noModels = path.join(tmpdir(), "no-models.json");
+  const rowOf = (role: string): string => {
+    const snap = snapshot(root, noModels);
+    return loopPhase(freshLoopState(role), snap.running, undefined, false, undefined, false, landingForRole(snap.landQueue, role));
+  };
+  const flags = tmpdir("vet-ahead-");
+  const restore = fakePi(reviewers(flags, roles, {}, ["alpha"]));
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), 2);
+  const bg = pump(ctx, pipeline);
+  try {
+    await waitForFile(path.join(flags, "alpha-reviewing"));
+    await waitFor(() => readEvents(root).some((e) => e.type === "landed" && e.loop === "beta"), "beta to land", 30_000);
+
+    assert.ok(await isMergedInto(root, shas.beta!, "main"), "beta merged ahead of the queue head");
+    assert.equal(await isMergedInto(root, shas.alpha!, "main"), false);
+    assert.deepEqual([...pipeline.vetting.keys()], ["alpha"], "the head is still in review");
+    assert.match(rowOf("alpha"), /^landing \d+s · reviewing$/, "the head's row shows its own vet");
+    assert.equal(rowOf("beta"), "queued", "beta's row is back to its own state");
+
+    fs.writeFileSync(path.join(flags, "alpha-release"), "");
+    await waitFor(drained(root, pipeline), "alpha to land", 30_000);
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "merged").map((e) => e.loop),
+      ["beta", "alpha"],
+      "each merged as soon as it was vetted",
+    );
+  } finally {
+    fs.writeFileSync(path.join(flags, "alpha-release"), "");
+    await bg.stop();
+    await Promise.allSettled(landingTasks(pipeline).map((t) => t.promise));
+    restore();
+  }
+});
+
+test("a shutdown reaches every vet and keeps their pins; a vetted change waits out a busy merge slot", async () => {
+  const root = makeRepo();
+  const roles = ["alpha", "beta", "gamma"];
+  const shas = await queueChanges(root, roles);
+  writeJsonFile(orchestratorStatePath(root), { pid: process.pid, startedAt: Date.now(), roles });
+  const noModels = path.join(tmpdir(), "no-models.json");
+  const flags = tmpdir("vet-shutdown-");
+  const restore = fakePi(reviewers(flags, roles, {}, ["alpha", "beta"]));
+  const shutdown = new AbortController();
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, shutdown.signal), 3, shutdown.signal);
+  pipeline.merge = busySlot();
+  const bg = pump(ctx, pipeline);
+  try {
+    await waitForFile(path.join(flags, "alpha-reviewing"));
+    await waitForFile(path.join(flags, "beta-reviewing"));
+    await waitFor(() => pipeline.vetted.has("gamma"), "gamma to be vetted", 30_000);
+    const snap = snapshot(root, noModels);
+    assert.equal(
+      loopPhase(freshLoopState("gamma"), snap.running, undefined, false, undefined, false, landingForRole(snap.landQueue, "gamma")),
+      "vetted, awaiting merge",
+    );
+
+    await bg.stop();
+    shutdown.abort();
+    await Promise.allSettled([...pipeline.vetting.values()].map((t) => t.promise));
+
+    for (const role of ["alpha", "beta"]) {
+      const failed = readEvents(root).filter((e) => e.type === "land_failed" && e.loop === role);
+      assert.deepEqual(failed.map((e) => e.result), ["aborted"], `${role}'s vet ended aborted`);
+      assert.equal(await refSha(root, landingRefName(role)), shas[role], `${role}'s pin survives the shutdown`);
+    }
+    assert.deepEqual(
+      queuedLandingFiles(root).map((q) => q.entry.role),
+      ["gamma"],
+      "the vetted change stays queued for the next start",
+    );
+    assert.ok(await refSha(root, landingRefName("gamma")), "with its pin");
+  } finally {
+    fs.writeFileSync(path.join(flags, "alpha-release"), "");
+    fs.writeFileSync(path.join(flags, "beta-release"), "");
+    await bg.stop();
+    shutdown.abort();
+    await Promise.allSettled([...pipeline.vetting.values()].map((t) => t.promise));
+    restore();
+  }
+});
+
+test("abort --role stops that role's vet, or discards its vetted change, pin and all, while another vet runs on", async () => {
+  const root = makeRepo();
+  const roles = ["alpha", "beta", "gamma"];
+  const shas = await queueChanges(root, roles);
+  const flags = tmpdir("vet-abort-");
+  const restore = fakePi(reviewers(flags, roles, {}, ["alpha", "beta"]));
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), 3);
+  pipeline.merge = busySlot();
+  const bg = pump(ctx, pipeline);
+  try {
+    await waitForFile(path.join(flags, "alpha-reviewing"));
+    await waitForFile(path.join(flags, "beta-reviewing"));
+    await waitFor(() => pipeline.vetted.has("gamma"), "gamma to be vetted", 30_000);
+
+    for (const role of ["alpha", "gamma"]) writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
+    consumeAbortRequests(root, [], abortableLandings(pipeline));
+    await settleAbortedVetted(root, pipeline); // the scheduler settles right after, every poll
+    await waitFor(() => queuedLandingFiles(root).length === 1, "both aborted entries to drop", 30_000);
+
+    for (const role of ["alpha", "gamma"]) {
+      const failed = readEvents(root).filter((e) => e.type === "land_failed" && e.loop === role);
+      assert.deepEqual(failed.map((e) => e.result), ["aborted"], `${role} ended aborted`);
+      assert.equal(await refSha(root, landingRefName(role)), null, `${role}'s pin was discarded`);
+    }
+    assert.deepEqual([...pipeline.vetting.keys()], ["beta"], "beta's vet runs on");
+
+    pipeline.merge = null; // the busy slot frees
+    fs.writeFileSync(path.join(flags, "beta-release"), "");
+    await waitFor(drained(root, pipeline), "beta to land", 30_000);
+    assert.ok(await isMergedInto(root, shas.beta!, "main"), "beta landed");
+    assert.equal(await isMergedInto(root, shas.gamma!, "main"), false, "the discarded change never landed");
+  } finally {
+    fs.writeFileSync(path.join(flags, "alpha-release"), "");
+    fs.writeFileSync(path.join(flags, "beta-release"), "");
+    await bg.stop();
+    await Promise.allSettled(landingTasks(pipeline).map((t) => t.promise));
+    restore();
+  }
+});
+
+test("maxConcurrentLandings 1 is the single landing slot: the same batch, the same events", async () => {
+  // Two queued entries through drainLandings at width 1 and through drainLandingQueue itself,
+  // on twin repos: one batch on the slot, with the same events either way.
+  const trace = async (viaPipeline: boolean): Promise<string[]> => {
+    const root = makeRepo();
+    await queueChanges(root, ["alpha", "beta"]);
+    const runners = runnersFor(root, ["alpha", "beta"]);
+    if (viaPipeline) {
+      const { ctx, pipeline } = makePipeline(root, runners, 1);
+      await drainLandings(ctx, pipeline);
+      assert.ok(pipeline.merge && pipeline.single, "the single slot holds the landing");
+      assert.deepEqual(pipeline.merge.roles, ["alpha", "beta"], "as one batch");
+      assert.equal(pipeline.vetting.size, 0, "no vetting stage");
+      await pipeline.merge.promise;
+      assert.equal(pipeline.merge, null, "the slot cleared");
+    } else {
+      const { ctx } = makeCtx(root, runners);
+      await (await drainLandingQueue(ctx))!.promise;
+    }
+    const kinds = new Set(["merged", "landed", "land_failed", "review_verdict", "review_rejected", "build_check"]);
+    return readEvents(root)
+      .filter((e) => kinds.has(String(e.type)))
+      .map((e) => `${e.loop}:${e.type}:${String(e.result ?? e.verdict ?? "")}`)
+      .sort();
+  };
+  const restore = fakePi(APPROVE());
+  try {
+    assert.deepEqual(await trace(true), await trace(false));
+  } finally {
     restore();
   }
 });

@@ -7,8 +7,9 @@ import { readJsonFile } from "./json-files.js";
 import { abortRequestPath, resetRequestPath, wakeRequestPath, STATE_DIR } from "./paths.js";
 
 /** The in-flight landing fields `consumeAbortRequests` needs to cancel one. The
- * orchestrator's `InFlightLanding` carries exactly these plus its `promise`, so it is
- * assignable here without this module knowing about the drain. */
+ * orchestrator's `InFlightLanding` carries exactly these plus its `promise`, and the vetting
+ * stage's waiting `VettedLanding` extends it, so both are assignable here without this module
+ * knowing about the drain. */
 export interface AbortableLanding {
   roles: string[];
   userAborted: boolean;
@@ -80,11 +81,14 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
  * is every role the slot is landing right now, and a stop for one of them kills the whole
  * batch: the lander cannot split it (abandoning mid-batch would leave the pinned refs of the
  * not-yet-processed changes for one-at-a-time recovery, which is already the fallback).
- * The drain's task discards every batched ref when a userAborted batch ends. */
+ * The drain's task discards every batched ref when a userAborted batch ends. Since land-queue
+ * speed 2c there can be several in-flight units at once — one per change being vetted, the
+ * merge slot's stack, and each vetted change waiting for it (flagged, then settled by the
+ * drain) — so `landings` lists them all and the request stops whichever holds the role. */
 export function consumeAbortRequests(
   root: string,
   runners: LoopRunner[],
-  landing: AbortableLanding | null,
+  landings: readonly AbortableLanding[],
 ): void {
   try {
     const markers = fs.readdirSync(path.join(root, STATE_DIR));
@@ -93,7 +97,8 @@ export function consumeAbortRequests(
       if (!m) continue;
       const role = m[1]!;
       const runner = runners.find((r) => r.role === role);
-      if (landing && landing.roles.includes(role)) {
+      for (const landing of landings) {
+        if (!landing.roles.includes(role)) continue;
         landing.userAborted = true;
         landing.controller.abort();
       }

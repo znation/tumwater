@@ -1,14 +1,17 @@
+import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig } from "./config-schema.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { deleteRef, isMergedInto } from "./git.js";
-import { landBatch } from "./land-batch.js";
+import { landBatch, landVetted, vetRequest, type BatchRoleWiring, type VetVerdict } from "./land-batch.js";
 import {
+  addLandingChange,
   landQueuedEntry,
   landingChanges,
   landingUsage,
   readLandingMarker,
+  removeLandingChange,
   setLandingChangeStatus,
   writeBatchLandingMarker,
   writeLandingOutcome,
@@ -20,21 +23,24 @@ import { Semaphore } from "./semaphore.js";
 import { landingRefName, landingStatePath } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { saveLoopState } from "./state.js";
-import type { TickResult } from "./types.js";
+import type { AbortableLanding } from "./operator-requests.js";
+import type { LandingEntry, PiRunResult, TickResult } from "./types.js";
 
 /** The semaphore tier a landing's pi runs acquire at, below every roleTier (0/1): committed
  * work whose author the interlock has already blocked jumps ahead of parked role waiters
  * rather than starving behind them (BUGS.md 2026-09-18). */
 const LANDING_TIER = -1;
 
-/** The single in-flight landing the drain owns (merge queue 3/5): its task, the controller
+/** One in-flight landing task the drain owns (merge queue 3/5): its task, the controller
  * that aborts it (harness shutdown OR `tumwater abort --role` for any of its roles), and
  * whether the abort was a deliberate user stop — which decides what happens to the pinned
  * refs when it ends. Since merge queue 5/5 `roles` is every role the slot is landing: one for
  * the single path, up to landBatchMax for a batch. A batched role leaves it the moment its
  * change reaches a final Phase-A verdict and its entry drops: that role may tick again at
  * once, so an abort for its new tick must not kill the batch, and a user-aborted batch must
- * not discard the pin of the role's next change. */
+ * not discard the pin of the role's next change. Since land-queue speed 2c the same record
+ * also carries one vetting-stage task (its one role) and the merge slot's stack (every role
+ * it is merging) — see LandingPipeline. */
 export interface InFlightLanding {
   promise: Promise<void>;
   controller: AbortController;
@@ -55,6 +61,37 @@ async function discardPinnedRefs(root: string, roles: string[]): Promise<void> {
       /* already gone */
     }
   }
+}
+
+/** Resolve a landing entry's authoring runner: the live runner when the role is enabled
+ * (runners are never removed from the array on disable — only a warning event fires); a role
+ * disabled before this process started has no runner, so a throwaway one supplies the same
+ * wiring (loop-pi.ts, runLandingPi, foldLandingUsage) and a disk-loaded state to fold and save
+ * on. Both share the live config, like every runner — the director keeps liveConfig (its
+ * budget-gate exemption), every other role takes roleConfig. */
+function resolveAuthor(ctx: LandingDrainContext | LandingPipelineContext, role: string): LoopRunner {
+  const { root, mainBranch, signal, runners, liveConfig, roleConfig } = ctx;
+  return (
+    runners.find((r) => r.role === role) ??
+    new LoopRunner(root, role, role === DIRECTOR_ROLE ? liveConfig : roleConfig, mainBranch, signal)
+  );
+}
+
+/** Drop a torn queue head. A torn head (a hard crash mid enqueueLanding write, or a foreign
+ * file) makes headLanding read null forever — nothing else drops it, stranding every live entry
+ * behind it and pinning their authors' ticks via the interlock. Drop it with one warning; a
+ * healthy head surfacing behind it drains in the same poll. The crashed entry's commit, if any,
+ * still rides its landing ref into next-tick leftover recovery (BUGS.md 2026-09-17). Both drains
+ * run it first — the single landing slot and the vetting stage. */
+function dropTornHead(root: string): void {
+  const stale = staleHeadFile(root);
+  if (!stale) return;
+  dropLanding(stale);
+  warnEvent(
+    root,
+    "harness",
+    `land queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue can drain`,
+  );
 }
 
 /** The per-poll state the drain reads from the scheduler: everything the queue-head dedupe
@@ -104,7 +141,7 @@ export interface LandingDrainContext {
  * leaves both entry and ref, so the drain re-runs landChange — re-reviews — the established
  * crash semantics. */
 export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFlightLanding | null> {
-  const { root, mainBranch, signal, semaphore, runners, liveConfig, roleConfig, onSlotCleared } = ctx;
+  const { root, mainBranch, signal, semaphore, liveConfig, roleConfig, onSlotCleared } = ctx;
 
   const withLandingSlot = async <T>(run: () => Promise<T>): Promise<T> => {
     await semaphore.acquire(LANDING_TIER);
@@ -147,35 +184,10 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
     return landing;
   };
 
-  // Resolve a landing entry's authoring runner: the live runner when the role is enabled
-  // (runners are never removed from the array on disable — only a warning event fires); a
-  // role disabled before this process started has no runner, so a throwaway one supplies
-  // the same wiring (loop-pi.ts, runLandingPi, foldLandingUsage) and a disk-loaded state
-  // to fold and save on. Both share the live config, like every runner — the director
-  // keeps liveConfig (its budget-gate exemption), every other role takes roleConfig.
-  const authorFor = (role: string): LoopRunner =>
-    runners.find((r) => r.role === role) ??
-    new LoopRunner(root, role, role === DIRECTOR_ROLE ? liveConfig : roleConfig, mainBranch, signal);
+  const authorFor = (role: string): LoopRunner => resolveAuthor(ctx, role);
 
-  let head = headLanding(root);
-  if (!head) {
-    // A torn head (a hard crash mid enqueueLanding write, or a foreign file) makes
-    // headLanding read null forever — nothing else drops it, stranding every live entry
-    // behind it and pinning their authors' ticks via the interlock. Drop it with one
-    // warning; a healthy head surfacing behind it drains in the same poll. The crashed
-    // entry's commit, if any, still rides its landing ref into next-tick leftover
-    // recovery (BUGS.md 2026-09-17).
-    const stale = staleHeadFile(root);
-    if (stale) {
-      dropLanding(stale);
-      warnEvent(
-        root,
-        "harness",
-        `land queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue can drain`,
-      );
-      head = headLanding(root);
-    }
-  }
+  dropTornHead(root);
+  const head = headLanding(root);
   if (!head) return null;
 
   if (await isMergedInto(root, head.entry.sha, mainBranch)) {
@@ -333,4 +345,354 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
       }
     },
   );
+}
+
+// ── Land-queue speed 2c: a parallel vetting stage and a serial merge slot ────────────────────
+
+/** The tier the merge slot's conflict-resolution runs take the vetting cap at: ahead of any
+ * vet parked for a permit, because the merge is the one serial step every queued change waits
+ * on. (A vet never waits on the merge — no vet takes the merge lock — so this cannot deadlock.) */
+const MERGE_TIER = LANDING_TIER - 1;
+
+/** A change the vetting stage approved (or found exempt), waiting for the merge slot: still
+ * queued — its author stays interlocked until it lands — with the head its gate approved in
+ * its landing ref (`sha`) and the approval's patch-id in its state (2a). In memory only: after a
+ * restart the entry is vetted again, and its review carries over through the patch-id while
+ * its check runs once more. It holds no task, so `tumwater abort --role` only flags it
+ * (AbortableLanding); the next drain settles it as "aborted" and discards its pin. */
+export interface VettedLanding extends AbortableLanding {
+  entry: LandingEntry;
+  /** The queue file to drop once its outcome is written. */
+  file: string;
+  /** The head its gate approved — the synced pin its landing ref names. */
+  sha: string;
+  /** When its vet started: its landed/land_failed event's durationMs runs from here. */
+  startedAt: number;
+  /** The authoring runner its vet ran with — reused by its merge, so both fold into one state. */
+  author: LoopRunner;
+  /** The landing's own spend so far (its reviewer), and the fold that adds to it. */
+  usage: { tokens: number; cost: number };
+  foldUsage(run: PiRunResult): void;
+}
+
+/** The scheduler's landing state across polls (land-queue speed 2c). With
+ * `maxConcurrentLandings` 1 it is today's single landing slot and nothing else: `merge` holds
+ * the one landing — a single change or a batch through landBatch, review and merge in one
+ * task — with `single` set. Above 1 the slot splits in two:
+ * - `vetting`: up to maxConcurrentLandings tasks, one per change, in queue order, each in its
+ *   own `_land-<role>` worktree — checkout, rebase onto main, gate check and review
+ *   (vetRequest). Any verdict but an approval writes its outcome at once and frees its author.
+ * - `vetted`: the approved changes waiting to merge, still queued.
+ * - `merge`: the one task that writes main — every vetted change up to landBatchMax, in queue
+ *   order, through landVetted (a stack of two or more shares one check and one fast-forward).
+ *   It never waits for an unvetted queue head.
+ * A role is in at most one of them: its one queued change is vetted, then waits, then merges, so
+ * a vet and a merge never touch the same worktree or ref. */
+export interface LandingPipeline {
+  vetting: Map<string, InFlightLanding>;
+  vetted: Map<string, VettedLanding>;
+  merge: InFlightLanding | null;
+  /** True while `merge` is the single landing slot's landing (maxConcurrentLandings 1). */
+  single: boolean;
+}
+
+export function newLandingPipeline(): LandingPipeline {
+  return { vetting: new Map(), vetted: new Map(), merge: null, single: false };
+}
+
+/** Every landing task in flight — each vet and the merge (or the single slot's landing) — for
+ * the shutdown and restart waits. */
+export function landingTasks(p: LandingPipeline): InFlightLanding[] {
+  return [...p.vetting.values(), ...(p.merge ? [p.merge] : [])];
+}
+
+/** Everything `tumwater abort --role` can reach: every task, plus each vetted change waiting
+ * with no task of its own. */
+export function abortableLandings(p: LandingPipeline): AbortableLanding[] {
+  return [...landingTasks(p), ...p.vetted.values()];
+}
+
+/** What the pipeline drain reads from the scheduler: the single-slot drain's context (whose
+ * shared `semaphore` the single slot keeps using) plus the vetting stage's own cap and how wide
+ * it may run this poll. */
+export interface LandingPipelineContext extends Omit<LandingDrainContext, "onSlotCleared"> {
+  /** The vetting stage's own cap (maxConcurrentLandings permits, resized by the scheduler):
+   * above 1 the vets and the merge slot's conflict-resolution runs draw from it instead of the
+   * shared maxConcurrent semaphore, so they add exactly that many streams to the provider. */
+  vetSemaphore: Semaphore;
+  /** How many changes may be vetted at once: the live maxConcurrentLandings, which the
+   * scheduler clamps to 1 while the budget gate is on its fallback model (a local backend has
+   * no spare streams). 1 keeps the single landing slot. */
+  maxConcurrentLandings: number;
+}
+
+/** Wire harness shutdown to one task's own controller — at once when it has already fired,
+ * since a listener added after the event never runs. */
+function abortOnShutdown(signal: AbortSignal, controller: AbortController): void {
+  if (signal.aborted) controller.abort();
+  else signal.addEventListener("abort", () => controller.abort(), { once: true });
+}
+
+/** The roles the pipeline holds right now — vetting, vetted, or merging. */
+function liveRoles(p: LandingPipeline): Set<string> {
+  return new Set([...p.vetting.keys(), ...p.vetted.keys(), ...(p.merge?.roles ?? [])]);
+}
+
+/** One poll of the land queue (the scheduler's WHEN is unchanged: after the gates, never while
+ * a restart or a 429 hold is pending). At maxConcurrentLandings 1 this is drainLandingQueue
+ * exactly — the single slot, its shared permit at LANDING_TIER, its batches — started once
+ * the slot is free and no vet from a wider setting is still running. A change such a setting
+ * left vetted goes back to plainly queued: the slot re-lands it through its own gate, where the
+ * approval carries over (2a) and its check runs again. Above 1: start vets up to the limit
+ * (drainVetting), and start the merge when the slot is free and something is vetted
+ * (drainMerge) — but nothing new while the single slot's landing from a narrower setting still
+ * owns its batch. Starts tasks and returns; never awaits them. */
+export async function drainLandings(ctx: LandingPipelineContext, p: LandingPipeline): Promise<void> {
+  if (ctx.maxConcurrentLandings <= 1) {
+    if (p.merge !== null || p.vetting.size > 0) return;
+    for (const role of p.vetted.keys()) removeLandingChange(ctx.root, role);
+    p.vetted.clear();
+    const landing = await drainLandingQueue({
+      ...ctx,
+      onSlotCleared: () => {
+        p.merge = null;
+        p.single = false;
+      },
+    });
+    if (landing) {
+      p.merge = landing;
+      p.single = true;
+    }
+    return;
+  }
+  if (p.merge !== null && p.single) return;
+  await drainVetting(ctx, p);
+  drainMerge(ctx, p);
+}
+
+/** Settle every vetted change `tumwater abort --role` flagged (consumeAbortRequests over
+ * abortableLandings): it has no task to stop, so it ends here exactly as an aborted landing
+ * does — "aborted" written back, entry dropped, pin discarded (the deliberate stop throws the
+ * committed work away). The scheduler runs it every poll right after consuming the requests,
+ * held or not: a restart hold that skipped it would hand the flagged change, pin intact, to
+ * the next generation to land. */
+export async function settleAbortedVetted(root: string, p: LandingPipeline): Promise<void> {
+  for (const [role, v] of [...p.vetted]) {
+    if (!v.userAborted) continue;
+    p.vetted.delete(role);
+    writeLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
+    removeLandingChange(root, role);
+    await discardPinnedRefs(root, [role]);
+  }
+}
+
+/** Start vets, in queue order, while fewer than maxConcurrentLandings run: every queued entry
+ * whose role the pipeline does not already hold. The torn-head drop and the dedupe against main
+ * are the single slot's, applied to each entry about to be vetted rather than only the head: an
+ * entry whose sha main already holds (a crash between the fast-forward and the drop) is dropped
+ * without a run, with its marker record. */
+async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeline): Promise<void> {
+  dropTornHead(ctx.root);
+  for (const { entry, file } of queuedLandingFiles(ctx.root)) {
+    if (p.vetting.size >= ctx.maxConcurrentLandings) return;
+    if (liveRoles(p).has(entry.role)) continue;
+    if (await isMergedInto(ctx.root, entry.sha, ctx.mainBranch)) {
+      dropLanding(file);
+      removeLandingChange(ctx.root, entry.role);
+      continue;
+    }
+    // The dedupe awaited git: a task that settled meanwhile may have dropped this very entry
+    // (its role was busy when the queue was listed) or claimed its role. Start nothing for it.
+    if (!fs.existsSync(file) || liveRoles(p).has(entry.role)) continue;
+    p.vetting.set(entry.role, startVet(ctx, p, entry, file));
+  }
+}
+
+/** One vet task: on a vetting permit (the shutdown signal and a user abort both reach it
+ * through its own controller), open the change's marker record, and vet it — checkout at the
+ * pin, rebase onto main, gate check, review (vetRequest), the verdict persisted by the gate. An
+ * approval moves it to `vetted` (record `vetted, awaiting merge`). Any other verdict — rejected,
+ * a review_error of either kind, main_red, a lost pin's "error", aborted — is final for this
+ * queue entry, so its outcome is written at once and its entry dropped, which frees its author
+ * on the next poll while the other vets run on (BUGS.md 2026-09-23's early-rejection fix, now
+ * for every change). A user-aborted vet discards its pin; a shutdown keeps it. Never rejects
+ * for a failed landing: an unexpected throw becomes an "error" outcome, like landQueuedEntry. */
+function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry: LandingEntry, file: string): InFlightLanding {
+  const { root, mainBranch, signal, vetSemaphore } = ctx;
+  const { role } = entry;
+  const author = resolveAuthor(ctx, role);
+  const vet: InFlightLanding = {
+    promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
+    controller: new AbortController(),
+    roles: [role],
+    userAborted: false,
+  };
+  abortOnShutdown(signal, vet.controller);
+  vet.promise = (async () => {
+    const { usage, foldUsage } = landingUsage(author);
+    let verdict: VetVerdict;
+    await vetSemaphore.acquire(LANDING_TIER);
+    const startedAt = Date.now();
+    try {
+      addLandingChange(root, entry, liveRoles(p));
+      verdict = vet.controller.signal.aborted
+        ? { kind: "result", result: "aborted" }
+        : await vetRequest(
+            { root, mainBranch, config: author.config, signal: () => vet.controller.signal },
+            {
+              role,
+              sha: entry.sha,
+              tick: entry.tick,
+              summary: entry.summary,
+              body: entry.body,
+              highFriction: entry.highFriction,
+            },
+            { state: author.state, foldUsage, runPi: (w, prompt, s) => author.runLandingPi(w, prompt, s) },
+          );
+    } catch (err) {
+      verdict = { kind: "result", result: "error" };
+      author.state.lastError = errorMessage(err);
+    } finally {
+      vetSemaphore.release();
+    }
+    try {
+      if (verdict.kind === "stack" && !vet.userAborted) {
+        p.vetted.set(role, {
+          entry,
+          file,
+          sha: verdict.sha,
+          startedAt,
+          author,
+          usage,
+          foldUsage,
+          roles: [role],
+          controller: new AbortController(),
+          userAborted: false,
+        });
+        setLandingChangeStatus(root, role, "vetted");
+      } else {
+        const result = verdict.kind === "stack" ? "aborted" : verdict.result;
+        writeLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);
+        removeLandingChange(root, role);
+        if (vet.userAborted) await discardPinnedRefs(root, [role]);
+      }
+    } finally {
+      p.vetting.delete(role);
+    }
+  })();
+  return vet;
+}
+
+/** Start the merge when the slot is free and something is vetted: every vetted change, up to
+ * landBatchMax, in queue order among the vetted — an unvetted entry ahead of them in the queue
+ * (a slow review) does not hold them back. A vetted change whose queue entry is gone is
+ * forgotten (nothing in-process drops one; defensive). */
+function drainMerge(ctx: LandingPipelineContext, p: LandingPipeline): void {
+  if (p.merge !== null || p.vetted.size === 0) return;
+  const queued = queuedLandingFiles(ctx.root);
+  const files = new Set(queued.map((q) => q.file));
+  for (const [role, v] of [...p.vetted]) {
+    if (files.has(v.file)) continue;
+    p.vetted.delete(role);
+    removeLandingChange(ctx.root, role);
+  }
+  const picks = queued.flatMap((q) => {
+    const v = p.vetted.get(q.entry.role);
+    return v?.file === q.file ? [v] : [];
+  });
+  picks.splice(ctx.liveConfig.landBatchMax);
+  if (picks.length === 0) return;
+  for (const v of picks) p.vetted.delete(v.entry.role);
+  p.merge = startMerge(ctx, p, picks);
+  p.single = false;
+}
+
+/** The merge task: land `picks` through landVetted on main's current tip — one change through
+ * landApprovedChange, two or more as one stack with one scope-`batch` check, one fast-forward,
+ * and 3d's largest-passing-prefix bisect — with no second review. A vetted change whose main
+ * moved since its vet is re-checked on the tree that lands (the in-lock re-check, or the stack's
+ * check), so an approval that outlived its base never lands unverified. Each defined result is
+ * written back and its entry dropped; an unattempted change (behind a bisect's attributed one)
+ * goes back to `vetted` for the next merge. A plumbing throw keeps every entry queued, as the
+ * batch slot's catch does, but un-vetted: each is vetted afresh from its pin next poll. A user
+ * abort of any merged role stops the whole stack — the batch rule — and every change it had not
+ * landed ends "aborted" with its pin discarded; a shutdown keeps the pins. The task takes no
+ * permit of its own — its only model run is mergeToMain's conflict resolver, which takes a
+ * vetting permit at MERGE_TIER for the run's length. */
+function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: VettedLanding[]): InFlightLanding {
+  const { root, mainBranch, signal, roleConfig, vetSemaphore } = ctx;
+  const merge: InFlightLanding = {
+    promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
+    controller: new AbortController(),
+    roles: picks.map((v) => v.entry.role),
+    userAborted: false,
+  };
+  abortOnShutdown(signal, merge.controller);
+  const wiring = new Map<string, BatchRoleWiring>(
+    picks.map((v) => [
+      v.entry.role,
+      {
+        state: v.author.state,
+        foldUsage: v.foldUsage,
+        runPi: async (w, prompt, s) => {
+          await vetSemaphore.acquire(MERGE_TIER);
+          try {
+            return await v.author.runLandingPi(w, prompt, s);
+          } finally {
+            vetSemaphore.release();
+          }
+        },
+      },
+    ]),
+  );
+  merge.promise = (async () => {
+    let results: Array<TickResult | undefined>;
+    let threw = false;
+    try {
+      results = await landVetted(
+        {
+          root,
+          mainBranch,
+          config: roleConfig,
+          signal: () => merge.controller.signal,
+          // A change the stack's fallback has not reached yet is back to waiting its turn.
+          onChangeStatus: (role, status) => setLandingChangeStatus(root, role, status === "approved" ? "vetted" : status),
+        },
+        picks.map((v) => ({
+          role: v.entry.role,
+          sha: v.sha,
+          tick: v.entry.tick,
+          summary: v.entry.summary,
+          body: v.entry.body,
+          highFriction: v.entry.highFriction,
+        })),
+        (role) => wiring.get(role)!,
+      );
+    } catch (err) {
+      threw = true;
+      results = picks.map(() => undefined);
+      const head = picks[0]!.author;
+      head.state.lastError = errorMessage(err);
+      saveLoopState(root, head.state);
+    }
+    try {
+      picks.forEach((v, s) => {
+        const { role } = v.entry;
+        const result = results[s] ?? (merge.userAborted ? "aborted" : undefined);
+        if (result === undefined && !threw) {
+          p.vetted.set(role, v);
+          setLandingChangeStatus(root, role, "vetted");
+          return;
+        }
+        if (result !== undefined) {
+          writeLandingOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file);
+        }
+        removeLandingChange(root, role);
+      });
+    } finally {
+      if (merge.userAborted) await discardPinnedRefs(root, merge.roles);
+      p.merge = null;
+    }
+  })();
+  return merge;
 }

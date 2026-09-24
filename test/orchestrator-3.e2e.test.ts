@@ -1091,6 +1091,44 @@ test("landBatchMax caps the stack and live-reloads: five queue as 3+2 batches, t
   }
 });
 
+test("maxConcurrentLandings 3 vets three queued changes at once on the live orchestrator, then merges them all", async () => {
+  // Land-queue speed 2c through the scheduler's own wiring: the config key reaches the drain,
+  // the vetting cap admits all three reviews together (each records how many were in flight as
+  // it started), and the merge slot lands every change.
+  const repo = makeRepo();
+  await initProject(repo, "vetting stage e2e test");
+  const roles = ["feature", "bugfix", "clean"];
+  const cfg = { ...fastConfig(roles), maxConcurrentLandings: 3 };
+  cfg.minTickIntervalSeconds = 300; // landings never tick; the seeded-queue drive needs no author runs
+  saveConfig(repo, cfg);
+  await seedLandQueue(repo, ...roles);
+  const runDir = tmpdir();
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
+      `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
+      `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
+      `sleep 3; rm -f "$f"; printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => readEvents(repo).filter((e) => e.type === "landed").length >= 3 && queueDepth(repo) === 0,
+      "all three to land",
+      60_000,
+    );
+    const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
+    assert.equal(samples.length, 3, "one review per change");
+    assert.equal(Math.max(...samples), 3, `the three reviews overlapped (in flight at each start: ${samples})`);
+    assert.equal(readEvents(repo).filter((e) => e.type === "merged").length, 3, "every change merged");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
 test("an unexpected throw from the batch keeps every entry for re-drain and is contained", async () => {
   // The drain's catch: landBatch degrades failed landings to results, but a git-level failure
   // in the stack assembly still throws (unlike Phase A's worktree ensure, the assembly's is

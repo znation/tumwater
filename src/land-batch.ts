@@ -89,21 +89,23 @@ export interface BatchRoleWiring {
   runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
 }
 
-/** One Phase-A gate's verdict for its request: `stack` — approved or exempt, to land at `sha`
- * (the synced pin); `result` — an outcome that keeps the change
- * out of the stack: rejected, review_error (`discarded` on a strike-cap discard), a lost-pin
- * "error", or aborted. */
-type PhaseAVerdict = { kind: "stack"; sha: string } | { kind: "result"; result: TickResult; discarded?: true };
+/** One change's vetting verdict — a Phase-A gate's, or the vetting stage's (landing-drain.ts,
+ * maxConcurrentLandings above 1): `stack` — approved or exempt, to land at `sha` (the synced
+ * pin, which the landing ref now names); `result` — an outcome that keeps the change out of
+ * the stack: rejected, review_error (`discarded` on a strike-cap discard), main_red, a
+ * lost-pin "error", or aborted. */
+export type VetVerdict = { kind: "stack"; sha: string } | { kind: "result"; result: TickResult; discarded?: true };
 
-/** One request's Phase-A gate: check its pin out detached in the role's own lander worktree,
- * rebase it onto main's current tip — landChange's own pre-gate rebase (syncPinToMain), so the
- * head approved here is the head a landing starts from, and a conflict leaves the pin for the
- * gate exactly as there — and run the SAME review gate landChange runs, the verdict persisted
- * immediately by reviewPinnedChange (the drain's write-back of every non-final outcome happens
- * only in-process at batch completion, so a mid-batch crash must not lose what the batch
- * earned). The rebase touches only this role's worktree and ref, onto main itself, so two
- * gates rebasing at once cannot interfere. */
-async function gateRequest(ctx: BatchContext, req: LandRequest, w: BatchRoleWiring): Promise<PhaseAVerdict> {
+/** Vet one request — a Phase-A gate, and the whole of a vetting-stage task: check its pin out
+ * detached in the role's own lander worktree, rebase it onto main's current tip — landChange's
+ * own pre-gate rebase (syncPinToMain), so the head approved here is the head a landing starts
+ * from, and a conflict leaves the pin for the gate exactly as there — and run the SAME review
+ * gate landChange runs, the verdict persisted immediately by reviewPinnedChange (the drain's
+ * write-back of an approved change happens only in-process once it lands, so a crash must not
+ * lose what the vet earned). The rebase touches only this role's worktree and ref, onto main
+ * itself, so two vets rebasing at once — or one rebasing while a merge moves main — cannot
+ * interfere. */
+export async function vetRequest(ctx: BatchContext, req: LandRequest, w: BatchRoleWiring): Promise<VetVerdict> {
   let wt: string;
   try {
     wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
@@ -127,7 +129,7 @@ async function gateRequest(ctx: BatchContext, req: LandRequest, w: BatchRoleWiri
 /** Whether a Phase-A verdict is FINAL — settled for good the moment it is persisted, so the
  * drain may write it back and drop its entry mid-batch (BatchContext.onFinal): a rejection or
  * a strike-cap discard (verdict persisted, ref deleted), or an uncheckable pin's "error". */
-function isFinal(v: PhaseAVerdict): boolean {
+function isFinal(v: VetVerdict): boolean {
   return v.kind === "result" && (v.result === "rejected" || v.result === "error" || v.discarded === true);
 }
 
@@ -137,7 +139,7 @@ function isFinal(v: PhaseAVerdict): boolean {
  * quiet-killed reviewer run) stop it: the gates not yet launched stay unattempted — entry +
  * ref intact, re-drained next poll. Gates already in flight run to their verdict, which is
  * persisted work; an approval among them still stacks. */
-function stopsPhaseA(v: PhaseAVerdict): boolean {
+function stopsPhaseA(v: VetVerdict): boolean {
   return v.kind === "result" && v.result !== "rejected";
 }
 
@@ -158,10 +160,10 @@ function stopsPhaseA(v: PhaseAVerdict): boolean {
  * batch is N distinct roles (invariant 3), and each of those is per-role. */
 async function runPhaseA(
   count: number,
-  gate: (i: number) => Promise<PhaseAVerdict>,
+  gate: (i: number) => Promise<VetVerdict>,
   gatePermit: BatchContext["gatePermit"],
-): Promise<Array<PhaseAVerdict | undefined>> {
-  const verdicts: Array<PhaseAVerdict | undefined> = Array.from({ length: count }, () => undefined);
+): Promise<Array<VetVerdict | undefined>> {
+  const verdicts: Array<VetVerdict | undefined> = Array.from({ length: count }, () => undefined);
   let next = 0;
   let stopped = false;
   let thrown: { err: unknown } | undefined;
@@ -430,7 +432,9 @@ async function attributeRedChange(
  * aborted (a shutdown mid-gate or a quiet-killed reviewer run) → stop launching likewise, and
  * every request without a terminal outcome reads "aborted" and keeps its ref. |S| == 0 means
  * nothing was approved — all results are already defined (or unattempted after an early
- * stop) and there is nothing to land: return as-is.
+ * stop) and there is nothing to land: return as-is. Everything below lands S through
+ * landVetted, the merge half the vetting stage's merge slot shares (maxConcurrentLandings
+ * above 1, where each change's vet is its own task instead of a Phase-A gate).
  *
  * |S| == 1 — land it through landApprovedChange (no second gate, so this costs git + ff
  * only, plus an in-lock re-check if main moved since Phase A judged it): the degenerate case
@@ -524,15 +528,6 @@ export async function landBatch(
     }
     return w;
   };
-  const landerCtx = (w: BatchRoleWiring): LanderContext => ({
-    root: ctx.root,
-    mainBranch: ctx.mainBranch,
-    config: ctx.config,
-    state: w.state,
-    runPi: w.runPi,
-    foldUsage: w.foldUsage,
-    signal: ctx.signal,
-  });
   // An abort anywhere in the batch (Phase A or the fallback) routes every request without a
   // terminal outcome to "aborted" — refs kept, entries dropped by the drain — at the end.
   let aborted = false;
@@ -557,7 +552,7 @@ export async function landBatch(
     requests.length,
     async (i) => {
       report(i, "landing"); // the slot is on this change now — its gate, from the checkout on
-      const v = await gateRequest(ctx, requests[i]!, wiringForRole(requests[i]!.role));
+      const v = await vetRequest(ctx, requests[i]!, wiringForRole(requests[i]!.role));
       // Its gate is over: an approval waits for the rest of Phase A before the stack lands;
       // anything else is out of this batch, and its row must not keep a live label while the
       // other gates run on.
@@ -595,36 +590,80 @@ export async function landBatch(
     if (v === undefined) report(i, "done");
   });
 
+  // ── Land the stack S: the merge half, shared with the vetting stage's merge slot ─────────
+  const landed = await landVetted(
+    ctx,
+    stack.map((i, s) => ({ ...requests[i]!, sha: stackSha[s]! })),
+    wiringForRole,
+  );
+  landed.forEach((result, s) => {
+    results[stack[s]!]!.result = result;
+    if (result === "aborted") aborted = true; // the rest of the batch reads "aborted" too
+  });
+  finishAborted();
+  return results;
+}
+
+/** Land changes whose own gate already approved them — landBatch's stack S after Phase A, and
+ * the vetting stage's merge slot (landing-drain.ts, land-queue speed 2c), which takes every
+ * vetted entry up to landBatchMax. `vetted` is in queue order, each request at the head its gate
+ * approved (the synced pin its landing ref names); none is gated again, so no model review runs
+ * here. Everything after landBatch's Phase A in its flow lives here: one change through
+ * landApprovedChange (git + ff, plus an in-lock scope-`landing` re-check whenever main moved
+ * since its gate), two or more assembled on main's CURRENT tip with one scope-`batch` check and
+ * one fast-forward, the re-stack on a lost race, the largest-passing-prefix bisect on a red
+ * check, and the one-at-a-time fallback on a conflict. A vetted change whose main moved before
+ * its merge is therefore always re-checked on the tree that lands; only its review carries
+ * over, exactly as for an approved head in a batch today (no model run in the serial step).
+ *
+ * Returns one result per request in order; `undefined` means unattempted (behind a bisect's
+ * attributed change, or a fallback early stop) — entry and ref kept for the next merge. On an
+ * abort every request without a result reads "aborted" (refs kept). `wiringFor` must return
+ * the same wiring for a role on every call (its usage accumulator is the landing's). Throws
+ * like landBatch: only the first stack attempt's git plumbing propagates. */
+export async function landVetted(
+  ctx: BatchContext,
+  vetted: LandRequest[],
+  wiringFor: (role: string) => BatchRoleWiring,
+): Promise<Array<TickResult | undefined>> {
+  const results: Array<TickResult | undefined> = vetted.map(() => undefined);
+  const report = (s: number, status: LandingChangeStatus): void => ctx.onChangeStatus?.(vetted[s]!.role, status);
+  const landerCtx = (w: BatchRoleWiring): LanderContext => ({
+    root: ctx.root,
+    mainBranch: ctx.mainBranch,
+    config: ctx.config,
+    state: w.state,
+    runPi: w.runPi,
+    foldUsage: w.foldUsage,
+    signal: ctx.signal,
+  });
+  let aborted = false;
+  const finish = (): Array<TickResult | undefined> =>
+    aborted ? results.map((r) => r ?? "aborted") : results;
+
   // ── The degenerate case: one approved change IS 2/5's single path ────────────────────
-  if (stack.length === 1) {
-    const i = stack[0]!;
-    const req = { ...requests[i]!, sha: stackSha[0]! };
-    report(i, "landing");
+  if (vetted.length === 1) {
+    const req = vetted[0]!;
+    report(0, "landing");
     try {
-      results[i]!.result = await landApprovedChange(landerCtx(wiringForRole(req.role)), req);
+      results[0] = await landApprovedChange(landerCtx(wiringFor(req.role)), req);
     } catch (err) {
-      results[i]!.result = "error";
-      wiringForRole(req.role).state.lastError = errorMessage(err);
+      results[0] = "error";
+      wiringFor(req.role).state.lastError = errorMessage(err);
     }
-    if (results[i]!.result === "aborted") aborted = true;
-    finishAborted();
     return results;
   }
 
   // ── Assemble the stack in S[0]'s lander worktree: ONE check over the whole tree, and on a
   // red one, the largest passing prefix
-  const headReq = requests[stack[0]!]!;
-  // S[0]'s lander worktree hosts every assembly (its Phase A gate used it too) and the
-  // attribution's baseline check: the slot owns it for the whole batch.
-  const wtPath = landWorktreePath(ctx.root, headReq.role);
-  const entries: StackEntry[] = stack.map((i, s) => ({
-    role: requests[i]!.role,
-    sha: stackSha[s]!,
-    summary: requests[i]!.summary,
-  }));
+  // S[0]'s lander worktree hosts every assembly (its gate used it too) and the attribution's
+  // baseline check: the merge owns it for the whole stack — no vet runs for a role while its
+  // change is being merged.
+  const wtPath = landWorktreePath(ctx.root, vetted[0]!.role);
+  const entries: StackEntry[] = vetted.map((req) => ({ role: req.role, sha: req.sha, summary: req.summary }));
   let abandon = false;
   // Every stacked change is landing now: they share the assembly, the check, and the ff.
-  for (const i of stack) report(i, "landing");
+  for (let s = 0; s < vetted.length; s++) report(s, "landing");
   // Stack positions [0, landedCount) are on main. `suspect` is how many of the rest, from the
   // front, the last red check ran over — the prefix that still holds what broke it; null when
   // no red check stands against the rest, which are then tried together.
@@ -640,10 +679,9 @@ export async function landBatch(
       if (outcome.kind === "red" && size === 1) {
         // The one change this red check ran over alone: attribute it, and leave every change
         // after it unattempted for the next drain.
-        const i = stack[front]!;
-        const { state } = wiringForRole(entries[front]!.role);
-        results[i]!.result = await attributeRedChange(ctx, wtPath, entries[front]!, outcome, state);
-        report(i, "done");
+        const { state } = wiringFor(entries[front]!.role);
+        results[front] = await attributeRedChange(ctx, wtPath, entries[front]!, outcome, state);
+        report(front, "done");
         break;
       }
     } catch (err) {
@@ -651,16 +689,15 @@ export async function landBatch(
       // later step's degrades to "error" on the change at its front (ref kept for recovery),
       // the rest unattempted, so the prefixes already on main keep their "changed".
       if (firstAttempt) throw err;
-      const i = stack[front]!;
-      results[i]!.result = "error";
-      wiringForRole(entries[front]!.role).state.lastError = errorMessage(err);
-      report(i, "done");
+      results[front] = "error";
+      wiringFor(entries[front]!.role).state.lastError = errorMessage(err);
+      report(front, "done");
       break;
     }
     if (outcome.kind === "landed") {
       for (let s = front; s < front + size; s++) {
-        results[stack[s]!]!.result = "changed";
-        report(stack[s]!, "done");
+        results[s] = "changed";
+        report(s, "done");
       }
       landedCount += size;
       // What broke the red run is still in its remainder, unless this prefix WAS that run —
@@ -675,45 +712,43 @@ export async function landBatch(
       // The race was lost on every attempt — main is moving faster than a check completes.
       // Every change not yet landed keeps its ref with "merge_blocked": leftover recovery
       // re-lands each through its own gate + tryMerge, whose in-lock check cannot lose it.
-      for (let s = front; s < entries.length; s++) results[stack[s]!]!.result = "merge_blocked";
+      for (let s = front; s < entries.length; s++) results[s] = "merge_blocked";
       break;
     } else {
-      aborted = true; // every result still undefined reads "aborted" (finishAborted), refs kept
+      aborted = true; // every result still undefined reads "aborted" (finish), refs kept
       break;
     }
   }
   if (abandon) {
     // One-at-a-time through the single path's landing half, queue order, stopping at the first
     // non-terminal outcome (the rest keep entry + ref and re-drain). Each request lands its
-    // Phase-A head to land (the synced pin + any build fix, not the bare pin) through
+    // approved head (the synced pin its gate judged, not the bare pin) through
     // landApprovedChange — no second gate, so no model run: re-gating would rebase onto the
     // main the earlier entries just moved, and the rewritten sha misses the approved
     // short-circuit. main is never left red — mergeToMain's in-lock rebase + verifyLanding
     // re-check every change whose tree differs from the one its gate judged. Only the change
     // being landed reads `landing`; the rest are back to awaiting their turn, and each one
     // landed is done.
-    for (const i of stack.slice(landedCount)) report(i, "approved");
-    for (let s = landedCount; s < stack.length; s++) {
-      const i = stack[s]!;
-      const req = { ...requests[i]!, sha: stackSha[s]! };
-      report(i, "landing");
+    for (let s = landedCount; s < vetted.length; s++) report(s, "approved");
+    for (let s = landedCount; s < vetted.length; s++) {
+      const req = vetted[s]!;
+      report(s, "landing");
       try {
-        const result = await landApprovedChange(landerCtx(wiringForRole(req.role)), req);
-        results[i]!.result = result;
+        const result = await landApprovedChange(landerCtx(wiringFor(req.role)), req);
+        results[s] = result;
         if (result === "aborted") aborted = true;
       } catch (err) {
-        results[i]!.result = "error";
-        wiringForRole(req.role).state.lastError = errorMessage(err);
+        results[s] = "error";
+        wiringFor(req.role).state.lastError = errorMessage(err);
       }
-      report(i, "done");
-      if (results[i]!.result !== "changed") break;
+      report(s, "done");
+      if (results[s] !== "changed") break;
     }
   }
   // A change the batch stopped short of is out of it (its entry and ref wait for the next
   // drain, or an abort's write-back), so it must not keep a live row meanwhile.
-  for (const i of stack) {
-    if (results[i]!.result === undefined) report(i, "done");
+  for (let s = 0; s < vetted.length; s++) {
+    if (results[s] === undefined) report(s, "done");
   }
-  finishAborted();
-  return results;
+  return finish();
 }

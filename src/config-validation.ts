@@ -48,6 +48,7 @@ const TOP_LEVEL_KEYS = [
   "piArgs",
   "maxConcurrent",
   "landBatchMax",
+  "maxConcurrentLandings",
   "maxConcurrentChecks",
   "minTickIntervalSeconds",
   "tickTimeoutSeconds",
@@ -265,6 +266,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   }
   checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
   checkNumber(r, "", "landBatchMax", POSITIVE_INTEGER);
+  checkNumber(r, "", "maxConcurrentLandings", POSITIVE_INTEGER);
   checkNumber(r, "", "maxConcurrentChecks", POSITIVE_INTEGER);
   checkNumber(r, "", "minTickIntervalSeconds", NON_NEGATIVE);
   checkNumber(r, "", "tickTimeoutSeconds", POSITIVE);

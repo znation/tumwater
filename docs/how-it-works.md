@@ -54,6 +54,14 @@ loops keep ticking while a change is under review.
 - **Batching.** When several changes are queued, each is reviewed alone, then up to
   `landBatchMax` (default 3) land together under one check. A red batch falls back to one at a
   time.
+- **Parallel vetting.** `maxConcurrentLandings` (default 1) sets how many queued changes are
+  rebased, checked and reviewed at once, each in its own lander worktree. At 1 the single lander
+  does everything, one landing or batch at a time. Above 1, a change that fails vetting frees
+  its author at once, and a separate merge step lands vetted changes in queue order, up to
+  `landBatchMax` per stack, without waiting on a slower review ahead of them. A vetted change
+  whose base moved is checked again before it lands. Above 1, each vet is its own stream to the
+  provider, so the fleet can run `maxConcurrent` + `maxConcurrentLandings` + the director at
+  once. While the budget gate is on the fallback model, the setting counts as 1.
 
 Errors keep the commit for re-review, up to three strikes. `tumwater abort --role <id>`
 discards a role's in-flight landing.

@@ -140,6 +140,13 @@ export interface TumwaterConfig {
    * shared build check, and fast-forwarded to main in one ff. 1 reproduces the single-
    * landing path exactly (no coalescing). */
   landBatchMax: number;
+  /** Max queued changes vetted (rebased onto main, gate-checked, reviewed) at once, each in its
+   * own `_land-<role>` worktree, while one merge slot lands the vetted ones in queue order
+   * (land-queue speed 2c). 1 keeps the single landing slot: one landing (or batch) at a time,
+   * its pi runs on the shared maxConcurrent permits. Above 1, the vets draw from their own cap
+   * of this size, adding that many streams to the provider beside maxConcurrent and the
+   * director; while the budget gate is on its fallback model it is treated as 1. */
+  maxConcurrentLandings: number;
   /** Max runs of the project's declared check (the full suite) in flight at once across the
    * whole harness process — every gate, landing, batch, and main-baseline check takes one
    * permit (src/build-check.ts's withCheckPermit), so a burst of landings cannot stack suites

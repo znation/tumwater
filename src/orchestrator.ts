@@ -32,7 +32,14 @@ import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, currentBranch } from "./git.js";
 import { queuedLandingFiles } from "./land-queue.js";
-import { drainLandingQueue, type InFlightLanding } from "./landing-drain.js";
+import {
+  abortableLandings,
+  drainLandings,
+  landingTasks,
+  newLandingPipeline,
+  settleAbortedVetted,
+  type InFlightLanding,
+} from "./landing-drain.js";
 import { logEvent, warnEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
@@ -286,9 +293,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   let restart = false;
 
   let runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
-  // The shared concurrency cap: role ticks and the landing slot's pi runs (landing-drain.ts)
-  // both hold a permit — see its LandingDrainContext for why the landing is not exempt.
+  // The shared concurrency cap: role ticks and — at maxConcurrentLandings 1 — the landing
+  // slot's pi runs (landing-drain.ts) both hold a permit; see its LandingDrainContext for why
+  // the landing is not exempt.
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
+  // The vetting stage's own cap (land-queue speed 2c): used only while maxConcurrentLandings is
+  // above 1, when the landing's pi runs draw from it instead of `semaphore` (landing-drain.ts's
+  // LandingPipelineContext). Live-resized with the config, like `semaphore`.
+  const vetSemaphore = new Semaphore(Math.max(1, config.maxConcurrentLandings));
 
   const infoFile = orchestratorStatePath(root);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
@@ -316,9 +328,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   // In-flight tasks, split by who requested them: the redeploy drain caps role ticks at its
   // window but waits for a director tick without one — an explicit human prompt outranks the
-  // self-redeploy (BUGS.md 2026-09-08). The landing slot is deliberately OUTSIDE this split:
-  // it is a single in-process task (one at a time, since 2026-09-18 under the same maxConcurrent
-  // permit as role ticks) that shutdown still awaits — to the end on an operator stop, and for a
+  // self-redeploy (BUGS.md 2026-09-08). The landing tasks are deliberately OUTSIDE this split:
+  // in-process tasks (the single landing slot, since 2026-09-18 under the same maxConcurrent
+  // permit as role ticks; or, with maxConcurrentLandings above 1, up to that many vets plus the
+  // one merge, on their own cap) that shutdown still awaits — to the end on an operator stop, and for a
   // bounded hand-off on a restart (the `finally` below) — an aborted landing keeps its ref and
   // drops its entry, recovering on next start. roleInFlight holds every RESERVED role tick
   // (permit holders and waiters parked in the semaphore queue alike), since shutdown awaits
@@ -336,7 +349,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // excluded — their short cut-off durations would drag the window down and cause more aborts.
   const ROLE_TICK_DURATION_SAMPLES = 50;
   const roleTickDurationsMs: number[] = [];
-  let landingInFlight: InFlightLanding | null = null;
+  // Every landing task in flight (landing-drain.ts's LandingPipeline): the single landing slot
+  // at maxConcurrentLandings 1, or the vetting stage's tasks, the changes they vetted, and the
+  // merge slot above it.
+  const landings = newLandingPipeline();
 
   // Live-reload bookkeeping: the last config error already warned about (a broken file must
   // warn once per distinct text, not every poll), whether the file is currently missing (one
@@ -443,6 +459,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           logEvent(root, { loop: "harness", type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
           lastMaxConcurrent = newMaxConcurrent;
         }
+        // The vetting cap follows the same rule (its change logs through config_changed).
+        vetSemaphore.setCapacity(Math.max(1, reloaded.config.maxConcurrentLandings));
         const nowEnabled = enabledRoleIds(reloaded.config);
         // Enabling a role mid-run starts it: create its runner (its persisted state survives).
         for (const role of nowEnabled) {
@@ -492,7 +510,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // abort requests.
       consumeResetRequest(root, runners);
       consumeWakeRequest(root, runners);
-      consumeAbortRequests(root, runners, landingInFlight);
+      consumeAbortRequests(root, runners, abortableLandings(landings));
+      await settleAbortedVetted(root, landings);
 
       // branchHead reads the ref files first (microsecond-scale; this runs every poll) and
       // spawns `git rev-parse` only when they cannot resolve it. "" means main does not exist
@@ -657,22 +676,27 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         holdForRestart = action === "hold";
       }
 
-      // Merge queue 3/5 — drain the durable land queue on the single landing slot, once the
-      // slot is free and neither a restart nor a 429 hold is pending (the scheduler's WHEN;
-      // landing-drain.ts owns the HOW — the queue-head dedupe and both landing paths).
-      if (!holdForRestart && !rateHeld && landingInFlight === null) {
-        landingInFlight = await drainLandingQueue({
-          root,
-          mainBranch,
-          signal,
-          semaphore,
-          runners,
-          liveConfig,
-          roleConfig,
-          onSlotCleared: () => {
-            landingInFlight = null;
+      // Merge queue 3/5 — drain the durable land queue while neither a restart nor a 429 hold
+      // is pending (the scheduler's WHEN; landing-drain.ts owns the HOW — the single landing
+      // slot at maxConcurrentLandings 1, the vetting stage and its merge slot above it, and the
+      // queue-head dedupe for both). A held poll starts no vet and no merge, exactly as it
+      // starts no tick; what is already in flight runs on. The fallback model is a local
+      // backend with no streams to spare, so it keeps the single slot on the shared permits.
+      if (!holdForRestart && !rateHeld) {
+        await drainLandings(
+          {
+            root,
+            mainBranch,
+            signal,
+            semaphore,
+            vetSemaphore,
+            maxConcurrentLandings: onFallback ? 1 : liveConfig.maxConcurrentLandings,
+            runners,
+            liveConfig,
+            roleConfig,
           },
-        });
+          landings,
+        );
       }
 
       // Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main is
@@ -847,8 +871,16 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     // for the next generation the moment this returns, and a landing is not bounded by one
     // reviewer run — a batch re-enters review and build check once per change — so the wait is
     // a bounded hand-off that announces itself (awaitLandingForHandoff; BUGS.md 2026-09-23).
+    // Since land-queue speed 2c "the landing" is every landing task at once — each vet and the
+    // merge — waited on (and, past the hand-off's window, aborted) together under the roles of
+    // them all; the vetted changes waiting for the merge have no task and keep their entries
+    // and pins for the next start.
     const ticks = Promise.allSettled([...roleInFlight, ...directorInFlight]);
-    const landing = landingInFlight;
+    const tasks = landingTasks(landings);
+    const landing =
+      tasks.length === 0
+        ? null
+        : { promise: Promise.allSettled(tasks.map((t) => t.promise)).then(() => {}), roles: tasks.flatMap((t) => t.roles) };
     if (landing && restart) {
       // The abort is the internal stop, not just the landing's own controller: startLanding
       // wires the harness signal to that controller, and a conflict-resolution run watches the

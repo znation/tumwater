@@ -38,8 +38,11 @@ export type LandingStage = "merging" | "build-check" | "reviewing";
  *   lands — `approved, awaiting batch`;
  * - `done`: the batch is finished with it — a final verdict, a failed or aborted gate, or left
  *   queued for the next drain by an early stop — and the marker shows nothing for it: its row
- *   reads its own state. */
-export type LandingChangeStatus = "waiting" | "landing" | "approved" | "done";
+ *   reads its own state;
+ * - `vetted`: the vetting stage (maxConcurrentLandings above 1, land-queue speed 2c) approved
+ *   it and it waits for the merge slot — `vetted, awaiting merge`. The stage's records use
+ *   `landing` for a change being vetted or merged, and never `waiting` or `approved`. */
+export type LandingChangeStatus = "waiting" | "landing" | "approved" | "done" | "vetted";
 
 /** One batched change's record in the in-flight marker. `startedAt` is stamped the first time
  * the change enters `landing` (its gate start) and kept through the rest of the batch, so its
@@ -151,6 +154,51 @@ export function setLandingChangeStatus(root: string, role: string, status: Landi
   if (status === "landing") {
     change.startedAt ??= Date.now();
     change.stage = "merging";
+  }
+  rewriteBatchMarker(root, { ...marker, changes });
+}
+
+/** Add one change's record to the marker the vetting stage and its merge slot share
+ * (maxConcurrentLandings above 1): each change is its own task there, so records come and go
+ * one at a time instead of a batch opening them all at once. The new record starts `landing`
+ * at `merging` with its own `startedAt` (a vet opens with its checkout and rebase). Every other
+ * record is kept only while its role is in `live` — the roles the stage holds right now — so a
+ * record a crashed generation left behind, or a single-slot marker from before the setting was
+ * raised, never rides along. Never throws (rewriteBatchMarker). */
+export function addLandingChange(root: string, entry: LandingEntry, live: ReadonlySet<string>): void {
+  const marker = readLandingMarker(root);
+  const kept = marker ? landingChanges(marker).filter((c) => c.role !== entry.role && live.has(c.role)) : [];
+  const startedAt = Date.now();
+  const change: LandingChange = {
+    role: entry.role,
+    sha: entry.sha,
+    summary: entry.summary,
+    status: "landing",
+    startedAt,
+    stage: "merging",
+  };
+  rewriteBatchMarker(root, {
+    role: entry.role,
+    sha: entry.sha,
+    summary: entry.summary,
+    startedAt,
+    stage: "merging",
+    changes: [...kept, change],
+  });
+}
+
+/** Remove one change's record once the vetting stage or its merge slot has written its outcome
+ * (or dropped it as already on main), deleting the marker when it was the last. A no-op when
+ * the marker names no such role. Never throws. */
+export function removeLandingChange(root: string, role: string): void {
+  const marker = readLandingMarker(root);
+  if (!marker) return;
+  const all = landingChanges(marker);
+  const changes = all.filter((c) => c.role !== role);
+  if (changes.length === all.length) return;
+  if (changes.length === 0) {
+    removeQuiet(landingStatePath(root));
+    return;
   }
   rewriteBatchMarker(root, { ...marker, changes });
 }

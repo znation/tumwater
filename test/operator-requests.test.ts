@@ -147,7 +147,7 @@ test("consumeWakeRequest with no marker changes nothing", () => {
 test("consumeAbortRequests tolerates a missing .tumwater directory", () => {
   const root = tmpdir(); // never created — the fresh-repo case the catch exists for
   const a = fakeRunner("coverage", true);
-  assert.doesNotThrow(() => consumeAbortRequests(root, asRunners(a), null));
+  assert.doesNotThrow(() => consumeAbortRequests(root, asRunners(a), []));
   assert.equal(a.aborts, 0);
 });
 
@@ -156,7 +156,7 @@ test("consumeAbortRequests aborts a running role's tick and logs tick_aborted", 
   const a = fakeRunner("coverage", true);
   const marker = abortRequestPath(root, "coverage");
   writeMarker(marker, { at: 1 });
-  consumeAbortRequests(root, asRunners(a), null);
+  consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 1);
   assert.equal(fs.existsSync(marker), false);
   const events = readEvents(root).filter((e) => e.type === "tick_aborted");
@@ -169,7 +169,7 @@ test("consumeAbortRequests silently clears a marker for an idle role", () => {
   const a = fakeRunner("coverage", false);
   const marker = abortRequestPath(root, "coverage");
   writeMarker(marker, { at: 1 });
-  consumeAbortRequests(root, asRunners(a), null);
+  consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 0);
   assert.equal(fs.existsSync(marker), false);
   assert.equal(readEvents(root).filter((e) => e.type === "tick_aborted").length, 0);
@@ -180,7 +180,7 @@ test("consumeAbortRequests clears a marker for a role with no runner at all", ()
   const a = fakeRunner("coverage", true);
   const marker = abortRequestPath(root, "disabled-role");
   writeMarker(marker, { at: 1 });
-  consumeAbortRequests(root, asRunners(a), null);
+  consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 0);
   assert.equal(fs.existsSync(marker), false);
 });
@@ -195,10 +195,25 @@ test("consumeAbortRequests marks and aborts the in-flight landing for any batche
   };
   const marker = abortRequestPath(root, "coverage");
   writeMarker(marker, { at: 1 });
-  consumeAbortRequests(root, asRunners(), landing);
+  consumeAbortRequests(root, asRunners(), [landing]);
   assert.equal(landing.userAborted, true);
   assert.equal(controller.signal.aborted, true);
   assert.equal(fs.existsSync(marker), false);
+});
+
+test("consumeAbortRequests stops whichever of several in-flight landings holds the role, and only that one", () => {
+  // Land-queue speed 2c: each change being vetted is its own unit, beside the merge slot's.
+  const root = tmpdir();
+  const unit = (roles: string[]): AbortableLanding => ({ roles, userAborted: false, controller: new AbortController() });
+  const vetA = unit(["clean"]);
+  const vetB = unit(["coverage"]);
+  const merge = unit(["feature", "dry"]);
+  writeMarker(abortRequestPath(root, "coverage"), { at: 1 });
+  writeMarker(abortRequestPath(root, "dry"), { at: 1 });
+  consumeAbortRequests(root, asRunners(), [vetA, vetB, merge]);
+  assert.equal(vetA.userAborted || vetA.controller.signal.aborted, false, "another vet runs on");
+  assert.equal(vetB.userAborted && vetB.controller.signal.aborted, true);
+  assert.equal(merge.userAborted && merge.controller.signal.aborted, true, "a stacked role stops the stack");
 });
 
 test("consumeAbortRequests ignores non-abort files in the state directory", () => {
@@ -207,7 +222,7 @@ test("consumeAbortRequests ignores non-abort files in the state directory", () =
   fs.mkdirSync(stateDir(root), { recursive: true });
   fs.writeFileSync(path.join(stateDir(root), "paused.json"), "{}");
   fs.writeFileSync(path.join(stateDir(root), "abort-not-json.txt"), "{}");
-  consumeAbortRequests(root, asRunners(a), null);
+  consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 0);
   assert.equal(readEvents(root).length, 0);
 });
