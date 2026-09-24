@@ -369,11 +369,11 @@ const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }
   batch: { label: "batch build check", proceeding: "proceeding to merge" },
 };
 
-/** Scopes whose outcome gates a merge to main. A timeout or an external signal kill here
- * leaves the tree unverified, and
- * these are the last checks before main, so it rejects deterministically; the gate scope's
- * pre-check stays fail-open because the model reviewer and the landing path's own check still
- * stand behind it (BUGS.md: a landing build check that times out must not merge unverified). */
+/** Scopes whose outcome gates a merge to main: runScopedBuildCheck remaps a timeout or an
+ * external signal kill at these scopes to a deterministic "failed" — the tree is unverified,
+ * and these are the last checks before main. The gate scope's pre-check stays fail-open
+ * because the model reviewer and the landing path's own check still stand behind it
+ * (BUGS.md: a landing build check that times out must not merge unverified). */
 const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"]);
 
 /** The one-line warning for an environmental check skip, keyed on why the check could not run.
