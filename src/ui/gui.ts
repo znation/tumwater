@@ -355,8 +355,8 @@ export function startGui(
         sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number });
       } else if (req.method === "POST" && pathname === "/api/pause") {
         // The dashboard header's pause/resume toggle: the same operator gate `tumwater pause`
-        // and `resume` write, via state.ts's shared writers so the CLI and the GUI cannot
-        // drift on the marker's format or idempotence. Same body discipline as /api/prompt and
+        // and `resume` write, via fleet-state.ts's shared writers (pauseFleet/resumeFleet) so the CLI and
+        // the GUI cannot drift on the marker's format or idempotence. Same body discipline as /api/prompt and
         // /api/budget (readJsonObject → 400 malformed/non-object, 413 oversized); the target
         // state is explicit (`paused: true|false`) rather than a toggle, so a retried request
         // is idempotent.
