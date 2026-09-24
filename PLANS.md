@@ -5,56 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Land-queue speed 1/3 — Take the build-fix run out of the landing slot: retry a failed gate check once, then hand the failure to whoever caused it (planned 2026-09-23, requested by user)
-
-**Status 2026-09-24 (partly delivered by the BUGS.md sweep):** step 1 has landed. A failed gate check is re-run once, and a pass logs `gate check failed then passed on retry — flaky: <headline>` and proceeds as verified (the build-fix budget fix, 47c06df). That fix also caps the fix run that remains at 20 minutes (`BUILD_FIX_TIMEOUT_S`) under a shared-host prompt, and dc0d9a7 names any fix commit in the review prompt. Both BUGS.md entries the last acceptance criterion names are already in Fixed. Still to do: attributing a repeat failure through `checkMainBaseline` (step 2) and deleting the fix run (step 3).
-
-**Why.** The land queue is the fleet's bottleneck. A role cannot tick while its change is queued or landing (the merge-queue interlock), so every queued change idles one loop. On 2026-09-23 the queue sat at depth 6 (median), 10 at p90, and a change took 39 min (median) from `land_queued` to its outcome. The single worst cost is the gate's build-fix run (the "Fix a failed landing build check on the spot" plan under Done, user-requested 2026-09-21). It runs inside the one landing slot while the whole queue waits. That day it ran five times: coverage 27 min, dry 112 min and 215 min, feature 35 min, organize 46 min. That is about 7.3 h, of which about 5.4 h was inside the slot. **All five ended rejected; none led to a landing.** Dry's 07:44 run was the batch the 10:42 restart waited 97 minutes on (the self-redeploy Open bug). Dry's 03:48 run load-tested the live host and `pkill`ed every test runner (BUGS.md, the "bounded" build-fix entry). Most failures it chased were load flakes, not breakage.
-
-This supersedes the in-slot fix run from that plan and keeps its goal: a red **main** must not reject every queued change. That case now goes to the machinery that already exists for it. `checkMainBaseline` (src/main-baseline.ts:125) holds a per-SHA, fleet-wide verdict, and landings seed it green. The main-red gate (src/main-red.ts:84) already blocks authoring on a red main and hands the repair to bugfix (`bugfixMainRedNote`, :68). Real breakage by the author goes back to the author, whose next tick fixes it in its own parallel permit instead of in the serial slot.
-
-**Approach.**
-- src/review.ts — the pre-check `failed` branch in `reviewAheadOfMain` (the `runPi` fix run from :247 and its commit/re-check through the `verifiedByHarness` assignment ~:289) becomes:
-  1. **Retry once.** Re-run `runScopedBuildCheck(root, role, "gate", wt, config, …)`. If it passes, log `warnEvent(root, role, "gate check failed then passed on retry — flaky: <headline>")` and continue exactly like a first-time pass (`verifiedHead = head`, `verifiedByHarness` set). The warning names the flaky test so telemetry and bugfix can go after it.
-  2. **Still failing: attribute it.** Ask `checkMainBaseline(mirrorWorktreePath(root), config)` about main's current tip. Refresh the mirror to main first (`ensureDetachedWorktree` at main, the redeploy.ts idiom). It is usually a cache hit, because every landing seeds the SHA it moved main to.
-     - **Main green:** the change broke the check. `reject(reasons)` exactly as before 4803c07: deterministic, no pi run, reasons injected into the author's next tick.
-     - **Main red:** return `{ decision: "failed", detail: "main <sha> is red — not this change's failure" }` without advancing `unreviewFailures`, the transport-failure rule from BUGS.md 2026-09-20. The pin is kept, main-red.ts owns the repair, and the change re-lands on its author's next tick once main moves green.
-     - **Baseline null or skipped:** treat it as the author's failure and reject. This is the safe default, and the reasons say the baseline was unavailable.
-  3. Delete the fix-run path: `buildBuildFixPrompt` (src/prompt.ts:391), `GateResult.fixRun` and every `fixRun` carry, and the `tumwater(<role>): fix failing build check` commit. `GateResult.discarded` stays (the strike-cap tell).
-- src/lander.ts `reviewPinnedChange` — drop the `gate.fixRun` fold. Keep the `verifiedHead`/`setRef` pin-tracking, which still covers a green rebased head.
-- src/land-batch.ts — the `base..sha` range cherry-pick stays: it is correct for a single commit and harmless for more. Update the comment that justifies it by the fix run (:205–211).
-- README.md — the review-gate paragraph describes retry-then-attribute instead of the fix run.
-
-**Files touched.** src/review.ts, src/prompt.ts, src/lander.ts, src/land-batch.ts (comment only), README.md, test/review.test.ts, test/prompt.test.ts, test/lander.test.ts, test/land-batch tests that stage a fix run.
-
-**Acceptance criteria.**
-- Gate check fails then passes on retry → approved path, one flaky warning naming the failing headline, and no pi run spent before the reviewer.
-- Fails twice, and main's baseline at the tip is green (seed it with `noteGreenBaseline` in the test) → `review_rejected` with the check's reasons and zero pi runs. This is the pre-4803c07 behavior, restored by test/review.test.ts's "gate pre-check rejects a failing build with zero reviewer runs".
-- Fails twice, main baseline red → `decision: "failed"`, `unreviewFailures` unchanged, landing ref kept, no rejection recorded against the author.
-- No code path starts a pi run from the gate's pre-check branch; `buildBuildFixPrompt` no longer exists.
-- BUGS.md's "gate's bounded build-fix run has no time or resource budget" and "reviewer is never told about the gate's own build-fix commit" entries move to Fixed (the mechanism is gone).
-- `npm test` green.
-
-### Land-queue speed 2a — Approvals survive a clean rebase: key them by patch-id, not sha (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
-
-**Status 2026-09-24:** BUGS.md's "fallback re-reviews every change it already approved" entry was fixed another way (45acd18). Phase A reviews each pin rebased onto main, and the one-change path and the fallback land the approved head through `landApprovedChange` with no second gate; the in-lock `verifyLanding` re-check covers the rebased tree. Patch-id approvals are still worth having for the single path: an approved change re-drained after main moved still pays a second review.
-
-**Why.** `reviewAheadOfMain` short-circuits a re-review only on an exact sha match (`state.lastApprovedHead === head`, src/review.ts:188), but `landChange` rebases onto main before the gate (src/lander.ts:190) — so any approved change whose main moved pays a full second reviewer run. This is BUGS.md's open "batch's one-at-a-time fallback re-reviews every change it already approved" entry: about 12 wasted minutes in the 05:03 batch on 2026-09-23. A review judges a diff, not a sha; keying the approval by the diff's patch-id keeps the short-circuit across a clean rebase while still re-reviewing a rebase that changed the patch.
-
-**Approach.**
-- src/git.ts — `patchId(wt, base, head): Promise<string | null>`: `git diff --no-color <base> <head>` piped into `git patch-id --stable`, returning the first field of the output, or null on any failure (the plumbing style of the file's other helpers).
-- src/types.ts — `LoopState.lastApprovedPatchId?: string` beside `lastApprovedHead` (:286).
-- src/review.ts — record it where `lastApprovedHead` is recorded (:379). The short-circuit at :188 becomes: approved when `lastApprovedHead === head` OR (`lastApprovedPatchId` is set and equals `patchId(wt, mainBranch, head)`). The gate's deterministic pre-check still runs on the new tree unless `verifiedHead` covers it — only the **model review** is reused; the check that the tree still builds is not skipped.
-
-**Files touched.** src/git.ts, src/types.ts, src/review.ts, test/git.test.ts, test/review.test.ts.
-
-**Acceptance criteria.**
-- An approved change rebased cleanly onto a moved main re-lands with zero reviewer runs and one build check.
-- A rebase that changes the patch (conflict resolution, or a hunk moved into different context that changed) re-reviews.
-- `patchId` is equal for the same diff taken from two different shas, and null-tolerant (a failed `git patch-id` never throws into the gate).
-
-**Series.** Replaces plan 2/3's step 2a (split 2026-09-26 so each step is one run; 2/3's why/target live on in its siblings). Siblings 2b, 2c, 2d below: 2c depends on this entry (the merge stage re-lands approved heads through the gate after a rebase) and on 2b; 2a and 2b have no dependency between them or on anything else.
-
 ### Land-queue speed 2c — Split landing into a parallel vetting stage and a serial merge stage (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
 
 **Status 2026-09-24 (partly delivered by the BUGS.md sweep):** two of its pieces landed as bug fixes. A batch's Phase A gates run concurrently, two at a time (`PHASE_A_CONCURRENCY`; each extra gate takes its own `maxConcurrent` permit through `BatchContext.gatePermit`), and a terminal Phase A verdict writes its outcome and drops its entry at once (`BatchContext.onFinal`). Still to do: the vetting/merge split, `maxConcurrentLandings`, and merging vetted entries ahead of an unvetted head.
@@ -90,7 +40,63 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Series.** Sibling of 2a, 2b, 2d. Depends on 2a (patch-id approvals survive the rebase into the merge stage) and 2b (concurrent vets mean concurrent suites); 1/3 first so a load flake costs one retry.
 
-### Land-queue speed 3c — One writer to main: route leftover recovery through the land queue (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
+## Done
+
+### Land-queue speed 1/3 — Take the build-fix run out of the landing slot: retry a failed gate check once, then hand the failure to whoever caused it (planned 2026-09-23, requested by user, done 2026-09-24)
+
+**Status 2026-09-24 (partly delivered by the BUGS.md sweep):** step 1 has landed. A failed gate check is re-run once, and a pass logs `gate check failed then passed on retry — flaky: <headline>` and proceeds as verified (the build-fix budget fix, 47c06df). That fix also caps the fix run that remains at 20 minutes (`BUILD_FIX_TIMEOUT_S`) under a shared-host prompt, and dc0d9a7 names any fix commit in the review prompt. Both BUGS.md entries the last acceptance criterion names are already in Fixed. Still to do: attributing a repeat failure through `checkMainBaseline` (step 2) and deleting the fix run (step 3).
+
+**Why.** The land queue is the fleet's bottleneck. A role cannot tick while its change is queued or landing (the merge-queue interlock), so every queued change idles one loop. On 2026-09-23 the queue sat at depth 6 (median), 10 at p90, and a change took 39 min (median) from `land_queued` to its outcome. The single worst cost is the gate's build-fix run (the "Fix a failed landing build check on the spot" plan under Done, user-requested 2026-09-21). It runs inside the one landing slot while the whole queue waits. That day it ran five times: coverage 27 min, dry 112 min and 215 min, feature 35 min, organize 46 min. That is about 7.3 h, of which about 5.4 h was inside the slot. **All five ended rejected; none led to a landing.** Dry's 07:44 run was the batch the 10:42 restart waited 97 minutes on (the self-redeploy Open bug). Dry's 03:48 run load-tested the live host and `pkill`ed every test runner (BUGS.md, the "bounded" build-fix entry). Most failures it chased were load flakes, not breakage.
+
+This supersedes the in-slot fix run from that plan and keeps its goal: a red **main** must not reject every queued change. That case now goes to the machinery that already exists for it. `checkMainBaseline` (src/main-baseline.ts:125) holds a per-SHA, fleet-wide verdict, and landings seed it green. The main-red gate (src/main-red.ts:84) already blocks authoring on a red main and hands the repair to bugfix (`bugfixMainRedNote`, :68). Real breakage by the author goes back to the author, whose next tick fixes it in its own parallel permit instead of in the serial slot.
+
+**Approach.**
+- src/review.ts — the pre-check `failed` branch in `reviewAheadOfMain` (the `runPi` fix run from :247 and its commit/re-check through the `verifiedByHarness` assignment ~:289) becomes:
+  1. **Retry once.** Re-run `runScopedBuildCheck(root, role, "gate", wt, config, …)`. If it passes, log `warnEvent(root, role, "gate check failed then passed on retry — flaky: <headline>")` and continue exactly like a first-time pass (`verifiedHead = head`, `verifiedByHarness` set). The warning names the flaky test so telemetry and bugfix can go after it.
+  2. **Still failing: attribute it.** Ask `checkMainBaseline(mirrorWorktreePath(root), config)` about main's current tip. Refresh the mirror to main first (`ensureDetachedWorktree` at main, the redeploy.ts idiom). It is usually a cache hit, because every landing seeds the SHA it moved main to.
+     - **Main green:** the change broke the check. `reject(reasons)` exactly as before 4803c07: deterministic, no pi run, reasons injected into the author's next tick.
+     - **Main red:** return `{ decision: "failed", detail: "main <sha> is red — not this change's failure" }` without advancing `unreviewFailures`, the transport-failure rule from BUGS.md 2026-09-20. The pin is kept, main-red.ts owns the repair, and the change re-lands on its author's next tick once main moves green.
+     - **Baseline null or skipped:** treat it as the author's failure and reject. This is the safe default, and the reasons say the baseline was unavailable.
+  3. Delete the fix-run path: `buildBuildFixPrompt` (src/prompt.ts:391), `GateResult.fixRun` and every `fixRun` carry, and the `tumwater(<role>): fix failing build check` commit. `GateResult.discarded` stays (the strike-cap tell).
+- src/lander.ts `reviewPinnedChange` — drop the `gate.fixRun` fold. Keep the `verifiedHead`/`setRef` pin-tracking, which still covers a green rebased head.
+- src/land-batch.ts — the `base..sha` range cherry-pick stays: it is correct for a single commit and harmless for more. Update the comment that justifies it by the fix run (:205–211).
+- README.md — the review-gate paragraph describes retry-then-attribute instead of the fix run.
+
+**Files touched.** src/review.ts, src/prompt.ts, src/lander.ts, src/land-batch.ts (comment only), README.md, test/review.test.ts, test/prompt.test.ts, test/lander.test.ts, test/land-batch tests that stage a fix run.
+
+**Acceptance criteria.**
+- Gate check fails then passes on retry → approved path, one flaky warning naming the failing headline, and no pi run spent before the reviewer.
+- Fails twice, and main's baseline at the tip is green (seed it with `noteGreenBaseline` in the test) → `review_rejected` with the check's reasons and zero pi runs. This is the pre-4803c07 behavior, restored by test/review.test.ts's "gate pre-check rejects a failing build with zero reviewer runs".
+- Fails twice, main baseline red → `decision: "failed"`, `unreviewFailures` unchanged, landing ref kept, no rejection recorded against the author.
+- No code path starts a pi run from the gate's pre-check branch; `buildBuildFixPrompt` no longer exists.
+- BUGS.md's "gate's bounded build-fix run has no time or resource budget" and "reviewer is never told about the gate's own build-fix commit" entries move to Fixed (the mechanism is gone).
+- `npm test` green.
+
+**Implemented 2026-09-24** in 4e9bf7f, with 91ef22a naming the red-main outcome. All criteria are met; the two BUGS.md entries were already in Fixed. After the one retry, `mainTipVerdict` (src/main-red.ts) asks `checkMainBaseline` about main's tip. Main green rejects with the check's reasons and zero pi runs. Main red returns `failed` with `mainRed`, and the landing reports `main_red`: pin kept, no strike, no dead-backend error streak. No verdict for main rejects, and the reasons say the baseline was unavailable. `buildBuildFixPrompt`, `buildFixConfig`, `BUILD_FIX_TIMEOUT_S`/`BUILD_FIX_QUIET_S`, `GateResult.fixRun` and the review prompt's fix-commit block are gone. Deltas: main is checked in its own `_gate-main` worktree (`gateMainWorktreePath`), not the redeploy mirror, which the redeployer compiles in; lookups are serialized in-process because Phase A gates run concurrently; the docs change is in docs/how-it-works.md.
+
+### Land-queue speed 2a — Approvals survive a clean rebase: key them by patch-id, not sha (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26, done 2026-09-24)
+
+**Status 2026-09-24:** BUGS.md's "fallback re-reviews every change it already approved" entry was fixed another way (45acd18). Phase A reviews each pin rebased onto main, and the one-change path and the fallback land the approved head through `landApprovedChange` with no second gate; the in-lock `verifyLanding` re-check covers the rebased tree. Patch-id approvals are still worth having for the single path: an approved change re-drained after main moved still pays a second review.
+
+**Why.** `reviewAheadOfMain` short-circuits a re-review only on an exact sha match (`state.lastApprovedHead === head`, src/review.ts:188), but `landChange` rebases onto main before the gate (src/lander.ts:190) — so any approved change whose main moved pays a full second reviewer run. This is BUGS.md's open "batch's one-at-a-time fallback re-reviews every change it already approved" entry: about 12 wasted minutes in the 05:03 batch on 2026-09-23. A review judges a diff, not a sha; keying the approval by the diff's patch-id keeps the short-circuit across a clean rebase while still re-reviewing a rebase that changed the patch.
+
+**Approach.**
+- src/git.ts — `patchId(wt, base, head): Promise<string | null>`: `git diff --no-color <base> <head>` piped into `git patch-id --stable`, returning the first field of the output, or null on any failure (the plumbing style of the file's other helpers).
+- src/types.ts — `LoopState.lastApprovedPatchId?: string` beside `lastApprovedHead` (:286).
+- src/review.ts — record it where `lastApprovedHead` is recorded (:379). The short-circuit at :188 becomes: approved when `lastApprovedHead === head` OR (`lastApprovedPatchId` is set and equals `patchId(wt, mainBranch, head)`). The gate's deterministic pre-check still runs on the new tree unless `verifiedHead` covers it — only the **model review** is reused; the check that the tree still builds is not skipped.
+
+**Files touched.** src/git.ts, src/types.ts, src/review.ts, test/git.test.ts, test/review.test.ts.
+
+**Acceptance criteria.**
+- An approved change rebased cleanly onto a moved main re-lands with zero reviewer runs and one build check.
+- A rebase that changes the patch (conflict resolution, or a hunk moved into different context that changed) re-reviews.
+- `patchId` is equal for the same diff taken from two different shas, and null-tolerant (a failed `git patch-id` never throws into the gate).
+
+**Series.** Replaces plan 2/3's step 2a (split 2026-09-26 so each step is one run; 2/3's why/target live on in its siblings). Siblings 2b, 2c, 2d below: 2c depends on this entry (the merge stage re-lands approved heads through the gate after a rebase) and on 2b; 2a and 2b have no dependency between them or on anything else.
+
+**Implemented 2026-09-24** in 689a293. All criteria are met. `patchId` (src/git.ts) hashes the `base...head` diff, the range the reviewer is shown. The gate records `lastApprovedPatchId` beside `lastApprovedHead` and reuses the approval after the build pre-check ran on the new tree. Deltas: `git patch-id --verbatim` (not `--stable`, which ignores whitespace-only changes) with `--binary --no-ext-diff --no-textconv` on the diff; src/state.ts clears the patch-id once a change lands, so a later identical patch is reviewed again.
+
+### Land-queue speed 3c — One writer to main: route leftover recovery through the land queue (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23, done 2026-09-24)
 
 **Status 2026-09-24 (partly delivered by the BUGS.md sweep):** the land-batch backstop landed with the `merge_blocked` race fix (3073644). A batch that loses the fast-forward re-stacks onto the new tip and re-checks, at most `BATCH_RESTACK_ATTEMPTS` (2) times, and skips the re-check when main gained only exempt paths. Still to do: routing leftover recovery through the land queue, the one-writer half. That fix's Fix paragraph in BUGS.md records why it was left out.
 
@@ -109,7 +115,9 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Series.** Sibling of 3a, 3b, 3d, 3e — independent, any order.
 
-### Land-queue speed 3d — When a batch check is red, land the largest passing prefix (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
+**Implemented 2026-09-24** in 3206c2e. All criteria are met; the re-stack backstop was already in (3073644). `recoverLeftover` enqueues the pin with its summary, body and high-friction flag read back from the commit message, or reports `already_queued`, and the tick ends `queued` with no in-tick landing. Deltas: a leftover that cannot be pinned fails the tick instead of landing unpinned; a re-queued pin whose last landing failed retriably still feeds the error streak (`recoveryFailure`); the fallback breaker ignores recovery ticks (`TickOutcome.recoveredLeftover`). A pin that keeps failing non-terminally, such as a repeated `merge_conflict`, now keeps its role re-queuing instead of being dropped by the next authored commit; a retry cap may be worth a follow-up.
+
+### Land-queue speed 3d — When a batch check is red, land the largest passing prefix (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23, done 2026-09-24)
 
 **Why.** Today a red scope-`batch` check abandons to one-at-a-time landing (src/land-batch.ts:253), re-gating every change — one broken change in a stack of N costs N full gates, all inside the one landing slot.
 
@@ -126,7 +134,7 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Series.** Sibling of 3a, 3b, 3c, 3e — independent, any order. Pairs well with 2a but does not depend on it.
 
-## Done
+**Implemented 2026-09-24** in c35f78c. All criteria are met. After a red scope-`batch` check, `landStack` checks the first half of that stack, lands the longest passing prefix with one ff, and repeats on the remainder. A single change red on its own goes to `attributeRedChange`: main green rejects it with the check's reasons (no pi run), main red returns `main_red` with the pin kept, and no baseline rejects saying so. Changes after a rejected one are left for the next drain. Deltas: the baseline is checked in the batch's own worktree, not the redeploy mirror; a throw after the first stack attempt becomes `error` on that step's head change, so prefixes already on main keep `changed`.
 
 ### Land-queue speed 2b — One process-wide cap on concurrent build checks: `maxConcurrentChecks` (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26, done 2026-09-24)
 
