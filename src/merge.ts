@@ -289,11 +289,14 @@ export async function continueRebase(wt: string): Promise<string> {
  * (one-shot, as tryMerge's). No rebase and no in-lock re-check inside this helper — that is
  * what makes the batch's one shared stack check sufficient (the design invariant): nothing
  * rewrites between the lander's green check and this ff, so a successful ff makes main
- * byte-identical to the checked tip. `noteGreenBaseline` stays out of it too — the lander
+ * byte-identical to the checked tip (or, after a doc-only re-stack, to that tip plus the
+ * doc-only commits main gained). `noteGreenBaseline` stays out of it too — the lander
  * seeds the stacked tip, because it alone knows whether its own check passed. A failed ff
  * (main moved under the batch — diverged history) returns "merge_blocked" with NO events and
- * no ref changes: the lander keeps every change's ref for one-at-a-time recovery, whose
- * tryMerge carries the in-lock check. The single-change path is untouched. */
+ * no ref changes: the lander re-stacks onto the new tip and calls this again (bounded by
+ * land-batch.ts's BATCH_RESTACK_ATTEMPTS), and only a race lost on every attempt keeps every
+ * change's ref for one-at-a-time recovery, whose tryMerge carries the in-lock check. The
+ * single-change path is untouched. */
 export async function ffStackToMain(
   root: string,
   mainBranch: string,

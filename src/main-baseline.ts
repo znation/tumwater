@@ -105,8 +105,9 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
  * main: verifyLanding with the POST-rebase head in two cases — its own in-lock re-check just ran
  * this project's declared check green on that tree, or the rebase was a no-op so the review
  * gate's pre-check (which runs outside the merge lock) had already run green on exactly this
- * tree — and landBatch with the stacked tip when the batch's one scope-`batch` check ran green
- * on it (a skipped check seeds nothing, and a merge_blocked stack seeds nothing either).
+ * tree — and landBatch with the stacked tip when a scope-`batch` check ran green on exactly
+ * it (a skipped check seeds nothing, and neither does a merge_blocked stack or a doc-only
+ * re-stack that landed without a check of its own).
  * Seeding here means that once the merge lands — main now points at this very SHA — the next
  * fresh tick's checkMainBaseline is a cache hit instead of re-running the full suite on an
  * already-verified tree: for tumwater itself that saves one redundant `npm test` (~1 min) per

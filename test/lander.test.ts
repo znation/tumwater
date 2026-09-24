@@ -8,6 +8,7 @@ import {
   type LanderContext,
 } from "../src/lander.js";
 import {
+  BATCH_RESTACK_ATTEMPTS,
   landBatch,
   type BatchContext,
   type BatchRoleWiring,
@@ -21,7 +22,7 @@ import { freshLoopState, saveLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LoopState, PiRunResult } from "../src/types.js";
-import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import { assistantLine, fakePi, makeRepo, sh, tmpdir, waitForFile } from "./util.js";
 
 // Unit coverage for src/lander.ts's landChange — the harness-owned review-and-land of a pinned
 // commit in _land-<role> (merge queue 2/5). The reviewer run is a real pi subprocess behind the
@@ -657,41 +658,174 @@ test("a batch stacks a fixed change's work AND fix commits, not the fix alone", 
   }
 });
 
-test("a fast-forward blocked by a concurrent landing keeps every ref as merge_blocked", async () => {
-  // Main moves while the batch's shared check runs — a human commit or a non-batched role's
-  // recovery landing. The stack was assembled on the old tip, so its tip is no longer a
-  // descendant of main and the single ff fails: every approved change must keep its ref for
-  // leftover recovery (which re-lands each through its own gate) and nothing may merge.
-  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
-  // The check moves main on its THIRD run only: the two gate pre-checks pass, then the batch
-  // check passes but commits a concurrent landing, so the batch's ff is no longer fast-forward.
+// ── A fast-forward lost to a moved main: re-stack, not merge_blocked (BUGS.md 2026-09-23) ──
+// Main moves while the batch's shared check runs — the window is the whole check, and a role's
+// in-tick leftover-recovery landing still writes main outside the land queue. The stack was
+// assembled on the old tip, so its single ff fails; the batch must re-stack on the new tip
+// and go round again rather than send every approved change back through recovery.
+
+/** A counting build check: `$n` is the invocation's 1-based number — runs 1 and 2 are the two
+ * Phase A gate pre-checks, run 3 is the batch's first shared check — and `body` runs before
+ * the check passes (or fails, if `body` exits nonzero). */
+function countingCheck(root: string, body: string): void {
   const count = path.join(root, ".checkcount");
-  declareCheck(
-    root,
-    `#!/bin/sh\nc=$(cat ${count} 2>/dev/null || echo 0)\nn=$((c+1))\necho "$n" > ${count}\n` +
-      `if [ "$n" = "3" ]; then git -C ${root} commit --allow-empty -m "concurrent landing"; fi\necho ok\n`,
-  );
+  declareCheck(root, `#!/bin/sh\nc=$(cat ${count} 2>/dev/null || echo 0)\nn=$((c+1))\necho "$n" > ${count}\n${body}\necho ok\n`);
+}
+
+/** Shell that lands one commit on main from inside a running check — the primary checkout
+ * sits on main, so a commit there is main moving under the batch. `line` is single-quoted
+ * into the script, so it must not contain a quote itself. */
+const commitOnMain = (root: string, file: string, line: string): string =>
+  `echo '${line}' >> ${path.join(root, file)} && git -C ${root} add ${file} && git -C ${root} commit -q -m 'concurrent ${file}'`;
+
+/** Shell that parks the check until the test drops `release` (bounded at 60 s, so a broken
+ * test can never hang the suite), after first announcing itself through `started`. */
+const parkUntil = (started: string, release: string): string =>
+  `touch ${started}; i=0; while [ ! -f ${release} ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done`;
+
+const batchChecks = (root: string) =>
+  readEvents(root).filter((e) => e.type === "build_check" && e.scope === "batch");
+
+test("a batch whose base main moves mid-check through a tick-path landing re-stacks and lands", async () => {
+  // The Repro exactly: a slow batch check, and while it runs another role's leftover recovery
+  // lands through the tick path's landChange. The ff loses, the batch re-stacks on the new tip,
+  // re-checks it (the racer is code, not docs), and lands both changes on top of the racer.
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"]);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const started = path.join(root, ".batch-started");
+  const release = path.join(root, ".batch-release");
+  countingCheck(root, `if [ "$n" = "3" ]; then ${parkUntil(started, release)}; fi`);
   const restore = fakePi(APPROVE_PI);
   try {
+    const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor);
+    await waitForFile(started); // the batch's shared check is running on the old tip
+    const { ctx } = makeCtx(root, freshLoopState("gamma"));
+    assert.equal(await landChange(ctx, request(shas.gamma!, { role: "gamma" })), "changed", "the racer landed");
+    fs.writeFileSync(release, "");
 
+    const results = await batch;
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "re-stacked, not merge_blocked");
+    assert.deepEqual(
+      sh(root, "git", "log", "--format=%s", `${mainBefore}..main`).split("\n"),
+      ["work by beta", "work by alpha", "work by gamma"],
+      "the stack landed on top of the racer, in queue order",
+    );
+    const merged = readEvents(root).filter((e) => e.type === "merged");
+    assert.deepEqual(merged.map((e) => e.loop), ["gamma", "alpha", "beta"]);
+    assert.equal(merged[2]!.commit, sh(root, "git", "rev-parse", "main"), "the re-stacked tip is main's head");
+    assert.deepEqual(
+      batchChecks(root).map((e) => e.status),
+      ["passed", "passed"],
+      "the first check, then one re-check of the re-stacked tree",
+    );
+    assert.equal(await refSha(root, landingRefName("alpha")), null, "landed: the head's ref is gone");
+    assert.equal(await refSha(root, landingRefName("beta")), null, "and the stacked change's");
+  } finally {
+    fs.writeFileSync(release, ""); // never leave the parked check waiting out its bound
+    restore();
+  }
+});
+
+test("a fast-forward lost to a doc-only commit re-stacks without a second batch check", async () => {
+  // The exempt case: the tree the re-stack builds is the checked tree plus doc-only bytes —
+  // the gate's own exemption test says that cannot break the build, so no second check runs.
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  countingCheck(root, `if [ "$n" = "3" ]; then ${commitOnMain(root, "NOTES.md", "a doc edit")}; fi`);
+  const restore = fakePi(APPROVE_PI);
+  try {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     assert.deepEqual(
-      results.map((r) => r.result),
-      ["merge_blocked", "merge_blocked"],
-      "a blocked ff leaves every approved change for recovery",
+      sh(root, "git", "log", "--format=%s", `${mainBefore}..main`).split("\n"),
+      ["work by beta", "work by alpha", "concurrent NOTES.md"],
     );
-    assert.notEqual(sh(root, "git", "rev-parse", "main"), shas.beta!, "the stack did not land");
+    assert.equal(batchChecks(root).length, 1, "the doc-only re-stack reused the first check's verdict");
+    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 2);
+  } finally {
+    restore();
+  }
+});
+
+test("a batch that loses the fast-forward race on every attempt keeps every ref as merge_blocked", async () => {
+  // Main moves (with code) during EVERY batch check — the first and each re-stack's re-check.
+  // Past BATCH_RESTACK_ATTEMPTS the batch gives up to leftover recovery: every approved change
+  // keeps its ref and nothing merges.
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  countingCheck(root, `if [ "$n" -ge 3 ]; then ${commitOnMain(root, "race.txt", "main moved")}; fi`);
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["merge_blocked", "merge_blocked"]);
+    assert.equal(batchChecks(root).length, 1 + BATCH_RESTACK_ATTEMPTS, "the first check plus one per re-stack");
     assert.equal(
       sh(root, "git", "rev-list", "--count", `${mainBefore}..main`),
-      "1",
-      "only the concurrent landing is new on main",
+      String(1 + BATCH_RESTACK_ATTEMPTS),
+      "only the concurrent commits are new on main",
     );
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the head keeps its ref");
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "and the stacked change keeps its");
     assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0, "nothing merged");
   } finally {
+    restore();
+  }
+});
+
+test("a re-stack that conflicts with what main gained falls back to one-at-a-time", async () => {
+  // Main gains a beta.txt of its own mid-check: the re-stack's pick of beta's change conflicts,
+  // so the batch abandons to the per-change path exactly as a first-assembly conflict does —
+  // alpha lands singly, beta resolves through the single path's conflict resolver.
+  const { root, shas, wiringFor, calls } = await batchFixture(["alpha", "beta"], {
+    resolve: (wt) => fs.writeFileSync(path.join(wt, "beta.txt"), "both\n"),
+  });
+  countingCheck(root, `if [ "$n" = "3" ]; then ${commitOnMain(root, "beta.txt", "main beta")}; fi`);
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "both landed one at a time");
+    assert.equal(batchChecks(root).length, 1, "the conflicting re-stack never reached a second batch check");
+    assert.equal(calls.length, 1, "one resolution run, for the conflicting change");
+    assert.equal(sh(root, "git", "show", "main:beta.txt"), "both", "the resolution landed on main");
+    assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"));
+    assert.equal(await refSha(root, landingRefName("beta")), null, "the fallback deleted its ref");
+  } finally {
+    restore();
+  }
+});
+
+test("an abort between re-stack attempts stops the batch: aborted, refs kept, nothing lands", async () => {
+  // A shutdown that arrives while the first batch check runs must not start a re-stack (and
+  // its possible second full check) after the lost race.
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+  const started = path.join(root, ".batch-started");
+  const release = path.join(root, ".batch-release");
+  countingCheck(
+    root,
+    `if [ "$n" = "3" ]; then ${commitOnMain(root, "race.txt", "main moved")}; ${parkUntil(started, release)}; fi`,
+  );
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const controller = new AbortController();
+    const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
+    await waitForFile(started);
+    const mainMid = sh(root, "git", "rev-parse", "main");
+    controller.abort();
+    fs.writeFileSync(release, "");
+
+    const results = await batch;
+
+    assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
+    assert.equal(batchChecks(root).length, 1, "no re-stack check after the abort");
+    assert.equal(sh(root, "git", "rev-parse", "main"), mainMid, "nothing landed after the racer");
+    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an abort keeps the refs for recovery");
+    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+  } finally {
+    fs.writeFileSync(release, "");
     restore();
   }
 });
