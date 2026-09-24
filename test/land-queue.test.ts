@@ -1,6 +1,6 @@
 /** Durable land queue (plans/merge-queue.md 3/5): the file discipline — enqueue ordering,
- * head selection, per-role filter, drop, and the stat-keyed content cache. The drain's full
- * path (landQueuedEntry) is pinned through landHead in the loop tests and the orchestrator's
+ * head selection, per-role filter, drop, and the stat-keyed content cache. The pipeline's full
+ * path (landing-drain.ts) is pinned through landHead in the loop tests and the orchestrator's
  * e2e; the interlock (a role with a queued or in-flight landing never ticks) is pinned in the
  * orchestrator tests too. */
 import test from "node:test";

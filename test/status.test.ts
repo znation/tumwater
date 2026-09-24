@@ -457,11 +457,11 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   assert.equal(snap.landQueue.inFlight, undefined);
 });
 
-// A batch marker (merge queue 5/5) carries one record per batched change, and the snapshot
-// cross-checks each against its still-queued entry: every batched row then reads its OWN
-// change's state, and a change whose verdict is final shows nothing (BUGS.md 2026-09-23 —
-// the head-only marker kept a rejected head reading `landing` for the whole batch).
-test("a batch marker is cross-checked per change and each batched row reads its own change's state", async () => {
+// The marker carries one record per change the landing pipeline holds, and the snapshot
+// cross-checks each against its still-queued entry: every row then reads its OWN change's
+// state, and a change the merge is done with shows nothing (BUGS.md 2026-09-23 — a head-only
+// marker kept a rejected head reading `landing` for a whole batch).
+test("the marker is cross-checked per change and each row reads its own change's state", async () => {
   const repo = makeRepo();
   await initProject(repo, "batch marker snapshot");
   const t0 = Date.now() - 20 * 60_000;
@@ -478,9 +478,9 @@ test("a batch marker is cross-checked per change and each batched row reads its 
     changes: [
       { role: "clean", sha: "c1ea000", summary: "clean work", status: "done", startedAt: t0 },
       { role: "bugfix", sha: "b0f1000", summary: "bugfix work", status: "landing", startedAt: betaStart },
-      { role: "feature", sha: "fea7000", summary: "feature work", status: "waiting" },
-      { role: "dry", sha: "d1a0000", summary: "dry work", status: "approved", startedAt: t0 },
-      // A record whose entry is gone (dropped mid-batch, or a crash) is finished, whatever
+      { role: "feature", sha: "fea7000", summary: "feature work", status: "vetted", startedAt: t0, stage: "merging" },
+      { role: "dry", sha: "d1a0000", summary: "dry work", status: "landing", startedAt: t0, stage: "build-check" },
+      // A record whose entry is gone (its outcome written, or a crash) is finished, whatever
       // its record last said: the cross-check drops it.
       { role: "plan", sha: "91a0000", summary: "plan work", status: "landing", startedAt: t0 },
     ],
@@ -493,8 +493,8 @@ test("a batch marker is cross-checked per change and each batched row reads its 
   );
   const text = renderStatus(repo, snap);
   assert.match(text, /^bugfix +landing 1m30s/m, "the change under review reads landing with its own elapsed");
-  assert.match(text, /^feature +queued in batch/m);
-  assert.match(text, /^dry +approved, awaiting batch/m);
+  assert.match(text, /^feature +vetted, awaiting merge/m);
+  assert.match(text, /^dry +landing 20m\S* · build check/m, "a second vet in flight reads its own elapsed and stage");
   assert.doesNotMatch(text, /^clean +landing/m, "a finished change keeps no live landing label");
   assert.match(text, /^clean +queued/m, "its row reads its own state again");
   assert.doesNotMatch(text, /^plan +landing/m, "a record with no queued entry never displays");
@@ -507,6 +507,6 @@ test("a batch marker is cross-checked per change and each batched row reads its 
   }
   snap = snapshot(repo);
   assert.equal(snap.landQueue.depth, 1);
-  assert.equal(snap.landQueue.inFlight, undefined, "a batch marker whose live records are all done never displays");
+  assert.equal(snap.landQueue.inFlight, undefined, "a marker whose live records are all done never displays");
   fs.rmSync(orchestratorStatePath(repo));
 });

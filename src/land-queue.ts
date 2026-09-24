@@ -7,9 +7,9 @@ import type { LandingEntry } from "./types.js";
 
 /** The durable land queue (plans/merge-queue.md 3/5): a changed tick commits, pins its sha by
  * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the tick ENDS, holding no
- * author slot through review or the build check. The orchestrator drains the queue on its
- * single landing slot, outside the author semaphore: it starts the head entry when no landing
- * is in flight, and drops the entry after EVERY outcome (a non-terminal one keeps the landing
+ * author slot through review or the build check. The orchestrator drains the queue through its
+ * landing pipeline (landing-drain.ts): it vets every queued entry, merges the vetted ones in
+ * queue order on one merge slot, and drops each entry after EVERY outcome (a non-terminal one keeps the landing
  * ref, so the retry rides next-tick leftover recovery at normal cadence — the queue never
  * retries). Timestamped filenames order the queue across processes; a crash between enqueue
  * and drop loses nothing — the next start drains the survivors, deduping shas main already
@@ -98,8 +98,7 @@ export function queuedLandings(root: string): LandingEntry[] {
   return queuedLandingFiles(root).map((q) => q.entry);
 }
 
-/** The head of the queue — the single entry the orchestrator's landing slot drains per poll —
- * plus the file to drop on completion, or null when the queue is empty or its oldest file is
+/** The head of the queue — its oldest entry — plus the file to drop on completion, or null when the queue is empty or its oldest file is
  * a vanished/torn entry. */
 export function headLanding(root: string): { entry: LandingEntry; file: string } | null {
   const file = queueFiles(root)[0];

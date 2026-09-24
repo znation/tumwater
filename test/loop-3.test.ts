@@ -17,7 +17,6 @@ import { freshLoopState, loadLoopState, saveLoopState, ERROR_STREAK_WARN } from 
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
-import { landQueuedEntry } from "../src/landing-slot.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { assistantLine, errorLine, fakePi, initializedRepo, landHead, sh, tmpdir, waitForFile } from "./util.js";
 
@@ -174,7 +173,7 @@ test("a user-abort mid-review discards the committed work too", async () => {
   // Author run (the tick prompt): make a change and finish. Review run (its prompt contains
   // VERDICT): hang until the abort kills it — simulating `tumwater abort` while under review.
   // Since merge queue 3/5 the gate runs in the LANDING, not the tick: the abort below hits
-  // landQueuedEntry's signal (the same wiring the orchestrator's drain hands it). At the
+  // the landing's signal (the same wiring the orchestrator's pipeline hands its vets). At the
   // loop level an aborted landing KEEPS the pin — the drain adds the deliberate-stop ref
   // deletion on top (pinned in the orchestrator tests). The queue entry itself is dropped:
   // retry rides the pin, never the queue.
@@ -193,15 +192,7 @@ test("a user-abort mid-review discards the committed work too", async () => {
     assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the landing's");
     const head = headLanding(repo);
     assert.ok(head, "the landing is queued");
-    const landing = landQueuedEntry(
-      repo,
-      head.entry,
-      head.file,
-      runner,
-      defaultConfig(),
-      "main",
-      controller.signal,
-    );
+    const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
     // Abort only once the lander worktree exists: an earlier abort would hit nothing.
     await waitForFile(path.join(repo, ".tumwater/worktrees/_land-director"));
     controller.abort();
@@ -957,7 +948,7 @@ test("a shutdown mid-landing fails closed: the pinned commit survives for next-s
   // Author run (the tick prompt): make a change and finish. Review run (its prompt contains
   // VERDICT): hang until the abort kills it — simulating Ctrl+C while the LANDING is under
   // review. Since merge queue 3/5 the gate runs in the landing, not the tick, so the
-  // shutdown hits landQueuedEntry's signal — the same wiring the orchestrator's drain uses.
+  // shutdown hits the landing's signal — the same wiring the orchestrator's pipeline uses.
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
@@ -973,15 +964,7 @@ test("a shutdown mid-landing fails closed: the pinned commit survives for next-s
     assert.equal(outcome.result, "queued", "the tick ends at the pin; the landing runs after");
     const head = headLanding(repo);
     assert.ok(head, "the landing is queued");
-    const landing = landQueuedEntry(
-      repo,
-      head.entry,
-      head.file,
-      runner,
-      defaultConfig(),
-      "main",
-      controller.signal,
-    );
+    const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
     // Abort only once the lander worktree exists: an earlier abort would hit nothing.
     await waitForFile(path.join(repo, ".tumwater/worktrees/_land-director"));
     controller.abort();

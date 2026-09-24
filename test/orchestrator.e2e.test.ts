@@ -792,16 +792,18 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => readSamples(runDir).length >= 5, "several pi runs across the landing and role ticks");
+    // The contention was real: clean's change landed through its reviewer while bugfix ticked.
+    // Wait for the landing too, not only the runs: the vet frees its permit when its review
+    // ends, and the merge after it (which runs no pi) can log `landed` just after bugfix's next
+    // tick has started.
+    await waitFor(
+      () => readSamples(runDir).length >= 5 && readEvents(repo).some((e) => e.type === "landed" && e.loop === "clean"),
+      "several pi runs across the landing and role ticks, and clean's change landed",
+    );
     const samples = readSamples(runDir);
     assert.ok(
       samples.every((n) => n <= 1),
       `a landing and a role tick never share the backend at maxConcurrent 1 (samples: ${samples})`,
-    );
-    // The contention was real: clean's change landed through its reviewer while bugfix ticked.
-    assert.ok(
-      readEvents(repo).some((e) => e.type === "landed" && e.loop === "clean"),
-      "clean's change landed through the reviewer",
     );
   } finally {
     restore();

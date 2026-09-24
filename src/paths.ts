@@ -161,8 +161,8 @@ export function inboxDir(root: string): string {
 }
 
 /** The durable land queue (src/land-queue.ts): a changed tick's pinned commit waits here as
- * one JSON file for the orchestrator's single landing slot, which drains it outside the author
- * semaphore (plans/merge-queue.md 3/5). Like the inbox it is a directory of timestamped files —
+ * one JSON file for the orchestrator's landing pipeline (plans/merge-queue.md 3/5, land-queue
+ * speed 2c). Like the inbox it is a directory of timestamped files —
  * a crash between enqueue and drop loses nothing, and `tumwater status` can read it without the
  * scheduler. */
 export function landQueueDir(root: string): string {

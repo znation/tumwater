@@ -30,8 +30,8 @@ file to edit instead. The prompt is capped at 4096 characters because it rides i
 
 ## The landing gate
 
-A tick ends as soon as its commit is queued. A single serial lander drains the queue, so other
-loops keep ticking while a change is under review.
+A tick ends as soon as its commit is queued. Queued changes are vetted in parallel and one serial
+merge step lands them, so other loops keep ticking while a change is under review.
 
 - **Rebase.** The change is rebased onto current main first, so the gate checks what will
   actually land.
@@ -55,22 +55,21 @@ loops keep ticking while a change is under review.
   `landBatchMax` (default 3) land together under one check. A red batch lands its longest
   passing prefix and checks the rest again. A change that is red on its own is rejected, unless
   main is red too, in which case its pin is kept for later.
-- **Parallel vetting.** `maxConcurrentLandings` (default 1) sets how many queued changes are
-  rebased, checked and reviewed at once, each in its own lander worktree. At 1 the single lander
-  does everything, one landing or batch at a time. Above 1, a change that fails vetting frees
-  its author at once, and a separate merge step lands vetted changes in queue order, up to
-  `landBatchMax` per stack, without waiting on a slower review ahead of them. A vetted change
-  whose base moved is checked again before it lands. Above 1, each vet is its own stream to the
-  provider, so the fleet can run `maxConcurrent` + `maxConcurrentLandings` + the director at
-  once. While the budget gate is on the fallback model, the setting counts as 1.
+- **Parallel vetting.** Each queued change is rebased, checked and reviewed in its own lander
+  worktree, several at once. A vet counts as active work: it holds one of the `maxConcurrent`
+  slots role ticks use, ahead of any waiting tick, so landings never add streams to the
+  provider beyond `maxConcurrent` plus the director. A change that fails vetting frees its
+  author at once, and the merge step lands vetted changes in queue order, up to `landBatchMax`
+  per stack, without waiting on a slower review ahead of them. A vetted change whose base moved
+  is checked again before it lands.
 
 Errors keep the commit for re-review, up to three strikes. `tumwater abort --role <id>`
 discards a role's in-flight landing.
 
 ## Scheduling
 
-- `maxConcurrent` caps parallel ticks. Work roles (feature, bugfix, plan) get slots before
-  maintenance roles.
+- `maxConcurrent` caps parallel ticks and landing vets together. Landings get slots first, then
+  work roles (feature, bugfix, plan), then maintenance roles.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: gate, landing, batch, and main-baseline checks share it, the rest queue, and landings go
   first.
@@ -102,7 +101,7 @@ session and uncommitted edits. Crashes recover the same way, and so do runs the 
 going quiet, up to three in a row. An interrupted landing re-lands through the gate, and an
 interrupted director prompt goes back to its inbox. A commit left unlanded (a landing error that
 kept it, or a crash before it was queued) goes back on the land queue at the role's next tick,
-which ends there instead of authoring, so the single lander stays main's only writer. A commit
+which ends there instead of authoring, so the one merge step stays main's only writer. A commit
 whose last three landings all hit merge conflicts that conflict resolution could not settle is
 dropped instead, and the role's next prompt says so.
 

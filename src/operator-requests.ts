@@ -76,15 +76,15 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
  * marker's presence IS the request, removing it acknowledges. Since merge queue 3/5 a role's
  * in-flight work is often a LANDING rather than a tick, so the landing's controller is passed
  * in: an abort for the role landing right now kills that too (the drain's task sees
- * `userAborted` and discards the pinned ref when the landing ends). Since merge queue 5/5 the
- * in-flight unit can be a whole BATCH, so the request matches ANY batched role — `roles`
- * is every role the slot is landing right now, and a stop for one of them kills the whole
- * batch: the lander cannot split it (abandoning mid-batch would leave the pinned refs of the
- * not-yet-processed changes for one-at-a-time recovery, which is already the fallback).
- * The drain's task discards every batched ref when a userAborted batch ends. Since land-queue
- * speed 2c there can be several in-flight units at once — one per change being vetted, the
- * merge slot's stack, and each vetted change waiting for it (flagged, then settled by the
- * drain) — so `landings` lists them all and the request stops whichever holds the role. */
+ * `userAborted` and discards the pinned ref when the landing ends). There can be several
+ * in-flight units at once (land-queue speed 2c) — one per change being vetted, the merge
+ * slot's stack, and each vetted change waiting for it (flagged, then settled by the drain) — so
+ * `landings` lists them all and the request stops whichever holds the role. The merge is a
+ * whole STACK (merge queue 5/5), so the request matches ANY of its roles — `roles` is every role
+ * it is landing right now, and a stop for one of them kills the whole stack: the lander cannot
+ * split it (abandoning mid-stack would leave the pinned refs of the not-yet-processed changes
+ * for one-at-a-time recovery, which is already the fallback), and the merge discards every
+ * stacked ref when it ends. */
 export function consumeAbortRequests(
   root: string,
   runners: LoopRunner[],

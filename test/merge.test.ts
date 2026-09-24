@@ -651,7 +651,7 @@ test("a conflict resolution is re-verified inside the lock before landing", asyn
 // ── ffStackToMain (merge queue 5/5) ──────────────────────────────────────────────────────
 
 /** A repo with main at its seed commit and a two-commit stack built off it (a.txt, then
- * b.txt on top), detached — the shape landBatch's assembly leaves before the ff. */
+ * b.txt on top), detached — the shape a stack's assembly (land-batch.ts) leaves before the ff. */
 async function stackFixture(): Promise<{ root: string; shaA: string; shaB: string }> {
   const root = makeRepo();
   // The merge lock's parent dir — withLock mkdir's <root>/.tumwater/merge.lock without

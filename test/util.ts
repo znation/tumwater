@@ -8,8 +8,9 @@ import { strict as assert } from "node:assert";
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { runOrchestrator } from "../src/orchestrator.js";
-import { landQueuedEntry } from "../src/landing-slot.js";
+import { drainMerge, newLandingPipeline, startVet, type LandingPipelineContext } from "../src/landing-drain.js";
 import { headLanding } from "../src/land-queue.js";
+import { Semaphore } from "../src/semaphore.js";
 import { LoopRunner } from "../src/loop.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
@@ -413,30 +414,45 @@ export function landWork(repo: string): void {
   sh(repo, "git", "commit", "-m", "tumwater(feature): test work landing");
 }
 
-/** Land the head of the durable land queue through the orchestrator's own drain code path
- * (merge queue 3/5). Loop-level tests call `runner.tick()` directly — no poll loop — so the
- * entry a changed tick enqueues needs a driver, and `landQueuedEntry` IS what the drain calls
- * (one per queue head per poll). Returns the lander's outcome; the entry is dropped after
- * every outcome, exactly as the drain does. */
+/** Land the head of the durable land queue through the orchestrator's own landing pipeline
+ * (landing-drain.ts). Loop-level tests call `runner.tick()` directly — no poll loop — so the
+ * entry a changed tick enqueues needs a driver: this vets the head alone (startVet, on a
+ * one-permit semaphore) and, once vetted, merges it (drainMerge), leaving every other queued
+ * entry untouched — a test that ticks a second role meanwhile lands that one with its own call.
+ * `signal` stands in for harness shutdown (the orchestrator's stop signal). Returns the
+ * landing's outcome as folded into `runner`'s state; the entry is dropped after every outcome,
+ * exactly as the pipeline does. */
 export async function landHead(
   repo: string,
   runner: LoopRunner,
   config: TumwaterConfig,
   role: string,
   branch = "main",
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<TickResult> {
   const head = headLanding(repo);
   if (!head) throw new Error("expected a queued landing");
   assert.equal(head.entry.role, role, "the queue head belongs to the expected role");
-  return await landQueuedEntry(
-    repo,
-    head.entry,
-    head.file,
-    runner,
-    config,
-    branch,
-    new AbortController().signal,
-  );
+  assert.equal(runner.role, role, "the landing folds into its own role's runner");
+  const ctx: LandingPipelineContext = {
+    root: repo,
+    mainBranch: branch,
+    signal,
+    semaphore: new Semaphore(1),
+    runners: [runner],
+    liveConfig: config,
+    roleConfig: config,
+    startHeld: () => false,
+  };
+  const pipeline = newLandingPipeline();
+  startVet(ctx, pipeline, head.entry, head.file);
+  await Promise.all([...pipeline.vetting.values()].map((v) => v.promise));
+  drainMerge(ctx, pipeline);
+  await pipeline.merge?.promise;
+  if (fs.existsSync(head.file)) throw new Error(`the landing of ${role} ended without an outcome`);
+  const result = runner.state.lastResult;
+  if (result === undefined) throw new Error(`the landing of ${role} recorded no result`);
+  return result;
 }
 
 // --- GUI server scaffolding ---

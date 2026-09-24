@@ -547,7 +547,7 @@ export class LoopRunner {
       logEvent(this.root, { loop: this.role, type: "resume", cause: resumeCause });
     } else {
       // Salvage a commit a previous tick left unlanded (src/leftover.ts): recovery puts it back
-      // on the land queue, so it lands through the orchestrator's single landing slot — the same
+      // on the land queue, so it lands through the orchestrator's landing pipeline — the same
       // gate as a fresh tick's change, and main keeps exactly one writer (an in-tick recovery
       // landing raced the slot's batches into `merge_blocked`). A salvaged leftover ENDS the
       // tick: the role holds one landing ref, and the leftover owns it until its landing
@@ -759,8 +759,9 @@ export class LoopRunner {
     }
 
     // The commit is pinned and the worktree is free: enqueue the landing and END the tick — the
-    // orchestrator drains the queue on its single landing slot, outside the author semaphore, so
-    // this slot is free the moment the work is committed (plans/merge-queue.md 3/5). The landing
+    // orchestrator drains the queue through its landing pipeline, so this tick's permit is free
+    // the moment the work is committed (plans/merge-queue.md 3/5); the change's vet takes a
+    // permit of its own. The landing
     // runs the same gate + landing flow through runLandingPi/foldLandingUsage on this same state
     // object — recording the commit count, the outcome, and the reviewer spend into it — and logs
     // landed/land_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.

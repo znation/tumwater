@@ -33,8 +33,8 @@ test("a tick that changes files commits and merges to main", async () => {
     const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
     const outcome = await runner.tick();
     // Merge queue 3/5: the tick ends at commit + pin — the landing is the orchestrator's
-    // separate serial step, and landHead drives it exactly as the drain does (the exported
-    // landQueuedEntry), so the whole flow below is the production path.
+    // separate step, and landHead drives it through the landing pipeline's own vet and merge,
+    // so the whole flow below is the production path.
     assert.equal(outcome.result, "queued");
     assert.equal(outcome.summary, "add hello file");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");

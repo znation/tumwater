@@ -52,9 +52,6 @@ export function defaultConfig(): TumwaterConfig {
     // Three is the fleet's realistic concurrent-role count: a busy queue coalesces the
     // common case (a few roles land in the same poll) while the worst case stays bounded.
     landBatchMax: 3,
-    // One landing slot: the vetting stage stays off until an operator whose provider has the
-    // headroom raises it — every vet above one is another stream beside maxConcurrent.
-    maxConcurrentLandings: 1,
     // Two suites at once: one landing can verify while the next author's gate check runs,
     // without a burst stacking every check on the host beside the authors' own test runs.
     maxConcurrentChecks: 2,

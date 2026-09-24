@@ -78,18 +78,17 @@ export function workingDetail(root: string, s: LoopState, live?: LiveProgress | 
   return inFlightDetail(inFlightLabel(s, "working"), p);
 }
 
-/** The part of a change's in-flight landing record the landing cell renders: where the slot
- * is with it (its batch status — always `landing` for a single landing), the change's own
- * start (its elapsed; absent until the slot reaches it), and the stage it is in (absent from an
- * older writer's marker). */
+/** The part of a change's in-flight landing record the landing cell renders: where the
+ * pipeline is with it (its status), the change's own start (its elapsed), and the stage it is
+ * in (absent from an older writer's marker). */
 export type LandingCell = Pick<LandingChange, "status" | "startedAt" | "stage">;
 
 /** The snapshot's in-flight landing record (merge queue 4/5) filtered to one role: this
- * role's change record while the slot holds it — landing it, or keeping it in a batch
- * (`waiting`, `approved`) or for the merge slot (`vetted`) — and null otherwise, including once the batch is `done` with it (a
- * change that reached a final verdict must not keep a live label while the rest of its batch
- * runs on — BUGS.md 2026-09-23). A single landing's marker reads as one `landing` record
- * (landingChanges). The single home of the "is this role landing" filter — every phase call
+ * role's change record while the pipeline holds it — vetting or merging it (`landing`), or
+ * keeping it for the merge slot (`vetted`) — and null otherwise, including once the merge is
+ * `done` with it (a change that reached its outcome must not keep a live label while the rest of
+ * its stack lands — BUGS.md 2026-09-23). An older generation's one-change marker reads as one
+ * `landing` record (landingChanges). The single home of the "is this role landing" filter — every phase call
  * site derives its `landing` argument through this so the filtering cannot drift between
  * them. */
 export function landingForRole(landQueue: StatusSnapshot["landQueue"], role: string): LandingCell | null {
@@ -124,13 +123,12 @@ const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
  * than spend state — while both hold, "paused" tells the operator what to do (`resume`).
  * `landing`, when given for this role, is its change's record in the snapshot's in-flight
  * landing — build it with landingForRole so the marker's role filter lives in one place. A
- * batched change the slot holds but is not working on reads its batch state, with no elapsed
- * since nothing of its own is running: `queued in batch` before the slot reaches it, `approved,
- * awaiting batch` once its gate approved it and the stack waits for the rest of the batch;
- * with maxConcurrentLandings above 1, `vetted, awaiting merge` once its own vet approved it and
- * it waits for the merge slot.
- * Otherwise its elapsed is the CHANGE's own landing (its record's startedAt — for a batched
- * change, from when the slot reached it, never the batch's start), never the authoring tick's,
+ * change the pipeline holds but is not working on reads `vetted, awaiting merge`, with no
+ * elapsed since nothing of its own is running: its vet approved it and it waits for the merge
+ * slot. (A queued change whose vet is still parked for a permit has no record: it reads
+ * plainly queued.)
+ * Otherwise its elapsed is the CHANGE's own landing (its record's startedAt — from its vet's
+ * start, never another change's), never the authoring tick's,
  * and its stage scopes the cell to the phase the landing is actually in: `reviewing` carries
  * the reviewer run's live detail exactly as a reviewing tick does (`landing 3m · reviewing ·
  * turn 2 · ctx 18.0k · bash npm test`); `build-check` and `merging` render just the stage
@@ -152,8 +150,6 @@ export function loopPhase(
   // passed gets it (callers derive it via landingForRole), and a stopped harness never
   // shows it — a dead fleet's marker is stale by definition.
   if (landing) {
-    if (landing.status === "waiting") return "queued in batch";
-    if (landing.status === "approved") return "approved, awaiting batch";
     if (landing.status === "vetted") return "vetted, awaiting merge";
     const head = landing.startedAt === undefined ? "landing" : `landing ${duration(Date.now() - landing.startedAt)}`;
     if (!landing.stage) return head;
@@ -228,10 +224,9 @@ interface LoopSortRow {
 }
 
 /** Is this phase one of the in-flight states? The three labels come from loopPhase:
- * `working …`, `reviewing …`, and the marker-driven `landing …` (merge queue 4/5) — a batched
- * change the slot is not working on (`queued in batch`, `approved, awaiting batch`, `vetted,
- * awaiting merge`) runs
- * nothing, so it is not in flight. Named once so the two rendered tables and their lockstep
+ * `working …`, `reviewing …`, and the marker-driven `landing …` (merge queue 4/5) — a vetted
+ * change waiting for the merge slot (`vetted, awaiting merge`) runs nothing, so it is not in
+ * flight. Named once so the two rendered tables and their lockstep
  * test share the rule instead of restating the prefixes — and statusPayload reuses it for each
  * loop row's `inFlight` flag, so the GUI's row actions never re-derive the three phase
  * prefixes client-side. */

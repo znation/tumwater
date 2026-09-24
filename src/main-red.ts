@@ -127,8 +127,8 @@ export type MainTipVerdict =
   | { status: "red"; sha: string }
   | { status: "unavailable"; why: string };
 
-/** Serializes mainTipVerdict's use of its one worktree: a batch's Phase-A gates run
- * concurrently, and a second gate re-pointing the checkout at a newer main while the first's
+/** Serializes mainTipVerdict's use of its one worktree: the landing pipeline's vets run their
+ * gates concurrently, and a second gate re-pointing the checkout at a newer main while the first's
  * check ran in it would measure a tree that is neither. Each link is bounded — a few git
  * commands plus at most one check run, which runBuildCheck kills at its timeout — and takes no
  * other lock, so a waiter waits at most for the gates queued ahead of it. */

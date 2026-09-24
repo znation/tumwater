@@ -133,20 +133,15 @@ export interface TumwaterConfig {
    * the session resume/name flags) — pi's parser is last-wins, so a repeat would silently
    * override the harness; validateConfig rejects the collision. */
   piArgs: string[];
-  /** Max pi runs in flight at once across all loops. */
+  /** Max pi runs in flight at once across all loops, landings included: every landing vet
+   * (rebased onto main, gate-checked, reviewed in its own `_land-<role>` worktree) holds one of
+   * these permits for its length, and a merge's conflict resolver one for its run, ahead of any
+   * waiting role tick (land-queue speed 2c). Only the director's own ticks run outside it. */
   maxConcurrent: number;
-  /** Max queued landings the orchestrator's landing slot stacks into ONE batch per drain
-   * (plans/merge-queue.md 5/5): the changes are stacked into one worktree, run through ONE
-   * shared build check, and fast-forwarded to main in one ff. 1 reproduces the single-
-   * landing path exactly (no coalescing). */
+  /** Max vetted changes the orchestrator's merge slot stacks into ONE merge (plans/merge-queue.md
+   * 5/5): the changes are stacked into one worktree, run through ONE shared build check, and
+   * fast-forwarded to main in one ff. 1 lands every vetted change on its own (no coalescing). */
   landBatchMax: number;
-  /** Max queued changes vetted (rebased onto main, gate-checked, reviewed) at once, each in its
-   * own `_land-<role>` worktree, while one merge slot lands the vetted ones in queue order
-   * (land-queue speed 2c). 1 keeps the single landing slot: one landing (or batch) at a time,
-   * its pi runs on the shared maxConcurrent permits. Above 1, the vets draw from their own cap
-   * of this size, adding that many streams to the provider beside maxConcurrent and the
-   * director; while the budget gate is on its fallback model it is treated as 1. */
-  maxConcurrentLandings: number;
   /** Max runs of the project's declared check (the full suite) in flight at once across the
    * whole harness process — every gate, landing, batch, and main-baseline check takes one
    * permit (src/build-check.ts's withCheckPermit), so a burst of landings cannot stack suites

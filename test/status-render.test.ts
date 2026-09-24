@@ -1099,14 +1099,8 @@ test("loopPhase renders the landing cell ahead of every idle state, only when th
   // Only a record with no stage at all — an older writer's marker mid-upgrade — keeps the
   // bare elapsed label: there is nothing more it can honestly say.
   assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt }), "landing 1m30s");
-  // A batched change the slot holds but is not working on reads its batch state instead —
+  // A change the vetting stage approved waits for the merge slot: it reads that state instead —
   // no elapsed and no stage, because nothing of its own is running (BUGS.md 2026-09-23).
-  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "waiting" }), "queued in batch");
-  assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { status: "approved", startedAt, stage: "merging" }),
-    "approved, awaiting batch",
-  );
-  // A change the vetting stage approved (maxConcurrentLandings above 1) waits for the merge slot.
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, { status: "vetted", startedAt, stage: "merging" }),
     "vetted, awaiting merge",

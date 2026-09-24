@@ -38,8 +38,6 @@ test("defaultConfig enables every role including director", () => {
   assert.equal(config.landBatchMax, 3);
   // Land-queue speed 2b: two check suites at once, process-wide.
   assert.equal(config.maxConcurrentChecks, 2);
-  // Land-queue speed 2c: one landing slot until an operator raises it.
-  assert.equal(config.maxConcurrentLandings, 1);
   assert.ok(config.idleBackoff.maxSeconds >= config.idleBackoff.initialSeconds);
 });
 
@@ -361,18 +359,6 @@ test("maxConcurrentChecks is validated like maxConcurrent: a positive integer", 
     );
   }
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maxConcurrentChecks: 1 }));
-});
-
-test("maxConcurrentLandings is validated like maxConcurrent: a positive integer", () => {
-  // 0 would never vet a change (every queued landing would wait forever), a negative or
-  // fractional cap means nothing, and a string is a typo — each fails naming the key.
-  for (const [bad, shown] of [[0, "0"], [-1, "-1"], [1.5, "1\\.5"], ["2", '"2"']] as const) {
-    assert.match(
-      validationError({ maxConcurrentLandings: bad }),
-      new RegExp(`maxConcurrentLandings must be an integer of at least 1 \\(got ${shown}\\)`),
-    );
-  }
-  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maxConcurrentLandings: 3 }));
 });
 
 test("validateConfig reports every invalid value in one error", () => {

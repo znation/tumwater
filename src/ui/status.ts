@@ -60,20 +60,20 @@ export interface StatusSnapshot {
   build: BuildStatus | null;
   /** The durable land queue (plans/merge-queue.md 4/5), unconditionally (depth 0 when
    * empty) so `status --json` consumers see one stable shape: the number of committed-but-
-   * unlanded changes awaiting the single landing slot, and — only while a landing is
-   * actually running — which one. `inFlight` requires three things to agree: the 4/5 marker
+   * unlanded changes in the landing pipeline, and — only while a landing is actually
+   * running — which ones. `inFlight` requires three things to agree: the 4/5 marker
    * exists, a queue entry with its sha still exists (entries are dropped only AFTER an
    * outcome — 3/5 — so in-flight always implies depth ≥ 1), and the orchestrator is alive.
    * The cross-check makes every crash ordering self-healing: a stale marker without a
-   * matching entry never displays. A batch marker is checked per change (liveLandingMarker):
+   * matching entry never displays. The marker is checked per change (liveLandingMarker):
    * only its records whose entry is still queued are kept, and it displays while one of them
    * is not yet `done`. */
   landQueue: { depth: number; inFlight?: LandingInFlight };
 }
 
 /** The 4/5 cross-check against the queue: the marker as observers may display it, or
- * undefined when nothing it names is still in flight. A single-change marker (the single path,
- * or an older generation's) displays only while its sha is still queued; a batch marker keeps
+ * undefined when nothing it names is still in flight. An older generation's single-change
+ * marker displays only while its sha is still queued; a marker with per-change records keeps
  * just its records whose sha is still queued — a change whose entry was dropped is finished,
  * whatever its record last said — and displays only while one of those is not `done`. */
 function liveLandingMarker(marker: LandingInFlight, queued: ReadonlySet<string>): LandingInFlight | undefined {

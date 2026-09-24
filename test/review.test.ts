@@ -1122,12 +1122,12 @@ test("a green pre-check hands its verified head to the landing path", async () =
   }
 });
 
-// Land-queue speed 2a: a review judges a diff, not a sha. landChange rebases the pin onto main
+// Land-queue speed 2a: a review judges a diff, not a sha. A vet rebases the pin onto main
 // before its gate, so an approved change re-drained after main moved arrives at a new sha with
 // the same patch — the approval is reused (no second reviewer run), the build pre-check is not.
 
 /** Move main past the fixture's worktree with a commit to a file the change never touches,
- * then rebase the worktree onto it — the clean rebase landChange's syncPinToMain does. Returns
+ * then rebase the worktree onto it — the clean rebase a vet's syncPinToMain does. Returns
  * the rebased head. Only other.txt is staged: the root's package.json and node_modules are the
  * fixture's untracked install. */
 async function moveMainAndRebase(root: string, wt: string): Promise<string> {
