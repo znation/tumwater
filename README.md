@@ -103,16 +103,21 @@ Open items:
   without touching its README (planned 2026-09-23, requested by user; 1–6/7 landed by
   2026-09-25 and 7a/7 landed 2026-09-23 — the brief resolves as `TUMWATER.md` first, README.md
   as the compatibility path).
-- Planned: land-queue speed 1/3, 2/3, 3a–3e — take the gate's build-fix run out of the
+- Planned: land-queue speed 1/3, 2a–2d, 3a–3e — take the gate's build-fix run out of the
   landing slot, vet queued changes in parallel (serialize only the merge), and the smaller
-  fixes: give the reviewer a time budget, tell it not to re-run a verified suite, one writer
+  fixes: approvals keyed by patch-id, a process-wide build-check cap, per-change landing
+  markers, give the reviewer a time budget, tell it not to re-run a verified suite, one writer
   to main, land the passing part of a red stack, optional cheaper per-change gate check
-  (planned 2026-09-23, requested by user; 3/3 was split into standalone entries 3a–3e
-  2026-09-23).
+  (planned 2026-09-23, requested by user; 2/3 was split into standalone entries 2a–2d and
+  3/3 into 3a–3e).
+- Planned: give every failure an automated trace — retire the recurring `no-observability`
+  validation gap by marking every capped/elided digest and transcript cut, distinguishing
+  signal-kill from timeout at the source, and having `doctor` verify claimed fixes against
+  main and detect orphaned worktree processes (planned 2026-09-26, promoted by steward).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`505a091`): build clean, suite 1445/1445.
+Current main (`059c3cc`): build clean, suite 1448/1448.
 <!-- tumwater:status:end -->
 
 ## How it works
