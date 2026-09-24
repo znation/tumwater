@@ -428,6 +428,12 @@ function describeStateChange(ev: HarnessEvent): string {
   let text: string;
   switch (ev.type) {
     case "budget_paused": {
+      // A breaker demotion (BUGS.md 2026-09-20) leads with its cause instead of the spend: the
+      // spend line is the budget_fallback just before it, and the line cap would cut the pair.
+      if (ev.fallbackDemoted) {
+        text = `budget paused — ${field(ev.failures ?? "?")} ticks failed on fallback ${field(ev.fallbackDemoted)}`;
+        break;
+      }
       const refused = ev.fallbackRejected
         ? ` (fallback ${field(ev.fallbackRejected)} refused)`
         : "";

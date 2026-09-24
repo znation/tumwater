@@ -112,10 +112,14 @@ export function formatEvent(e: HarnessEvent): string {
     case "budget_paused": {
       // Routine state change, like counters_reset — no warning prefix. A configured fallback
       // the gate refused is named here: it is the whole reason the fleet stopped instead of
-      // switching over, and an operator reading the feed must be able to act on it.
+      // switching over, and an operator reading the feed must be able to act on it. So is a
+      // free fallback the breaker demoted because its ticks kept failing (BUGS.md 2026-09-20):
+      // the backend, not the price, is what to fix, and the fleet retries it on its own.
       const refused = e.fallbackRejected
         ? ` (fallback ${e.fallbackRejected} is not a cost n/a model in pi's models.json)`
-        : "";
+        : e.fallbackDemoted
+          ? ` (fallback ${e.fallbackDemoted} is not serving — ${e.failures ?? "?"} consecutive ticks failed on it; one probe tick retries it after a cool-down)`
+          : "";
       return `${time} ${loop} budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}`;
     }
     case "budget_fallback":

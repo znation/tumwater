@@ -64,7 +64,9 @@ discards a role's in-flight landing.
   day once reached. In-flight ticks finish, and the director keeps running.
 - `fallbackModel` names a free model that role loops switch to at the cap instead of stopping.
   Only a model pi's `models.json` prices at zero is accepted; anything else leaves the fleet
-  paused.
+  paused. Free is not enough either: a fallback whose backend cannot serve (three consecutive
+  role ticks failing on it) is demoted to the same pause, then retried with one probe tick after
+  a cool-down of 5 minutes doubling to at most 30.
 - `tumwater pause` / `resume`, or the GUI's pause badge, block new role ticks until lifted.
   Queued landings still drain.
 

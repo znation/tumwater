@@ -37,7 +37,8 @@ import { classifyLock, readLockPid } from "./lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir, worktreesDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
 import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "./process.js";
-import { errorMessage, shortSha, truncate } from "./text.js";
+import { errorMessage, formatTime, shortSha, truncate } from "./text.js";
+import type { FallbackDemotion } from "./budget.js";
 import { briefFile } from "./readme.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
@@ -200,11 +201,17 @@ export function checkBrief(root: string): CheckOutcome {
  * right runtime behavior (spend must never climb past the cap), but a typo'd id would otherwise
  * surface only after the day's budget is already spent — so doctor checks it up front, before
  * the operator needs it. Read-only: it inspects pi's definitions file, never pi or the network.
- * No fallbackModel configured is informational, not a warning — plenty of fleets intend to stop
+ * A price is not readiness, though: whether the backend can SERVE is known only from the
+ * fallback's own ticks (src/budget.ts's breaker, BUGS.md 2026-09-20), so a free pair reads
+ * "serving not verified" — unless the running orchestrator has published that its breaker
+ * demoted the pair (`demoted`, from orchestrator.json; runDoctor passes it only while that
+ * orchestrator is alive), which warns with the failure count and the next probe time. No
+ * fallbackModel configured is informational, not a warning — plenty of fleets intend to stop
  * at the cap. `modelsPath` is injectable so tests need no real pi install. */
 export function checkFallbackModel(
   root: string,
   modelsPath: string = piModelsPath(),
+  demoted: FallbackDemotion | null = null,
 ): CheckOutcome {
   let config: TumwaterConfig;
   try {
@@ -219,8 +226,14 @@ export function checkFallbackModel(
   // never be free; naming that case beats rendering a bare "?/model".
   const name =
     pair.provider && pair.model ? `${pair.provider}/${pair.model}` : "a half-resolved pair";
-  if (fallbackModelFree(config, modelsPath))
-    return { level: "ok", detail: `${name} — priced at zero (cost n/a)` };
+  if (fallbackModelFree(config, modelsPath)) {
+    if (demoted)
+      return {
+        level: "warn",
+        detail: `${name} is priced at zero but not serving — the running fleet demoted it after ${demoted.failures} consecutive failed ticks, so role loops pause at the cap; one probe tick retries it from ${formatTime(new Date(demoted.probeAt))}`,
+      };
+    return { level: "ok", detail: `${name} — priced at zero (cost n/a), serving not verified` };
+  }
   return {
     level: "warn",
     detail: `${name} is not priced at zero in ${modelsPath} — at the cap role loops pause instead of switching`,
@@ -550,7 +563,7 @@ export async function runDoctor(
     { name: "repo", ...(await checkRepo(root, config ?? undefined)) },
     { name: "init", ...checkInit(root) },
     { name: "brief", ...checkBrief(root) },
-    { name: "fallback", ...checkFallbackModel(root) },
+    { name: "fallback", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
     { name: "pi binary", ...checkAgentBinary(root, pathEnv) },
     { name: "state dir", ...checkStateDir(root) },
     { name: "merge lock", ...checkMergeLock(root) },

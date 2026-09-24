@@ -8,7 +8,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig, saveConfig } from "../src/config.js";
+import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
+import { runOrchestrator } from "../src/orchestrator.js";
+import { snapshot } from "../src/ui/status.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
@@ -724,6 +726,100 @@ test("a fallback pi cannot price at zero is refused and the fleet pauses as befo
   } finally {
     restore();
     await orch.stop();
+  }
+});
+
+// The fallback breaker (BUGS.md 2026-09-20): a free pair is not a usable fallback when its
+// backend cannot serve. On 2026-09-19 oMLX, priced at zero and up but pinned at its Metal
+// ceiling, failed 33 of 33 fallback ticks for an hour instead of the fleet pausing.
+test("a free fallback whose ticks keep failing is demoted to a pause, then probed back once it serves", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "budget fallback breaker test");
+  const config = fastConfig(["clean"]);
+  config.maxDailyCostUsd = 0.5;
+  config.provider = "paid";
+  config.model = "big-paid";
+  config.fallbackModel = { provider: "local", model: "local-free" };
+  saveConfig(repo, config);
+  const dir = tmpdir("fallback-breaker-");
+  const healed = path.join(dir, "healed");
+  const argsFile = path.join(dir, "argv.log");
+  // The 2026-09-19 backend: the free model answers every prompt with the prefill guard's 400
+  // until the test "heals" it; the paid model serves normally (and spends the budget).
+  const restore = fakePi(
+    [
+      `m=""; n=""`,
+      `while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; -n) n="$2";; esac; shift; done`,
+      `echo "run: model=$m session=$n" >> "${argsFile}"`,
+      `if [ "$m" = "local-free" ] && [ ! -f "${healed}" ]; then`,
+      `  echo 'HTTP 400: oMLX prefill memory guard rejected this prompt (prefill_memory_exceeded)' >&2`,
+      `  exit 1`,
+      `fi`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`,
+    ].join("\n"),
+  );
+  const models = writeFallbackModels();
+  const controller = new AbortController();
+  // Two failures trip it and a 1.5 s cool-down fits the probe in the test; production's policy
+  // (3 failures, 5 → 30 min) is pinned in budget.test.ts.
+  const done = runOrchestrator({
+    root: repo,
+    config: loadConfig(repo),
+    mainBranch: "main",
+    signal: controller.signal,
+    pollMs: FAST_POLL_MS,
+    modelsPath: models,
+    fallbackBreakerPolicy: { failureLimit: 2, cooldownMs: 1500, maxCooldownMs: 1500 },
+  });
+  const clean = () => loadLoopState(repo, "clean");
+  const runFor = (tick: number): string => {
+    const log = fs.existsSync(argsFile) ? fs.readFileSync(argsFile, "utf8") : "";
+    return log.split("\n").find((l) => l.includes(`session=tumwater-clean-${tick}`)) ?? "";
+  };
+  try {
+    // The startup tick spends $1 of the $0.50 cap on the paid pair: the free fallback takes over.
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "the switch to the fallback");
+    // Two fallback ticks, both rejected. Main-moved wakes supply them: an errored loop backs off
+    // 30 s, and a main move wakes it early.
+    landWork(repo);
+    await waitFor(() => clean().ticks >= 2 && !clean().running, "the first fallback tick");
+    assert.equal(clean().lastResult, "error");
+    assert.match(runFor(2), /model=local-free/);
+    landWork(repo);
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "the demotion to a pause");
+    assert.equal(clean().ticks, 3);
+
+    // One transition event naming the demoted pair and the evidence — not a refusal: the price
+    // was fine, the backend was not.
+    const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
+    assert.equal(paused.length, 1, "one transition event per demotion");
+    assert.equal(paused[0]?.fallbackDemoted, "local/local-free");
+    assert.equal(paused[0]?.failures, 2);
+    assert.equal(paused[0]?.fallbackRejected, undefined);
+    // Published for observers, so the dashboards stop advertising the dead fallback.
+    assert.equal(readOrchestratorInfo(repo)?.fallbackDemoted?.pair, "local/local-free");
+    assert.equal(snapshot(repo, models).budget.fallback, null, "the dashboards read budget paused");
+
+    // Paused means paused: a main move during the cool-down starts no role tick.
+    landWork(repo);
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(clean().ticks, 3, "no role tick starts while the fallback is demoted");
+
+    // The backend recovers. After the cool-down one probe tick finds out, the breaker closes, and
+    // the fleet is back on the fallback — no restart and no config edit needed.
+    fs.writeFileSync(healed, "");
+    await waitFor(
+      () => readEvents(repo).filter((e) => e.type === "budget_fallback").length >= 2,
+      "the probe to restore the fallback",
+    );
+    assert.equal(clean().ticks, 4, "one probe tick restored it");
+    assert.match(runFor(4), /model=local-free/, "the probe runs on the free pair, never the spent one");
+    assert.equal(readOrchestratorInfo(repo)?.fallbackDemoted, undefined, "the demotion is withdrawn");
+    assert.deepEqual(snapshot(repo, models).budget.fallback, { provider: "local", model: "local-free" });
+  } finally {
+    restore();
+    controller.abort();
+    await done.catch(() => {});
   }
 });
 

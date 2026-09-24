@@ -418,6 +418,15 @@ test("each harness state transition renders its own bounded line", () => {
       { type: "budget_paused", spentUsd: 10, capUsd: 10, fallbackRejected: "x" },
       "budget paused — $10.00 of $10.00 daily cost reached (fallback x refused)",
     ],
+    [
+      { type: "budget_paused", spentUsd: 10, capUsd: 10, fallbackDemoted: "omlx/qwen", failures: 3 },
+      "budget paused — 3 ticks failed on fallback omlx/qwen",
+    ],
+    [
+      // The real incident's pair: the whole cause survives the digest's line cap.
+      { type: "budget_paused", spentUsd: 10, capUsd: 10, fallbackDemoted: "omlx/Qwen3.8-27B-MLX-oQ4e-mtp", failures: 3 },
+      "budget paused — 3 ticks failed on fallback omlx/Qwen3.8-27B-MLX-oQ4",
+    ],
     [{ type: "budget_resumed", spentUsd: 4, capUsd: 10 }, "budget resumed ($4.00 of $10.00 today)"],
     [{ type: "fleet_resumed" }, "fleet resumed — role loops tick again"],
     // The fleet-wide 429 hold (BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold"):

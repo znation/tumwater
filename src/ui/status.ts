@@ -153,10 +153,15 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
       spentUsd: fleetDailyCost(loops),
       capUsd: cfg.maxDailyCostUsd,
       free: fleetModelsFree(cfg, modelsPath),
-      // Null unless the gate could actually engage it (configured AND priced at zero): a
-      // fallback the scheduler would refuse must not be advertised as one that will save the
-      // fleet. Same stat-cached read of models.json as `free` above.
-      fallback: fallbackModelFree(cfg, modelsPath) ? (fallbackPair(cfg) ?? null) : null,
+      // Null unless the gate could actually engage it (configured AND priced at zero AND not
+      // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
+      // must not be advertised as one that will save the fleet — and a demoted one is refused
+      // until its probe serves, so the dashboards read `budget paused` exactly while the
+      // scheduler is (BUGS.md 2026-09-20). Same stat-cached read of models.json as `free` above.
+      fallback:
+        fallbackModelFree(cfg, modelsPath) && !(running && info?.fallbackDemoted)
+          ? (fallbackPair(cfg) ?? null)
+          : null,
     },
     paused: isFleetPaused(root),
     landQueue,

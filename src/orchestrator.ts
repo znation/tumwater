@@ -9,7 +9,23 @@ import {
   isEligible,
 } from "./scheduling.js";
 import { isFleetPaused } from "./fleet-state.js";
-import { budgetGate, budgetPaused, type BudgetGate, fleetDailyCost } from "./budget.js";
+import {
+  budgetGate,
+  budgetPaused,
+  type BudgetGate,
+  FALLBACK_BREAKER_POLICY,
+  type FallbackBreaker,
+  type FallbackBreakerPolicy,
+  fallbackDemotion,
+  fallbackProbeDue,
+  fallbackServing,
+  fleetDailyCost,
+  IDLE_FALLBACK_BREAKER,
+  abandonFallbackProbe,
+  recordFallbackTick,
+  rekeyFallbackBreaker,
+  startFallbackProbe,
+} from "./budget.js";
 import { RATE_LIMIT_OPEN, rateLimitHold, type RateLimitHold } from "./rate-limit-hold.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
@@ -143,6 +159,9 @@ interface RunOptions {
   /** pi's model definitions (default ~/.pi/agent/models.json), read to decide whether the
    * configured fallback model is actually cost-free — a test seam, like status.ts's. */
   modelsPath?: string;
+  /** The fallback breaker's thresholds (src/budget.ts, default FALLBACK_BREAKER_POLICY) — a
+   * test seam, like pollMs: e2e tests shrink the cool-down so a probe fits in a test. */
+  fallbackBreakerPolicy?: FallbackBreakerPolicy;
 }
 
 /** How runOrchestrator ended: `restart` means dist/ now holds a newer build and the caller should
@@ -157,6 +176,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const { root, config, mainBranch, signal: externalSignal } = opts;
   const pollMs = opts.pollMs ?? POLL_MS;
   const modelsPath = opts.modelsPath ?? piModelsPath();
+  const breakerPolicy = opts.fallbackBreakerPolicy ?? FALLBACK_BREAKER_POLICY;
   const enabled = enabledRoleIds(config);
   // Name the fix, not just the failure: an operator who disabled the last role (or hand-edited
   // a roles map to all-false) gets the exact edit that unblocks `tumwater run`, and the
@@ -239,9 +259,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // plans/fallback-model.md: open → fallback → paused are distinct states, and every crossing
   // between two of them is worth exactly one event.
   let prevGate: BudgetGate = "open";
+  // Whether the engaged fallback's backend is serving (src/budget.ts's FallbackBreaker, BUGS.md
+  // 2026-09-20): folded from the outcomes of role ticks that ran on it, re-keyed every poll.
+  // In memory only — a restart re-trusts the fallback and re-trips it within failureLimit ticks.
+  let fallbackBreaker: FallbackBreaker = IDLE_FALLBACK_BREAKER;
   // The live config the last successful reload produced (last-known-good while the file is
-  // broken or missing) and, derived from it, the view role loops run under while the fallback gate holds
-  // — recomputed only when the config object itself changes.
+  // broken or missing) and, derived from it, the view role loops run under while a fallback is
+  // engaged (the fallback gate, or its breaker-demoted pause) — recomputed only when the config
+  // object itself changes.
   let liveConfig = config;
   // The previous successful reload's config, for the one-shot config_changed event. Seeded from
   // the startup config, so the first poll of an unchanged file logs nothing.
@@ -409,41 +434,67 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // start no new ticks at all (scheduled, main-moved wake, or startup). The director is
       // outside both: an explicit human prompt outranks the autonomous-spend cap, so it keeps
       // its budgeted model and keeps ticking. In-flight ticks finish; only NEW ticks are
-      // gated. Resume is live and stateless — raising/disabling the cap (live-reloaded above),
-      // fixing the fallback, or crossing local midnight re-evaluates this on the next poll, so
-      // nothing can get stuck.
+      // gated. Resume is live — raising/disabling the cap (live-reloaded above), fixing the
+      // fallback, or crossing local midnight re-evaluates this on the next poll — and the one
+      // piece of state, the fallback breaker, is re-keyed by the same inputs, so nothing can
+      // get stuck.
       const states = runners.map((r) => r.state);
+      const reached = budgetPaused(states, liveConfig, now);
       // Whether the fallback is usable is a live question too: models.json is stat-cached
       // inside pi-models.ts, so an unchanged catalog costs one stat per poll, and an operator
       // who fixes a mistyped model id sees the fleet switch over within a cycle.
-      const gate = budgetGate(budgetPaused(states, liveConfig, now), fallbackModelFree(liveConfig, modelsPath));
+      const fallbackReady = fallbackModelFree(liveConfig, modelsPath);
+      const pair = fallbackPair(liveConfig);
+      const pairName = `${pair?.provider ?? "?"}/${pair?.model ?? "?"}`;
+      // Free is not enough: the breaker demotes a fallback whose ticks keep failing, and a
+      // demoted gate is `paused`, exactly as with no fallback at all.
+      fallbackBreaker = rekeyFallbackBreaker(
+        fallbackBreaker,
+        reached && fallbackReady ? pairName : null,
+        liveConfig.maxDailyCostUsd,
+      );
+      const gate = budgetGate(reached, fallbackReady, fallbackServing(fallbackBreaker));
       if (gate !== prevGate) {
-        const pair = fallbackPair(liveConfig);
         logEvent(root, {
           loop: "harness",
           type: gate === "open" ? "budget_resumed" : gate === "fallback" ? "budget_fallback" : "budget_paused",
           spentUsd: fleetDailyCost(states, now),
           capUsd: liveConfig.maxDailyCostUsd,
           // On the way into a gate the fallback's identity is the operator's answer to "why
-          // this and not the other one": which free pair took over, or which configured pair
-          // was refused because pi's definitions do not price it at zero.
+          // this and not the other one": which free pair took over, which configured pair was
+          // refused because pi's definitions do not price it at zero, or which free pair the
+          // breaker demoted after its ticks kept failing (and after how many).
           ...(gate === "fallback" ? { provider: pair?.provider, model: pair?.model } : {}),
           ...(gate === "paused" && pair
-            ? { fallbackRejected: `${pair.provider ?? "?"}/${pair.model ?? "?"}` }
+            ? fallbackReady
+              ? { fallbackDemoted: pairName, failures: fallbackBreaker.failures }
+              : { fallbackRejected: pairName }
             : {}),
         });
         prevGate = gate;
+      }
+      // Publish the demotion for observers (the dashboards' gate and `tumwater doctor` would
+      // otherwise read the price alone and advertise a dead fallback); rewritten only when it
+      // changes, like the build status below.
+      const demotion = fallbackDemotion(fallbackBreaker);
+      if (JSON.stringify(demotion) !== JSON.stringify(info.fallbackDemoted)) {
+        info.fallbackDemoted = demotion;
+        writeJsonFile(infoFile, info);
       }
       // While the fallback holds, every role loop runs under the derived view — the free pair
       // installed top-level and every per-role/reviewer model override dropped, so no seam can
       // reach a priced model. The director keeps the live config. Assigned every poll (not only
       // on transitions) so a runner created mid-gate, or one left behind by a broken-file poll
-      // that skipped the reload, can never tick on the wrong model.
-      if (gate === "fallback" && fallbackFrom !== liveConfig) {
+      // that skipped the reload, can never tick on the wrong model. A breaker-demoted fallback
+      // keeps the view too: its gate is `paused`, but a tick parked in the semaphore when it
+      // tripped, the half-open probe, and the landing slot must still run on the free pair —
+      // a demotion must never promote them to the priced model the cap already spent.
+      const onFallback = reached && fallbackReady;
+      if (onFallback && fallbackFrom !== liveConfig) {
         fallbackFrom = liveConfig;
         fallbackConfig = applyFallbackModel(liveConfig);
       }
-      const roleConfig = gate === "fallback" ? fallbackConfig : liveConfig;
+      const roleConfig = onFallback ? fallbackConfig : liveConfig;
       for (const r of runners) r.config = r.role === DIRECTOR_ROLE ? liveConfig : roleConfig;
 
       // Operator pause (`tumwater pause`): the budget gate's sibling with a different trigger —
@@ -547,9 +598,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // observes on its next poll — so one snapshot is as fresh as per-runner reads, and a
       // landing that completes mid-pass just keeps its role blocked one extra poll (conservative).
       const queuedLandingRoles = new Set(queuedLandingFiles(root).map((q) => q.entry.role));
+      // A demoted fallback's half-open window: its role ticks may pass the `paused` budget gate
+      // here, and the start pass below admits exactly one of them as the probe. Never past an
+      // operator pause — human intent outranks the breaker's curiosity.
+      const probeDue = fallbackProbeDue(fallbackBreaker, now);
       for (const runner of runners) {
         if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
-        if ((gate === "paused" || userPaused) && runner.role !== DIRECTOR_ROLE)
+        if ((userPaused || (gate === "paused" && !probeDue)) && runner.role !== DIRECTOR_ROLE)
           continue; // no new role ticks while either gate holds
         if (rateHeld && runner.role !== DIRECTOR_ROLE) continue; // nor while a 429 storm holds
         const { run, reason } = isEligible(runner, now, mainHead, inboxCount);
@@ -599,6 +654,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
       for (const runner of fairOrder([...reasons.keys()])) {
         if (signal.aborted) continue;
+        // The probe goes to the first role fairOrder admits; every other due role waits for its
+        // verdict (startFallbackProbe marks it in flight, so the rest of this pass skips).
+        let probe = false;
+        if (probeDue && runner.role !== DIRECTOR_ROLE) {
+          if (fallbackBreaker.probing) continue;
+          fallbackBreaker = startFallbackProbe(fallbackBreaker);
+          probe = true;
+        }
         const reason = reasons.get(runner);
         if (reason && reason !== "scheduled" && reason !== "startup") {
           logEvent(root, { loop: runner.role, type: "wake", reason });
@@ -639,9 +702,19 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
                   semaphore.release();
                 }
               : () => {},
-            () => {
+            async () => {
               started = true;
-              return runner.tick();
+              // A role tick that starts while a fallback is engaged runs on it (the config and
+              // the breaker are updated in the same synchronous poll step), so its outcome is
+              // the breaker's evidence. Read at tick start, not at admission: a tick parked in
+              // the semaphore starts on whatever the gate says by then.
+              const ranOn = runner.role === DIRECTOR_ROLE ? null : fallbackBreaker;
+              const outcome = await runner.tick();
+              if (ranOn?.pair) {
+                const at = Date.now();
+                fallbackBreaker = recordFallbackTick(fallbackBreaker, ranOn, outcome.result, probe, at, breakerPolicy);
+              }
+              return outcome;
             },
             Date.now,
             // The restart start gate, plus the 429 hold for role ticks (the director is exempt,
@@ -654,6 +727,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           // no tick_start/tick_end — the persisted state still reads exactly as the last real
           // tick left it, and the next generation schedules the role from that.
           if (!started) runner.state.running = false;
+          // A probe turned away the same way answered nothing: hand its claim back (see
+          // abandonFallbackProbe) so the next poll can admit a probe that actually runs.
+          if (!started && probe) fallbackBreaker = abandonFallbackProbe(fallbackBreaker);
         })();
         const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
         bucket.add(task);

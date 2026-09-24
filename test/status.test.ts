@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -242,6 +243,29 @@ test("snapshot carries the fallback model only when pi prices it at zero", async
   cfg.fallbackModel = { provider: "paid", model: "gpt-x" };
   saveConfig(repo, cfg);
   assert.equal(snapshot(repo, modelsFile).budget.fallback, null, "a priced fallback is refused");
+
+  // Free but not serving (BUGS.md 2026-09-20): while the running orchestrator's breaker holds
+  // the pair demoted, the scheduler reads the gate as paused — so must the dashboards.
+  cfg.fallbackModel = { provider: "local", model: "local-free" };
+  saveConfig(repo, cfg);
+  const demoted = { pair: "local/local-free", failures: 3, probeAt: Date.now() + 300_000 };
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  writeJsonFile(orchestratorStatePath(repo), {
+    pid: process.pid,
+    startedAt: Date.now(),
+    roles: ["clean"],
+    fallbackDemoted: demoted,
+  });
+  assert.equal(snapshot(repo, modelsFile).budget.fallback, null, "a demoted fallback is not advertised");
+  // A dead orchestrator's leftover file says nothing about what runs now: the price decides.
+  // (A child that has exited and been reaped is a pid that is not alive — fleet-state.test.ts.)
+  writeJsonFile(orchestratorStatePath(repo), {
+    pid: spawnSync("true").pid,
+    startedAt: Date.now(),
+    roles: ["clean"],
+    fallbackDemoted: demoted,
+  });
+  assert.deepEqual(snapshot(repo, modelsFile).budget.fallback, { provider: "local", model: "local-free" });
 });
 
 test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {

@@ -313,13 +313,23 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
     detail: "none configured — role loops pause at the cap",
   });
 
-  // A free local pair is the case the fallback exists for.
+  // A free local pair is the case the fallback exists for — but a price is not readiness: a
+  // backend that rejects every prompt is priced at zero too (BUGS.md 2026-09-20), so the line
+  // must not claim more than it checked.
   const free = readyRepo();
   writeConfig(free, { fallbackModel: { provider: "local", model: "free-model" } });
   assert.deepEqual(checkFallbackModel(free, models), {
     level: "ok",
-    detail: "local/free-model — priced at zero (cost n/a)",
+    detail: "local/free-model — priced at zero (cost n/a), serving not verified",
   });
+  // The running fleet's breaker demoted it (runDoctor passes orchestrator.json's
+  // fallbackDemoted only while that orchestrator is alive): warn with the evidence and the retry.
+  const probeAt = new Date(2026, 8, 19, 23, 10, 56).getTime();
+  const demoted = checkFallbackModel(free, models, { pair: "local/free-model", failures: 3, probeAt });
+  assert.equal(demoted.level, "warn");
+  assert.match(demoted.detail, /^local\/free-model is priced at zero but not serving/);
+  assert.match(demoted.detail, /demoted it after 3 consecutive failed ticks, so role loops pause at the cap/);
+  assert.match(demoted.detail, /one probe tick retries it from 23:10:56$/);
 
   // A priced or unknown id would be refused by the gate, so role loops would pause at the cap
   // instead of switching — warn before the day's budget is spent on discovering it.

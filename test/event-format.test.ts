@@ -263,6 +263,22 @@ test("formatEvent renders the budget transition events plainly with spend and ca
     fallbackRejected: "omlx/typo",
   } as never);
   assert.match(refused, /budget paused — \$10\.50 of \$10\.00 daily cost reached \(fallback omlx\/typo is not a cost n\/a model in pi's models\.json\)/);
+  // A free fallback the breaker demoted (BUGS.md 2026-09-20): the backend is what to fix, and
+  // the fleet retries it on its own — both belong on the line.
+  const demoted = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_paused",
+    spentUsd: 10.5,
+    capUsd: 10,
+    fallbackDemoted: "omlx/qwen",
+    failures: 3,
+  } as never);
+  assert.match(
+    demoted,
+    /budget paused — \$10\.50 of \$10\.00 daily cost reached \(fallback omlx\/qwen is not serving — 3 consecutive ticks failed on it; one probe tick retries it after a cool-down\)/,
+  );
+  assert.ok(!demoted.includes("warning"), "a routine state change is not a warning");
 });
 
 // The live concurrency-cap change event (PLANS.md, Live maxConcurrent): a routine state
