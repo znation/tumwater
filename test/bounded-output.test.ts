@@ -174,6 +174,28 @@ test("writeFullOutput returns null when no ancestor has .tumwater/", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("writeFullOutput returns null when the write fails instead of throwing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bound-fail-"));
+  fs.mkdirSync(path.join(dir, ".tumwater", "log"), { recursive: true });
+  // .tumwater/log/tool-output exists as a regular file, so the recursive mkdirSync inside
+  // writeFullOutput throws: the catch must turn that into null (a failing write can never
+  // crash a tick's tool_result handling), and nothing is written.
+  fs.writeFileSync(path.join(dir, ".tumwater", "log", "tool-output"), "occupied");
+  assert.equal(writeFullOutput("text", "call-9", dir), null);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("findTumwaterRoot gives up after 64 levels without .tumwater/ instead of looping forever", () => {
+  // A chain deeper than the walk's 64-level cap, with no .tumwater/ on any ancestor of it:
+  // the walk exhausts its depth budget and returns null (it must terminate by depth, not
+  // only by reaching the filesystem root).
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "bound-deep-"));
+  const deep = path.join(base, ...Array(70).fill("d"));
+  fs.mkdirSync(deep, { recursive: true });
+  assert.equal(findTumwaterRoot(deep), null);
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
 test("findTumwaterRoot walks up to the harness root", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bound-root-"));
   fs.mkdirSync(path.join(dir, ".tumwater"));
