@@ -89,7 +89,9 @@ export interface BuildStatus {
   /** Why the self-redeploy onto `checkedHead` was REFUSED — a red main, a failed compile, a
    * failed swap. Set instead of `restartPending`, and the important half: the fleet then keeps
    * running the stale build with no retry until main moves, which a bare `stale: true` cannot
-   * distinguish from a restart that is seconds away. */
+   * distinguish from a restart that is seconds away. Two non-latched reasons share the field: a
+   * post-restart cooldown (it lapses on its own) and a new build that could not start here (the
+   * startup gate is re-asked every poll, so repairing the environment clears it). */
   restartBlocked?: string;
 }
 

@@ -510,6 +510,16 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
     ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), drainedMs: 0, abortedTicks: 0,
   } as never);
   assert.match(clean, /\(drained 0m\)$/, "nothing aborted: no resume clause");
+
+  // BUGS.md 2026-09-23: a refused restart names both builds and the reason; a dead fleet says so.
+  const refused = formatEvent({
+    ts: 0, loop: "harness", type: "restart_refused", from: "a".repeat(40), to: "b".repeat(40), reason: "not initialized",
+  } as never);
+  assert.match(refused, /restart onto build bbbbbbbb refused — the new build could not start here: not initialized; staying on build aaaaaaaa/);
+  const down = formatEvent({ ts: 0, loop: "harness", type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" } as never);
+  assert.match(down, /fleet down — generation 2 exited 1: not initialized; the supervisor exited \(restart with `tumwater run`\)/);
+  const killed = formatEvent({ ts: 0, loop: "harness", type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" } as never);
+  assert.match(killed, /fleet down — generation 1 was killed by SIGKILL; the supervisor exited/);
 });
 
 test("formatEvent tells a cut-off resume from a restart resume", () => {

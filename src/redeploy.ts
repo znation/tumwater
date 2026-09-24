@@ -35,7 +35,11 @@ import { errorMessage, shortSha } from "./text.js";
  * check (BUGS.md 2026-09-16). A block says so
  * out loud — one warning event, and the reason in BuildStatus.restartBlocked, which the
  * dashboards and doctor render — because a stale build that is about to be replaced and one
- * that never will be look identical otherwise (BUGS.md, 2026-09-08). Every tick a restart
+ * that never will be look identical otherwise (BUGS.md, 2026-09-08). A green, compiled build
+ * can still be unable to START here — the environment, not the code, fails `tumwater run`'s
+ * startup gate — so that gate is asked before the fleet is held and again right before the
+ * swap, and a failure refuses the restart with a `restart_refused` event instead of trading a
+ * running fleet for a child that exits on its first line (BUGS.md 2026-09-23). Every tick a restart
  * interrupts resumes on the new build through the same resume machinery a Ctrl+C uses, so a
  * restart loses no work. */
 
@@ -108,6 +112,10 @@ export interface RedeployDeps {
   compile(mainHead: string): Promise<{ ok: boolean; detail: string }>;
   /** Move `mainHead`'s staged build into place as the live dist/. Throws on failure. */
   swap(mainHead: string): void;
+  /** Would a new generation pass `tumwater run`'s startup gate in this repo right now? The
+   * problem it would exit on, or null when it would boot — production asks startup-gate.ts's
+   * runStartupProblem, the same function the child's own cmdRun runs (BUGS.md 2026-09-23). */
+  bootProblem(): Promise<string | null>;
 }
 
 /** The record of COMPLETED auto-restarts — where poll reads the cooldown's start from and
@@ -199,6 +207,13 @@ export class Redeployer {
   /** The head whose green check already warned that it could not run (a rejection, not a red
    * verdict) — one warning per episode. */
   private checkFailedHead: string | null = null;
+  /** Why the last restart attempt was refused because a new generation could not boot here
+   * (see refuse), or null when the startup gate last passed. Not latched to a head like
+   * blockedHead: the gate is asked again on every poll, so repairing the environment lets the
+   * same head proceed without main moving. Also the dedupe key — one `restart_refused` per
+   * distinct reason, not one per poll, and head-independent like the cooldown warning: a
+   * landing mid-refusal adds no new information. */
+  private refusedReason: string | null = null;
   /** The live autoRestart flag as last seen by poll — status() publishes the cooldown reason only
    * while it is on (off means no restart will ever be attempted, so a deadline would mislead). */
   private autoRestartOn = true;
@@ -237,9 +252,12 @@ export class Redeployer {
       else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
       // Inside the post-restart cooldown the fleet deliberately keeps ticking on the stale build
       // — say so with a deadline, through the same channel as a refused restart (BUGS.md 2026-09-11).
+      // Past it, a startup gate that keeps failing holds the fleet on the stale build just as
+      // surely, and says why the same way (BUGS.md 2026-09-23).
       else if (s.stale && this.autoRestartOn) {
         const until = this.cooldownUntil();
         if (now < until) s.restartBlocked = `cooldown until ${new Date(until).toISOString()}`;
+        else if (this.refusedReason !== null) s.restartBlocked = `the new build could not start: ${this.refusedReason}`;
       }
     }
     return s;
@@ -300,6 +318,12 @@ export class Redeployer {
     this.cooldownWarned = false;
 
     if (this.pendingHead === null) {
+      // Before holding anything: could a new generation even boot here? A refusal here costs
+      // nothing — no hold, no green check, no compile — so asking again every poll is how a
+      // repaired environment (the config restored, pi back on PATH) lets the restart proceed.
+      const problem = await this.bootProblem();
+      if (problem !== null) return this.refuse(mainHead, problem);
+      this.refusedReason = null;
       this.pendingHead = mainHead;
       // Only when the fleet was not already being held: a superseded head hands its drain over
       // to the new one rather than starting a fresh window (see drainSince).
@@ -361,6 +385,16 @@ export class Redeployer {
     // long one run can take, so this cannot hang the fleet beyond what a single tick can do.
     if (inFlight.directorInFlight > 0) return "hold";
     if (inFlight.roleInFlight > 0 && now - this.drainSince < this.drainWindowMs) return "hold";
+    // Ask the startup gate once more, right before the point of no return: the environment can
+    // change during a long drain — a landing already in flight when the hold began can still
+    // delete tumwater.json (the 2026-09-22 incident's own cause). Refused, the episode is
+    // dropped rather than latched, so the next poll starts over at the gate above: nothing is
+    // held while it keeps failing, and a fixed environment gets a full episode with its own drain.
+    const problem = await this.bootProblem();
+    if (problem !== null) {
+      this.clearPending();
+      return this.refuse(mainHead, problem);
+    }
     try {
       this.deps.swap(mainHead);
     } catch (err) {
@@ -400,6 +434,26 @@ export class Redeployer {
   private endDrain(): "none" {
     this.drainSince = 0;
     return "none";
+  }
+
+  /** deps.bootProblem, fail-closed: a gate that throws cannot vouch for the successor, so its
+   * error is the refusal's reason (and, like any refusal, it is asked again next poll). */
+  private async bootProblem(): Promise<string | null> {
+    try {
+      return await this.deps.bootProblem();
+    } catch (err) {
+      return `the startup check could not run: ${errorMessage(err)}`;
+    }
+  }
+
+  /** Refuse to swap onto a generation that could not boot here: keep the running one, end any
+   * drain, and log `restart_refused` once per distinct reason (see refusedReason). */
+  private refuse(head: string, reason: string): "none" {
+    if (reason !== this.refusedReason) {
+      this.refusedReason = reason;
+      this.log({ loop: "harness", type: "restart_refused", from: this.build.sha, to: head, reason });
+    }
+    return this.endDrain();
   }
 
   private clearPending(): void {
@@ -452,6 +506,9 @@ export async function mainIsGreen(
 export async function createRedeployer(
   root: string,
   log: (event: RedeployEvent) => void,
+  /** The successor's startup gate (RedeployDeps.bootProblem) — cli.ts binds runStartupProblem
+   * to the invocation's own flags, the ones the supervisor forwards to every generation. */
+  bootProblem: () => Promise<string | null>,
 ): Promise<Redeployer | null> {
   const build = readBuildInfo();
   if (!build) return null;
@@ -473,6 +530,7 @@ export async function createRedeployer(
       ),
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
     swap: (mainHead) => swapDist(root, dist, mainHead),
+    bootProblem,
   };
   return new Redeployer(build, selfHosted, deps, log, RESTART_DRAIN_MAX_MS, autoRestartRecord(root));
 }

@@ -40,9 +40,11 @@ const STATE_CHANGE_TYPES = new Set<string>([
   "build_stale",
   "restart_pending",
   "restart",
+  "restart_refused",
   "tick_deferred",
   "orchestrator_start",
   "orchestrator_stop",
+  "supervisor_exit",
 ]);
 /** The Fleet state changes section's caps: newest N transitions, each line's payload capped at
  * STATE_CHANGE_MAX, each free field within it at STATE_CHANGE_FIELD_MAX. Together with the
@@ -472,6 +474,9 @@ function describeStateChange(ev: HarnessEvent): string {
     case "restart":
       text = `restarting onto build ${shortSha(ev.to)}`;
       break;
+    case "restart_refused":
+      text = `restart onto ${shortSha(ev.to)} refused: ${field(ev.reason)}`;
+      break;
     case "tick_deferred":
       text = "deferred — no work landed since last tick";
       break;
@@ -480,6 +485,9 @@ function describeStateChange(ev: HarnessEvent): string {
       break;
     case "orchestrator_stop":
       text = "orchestrator stopped";
+      break;
+    case "supervisor_exit":
+      text = `fleet down — generation ${field(ev.generation)} ${ev.signal ? `killed by ${field(ev.signal)}` : `exited ${field(ev.code)}`}${ev.reason ? `: ${field(ev.reason)}` : ""}`;
       break;
     default:
       text = ev.type;

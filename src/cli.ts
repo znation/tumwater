@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
-import path from "node:path";
-import { enabledRoleIds, loadConfig } from "./config.js";
+import { enabledRoleIds } from "./config.js";
 import {
   fail,
   parseBranchFlag,
@@ -14,24 +13,8 @@ import {
 import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdWake } from "./operator-commands.js";
 import { cmdLogs } from "./ui/log-commands.js";
 import { orchestratorAlive } from "./fleet-state.js";
-import {
-  GIT_MISSING_MESSAGE,
-  branchExists,
-  currentBranch,
-  hasCommits,
-  isGitRepo,
-  listBranches,
-  repoToplevel,
-} from "./git.js";
-import {
-  DETACHED_HEAD_MESSAGE,
-  NOT_A_REPO_MESSAGE,
-  NOT_INITIALIZED_MESSAGE,
-  NO_COMMITS_MESSAGE,
-  piMissingMessage,
-} from "./readiness.js";
-import { resolveAgentBin } from "./pi.js";
-import type { TumwaterConfig } from "./config-schema.js";
+import { repoToplevel } from "./git.js";
+import { repoNotReady, runStartupCheck, runStartupProblem } from "./startup-gate.js";
 import { initProject } from "./init.js";
 import {
   type CancelOutcome,
@@ -44,9 +27,8 @@ import { logEvent, subscribeEvents } from "./events.js";
 import { formatEvent } from "./ui/event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
-import { spawnRunChild, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
+import { fleetDownEvent, spawnRunChild, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { renderDoctor, runDoctor } from "./doctor.js";
-import { findOnPath } from "./files.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport, renderReportMarkdown } from "./ui/report.js";
 import { collectFailureReport } from "./failure-data.js";
 import { renderFailureMarkdown } from "./failure-report.js";
@@ -94,37 +76,11 @@ under .tumwater/, does one task per tick with pi, commits, and merges to main. L
 off while the project is quiet and wake when main moves. Everything is local: no remotes.
 `;
 
-/** The branch the fleet targets: `--branch <name>` wins, then `baseBranch` in config, then
- * whatever the primary checkout has checked out — the branch-agnostic default. An explicit
- * value must exist: failing at startup with the branches that do exist beats failing at the
- * first `git worktree add`. */
-async function resolveMainBranch(
-  root: string,
-  config: TumwaterConfig,
-  branchArg: string | null,
-): Promise<string> {
-  const explicit = branchArg ?? config.baseBranch ?? null;
-  if (explicit !== null) {
-    if (!(await branchExists(root, explicit))) {
-      const existing = (await listBranches(root)).join(", ") || "none";
-      fail(`branch ${explicit} does not exist (branches: ${existing})`);
-    }
-    return explicit;
-  }
-  const branch = await currentBranch(root);
-  if (!branch) fail(DETACHED_HEAD_MESSAGE);
-  return branch;
-}
-
+/** Fail fast on the first unmet repo precondition (startup-gate.ts's repoNotReady — the repo
+ * half of `tumwater run`'s startup gate, shared by every repo-bound command). */
 async function requireReadyRepo(root: string): Promise<void> {
-  // Fail fast on a missing binary: without this, the probe below reads as "not a git
-  // repository" — pointing at the wrong fix for a machine with no git installed.
-  if (!findOnPath("git")) fail(GIT_MISSING_MESSAGE);
-  if (!(await isGitRepo(root))) fail(NOT_A_REPO_MESSAGE);
-  if (!fs.existsSync(path.join(root, "tumwater.json"))) {
-    fail(NOT_INITIALIZED_MESSAGE);
-  }
-  if (!(await hasCommits(root))) fail(NO_COMMITS_MESSAGE);
+  const notReady = await repoNotReady(root);
+  if (notReady !== null) fail(notReady);
 }
 
 async function cmdInit(root: string, args: string[]): Promise<void> {
@@ -142,32 +98,21 @@ async function cmdInit(root: string, args: string[]): Promise<void> {
 }
 
 async function cmdRun(root: string, args: string[]): Promise<void> {
-  await requireReadyRepo(root);
-  // Fail fast instead of starting loops whose every tick dies with "spawn pi ENOENT".
-  // The config loads first — behavior-preserving: requireReadyRepo has already gated on
-  // tumwater.json existing, and loadConfig returns defaults when it is absent — because
-  // the agent binary (TUMWATER_PI_BIN → agentBin → "pi", plans/portability.md §5/7) is
-  // resolved from it. resolveAgentBin normalizes path-shaped values against THIS process's
-  // cwd, so what is checked here is exactly what the ticks spawn.
-  const config = loadConfig(root);
-  const resolved = resolveAgentBin(config);
-  if (resolved.bin.includes("/")) {
-    try {
-      fs.accessSync(resolved.bin, fs.constants.X_OK);
-    } catch {
-      fail(piMissingMessage(resolved));
-    }
-  } else if (!findOnPath(resolved.bin)) {
-    fail(piMissingMessage(resolved));
-  }
+  // The whole startup gate (startup-gate.ts): repo, config, agent binary, target branch — the
+  // one function the self-redeploy asks before swapping onto a successor and the supervisor
+  // asks when a generation dies, so the three cannot disagree about what boots. The supervisor
+  // half runs it too, so a start that cannot boot fails before any child spawns.
+  const branchArg = parseBranchFlag(args);
+  const startup = await runStartupCheck(root, branchArg);
+  if ("problem" in startup) fail(startup.problem);
+  const { config, mainBranch } = startup;
   if (orchestratorAlive(root)) fail("an orchestrator is already running for this repo");
   if (!process.env[SUPERVISED_ENV]) {
     // `args` are the flags after the command token — forward them so the child generation
     // targets the same branch (or whatever else the invocation named).
-    await superviseRunCommand(args);
+    await superviseRunCommand(root, args, branchArg);
     return;
   }
-  const mainBranch = await resolveMainBranch(root, config, parseBranchFlag(args));
   const controller = new AbortController();
   let stopping = false;
   const stop = () => {
@@ -179,7 +124,13 @@ async function cmdRun(root: string, args: string[]): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   const enabled = enabledRoleIds(config);
-  const redeploy = await createRedeployer(root, (e) => logEvent(root, e));
+  // The redeploy asks its successor's startup gate with this invocation's flags — the ones
+  // the supervisor forwards to that successor.
+  const redeploy = await createRedeployer(
+    root,
+    (e) => logEvent(root, e),
+    () => runStartupProblem(root, branchArg),
+  );
   const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
   // Name the resolved root when it differs from the cwd: an operator who started the fleet
   // from a subdirectory must see where .tumwater/ actually lives.
@@ -202,8 +153,10 @@ async function cmdRun(root: string, args: string[]): Promise<void> {
 /** The supervisor half of `tumwater run` (src/supervisor.ts): spawn the orchestrator as a child
  * generation and respawn it whenever it exits RESTART_EXIT_CODE after redeploying itself. Ctrl+C
  * reaches the child directly from the terminal, so only SIGTERM is forwarded; the supervisor's
- * own exit code is whatever the last generation's was. */
-async function superviseRunCommand(runArgs: string[]): Promise<void> {
+ * own exit code is whatever the last generation's was. A fleet that goes down without the
+ * operator asking leaves a `supervisor_exit` event behind (BUGS.md 2026-09-23): the dead
+ * generation's stderr reached only this terminal, which nobody may be watching. */
+async function superviseRunCommand(root: string, runArgs: string[], branchArg: string | null): Promise<void> {
   const controller = new AbortController();
   let stopping = false;
   process.on("SIGINT", () => {
@@ -221,6 +174,13 @@ async function superviseRunCommand(runArgs: string[]): Promise<void> {
         process.stdout.write(`\nrestarting on the new build (generation ${generation})\n\n`),
       onCrashLoop: () =>
         process.stderr.write("tumwater: the harness restarted itself too many times in a minute — giving up\n"),
+      // Re-ask the startup gate for the reason: a generation that dies right after a respawn
+      // most likely met an environment that no longer boots (the 2026-09-22 child found
+      // tumwater.json gone). A crash loop's generations all asked for restarts, so the gate
+      // has nothing to say about it.
+      onFleetDown: async (down) => {
+        logEvent(root, fleetDownEvent(down, down.crashLoop ? null : await runStartupProblem(root, branchArg)));
+      },
     },
     controller.signal,
   );

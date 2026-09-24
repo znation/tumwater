@@ -481,6 +481,7 @@ function scriptedRedeployer(
     swap: (h) => {
       swaps.push(h);
     },
+    bootProblem: async () => null,
   };
   // Events go to the repo's log exactly as cmdRun wires them, so the assertions below read the
   // same events.jsonl an operator would.

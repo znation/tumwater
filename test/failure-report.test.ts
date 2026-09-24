@@ -441,6 +441,12 @@ test("each harness state transition renders its own bounded line", () => {
     ],
     [{ type: "restart", to: "b".repeat(40) }, "restarting onto build bbbbbbbb"],
     [
+      { type: "restart_refused", to: "b".repeat(40), reason: "not initialized" },
+      "restart onto bbbbbbbb refused: not initialized",
+    ],
+    [{ type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" }, "fleet down — generation 2 exited 1: not initialized"],
+    [{ type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" }, "fleet down — generation 1 killed by SIGKILL"],
+    [
       { type: "orchestrator_start", pid: 4321, build: "c".repeat(40) },
       "orchestrator started (pid 4321, build cccccccc)",
     ],

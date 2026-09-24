@@ -182,6 +182,8 @@ export interface HarnessEvent {
     | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy.ts)
     | "restart_pending" // main is green and compiling; no new ticks start until the restart lands
     | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it
+    | "restart_refused" // a new generation would fail `tumwater run`'s startup gate here (reason); the running build stays and the gate is re-asked every poll
+    | "supervisor_exit" // the supervisor gave up without the operator asking: a generation exited with a failure (code/signal, reason when the startup gate names one) or the crash-loop guard tripped — the fleet is down
     | "warning";
   [key: string]: unknown;
 }

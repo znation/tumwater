@@ -161,6 +161,16 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} restarting onto build ${shortSha(e.to)} (drained ${Math.round(Number(e.drainedMs ?? 0) / 60_000)}m${
         Number(e.abortedTicks ?? 0) > 0 ? `, ${e.abortedTicks} tick(s) will resume on the new build` : ""
       })`;
+    case "restart_refused":
+      // The restart is refused, not failed: the running build stays and the gate is re-asked
+      // every poll, so the line names both builds and what the operator must repair.
+      return `${time} ${loop} restart onto build ${shortSha(e.to)} refused — the new build could not start here: ${e.reason}; staying on build ${shortSha(e.from)} until it can`;
+    case "supervisor_exit": {
+      // The fleet is DOWN and nothing will bring it back: the one line that must say so, since
+      // the dead generation's own stderr reached only the supervisor's terminal.
+      const how = e.signal ? `was killed by ${e.signal}` : `exited ${e.code}`;
+      return `${time} ${loop} fleet down — generation ${e.generation} ${how}${e.reason ? `: ${e.reason}` : ""}; the supervisor exited (restart with \`tumwater run\`)`;
+    }
     case "resume":
       // Two causes share the resume machinery; the line names the real one so an operator
       // reading the feed can tell a restart from a loop fighting the context ceiling.

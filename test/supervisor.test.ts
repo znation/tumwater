@@ -5,6 +5,8 @@ import path from "node:path";
 import { RESTART_EXIT_CODE } from "../src/redeploy.js";
 import {
   type ChildExit,
+  type FleetDown,
+  fleetDownEvent,
   MAX_RAPID_RESPAWNS,
   RESPAWN_WINDOW_MS,
   SUPERVISED_ENV,
@@ -87,6 +89,85 @@ test("respawns spaced wider than the window never trip the guard", async () => {
   );
   assert.equal(code, 0);
   assert.equal(child.spawns, MAX_RAPID_RESPAWNS + 4);
+});
+
+// A fleet that goes down without the operator asking must leave a trace (BUGS.md 2026-09-23): on
+// 2026-09-22 a respawned generation exited "not initialized", the supervisor exited with it, and
+// events.jsonl simply ended at the previous generation's orchestrator_stop.
+
+test("a generation that dies unasked is reported through onFleetDown before the supervisor exits", async () => {
+  const child = scripted([RESTART_EXIT_CODE, 1]);
+  const downs: FleetDown[] = [];
+  const code = await superviseRun(
+    { spawnChild: child.spawnChild, stopping: () => false, onFleetDown: (d) => void downs.push(d) },
+    new AbortController().signal,
+  );
+  assert.equal(code, 1, "the exit code is still the child's");
+  assert.deepEqual(downs, [{ generation: 2, exit: { code: 1, signal: null }, crashLoop: false }]);
+
+  // A signal death is a failure too — including the operator's own first generation.
+  const killed = scripted([null]);
+  const killedDowns: FleetDown[] = [];
+  await superviseRun(
+    { spawnChild: killed.spawnChild, stopping: () => false, onFleetDown: (d) => void killedDowns.push(d) },
+    new AbortController().signal,
+  );
+  assert.deepEqual(killedDowns, [{ generation: 1, exit: { code: null, signal: "SIGKILL" }, crashLoop: false }]);
+});
+
+test("asked-for endings leave no fleet-down trace: a clean exit, or anything while stopping", async () => {
+  for (const [codes, stopping] of [
+    [[RESTART_EXIT_CODE, 0], false],
+    [[1], true],
+    [[RESTART_EXIT_CODE], true],
+    [[null], true],
+  ] as Array<[Array<number | null>, boolean]>) {
+    const child = scripted(codes);
+    let downs = 0;
+    await superviseRun(
+      { spawnChild: child.spawnChild, stopping: () => stopping, onFleetDown: () => void (downs += 1) },
+      new AbortController().signal,
+    );
+    assert.equal(downs, 0, `codes ${JSON.stringify(codes)}, stopping ${stopping}`);
+  }
+});
+
+test("a tripped crash-loop guard is reported as a fleet down too", async () => {
+  const child = scripted(Array(MAX_RAPID_RESPAWNS + 5).fill(RESTART_EXIT_CODE));
+  const downs: FleetDown[] = [];
+  let now = 1_000_000;
+  const code = await superviseRun(
+    { spawnChild: child.spawnChild, stopping: () => false, onFleetDown: (d) => void downs.push(d), now: () => (now += 1000) },
+    new AbortController().signal,
+  );
+  assert.equal(code, 1);
+  assert.deepEqual(downs, [
+    { generation: MAX_RAPID_RESPAWNS + 1, exit: { code: RESTART_EXIT_CODE, signal: null }, crashLoop: true },
+  ]);
+});
+
+test("an onFleetDown that throws leaves the exit code the child's", async () => {
+  const child = scripted([3]);
+  const code = await superviseRun(
+    {
+      spawnChild: child.spawnChild,
+      stopping: () => false,
+      onFleetDown: async () => {
+        throw new Error("ENOSPC");
+      },
+    },
+    new AbortController().signal,
+  );
+  assert.equal(code, 3);
+});
+
+test("fleetDownEvent carries generation, code or signal, and a reason only when one is known", () => {
+  const diagnosed = fleetDownEvent({ generation: 2, exit: { code: 1, signal: null }, crashLoop: false }, "not initialized");
+  assert.deepEqual(diagnosed, { loop: "harness", type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" });
+  const bare = fleetDownEvent({ generation: 1, exit: { code: null, signal: "SIGKILL" }, crashLoop: false }, null);
+  assert.deepEqual(bare, { loop: "harness", type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" }, "no guess");
+  const loop = fleetDownEvent({ generation: 6, exit: { code: RESTART_EXIT_CODE, signal: null }, crashLoop: true }, null);
+  assert.match(String(loop.reason), new RegExp(`restarted itself more than ${MAX_RAPID_RESPAWNS} times within 60s`));
 });
 
 // The production spawner is tested against a real child process — the only way to pin the argv/

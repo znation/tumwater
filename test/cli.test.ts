@@ -9,6 +9,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig } from "../src/config.js";
+import { readEvents } from "../src/events.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { loadLoopState } from "../src/state.js";
@@ -128,7 +129,8 @@ test("run --branch fails at startup when the branch does not exist, listing what
   const repo = makeRepo();
   await cli(repo, "init", "Ready repo.");
   // fake pi on PATH so the run preflight passes and the branch validation itself is what
-  // fails (via the supervised child, which inherits PATH and the forwarded flags).
+  // fails — in the supervisor, before any child spawns: the branch is part of the one startup
+  // gate (startup-gate.ts) every generation, and the supervisor itself, runs.
   const restore = fakePi("# never reached — the unknown branch fails first\n");
   try {
     const r = await cli(repo, "run", "--branch", "ghost");
@@ -843,6 +845,31 @@ test("run refuses to start while another orchestrator is alive", async () => {
     assert.match(r.stderr, /an orchestrator is already running/);
   } finally {
     fs.rmSync(orchestratorStatePath(repo), { force: true });
+    restore();
+  }
+});
+
+test("a generation that dies unasked leaves a supervisor_exit event: the fleet is never down without a trace", async () => {
+  // BUGS.md 2026-09-23: a respawned child exited "not initialized" and events.jsonl simply ended.
+  // Here the child dies at startup on something outside the startup gate (every role disabled —
+  // the orchestrator's own refusal), so the supervisor passes the gate, spawns, and must record
+  // the death itself; the gate re-asked afterwards passes, so the event carries no guessed reason.
+  const repo = makeRepo();
+  await initProject(repo, "cli run fleet down");
+  const cfg = defaultConfig();
+  for (const role of Object.values(cfg.roles)) role.enabled = false;
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "run");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /no roles enabled/);
+    const down = readEvents(repo).filter((e) => e.type === "supervisor_exit");
+    assert.equal(down.length, 1, `expected one supervisor_exit event:\n${JSON.stringify(readEvents(repo))}`);
+    assert.equal(down[0]!.generation, 1);
+    assert.equal(down[0]!.code, 1);
+    assert.equal(down[0]!.reason, undefined, "the gate passes: no reason is invented");
+  } finally {
     restore();
   }
 });
