@@ -55,49 +55,93 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 - BUGS.md's "gate's bounded build-fix run has no time or resource budget" and "reviewer is never told about the gate's own build-fix commit" entries move to Fixed (the mechanism is gone).
 - `npm test` green.
 
-### Land-queue speed 2/3 — Vet queued changes in parallel; serialize only the merge (planned 2026-09-23, requested by user)
+### Land-queue speed 2a — Approvals survive a clean rebase: key them by patch-id, not sha (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
 
-**Why.** From 2026-09-23 12:19 to 20:56 changes arrived at 5.4/h, and the one landing slot served 5.8/h at 81% busy. At that load the queue can only grow. The slot's time went to model reviews (~49%), per-change full-suite gate checks (~19%, ~107 s each), and the build-fix runs 1/3 removes. The step that actually has to be serial, stack + check + fast-forward, is a few minutes per batch and the ff itself is ~0. Every review and gate check runs one after another today: in the single path, and in `landBatch`'s Phase A loop (src/land-batch.ts:132, BUGS.md "A batch reviews its changes one after another"). The isolation needed to run them concurrently already exists. Each role has its own lander worktree (`_land-<role>`), review session dir, pinned ref and LoopState, and Phase A already gates each change in its role's own worktree. A review judges a diff, not a specific sha. Only the final stacked tree needs a serial check, and the batch check / in-lock `verifyLanding` already provide that.
+**Why.** `reviewAheadOfMain` short-circuits a re-review only on an exact sha match (`state.lastApprovedHead === head`, src/review.ts:188), but `landChange` rebases onto main before the gate (src/lander.ts:190) — so any approved change whose main moved pays a full second reviewer run. This is BUGS.md's open "batch's one-at-a-time fallback re-reviews every change it already approved" entry: about 12 wasted minutes in the 05:03 batch on 2026-09-23. A review judges a diff, not a sha; keying the approval by the diff's patch-id keeps the short-circuit across a clean rebase while still re-reviewing a rebase that changed the patch.
 
-**Target.** Queue-to-landed latency of about one review + one gate check + one merge step (~6–10 min at today's medians, not 39). Merge-stage capacity well above today's arrival rate. The interlock stays: a role is still blocked while its change is being vetted or merged, just for much less time.
+**Approach.**
+- src/git.ts — `patchId(wt, base, head): Promise<string | null>`: `git diff --no-color <base> <head>` piped into `git patch-id --stable`, returning the first field of the output, or null on any failure (the plumbing style of the file's other helpers).
+- src/types.ts — `LoopState.lastApprovedPatchId?: string` beside `lastApprovedHead` (:286).
+- src/review.ts — record it where `lastApprovedHead` is recorded (:379). The short-circuit at :188 becomes: approved when `lastApprovedHead === head` OR (`lastApprovedPatchId` is set and equals `patchId(wt, mainBranch, head)`). The gate's deterministic pre-check still runs on the new tree unless `verifiedHead` covers it — only the **model review** is reused; the check that the tree still builds is not skipped.
 
-**Approach — three steps, each landable and useful on its own, in this order:**
+**Files touched.** src/git.ts, src/types.ts, src/review.ts, test/git.test.ts, test/review.test.ts.
 
-- **2a. Approvals survive a clean rebase: key them by patch-id, not sha.** Today `state.lastApprovedHead === head` (src/review.ts:188) is an exact-sha match. `landChange` rebases before the gate (src/lander.ts:190), so any approved change whose main moved gets a full second gate. This is the BUGS.md "batch's one-at-a-time fallback re-reviews every change it already approved" entry: about 12 wasted minutes in the 05:03 batch on 2026-09-23.
-  - src/git.ts — `patchId(wt, base, head)`: `git diff --no-color <base> <head>` piped into `git patch-id --stable`, returning its first field, or null on any failure.
-  - src/types.ts — `LoopState.lastApprovedPatchId?: string` beside `lastApprovedHead` (:286).
-  - src/review.ts — record it where `lastApprovedHead` is recorded (:379). The short-circuit at :188 becomes: approved when `lastApprovedHead === head` OR (`lastApprovedPatchId` is set and equals `patchId(wt, mainBranch, head)`). The gate's deterministic pre-check still runs on the new tree unless `verifiedHead` covers it. Only the **model review** is reused; the check that tree still builds is not skipped.
-  - Criteria: an approved change rebased cleanly onto a moved main re-lands with zero reviewer runs and one build check. A rebase that changes the patch (conflict resolution, or a hunk that moved into different context and changed) re-reviews. The batch fallback test reviews N changes exactly N times.
+**Acceptance criteria.**
+- An approved change rebased cleanly onto a moved main re-lands with zero reviewer runs and one build check.
+- A rebase that changes the patch (conflict resolution, or a hunk moved into different context that changed) re-reviews.
+- `patchId` is equal for the same diff taken from two different shas, and null-tolerant (a failed `git patch-id` never throws into the gate).
 
-- **2b. Split landing into a parallel vetting stage and a serial merge stage.**
-  - **Vetting**, up to `maxConcurrentLandings` at once, taken in queue order: for each queued entry not already being vetted, in its own `_land-<role>` worktree:
-    - `ensureDetachedWorktree` at the pin, then `rebaseOntoMain`.
-    - `reviewPinnedChange` (gate check + review, the existing function).
-    - Persist the verdict at once, as Phase A already does.
-    - A **terminal** verdict (`rejected`, a strike-cap `review_error` discard, `error`) calls `writeLandingOutcome` right away. That drops the entry and frees the author, which fixes BUGS.md's "A change rejected early in a batch keeps its role blocked".
-    - An approved or exempt verdict leaves the entry queued and marked vetted, with its approved head in the landing ref and its patch-id in state (2a).
-  - **Merging**, one at a time, on the existing single slot: take every vetted entry, up to `landBatchMax`, in queue order among the vetted. Do not wait for an unvetted queue head; independent changes may merge ahead of a slow review. Stack them on main's current tip with the existing `landBatch` assembly (`base..sha` cherry-picks, one scope-`batch` check, `ffStackToMain`); a stack of one goes through `landChange`, whose gate now short-circuits via 2a. Phase A leaves `landBatch` and becomes the vetting task. `landBatch` keeps stacking, the check, the ff, and the fallback.
-  - src/landing-drain.ts — `drainLandingQueue` today starts at most one landing when `landingInFlight === null` (src/orchestrator.ts:417). It becomes two drains:
-    - `drainVetting`: start vet tasks while below the limit, skipping entries already vetted or in flight.
-    - `drainMerge`: start the merge when the slot is free and at least one entry is vetted.
-    - Keep the head dedupe (`isMergedInto`), the torn-head drop, and the authorFor resolution unchanged.
-  - src/orchestrator.ts — `landingInFlight: InFlightLanding | null` (:181) becomes a vetting set plus the merge slot. The shutdown `Promise.allSettled` (:546) and `consumeAbortRequests` (:299) span all of them; `tumwater abort --role` aborts that role's vet or merge. `holdForRestart` (:411) stops starting vet tasks exactly like ticks. Aborting a vet task is always safe: it is pi runs and a detached worktree, and the pin survives.
-  - **Concurrency and permits.** Landing pi runs acquire the shared `maxConcurrent` semaphore today at `LANDING_TIER` (src/landing-drain.ts:25). That was right for the single-GPU local backend (BUGS.md 2026-09-18) but would make N parallel vets cost N author slots. New config `maxConcurrentLandings` (default **1**, which reproduces today's behavior exactly, shared permit included; validated as a positive integer in src/config-validation.ts beside `landBatchMax`). At 1, vetting draws from the shared semaphore as now. Above 1, vetting draws from its own `Semaphore(maxConcurrentLandings)` and adds that many streams to the provider. While the budget gate is in `fallback` (local model), clamp it to 1 and return to the shared semaphore. README documents the total: `maxConcurrent + maxConcurrentLandings + director`. This repo's tumwater.json would then set 2–3; provider 429s are the thing to watch (BUGS.md's 429-storm entry).
-  - **Build-check load.** Parallel vets mean parallel full suites on the same host, next to the authors' own test runs, and this suite has load-sensitive tests. Add one process-wide check semaphore in src/build-check.ts, `maxConcurrentChecks` (default 2), that every `runScopedBuildCheck` and `checkMainBaseline` run acquires. Land 1/3 first, so a load flake costs one retry rather than a rejection.
-  - Criteria:
-    - Three queued entries with fake reviewers of duration T and `maxConcurrentLandings: 3` → all three merged in about T + check + merge, not 3T (a timing assertion with generous slack, the orchestrator-test style).
-    - `maxConcurrentLandings: 1` → today's event sequence for the existing landing and batch tests.
-    - A rejection in vetting drops its entry, and its role ticks within one poll while other vets continue.
-    - A vetted entry merges while an earlier queue entry is still in review.
-    - Shutdown and `abort --role` reach every vet task; pins survive a shutdown abort.
-    - Never more than `maxConcurrentChecks` build checks run concurrently in the process.
+**Series.** Replaces plan 2/3's step 2a (split 2026-09-26 so each step is one run; 2/3's why/target live on in its siblings). Siblings 2b, 2c, 2d below: 2c depends on this entry (the merge stage re-lands approved heads through the gate after a rebase) and on 2b; 2a and 2b have no dependency between them or on anything else.
 
-- **2c. Per-change landing markers so the dashboards show what is really happening.** `.tumwater/state/landing.json` (one marker, `LandingInFlight` in src/landing-slot.ts:26) becomes one marker per change in flight, under `.tumwater/state/landing/<role>.json`, with a `stage` of `vetting:build-check` / `vetting:reviewing` / `vetted` / `merging` and a per-change `startedAt`. `readLandingMarker` becomes a list reader with the same torn-file tolerance; `snapshot()`'s cross-check validates each marker against its queue entry. src/ui/status-model.ts `loopPhase` renders each role's own stage and elapsed. This fixes BUGS.md's "A batched landing is displayed as the head change's landing" and supplies the stage half of "The landing state cell shows only elapsed time".
-  - Criteria: with two changes vetting and one merging, each of the three rows shows its own stage and elapsed; a rejected change shows no landing state after its verdict.
+### Land-queue speed 2b — One process-wide cap on concurrent build checks: `maxConcurrentChecks` (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
 
-**Files touched.** src/git.ts, src/types.ts, src/review.ts (2a); src/landing-drain.ts, src/land-batch.ts, src/lander.ts, src/orchestrator.ts, src/semaphore.ts (reuse only), src/build-check.ts, src/main-baseline.ts, src/config.ts, src/config-validation.ts, README.md (2b); src/landing-slot.ts, src/ui/status-model.ts, src/ui/status-payload.ts, src/ui/progress.ts as needed (2c). Tests: test/review.test.ts, test/lander.test.ts, the land-batch and landing-drain tests, test/orchestrator*.test.ts, test/config-validation.test.ts, test/status-model.test.ts.
+**Why.** Nothing today bounds how many full check suites run at once: a burst of landings can already stack suites on the same host next to the authors' own test runs, and this suite has load-sensitive tests (BUGS.md's fixed "load-sensitive live-orchestrator test" entry, 2026-09-22). The cap is independently useful and landable, and parallel vetting (2c) would otherwise multiply the problem.
 
-**Self-hosting note.** The fleet lands each step with the *previous* build (the 4b/7 lesson, BUGS.md tumwater.json entry). 2a is safe to land on its own. 2b must default to `maxConcurrentLandings: 1`, and this repo's tumwater.json is only raised after the 2b build is the one running (check `tumwater doctor`'s running-build line).
+**Approach.**
+- src/config.ts — `maxConcurrentChecks: 2` default beside `landBatchMax` (:38).
+- src/config-validation.ts — validate it as a positive integer beside `maxConcurrent`/`landBatchMax` (:264–265), named key on failure.
+- src/build-check.ts — a module-level `Semaphore` (src/semaphore.ts's exported class) acquired around the run inside `runScopedBuildCheck` (:420) and released in a finally; sized from the live config at call time so it hot-reloads with tumwater.json. Export it, and have src/main-baseline.ts's `checkMainBaseline` (:125) — which runs the suite directly, not through `runScopedBuildCheck` — acquire the same one.
+- README.md — document `maxConcurrentChecks` beside `maxConcurrent`.
+
+**Files touched.** src/config.ts, src/config-validation.ts, src/build-check.ts, src/main-baseline.ts, README.md, test/config-validation.test.ts, test/build-check.test.ts.
+
+**Acceptance criteria.**
+- At the default 2, a third concurrent check starts only after one of the first two finishes (timing assertion with generous slack, the orchestrator-test style); a check that fails or times out still releases its permit.
+- `maxConcurrentChecks: 0` and negatives are rejected by config validation with a named key.
+- Existing tests' event sequences are unchanged (the default cap is above anything current tests run concurrently).
+
+**Series.** Sibling of 2a, 2c, 2d. No dependency; land before 2c.
+
+### Land-queue speed 2c — Split landing into a parallel vetting stage and a serial merge stage (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
+
+**Why.** From 2026-09-23 12:19 to 20:56 changes arrived at 5.4/h and the one landing slot served 5.8/h at 81% busy — at that load the queue only grows. The slot's time went to model reviews (~49%), per-change full-suite gate checks (~19%, ~107 s each), and the build-fix runs 1/3 removes. The step that must stay serial — stack + batch check + fast-forward — is a few minutes per batch; every review and gate check runs one after another today, both in the single path and in `landBatch`'s Phase A loop (src/land-batch.ts:130, BUGS.md "A batch reviews its changes one after another"). The isolation for concurrency already exists: each role has its own `_land-<role>` worktree, review session dir, pinned ref and LoopState.
+
+**Target.** Queue-to-landed latency of about one review + one gate check + one merge step (~6–10 min at today's medians, not 39). The interlock stays: a role is still blocked while its change is being vetted or merged, just for much less time.
+
+**Approach.**
+- **Vetting**, up to `maxConcurrentLandings` at once, taken in queue order: for each queued entry not already being vetted, in its own `_land-<role>` worktree:
+  - `ensureDetachedWorktree` at the pin, then `rebaseOntoMain`.
+  - `reviewPinnedChange` (gate check + review, the existing function).
+  - Persist the verdict at once, as Phase A already does.
+  - A **terminal** verdict (`rejected`, a strike-cap `review_error` discard, `error`) calls `writeLandingOutcome` right away. That drops the entry and frees the author, which fixes BUGS.md's "A change rejected early in a batch keeps its role blocked".
+  - An approved or exempt verdict leaves the entry queued and marked vetted, with its approved head in the landing ref and its patch-id in state (2a).
+- **Merging**, one at a time, on the existing single slot: take every vetted entry, up to `landBatchMax`, in queue order among the vetted. Do not wait for an unvetted queue head; independent changes may merge ahead of a slow review. Stack them on main's current tip with the existing `landBatch` assembly (`base..sha` cherry-picks, one scope-`batch` check, `ffStackToMain`); a stack of one goes through `landChange`, whose gate now short-circuits via 2a. Phase A leaves `landBatch` and becomes the vetting task. `landBatch` keeps stacking, the check, the ff, and the fallback.
+- src/landing-drain.ts — `drainLandingQueue` today starts at most one landing when `landingInFlight === null` (src/orchestrator.ts:417). It becomes two drains: `drainVetting` (start vet tasks while below the limit, skipping entries already vetted or in flight) and `drainMerge` (start the merge when the slot is free and at least one entry is vetted). Keep the head dedupe (`isMergedInto`), the torn-head drop, and the authorFor resolution unchanged.
+- src/orchestrator.ts — `landingInFlight: InFlightLanding | null` (:181) becomes a vetting set plus the merge slot. The shutdown `Promise.allSettled` (:546) and `consumeAbortRequests` (:299) span all of them; `tumwater abort --role` aborts that role's vet or merge. `holdForRestart` (:411) stops starting vet tasks exactly like ticks. Aborting a vet task is always safe: it is pi runs and a detached worktree, and the pin survives.
+- **Permits.** Landing pi runs acquire the shared `maxConcurrent` semaphore today at `LANDING_TIER` (src/landing-drain.ts:25). That was right for the single-GPU local backend but makes N parallel vets cost N author slots. New config `maxConcurrentLandings` (default **1**, which reproduces today's behavior exactly, shared permit included; validated as a positive integer in src/config-validation.ts beside `landBatchMax`). At 1, vetting draws from the shared semaphore as now. Above 1, vetting draws from its own `Semaphore(maxConcurrentLandings)` and adds that many streams to the provider; while the budget gate is in `fallback` (local model), clamp it to 1 and return to the shared semaphore. README documents the total: `maxConcurrent + maxConcurrentLandings + director`. This repo's tumwater.json is raised to 2–3 only after this build is the one running (the self-hosting note below); provider 429s are the thing to watch (BUGS.md's 429-storm entry).
+- **Build-check load** is bounded by 2b's `maxConcurrentChecks`, not here — land 2b first, and 1/3 before both, so a load flake costs one retry rather than a rejection.
+
+**Files touched.** src/landing-drain.ts, src/orchestrator.ts, src/land-batch.ts, src/lander.ts, src/config.ts, src/config-validation.ts, README.md; tests: test/landing-drain.test.ts, test/lander.test.ts, test/orchestrator-seams.test.ts, test/config-validation.test.ts.
+
+**Acceptance criteria.**
+- Three queued entries with fake reviewers of duration T and `maxConcurrentLandings: 3` → all three merged in about T + check + merge, not 3T (a timing assertion with generous slack, the orchestrator-test style).
+- `maxConcurrentLandings: 1` → today's event sequence for the existing landing and batch tests.
+- A rejection in vetting drops its entry, and its role ticks within one poll while other vets continue.
+- A vetted entry merges while an earlier queue entry is still in review.
+- Shutdown and `abort --role` reach every vet task; pins survive a shutdown abort.
+- `maxConcurrentLandings: 0` and negatives are rejected by config validation with a named key.
+
+**Self-hosting note.** The fleet lands each step with the *previous* build (the 4b/7 lesson, BUGS.md tumwater.json entry). `maxConcurrentLandings: 1` is behavior-preserving, so this entry can land while the old build runs; this repo's tumwater.json is only raised after the new build is the one running (check `tumwater doctor`'s running-build line).
+
+**Series.** Sibling of 2a, 2b, 2d. Depends on 2a (patch-id approvals survive the rebase into the merge stage) and 2b (concurrent vets mean concurrent suites); 1/3 first so a load flake costs one retry.
+
+### Land-queue speed 2d — Per-change landing markers so the dashboards show what is really happening (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
+
+**Why.** `.tumwater/state/landing.json` holds one marker (`LandingInFlight`, src/landing-slot.ts:26) for the whole slot, so a batched landing is displayed as the head change's landing for the whole batch — the head role reads `landing 29m` long after its own change was rejected, while the change actually being gated shows nothing (BUGS.md's open entry). It also leaves the landing state cell bare `landing <elapsed>` — the stage half of that re-opened entry. 2c's vetting stage makes per-change state the truth the dashboards should show.
+
+**Approach.**
+- src/landing-slot.ts — one marker per change in flight, under `.tumwater/state/landing/<role>.json`, each with a `stage` of `vetting:build-check` / `vetting:reviewing` / `vetted` / `merging` and a per-change `startedAt` (the fields `LandingInFlight` already carries, plus stage). `readLandingMarker` becomes a list reader with the same torn-file tolerance the single marker has today.
+- `snapshot()`'s cross-check validates each marker against its queue entry (and the orchestrator's liveness), so a stale marker from any crash ordering never displays.
+- src/ui/status-model.ts — `loopPhase` (:108) renders each role's own stage and elapsed, replacing the head-change-only view.
+
+**Files touched.** src/landing-slot.ts, src/ui/status-model.ts, src/ui/status-payload.ts, src/ui/progress.ts as needed; tests: test/landing-slot.test.ts, test/status-render.test.ts.
+
+**Acceptance criteria.**
+- With two changes vetting and one merging, each of the three rows shows its own stage and elapsed; a rejected change shows no landing state after its verdict.
+- A torn or stale marker file displays nothing rather than crashing the observers (the existing tolerance, per-marker).
+- Before 2c lands, the vocabulary still renders: today's single landing shows as one `merging`-stage marker with today's cell text unchanged.
+
+**Series.** Sibling of 2a, 2b, 2c. Lands most usefully after 2c (the stages exist), but is implementable against today's single-stage markers with the stage vocabulary already named above.
 
 ### Land-queue speed 3a — Give the reviewer its own time budget (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
 
@@ -117,7 +161,7 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 - The slow-reviewer test above passes; a review inside the budget behaves byte-for-byte as today.
 - `review.timeoutSeconds: 0` and negatives are rejected by config validation with a named key.
 
-**Series.** Part of the land-queue speed series (1/3 and 2/3 planned above; both independent of this one). Siblings 3b–3e below are independent of this entry and of each other — any order.
+**Series.** Part of the land-queue speed series (1/3 and 2a–2d planned above; all independent of this one). Siblings 3b–3e below are independent of this entry and of each other — any order.
 
 ### Land-queue speed 3b — Tell the reviewer, as a rule, not to re-run a verified suite (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
 
