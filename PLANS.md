@@ -5,28 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 7b/7 — `tumwater init --adopt` and `--dry-run`: adopt an existing repo without touching its README (planned 2026-09-23, split from 7/7)
-
-**Goal.** Today `initProject` hard-fails when README.md exists without the `tumwater:prompt` markers (src/init.ts:147), which is why tumwater has only ever been pointed at repos it created itself. Add the adoption path — write `TUMWATER.md`, leave README.md and any existing backlog files untouched — plus `--dry-run` and an ecosystem-neutral PRINCIPLES template. Depends on 7a/7 (the adopted repo's loops must resolve `TUMWATER.md` first, or adoption creates a brief nobody reads). Design rationale and audit pins: plans/portability.md §7/7 (corrections 1, 4, 5, 6, 7).
-
-**Series.** Part 7/7 of the portability series, second half. Depends on: 2/7 ✓ and 7a/7.
-
-**Approach.**
-- src/cli-args.ts — `parseInitArgs` (returns `{ prompt: string; branch: string | null }` at :127) gains `--adopt` and `--dry-run` as valueless booleans: both join the allowed double-dash set (:129), the per-flag once-checks (:135–136), `--file`'s claimed pair (:142–144), and the join-skip list (:200–204) so they are never baked into the prompt text; the return type becomes `{ prompt; branch; adopt; dryRun }`.
-- src/cli.ts — `cmdInit` (:130) destructures four fields and passes `opts` through.
-- src/init.ts — `initProject` gains a fourth positional `opts?: { adopt?: boolean; dryRun?: boolean }` (branch stays third, :106). The README-without-markers guard (:147) becomes the adoption path: write `TUMWATER.md` via `briefTemplate`, one informational line, no throw — and the same path is taken with or without `--adopt` when README.md lacks markers. `write("README.md", …)` does not run on the adopt path (briefTemplate writes TUMWATER.md instead); the existing create-if-absent `write` helper (:159) keeps PLANS/BUGS/QUESTIONS/PRINCIPLES safe from overwrite. `--dry-run` prints the created/left-alone list and exits 0 with zero writes — no .gitignore edit, no `git add`/commit (the `committable` filter at :176–190 and 4a/7's create-if-absent config seeding (:168–171) are reused unchanged when it does run). `PRINCIPLES_TEMPLATE` (:61) is trimmed to ecosystem-neutral principles with a note that director and steward own the list (correction 7 — trimmed unconditionally; this repo's own tracked PRINCIPLES.md is only read, never re-seeded).
-- Tests: test/cli-args.test.ts (the flag rules above, including `--file` + booleans combining and a duplicate boolean failing by name); test/init.test.ts (adopt in a clone with its own README.md and PLANS.md; `--dry-run` writes nothing and exits 0; the old-failure test — audit pin :118 — inverts to assert the adoption path; a bare re-seed of a README-only repo still round-trips through README.md).
-
-**Files touched.** src/cli-args.ts, src/init.ts, src/cli.ts, test/cli-args.test.ts, test/init.test.ts.
-
-**Acceptance criteria.**
-- `tumwater init --adopt "<brief>"` in a clone of an unrelated repo (existing README.md, existing PLANS.md) creates only `TUMWATER.md`, `QUESTIONS.md`, `PRINCIPLES.md`, `tumwater.json` and the `.gitignore` entries — README.md and PLANS.md byte-identical afterwards; the same path fires automatically without the flag when README.md lacks markers.
-- `tumwater init --dry-run` prints the file list and exits 0 having written nothing (no gitignore edit, no commit).
-- A repo tumwater created before this change keeps reading its brief from README.md with no migration step.
-- A repo that only gained tumwater.json reports it and stays uncommitted (4a/7's rule, unchanged).
-
-**Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ and 4b/7 ✓ (landed 2026-09-22), 5/7 ✓ (2026-09-24), 6/7 ✓ (2026-09-25), 7a/7 ✓ (2026-09-23) are done. 7b/7 has no unmet dependency left.
-
 ### Land-queue speed 1/3 — Take the build-fix run out of the landing slot: retry a failed gate check once, then hand the failure to whoever caused it (planned 2026-09-23, requested by user)
 
 **Status 2026-09-24 (partly delivered by the BUGS.md sweep):** step 1 has landed. A failed gate check is re-run once, and a pass logs `gate check failed then passed on retry — flaky: <headline>` and proceeds as verified (the build-fix budget fix, 47c06df). That fix also caps the fix run that remains at 20 minutes (`BUILD_FIX_TIMEOUT_S`) under a shared-host prompt, and dc0d9a7 names any fix commit in the review prompt. Both BUGS.md entries the last acceptance criterion names are already in Fixed. Still to do: attributing a repeat failure through `checkMainBaseline` (step 2) and deleting the fix run (step 3).
@@ -77,25 +55,6 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Series.** Replaces plan 2/3's step 2a (split 2026-09-26 so each step is one run; 2/3's why/target live on in its siblings). Siblings 2b, 2c, 2d below: 2c depends on this entry (the merge stage re-lands approved heads through the gate after a rebase) and on 2b; 2a and 2b have no dependency between them or on anything else.
 
-### Land-queue speed 2b — One process-wide cap on concurrent build checks: `maxConcurrentChecks` (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
-
-**Why.** Nothing today bounds how many full check suites run at once: a burst of landings can already stack suites on the same host next to the authors' own test runs, and this suite has load-sensitive tests (BUGS.md's fixed "load-sensitive live-orchestrator test" entry, 2026-09-22). The cap is independently useful and landable, and parallel vetting (2c) would otherwise multiply the problem.
-
-**Approach.**
-- src/config.ts — `maxConcurrentChecks: 2` default beside `landBatchMax` (:38).
-- src/config-validation.ts — validate it as a positive integer beside `maxConcurrent`/`landBatchMax` (:264–265), named key on failure.
-- src/build-check.ts — a module-level `Semaphore` (src/semaphore.ts's exported class) acquired around the run inside `runScopedBuildCheck` (:420) and released in a finally; sized from the live config at call time so it hot-reloads with tumwater.json. Export it, and have src/main-baseline.ts's `checkMainBaseline` (:125) — which runs the suite directly, not through `runScopedBuildCheck` — acquire the same one.
-- README.md — document `maxConcurrentChecks` beside `maxConcurrent`.
-
-**Files touched.** src/config.ts, src/config-validation.ts, src/build-check.ts, src/main-baseline.ts, README.md, test/config-validation.test.ts, test/build-check.test.ts.
-
-**Acceptance criteria.**
-- At the default 2, a third concurrent check starts only after one of the first two finishes (timing assertion with generous slack, the orchestrator-test style); a check that fails or times out still releases its permit.
-- `maxConcurrentChecks: 0` and negatives are rejected by config validation with a named key.
-- Existing tests' event sequences are unchanged (the default cap is above anything current tests run concurrently).
-
-**Series.** Sibling of 2a, 2c, 2d. No dependency; land before 2c.
-
 ### Land-queue speed 2c — Split landing into a parallel vetting stage and a serial merge stage (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
 
 **Status 2026-09-24 (partly delivered by the BUGS.md sweep):** two of its pieces landed as bug fixes. A batch's Phase A gates run concurrently, two at a time (`PHASE_A_CONCURRENCY`; each extra gate takes its own `maxConcurrent` permit through `BatchContext.gatePermit`), and a terminal Phase A verdict writes its outcome and drops its entry at once (`BatchContext.onFinal`). Still to do: the vetting/merge split, `maxConcurrentLandings`, and merging vetted entries ahead of an unvetted head.
@@ -130,26 +89,6 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 **Self-hosting note.** The fleet lands each step with the *previous* build (the 4b/7 lesson, BUGS.md tumwater.json entry). `maxConcurrentLandings: 1` is behavior-preserving, so this entry can land while the old build runs; this repo's tumwater.json is only raised after the new build is the one running (check `tumwater doctor`'s running-build line).
 
 **Series.** Sibling of 2a, 2b, 2d. Depends on 2a (patch-id approvals survive the rebase into the merge stage) and 2b (concurrent vets mean concurrent suites); 1/3 first so a load flake costs one retry.
-
-### Land-queue speed 3a — Give the reviewer its own time budget (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
-
-**Why.** Measured 2026-09-22/23: reviews ran 2.3 min median, 9.2 min p90 and 24.6 min max after the 12:19 restart, and earlier days had reviews of 1.5–3.5 h. The reviewer's only limits are `tickTimeoutSeconds` (54000 s here) and the quiet watchdog, so one wedged reviewer holds the land queue for as long as an authoring tick.
-
-**Approach.**
-- src/config.ts — add `timeoutSeconds` to the `review` section's type, alongside `enabled`/`exemptPaths`/`provider`/`model`/`thinking` (`reviewConfig` at :333 keeps merging them; no behavior change there).
-- src/config-validation.ts — add `"timeoutSeconds"` to `REVIEW_KEYS` (:76), validated as a positive integer the way `check.timeoutSeconds` (:79) is.
-- src/review.ts — the reviewer's `runPi` (:317) passes `config: reviewConfig(config)` (:321). Make it a config whose `tickTimeoutSeconds` is `Math.min(config.tickTimeoutSeconds, review.timeoutSeconds ?? 900)` — the `SUMMARY_REQUEST_TIMEOUT_S` idiom at src/loop-pi.ts:138. Default 900, so a review today finishes no later than it already does on the p99 and a wedged one dies in 15 min instead of 15 h.
-- A timed-out review is a failed run (`pi.ok` false): keep the pin, do not advance `unreviewFailures` (the BUGS.md 2026-09-20 transport-failure rule), log `review_failed` naming the timeout. The change re-lands through the author's next tick.
-- README.md — document `review.timeoutSeconds` under the review-gate config.
-- Tests: test/review.test.ts — a fake reviewer that sleeps past a 2 s `review.timeoutSeconds` ends `review_failed` in about 2 s with the pin kept and no strike.
-
-**Files touched.** src/config.ts, src/config-validation.ts, src/review.ts, README.md, test/review.test.ts, test/config-validation.test.ts.
-
-**Acceptance criteria.**
-- The slow-reviewer test above passes; a review inside the budget behaves byte-for-byte as today.
-- `review.timeoutSeconds: 0` and negatives are rejected by config validation with a named key.
-
-**Series.** Part of the land-queue speed series (1/3 and 2a–2d planned above; all independent of this one). Siblings 3b–3e below are independent of this entry and of each other — any order.
 
 ### Land-queue speed 3c — One writer to main: route leftover recovery through the land queue (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
 
@@ -187,7 +126,30 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Series.** Sibling of 3a, 3b, 3c, 3e — independent, any order. Pairs well with 2a but does not depend on it.
 
-### Land-queue speed 3e — Optional cheaper per-change gate check; the full suite runs once per stack (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
+## Done
+
+### Land-queue speed 2b — One process-wide cap on concurrent build checks: `maxConcurrentChecks` (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26, done 2026-09-24)
+
+**Why.** Nothing today bounds how many full check suites run at once: a burst of landings can already stack suites on the same host next to the authors' own test runs, and this suite has load-sensitive tests (BUGS.md's fixed "load-sensitive live-orchestrator test" entry, 2026-09-22). The cap is independently useful and landable, and parallel vetting (2c) would otherwise multiply the problem.
+
+**Approach.**
+- src/config.ts — `maxConcurrentChecks: 2` default beside `landBatchMax` (:38).
+- src/config-validation.ts — validate it as a positive integer beside `maxConcurrent`/`landBatchMax` (:264–265), named key on failure.
+- src/build-check.ts — a module-level `Semaphore` (src/semaphore.ts's exported class) acquired around the run inside `runScopedBuildCheck` (:420) and released in a finally; sized from the live config at call time so it hot-reloads with tumwater.json. Export it, and have src/main-baseline.ts's `checkMainBaseline` (:125) — which runs the suite directly, not through `runScopedBuildCheck` — acquire the same one.
+- README.md — document `maxConcurrentChecks` beside `maxConcurrent`.
+
+**Files touched.** src/config.ts, src/config-validation.ts, src/build-check.ts, src/main-baseline.ts, README.md, test/config-validation.test.ts, test/build-check.test.ts.
+
+**Acceptance criteria.**
+- At the default 2, a third concurrent check starts only after one of the first two finishes (timing assertion with generous slack, the orchestrator-test style); a check that fails or times out still releases its permit.
+- `maxConcurrentChecks: 0` and negatives are rejected by config validation with a named key.
+- Existing tests' event sequences are unchanged (the default cap is above anything current tests run concurrently).
+
+**Series.** Sibling of 2a, 2c, 2d. No dependency; land before 2c.
+
+**Implemented 2026-09-24** in 16e25b1. All criteria are met. `withCheckPermit` in src/build-check.ts holds one permit from a process-wide `Semaphore` around every scoped check (both attempts of the killed-check retry share it) and around `checkMainBaseline`'s one in-flight run per SHA; it resizes from the caller's live config before each acquire and releases in a finally. Deltas from the written approach: the helper is exported instead of the raw semaphore; landing and batch checks (which run inside the merge lock) are granted the next free permit ahead of queued gate and baseline checks; a nested request runs under the permit already held, so no path can deadlock at a cap of 1. The key is documented in docs/how-it-works.md (the README no longer carries the config reference), and its validation tests live in test/config.test.ts.
+
+### Land-queue speed 3e — Optional cheaper per-change gate check; the full suite runs once per stack (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23, done 2026-09-24)
 
 **Why.** Every landing runs the full check suite at the gate plus once more over the whole stacked tree; the per-change gate work duplicates what the batch check does moments later. Opt-in and off by default, since a weaker gate means the red batch check (3d) catches more — no repo gets it implicitly. Lowest priority of the five siblings.
 
@@ -205,7 +167,55 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Series.** Sibling of 3a, 3b, 3c, 3d — independent, any order.
 
-### Give every failure an automated trace: retire the recurring `no-observability` validation gap (planned 2026-09-26, promoted from the Fixed validation-gap tally by steward)
+**Implemented 2026-09-24** in 46c0bde. All criteria are met. `runScopedBuildCheck` runs `check.gateCommand` (via `gateCommandOf` in src/build-check-detect.ts) at scope `gate` only, with the check's cwd and timeout; unset or blank keeps today's behavior. Delta from the written approach: src/merge.ts's `verifyLanding` no longer skips a no-op rebase's in-lock check, nor seeds main's baseline from the gate's green, when a gateCommand is configured, because the gate then never ran the full check on that tree. Documented in docs/how-it-works.md. This repo's own tumwater.json is unchanged.
+
+### Land-queue speed 3a — Give the reviewer its own time budget (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23, done 2026-09-24)
+
+**Why.** Measured 2026-09-22/23: reviews ran 2.3 min median, 9.2 min p90 and 24.6 min max after the 12:19 restart, and earlier days had reviews of 1.5–3.5 h. The reviewer's only limits are `tickTimeoutSeconds` (54000 s here) and the quiet watchdog, so one wedged reviewer holds the land queue for as long as an authoring tick.
+
+**Approach.**
+- src/config.ts — add `timeoutSeconds` to the `review` section's type, alongside `enabled`/`exemptPaths`/`provider`/`model`/`thinking` (`reviewConfig` at :333 keeps merging them; no behavior change there).
+- src/config-validation.ts — add `"timeoutSeconds"` to `REVIEW_KEYS` (:76), validated as a positive integer the way `check.timeoutSeconds` (:79) is.
+- src/review.ts — the reviewer's `runPi` (:317) passes `config: reviewConfig(config)` (:321). Make it a config whose `tickTimeoutSeconds` is `Math.min(config.tickTimeoutSeconds, review.timeoutSeconds ?? 900)` — the `SUMMARY_REQUEST_TIMEOUT_S` idiom at src/loop-pi.ts:138. Default 900, so a review today finishes no later than it already does on the p99 and a wedged one dies in 15 min instead of 15 h.
+- A timed-out review is a failed run (`pi.ok` false): keep the pin, do not advance `unreviewFailures` (the BUGS.md 2026-09-20 transport-failure rule), log `review_failed` naming the timeout. The change re-lands through the author's next tick.
+- README.md — document `review.timeoutSeconds` under the review-gate config.
+- Tests: test/review.test.ts — a fake reviewer that sleeps past a 2 s `review.timeoutSeconds` ends `review_failed` in about 2 s with the pin kept and no strike.
+
+**Files touched.** src/config.ts, src/config-validation.ts, src/review.ts, README.md, test/review.test.ts, test/config-validation.test.ts.
+
+**Acceptance criteria.**
+- The slow-reviewer test above passes; a review inside the budget behaves byte-for-byte as today.
+- `review.timeoutSeconds: 0` and negatives are rejected by config validation with a named key.
+
+**Series.** Part of the land-queue speed series (1/3 and 2a–2d planned above; all independent of this one). Siblings 3b–3e below are independent of this entry and of each other — any order.
+
+**Implemented 2026-09-24** in 376547d. All criteria are met. `reviewRunConfig` in src/config.ts caps the reviewer's run at `min(tickTimeoutSeconds, review.timeoutSeconds ?? REVIEW_TIMEOUT_S)` (900 s), and the reviewer's `runPi` uses it. A timeout takes the existing failed-run path: `review_failed` naming the timeout, pin kept, no strike. Deltas: validation uses the `check.timeoutSeconds` rule (a number above 0) rather than integer-only; the type lives in src/config-schema.ts; the docs sentence is in docs/how-it-works.md.
+
+### 7b/7 — `tumwater init --adopt` and `--dry-run`: adopt an existing repo without touching its README (planned 2026-09-23, split from 7/7, done 2026-09-24)
+
+**Goal.** Today `initProject` hard-fails when README.md exists without the `tumwater:prompt` markers (src/init.ts:147), which is why tumwater has only ever been pointed at repos it created itself. Add the adoption path — write `TUMWATER.md`, leave README.md and any existing backlog files untouched — plus `--dry-run` and an ecosystem-neutral PRINCIPLES template. Depends on 7a/7 (the adopted repo's loops must resolve `TUMWATER.md` first, or adoption creates a brief nobody reads). Design rationale and audit pins: plans/portability.md §7/7 (corrections 1, 4, 5, 6, 7).
+
+**Series.** Part 7/7 of the portability series, second half. Depends on: 2/7 ✓ and 7a/7.
+
+**Approach.**
+- src/cli-args.ts — `parseInitArgs` (returns `{ prompt: string; branch: string | null }` at :127) gains `--adopt` and `--dry-run` as valueless booleans: both join the allowed double-dash set (:129), the per-flag once-checks (:135–136), `--file`'s claimed pair (:142–144), and the join-skip list (:200–204) so they are never baked into the prompt text; the return type becomes `{ prompt; branch; adopt; dryRun }`.
+- src/cli.ts — `cmdInit` (:130) destructures four fields and passes `opts` through.
+- src/init.ts — `initProject` gains a fourth positional `opts?: { adopt?: boolean; dryRun?: boolean }` (branch stays third, :106). The README-without-markers guard (:147) becomes the adoption path: write `TUMWATER.md` via `briefTemplate`, one informational line, no throw — and the same path is taken with or without `--adopt` when README.md lacks markers. `write("README.md", …)` does not run on the adopt path (briefTemplate writes TUMWATER.md instead); the existing create-if-absent `write` helper (:159) keeps PLANS/BUGS/QUESTIONS/PRINCIPLES safe from overwrite. `--dry-run` prints the created/left-alone list and exits 0 with zero writes — no .gitignore edit, no `git add`/commit (the `committable` filter at :176–190 and 4a/7's create-if-absent config seeding (:168–171) are reused unchanged when it does run). `PRINCIPLES_TEMPLATE` (:61) is trimmed to ecosystem-neutral principles with a note that director and steward own the list (correction 7 — trimmed unconditionally; this repo's own tracked PRINCIPLES.md is only read, never re-seeded).
+- Tests: test/cli-args.test.ts (the flag rules above, including `--file` + booleans combining and a duplicate boolean failing by name); test/init.test.ts (adopt in a clone with its own README.md and PLANS.md; `--dry-run` writes nothing and exits 0; the old-failure test — audit pin :118 — inverts to assert the adoption path; a bare re-seed of a README-only repo still round-trips through README.md).
+
+**Files touched.** src/cli-args.ts, src/init.ts, src/cli.ts, test/cli-args.test.ts, test/init.test.ts.
+
+**Acceptance criteria.**
+- `tumwater init --adopt "<brief>"` in a clone of an unrelated repo (existing README.md, existing PLANS.md) creates only `TUMWATER.md`, `QUESTIONS.md`, `PRINCIPLES.md`, `tumwater.json` and the `.gitignore` entries — README.md and PLANS.md byte-identical afterwards; the same path fires automatically without the flag when README.md lacks markers.
+- `tumwater init --dry-run` prints the file list and exits 0 having written nothing (no gitignore edit, no commit).
+- A repo tumwater created before this change keeps reading its brief from README.md with no migration step.
+- A repo that only gained tumwater.json reports it and stays uncommitted (4a/7's rule, unchanged).
+
+**Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ and 4b/7 ✓ (landed 2026-09-22), 5/7 ✓ (2026-09-24), 6/7 ✓ (2026-09-25), 7a/7 ✓ (2026-09-23) are done. 7b/7 has no unmet dependency left.
+
+**Implemented 2026-09-24** in 063d9b4. All criteria are met. A README.md without markers, or `--adopt`, now takes the adoption path: the brief goes to TUMWATER.md and README.md plus any existing backlog files stay byte-identical. The one refusal left is a marker-less TUMWATER.md. `--dry-run` prints `would create` / `would leave alone` and writes, inits and commits nothing. Deltas: a missing BUGS.md is created on adoption (the criterion's file list omitted it); the Setup description changed in docs/how-it-works.md, not README.md; test/cli.test.ts gained a CLI-level case.
+
+### Give every failure an automated trace: retire the recurring `no-observability` validation gap (planned 2026-09-26, promoted from the Fixed validation-gap tally by steward, done 2026-09-24)
 
 **Why.** The Fixed backlog's validation-gap tally is dominated by one tag — `gap: no-observability` — the failure mode where nothing automated could see the bug: seven recorded repairs were confirmed only by a human reading raw logs or running `git log -S` / `ps` forensics. Six retained Fixed entries carry it:
 
@@ -242,7 +252,7 @@ The third direction splits into two independent parts: the orphaned-worktree-pro
 
 **Series.** Sibling part: the orphaned-worktree-process doctor check, landed 2026-09-24 (18b6139); this entry completes the promotion's third direction.
 
-## Done
+**Implemented 2026-09-24** in 199ed60. All criteria are met. `checkFixClaims` runs as doctor's "fix claims" check after "project check", reusing src/fix-claim.ts's helpers unmodified. Beyond the plan: further suspect records are named (headings shortened), and an unreadable BUGS.md warns instead of throwing. Against this repo's BUGS.md it reads ok; no Fixed entry at any age has every named symbol missing.
 
 ### Land-queue speed 2d — Per-change landing markers so the dashboards show what is really happening (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26, done 2026-09-24)
 
@@ -309,7 +319,6 @@ The third direction splits into two independent parts: the orphaned-worktree-pro
 
 **Implemented 2026-09-23.** All criteria met. Deltas from the written approach: `TickPromptInput.briefFile` and `buildDirectorPrompt`'s fifth parameter are optional with a README.md default (byte-for-byte compat for every existing caller and test, criterion 2); `commonRules(check?, briefFile?)` carries the name into both builders; `init.ts` is untouched — both of its guards resolve through `readInitialPrompt`, so a marked `TUMWATER.md` satisfies the bare-init re-seed path and silences the marker-less-README throw automatically; `roles.ts`' static `find` strings name the brief as "TUMWATER.md when it exists with the tumwater:prompt markers, else README.md" rather than receiving a substituted filename. `readInitialPrompt` now resolves per candidate and returns the first well-formed block.
 
-
 ### Wake and abort from the GUI dashboard (planned 2026-09-25, done 2026-09-23)
 
 **Goal.** An operator watching the dashboard can pause the fleet, edit the budget, and prompt the director — but `tumwater wake` and `tumwater abort` exist only as CLI commands (src/operator-commands.ts), so clearing a stuck role's backoff or killing its runaway tick means leaving the browser. Give the dashboard per-loop `wake` and `abort` controls backed by two new POST endpoints that reuse the CLI's marker-writing logic.
@@ -334,7 +343,6 @@ The third direction splits into two independent parts: the orphaned-worktree-pro
 - `tumwater wake`, `abort`, and `reset-counters` print exactly today's text in both the live and not-live cases (existing cli-operators tests pass unmodified — verified: the full cli suite passed with no edits to that file).
 
 **Landed as.** Both endpoints sit behind the token gate, in the same handler chain after `/api/pause`; the transcript role-validation block was lifted into a shared `validRoleIds` helper so all three loop-targeting endpoints cannot drift on ids or 400 wording. gui-server.test.ts carries the 413 body-discipline pin; gui-operator.test.ts the marker/409/400 pins and the evaled row-actions client block. Full suite 2026-09-23: 1405 pass, 0 fail.
-
 
 ### 6/7 — Make the project's verification command configurable (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-24 and 2026-09-25, done 2026-09-25)
 
@@ -670,7 +678,6 @@ drove a different mechanism).** The approach above holds, with three deltas:
    the fix without the work it fixes and orphaned the work commit.
 3. The fix run's usage folds on EVERY outcome it reached (abort, no-change reject, still-red
    reject, approval) via `fixRun`, carried on each GateResult return — not only on approval.
-
 
 ### Landing gate checks latest main: rebase the pinned change before the build pre-check (planned 2026-09-21, requested by user, done 2026-09-21)
 
