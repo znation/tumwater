@@ -5,14 +5,13 @@ import { LoopRunner } from "./loop.js";
 import { deleteRef, isMergedInto } from "./git.js";
 import { landBatch } from "./land-batch.js";
 import {
-  forgetLandingStages,
   landQueuedEntry,
+  landingChanges,
   landingUsage,
   readLandingMarker,
-  requestedLandingStage,
-  writeLandingMarker,
+  setLandingChangeStatus,
+  writeBatchLandingMarker,
   writeLandingOutcome,
-  type LandingStage,
 } from "./landing-slot.js";
 import { dropLanding, headLanding, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
 import { warnEvent } from "./events.js";
@@ -183,13 +182,16 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
     dropLanding(head.file);
     // A crash between the 4/5 marker write and its removal can leave a marker with
     // no live landing — this branch runs only when the slot is free, so a marker naming
-    // this entry is stale; clear it so the idle fleet reads clean. (Any marker naming
-    // another QUEUED entry cannot exist: that entry's landing would own the slot, and this
-    // one is the queue head. One naming an entry no longer queued — a crash between a
-    // batch's mid-batch drop and its marker re-point — never displays through the
-    // snapshot cross-check, and the next landing overwrites it.)
+    // this entry is stale; clear it so the idle fleet reads clean. A batch marker names
+    // this entry in any of its per-change records, not only at its top level (which
+    // follows whichever change was in flight). (Any marker naming another QUEUED entry
+    // cannot exist: that entry's landing would own the slot, and this one is the queue
+    // head. Records naming entries no longer queued — a batch's mid-batch drops — never
+    // display through the snapshot cross-check, and the next landing overwrites them.)
     const marker = readLandingMarker(root);
-    if (marker && marker.sha === head.entry.sha) removeQuiet(landingStatePath(root));
+    if (marker && landingChanges(marker).some((c) => c.sha === head.entry.sha)) {
+      removeQuiet(landingStatePath(root));
+    }
     return null;
   }
 
@@ -213,29 +215,26 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
   // The batch slot: land `batch` as ONE stack through the shared landBatch —
   // per-change review gates (up to PHASE_A_CONCURRENCY at once, each beyond the
   // first on a permit of its own), one shared build check over the stacked tree, one
-  // fast-forward. The 4/5 marker names the first batched entry still queued — the
-  // queue head: batch[0] at the start, re-pointed when a final Phase-A verdict drops
-  // the entry it names (the cross-check needs a queued entry to validate its sha
-  // against); the other batched roles show their queued state in the queue itself.
-  // Per-role wiring is resolved exactly as the single path resolves its author, and
-  // usage accumulates per role (a reviewer's run charges to its change's authoring
-  // role, like landQueuedEntry).
+  // fast-forward. The 4/5 marker carries one record per batched change, each advanced
+  // by landBatch's status hook as the batch reaches it (waiting → landing → approved /
+  // done, in whatever order the concurrent gates get there, with the change's own
+  // start stamped when the slot reaches it) and staged by its own gate
+  // (setLandingStage), so every batched row shows what the slot is doing with ITS
+  // change — each one being gated reads `landing <its elapsed> · <stage>`, the rest
+  // `queued in batch` or `approved, awaiting batch`, and a change the batch is done
+  // with shows nothing (BUGS.md 2026-09-23: a single head-only marker kept a
+  // long-rejected head reading `landing 29m` while the change under review showed no
+  // landing). The snapshot cross-checks each record against its still-queued entry,
+  // so a change a final verdict dropped mid-batch never displays. Per-role wiring is
+  // resolved exactly as the single path resolves its author, and usage accumulates
+  // per role (a reviewer's run charges to its change's authoring role, like
+  // landQueuedEntry).
   const first = batch[0]!;
   return startLanding(
     batch.map((b) => b.entry.role),
     async (landing) => {
       const startedAt = Date.now();
-      const markLanding = (b: (typeof batch)[number], stage: LandingStage): void =>
-        writeLandingMarker(root, {
-          role: b.entry.role,
-          sha: b.entry.sha,
-          summary: b.entry.summary,
-          startedAt,
-          stage,
-        });
-      // No stage an earlier landing of these roles asked for may surface in this batch's re-points.
-      forgetLandingStages(root, batch.map((b) => b.entry.role));
-      markLanding(first, "merging"); // Phase A's checkout comes first; the head's gate advances it
+      writeBatchLandingMarker(root, batch.map((b) => b.entry), startedAt);
       const authors = new Map(batch.map((b) => [b.entry.role, authorFor(b.entry.role)]));
       const usages = new Map<string, { tokens: number; cost: number }>();
       // The batch indices whose outcome is already written back and entry dropped, so no
@@ -258,37 +257,20 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
       };
       // The first batched entry still queued — the queue head while the slot is busy.
       const firstQueued = () => batch.find((_, i) => !written.has(i));
-      let marked: (typeof batch)[number] | undefined = first;
       // A final Phase-A verdict (rejected, strike-cap discard, uncheckable pin) needs
       // nothing more from the batch: write its outcome and drop its entry the moment it is
       // persisted, so the interlock frees its author on the next poll instead of holding the
       // role with the most urgent work until every other change has reviewed, checked, and
       // merged (BUGS.md 2026-09-23). Approved changes stay queued — their authors must not
-      // tick on top of an unlanded change. The drop comes first and the marker re-point
-      // after, as in landQueuedEntry: a crash between them leaves a marker naming a dropped
-      // sha, which the snapshot cross-check never displays; a crash after the drop cannot
+      // tick on top of an unlanded change. The marker needs nothing here: landBatch has
+      // already reported the change `done`, and once its entry is gone the snapshot
+      // cross-check drops its record whatever it last said — a crash after the drop cannot
       // resurrect the entry, and the outcome it carried is already saved and logged.
       const onFinal = (i: number, result: TickResult): void => {
         writeBack(i, result, Date.now() - startedAt);
         // The role has left the batch (InFlightLanding.roles): it may tick again now.
         const at = landing.roles.indexOf(batch[i]!.entry.role);
         if (at >= 0) landing.roles.splice(at, 1);
-        // The re-point keeps the batch's startedAt. Its stage is the one the new subject's
-        // own gate last asked for — Phase A runs gates concurrently, so that gate may already
-        // be mid-review with no transition left to announce — or, when its gate has not begun
-        // yet, the stage the marker already shows; the gate advances it from there
-        // (setLandingStage follows the marker's role).
-        if (batch[i] === marked) {
-          marked = firstQueued();
-          if (marked) {
-            markLanding(
-              marked,
-              requestedLandingStage(root, marked.entry.role) ?? readLandingMarker(root)?.stage ?? "merging",
-            );
-          } else {
-            removeQuiet(landingStatePath(root));
-          }
-        }
       };
       try {
         const outcomes = await landBatch(
@@ -298,6 +280,7 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
             config: roleConfig,
             signal: () => landing.controller.signal,
             onFinal,
+            onChangeStatus: (role, status) => setLandingChangeStatus(root, role, status),
             gatePermit: async () => {
               await semaphore.acquire(LANDING_TIER);
               return () => semaphore.release();

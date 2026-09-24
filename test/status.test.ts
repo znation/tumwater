@@ -456,3 +456,57 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   assert.equal(snap.landQueue.depth, 0);
   assert.equal(snap.landQueue.inFlight, undefined);
 });
+
+// A batch marker (merge queue 5/5) carries one record per batched change, and the snapshot
+// cross-checks each against its still-queued entry: every batched row then reads its OWN
+// change's state, and a change whose verdict is final shows nothing (BUGS.md 2026-09-23 —
+// the head-only marker kept a rejected head reading `landing` for the whole batch).
+test("a batch marker is cross-checked per change and each batched row reads its own change's state", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "batch marker snapshot");
+  const t0 = Date.now() - 20 * 60_000;
+  for (const [role, sha] of [["clean", "c1ea000"], ["bugfix", "b0f1000"], ["feature", "fea7000"], ["dry", "d1a0000"]]) {
+    enqueueLanding(repo, { role: role!, sha: sha!, tick: 1, summary: `${role} work`, enqueuedAt: Date.now() });
+  }
+  writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: Date.now(), roles: [] });
+  const betaStart = Date.now() - 90_000;
+  writeJsonFile(landingStatePath(repo), {
+    role: "bugfix",
+    sha: "b0f1000",
+    summary: "bugfix work",
+    startedAt: betaStart,
+    changes: [
+      { role: "clean", sha: "c1ea000", summary: "clean work", status: "done", startedAt: t0 },
+      { role: "bugfix", sha: "b0f1000", summary: "bugfix work", status: "landing", startedAt: betaStart },
+      { role: "feature", sha: "fea7000", summary: "feature work", status: "waiting" },
+      { role: "dry", sha: "d1a0000", summary: "dry work", status: "approved", startedAt: t0 },
+      // A record whose entry is gone (dropped mid-batch, or a crash) is finished, whatever
+      // its record last said: the cross-check drops it.
+      { role: "plan", sha: "91a0000", summary: "plan work", status: "landing", startedAt: t0 },
+    ],
+  });
+  let snap = snapshot(repo);
+  assert.deepEqual(
+    snap.landQueue.inFlight?.changes?.map((c) => c.role),
+    ["clean", "bugfix", "feature", "dry"],
+    "only the records whose entry is still queued survive the cross-check",
+  );
+  const text = renderStatus(repo, snap);
+  assert.match(text, /^bugfix +landing 1m30s/m, "the change under review reads landing with its own elapsed");
+  assert.match(text, /^feature +queued in batch/m);
+  assert.match(text, /^dry +approved, awaiting batch/m);
+  assert.doesNotMatch(text, /^clean +landing/m, "a finished change keeps no live landing label");
+  assert.match(text, /^clean +queued/m, "its row reads its own state again");
+  assert.doesNotMatch(text, /^plan +landing/m, "a record with no queued entry never displays");
+
+  // Only finished records left with a queued entry: nothing is in flight any more.
+  for (const f of fs.readdirSync(landQueueDir(repo))) {
+    if (!JSON.parse(fs.readFileSync(path.join(landQueueDir(repo), f), "utf8")).role.startsWith("clean")) {
+      fs.rmSync(path.join(landQueueDir(repo), f));
+    }
+  }
+  snap = snapshot(repo);
+  assert.equal(snap.landQueue.depth, 1);
+  assert.equal(snap.landQueue.inFlight, undefined, "a batch marker whose live records are all done never displays");
+  fs.rmSync(orchestratorStatePath(repo));
+});

@@ -5,13 +5,16 @@ import path from "node:path";
 import { drainLandingQueue, type InFlightLanding, type LandingDrainContext } from "../src/landing-drain.js";
 import { LoopRunner } from "../src/loop.js";
 import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/land-queue.js";
-import { landQueueDir, landingRefName } from "../src/paths.js";
+import { landQueueDir, landingRefName, orchestratorStatePath } from "../src/paths.js";
 import { isMergedInto, refSha, setRef } from "../src/git.js";
 import { readEvents } from "../src/events.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { Semaphore } from "../src/semaphore.js";
 import { defaultConfig } from "../src/config.js";
-import { loadLoopState } from "../src/state.js";
+import { freshLoopState, loadLoopState } from "../src/state.js";
+import { writeJsonFile } from "../src/json-files.js";
+import { snapshot } from "../src/ui/status.js";
+import { landingForRole, loopPhase } from "../src/ui/status-model.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir, waitFor, waitForFile } from "./util.js";
 import type { LandingEntry } from "../src/types.js";
 
@@ -263,8 +266,9 @@ test("a batched change rejected early drops its entry at its verdict, while the 
   // stack check, and the ff. Alpha's reviewer rejects at once; beta's parks until released,
   // so everything asserted before the release is the mid-batch state. The two gates run
   // concurrently, and alpha's reviewer rejects only once beta's is parked: beta announced
-  // `reviewing` while the marker still named alpha, so the marker re-pointed at beta must carry
-  // the stage beta's own gate asked for, not the `merging` alpha's finished gate left behind.
+  // `reviewing` on its own record while alpha's was still the first in flight, so once alpha is
+  // done the top level (what an older observer reads) must follow beta at beta's own stage, not
+  // the `merging` alpha's finished gate left behind.
   const root = makeRepo();
   const alpha = pinnedCommit(root, "alpha");
   const beta = pinnedCommit(root, "beta");
@@ -309,9 +313,17 @@ test("a batched change rejected early drops its entry at its verdict, while the 
     assert.equal(alphaFailed()[0]!.result, "rejected");
     assert.deepEqual(landing!.roles, ["beta"], "alpha left the slot's record: an abort for its next tick spares the batch");
     const marker = readLandingMarker(root);
-    assert.equal(marker?.role, "beta", "the marker moved off the dropped head to the entry still queued");
-    assert.equal(marker?.sha, beta, "so the snapshot cross-check still finds a queued entry with its sha");
-    assert.equal(marker?.stage, "reviewing", "and the re-pointed marker follows beta's own gate");
+    assert.deepEqual(
+      marker?.changes?.map((c) => [c.role, c.status, c.stage]),
+      [
+        ["alpha", "done", "merging"],
+        ["beta", "landing", "reviewing"],
+      ],
+      "each change's own record: alpha finished, beta at its own gate's stage",
+    );
+    assert.equal(marker?.role, "beta", "the top level moved off the dropped head to the change still in flight");
+    assert.equal(marker?.sha, beta, "so an older observer's cross-check still finds a queued entry with its sha");
+    assert.equal(marker?.stage, "reviewing", "and it carries beta's own stage");
 
     fs.writeFileSync(release, "");
     await landing!.promise;
@@ -389,5 +401,95 @@ test("a batch's concurrent gates each hold a maxConcurrent permit: two reviews a
     } finally {
       restore();
     }
+  }
+});
+
+test("a batched row shows its own change's state: a rejected change stops reading landing, the changes under review do", async () => {
+  // BUGS.md 2026-09-23: the batch marker named only one change, so a rejected head's row read
+  // `landing <batch elapsed>` long after its verdict while the change actually under review
+  // showed nothing. Hold each reviewer until the test releases it and read every batched row
+  // through the observers' own path (snapshot → landingForRole → loopPhase) at each step. Two
+  // gates run at once (the context's cap 2 grants the concurrent gate its permit), so the
+  // marker has to name several changes in flight, each with its own start and stage.
+  const root = makeRepo();
+  const roles = ["alpha", "beta", "gamma"];
+  // Pin every commit before enqueueing any: pinnedCommit's `git add -A` would sweep an
+  // already-written (untracked) queue file into the next pin.
+  const shas = Object.fromEntries(roles.map((role) => [role, pinnedCommit(root, role)]));
+  for (const role of roles) {
+    await setRef(root, landingRefName(role), shas[role]!);
+    enqueueLanding(root, entry(role, shas[role]!));
+  }
+  // The observers show a landing only for a live orchestrator: this process stands in for it.
+  writeJsonFile(orchestratorStatePath(root), { pid: process.pid, startedAt: Date.now(), roles });
+  const flags = tmpdir("batch-rows-");
+  const flag = (name: string) => path.join(flags, name);
+  const verdicts: Record<string, string> = { alpha: "VERDICT: reject\n1. no", beta: "VERDICT: approve", gamma: "VERDICT: approve" };
+  const restore = fakePi(
+    [
+      `case "$PWD" in`,
+      ...roles.map(
+        (role) =>
+          `*_land-${role}) touch '${flag(`${role}-reviewing`)}'; i=0; ` +
+          `while [ ! -f '${flag(`${role}-release`)}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; ` +
+          `printf '%s\\n' '${assistantLine(verdicts[role]!)}'; exit 0;;`,
+      ),
+      `esac`,
+    ].join("\n"),
+  );
+  const noModels = path.join(flags, "no-models.json");
+  const rowOf = (role: string): string => {
+    const snap = snapshot(root, noModels);
+    return loopPhase(freshLoopState(role), snap.running, undefined, false, undefined, false, landingForRole(snap.landQueue, role));
+  };
+  const REVIEWING = /^landing \d+s · reviewing$/;
+  let landing: InFlightLanding | null = null;
+  try {
+    const { ctx } = makeCtx(root, runnersFor(root, roles));
+    landing = await drainLandingQueue(ctx);
+    assert.deepEqual(landing?.roles, roles, "the three entries coalesced into one batch");
+
+    // alpha and beta under review at once: both read landing at their own stage; gamma is
+    // still queued in the batch.
+    await waitForFile(flag("alpha-reviewing"));
+    await waitForFile(flag("beta-reviewing"));
+    assert.match(rowOf("alpha"), REVIEWING);
+    assert.match(rowOf("beta"), REVIEWING);
+    assert.equal(rowOf("gamma"), "queued in batch");
+
+    // alpha rejected: its change is finished, so its row reads its own state again while beta
+    // is still under review; gamma's gate takes alpha's lane and reads landing with ITS OWN
+    // start, not the batch's.
+    const releasedAt = Date.now();
+    fs.writeFileSync(flag("alpha-release"), "");
+    await waitForFile(flag("gamma-reviewing"));
+    assert.equal(rowOf("alpha"), "queued", "a rejected change keeps no live landing label");
+    assert.match(rowOf("beta"), REVIEWING);
+    assert.match(rowOf("gamma"), REVIEWING);
+    const gamma = landingForRole(snapshot(root, noModels).landQueue, "gamma");
+    assert.ok(gamma?.startedAt !== undefined && gamma.startedAt >= releasedAt, "gamma's elapsed runs from its own gate start");
+    assert.equal(readLandingMarker(root)?.role, "beta", "the top level follows the first change in flight, for older observers");
+
+    // beta approved: it waits for the stack while gamma is still under review.
+    fs.writeFileSync(flag("beta-release"), "");
+    await waitFor(() => rowOf("beta") === "approved, awaiting batch", "beta's approval to show", 30_000);
+    assert.equal(rowOf("alpha"), "queued");
+    assert.match(rowOf("gamma"), REVIEWING);
+
+    fs.writeFileSync(flag("gamma-release"), "");
+    await landing!.promise;
+    assert.equal(readLandingMarker(root), null, "the batch's marker was cleared");
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "merged").map((e) => e.loop),
+      ["beta", "gamma"],
+      "the approved changes landed as the stack",
+    );
+    for (const role of roles) assert.equal(rowOf(role), "queued", `${role}'s row is back to its own state`);
+  } finally {
+    // Release any reviewer still held (a failed assertion above) and let the batch settle, so
+    // no fake pi outlives the test.
+    for (const role of roles) fs.writeFileSync(flag(`${role}-release`), "");
+    await landing?.promise;
+    restore();
   }
 });

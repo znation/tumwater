@@ -17,13 +17,13 @@ import {
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { eventsLogPath, landingRefName, landingStatePath, landWorktreePath, statePath } from "../src/paths.js";
-import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
+import { readLandingMarker, setLandingChangeStatus, writeBatchLandingMarker } from "../src/landing-slot.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { REVIEW_FAILURE_LIMIT } from "../src/review.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import type { LoopState, PiRunResult } from "../src/types.js";
+import type { LoopState, PiRunResult, TickResult } from "../src/types.js";
 import { assistantLine, fakePi, makeRepo, sh, tmpdir, waitForFile } from "./util.js";
 
 // Unit coverage for src/lander.ts's landChange — the harness-owned review-and-land of a pinned
@@ -1368,49 +1368,84 @@ test("the stack follows queue order however the gates finish: a slow head still 
   }
 });
 
-// The landing cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the batch: the
-// marker names the head, so the head's stage must leave `reviewing` the moment its gate
-// returns — otherwise its finished reviewer's last turns sit in the cell, accruing a false
-// `no pi output` flag, for as long as the batch reviews and checks the other changes. The
-// stage sequence below is a single timeline, so these runs hold Phase A to one lane with a
-// concurrent-gate permit that never comes (the full-semaphore case: the gates then run one
-// after another on the slot's own permit — which also pins that it cannot deadlock).
+// The landing cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the batch: each
+// batched change's own record carries its stage (BUGS.md 2026-09-23 — the marker once named
+// only the head), so a change's stage must leave `reviewing` the moment its gate returns —
+// otherwise its finished reviewer's last turns sit in the cell, accruing a false `no pi output`
+// flag, for as long as the batch reviews and checks the other changes — and one change's gate
+// must advance only its own record. The stage sequence below is a single timeline, so these
+// runs hold Phase A to one lane with a concurrent-gate permit that never comes (the
+// full-semaphore case: the gates then run one after another on the slot's own permit — which
+// also pins that it cannot deadlock).
 for (const headVerdict of ["reject", "approve"] as const) {
   test(`a batch head ${headVerdict === "reject" ? "rejected" : "approved"} mid-batch leaves reviewing when its gate returns; the stack check names itself`, async () => {
     const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
-    // The drain's batch arm opens the marker for the head request.
-    writeLandingMarker(root, { role: "alpha", sha: shas.alpha!, summary: "work by alpha", startedAt: 1, stage: "merging" });
+    // The drain's batch arm opens the marker with a record per batched change and wires the
+    // status hook to it.
+    writeBatchLandingMarker(
+      root,
+      ["alpha", "beta"].map((role) => ({ role, sha: shas[role]!, tick: 7, summary: "the work", enqueuedAt: 1 })),
+      1,
+    );
     const rec = path.join(tmpdir(), "stages");
-    const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${landingStatePath(root)}'`;
-    const config = { ...defaultConfig(), check: { command: `echo "check:$(${stageOf})" >> '${rec}'` } };
+    // Every record as `role=status/stage`, read from the live marker by whichever run records it.
+    const script = path.join(tmpdir(), "stages.mjs");
+    fs.writeFileSync(
+      script,
+      `import fs from "node:fs";\n` +
+        `const m = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));\n` +
+        `process.stdout.write((m.changes ?? []).map((c) => c.role + "=" + c.status + "/" + (c.stage ?? "-")).join(","));\n`,
+    );
+    const stagesOf = `'${process.execPath}' '${script}' '${landingStatePath(root)}'`;
+    const config = { ...defaultConfig(), check: { command: `echo "check:$(${stagesOf})" >> '${rec}'` } };
     const headReply = headVerdict === "reject" ? "VERDICT: reject\n1. no" : "VERDICT: approve";
     const restore = fakePi(
       [
         // Tell the two reviewer runs apart by the session name pi is handed.
         `r=none; for a in "$@"; do case "$a" in tumwater-review-alpha-*) r=alpha ;; tumwater-review-beta-*) r=beta ;; esac; done`,
-        `echo "$r:$(${stageOf})" >> '${rec}'`,
+        `echo "$r:$(${stagesOf})" >> '${rec}'`,
         `if [ "$r" = alpha ]; then printf '%s\\n' '${assistantLine(headReply)}'; else printf '%s\\n' '${assistantLine("VERDICT: approve")}'; fi`,
       ].join("\n"),
     );
     try {
       const results = await landBatch(
-        { ...makeBatchCtx(root, config), gatePermit: () => new Promise<() => void>(() => {}) },
+        {
+          ...makeBatchCtx(root, config),
+          gatePermit: () => new Promise<() => void>(() => {}),
+          onChangeStatus: (role, status) => setLandingChangeStatus(root, role, status),
+        },
         ["alpha", "beta"].map((role) => request(shas[role]!, { role })),
         wiringFor,
       );
 
       const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
-      // The head's own gate: pre-check, then its reviewer. Then beta's gate runs with the
-      // head's marker already back on merging — beta's own transitions never touch it.
-      const phaseA = ["check:build-check", "alpha:reviewing", "check:merging", "beta:merging"];
+      // The head's own gate: pre-check, then its reviewer, with beta still waiting. Then beta's
+      // gate runs with the head's record already back on merging — beta's transitions advance
+      // only beta's own record.
+      const alphaAfter = headVerdict === "reject" ? "alpha=done/merging" : "alpha=approved/merging";
+      const phaseA = [
+        "check:alpha=landing/build-check,beta=waiting/-",
+        "alpha:alpha=landing/reviewing,beta=waiting/-",
+        `check:${alphaAfter},beta=landing/build-check`,
+        `beta:${alphaAfter},beta=landing/reviewing`,
+      ];
       if (headVerdict === "reject") {
         assert.deepEqual(results.map((r) => r.result), ["rejected", "changed"]);
         assert.deepEqual(seen, phaseA, "a one-change stack lands through the single path: no stack check");
       } else {
         assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
-        assert.deepEqual(seen, [...phaseA, "check:build-check"], "the shared stack check runs under build-check");
+        assert.deepEqual(
+          seen,
+          [...phaseA, "check:alpha=landing/build-check,beta=landing/build-check"],
+          "the shared stack check runs under build-check on every stacked change",
+        );
       }
-      assert.equal(readLandingMarker(root)?.stage, "merging", "the merge steps close the batch on merging");
+      const marker = readLandingMarker(root);
+      assert.equal(marker?.stage, "merging", "the merge steps close the batch on merging");
+      assert.ok(
+        marker?.changes?.every((c) => c.status === "done" || c.stage === "merging"),
+        `every change still held ends on merging: ${JSON.stringify(marker?.changes)}`,
+      );
     } finally {
       restore();
     }
@@ -1510,6 +1545,111 @@ test("an abort after the gate stops a one-change batch before it lands", async (
     assert.deepEqual(results.map((r) => r.result), ["aborted"]);
     assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the ref survives for recovery");
+  } finally {
+    restore();
+  }
+});
+
+// The per-change status hook (BUGS.md 2026-09-23): the drain mirrors these reports into the
+// 4/5 marker so each batched role's row reads its own change's state — the batch must report
+// every step, or a finished change keeps a live `landing` row (or an in-flight one shows none).
+
+/** A reviewer shim that answers per lander worktree: `replies[role]` for the review running
+ * in that role's `_land-<role>` worktree, an approval for every other role. */
+const perRoleReviewerPi = (replies: Record<string, string>): string =>
+  [
+    `r='${assistantLine("VERDICT: approve")}'`,
+    ...Object.entries(replies).map(([role, reply]) => `case "$PWD" in *_land-${role}) r='${assistantLine(reply)}';; esac`),
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$r"; exit 0;; esac; done`,
+  ].join("\n");
+
+/** A batch run with the status hook recorded as `role:status`, in call order. Phase A is held
+ * to one lane (a concurrent-gate permit that never comes — the full-semaphore case) so the
+ * sequence is a single timeline; the concurrent order is the landing-drain row test's. */
+async function runBatchRecorded(
+  root: string,
+  shas: Record<string, string>,
+  roles: string[],
+  wiringFor: (role: string) => BatchRoleWiring,
+): Promise<{ results: Array<TickResult | undefined>; seen: string[] }> {
+  const seen: string[] = [];
+  const results = await landBatch(
+    {
+      ...makeBatchCtx(root),
+      gatePermit: () => new Promise<() => void>(() => {}),
+      onChangeStatus: (role, status) => seen.push(`${role}:${status}`),
+    },
+    roles.map((role) => request(shas[role]!, { role })),
+    wiringFor,
+  );
+  return { results: results.map((r) => r.result), seen };
+}
+
+test("a batch reports each change as it reaches it: a rejection is done at its verdict, the stack lands together", async () => {
+  const restore = fakePi(perRoleReviewerPi({ beta: "VERDICT: reject\n1. no" }));
+  try {
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"]);
+    const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta", "gamma"], wiringFor);
+    assert.deepEqual(results, ["changed", "rejected", "changed"]);
+    assert.deepEqual(seen, [
+      "alpha:landing", // its gate
+      "alpha:approved", // waits for the rest of Phase A
+      "beta:landing",
+      "beta:done", // rejected: terminal at the verdict, not at the batch's end
+      "gamma:landing",
+      "gamma:approved",
+      "alpha:landing", // the stack's shared check + ff: every stacked change lands together
+      "gamma:landing",
+    ]);
+  } finally {
+    restore();
+  }
+});
+
+test("an early stop reports the unattempted change done before the stack lands without it", async () => {
+  const restore = fakePi(perRoleReviewerPi({ beta: "I think this is fine." })); // no verdict: review_error
+  try {
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"]);
+    const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta", "gamma"], wiringFor);
+    assert.deepEqual(results, ["changed", "review_error", undefined]);
+    assert.deepEqual(seen, [
+      "alpha:landing",
+      "alpha:approved",
+      "beta:landing",
+      "beta:done",
+      "gamma:done", // out of this batch (entry + ref kept for the next drain): no `queued in batch`
+      "alpha:landing", // the one-change stack: the single path
+    ]);
+  } finally {
+    restore();
+  }
+});
+
+test("an abandoned stack reports one change landing at a time, the rest awaiting their turn", async () => {
+  const restore = fakePi(APPROVE_PI);
+  try {
+    // Both roles rewrite the same line: the stack's cherry-pick conflicts and the batch
+    // abandons to one-at-a-time.
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"], {
+      edit: (root, role) => fs.writeFileSync(path.join(root, "seed.txt"), `${role}\n`),
+      resolve: (wt) => fs.writeFileSync(path.join(wt, "seed.txt"), "both\n"),
+    });
+    const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta"], wiringFor);
+    assert.deepEqual(results, ["changed", "changed"]);
+    assert.deepEqual(seen, [
+      "alpha:landing",
+      "alpha:approved",
+      "beta:landing",
+      "beta:approved",
+      "alpha:landing", // the stack attempt
+      "beta:landing",
+      "alpha:approved", // abandoned: back to awaiting their turn…
+      "beta:approved",
+      "alpha:landing", // …and each lands alone, then is done
+      "alpha:done",
+      "beta:landing",
+      "beta:done",
+    ]);
   } finally {
     restore();
   }

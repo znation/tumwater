@@ -18,7 +18,7 @@ import {
   type LanderContext,
 } from "./lander.js";
 import { errorMessage } from "./text.js";
-import { setLandingStage } from "./landing-slot.js";
+import { setLandingStage, type LandingChangeStatus } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "./types.js";
 
@@ -64,6 +64,13 @@ export interface BatchContext {
    * along); runPhaseA then releases it at once. Absent (the unit tests' direct calls):
    * concurrent gates take no permit. */
   gatePermit?(): Promise<() => void>;
+  /** Called as the batch reaches each change (by role — one change per role in a batch): the
+   * slot starts working on it (`landing` — its gate, the stack, or its fallback landing), its
+   * gate approves it into the stack (`approved`), or the batch is finished with it (`done`),
+   * in whatever order the concurrent gates reach those points. The drain mirrors it into the
+   * 4/5 marker's per-change records (setLandingChangeStatus) so each batched row reads its own
+   * change's state; absent for callers with no marker to keep. */
+  onChangeStatus?(role: string, status: LandingChangeStatus): void;
 }
 
 /** One batched change's wiring, resolved by the drain exactly as the landed drain resolves
@@ -364,6 +371,7 @@ export async function landBatch(
   wiringFor: (role: string) => BatchRoleWiring,
 ): Promise<Array<{ req: LandRequest; result?: TickResult }>> {
   const results = requests.map((req) => ({ req, result: undefined as TickResult | undefined }));
+  const report = (i: number, status: LandingChangeStatus): void => ctx.onChangeStatus?.(requests[i]!.role, status);
   const wiringCache = new Map<string, BatchRoleWiring>();
   const wiringForRole = (role: string): BatchRoleWiring => {
     let w = wiringCache.get(role);
@@ -405,7 +413,12 @@ export async function landBatch(
   const verdicts = await runPhaseA(
     requests.length,
     async (i) => {
+      report(i, "landing"); // the slot is on this change now — its gate, from the checkout on
       const v = await gateRequest(ctx, requests[i]!, wiringForRole(requests[i]!.role));
+      // Its gate is over: an approval waits for the rest of Phase A before the stack lands;
+      // anything else is out of this batch, and its row must not keep a live label while the
+      // other gates run on.
+      report(i, v.kind === "stack" ? "approved" : "done");
       // A FINAL outcome reaches the drain the moment its own gate settles — whatever order
       // the concurrent gates finish in — not when the whole of Phase A does.
       if (v.kind === "result" && isFinal(v)) settleFinal(i, v.result);
@@ -433,11 +446,17 @@ export async function landBatch(
   });
   finishAborted();
   if (aborted || stack.length === 0) return results;
+  // The stack lands on: a change an early stop never launched is out of this batch (its entry
+  // and ref wait for the next drain), so it must not read `queued in batch` meanwhile.
+  verdicts.forEach((v, i) => {
+    if (v === undefined) report(i, "done");
+  });
 
   // ── The degenerate case: one approved change IS 2/5's single path ────────────────────
   if (stack.length === 1) {
     const i = stack[0]!;
     const req = { ...requests[i]!, sha: stackSha[0]! };
+    report(i, "landing");
     try {
       results[i]!.result = await landApprovedChange(landerCtx(wiringForRole(req.role)), req);
     } catch (err) {
@@ -464,6 +483,8 @@ export async function landBatch(
   // only in doc-only paths lands on that run's verdict instead of paying another.
   let checkedTip: string | null = null;
   const exemptPaths = ctx.config.review.exemptPaths;
+  // Every stacked change is landing now: they share the assembly, the check, and the ff.
+  for (const i of stack) report(i, "landing");
   for (let attempt = 0; attempt <= BATCH_RESTACK_ATTEMPTS; attempt++) {
     // A shutdown (or a user stop for any batched role) before an attempt — the first one
     // included, so a stop that arrived after the last gate (a restart hand-off past its
@@ -488,8 +509,7 @@ export async function landBatch(
     const docOnlyRestack = checkedTip !== null && (await exemptTreeDelta(ctx.root, checkedTip, tip, exemptPaths));
     if (!docOnlyRestack) {
       // The landing cell names the check while it runs, then the merge steps after it — the ff
-      // or the one-at-a-time fallback (setLandingStage is a no-op for every stacked role but
-      // the one the marker names).
+      // or the one-at-a-time fallback — on every stacked change's own record.
       for (const i of stack) setLandingStage(ctx.root, requests[i]!.role, "build-check");
       const check = await runScopedBuildCheck(ctx.root, headReq.role, "batch", wtPath, ctx.config);
       for (const i of stack) setLandingStage(ctx.root, requests[i]!.role, "merging");
@@ -529,10 +549,14 @@ export async function landBatch(
     // landApprovedChange — no second gate, so no model run: re-gating would rebase onto the
     // main the earlier entries just moved, and the rewritten sha misses the approved
     // short-circuit. main is never left red — mergeToMain's in-lock rebase + verifyLanding
-    // re-check every change whose tree differs from the one its gate judged.
+    // re-check every change whose tree differs from the one its gate judged. Only the change
+    // being landed reads `landing`; the rest are back to awaiting their turn, and each one
+    // landed is done.
+    for (const i of stack) report(i, "approved");
     for (let s = 0; s < stack.length; s++) {
       const i = stack[s]!;
       const req = { ...requests[i]!, sha: stackSha[s]! };
+      report(i, "landing");
       try {
         const result = await landApprovedChange(landerCtx(wiringForRole(req.role)), req);
         results[i]!.result = result;
@@ -541,6 +565,7 @@ export async function landBatch(
         results[i]!.result = "error";
         wiringForRole(req.role).state.lastError = errorMessage(err);
       }
+      report(i, "done");
       if (results[i]!.result !== "changed") break;
     }
   }

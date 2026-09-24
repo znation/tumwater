@@ -10,10 +10,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  landingChanges,
   landingUsage,
   landQueuedEntry,
   readLandingMarker,
+  setLandingChangeStatus,
   setLandingStage,
+  writeBatchLandingMarker,
   writeLandingMarker,
   writeLandingOutcome,
 } from "../src/landing-slot.js";
@@ -197,8 +200,8 @@ test("setLandingStage advances only a live marker naming its own role, and only 
   // creates nothing; the gate must never invent landing state.
   setLandingStage(root, "clean", "reviewing");
   assert.equal(readLandingMarker(root), null);
-  // Another role's marker is untouched: the batch marker names only its head, and the other
-  // batched changes' gates advance under their own roles.
+  // Another role's single-landing marker is untouched: a gate running for any other role (a
+  // leftover-recovery gate inside that role's own tick) must not restage it.
   const marker = { role: "bugfix", sha: "a".repeat(40), summary: "s", startedAt: 1, stage: "merging" } as const;
   writeLandingMarker(root, marker);
   setLandingStage(root, "clean", "reviewing");
@@ -211,6 +214,60 @@ test("setLandingStage advances only a live marker naming its own role, and only 
   fs.writeFileSync(landingStatePath(root), JSON.stringify({ role: "bugfix", sha: "b", summary: "s", startedAt: 2 }));
   setLandingStage(root, "bugfix", "reviewing");
   assert.deepEqual(readLandingMarker(root), { role: "bugfix", sha: "b", summary: "s", startedAt: 2, stage: "reviewing" });
+});
+
+// A batch marker (BUGS.md 2026-09-23) carries one record per batched change: the status hook
+// and each change's own gate advance only that change's record, and the top level follows the
+// first change in flight for observers that read only it.
+test("a batch marker's records advance per change, and its top level follows the first change in flight", () => {
+  const root = makeRepo();
+  const entries: LandingEntry[] = ["alpha", "beta", "gamma"].map((role) => ({
+    role,
+    sha: `${role}-sha`,
+    tick: 1,
+    summary: `${role} work`,
+    enqueuedAt: 1,
+  }));
+  writeBatchLandingMarker(root, entries, 1000);
+  const records = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.status}/${c.stage ?? "-"}`);
+  assert.deepEqual(records(), ["alpha=waiting/-", "beta=waiting/-", "gamma=waiting/-"]);
+  assert.equal(readLandingMarker(root)!.stage, "merging", "the marker opens naming a stage, like every writer");
+
+  // Two gates at once: each is stamped with its own start and staged on its own record.
+  const before = Date.now();
+  setLandingChangeStatus(root, "alpha", "landing");
+  setLandingChangeStatus(root, "beta", "landing");
+  setLandingStage(root, "beta", "reviewing");
+  setLandingStage(root, "delta", "reviewing"); // no record: a no-op
+  assert.deepEqual(records(), ["alpha=landing/merging", "beta=landing/reviewing", "gamma=waiting/-"]);
+  const alphaStart = readLandingMarker(root)!.changes![0]!.startedAt!;
+  assert.ok(alphaStart >= before, "the change's own start, not the batch's");
+  assert.equal(readLandingMarker(root)!.role, "alpha", "the top level names the first change in flight");
+
+  // alpha's gate returns and rejects: beta, still under review, becomes the top level — with
+  // its own start and its own stage.
+  setLandingStage(root, "alpha", "merging");
+  setLandingChangeStatus(root, "alpha", "done");
+  const marker = readLandingMarker(root)!;
+  assert.deepEqual(
+    [marker.role, marker.sha, marker.stage, marker.startedAt],
+    ["beta", "beta-sha", "reviewing", marker.changes![1]!.startedAt],
+  );
+
+  // Re-entering `landing` (the stack) keeps the first start and restarts at the git steps.
+  setLandingChangeStatus(root, "beta", "approved");
+  setLandingChangeStatus(root, "beta", "landing");
+  const beta = readLandingMarker(root)!.changes![1]!;
+  assert.equal(beta.stage, "merging");
+  assert.equal(beta.startedAt, marker.changes![1]!.startedAt, "the elapsed keeps counting from the gate start");
+  assert.deepEqual(landingChanges(readLandingMarker(root)!).map((c) => c.role), ["alpha", "beta", "gamma"]);
+});
+
+// landingChanges reads the shapes every generation wrote: a single landing's marker (and an
+// older generation's head-only batch marker) is one `landing` record at the marker's stage.
+test("landingChanges reads a single-landing marker as one landing record", () => {
+  const single = { role: "clean", sha: "c", summary: "s", startedAt: 5, stage: "reviewing" } as const;
+  assert.deepEqual(landingChanges(single), [{ ...single, status: "landing" }]);
 });
 
 test("a queued landing's marker walks build-check → reviewing → merging while each phase runs", async () => {

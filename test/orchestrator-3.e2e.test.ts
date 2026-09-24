@@ -919,7 +919,7 @@ test("an abort for a NON-HEAD batched role kills the whole batch and discards ev
   try {
     await waitFor(() => fs.existsSync(marker), "the batch's head reviewer run to be in flight", 60_000);
     // What `tumwater abort --role dry` does from the CLI side: a marker for the SECOND
-    // batched role — not the head the marker names (its gate runs beside the head's, in
+    // batched role — not the batch's head (its gate runs beside the head's, in
     // Phase A's second lane). Before 5/5 this request could only match the head's landing;
     // now it matches ANY batched role and kills the whole slot unit.
     const markerFile = abortRequestPath(repo, "dry");

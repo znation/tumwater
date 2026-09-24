@@ -1088,17 +1088,24 @@ test("loopPhase renders the landing cell ahead of every idle state, only when th
   const startedAt = Date.now() - 90_000; // 90s of landing → "1m30s"
   // The record wins over the idle state…
   assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { startedAt, stage: "merging" }),
+    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "merging" }),
     "landing 1m30s · merging",
   );
   // …and it is the caller's job to pass it only for the landing role: without it the loop
   // keeps its ordinary state (the "other roles" case — the record is filtered upstream).
   assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
   // A stopped harness never shows it — a dead fleet's marker is stale by definition.
-  assert.equal(loopPhase(s, false, undefined, false, undefined, false, { startedAt, stage: "merging" }), "stopped");
+  assert.equal(loopPhase(s, false, undefined, false, undefined, false, { status: "landing", startedAt, stage: "merging" }), "stopped");
   // Only a record with no stage at all — an older writer's marker mid-upgrade — keeps the
   // bare elapsed label: there is nothing more it can honestly say.
-  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { startedAt }), "landing 1m30s");
+  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt }), "landing 1m30s");
+  // A batched change the slot holds but is not working on reads its batch state instead —
+  // no elapsed and no stage, because nothing of its own is running (BUGS.md 2026-09-23).
+  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "waiting" }), "queued in batch");
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, { status: "approved", startedAt, stage: "merging" }),
+    "approved, awaiting batch",
+  );
 });
 
 test("the build-check and merging landing stages render their label and never read the log", () => {
@@ -1118,7 +1125,7 @@ test("the build-check and merging landing stages render their label and never re
     ["build-check", "build check"],
     ["merging", "merging"],
   ] as const) {
-    const phase = loopPhase(s, true, root, false, null, false, { startedAt, stage });
+    const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt, stage });
     assert.match(phase, new RegExp(`^landing 1m3[01]s · ${label}$`), `${stage}: ${phase}`);
   }
 });
@@ -1139,11 +1146,11 @@ test("the reviewing landing stage carries the reviewer run's live detail, timed 
   // The authoring tick started an hour ago; the cell's elapsed is the LANDING's (90s), and
   // the frame's `live` for a non-running loop is null — the branch reads the gate itself.
   s.lastTickStartedAt = Date.now() - 3_600_000;
-  const phase = loopPhase(s, true, root, false, null, false, { startedAt: Date.now() - 90_000, stage: "reviewing" });
+  const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
   assert.match(phase, /^landing 1m3[01]s · reviewing · turn 2 · ctx 22\.0k · bash npm test$/, `unexpected shape: ${phase}`);
 
   // No log to read (or no root): the honest stage label alone.
-  const bare = loopPhase(s, true, undefined, false, null, false, { startedAt: Date.now() - 90_000, stage: "reviewing" });
+  const bare = loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
   assert.equal(bare, "landing 1m30s · reviewing");
 });
 
@@ -1160,6 +1167,7 @@ test("a new landing's reviewing cell starts at its run's label line, not at the 
     JSON.stringify({ type: "tumwater_run", label: "review" }),
   ]);
   const phase = loopPhase(freshLoopState("clean"), true, root, false, null, false, {
+    status: "landing",
     startedAt: Date.now() - 5_000,
     stage: "reviewing",
   });

@@ -65,8 +65,21 @@ export interface StatusSnapshot {
    * exists, a queue entry with its sha still exists (entries are dropped only AFTER an
    * outcome — 3/5 — so in-flight always implies depth ≥ 1), and the orchestrator is alive.
    * The cross-check makes every crash ordering self-healing: a stale marker without a
-   * matching entry never displays. */
+   * matching entry never displays. A batch marker is checked per change (liveLandingMarker):
+   * only its records whose entry is still queued are kept, and it displays while one of them
+   * is not yet `done`. */
   landQueue: { depth: number; inFlight?: LandingInFlight };
+}
+
+/** The 4/5 cross-check against the queue: the marker as observers may display it, or
+ * undefined when nothing it names is still in flight. A single-change marker (the single path,
+ * or an older generation's) displays only while its sha is still queued; a batch marker keeps
+ * just its records whose sha is still queued — a change whose entry was dropped is finished,
+ * whatever its record last said — and displays only while one of those is not `done`. */
+function liveLandingMarker(marker: LandingInFlight, queued: ReadonlySet<string>): LandingInFlight | undefined {
+  if (!marker.changes) return queued.has(marker.sha) ? marker : undefined;
+  const changes = marker.changes.filter((c) => queued.has(c.sha));
+  return changes.some((c) => c.status !== "done") ? { ...marker, changes } : undefined;
 }
 
 // The last config each root loaded successfully. snapshot is polled every second by the
@@ -130,14 +143,15 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
   const running = orchestratorAlive(root, info);
   // One land-queue pass per poll (land-queue.ts's stat cache keeps an unchanged queue at one
   // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator
-  // still has a queue entry with the marker's sha — the cross-check makes every crash
-  // ordering self-healing (a stale marker alone never displays, and needs no cleanup pass).
+  // still has a queue entry for what the marker names (per change, for a batch) — the
+  // cross-check makes every crash ordering self-healing (a stale marker alone never displays,
+  // and needs no cleanup pass).
   const landings = queuedLandings(root);
   const landingMarker = readLandingMarker(root);
   const landQueue: StatusSnapshot["landQueue"] = { depth: landings.length };
-  if (running && landingMarker && landings.some((e) => e.sha === landingMarker.sha)) {
-    landQueue.inFlight = landingMarker;
-  }
+  const inFlight =
+    running && landingMarker ? liveLandingMarker(landingMarker, new Set(landings.map((e) => e.sha))) : undefined;
+  if (inFlight) landQueue.inFlight = inFlight;
   return {
     running,
     pid: info?.pid,
