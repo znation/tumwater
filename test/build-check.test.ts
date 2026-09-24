@@ -798,3 +798,72 @@ test("runScopedBuildCheck remaps a configured command's merge-scope timeout exac
   const check = events.find((e) => e.type === "build_check" && e.scope === "landing");
   assert.equal((check as { script?: string } | undefined)?.script, "sleep 5", "the event names the command");
 });
+
+// --- check.gateCommand (PLANS.md Land-queue speed 3e): an opt-in cheaper check for the review
+// gate's per-change pre-check only. The landing and batch scopes — the checks that decide what
+// reaches main — keep running the full check, or a weaker gate would land an unverified tree.
+
+test("runScopedBuildCheck runs check.gateCommand at the gate scope only; landing and batch keep check.command", async () => {
+  const { root, wt } = buildCheckFixture();
+  // The full check is red and the gate command green, so each scope's verdict names which ran.
+  const config = { check: { command: "echo full; exit 1", gateCommand: "echo gate-only" } };
+  const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, config, 30_000);
+  assert.equal(gate!.outcome.status, "passed");
+  assert.deepEqual(gate!.check, { kind: "command", command: "echo gate-only", cwd: wt, timeoutMs: 300_000 });
+  for (const scope of ["landing", "batch"] as const) {
+    const result = await runScopedBuildCheck(root, ROLE, scope, wt, config, 30_000);
+    assert.equal(result!.outcome.status, "failed", `${scope}: the full check still runs`);
+    assert.equal(result!.outcome.script, "echo full; exit 1");
+  }
+  const scripts = readEvents(root)
+    .filter((e) => e.type === "build_check")
+    .map((e) => [e.scope, (e as { script?: string }).script]);
+  assert.deepEqual(scripts, [
+    ["gate", "echo gate-only"],
+    ["landing", "echo full; exit 1"],
+    ["batch", "echo full; exit 1"],
+  ]);
+});
+
+test("check.gateCommand shares the check's cwd and timeout, and overrides the npm walk-up at the gate too", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.mkdirSync(path.join(wt, "sub"));
+  fs.writeFileSync(path.join(wt, "sub", "marker.txt"), "x");
+  const withCwd = await runScopedBuildCheck(
+    root,
+    ROLE,
+    "gate",
+    wt,
+    { check: { command: "exit 1", gateCommand: "test -f marker.txt", cwd: "sub", timeoutSeconds: 7 } },
+    30_000,
+  );
+  assert.equal(withCwd!.outcome.status, "passed", "the gate command ran in check.cwd");
+  assert.deepEqual(withCwd!.check, {
+    kind: "command",
+    command: "test -f marker.txt",
+    cwd: path.join(wt, "sub"),
+    timeoutMs: 7_000,
+  });
+  // No check.command (an npm repo — validation allows the key to be absent): the gate runs the
+  // gate command, the landing scope the npm walk-up exactly as before.
+  const npmRepo = { check: { gateCommand: "echo gate-only" } } as { check: { command: string; gateCommand: string } };
+  const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, npmRepo, 30_000);
+  assert.equal(gate!.outcome.script, "echo gate-only");
+  const landing = await runScopedBuildCheck(root, ROLE, "landing", wt, npmRepo, 30_000);
+  assert.deepEqual(landing!.check, { kind: "npm", rootDir: root, script: "build" });
+});
+
+test("an unset or blank check.gateCommand leaves the gate running check.command", async () => {
+  const { root, wt } = buildCheckFixture();
+  for (const gateCommand of [undefined, "", "   "]) {
+    const result = await runScopedBuildCheck(
+      root,
+      ROLE,
+      "gate",
+      wt,
+      { check: { command: "echo full", ...(gateCommand === undefined ? {} : { gateCommand }) } },
+      30_000,
+    );
+    assert.equal(result!.outcome.script, "echo full", `gateCommand ${JSON.stringify(gateCommand)} is off`);
+  }
+});

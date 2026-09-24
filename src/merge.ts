@@ -14,6 +14,7 @@ import {
 import { aheadOfMainFiles, unquotePorcelainPath } from "./git-diff.js";
 import { abortSync } from "./worktree.js";
 import { runScopedBuildCheck } from "./build-check.js";
+import { gateCommandOf } from "./build-check-detect.js";
 import { noteGreenBaseline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
@@ -130,7 +131,8 @@ async function tryMerge(
  *   tree is byte-identical to what this gate invocation already checked (or to a tree nothing
  *   checks — exempt diff / review disabled). When `verifiedHead` names it, seed the red-main
  *   baseline with the SHA that becomes main: every role's next fresh tick then hits the cache
- *   instead of re-running the full suite on an already-verified tree.
+ *   instead of re-running the full suite on an already-verified tree. Not taken when a
+ *   `check.gateCommand` is configured: the gate then ran only that, not the full check.
  * - doc-only delta ahead of main (the gate's own exemption test): cannot break the build.
  * - no declared check at all: nothing to run, exactly like the gate skipping its pre-check.
  * An environmental skip (no npm / broken toolchain) warns and proceeds — deliberately NOT
@@ -145,7 +147,11 @@ async function verifyLanding(
   preMergeHead: string,
   verifiedHead?: string,
 ): Promise<boolean> {
-  if (rebasedHead === preMergeHead) {
+  // With a check.gateCommand configured the gate ran only that cheaper check, so a no-op
+  // rebase's tree has never been through the full check: fall through and run it here, once —
+  // the landing scope is what verifies a single change (and each change of an abandoned
+  // stack), and a gateCommand green must never seed the baseline (PLANS.md Land-queue speed 3e).
+  if (rebasedHead === preMergeHead && gateCommandOf(ctx.config) === undefined) {
     if (rebasedHead === verifiedHead) noteGreenBaseline(rebasedHead);
     return true;
   }

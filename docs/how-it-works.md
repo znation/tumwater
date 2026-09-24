@@ -38,7 +38,10 @@ loops keep ticking while a change is under review.
 - **Build check.** The project's declared check runs: `check.command` in tumwater.json, else
   `npm test`, else typecheck/build. A failure is re-run once; one that then passes is warned
   as a flake and proceeds. A failure that repeats gets one fix run, capped at 20 minutes; only
-  a still-red check rejects.
+  a still-red check rejects. Optionally, `check.gateCommand` names a cheaper check (say, only
+  the tests a diff touches) that this per-change step runs instead. It is off by default. The
+  full check then still runs once per landing, over the batch or the single change, and a red
+  result there blocks the merge.
 - **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
   `VERDICT: approve|reject`. Markdown-only diffs skip review. Each reviewer run is capped at
   `review.timeoutSeconds` (default 900, never above `tickTimeoutSeconds`); one that runs over

@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck } from "./build-check-detect.js";
+import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck, gateCommandOf } from "./build-check-detect.js";
 import { logEvent, warnEvent } from "./events.js";
 import { truncate } from "./text.js";
 import { signalTree } from "./pi.js";
@@ -549,16 +549,22 @@ export function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, 
  * — the first run's death says nothing about the tree (it is another run's `pkill`), so one
  * verdict from a clean attempt is owed before the skip is honoured; each attempt is priced
  * as its own build_check event, carrying when the check itself ran (buildCheckRunFields).
- * Never throws. */
+ * A configured `check.gateCommand` replaces the command at scope "gate" only (same cwd and
+ * timeout); the landing and batch scopes — and the red-main baseline, which detects on its
+ * own — keep running check.command. Never throws. */
 export async function runScopedBuildCheck(
   root: string,
   role: string,
   scope: BuildCheckScope,
   wt: string,
-  config?: { check?: { command: string; cwd?: string; timeoutSeconds?: number } },
+  config?: { check?: { command: string; gateCommand?: string; cwd?: string; timeoutSeconds?: number } },
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
-  const check = detectBuildCheck(wt, config);
+  const gateCommand = scope === "gate" ? gateCommandOf(config) : undefined;
+  const check = detectBuildCheck(
+    wt,
+    gateCommand === undefined ? config : { check: { ...config?.check, command: gateCommand } },
+  );
   if (!check) return null;
   // A configured command carries its own timeout (check.timeoutSeconds); an npm check runs
   // under the caller's. Effective here so the reason text and the skip warning agree with

@@ -92,6 +92,12 @@ export interface CheckConfig {
   /** Shell command that verifies the tree — often compound ("cargo fmt --check && cargo test").
    * Runs in the worktree so it verifies the branch state, not a checkout of main. */
   command: string;
+  /** Optional cheaper command for the review gate's per-change pre-check only (PLANS.md
+   * Land-queue speed 3e) — e.g. just the tests a diff touches. Unset or blank = off: the gate
+   * runs the full check. When set, the batch and landing checks and the red-main baseline
+   * still run the full check (`command`, else the npm walk-up), so every landing is verified
+   * by it once per stack; shares `cwd` and `timeoutSeconds`. */
+  gateCommand?: string;
   /** Working directory for the command, resolved relative to the worktree root; defaults to ".". */
   cwd?: string;
   /** Hard cap on one run, in seconds; defaults to the built-in 300 s. */

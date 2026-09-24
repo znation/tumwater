@@ -75,8 +75,9 @@ const ROLE_ENTRY_KEYS = [
 ];
 const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking", "timeoutSeconds"];
 /** The `check` section's keys (plans/portability.md §6/7): the project's own verification
- * command, its working directory (relative to the worktree), and its timeout. */
-const CHECK_KEYS = ["command", "cwd", "timeoutSeconds"];
+ * command, the optional cheaper gate-only command (PLANS.md Land-queue speed 3e), their
+ * working directory (relative to the worktree), and their timeout. */
+const CHECK_KEYS = ["command", "gateCommand", "cwd", "timeoutSeconds"];
 /** The provider/model/thinking triple every model-override section shares — top level,
  * `review`, `fallbackModel` (plans/fallback-model.md), and each `roles.<id>` entry — so one
  * mental model and one validator cover them all. */
@@ -286,6 +287,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
       const o = c;
       checkKnownKeys(o, CHECK_KEYS, "check", problems);
       checkString(o, "check.", "command", false);
+      // gateCommand is a string like command, but blank means off: falling back from it runs
+      // the FULL check at the gate — the stronger check, never a silently weaker one.
+      checkString(o, "check.", "gateCommand");
       checkString(o, "check.", "cwd");
       checkNumber(o, "check.", "timeoutSeconds", POSITIVE);
     }

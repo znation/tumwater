@@ -1198,7 +1198,28 @@ test("validateConfig rejects a non-object check section", () => {
 test("validateConfig rejects a typo'd key inside check", () => {
   assert.match(
     validationError({ provider: "p", model: "m", check: { command: "cargo test", timeOut: 5 } }),
-    /unknown key "timeOut" in check \(valid keys: command, cwd, timeoutSeconds\)/,
+    /unknown key "timeOut" in check \(valid keys: command, gateCommand, cwd, timeoutSeconds\)/,
+  );
+});
+
+// check.gateCommand (PLANS.md Land-queue speed 3e): the opt-in cheaper gate-only check. A string
+// like command, but blank is accepted as "off" — falling back runs the FULL check at the gate,
+// the stronger one, so an empty value can never make the gate silently weaker.
+test("validateConfig accepts check.gateCommand, blank as off, and rejects a non-string one", () => {
+  for (const gateCommand of ["npm test build-check", "", "  "]) {
+    assert.doesNotThrow(() =>
+      validateConfig({ provider: "p", model: "m", check: { command: "npm test", gateCommand } }),
+    );
+  }
+  // An npm repo keeps the walk-up for the full check and names only the gate's.
+  assert.doesNotThrow(() => validateConfig({ provider: "p", model: "m", check: { gateCommand: "x" } }));
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { command: "npm test", gateCommand: 42 } }),
+    /check\.gateCommand must be a string \(got 42\)/,
+  );
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { command: "npm test", gateCommand: ["a"] } }),
+    /check\.gateCommand must be a string \(got \["a"\]\)/,
   );
 });
 

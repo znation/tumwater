@@ -579,6 +579,31 @@ test("a no-op rebase skips the re-check and seeds the baseline for the landed SH
   assert.equal(runs.length, 0, "the landing path seeded the green verdict for the SHA that became main");
 });
 
+test("with check.gateCommand set, a no-op rebase still runs the full check before landing", async () => {
+  // PLANS.md Land-queue speed 3e: the gate ran only the cheaper gateCommand, so its green says
+  // nothing about check.command — the no-op skip would land a tree the full suite never saw.
+  const { root, wt } = await setup();
+  sh(wt, "git", "reset", "--hard", "main");
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  const head = sh(wt, "git", "rev-parse", "HEAD");
+  const { ctx } = makeCtx(root);
+  ctx.config = { ...ctx.config, check: { command: "exit 1", gateCommand: "true" } };
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+
+  // The gate's pre-check (the gateCommand) ran green on exactly this head.
+  const result = await mergeToMain(ctx, wt, "branch work", head);
+
+  assert.equal(result, "merge_blocked", "the red full check blocks the landing");
+  assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore);
+  const checks = readEvents(root).filter((e) => e.type === "build_check");
+  assert.deepEqual(
+    checks.map((e) => [e.scope, e.status, (e as { script?: string }).script]),
+    [["landing", "failed", "exit 1"]],
+    "one landing-scope run of check.command, never the gate command",
+  );
+});
+
 test("a doc-only delta skips the re-check even when main moved under it", async () => {
   const { root, wt } = await setup();
   fs.writeFileSync(path.join(wt, "NOTES.md"), "notes\n");
