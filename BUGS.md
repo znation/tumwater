@@ -5,7 +5,7 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The digest's `## Landed in the window` list caps at 10 with no remainder marker: a busy window reads as a 10-merge day (found by telemetry loop 2026-09-26)
+### The digest's `## Landed in the window` list caps at 10 with no remainder marker: a busy window reads as a 10-merge day (found by telemetry loop 2026-09-23)
 
 **Symptom:** The 2026-09-23 digest reports 155 ticks with 107 changes queued for landing and
 only 17 rejections, yet its `## Landed in the window` section lists exactly 10 commits —

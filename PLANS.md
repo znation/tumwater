@@ -219,10 +219,10 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 The shared shape: a bounded, silent, or mislabeled record — digest caps, skip warnings, Fixed paragraphs, kill-vs-timeout classification — renders as honest output while discarding or hiding the fact. Each fix added a local pin; none made the *class* of silent failure visible.
 
-**Refinement audit (2026-09-26, plan loop).** Of the three directions the promotion named, two already landed:
+**Refinement audit (2026-09-23, plan loop).** Of the three directions the promotion named, two already landed:
 - Honest classification: src/build-check.ts classifies a declared check's fate at source — `BuildSkipReason` is `"timeout" | "killed" | "no-npm" | "toolchain"` (:63) and a skip carries `killedBy` (:83–85) — so a signal kill is never recorded as a timeout downstream.
 - Cut-marking: src/failure-report.ts marks its caps (the state-change cut names the remainder, :88–107; the top-N cluster cut is marked, :176); src/event-window.ts reports `coversFullWindow` (:19–24), so a rotation-truncated window cannot read as complete; src/ui/transcript-tail.ts and src/events.ts document their byte bounds in-file.
-The third direction splits into two independent parts: the orphaned-worktree-process detector already has its own Open bug (BUGS.md, "The grandchild-leak fix landed its kill but not its detector", found 2026-09-21) and stays there, owned by bugfix. The only unowned remainder is the fix-record-vs-tree check, planned concretely below.
+The third direction splits into two independent parts: the orphaned-worktree-process detector had its own bug (BUGS.md, "The grandchild-leak fix landed its kill but not its detector", found 2026-09-21), fixed 2026-09-24 as `tumwater doctor`'s `orphans` check (18b6139). The only unowned remainder is the fix-record-vs-tree check, planned concretely below.
 
 **Plan: `checkFixClaims` — `tumwater doctor` verifies recorded fixes against the tree.** The landing gate's false-fix check (src/fix-claim.ts `falseFixReason`, :127) fires only when an md-only diff moves a BUGS.md entry to Fixed; a phantom fix that reached main any other way — landed before that gate existed, or via a path it never sees — is detectable only by a human reading raw history. doctor runs standalone, so it closes that gap for everything already on main.
 
@@ -240,7 +240,7 @@ The third direction splits into two independent parts: the orphaned-worktree-pro
 - A warn never changes doctor's exit code (only `fail` does, per the CheckOutcome contract at :53).
 - With this landed, the three forensic gaps behind the `no-observability` tally are each covered by an automated detector (this check, the cut-markers, the source classification) — the tally's remaining growth should come only from genuinely new gap classes.
 
-**Series.** Sibling part: the orphaned-worktree-process doctor check (BUGS.md open bug, 2026-09-21) — independent, either can land first; together they complete the promotion's third direction.
+**Series.** Sibling part: the orphaned-worktree-process doctor check, landed 2026-09-24 (18b6139); this entry completes the promotion's third direction.
 
 ## Done
 
