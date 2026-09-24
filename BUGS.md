@@ -214,16 +214,6 @@ While this ran, the fleet crawled. From 05:18:00 to 05:37:48 the event log holds
 
 **Suspected cause:** Per-tick transient retry lives in `src/loop.ts`'s `LoopRunner`, which has no cross-role view; the only fleet-wide gate (`src/budget.ts`) keys on spend, not on provider rejections, so there is no existing input that represents "the world is rate-limiting us".
 
-### The failure digest's `## Outcome by role` separator row has no cell delimiters, so the table never renders (found by human investigation 2026-09-21)
-
-**Symptom:** `tumwater report --failures` emits `| --- | ---: ---: ---: ---: ---: ---: |` as the separator under a header with N+1 cells. Every markdown renderer needs the separator's cell count to match the header's; with two cells against seven the block is not a table at all and falls through as a paragraph of pipes and dashes. The section is the digest's primary per-role summary, and it is the one table in the document that is broken — `## Deltas vs the preceding N days`, two lines below, hardcodes its separator correctly and renders fine.
-
-**Repro:** `node dist/src/cli.js report --failures --days 2` and read the fourth line of `## Outcome by role`; or `renderFailureMarkdown(collectFailureReport(root, 2))` in a scratch root with any two roles' `tick_end` events.
-
-**Expected:** `src/failure-report.ts:474` builds the row as `` `| --- |${cols.map(() => " ---:").join("")} |` ``; the join needs the delimiter — `join(" |")` — to produce `| --- | ---: | ---: | … |`. A test asserting the separator's pipe count equals the header's would pin it.
-
-**Suspected cause:** The row was written by analogy with the header line one line above, which interpolates `cols.join(" | ")` into a template that supplies the outer pipes. Copying that shape with a `.map()` in front drops the inner delimiter, and the digest is read almost exclusively as plain text in a terminal or in an event feed, where a broken table looks nearly identical to a working one.
-
 ### The grandchild-leak fix landed its kill but not its detector: `tumwater doctor` still reports nothing about orphaned worktree processes (found by human investigation 2026-09-21)
 
 **Symptom:** The Fixed entry "A killed tick leaks its tool-call grandchildren" specifies, under **Expected:**, "and `tumwater doctor` could flag any `.tumwater/worktrees/*/dist` process whose PPID is 1." The kill half shipped in `c73363e`; the detector half did not. `src/doctor.ts` has no reference to PPID, orphans or stale processes, and on 2026-09-21 — with four orphaned trees and a stray orchestrator running off worktree builds, one of them 12 days old — `tumwater doctor` printed eleven `ok` lines and `ready to run`. The check is worth more now than when it was proposed, because the build-check leak filed above produces these continuously rather than only on a killed tick, and nothing else in the harness will ever notice them: they hold no lock, write no event, and touch no state file.
@@ -257,6 +247,20 @@ While this ran, the fleet crawled. From 05:18:00 to 05:37:48 the event log holds
 **Suspected cause:** `plans/fallback-model.md` framed readiness as a property of the *model* ("is it free?"), which is answerable from a static file, and `budgetGate` was built from that single boolean; whether the *backend* can serve is a property of the world that nothing in the gate's inputs represents. `doctor.ts:127` consults the same cost-only predicate, so `tumwater doctor` also reports a dead fallback as ready.
 
 ## Fixed
+
+### The failure digest's `## Outcome by role` separator row has no cell delimiters, so the table never renders (found by human investigation 2026-09-21, fixed 2026-09-24)
+
+**Symptom:** `tumwater report --failures` emits `| --- | ---: ---: ---: ---: ---: ---: |` as the separator under a header with N+1 cells. Every markdown renderer needs the separator's cell count to match the header's; with two cells against seven the block is not a table at all and falls through as a paragraph of pipes and dashes. The section is the digest's primary per-role summary, and it is the one table in the document that is broken — `## Deltas vs the preceding N days`, two lines below, hardcodes its separator correctly and renders fine.
+
+**Repro:** `node dist/src/cli.js report --failures --days 2` and read the fourth line of `## Outcome by role`; or `renderFailureMarkdown(collectFailureReport(root, 2))` in a scratch root with any two roles' `tick_end` events.
+
+**Expected:** `src/failure-report.ts:474` builds the row as `` `| --- |${cols.map(() => " ---:").join("")} |` ``; the join needs the delimiter — `join(" |")` — to produce `| --- | ---: | ---: | … |`. A test asserting the separator's pipe count equals the header's would pin it.
+
+**Suspected cause:** The row was written by analogy with the header line one line above, which interpolates `cols.join(" | ")` into a template that supplies the outer pipes. Copying that shape with a `.map()` in front drops the inner delimiter, and the digest is read almost exclusively as plain text in a terminal or in an event feed, where a broken table looks nearly identical to a working one.
+
+**Fix:** The separator is now joined exactly like the header one line above it: `renderFailureMarkdown` (src/failure-report.ts; the cited line 474 had drifted to 126) builds it as `` `| --- | ${cols.map(() => "---:").join(" | ")} |` ``, so it emits `| --- | ---: | ---: | … |` with one right-aligned delimiter per result column. A comment beside it explains why the two rows must share their join. The renderer's only other table, `## Deltas`, hardcodes a five-cell separator under its five-cell header and was already correct. A new test in test/failure-report.test.ts, "every digest table's separator has one delimiter cell per header cell", parses every table in a rendered digest by splitting its rows on `|`. It runs three cases: one role with one result, one role with several results, and several roles with several results. In each it checks that both tables are found, that the separator has as many cells as the header, that every separator cell is a valid delimiter, that every body row is as wide as the header, and that the outcome separator is exactly `---` followed by one `---:` per result. The test failed before the fix (`one role, several results`: 2 separator cells against 4 header cells). The one-column case passed even then, because a single delimiter needs no join. After the fix it passes: failure-report 23/23, and tui plus gui-report (which render the digest) 50/50.
+
+**Validation gap:** none — one offline render reproduced the bug deterministically; the only gap was that no test counted a table's cells, and a broken separator looks almost the same as a working one in the plain text where the digest is read, a gap the new test closes.
 
 ### A FLOW line without a parseable verdict is recorded as a pass: `extractFlow` defaults a malformed or truncated result to `passed`, latching a check qa never finished (found by telemetry loop 2026-09-23, fixed 2026-09-23)
 

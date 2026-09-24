@@ -122,8 +122,12 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   if (data.outcomes.length === 0) {
     lines.push("_no tick_end events in the window_");
   } else {
+    // The separator is joined exactly like the header: a Markdown table renders only when the
+    // two rows hold the same number of cells, and a delimiter-less join collapses every `---:`
+    // into one cell — invisible as plain text, where the digest is mostly read (BUGS.md
+    // 2026-09-21). `---:` right-aligns the counts.
     lines.push(`| role | ${cols.join(" | ")} |`);
-    lines.push(`| --- |${cols.map(() => " ---:").join("")} |`);
+    lines.push(`| --- | ${cols.map(() => "---:").join(" | ")} |`);
     for (const row of data.outcomes) {
       lines.push(
         `| ${roleCell(row.role)} | ${cols.map((c) => row.counts[c] ?? 0).join(" | ")} |`,

@@ -140,6 +140,66 @@ test("an empty log reads 'no events retained'", () => {
   assert.match(renderFailureMarkdown(data), /^no events retained$/m);
 });
 
+/** Every Markdown table in a rendered digest, as the cells of its header, separator, and body
+ * rows. A table is a `|` line directly followed by a separator-shaped line; cells are counted by
+ * splitting on `|` and dropping the empty strings outside the outer pipes — the count a renderer
+ * uses. A dash total over the whole row would miss the defect: `| --- | ---: ---: |` carries
+ * every delimiter's dashes but only two cells. */
+function markdownTables(md: string): { header: string[]; separator: string[]; body: string[][] }[] {
+  const rows = md.split("\n");
+  const cells = (row: string) => row.split("|").slice(1, -1).map((c) => c.trim());
+  const isRow = (row: string | undefined): row is string => row?.startsWith("|") ?? false;
+  const tables = [];
+  for (let i = 0; i < rows.length; i++) {
+    const header = rows[i];
+    const separator = rows[i + 1];
+    if (!isRow(header) || !isRow(separator) || !/^\|[\s:|-]+\|$/.test(separator)) continue;
+    const body: string[][] = [];
+    for (i += 2; isRow(rows[i]); i++) body.push(cells(rows[i]!));
+    tables.push({ header: cells(header), separator: cells(separator), body });
+  }
+  return tables;
+}
+
+test("every digest table's separator has one delimiter cell per header cell", () => {
+  // One result column (the join has nothing to separate, so the defect cannot show), one role
+  // across several results, and several roles across several results — the shape the
+  // 2026-09-21 digest broke on.
+  const fixtures: Record<string, { loop: string; result: string }[]> = {
+    "one role, one result": [{ loop: "feature", result: "changed" }],
+    "one role, several results": [
+      { loop: "feature", result: "changed" },
+      { loop: "feature", result: "no_change" },
+      { loop: "feature", result: "error" },
+    ],
+    "several roles, several results": [
+      { loop: "feature", result: "changed" },
+      { loop: "bugfix", result: "no_change" },
+      { loop: "bugfix", result: "rejected" },
+      { loop: "clean", result: "quiet_killed" },
+      { loop: "qa", result: "error" },
+    ],
+  };
+  for (const [name, ticks] of Object.entries(fixtures)) {
+    const root = tmpdir();
+    writeEvents(root, ticks.map((t) => ({ ts: at(0), type: "tick_end", ...t })));
+    const md = renderFailureMarkdown(collectFailureReport(root, 1));
+    const tables = markdownTables(md);
+    // Outcome by role and Deltas: a scan that finds no table would pass vacuously.
+    assert.equal(tables.length, 2, `${name}:\n${md}`);
+    for (const t of tables) {
+      assert.equal(t.separator.length, t.header.length, `${name}: ${t.header.join(" | ")}`);
+      for (const c of t.separator) assert.match(c, /^:?-{3,}:?$/, `${name}: separator cell "${c}"`);
+      for (const row of t.body) assert.equal(row.length, t.header.length, `${name}: ${row.join(" | ")}`);
+    }
+    // The outcome table keeps its alignment: role left, one right-aligned `---:` per result.
+    const outcome = tables[0]!;
+    assert.equal(outcome.header[0], "role");
+    assert.equal(outcome.header.length - 1, new Set(ticks.map((t) => t.result)).size, name);
+    assert.deepEqual(outcome.separator, ["---", ...outcome.header.slice(1).map(() => "---:")], name);
+  }
+});
+
 test("deltas report new roles as absent, not an infinite increase", () => {
   const root = tmpdir();
   writeEvents(root, [
