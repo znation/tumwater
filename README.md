@@ -64,10 +64,6 @@ Open items:
   every review and one slow reviewer holds the whole queue (found 2026-09-23).
 - Open bug: reviewers re-run the full suite in scratch copies under /tmp even when the harness
   check already passed (found 2026-09-23).
-- Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its
-  code is hard-reset — the fix's record has been carried to Fixed by markdown-only commits four
-  times, most recently `cdcc54c`, while the fix's symbols (`isNegatedRefusal`,
-  `refusalContradiction`) exist nowhere in the tree (found 2026-09-23).
 - Open bug: the status table's "last result" cell shows `queued` — a tick's live landing status
   rather than its last completed result, duplicating the state column while work sits in the land
   queue or under review (reported by user 2026-09-24).
@@ -104,16 +100,16 @@ Open items:
 - Open bug: the self-redeploy's shutdown awaits an in-flight batched landing with no
   deadline — the generation handoff lagged its own swap by 97 minutes (found 2026-09-24).
 - Planned: portability & packaging — run an installed copy on any repo/branch with any agent
-  binary (planned 2026-09-14, requested by user; PLANS.md items 6/7 — configurable verify
-  command — and 7/7 — adopt an existing repo without hijacking its README — remain; 1–5/7
-  landed by 2026-09-24).
+  binary (planned 2026-09-14, requested by user; PLANS.md item 7/7 — adopt an existing repo
+  without hijacking its README — remains; 1–6/7 landed by 2026-09-25, 6/7 being the
+  configurable `check.command`).
 - Planned: wake and abort controls on the GUI dashboard — per-loop `wake`/`abort` buttons
   backed by `POST /api/wake` and `POST /api/abort` that reuse the CLI's marker-writing logic
   (planned 2026-09-25; PLANS.md has the plan).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`9781825`): build clean, suite 1394/1394.
+Current main (`9ed7c6c`): build clean, suite 1412/1412.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -146,8 +142,9 @@ one loop per enabled role. Every loop tick:
    first rebased onto main's current head (a no-op when main has not moved — a conflicting
    advance defers the rebase to the landing itself), so the gate checks what can actually land
    instead of a stale tree a sibling loop has already fixed: first a deterministic
-   build pre-check (the project's declared verify script: `npm test` when declared, else
-   typecheck/build; a failure buys one bounded fix run — a fresh-session model run told to
+   build pre-check (the project's declared check: `check.command` in tumwater.json when set,
+   else the npm walk-up — `npm test` when declared, else typecheck/build; a failure buys one
+   bounded fix run — a fresh-session model run told to
    reproduce and fix the failure in source, which may not weaken a test, and may not commit —
    and only a still-red re-check rejects, with the fix attempt's outcome named in the reasons;
    the fix commit joins the reviewed diff and the pin tracks it, so a merge that cannot finish
@@ -396,6 +393,9 @@ configuration.
 
 ```
 npm test               # build + the unit suite (node:test) — what the landing gate runs
+                       # (the gate's check is configurable: check.command in tumwater.json —
+                       # command, optional cwd, optional timeoutSeconds — replaces the npm
+                       # walk-up for non-npm repos)
 npm test <filter>      # …or just the test files whose name contains <filter> (e.g. npm test merge)
 npm run test:e2e       # the live-orchestrator e2e tier (test/*.e2e.test.ts) — kept out of the
                        # gating suite because its wall-clock waits are not load-proof
