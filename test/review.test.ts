@@ -11,6 +11,7 @@ import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
+import { shortSha } from "../src/text.js";
 import { assistantLine, buildCheckFixture, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 // Regression coverage for the 2026-08-27 build break (BUGS.md): src/review.ts shipped with a
@@ -862,6 +863,41 @@ test("a fix run that turns the check green commits the fix and proceeds to the r
   }
 });
 
+// BUGS.md 2026-09-23 (b020f67): the reviewer read the gate's own build-fix commit as a change
+// the author never claimed and rejected a landing whose fix had just turned the check green.
+// The reviewer's prompt must say the harness added that commit — its sha, the files it touched,
+// and the failure it fixed — so it is judged as a fix to that failure, not as scope creep.
+test("a green build-fix commit is named in the reviewer's prompt with its files and the failure it fixed", async () => {
+  // The check is red until src/fixed.ts exists, so the fix run's edit is what turns it green.
+  const { root, wt } = await gateBuildFixture(
+    `[ -f src/fixed.ts ] || { echo 'error TS2345: boom in src/pi.ts' >&2; exit 1; }`,
+  );
+  const prompts = path.join(tmpdir(), "prompts.log");
+  // The fix run writes a src/ file; the reviewer records its argv (the prompt) and approves.
+  const restore = fakePi(
+    `b=review\nfor a in "$@"; do case "$a" in tumwater-buildfix-*) b=fix ;; esac; done\n` +
+      `if [ "$b" = fix ]; then mkdir -p src && echo 'export const fixed = true;' > src/fixed.ts\n` +
+      `else printf '%s\n' "$@" > '${prompts}'; printf '%s\n' '${assistantLine("VERDICT: approve")}'; fi`,
+  );
+  try {
+    const result = await reviewAheadOfMain(gateCtx(root, wt), freshLoopState(ROLE));
+    assert.equal(result.decision, "approved");
+    const fixSha = await headOf(wt, "HEAD");
+    assert.match(sh(wt, "git", "log", "-1", "--format=%s"), /fix failing build check/, "HEAD is the harness's fix");
+    const prompt = fs.readFileSync(prompts, "utf8");
+    assert.match(prompt, /The harness itself added a commit to this branch, on top of the author's work/);
+    assert.ok(prompt.includes(`Build-fix commit: ${shortSha(fixSha)}\n`), "the fix commit is named by sha");
+    // Exactly the fix commit's files — never the author's seed.txt, which the diff also carries.
+    assert.match(prompt, /Files it touched:\n- src\/fixed\.ts\nThe failure it was fixing/);
+    assert.match(prompt, /- build check failed \(`npm run build`\): error TS2345: boom in src\/pi\.ts/);
+    assert.match(prompt, /The harness then re-ran the check on this tree and it passed\./);
+    assert.match(prompt, /Judge it as the harness's fix to that failure, not as the author's change/);
+    assert.match(prompt, /or if it changes more than\s+that failure requires/);
+  } finally {
+    restore();
+  }
+});
+
 test("a fix run that leaves the check red rejects with the extra reason line", async () => {
   const { root, wt } = await gateBuildFixture(
     "buildcheck-tool --fail",
@@ -1015,6 +1051,8 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
     const run = fs.readFileSync(prompts, "utf8");
     assert.match(run, /The harness already ran the project's own check on this exact tree and it passed:/);
     assert.match(run, /`npm run test` \(the project's declared check\) passed/);
+    // A pre-check that passed first time spent no fix run: no harness commit to name.
+    assert.ok(!run.includes("The harness itself added"), "no build-fix block without a fix commit");
   } finally {
     restore();
   }

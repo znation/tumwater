@@ -1374,6 +1374,49 @@ test("buildReviewPrompt names the harness's green pre-check when given, and omit
   assert.deepEqual(advertised, ["approve", "reject"]);
 });
 
+// BUGS.md 2026-09-23 (b020f67): the gate's own build-fix commit must be named to the reviewer —
+// sha, files, the failure it answered — and judged as a fix to that failure, not as author scope.
+test("buildReviewPrompt names the gate's build-fix commit, its files and failure, and how to judge it", () => {
+  const fix = {
+    commits: ["b020f67aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    files: ["src/pi.ts"],
+    failure: ["build check failed (`npm run test`): startup latency is not a hung tool call", "at pi.test.ts:382"],
+    rechecked: true,
+  };
+  const prompt = buildReviewPrompt("diff", "summary", "body", undefined, undefined, "`npm run test` passed", undefined, fix);
+  assert.match(prompt, /The harness itself added a commit to this branch, on top of the author's work,\nand it is part of the diff below/);
+  assert.match(prompt, /\nBuild-fix commit: b020f67a\nFiles it touched:\n- src\/pi\.ts\n/);
+  assert.match(
+    prompt,
+    /The failure it was fixing \(headline first, then the clipped tail\):\n- build check failed \(`npm run test`\): startup latency is not a hung tool call\n- at pi\.test\.ts:382\n/,
+  );
+  assert.match(prompt, /The harness then re-ran the check on this tree and it passed\./);
+  const flat = oneLine(prompt);
+  assert.match(flat, /Judge it as the harness's fix to that failure, not as the author's change/);
+  assert.match(flat, /its absence from them is not an unclaimed change/);
+  // Still rejectable on its merits: wrong, check-gaming, or broader than the failure.
+  assert.match(flat, /reject if the fix is wrong, if it makes the check pass without the code being right/);
+  assert.match(flat, /or if it changes more than that failure requires/);
+  // The block sits with the author's claims, ahead of the diff it explains.
+  assert.ok(prompt.indexOf("The harness itself added") > prompt.indexOf("The author's commit body"));
+  assert.ok(prompt.indexOf("The harness itself added") < prompt.indexOf("<diff>"));
+  assert.equal([...prompt.matchAll(/VERDICT:/g)].length, 2, "the verdict contract is untouched");
+
+  // A skipped re-check never claims the fix passed; several commits are named in the plural.
+  const unverified = buildReviewPrompt("diff", undefined, undefined, undefined, undefined, undefined, undefined, {
+    ...fix,
+    commits: ["1111111111", "2222222222"],
+    rechecked: false,
+  });
+  assert.match(unverified, /added 2 commits to this branch/);
+  assert.match(unverified, /\nBuild-fix commits: 11111111, 22222222\nFiles they touched:\n/);
+  assert.match(oneLine(unverified), /re-check could not reach a verdict \(skipped\), so nothing has verified the fix/);
+  assert.ok(!unverified.includes("it passed."), "no passing claim for a skipped re-check");
+
+  // No fix commit, no block.
+  assert.ok(!buildReviewPrompt("diff", "summary", "body").includes("The harness itself added"));
+});
+
 test("the cut-off resume bridge carries a numeric re-reading budget and the plain-text ending rule", () => {
   const p = oneLine(buildResumePrompt("feature", "cut-off"));
   assert.match(p, /at most ~10 tool calls of re-reading, and never the same file twice/);

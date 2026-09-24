@@ -2,12 +2,13 @@ import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult } from "./types.js";
 import { reviewConfig } from "./config.js";
 import { logEvent, warnEvent } from "./events.js";
-import { commitAll, git, headOf } from "./git.js";
+import { commitAll, git, gitLines, gitTry, headOf } from "./git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
 import { runPi } from "./pi.js";
 import { readPrinciples } from "./prompt.js";
+import type { BuildFixCommit } from "./gate-prompts.js";
 import { buildBuildFixPrompt, buildReviewPrompt } from "./gate-prompts.js";
 import type { VerdictMatch } from "./reply-contract.js";
 import { verdictLines } from "./reply-contract.js";
@@ -109,6 +110,32 @@ function textWithoutVerdictLines(text: string, matches: VerdictMatch[]): string 
     pos = m.end;
   }
   return out + text.slice(pos);
+}
+
+/** The gate's build-fix commit(s) between the author's head and the fixed head, for the
+ * reviewer's prompt: the whole range, not just the harness's own commit, so a commit the fix run
+ * made itself despite its prompt is named too. A git read that fails falls back to the fixed
+ * head alone and no file list — the block still tells the reviewer the harness added a commit,
+ * which is what keeps it from reading as the author's unclaimed change. */
+async function buildFixCommit(
+  wt: string,
+  authorHead: string,
+  fixedHead: string,
+  failure: string[],
+  rechecked: boolean,
+): Promise<BuildFixCommit> {
+  const range = `${authorHead}..${fixedHead}`;
+  const [commits, files] = await Promise.all([
+    gitTry(wt, "rev-list", "--reverse", range),
+    gitTry(wt, "diff", "--name-only", authorHead, fixedHead),
+  ]);
+  const shas = gitLines(commits);
+  return {
+    commits: shas.length > 0 ? shas : [fixedHead],
+    files: gitLines(files),
+    failure,
+    rechecked,
+  };
 }
 
 /** Everything reviewAheadOfMain needs from its caller (a LoopRunner tick or recovery). */
@@ -244,6 +271,11 @@ export async function reviewAheadOfMain(
   // A build-fix run the gate spent (see GateResult.fixRun) — set once, carried on EVERY
   // subsequent return so its spend folds no matter how the gate then decided.
   let fixRun: PiRunResult | undefined;
+  // The commit(s) that run left on the branch, named in the reviewer's prompt: the diff below
+  // now carries a harness-authored change the author's summary and body cannot claim, and an
+  // unexplained one reads as unclaimed scope (BUGS.md 2026-09-23 — b020f67 turned dry's check
+  // green and the reviewer rejected the landing for it).
+  let buildFix: BuildFixCommit | undefined;
   const preCheck = await runScopedBuildCheck(
     root,
     role,
@@ -296,6 +328,7 @@ export async function reviewAheadOfMain(
         // spent, no retry loop.
         return { ...(await reject(reasons)), fixRun };
       }
+      const authorHead = head;
       head = await commitAll(wt, `tumwater(${role}): fix failing build check`);
       const recheck = await runScopedBuildCheck(
         root,
@@ -318,7 +351,9 @@ export async function reviewAheadOfMain(
         verifiedByHarness = `${describeCheck(recheck.check)} (the project's declared check) passed`;
       }
       // A skipped re-check (environmental) proceeds like an initial skip: unverified tree, the
-      // model reviewer and the landing path's own in-lock check still stand behind it.
+      // model reviewer and the landing path's own in-lock check still stand behind it. Either
+      // way the reviewer is told which commit the harness added and why (see buildFix above).
+      buildFix = await buildFixCommit(wt, authorHead, head, reasons, recheck?.outcome.status === "passed");
     }
     if (outcome.status === "passed") {
       // Passed: this exact tree just went green under the project's own declared check. Hand
@@ -347,7 +382,16 @@ export async function reviewAheadOfMain(
   // them from the pinned commit's message).
   const pi = await runPi({
     cwd: wt,
-    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction, verifiedByHarness),
+    prompt: buildReviewPrompt(
+      diff,
+      summary,
+      commitBody,
+      readPrinciples(root),
+      highFriction,
+      verifiedByHarness,
+      undefined,
+      buildFix,
+    ),
     config: reviewConfig(config),
     // Fresh session every time (no --continue): the reviewer must not inherit the author's
     // context. Unique name per run — a fixed name would let pi resume an old review's

@@ -59,14 +59,58 @@ Rules for this run:
 - Never touch the .tumwater directory or tumwater.json.`;
 }
 
+/** The gate's own build-fix commit(s) on the tree under review — what the reviewer must be told
+ * so a harness-authored fix is not read as a change the author forgot to claim (BUGS.md
+ * 2026-09-23: b020f67 turned dry's red check green and the reviewer rejected it as unclaimed). */
+export interface BuildFixCommit {
+  /** Every commit the fix added on top of the author's head, oldest first — normally the
+   * harness's one `fix failing build check` commit. */
+  commits: string[];
+  /** The files those commits touched (not the author's — the diff carries both). */
+  files: string[];
+  /** The failure the fix run was handed: the headline reason, then the clipped tail — already
+   * bounded (clipBuildTail keeps ten lines of at most MAX_REASON_CHARS each). */
+  failure: string[];
+  /** The post-fix re-check ran green on this tree. False when it skipped (environmental): the
+   * fix then stands unverified, and the reviewer is told so rather than told it passed. */
+  rechecked: boolean;
+}
+
+/** The self-contained review-prompt block naming the gate's build-fix commit(s): which commits,
+ * which files, the failure they answer, and how to judge them — as the harness's fix to that
+ * failure (never unclaimed author scope), still rejectable when wrong or broader than it. */
+function buildFixSection(fix: BuildFixCommit): string {
+  const one = fix.commits.length === 1;
+  const [it, them, its] = one ? ["it", "it", "its"] : ["they", "them", "their"];
+  const recheck = fix.rechecked
+    ? "The harness then re-ran the check on this tree and it passed."
+    : "The harness's re-check could not reach a verdict (skipped), so nothing has verified the fix.";
+  return `The harness itself added ${one ? "a commit" : `${fix.commits.length} commits`} to this branch, on top of the author's work,
+and ${one ? "it is" : "they are"} part of the diff below: the project's declared check failed on the author's tree at
+the gate, the gate's one build-fix run edited the tree to make it pass, and the harness committed
+the result. ${recheck}
+Build-fix ${one ? "commit" : "commits"}: ${fix.commits.map(shortSha).join(", ")}
+Files ${it} touched:
+${fix.files.map((f) => `- ${f}`).join("\n")}
+The failure ${it} ${one ? "was" : "were"} fixing (headline first, then the clipped tail):
+${fix.failure.map((r) => `- ${r}`).join("\n")}
+Judge ${them} as the harness's fix to that failure, not as the author's change: the author's summary
+and commit body could not claim ${them}, so ${its} absence from them is not an unclaimed change. Still
+judge ${them} on ${its} merits — reject if the fix is wrong, if it makes the check pass without the
+code being right (a deleted or skipped test, a weakened assertion), or if it changes more than
+that failure requires.`;
+}
+
 /** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees
  * only the diff and project context — never the author's session — and replies with exactly
  * one VERDICT line plus numbered reasons (see parseVerdict in src/review.ts). `verifiedByHarness`
  * names the project's own check the gate's deterministic pre-check already ran green on this
  * exact tree (e.g. "`npm run test` passed"), so the reviewer spends its run on what a green suite
  * cannot show instead of re-running it. `today` pins the date line (prompt.ts's dateLine) for
- * tests; omitted, it is the local day. The text must contain the literal "VERDICT:" exactly
- * twice — the two advertised forms — because a prompt test derives the accepted forms from it. */
+ * tests; omitted, it is the local day. `buildFix` names the gate's own build-fix commit(s) when
+ * its one fix run changed the tree, so checklist item 1 does not reject a harness fix as a change
+ * the author never claimed. The text must contain the literal "VERDICT:" exactly twice — the two
+ * advertised forms — because a prompt test derives the accepted forms from it. */
 export function buildReviewPrompt(
   diff: string,
   summary?: string,
@@ -75,6 +119,7 @@ export function buildReviewPrompt(
   highFriction?: boolean,
   verifiedByHarness?: string,
   today?: string,
+  buildFix?: BuildFixCommit,
 ): string {
   const parts = [
     `You are an adversarial code reviewer for tumwater, an autonomous development harness. A
@@ -95,6 +140,7 @@ not just whether it is correct.`,
     parts.push(
       `The author's commit body (claimed motivation, risk, verification — check these claims against the diff):\n${commitBody}`,
     );
+  if (buildFix) parts.push(buildFixSection(buildFix));
   if (verifiedByHarness)
     parts.push(
       `The harness already ran the project's own check on this exact tree and it passed:
