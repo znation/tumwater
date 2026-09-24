@@ -24,15 +24,20 @@ import { shortSha } from "./text.js";
  * each tick's prefill. */
 export const PRINCIPLES_MAX_CHARS = 4000;
 
-/** The rule every loop prompt states for ending a run that made changes — the exact
- * SUMMARY/WHY/RISK/VERIFIED block format commit-message.ts parses into the commit message.
- * Stated once so the tick/director rules and the resume bridge cannot drift (sibling of the
- * NOTHING_TO_DO sentinel in reply-contract.ts). */
-const SUMMARY_RULE = `- If you did make changes, end your reply with a block in exactly this form (one line each):
-  SUMMARY: <imperative one-line description of the change, at most 72 characters>
+/** The four-line SUMMARY/WHY/RISK/VERIFIED block itself — the machine-parsed half of the
+ * closing contract, shared verbatim by SUMMARY_RULE (tick/director prompts) and
+ * buildSummaryRequestPrompt (the follow-up that recovers a missing block), so the two cannot
+ * drift (sibling of the NOTHING_TO_DO sentinel in reply-contract.ts). */
+const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
   WHY: <why the change was made — one or two sentences>
   RISK: <what could break and where to look if it does>
   VERIFIED: <what you actually ran and observed (e.g. "npm test, 182 pass") — write none when nothing was run>`;
+
+/** The rule every loop prompt states for ending a run that made changes — the exact
+ * SUMMARY/WHY/RISK/VERIFIED block format commit-message.ts parses into the commit message.
+ * Stated once so the tick/director rules and the resume bridge cannot drift. */
+const SUMMARY_RULE = `- If you did make changes, end your reply with a block in exactly this form (one line each):
+${SUMMARY_BLOCK}`;
 
 /** The context-budget rule every run carries. Under the old 87k window half of all ticks ended
  * at the ceiling landing nothing (308 of 733 in the autonomous fortnight; 216 of 245 no-change
@@ -344,10 +349,7 @@ export function buildSummaryRequestPrompt(): string {
   return `Your run changed files in the worktree, but your final reply
 did not include the required closing block, so the harness cannot describe the commit it is about
 to make. Reply now with ONLY that block — no tool calls, no other text, one line each:
-  SUMMARY: <imperative one-line description of the change, at most 72 characters>
-  WHY: <why the change was made — one or two sentences>
-  RISK: <what could break and where to look if it does>
-  VERIFIED: <what you actually ran and observed — write none when nothing was run>`;
+${SUMMARY_BLOCK}`;
 }
 
 /** The note injected into a role's next FRESH tick prompt after its previous run(s) were cut
