@@ -260,6 +260,39 @@ test("the harness's review label line routes following lines to the gate accumul
   assert.equal(gate?.currentWork, "reviewer");
 });
 
+test("a review label line starts the gate accumulator fresh — the previous gate run's counts cannot bleed into the next review", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const gateSession = JSON.stringify({ type: "session", version: 3, id: "g", cwd: landWorktreePath(root, "clean") });
+  fs.writeFileSync(
+    file,
+    [
+      SESSION,
+      assistantLine("author", { tokens: 100 }),
+      // One finished gate run (a previous review, or this gate's build-fix run)…
+      JSON.stringify({ type: "tumwater_run", label: "review" }),
+      gateSession,
+      assistantLine("first reviewer", { tokens: 300 }),
+      // …then the next review's label line, which runPi writes before pi spawns. The landing
+      // cell reads the gate accumulator as soon as the marker's stage says reviewing — which
+      // can precede this run's session event by a poll — so the reset must happen here.
+      JSON.stringify({ type: "tumwater_run", label: "review" }),
+    ].join("\n") + "\n",
+  );
+  const gate = readLiveProgress(root, "clean", "gate");
+  assert.equal(gate?.turns, 0, "the previous run's turns are gone at the new label");
+  assert.equal(gate?.contextTokens, 0, "its context too");
+  assert.equal(gate?.currentWork, undefined, "and its work item");
+  assert.equal(readLiveProgress(root, "clean")?.turns, 1, "the author accumulator is untouched");
+  // The new run's own lines then fold in as usual.
+  fs.appendFileSync(file, gateSession + "\n" + assistantLine("second reviewer", { tokens: 700 }) + "\n");
+  const next = readLiveProgress(root, "clean", "gate");
+  assert.equal(next?.turns, 1);
+  assert.equal(next?.contextTokens, 700);
+  assert.equal(next?.currentWork, "second reviewer");
+});
+
 test("readLiveProgress does not count a torn trailing line until it is complete", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");

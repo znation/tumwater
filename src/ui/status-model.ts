@@ -5,6 +5,7 @@ import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../state.js";
 import { budgetGate, budgetReached } from "../budget.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress.js";
 import { compactTokens, shortSha, usd, usdCap } from "../text.js";
+import type { LandingInFlight, LandingStage } from "../landing-slot.js";
 
 /** The status DISPLAY MODEL: what a loop's cycle position is, what each header badge reads,
  * and the per-loop token metrics — derived from the status data (status.ts) and shared by BOTH
@@ -32,18 +33,20 @@ function duration(ms: number): string {
 /** The label for a loop's in-flight tick: `<label>` plus how long it has been running
  * ("working 3m", "reviewing 2m") — shared by workingDetail and the review-gate branch of
  * loopPhase so their elapsed formatting cannot drift. A tick with no recorded start time
- * renders as just the bare label. */
+ * renders as just the bare label. (A landing's elapsed is its marker's, never the tick's —
+ * loopPhase's landing branch builds that head itself.) */
 function inFlightLabel(s: LoopState, label: string): string {
   const elapsed = s.lastTickStartedAt ? duration(Date.now() - s.lastTickStartedAt) : "";
   return `${label} ${elapsed}`.trim();
 }
 
-/** The shared parts assembly for an in-flight state cell: `<label> <elapsed>` plus turn,
+/** The shared parts assembly for an in-flight state cell: `head` (the phase label with its
+ * own elapsed — inFlightLabel for a tick, the landing branch's own for a landing) plus turn,
  * live context, current tool, and the ≥5-min no-output stall flag. `p` is null when there is
- * no progress (no log yet) — falls back to the bare label. */
-function inFlightDetail(s: LoopState, label: string, p: LiveProgress | null): string {
-  if (!p) return inFlightLabel(s, label);
-  const parts = [inFlightLabel(s, label), `turn ${p.turns + 1}`];
+ * no progress (no log yet) — falls back to the bare head. */
+function inFlightDetail(head: string, p: LiveProgress | null): string {
+  if (!p) return head;
+  const parts = [head, `turn ${p.turns + 1}`];
   if (p.contextTokens > 0) parts.push(`ctx ${compactTokens(p.contextTokens)}`);
   // A tool call open and silent past the configured stall threshold names itself in the cell —
   // the same rule as runPi's warning event, derived from the raw log tail. It takes lastTool's
@@ -72,21 +75,29 @@ export function progressKind(s: LoopState): ProgressRunKind {
  * its own for standalone callers. */
 export function workingDetail(root: string, s: LoopState, live?: LiveProgress | null): string {
   const p = live === undefined ? readLiveProgress(root, s.role) : live;
-  return inFlightDetail(s, "working", p);
+  return inFlightDetail(inFlightLabel(s, "working"), p);
 }
+
+/** The part of the in-flight landing record the landing cell renders: the landing's own start
+ * (its elapsed) and the stage it is in (absent from an older writer's marker). */
+export type LandingCell = Pick<LandingInFlight, "startedAt" | "stage">;
 
 /** The snapshot's in-flight landing record (merge queue 4/5) filtered to one role: the
  * record when this role's change is landing, null otherwise. The single home of the
  * "is this role landing" filter — every phase call site derives its `landing` argument
  * through this so the filtering cannot drift between them. */
-export function landingForRole(
-  landQueue: StatusSnapshot["landQueue"],
-  role: string,
-): { startedAt: number } | null {
+export function landingForRole(landQueue: StatusSnapshot["landQueue"], role: string): LandingCell | null {
   return landQueue.inFlight && landQueue.inFlight.role === role
-    ? { startedAt: landQueue.inFlight.startedAt }
+    ? { startedAt: landQueue.inFlight.startedAt, stage: landQueue.inFlight.stage }
     : null;
 }
+
+/** How each landing stage names itself in the landing cell. */
+const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
+  merging: "merging",
+  "build-check": "build check",
+  reviewing: "reviewing",
+};
 
 /** The loop's state label — the one precedence ladder shared by the status table and both
  * dashboards (renderStatus, statusPayload). First match wins: a stopped harness; an in-flight
@@ -104,7 +115,15 @@ export function landingForRole(
  * loops show `paused`, checked before the budget gate because user intent is more specific
  * than spend state — while both hold, "paused" tells the operator what to do (`resume`).
  * `landing`, when given for this role, is the snapshot's in-flight landing record — build it
- * with landingForRole so the marker's role filter lives in one place. */
+ * with landingForRole so the marker's role filter lives in one place. Its elapsed is the
+ * LANDING's (the marker's startedAt), never the authoring tick's, and its stage scopes the
+ * cell to the phase the landing is actually in: `reviewing` carries the reviewer run's live
+ * detail exactly as a reviewing tick does (`landing 3m · reviewing · turn 2 · ctx 18.0k
+ * · bash npm test`); `build-check` and `merging` render just the stage (`landing 1m · build
+ * check`) and never read the log — no reviewer is running then, and the log's newest run is
+ * typically a finished one (the author's, a previous review) whose turns are stale and whose
+ * silence would read as a false stall; a record with no stage (an older writer mid-upgrade)
+ * keeps the bare elapsed label. */
 export function loopPhase(
   s: LoopState,
   orchestratorRunning: boolean,
@@ -112,13 +131,22 @@ export function loopPhase(
   budgetPaused = false,
   live?: LiveProgress | null,
   userPaused = false,
-  landing?: { startedAt: number } | null,
+  landing?: LandingCell | null,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only the role whose in-flight record
   // was passed gets it (callers derive it via landingForRole), and a stopped harness never
   // shows it — a dead fleet's marker is stale by definition.
-  if (landing) return `landing ${duration(Date.now() - landing.startedAt)}`;
+  if (landing) {
+    const head = `landing ${duration(Date.now() - landing.startedAt)}`;
+    if (!landing.stage) return head;
+    const staged = `${head} · ${LANDING_STAGE_LABELS[landing.stage]}`;
+    if (landing.stage !== "reviewing") return staged;
+    // The reviewer writes the role's own log from its lander worktree: the GATE accumulator,
+    // read here rather than taken from `live` — the landing role's tick has ended, so the
+    // frame's per-running-loop tail is not this run's (callers pass null for it).
+    return inFlightDetail(staged, root ? readLiveProgress(root, s.role, "gate") : null);
+  }
   if (s.running) {
     // A parked waiter is reserved against double-scheduling but holds no maxConcurrent permit
     // and runs no pi yet: render its true state and keep it OUT of the active set (isActivePhase)
@@ -132,7 +160,7 @@ export function loopPhase(
     // finished authoring run (BUGS.md 2026-09-22).
     if (s.phase === "review") {
       const p = root ? (live === undefined ? readLiveProgress(root, s.role, "gate") : live) : null;
-      return inFlightDetail(s, "reviewing", p);
+      return inFlightDetail(inFlightLabel(s, "reviewing"), p);
     }
     // In-flight ticks finish even while the budget is paused — only NEW ticks are blocked,
     // so a running loop keeps its live detail.

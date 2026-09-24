@@ -14,7 +14,8 @@ import {
 } from "../src/land-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
+import { landingRefName, landingStatePath, landWorktreePath, statePath } from "../src/paths.js";
+import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
@@ -998,3 +999,49 @@ test("an abort mid-batch routes every request without a terminal outcome to abor
     restore();
   }
 });
+
+// The landing cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the batch: the
+// marker names the head, so the head's stage must leave `reviewing` the moment its gate
+// returns — otherwise its finished reviewer's last turns sit in the cell, accruing a false
+// `no pi output` flag, for as long as the batch reviews and checks the other changes.
+for (const headVerdict of ["reject", "approve"] as const) {
+  test(`a batch head ${headVerdict === "reject" ? "rejected" : "approved"} mid-batch leaves reviewing when its gate returns; the stack check names itself`, async () => {
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+    // The drain's batch arm opens the marker for the head request.
+    writeLandingMarker(root, { role: "alpha", sha: shas.alpha!, summary: "work by alpha", startedAt: 1, stage: "merging" });
+    const rec = path.join(tmpdir(), "stages");
+    const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${landingStatePath(root)}'`;
+    const config = { ...defaultConfig(), check: { command: `echo "check:$(${stageOf})" >> '${rec}'` } };
+    const headReply = headVerdict === "reject" ? "VERDICT: reject\n1. no" : "VERDICT: approve";
+    const restore = fakePi(
+      [
+        // Tell the two reviewer runs apart by the session name pi is handed.
+        `r=none; for a in "$@"; do case "$a" in tumwater-review-alpha-*) r=alpha ;; tumwater-review-beta-*) r=beta ;; esac; done`,
+        `echo "$r:$(${stageOf})" >> '${rec}'`,
+        `if [ "$r" = alpha ]; then printf '%s\\n' '${assistantLine(headReply)}'; else printf '%s\\n' '${assistantLine("VERDICT: approve")}'; fi`,
+      ].join("\n"),
+    );
+    try {
+      const results = await landBatch(
+        makeBatchCtx(root, config),
+        ["alpha", "beta"].map((role) => request(shas[role]!, { role })),
+        wiringFor,
+      );
+
+      const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
+      // The head's own gate: pre-check, then its reviewer. Then beta's gate runs with the
+      // head's marker already back on merging — beta's own transitions never touch it.
+      const phaseA = ["check:build-check", "alpha:reviewing", "check:merging", "beta:merging"];
+      if (headVerdict === "reject") {
+        assert.deepEqual(results.map((r) => r.result), ["rejected", "changed"]);
+        assert.deepEqual(seen, phaseA, "a one-change stack lands through the single path: no stack check");
+      } else {
+        assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+        assert.deepEqual(seen, [...phaseA, "check:build-check"], "the shared stack check runs under build-check");
+      }
+      assert.equal(readLandingMarker(root)?.stage, "merging", "the merge steps close the batch on merging");
+    } finally {
+      restore();
+    }
+  });
+}

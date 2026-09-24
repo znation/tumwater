@@ -81,7 +81,7 @@ test("a queue head whose sha main already holds is dropped without a landing run
   enqueueLanding(root, entry("improve", sha));
   // A crash between the marker write and its removal leaves a marker with no live landing;
   // the dedupe clears the stale marker alongside the entry.
-  writeLandingMarker(root, { role: "improve", sha, summary: "the work", startedAt: Date.now() });
+  writeLandingMarker(root, { role: "improve", sha, summary: "the work", startedAt: Date.now(), stage: "merging" });
   const { ctx, cleared } = makeCtx(root, runnersFor(root, ["improve"]));
 
   assert.equal(await drainLandingQueue(ctx), null, "nothing to land — main already holds the sha");

@@ -17,6 +17,7 @@ import {
   type LanderContext,
 } from "./lander.js";
 import { errorMessage } from "./text.js";
+import { setLandingStage } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "./types.js";
 
@@ -240,8 +241,12 @@ export async function landBatch(
     // The expensive deterministic half, shared: ONE run over the combined tree. Outcome
     // routing — null: no declared check, land directly; "failed": red or a merge-scope
     // timeout, abandon; "skipped": no npm / broken toolchain (the helper warned), proceed —
-    // never fail-closed; "passed": green.
+    // never fail-closed; "passed": green. The landing cell names the check while it runs,
+    // then the merge steps after it — the ff or the one-at-a-time fallback (setLandingStage
+    // is a no-op for every stacked role but the one the marker names).
+    for (const i of stack) setLandingStage(ctx.root, requests[i]!.role, "build-check");
     const check = await runScopedBuildCheck(ctx.root, headReq.role, "batch", wt!, ctx.config);
+    for (const i of stack) setLandingStage(ctx.root, requests[i]!.role, "merging");
     abandon = check !== null && check.outcome.status === "failed";
     if (!abandon) {
       const outcome = await ffStackToMain(ctx.root, ctx.mainBranch, landed);

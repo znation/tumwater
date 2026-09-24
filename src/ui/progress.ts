@@ -140,7 +140,8 @@ function freshProgress(quietMs: number): LiveProgress {
  * bookkeeping) is ignored. Also passed as parsePiEventLine's pre-filter to skip JSON.parse for
  * pi lines whose type is verifiably not one of these; a new case in the switch must be added
  * here too. `tumwater_run` is the harness's own label line (src/pi.ts), read only for its
- * run kind — a labeled run ("review") flips the demux before its `session` event lands. */
+ * run kind — a labeled run ("review") flips the demux, and starts the gate accumulator
+ * fresh, before its `session` event lands. */
 const PROGRESS_TYPES = new Set([
   "session",
   "tumwater_run",
@@ -262,8 +263,8 @@ export function stalledToolLabel(
  * line or a `session` event switches which accumulator following lines fold into — the
  * `session` event's `cwd` is the authoritative kind discriminator (the lander worktree's
  * path = gate), the harness's `tumwater_run` label line an early hint for the window between
- * the label and the session event. Everything else folds into the current kind's
- * accumulator. Non-JSON noise is skipped. */
+ * the label and the session event (a `review` label also starts the gate accumulator fresh).
+ * Everything else folds into the current kind's accumulator. Non-JSON noise is skipped. */
 function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
   const event = parsePiEventLine<ProgressEvent>(line, PROGRESS_TYPES);
   if (!event) return; // Blank, unparseable, or a type this feed does not act on.
@@ -273,7 +274,16 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
     return;
   }
   if (event.type === "tumwater_run") {
-    if (event.label === "review") tail.cur = "gate";
+    if (event.label === "review") {
+      // A new reviewer run starts HERE, not only at its `session` event: runPi writes this
+      // line before spawning pi, and the landing cell reads the gate accumulator as soon as
+      // the marker's stage says `reviewing` — a poll that can land before the session event.
+      // Resetting at the label means a previous gate run's turns/context (the last review,
+      // or this gate's build-fix run) can never show in the new review's cell. Safe for the
+      // in-tick reviewing cell too: a role's gate is serial, so a label ends the previous run.
+      tail.cur = "gate";
+      tail.gate = freshProgress(tail.gate.quietMs);
+    }
     return;
   }
   feedLine(tail[tail.cur], event);

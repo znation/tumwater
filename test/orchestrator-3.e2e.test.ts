@@ -279,7 +279,7 @@ test("a stale marker beside an already-merged queue head is cleared so an idle f
   const restore = fakePi(["printf '%s\\n' '" + assistantLine("TUMWATER_NOTHING_TO_DO") + "'"].join("\n"));
   const sha = sh(repo, "git", "rev-parse", "HEAD");
   enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "already merged", enqueuedAt: Date.now() });
-  writeLandingMarker(repo, { role: "clean", sha, summary: "already merged", startedAt: Date.now() });
+  writeLandingMarker(repo, { role: "clean", sha, summary: "already merged", startedAt: Date.now(), stage: "merging" });
   assert.ok(fs.existsSync(landingStatePath(repo)), "fixture sanity: the stale marker exists");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {

@@ -213,6 +213,7 @@ export async function drainLandingQueue(ctx: LandingDrainContext): Promise<InFli
         sha: first.entry.sha,
         summary: first.entry.summary,
         startedAt,
+        stage: "merging", // Phase A's checkout comes first; the head's gate advances it
       });
       const authors = new Map(batch.map((b) => [b.entry.role, authorFor(b.entry.role)]));
       const usages = new Map<string, { tokens: number; cost: number }>();

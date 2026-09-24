@@ -1079,17 +1079,91 @@ test("landingBadge shows the land queue depth and stays empty when idle", () => 
   assert.equal(landingBadge({ depth: 3 }), " · land queue: 3");
 });
 
-test("loopPhase renders the marker-driven landing label when the record is passed", () => {
+// The landing cell (BUGS.md 2026-09-22, re-opened 2026-09-23): the marker's stage scopes the
+// cell to the phase the landing is in. This used to pin a bare `landing <elapsed>` as the
+// correct output for every landing — the featureless countdown the bug is about.
+test("loopPhase renders the landing cell ahead of every idle state, only when the record is passed", () => {
   const s = freshLoopState("clean");
   s.nextRunAt = Date.now() + 90_000; // would read "sleeping (for 2m)" without the record
   const startedAt = Date.now() - 90_000; // 90s of landing → "1m30s"
-  // The record renders `landing <elapsed>` ahead of every idle state…
-  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { startedAt }), "landing 1m30s");
+  // The record wins over the idle state…
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, { startedAt, stage: "merging" }),
+    "landing 1m30s · merging",
+  );
   // …and it is the caller's job to pass it only for the landing role: without it the loop
   // keeps its ordinary state (the "other roles" case — the record is filtered upstream).
   assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
   // A stopped harness never shows it — a dead fleet's marker is stale by definition.
-  assert.equal(loopPhase(s, false, undefined, false, undefined, false, { startedAt }), "stopped");
+  assert.equal(loopPhase(s, false, undefined, false, undefined, false, { startedAt, stage: "merging" }), "stopped");
+  // Only a record with no stage at all — an older writer's marker mid-upgrade — keeps the
+  // bare elapsed label: there is nothing more it can honestly say.
+  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { startedAt }), "landing 1m30s");
+});
+
+test("the build-check and merging landing stages render their label and never read the log", () => {
+  const root = tmpdir();
+  // The log's newest run is a FINISHED reviewer (a previous landing's), silent for ten
+  // minutes: read during a stage with no live pi run, it would show stale turns/context and
+  // a false `no pi output` flag counted against a run that ended long ago.
+  const file = writePiLog(root, "clean", [
+    GATE_SESSION(root, "clean"),
+    assistantLine("an old review", { tokens: 40_000 }),
+    toolStart("bash", { command: "npm test" }),
+  ]);
+  fs.utimesSync(file, new Date(Date.now() - 10 * 60_000), new Date(Date.now() - 10 * 60_000));
+  const s = freshLoopState("clean");
+  const startedAt = Date.now() - 90_000;
+  for (const [stage, label] of [
+    ["build-check", "build check"],
+    ["merging", "merging"],
+  ] as const) {
+    const phase = loopPhase(s, true, root, false, null, false, { startedAt, stage });
+    assert.match(phase, new RegExp(`^landing 1m3[01]s · ${label}$`), `${stage}: ${phase}`);
+  }
+});
+
+test("the reviewing landing stage carries the reviewer run's live detail, timed from the landing", () => {
+  const root = tmpdir();
+  // The landing's reviewer writes the role's own raw log from its lander worktree — the gate
+  // accumulator, exactly what a reviewing tick's cell reads (BUGS.md 2026-09-22).
+  writePiLog(root, "clean", [
+    SESSION, // the authoring tick's finished run
+    assistantLine("the author's work", { tokens: 9_000 }),
+    JSON.stringify({ type: "tumwater_run", label: "review" }),
+    GATE_SESSION(root, "clean"),
+    assistantLine("reviewing the diff", { tokens: 22_000 }),
+    toolStart("bash", { command: "npm test" }),
+  ]);
+  const s = freshLoopState("clean");
+  // The authoring tick started an hour ago; the cell's elapsed is the LANDING's (90s), and
+  // the frame's `live` for a non-running loop is null — the branch reads the gate itself.
+  s.lastTickStartedAt = Date.now() - 3_600_000;
+  const phase = loopPhase(s, true, root, false, null, false, { startedAt: Date.now() - 90_000, stage: "reviewing" });
+  assert.match(phase, /^landing 1m3[01]s · reviewing · turn 2 · ctx 22\.0k · bash npm test$/, `unexpected shape: ${phase}`);
+
+  // No log to read (or no root): the honest stage label alone.
+  const bare = loopPhase(s, true, undefined, false, null, false, { startedAt: Date.now() - 90_000, stage: "reviewing" });
+  assert.equal(bare, "landing 1m30s · reviewing");
+});
+
+test("a new landing's reviewing cell starts at its run's label line, not at the previous review's counts", () => {
+  const root = tmpdir();
+  // A previous review ran to completion; the next landing's reviewer has only written its
+  // label line so far (runPi writes it before pi spawns). The stage already says reviewing.
+  writePiLog(root, "clean", [
+    JSON.stringify({ type: "tumwater_run", label: "review" }),
+    GATE_SESSION(root, "clean"),
+    assistantLine("the previous review", { tokens: 50_000 }),
+    assistantLine("VERDICT: approve", { tokens: 51_000 }),
+    toolStart("read", { path: "src/old.ts" }),
+    JSON.stringify({ type: "tumwater_run", label: "review" }),
+  ]);
+  const phase = loopPhase(freshLoopState("clean"), true, root, false, null, false, {
+    startedAt: Date.now() - 5_000,
+    stage: "reviewing",
+  });
+  assert.match(phase, /^landing \ds · reviewing · turn 1$/, `the previous review bled through: ${phase}`);
 });
 
 test("renderStatus shows the land-queue badge in the header and the label in the landing role's row", () => {
@@ -1114,16 +1188,19 @@ test("renderStatus shows the land-queue badge in the header and the label in the
   assert.match(text.split("\n")[0]!, /running \(pid 4242\) · land queue: 2/, "badge after the running part, before the budget badge");
   assert.match(text, /clean +queued/, "a merely queued role shows its normal state");
 
-  // …and the role whose in-flight record is attached reads `landing <elapsed>` in its row —
-  // bare (no work-item prefix: the loop is not running, so stateCell returns the phase),
+  // …and the role whose in-flight record is attached reads `landing <elapsed> · <stage>` in
+  // its row — no work-item prefix (the loop is not running, so stateCell returns the phase),
   // while the other row is untouched.
   const startedAt = Date.now() - 90_000;
   const landing = {
     ...queued,
-    landQueue: { depth: 2, inFlight: { role: "clean", sha: "abc123", summary: "tidy", startedAt } } as StatusSnapshot["landQueue"],
+    landQueue: {
+      depth: 2,
+      inFlight: { role: "clean", sha: "abc123", summary: "tidy", startedAt, stage: "build-check" },
+    } as StatusSnapshot["landQueue"],
   };
   const text2 = renderStatus(root, landing);
-  assert.match(text2, /clean +landing 1m30s/, "the landing role reads the marker's elapsed");
+  assert.match(text2, /clean +landing 1m3[01]s · build check/, "the landing role reads the marker's elapsed and stage");
   assert.match(text2, /bugfix +queued/, "other roles are untouched");
 });
 

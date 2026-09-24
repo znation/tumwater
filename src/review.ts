@@ -24,6 +24,7 @@ import {
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
+import { setLandingStage } from "./landing-slot.js";
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
  * a warning: a misconfigured reviewer model must not be able to wedge a loop into re-reviewing
@@ -279,6 +280,9 @@ export async function reviewAheadOfMain(
   // unexplained one reads as unclaimed scope (BUGS.md 2026-09-23 — b020f67 turned dry's check
   // green and the reviewer rejected the landing for it).
   let buildFix: BuildFixCommit | undefined;
+  // The landing cell's stage (a no-op outside a queued landing — see setLandingStage): the
+  // pre-check, and any build-fix run it triggers, is the gate's first long phase.
+  setLandingStage(root, role, "build-check");
   const preCheck = await runScopedBuildCheck(
     root,
     role,
@@ -417,6 +421,10 @@ export async function reviewAheadOfMain(
   // The reviewer's started tool calls, collected only when the no-re-run rule stands (a verified
   // pre-check) — the one case the suite-rerun tripwire below can fire.
   const reviewerCalls: ToolCallStart[] = [];
+  // The landing cell switches to the reviewer run's live detail (no-op outside a queued
+  // landing). runPi writes the run's `tumwater_run` label line before spawning pi, and that
+  // line resets the gate progress accumulator, so the cell never shows a previous run's counts.
+  setLandingStage(root, role, "reviewing");
   // The author's claimed WHY/RISK/VERIFIED ride along when present — checking those claims
   // against the actual diff is exactly the adversarial angle (recovery landings reconstruct
   // them from the pinned commit's message).

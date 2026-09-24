@@ -51,8 +51,9 @@ export function lastTickCell(ts: number | undefined): string {
 function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgress | null): string {
   // While under review the log tail's "current work" is the reviewer's own output, not the
   // author's task — don't prepend it; the phase cell already carries the reviewer's live
-  // detail. The landing label rides the same guard: the landing role is not running, so the
-  // bare phase ("landing <elapsed>") is returned without a work-item prefix.
+  // detail. The landing label rides the same guard: the landing role is not running, so its
+  // phase ("landing <elapsed> · <stage>", with the reviewer's live detail while it reviews)
+  // is returned without a work-item prefix.
   if (!s.running || s.parkedSince || s.phase === "review") return phase;
   const p = live === undefined ? readLiveProgress(root, s.role) : live;
   const work = p?.currentWork;

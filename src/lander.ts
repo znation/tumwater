@@ -4,6 +4,7 @@ import { ensureDetachedWorktree } from "./worktree.js";
 import { mergeToMain, rebaseOntoMain } from "./merge.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { saveLoopState } from "./state.js";
+import { setLandingStage } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "./types.js";
 
@@ -125,6 +126,11 @@ export async function reviewPinnedChange(
     req.body,
     req.highFriction,
   );
+  // The gate is over, whatever it decided: move the landing cell off the gate's stages (a no-op
+  // outside a queued landing). What follows is the merge, or — mid-batch — the other changes'
+  // gates, and a finished reviewer's last turns left in the cell would accrue a false
+  // `no pi output` flag for as long as the batch runs on.
+  setLandingStage(root, role, "merging");
   // Persist the verdict immediately, not at the tick's end save: the gate's bookkeeping is
   // cross-tick memory (a persisted "reject" injects a "your previous change was rejected"
   // note into the next prompt), and this tick's tail — the landing plus the still-to-come

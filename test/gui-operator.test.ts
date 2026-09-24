@@ -63,7 +63,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
   const repo = makeRepo();
   await initProject(repo, "gui land queue test");
   const payload = statusPayload(repo) as {
-    landQueue: { depth: number; inFlight?: { role: string; sha: string; summary: string; startedAt: number } };
+    landQueue: { depth: number; inFlight?: { role: string; sha: string; summary: string; startedAt: number; stage?: string } };
     landingBadge: string;
     loops: Array<{ role: string; phase: string; inFlight: boolean }>;
   };
@@ -80,16 +80,25 @@ test("status payload carries the land queue depth and the in-flight landing", as
   assert.equal(p.landQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
 
   // A live orchestrator plus the 4/5 marker with a matching entry → in flight, and the
-  // landing role's row phase reads `landing <elapsed>` while every other row is untouched.
+  // landing role's row phase reads `landing <elapsed> · <stage>` while every other row is
+  // untouched.
   const infoFile = orchestratorStatePath(repo);
   fs.mkdirSync(path.dirname(infoFile), { recursive: true });
   fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }));
   const startedAt = Date.now();
-  fs.writeFileSync(landingStatePath(repo), JSON.stringify({ role: "clean", sha: "abc1234", summary: "tidy something", startedAt }));
+  fs.writeFileSync(
+    landingStatePath(repo),
+    JSON.stringify({ role: "clean", sha: "abc1234", summary: "tidy something", startedAt, stage: "build-check" }),
+  );
   p = statusPayload(repo) as typeof payload;
   assert.equal(p.landQueue.inFlight?.role, "clean");
   assert.equal(p.landQueue.inFlight?.sha, "abc1234");
-  assert.match(p.loops.find((l) => l.role === "clean")!.phase, /^landing \d+s$/, "the landing role's phase is marker-driven");
+  assert.match(
+    p.loops.find((l) => l.role === "clean")!.phase,
+    /^landing \d+s · build check$/,
+    "the landing role's phase is marker-driven, stage included",
+  );
+  assert.equal(p.landQueue.inFlight?.stage, "build-check", "the raw record carries the stage for `status --json`");
   assert.equal(p.loops.find((l) => l.role === "bugfix")!.phase, "queued", "other roles keep their normal phase");
   // The row-level inFlight flag (isActivePhase over the rendered phase) is what the GUI's
   // row actions key off: the landing role is in flight, every other row is not.

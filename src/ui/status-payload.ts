@@ -65,8 +65,9 @@ export function statusPayload(root: string): object {
         budgetPausedNow,
         live,
         snap.paused,
-        // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed>`
-        // (the marker-driven record, filtered to this role); every other row is untouched.
+        // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed> ·
+        // <stage>` (the marker-driven record, filtered to this role); every other row is
+        // untouched.
         landingForRole(snap.landQueue, s.role),
       );
       return {

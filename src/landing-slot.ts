@@ -4,7 +4,7 @@ import { applyLandingOutcome, saveLoopState } from "./state.js";
 import { logEvent } from "./events.js";
 import { dropLanding } from "./land-queue.js";
 import { landChange } from "./lander.js";
-import { readJsonFile, writeJsonFile } from "./json-files.js";
+import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { removeQuiet } from "./files.js";
 import { landingStatePath } from "./paths.js";
 import { errorMessage } from "./text.js";
@@ -18,23 +18,40 @@ import type { LoopRunner } from "./loop.js";
  * role's state and drops its queue entry. A landing's pi runs charge to the authoring runner
  * (foldLandingUsage); orchestrator.ts drives this module once per queue head, per poll. */
 
+/** Where a landing is in its flow, as far as an observer can tell: `merging` — the git steps
+ * (lander checkout, rebase onto main, the in-lock re-check and fast-forward); `build-check` —
+ * a deterministic check over the change's tree (the gate's pre-check and any build-fix run it
+ * triggers, or a batch's shared stack check); `reviewing` — the adversarial reviewer's pi run,
+ * whose live turns/context/tool the dashboards read from the role's raw log. Everything else a
+ * landing does (verdict parsing, state saves) is sub-second bookkeeping between these. */
+export type LandingStage = "merging" | "build-check" | "reviewing";
+
 /** The in-flight landing's marker (plans/merge-queue.md 4/5): which change is landing right
- * now, and since when. The slot writes it before a landing starts and removes it after every
- * outcome, so the separate-process observers (status, TUI, GUI) can show the landing without
- * depending on the scheduler module — the OrchestratorInfo precedent. snapshot() cross-checks
- * it with a matching queue entry and the orchestrator's liveness, so a stale marker from any
- * crash ordering never displays. */
+ * now, since when, and which stage it is in. The slot writes it before a landing starts and
+ * removes it after every outcome, so the separate-process observers (status, TUI, GUI) can
+ * show the landing without depending on the scheduler module — the OrchestratorInfo
+ * precedent. snapshot() cross-checks it with a matching queue entry and the orchestrator's
+ * liveness, so a stale marker from any crash ordering never displays. `stage` rides the same
+ * file rather than a second one — the marker is the one cross-process surface both dashboards
+ * already read; the landing path advances it (setLandingStage) and the landing cell renders it
+ * (loopPhase). It is optional on READ only: a marker from an older writer mid-upgrade carries
+ * none and renders the bare elapsed label, while every writer must name one
+ * (writeLandingMarker). */
 export interface LandingInFlight {
   role: string;
   sha: string;
   summary: string;
   startedAt: number;
+  stage?: LandingStage;
 }
 
 /** Publish the in-flight landing marker — the one place its shape is constructed, so the
- * interface is enforced here rather than at each caller's inline `writeJsonFile`. */
-export function writeLandingMarker(root: string, marker: LandingInFlight): void {
-  writeJsonFile(landingStatePath(root), marker);
+ * interface is enforced here rather than at each caller's inline `writeJsonFile`: every
+ * writer names a stage. Atomic (tmp + rename) because the marker is rewritten mid-landing at
+ * every stage transition while observers poll it every second — a plain overwrite would let a
+ * poll read a torn file as "no landing" and flicker the landing row back to its idle label. */
+export function writeLandingMarker(root: string, marker: Required<LandingInFlight>): void {
+  writeJsonAtomic(landingStatePath(root), marker);
 }
 
 /** Read the in-flight landing marker; null when missing or unreadable. Never throws —
@@ -42,6 +59,22 @@ export function writeLandingMarker(root: string, marker: LandingInFlight): void 
  * down (the readOrchestratorInfo precedent). */
 export function readLandingMarker(root: string): LandingInFlight | null {
   return readJsonFile<LandingInFlight>(landingStatePath(root));
+}
+
+/** Advance the in-flight marker's stage — called by the landing path at each transition:
+ * review.ts before its pre-check (`build-check`) and before its reviewer run (`reviewing`),
+ * lander.ts's reviewPinnedChange once the gate returns (`merging`, whatever it decided — a
+ * finished reviewer's last turns must not sit in the cell accruing a false `no pi output`
+ * flag while a batch works through its other changes), and land-batch.ts around the batch's
+ * shared stack check. A no-op unless a marker naming THIS role is live: the shared gate also
+ * runs inside ticks (leftover recovery — no marker; that tick's own reviewing cell carries its
+ * detail) and the batch marker names only its head, so another batched role's transitions must
+ * not touch it. Only the stage changes: sha and startedAt are what the snapshot cross-check and
+ * the landing's elapsed read. */
+export function setLandingStage(root: string, role: string, stage: LandingStage): void {
+  const marker = readLandingMarker(root);
+  if (!marker || marker.role !== role || marker.stage === stage) return;
+  writeLandingMarker(root, { ...marker, stage });
 }
 
 /** Fold one landing's outcome into its role's state and drop its queue entry — the 3/5
@@ -134,6 +167,9 @@ export async function landQueuedEntry(
     sha: entry.sha,
     summary: entry.summary,
     startedAt,
+    // landChange checks the pin out and rebases it onto main before the gate — git steps, so
+    // the marker opens at `merging` and the gate advances it from there.
+    stage: "merging",
   });
   const { usage, foldUsage } = landingUsage(author);
   let result: TickResult;

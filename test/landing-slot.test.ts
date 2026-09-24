@@ -7,16 +7,25 @@
  * fold there would silently lose that spend. These pin the accounting branches directly. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { landingUsage, landQueuedEntry, readLandingMarker, writeLandingOutcome } from "../src/landing-slot.js";
-import { landingRefName } from "../src/paths.js";
-import { refSha } from "../src/git.js";
+import fs from "node:fs";
+import path from "node:path";
+import {
+  landingUsage,
+  landQueuedEntry,
+  readLandingMarker,
+  setLandingStage,
+  writeLandingMarker,
+  writeLandingOutcome,
+} from "../src/landing-slot.js";
+import { landingRefName, landingStatePath } from "../src/paths.js";
+import { refSha, setRef } from "../src/git.js";
 import { defaultConfig } from "../src/config.js";
 import { applyTickOutcome, freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { readEvents } from "../src/events.js";
 import type { LoopRunner } from "../src/loop.js";
 import type { LandingEntry, PiRunResult } from "../src/types.js";
-import { makeRepo } from "./util.js";
+import { assistantLine, fakePi, makeRepo, sh, tmpdir } from "./util.js";
 
 /** A minimal successful pi run carrying the given usage — only the fields the fold reads matter,
  * but PiRunResult is fully required, so the rest are neutral defaults. */
@@ -178,4 +187,81 @@ test("a failed landing logs land_failed with its usage and counts no commit", ()
   assert.equal(state.lastResult, "merge_conflict");
   assert.equal(state.commits, 0, "a non-changed outcome is not a commit");
   assert.equal(queueDepth(root), 0, "every outcome drops the entry — retry rides the pin, not the queue");
+});
+
+// The landing cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23): the landing path
+// advances the marker's stage and the dashboards render it.
+test("setLandingStage advances only a live marker naming its own role, and only its stage", () => {
+  const root = makeRepo();
+  // No marker — the shared gate running inside a tick (leftover recovery): a no-op that
+  // creates nothing; the gate must never invent landing state.
+  setLandingStage(root, "clean", "reviewing");
+  assert.equal(readLandingMarker(root), null);
+  // Another role's marker is untouched: the batch marker names only its head, and the other
+  // batched changes' gates advance under their own roles.
+  const marker = { role: "bugfix", sha: "a".repeat(40), summary: "s", startedAt: 1, stage: "merging" } as const;
+  writeLandingMarker(root, marker);
+  setLandingStage(root, "clean", "reviewing");
+  assert.deepEqual(readLandingMarker(root), marker, "another role's marker keeps every field");
+  // The matching role's stage advances; identity (the snapshot cross-check's sha) and the
+  // landing's startedAt (the cell's elapsed) are preserved.
+  setLandingStage(root, "bugfix", "build-check");
+  assert.deepEqual(readLandingMarker(root), { ...marker, stage: "build-check" });
+  // An older writer's stage-less marker gains one.
+  fs.writeFileSync(landingStatePath(root), JSON.stringify({ role: "bugfix", sha: "b", summary: "s", startedAt: 2 }));
+  setLandingStage(root, "bugfix", "reviewing");
+  assert.deepEqual(readLandingMarker(root), { role: "bugfix", sha: "b", summary: "s", startedAt: 2, stage: "reviewing" });
+});
+
+test("a queued landing's marker walks build-check → reviewing → merging while each phase runs", async () => {
+  const root = makeRepo();
+  // A pinned change ahead of main, exactly what a tick leaves behind for the slot.
+  sh(root, "git", "checkout", "--detach");
+  fs.appendFileSync(path.join(root, "seed.txt"), "the work\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "the work");
+  const sha = sh(root, "git", "rev-parse", "HEAD");
+  sh(root, "git", "checkout", "main");
+  await setRef(root, landingRefName("improve"), sha);
+  const entry: LandingEntry = { role: "improve", sha, tick: 3, summary: "the work", enqueuedAt: Date.now() };
+  enqueueLanding(root, entry);
+  const head = headLanding(root);
+  assert.ok(head, "fixture sanity: the landing is queued");
+
+  // Every observation point appends the marker's stage as the observers would read it: the
+  // project's declared check (the gate's pre-check, then the in-lock landing re-check), and
+  // the reviewer run. The reviewer also moves main, so the in-lock re-check has a rebased
+  // tree to verify — the merge step's own long phase.
+  const rec = path.join(tmpdir(), "stages");
+  const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${landingStatePath(root)}'`;
+  const config = { ...defaultConfig(), check: { command: `echo "check:$(${stageOf})" >> '${rec}'` } };
+  const restore = fakePi(
+    [
+      `echo "review:$(${stageOf})" >> '${rec}'`,
+      `git -C '${root}' commit -q --allow-empty -m 'main moves under the landing'`,
+      `printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
+    ].join("\n"),
+  );
+  try {
+    const state = freshLoopState("improve");
+    const author = {
+      state,
+      runLandingPi: () => {
+        throw new Error("no conflict resolution in this landing");
+      },
+      foldLandingUsage: () => {},
+    } as unknown as LoopRunner;
+
+    const result = await landQueuedEntry(root, head.entry, head.file, author, config, "main", new AbortController().signal);
+
+    assert.equal(result, "changed", `the landing lands: ${state.lastError ?? ""}`);
+    assert.deepEqual(
+      fs.readFileSync(rec, "utf8").trim().split("\n"),
+      ["check:build-check", "review:reviewing", "check:merging"],
+      "each phase ran under its own stage",
+    );
+    assert.equal(readLandingMarker(root), null, "the marker is removed after the outcome");
+  } finally {
+    restore();
+  }
 });
