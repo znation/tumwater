@@ -29,6 +29,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Land-queue speed 1/3 — Take the build-fix run out of the landing slot: retry a failed gate check once, then hand the failure to whoever caused it (planned 2026-09-23, requested by user)
 
+**Status 2026-09-24 (partly delivered by the BUGS.md sweep):** step 1 has landed. A failed gate check is re-run once, and a pass logs `gate check failed then passed on retry — flaky: <headline>` and proceeds as verified (the build-fix budget fix, 47c06df). That fix also caps the fix run that remains at 20 minutes (`BUILD_FIX_TIMEOUT_S`) under a shared-host prompt, and dc0d9a7 names any fix commit in the review prompt. Both BUGS.md entries the last acceptance criterion names are already in Fixed. Still to do: attributing a repeat failure through `checkMainBaseline` (step 2) and deleting the fix run (step 3).
+
 **Why.** The land queue is the fleet's bottleneck. A role cannot tick while its change is queued or landing (the merge-queue interlock), so every queued change idles one loop. On 2026-09-23 the queue sat at depth 6 (median), 10 at p90, and a change took 39 min (median) from `land_queued` to its outcome. The single worst cost is the gate's build-fix run (the "Fix a failed landing build check on the spot" plan under Done, user-requested 2026-09-21). It runs inside the one landing slot while the whole queue waits. That day it ran five times: coverage 27 min, dry 112 min and 215 min, feature 35 min, organize 46 min. That is about 7.3 h, of which about 5.4 h was inside the slot. **All five ended rejected; none led to a landing.** Dry's 07:44 run was the batch the 10:42 restart waited 97 minutes on (the self-redeploy Open bug). Dry's 03:48 run load-tested the live host and `pkill`ed every test runner (BUGS.md, the "bounded" build-fix entry). Most failures it chased were load flakes, not breakage.
 
 This supersedes the in-slot fix run from that plan and keeps its goal: a red **main** must not reject every queued change. That case now goes to the machinery that already exists for it. `checkMainBaseline` (src/main-baseline.ts:125) holds a per-SHA, fleet-wide verdict, and landings seed it green. The main-red gate (src/main-red.ts:84) already blocks authoring on a red main and hands the repair to bugfix (`bugfixMainRedNote`, :68). Real breakage by the author goes back to the author, whose next tick fixes it in its own parallel permit instead of in the serial slot.
@@ -56,6 +58,8 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 - `npm test` green.
 
 ### Land-queue speed 2a — Approvals survive a clean rebase: key them by patch-id, not sha (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
+
+**Status 2026-09-24:** BUGS.md's "fallback re-reviews every change it already approved" entry was fixed another way (45acd18). Phase A reviews each pin rebased onto main, and the one-change path and the fallback land the approved head through `landApprovedChange` with no second gate; the in-lock `verifyLanding` re-check covers the rebased tree. Patch-id approvals are still worth having for the single path: an approved change re-drained after main moved still pays a second review.
 
 **Why.** `reviewAheadOfMain` short-circuits a re-review only on an exact sha match (`state.lastApprovedHead === head`, src/review.ts:188), but `landChange` rebases onto main before the gate (src/lander.ts:190) — so any approved change whose main moved pays a full second reviewer run. This is BUGS.md's open "batch's one-at-a-time fallback re-reviews every change it already approved" entry: about 12 wasted minutes in the 05:03 batch on 2026-09-23. A review judges a diff, not a sha; keying the approval by the diff's patch-id keeps the short-circuit across a clean rebase while still re-reviewing a rebase that changed the patch.
 
@@ -94,6 +98,8 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 ### Land-queue speed 2c — Split landing into a parallel vetting stage and a serial merge stage (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
 
+**Status 2026-09-24 (partly delivered by the BUGS.md sweep):** two of its pieces landed as bug fixes. A batch's Phase A gates run concurrently, two at a time (`PHASE_A_CONCURRENCY`; each extra gate takes its own `maxConcurrent` permit through `BatchContext.gatePermit`), and a terminal Phase A verdict writes its outcome and drops its entry at once (`BatchContext.onFinal`). Still to do: the vetting/merge split, `maxConcurrentLandings`, and merging vetted entries ahead of an unvetted head.
+
 **Why.** From 2026-09-23 12:19 to 20:56 changes arrived at 5.4/h and the one landing slot served 5.8/h at 81% busy — at that load the queue only grows. The slot's time went to model reviews (~49%), per-change full-suite gate checks (~19%, ~107 s each), and the build-fix runs 1/3 removes. The step that must stay serial — stack + batch check + fast-forward — is a few minutes per batch; every review and gate check runs one after another today, both in the single path and in `landBatch`'s Phase A loop (src/land-batch.ts:130, BUGS.md "A batch reviews its changes one after another"). The isolation for concurrency already exists: each role has its own `_land-<role>` worktree, review session dir, pinned ref and LoopState.
 
 **Target.** Queue-to-landed latency of about one review + one gate check + one merge step (~6–10 min at today's medians, not 39). The interlock stays: a role is still blocked while its change is being vetted or merged, just for much less time.
@@ -125,24 +131,6 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Series.** Sibling of 2a, 2b, 2d. Depends on 2a (patch-id approvals survive the rebase into the merge stage) and 2b (concurrent vets mean concurrent suites); 1/3 first so a load flake costs one retry.
 
-### Land-queue speed 2d — Per-change landing markers so the dashboards show what is really happening (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
-
-**Why.** `.tumwater/state/landing.json` holds one marker (`LandingInFlight`, src/landing-slot.ts:26) for the whole slot, so a batched landing is displayed as the head change's landing for the whole batch — the head role reads `landing 29m` long after its own change was rejected, while the change actually being gated shows nothing (BUGS.md's open entry). It also leaves the landing state cell bare `landing <elapsed>` — the stage half of that re-opened entry. 2c's vetting stage makes per-change state the truth the dashboards should show.
-
-**Approach.**
-- src/landing-slot.ts — one marker per change in flight, under `.tumwater/state/landing/<role>.json`, each with a `stage` of `vetting:build-check` / `vetting:reviewing` / `vetted` / `merging` and a per-change `startedAt` (the fields `LandingInFlight` already carries, plus stage). `readLandingMarker` becomes a list reader with the same torn-file tolerance the single marker has today.
-- `snapshot()`'s cross-check validates each marker against its queue entry (and the orchestrator's liveness), so a stale marker from any crash ordering never displays.
-- src/ui/status-model.ts — `loopPhase` (:108) renders each role's own stage and elapsed, replacing the head-change-only view.
-
-**Files touched.** src/landing-slot.ts, src/ui/status-model.ts, src/ui/status-payload.ts, src/ui/progress.ts as needed; tests: test/landing-slot.test.ts, test/status-render.test.ts.
-
-**Acceptance criteria.**
-- With two changes vetting and one merging, each of the three rows shows its own stage and elapsed; a rejected change shows no landing state after its verdict.
-- A torn or stale marker file displays nothing rather than crashing the observers (the existing tolerance, per-marker).
-- Before 2c lands, the vocabulary still renders: today's single landing shows as one `merging`-stage marker with today's cell text unchanged.
-
-**Series.** Sibling of 2a, 2b, 2c. Lands most usefully after 2c (the stages exist), but is implementable against today's single-stage markers with the stage vocabulary already named above.
-
 ### Land-queue speed 3a — Give the reviewer its own time budget (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
 
 **Why.** Measured 2026-09-22/23: reviews ran 2.3 min median, 9.2 min p90 and 24.6 min max after the 12:19 restart, and earlier days had reviews of 1.5–3.5 h. The reviewer's only limits are `tickTimeoutSeconds` (54000 s here) and the quiet watchdog, so one wedged reviewer holds the land queue for as long as an authoring tick.
@@ -163,22 +151,9 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Series.** Part of the land-queue speed series (1/3 and 2a–2d planned above; all independent of this one). Siblings 3b–3e below are independent of this entry and of each other — any order.
 
-### Land-queue speed 3b — Tell the reviewer, as a rule, not to re-run a verified suite (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
-
-**Why.** When the gate's own check passed, the review prompt mentions it only in a context paragraph (src/prompt.ts:442–448), and reviewers still burn their runs re-running the full suite in scratch copies under /tmp — BUGS.md's open "Reviewers re-run the full suite in scratch copies" entry. The instruction must sit in the rules list, where the reviewer's other hard rules live, to bind.
-
-**Approach.**
-- src/prompt.ts — `buildReviewPrompt`'s `verifiedByHarness` branch (:442) already adds the context paragraph. When `verifiedByHarness` is set, also append one rule to the `Rules for this run:` list (:480): the harness already ran the project's check on this exact tree — no full-suite runs, no `npm ci`, no copies of the tree outside the worktree; running a single named test file is allowed.
-- test/prompt.test.ts — pin the rule's presence exactly when `verifiedByHarness` is passed, and its absence when the argument is null (the prompt is otherwise unchanged).
-
-**Files touched.** src/prompt.ts, test/prompt.test.ts.
-
-**Acceptance criteria.**
-- With `verifiedByHarness` set, the review prompt's rules list contains the no-rerun rule; without it, the prompt is byte-identical to today's.
-
-**Series.** Sibling of 3a, 3c, 3d, 3e — independent, any order.
-
 ### Land-queue speed 3c — One writer to main: route leftover recovery through the land queue (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23)
+
+**Status 2026-09-24 (partly delivered by the BUGS.md sweep):** the land-batch backstop landed with the `merge_blocked` race fix (3073644). A batch that loses the fast-forward re-stacks onto the new tip and re-checks, at most `BATCH_RESTACK_ATTEMPTS` (2) times, and skips the re-check when main gained only exempt paths. Still to do: routing leftover recovery through the land queue, the one-writer half. That fix's Fix paragraph in BUGS.md records why it was left out.
 
 **Why.** `recoverLeftover` (src/leftover.ts:45, called from the tick at src/loop.ts:510) lands inside the tick through `landChange`, racing the orchestrator's slot — the extra writer to main is what turned two batches (2026-09-22 12:44 and 13:12) into wholesale `merge_blocked` (BUGS.md's "A batch whose base main moves during its build check is discarded wholesale" entry).
 
@@ -258,6 +233,43 @@ The shared shape: a bounded, silent, or mislabeled record — digest caps, skip 
 - The gap tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sort | uniq -c`) stops growing `no-observability` for failure classes these traces cover.
 
 ## Done
+
+### Land-queue speed 2d — Per-change landing markers so the dashboards show what is really happening (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26, done 2026-09-24)
+
+**Why.** `.tumwater/state/landing.json` holds one marker (`LandingInFlight`, src/landing-slot.ts:26) for the whole slot, so a batched landing is displayed as the head change's landing for the whole batch — the head role reads `landing 29m` long after its own change was rejected, while the change actually being gated shows nothing (BUGS.md's open entry). It also leaves the landing state cell bare `landing <elapsed>` — the stage half of that re-opened entry. 2c's vetting stage makes per-change state the truth the dashboards should show.
+
+**Approach.**
+- src/landing-slot.ts — one marker per change in flight, under `.tumwater/state/landing/<role>.json`, each with a `stage` of `vetting:build-check` / `vetting:reviewing` / `vetted` / `merging` and a per-change `startedAt` (the fields `LandingInFlight` already carries, plus stage). `readLandingMarker` becomes a list reader with the same torn-file tolerance the single marker has today.
+- `snapshot()`'s cross-check validates each marker against its queue entry (and the orchestrator's liveness), so a stale marker from any crash ordering never displays.
+- src/ui/status-model.ts — `loopPhase` (:108) renders each role's own stage and elapsed, replacing the head-change-only view.
+
+**Files touched.** src/landing-slot.ts, src/ui/status-model.ts, src/ui/status-payload.ts, src/ui/progress.ts as needed; tests: test/landing-slot.test.ts, test/status-render.test.ts.
+
+**Acceptance criteria.**
+- With two changes vetting and one merging, each of the three rows shows its own stage and elapsed; a rejected change shows no landing state after its verdict.
+- A torn or stale marker file displays nothing rather than crashing the observers (the existing tolerance, per-marker).
+- Before 2c lands, the vocabulary still renders: today's single landing shows as one `merging`-stage marker with today's cell text unchanged.
+
+**Series.** Sibling of 2a, 2b, 2c. Lands most usefully after 2c (the stages exist), but is implementable against today's single-stage markers with the stage vocabulary already named above.
+
+**Implemented 2026-09-24** by two BUGS.md fixes: "The landing state cell shows only elapsed time" (127157a) and "A batched landing is displayed as the head change's landing" (95f848c). Each row now shows its own change's state and elapsed. Two concurrent Phase A gates read `landing <own elapsed> · reviewing`, with the reviewer's live detail, while the rest read `queued in batch` or `approved, awaiting batch`. A rejected change shows no landing state once its verdict is in. The snapshot cross-check validates each change against its queue entry. Deltas from the written approach: the per-change records live in the one landing.json marker (`changes`), not in per-role files. The stages are `merging` / `build-check` / `reviewing`; 2c's vetting stage can extend that vocabulary when it exists. A single landing now shows its stage next to the elapsed time instead of the bare `landing <elapsed>`.
+
+### Land-queue speed 3b — Tell the reviewer, as a rule, not to re-run a verified suite (planned 2026-09-23, requested by user; split from 3/3 into its own entry 2026-09-23, done 2026-09-24)
+
+**Why.** When the gate's own check passed, the review prompt mentions it only in a context paragraph (src/prompt.ts:442–448), and reviewers still burn their runs re-running the full suite in scratch copies under /tmp — BUGS.md's open "Reviewers re-run the full suite in scratch copies" entry. The instruction must sit in the rules list, where the reviewer's other hard rules live, to bind.
+
+**Approach.**
+- src/prompt.ts — `buildReviewPrompt`'s `verifiedByHarness` branch (:442) already adds the context paragraph. When `verifiedByHarness` is set, also append one rule to the `Rules for this run:` list (:480): the harness already ran the project's check on this exact tree — no full-suite runs, no `npm ci`, no copies of the tree outside the worktree; running a single named test file is allowed.
+- test/prompt.test.ts — pin the rule's presence exactly when `verifiedByHarness` is passed, and its absence when the argument is null (the prompt is otherwise unchanged).
+
+**Files touched.** src/prompt.ts, test/prompt.test.ts.
+
+**Acceptance criteria.**
+- With `verifiedByHarness` set, the review prompt's rules list contains the no-rerun rule; without it, the prompt is byte-identical to today's.
+
+**Series.** Sibling of 3a, 3c, 3d, 3e — independent, any order.
+
+**Implemented 2026-09-24** by the BUGS.md fix for "Reviewers re-run the full suite in scratch copies under /tmp" (07d205e). All criteria are met. The rule is its own line in the review prompt's rules list, and it appears only when `verifiedByHarness` is set. Copying the tree to a temp directory or running `npm ci` there counts as re-running the suite; one named test file for a concrete reason is fine. The old sentence in the context paragraph is gone, and test/prompt.test.ts pins both cases. Beyond this plan, src/suite-rerun.ts warns when a reviewer runs the full suite anyway.
 
 ### 7a/7 — Resolve the project brief as `TUMWATER.md`, with README.md as the compatibility path (planned 2026-09-23, split from 7/7, done 2026-09-23)
 
