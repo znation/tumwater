@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { TRANSIENT_PI_CRASH, piArgs, resolveAgentBin, runPi, type PiRunOptions } from "../src/pi.js";
+import { TRANSIENT_PI_CRASH, piArgs, resolveAgentBin, runPi, signalTree, type PiRunOptions } from "../src/pi.js";
 import { PiStreamParser } from "../src/pi-stream.js";
 import { toolUpdateHasContent } from "../src/pi-event-line.js";
 import type { PiRunResult } from "../src/types.js";
@@ -13,6 +13,7 @@ import { REFUSED_SENTINEL } from "../src/reply-contract.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
+import { pidAlive } from "../src/process.js";
 import { assistantLine, errorLine, fakePi, makeRepo, thinkingOnlyLine, tmpdir } from "./util.js";
 
 // plans/portability.md §5/7: the agent binary is TUMWATER_PI_BIN → agentBin → "pi". The
@@ -693,6 +694,97 @@ test("a killed run leaves no grandchild behind (regression)", async () => {
       }
     }
     restore();
+  }
+});
+
+// A run that ENDS NORMALLY must take its backgrounded tool-call processes with it too (BUGS.md
+// 2026-09-23): qa's GUI check backgrounded `cd … && node … gui --all-interfaces &`, its own
+// cleanup killed the list's subshell instead of the server, pi exited 0, and the unauthenticated
+// server listened on the LAN for 7.5 hours — still in the group pi led. Both shapes of the
+// Repro: `(… &)` (the subshell forks and exits, orphaning at once) and `cmd && … &` (the whole
+// list is the background job, so `$!` names its subshell — the qa trap). Each sleep records its
+// own pid (`exec` keeps it), and the shim waits (bounded) for both pid files before exiting, so
+// the test never races their writes.
+test("a run that exits normally leaves no backgrounded tool-call process behind (regression)", async () => {
+  const dir = tmpdir();
+  const subshellPidFile = path.join(dir, "subshell.pid");
+  const listPidFile = path.join(dir, "list.pid");
+  const pidFiles = [subshellPidFile, listPidFile];
+  const sleeper = (pidFile: string) => `sh -c 'echo $$ > ${pidFile}; exec sleep 3600'`;
+  // A backstop, far beyond the test's span: were an orphan ever to hold 'close' open, the run
+  // fails on the tick timeout instead of hanging the file.
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 30;
+  const restore = fakePi(
+    [
+      // The "tool call" runs in its own shell whose stdio is off pi's pipes, as a real tool
+      // call's is — otherwise the `&&` list's subshell holds pi's stdout open while it waits
+      // on its sleep, and the pre-fix run never closes instead of resolving with its orphans
+      // alive. `exec` (not a `{ …; } >` group, whose saved copy of the old stdout the forked
+      // list inherits) leaves no descriptor of pi's behind.
+      `( exec >/dev/null 2>&1; (${sleeper(subshellPidFile)} &); true && ${sleeper(listPidFile)} & )`,
+      `n=0; until [ -s ${subshellPidFile} ] && [ -s ${listPidFile} ] || [ $n -ge 200 ]; do sleep 0.05; n=$((n+1)); done`,
+      `printf '%s\n' '${assistantLine("Everything checked out.")}'`,
+      `exit 0`,
+    ].join("\n"),
+  );
+  const readPid = (f: string) => {
+    try {
+      return Number(fs.readFileSync(f, "utf8").trim()) || 0;
+    } catch {
+      return 0;
+    }
+  };
+  const seenDead = new Set<number>();
+  try {
+    const result = await runPi(runPiFixture(dir, { config }));
+    assert.equal(result.ok, true, "the run ends normally — no kill path is involved");
+    assert.equal(result.aborted || result.timedOut || result.quietKilled, false);
+    const pids = pidFiles.map(readPid);
+    assert.ok(pids.every((pid) => pid > 0), "both backgrounded sleeps recorded their pids");
+    // The group signal is asynchronous relative to runPi's resolution: poll until the OS has
+    // reaped both sleeps (the assertion below fails on a leak that never dies).
+    const deadline = Date.now() + 5000;
+    while (seenDead.size < pids.length && Date.now() < deadline) {
+      for (const pid of pids) if (!pidAlive(pid)) seenDead.add(pid);
+      if (seenDead.size < pids.length) await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.deepEqual(
+      pids.filter((pid) => !seenDead.has(pid)),
+      [],
+      "every backgrounded sleep is gone after a normal exit",
+    );
+  } finally {
+    // Never leak a sleep, whichever assertion failed: SIGKILL every recorded pid not seen dead
+    // (one seen dead is left alone — its pid may already be recycled).
+    for (const pid of pidFiles.map(readPid)) {
+      if (pid <= 0 || seenDead.has(pid)) continue;
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    }
+    restore();
+  }
+});
+
+// The sweep's contract with signalTree: a group that died with its leader is the normal case
+// after an exit, so signalling it reports "nothing received this" instead of throwing — which
+// is what lets the post-exit sweep skip arming a SIGKILL at a pgid no process holds any more.
+test("signalTree reports whether the signal reached a live group, and tolerates a gone one", async () => {
+  const done = spawn("sh", ["-c", "exit 0"], { detached: true, stdio: "ignore" });
+  await new Promise((r) => done.on("exit", r));
+  assert.equal(signalTree(done, "SIGTERM"), false, "an exited leader's empty group receives nothing");
+
+  const live = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
+  try {
+    await new Promise((r) => live.on("spawn", r));
+    const exited = new Promise<NodeJS.Signals | null>((r) => live.on("exit", (_code, signal) => r(signal)));
+    assert.equal(signalTree(live, "SIGTERM"), true, "a live group receives the signal");
+    assert.equal(await exited, "SIGTERM");
+  } finally {
+    live.kill("SIGKILL");
   }
 });
 

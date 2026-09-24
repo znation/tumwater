@@ -95,27 +95,39 @@ export function hasResumableSession(sessionDir: string): boolean {
  * escalating to SIGKILL after 10 s if any of it is still alive. pi is spawned detached (its
  * own process group leader), so a negative PID reaches every tool-call grandchild — which a
  * single-PID kill leaves orphaned to launchd — while the harness's own group is never in the
- * blast radius. The escalation timer is unref'd so a clean exit does not keep the harness
- * process alive. Shared by the tick-timeout, quiet-watchdog, and harness-shutdown paths. */
+ * blast radius. Shared by the tick-timeout, quiet-watchdog, and harness-shutdown kills, and by
+ * the sweep every run gets once pi exits (runPi's 'exit' handler), when the group holds only
+ * what pi's tool calls backgrounded.
+ *
+ * The escalation is armed only when the SIGTERM reached a live process: a group that died with
+ * its leader — every clean run — gets no second signal, so nothing is sent 10 s later to a pgid
+ * no process holds any more (the one state in which a recycled pid could make it another
+ * group; the kernel never reissues the number while a member lives). The timer is unref'd and
+ * never awaited: the run resolves as soon as pi's output is in, and only a SIGTERM-trapping
+ * straggler waits on the escalation — holding every run up to 10 s for it would slow the fleet
+ * to cover what the SIGTERM already covers, and a finished harness process is not kept alive
+ * by it. */
 function terminateChild(child: ChildProcess): void {
-  signalTree(child, "SIGTERM");
-  setTimeout(() => signalTree(child, "SIGKILL"), 10_000).unref();
+  if (signalTree(child, "SIGTERM")) setTimeout(() => signalTree(child, "SIGKILL"), 10_000).unref();
 }
 
 /** Signal the child's whole process group, falling back to the child alone when the group is
- * already gone or the platform has no negative-PID kill (Windows). Never throws: a process
- * that died between the caller's decision and this call is the normal case. Shared with the
- * build check's process-group timeout (runScriptGroup in build-check.ts) — the same
- * "signal the tree, not just the direct child" guarantee in one home. */
-export function signalTree(child: ChildProcess, signal: NodeJS.Signals): void {
-  if (child.pid == null) return;
+ * already gone or the platform has no negative-PID kill (Windows). Returns whether the signal
+ * reached a live process: false when nothing was left to receive it — ESRCH from a group that
+ * died with its leader, the normal case once pi has exited. Never throws: a process that died
+ * between the caller's decision and this call is the normal case. Shared with the build
+ * check's process-group timeout (runScriptGroup in build-check.ts) — the same "signal the
+ * tree, not just the direct child" guarantee in one home. */
+export function signalTree(child: ChildProcess, signal: NodeJS.Signals): boolean {
+  if (child.pid == null) return false;
   try {
     process.kill(-child.pid, signal);
+    return true;
   } catch {
     try {
-      child.kill(signal);
+      return child.kill(signal);
     } catch {
-      // Already gone.
+      return false; // Already gone.
     }
   }
 }
@@ -197,7 +209,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,
       // Detached so pi leads its own process group: terminateChild signals the group, so a
-      // killed tick's tool-call grandchildren die with it instead of leaking to launchd.
+      // run's tool-call grandchildren — killed or finished — die with it instead of leaking
+      // to launchd.
       detached: true,
     });
 
@@ -356,6 +369,17 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     child.on("error", (err) => {
       finish(resultFromParser({ errorMessage: spawnErrorMessage(resolved, err.message) }));
     });
+
+    // Sweep the group pi led however the run ended, a normal exit included: pi exits before
+    // its orphans — a tool call's `(server &)` or `cd … && server &` is reparented to PID 1 but
+    // stays in pi's group — and the harness cannot rely on the model's own cleanup (BUGS.md
+    // 2026-09-23: qa's unauthenticated `gui --all-interfaces` listened on the LAN for 7.5 hours
+    // after a tick that ended "Everything checked out"). On 'exit', not 'close': pi has just
+    // been reaped, so the pgid still names only its group (never reissued while a member
+    // lives), and an orphan holding pi's stdio open dies now instead of holding 'close' — and
+    // the run — open. Synchronous, so it adds nothing to the run's resolution; on the kill
+    // paths it re-sends a SIGTERM the group already had.
+    child.on("exit", () => terminateChild(child));
 
     child.on("close", (code) => {
       // Flush any bytes the decoder held back at stream end so a final line is not lost.

@@ -727,6 +727,19 @@ test("the qa prompt carries the safety rails for launched processes", () => {
   assert.match(find, /no listening process may outlive your tick/);
 });
 
+// BUGS.md 2026-09-23: qa's own GUI check left an unauthenticated `gui --all-interfaces` on the
+// LAN for 7.5 hours — it exercised the flag over the network, and its cleanup killed the pid
+// `cd … && node … & echo $!` recorded, which is the backgrounded list's subshell, not node's.
+test("the qa prompt keeps servers on loopback and tracks background processes by their own pid", () => {
+  const find = qa!.find;
+  assert.match(
+    find,
+    /on loopback only — check a flag that widens the bind \(e\.g\. `--all-interfaces`\) from its startup banner and stop it at once/,
+  );
+  assert.match(find, /track each background process by its own pid/);
+  assert.match(find, /in `cd dir && server & echo \$!`, `\$!` names the subshell, not the server/);
+});
+
 test("the qa prompt picks one flow per tick from the README usage menu, cheap first", () => {
   const find = qa!.find;
   assert.match(find, /README's usage section is your menu of flows/);
