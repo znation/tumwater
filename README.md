@@ -36,7 +36,7 @@ locally and keep all project state within the git repo.
 ## Status
 
 <!-- tumwater:status:start -->
-v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`),
+v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all-interfaces`, `--token <secret>`),
 `status` (`--json`), `report` (`--days N`; `--failures` for the Markdown failure digest),
 `doctor`, `logs` (`-f`, `--role <id>`, `-n N`, `--prompt`), `prompt "text"` / `--list` /
 `--cancel <n>`, `reset-counters [--role <id>]`, `wake [--role <id>]`, `abort --role <id>`,
@@ -48,6 +48,26 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 come from `customLoops` in tumwater.json or by prompting the director.
 
 Open items:
+- Open bug: the gate's "bounded" build-fix run has no time or resource budget — a dry-run
+  load-test held the live host for 90 minutes and stalled the fleet (found 2026-09-23).
+- Open bug: a build check killed by a signal is reported as "timed out after 300 s", and at
+  gate scope the change then goes to review unverified (found 2026-09-23).
+- Open bug: the reviewer is never told about the gate's own build-fix commit, so a successful
+  fix reads as an unclaimed change and the landing is rejected (found 2026-09-23).
+- Open bug: the batch's one-at-a-time fallback re-reviews changes it already approved — the
+  lander rebases before the gate, so the approved-head short-circuit never hits (found
+  2026-09-23).
+- Open bug: a batch whose base main moves during its build check is discarded wholesale as
+  `merge_blocked` — leftover-recovery landings run outside the land queue and race it (found
+  2026-09-23).
+- Open bug: a batch reviews its changes one after another, so its wall-clock is the sum of
+  every review and one slow reviewer holds the whole queue (found 2026-09-23).
+- Open bug: reviewers re-run the full suite in scratch copies under /tmp even when the harness
+  check already passed (found 2026-09-23).
+- Open bug: any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its
+  code is hard-reset — the fix's record has been carried to Fixed by markdown-only commits four
+  times, most recently `cdcc54c`, while the fix's symbols (`isNegatedRefusal`,
+  `refusalContradiction`) exist nowhere in the tree (found 2026-09-23).
 - Open bug: the status table's "last result" cell shows `queued` — a tick's live landing status
   rather than its last completed result, duplicating the state column while work sits in the land
   queue or under review (reported by user 2026-09-24).
@@ -87,13 +107,13 @@ Open items:
   binary (planned 2026-09-14, requested by user; PLANS.md items 6/7 — configurable verify
   command — and 7/7 — adopt an existing repo without hijacking its README — remain; 1–5/7
   landed by 2026-09-24).
-- Planned: optional shared-token auth for the GUI — `gui --token <secret>` requires a
-  credential on every request; the default stays open (planned 2026-09-23, re-audited
-  2026-09-25; PLANS.md has the plan).
+- Planned: wake and abort controls on the GUI dashboard — per-loop `wake`/`abort` buttons
+  backed by `POST /api/wake` and `POST /api/abort` that reuse the CLI's marker-writing logic
+  (planned 2026-09-25; PLANS.md has the plan).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`aa9ab83`): build clean, suite 1389/1389.
+Current main (`9781825`): build clean, suite 1394/1394.
 <!-- tumwater:status:end -->
 
 ## How it works
@@ -271,6 +291,7 @@ tumwater run          # terminal 1: the loops (Ctrl+C to stop)
 tumwater tui          # terminal 2: dashboard + main prompt
 tumwater gui          # or the same dashboard at http://127.0.0.1:7180 (--port N to change)
 tumwater gui --all-interfaces      # serve the dashboard to the whole network (see below)
+tumwater gui --token <secret>      # require that shared token on every request (see below)
 tumwater status       # one-shot table
 tumwater status --json   # machine-readable fleet state (the GUI's /api/status payload minus its serverBuildSha)
 tumwater report [--days N]   # Markdown usage report — tokens/ticks/commits/cost per day, plus per-role tick and cost breakdowns (default 14 days; --days bounded to the GUI's shared 1–90 window)
@@ -310,9 +331,12 @@ and reviewer runs, and review runs render as `── review @ <timestamp> ──
 --role`, the TUI transcript pane, and the GUI detail panel.
 
 `gui --all-interfaces` binds every network interface (IPv4 and IPv6) instead of localhost, and
-prints the LAN URLs it is reachable at. The dashboard has **no authentication**, and its prompt
-box feeds the director — anyone who can reach the port can steer the fleet and read every
-transcript. Use it only on networks where that is acceptable. Its `report` tab charts usage
+prints the LAN URLs it is reachable at. The dashboard's prompt box feeds the director — anyone
+who can reach the port can steer the fleet and read every transcript. By default it has **no
+authentication**; `gui --token <secret>` gates every request with that token (sent as
+`Authorization: Bearer <token>` or `?token=` — the CLI prints token-bearing URLs, and the
+browser client strips the token from the address bar). Use it only on networks where that is
+acceptable. Its `report` tab charts usage
 (served by `GET /api/report?days=N`) and its `failures` tab renders the same Markdown failure
 digest as `tumwater report --failures` (served by `GET /api/failures?days=N`, the sibling
 endpoint sharing the report's clamped 1–90 window; both read files directly, so they work with
