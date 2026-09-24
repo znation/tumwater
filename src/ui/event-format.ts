@@ -1,4 +1,4 @@
-import { budgetPhrase, compactTokens, shortSha, usd } from "../text.js";
+import { budgetPhrase, compactTokens, rateLimitHoldPhrase, shortSha, usd } from "../text.js";
 import type { HarnessEvent } from "../types.js";
 
 /** The ` · <N> tok` / ` · $<spent>` usage fragment every event that records a run's cost
@@ -129,6 +129,14 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} fleet paused — role loops stop starting new ticks (director keeps running)`;
     case "fleet_resumed":
       return `${time} ${loop} fleet resumed — role loops tick again`;
+    case "rate_limit_hold": {
+      // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
+      // handling the storm. Names who saw the 429s and when the fleet re-opens on its own.
+      const roles = Array.isArray(e.roles) ? (e.roles as unknown[]).join(", ") : "several roles";
+      return `${time} ${loop} 429 hold — ${roles} rate-limited by the provider; role loops and landings start nothing new ${rateLimitHoldPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+    }
+    case "rate_limit_resumed":
+      return `${time} ${loop} 429 hold lifted — role loops tick again`;
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
       return `${time} ${loop} maxConcurrent changed: ${e.from} → ${e.to}`;

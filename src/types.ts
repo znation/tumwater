@@ -174,6 +174,8 @@ export interface HarnessEvent {
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
     | "fleet_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
     | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
+    | "rate_limit_hold" // several roles' runs ended on a provider 429 within a short window (src/rate-limit-hold.ts); role loops and the landing slot start nothing new until it re-opens; carries roles, holdMs, escalation
+    | "rate_limit_resumed" // the 429 hold reached its deadline; role loops tick again
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
     | "config_changed" // a live tumwater.json edit changed other settings (keys)

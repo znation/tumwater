@@ -10,6 +10,7 @@ import {
 } from "./scheduling.js";
 import { isFleetPaused } from "./fleet-state.js";
 import { budgetGate, budgetPaused, type BudgetGate, fleetDailyCost } from "./budget.js";
+import { RATE_LIMIT_OPEN, rateLimitHold, type RateLimitHold } from "./rate-limit-hold.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
@@ -97,6 +98,35 @@ export function sleepInterruptible(ms: number, signal: AbortSignal): Promise<voi
     }
     signal.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+/** One poll of the fleet-wide 429 hold (src/rate-limit-hold.ts): gather each runner's latest
+ * run that ended on a provider 429 (LoopRunner.lastRateLimit — every role's, the director's
+ * included, since its 429s are the same provider's evidence), step the pure gate, and log
+ * exactly one event per crossing, like the budget gate's: `rate_limit_hold` on the way in
+ * (which roles tripped it, for how long, and how many relapses deep it is) and
+ * `rate_limit_resumed` when it re-opens at its own deadline. Returns the new hold for the
+ * caller to keep. Exported as a unit-test seam, like runTimedRoleTick above. */
+export function pollRateLimitHold(
+  root: string,
+  prev: RateLimitHold,
+  runners: readonly Pick<LoopRunner, "role" | "lastRateLimit">[],
+  now: number,
+): RateLimitHold {
+  const observations = runners.flatMap((r) => (r.lastRateLimit ? [{ role: r.role, ...r.lastRateLimit }] : []));
+  const next = rateLimitHold(prev, observations, now);
+  if (prev.until === null && next.until !== null) {
+    logEvent(root, {
+      loop: "harness",
+      type: "rate_limit_hold",
+      roles: next.roles,
+      holdMs: next.until - now,
+      escalation: next.escalation,
+    });
+  } else if (prev.until !== null && next.until === null) {
+    logEvent(root, { loop: "harness", type: "rate_limit_resumed" });
+  }
+  return next;
 }
 
 interface RunOptions {
@@ -221,6 +251,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // Same bookkeeping for the operator pause (the marker file), so each pause/resume logs
   // exactly one event instead of once per ~2s poll.
   let prevUserPaused = false;
+  // The fleet-wide 429 hold's state across polls (src/rate-limit-hold.ts) — unlike the
+  // budget gate's prevGate it is the gate's own memory (deadline, relapse count), not just the
+  // last value for edge-triggered events. In memory only: a restart starts open.
+  let rateHold: RateLimitHold = RATE_LIMIT_OPEN;
   // The cap last applied to the semaphore (live-resized on each reload), so a change logs
   // exactly one event per distinct value — not once per ~2s poll.
   let lastMaxConcurrent = Math.max(1, config.maxConcurrent);
@@ -426,6 +460,21 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         prevUserPaused = userPaused;
       }
 
+      // Fleet-wide 429 hold (src/rate-limit-hold.ts): once several roles' runs have ended on a
+      // provider 429 within a short window, role loops start no new ticks — and the landing
+      // slot starts no new landing (the director's included), whose reviewer run has no retry
+      // and would spend a review strike on the storm — until the hold re-opens at its own
+      // deadline (Retry-After honoured, doubling on a relapse, capped). The director's ticks
+      // are exempt, as under the budget gate and the operator pause: an explicit human prompt
+      // outranks an autonomous gate, one director run is not the concurrency that sustains a
+      // storm, its runs keep the per-run 429 retry, and a prompt its tick fails to fulfil goes
+      // back to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like both
+      // siblings, and a role tick already parked in the semaphore meets the same hold at its
+      // permit (the start gate below) and hands its reservation back instead of starting into
+      // the storm.
+      rateHold = pollRateLimitHold(root, rateHold, runners, now);
+      const rateHeld = rateHold.until !== null;
+
       // Self-redeploy (src/redeploy.ts): with main's head in hand, let the policy observe it.
       // `hold` starts no new ticks at all — director included; a restart lands within minutes
       // and its prompt waits in the inbox — while the green check/compile/drain run in the
@@ -467,9 +516,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
 
       // Merge queue 3/5 — drain the durable land queue on the single landing slot, once the
-      // slot is free and no restart is pending (the scheduler's WHEN; landing-drain.ts owns
-      // the HOW — the queue-head dedupe and both landing paths).
-      if (!holdForRestart && landingInFlight === null) {
+      // slot is free and neither a restart nor a 429 hold is pending (the scheduler's WHEN;
+      // landing-drain.ts owns the HOW — the queue-head dedupe and both landing paths).
+      if (!holdForRestart && !rateHeld && landingInFlight === null) {
         landingInFlight = await drainLandingQueue({
           root,
           mainBranch,
@@ -502,6 +551,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
         if ((gate === "paused" || userPaused) && runner.role !== DIRECTOR_ROLE)
           continue; // no new role ticks while either gate holds
+        if (rateHeld && runner.role !== DIRECTOR_ROLE) continue; // nor while a 429 storm holds
         const { run, reason } = isEligible(runner, now, mainHead, inboxCount);
         if (!run) {
           // Not due this poll: any deferral episode has ended (or never started). No event —
@@ -594,7 +644,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               return runner.tick();
             },
             Date.now,
-            tickStartHeld,
+            // The restart start gate, plus the 429 hold for role ticks (the director is exempt,
+            // as at scheduling): a waiter granted its permit mid-storm must not start into it.
+            () => tickStartHeld() || (usesSlot && rateHold.until !== null),
           );
           // A reservation whose tick never started hands itself back, so the role re-schedules
           // once the hold lifts (or on the new build) instead of sitting `running` forever with

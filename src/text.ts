@@ -152,6 +152,19 @@ export function budgetPhrase(spentUsd: unknown, capUsd: unknown): string {
   return `${usd(Number(spentUsd ?? 0))} of ${usd(Number(capUsd ?? 0))}`;
 }
 
+/** The `for <duration>[ (relapse N)]` fragment the rate_limit_hold event renders — the one
+ * home of that phrasing, shared by the event feed (event-format.ts) and the failure digest's
+ * Fleet state changes lines (failure-data.ts), like budgetPhrase. Seconds under two minutes
+ * (the one-minute base hold reads `60s`), whole minutes above; the relapse count is named only
+ * when the storm resumed right after an earlier hold, the one fact that says the hold doubled.
+ * Both fields arrive loosely typed on HarnessEvent, so each is coerced here. */
+export function rateLimitHoldPhrase(holdMs: unknown, escalation: unknown): string {
+  const ms = Math.max(0, Number(holdMs ?? 0)) || 0;
+  const span = ms < 120_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
+  const relapse = Number(escalation ?? 0);
+  return `for ${span}${relapse > 0 ? ` (relapse ${relapse})` : ""}`;
+}
+
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
  * display in the harness renders through (transcript run separators, the status table's last-
  * tick cell, the daily-budget day stamp), so zero-padding cannot drift per consumer. */

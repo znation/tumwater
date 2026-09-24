@@ -420,6 +420,17 @@ test("each harness state transition renders its own bounded line", () => {
     ],
     [{ type: "budget_resumed", spentUsd: 4, capUsd: 10 }, "budget resumed ($4.00 of $10.00 today)"],
     [{ type: "fleet_resumed" }, "fleet resumed — role loops tick again"],
+    // The fleet-wide 429 hold (BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold"):
+    // who tripped it and for how long, a relapse named, and the automatic re-open.
+    [
+      { type: "rate_limit_hold", roles: ["bugfix", "coverage"], holdMs: 60_000, escalation: 0 },
+      "429 hold for 60s — bugfix, coverage",
+    ],
+    [
+      { type: "rate_limit_hold", roles: ["dry", "feature"], holdMs: 240_000, escalation: 2 },
+      "429 hold for 4m (relapse 2) — dry, feature",
+    ],
+    [{ type: "rate_limit_resumed" }, "429 hold lifted — role loops tick again"],
     [{ type: "max_concurrent_changed", from: 3, to: 5 }, "maxConcurrent 3 → 5"],
     [{ type: "retention_changed", from: 7, to: 14 }, "sessionRetentionDays 7 → 14"],
     [{ type: "config_changed", keys: "not-an-array" }, "config changed"],

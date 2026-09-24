@@ -8,7 +8,7 @@
 import type { HarnessEvent, TickResult } from "./types.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
-import { budgetPhrase, dayAt, formatDate, shortSha } from "./text.js";
+import { budgetPhrase, dayAt, formatDate, rateLimitHoldPhrase, shortSha } from "./text.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
@@ -22,16 +22,18 @@ const EXAMPLE_MAX = 120;
 const SUMMARY_MAX = 100;
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
- * cap/fleet gate, live-config edits, self-hosted redeploys, need-based deferrals, orchestrator
- * lifecycle). They are the evidence the telemetry role's load-bearing rule asks it to judge —
- * whether the harness's RESPONSE to a failure was wrong (plans/telemetry-role.md) — so they sit
- * beside the outcomes rather than being dropped. */
+ * cap/fleet gates and the 429 hold, live-config edits, self-hosted redeploys, need-based
+ * deferrals, orchestrator lifecycle). They are the evidence the telemetry role's load-bearing
+ * rule asks it to judge — whether the harness's RESPONSE to a failure was wrong
+ * (plans/telemetry-role.md) — so they sit beside the outcomes rather than being dropped. */
 const STATE_CHANGE_TYPES = new Set<string>([
   "budget_paused",
   "budget_fallback",
   "budget_resumed",
   "fleet_paused",
   "fleet_resumed",
+  "rate_limit_hold",
+  "rate_limit_resumed",
   "max_concurrent_changed",
   "retention_changed",
   "config_changed",
@@ -441,6 +443,12 @@ function describeStateChange(ev: HarnessEvent): string {
       break;
     case "fleet_resumed":
       text = "fleet resumed — role loops tick again";
+      break;
+    case "rate_limit_hold":
+      text = `429 hold ${rateLimitHoldPhrase(ev.holdMs, ev.escalation)} — ${Array.isArray(ev.roles) ? (ev.roles as unknown[]).slice(0, 4).map(field).join(", ") : "?"}`;
+      break;
+    case "rate_limit_resumed":
+      text = "429 hold lifted — role loops tick again";
       break;
     case "max_concurrent_changed":
       text = `maxConcurrent ${field(ev.from)} → ${field(ev.to)}`;

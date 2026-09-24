@@ -424,6 +424,40 @@ test("formatEvent renders the fleet pause and resume events plainly", () => {
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 });
 
+// Fleet-wide 429 hold (src/rate-limit-hold.ts; BUGS.md 2026-09-21 "A 429 storm still has no
+// fleet-wide hold"): the hold is the harness handling a storm, so both lines are routine. The
+// hold line names who saw the 429s, how long nothing new starts, a relapse when the storm came
+// straight back, and the director exemption.
+test("formatEvent renders the 429 hold and its re-open plainly", () => {
+  const hold = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "rate_limit_hold",
+    roles: ["bugfix", "coverage"],
+    holdMs: 60_000,
+    escalation: 0,
+  } as never);
+  assert.match(
+    hold,
+    /harness\s+429 hold — bugfix, coverage rate-limited by the provider; role loops and landings start nothing new for 60s \(director keeps running\)$/,
+    `the hold must name its roles, duration and scope: ${hold}`,
+  );
+  assert.ok(!hold.includes("warning"), `the hold is routine, not a warning: ${hold}`);
+
+  const relapse = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "rate_limit_hold",
+    roles: ["dry", "feature"],
+    holdMs: 15 * 60_000,
+    escalation: 4,
+  } as never);
+  assert.match(relapse, /for 15m \(relapse 4\) \(director keeps running\)$/, `relapse line: ${relapse}`);
+
+  const resumed = formatEvent({ ts: 0, loop: "harness", type: "rate_limit_resumed" } as never);
+  assert.match(resumed, /harness\s+429 hold lifted — role loops tick again$/, `resumed line: ${resumed}`);
+});
+
 test("formatEvent renders a user_aborted tick_end with its result verbatim", () => {
   // "user_aborted" (deliberate stop) must stay distinct from "aborted" (harness shutdown):
   // the result word is what tells them apart in the feed. The aborted outcome carries no

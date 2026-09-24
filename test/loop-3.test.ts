@@ -1103,6 +1103,9 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
       warnings.some((w) => /retrying the pi run once/.test(w)),
       `expected a retry warning, got: ${JSON.stringify(warnings)}`,
     );
+    // A predict-stream timeout is a transient failure of the local backend, not the provider
+    // rate-limiting the fleet: it must never feed the fleet-wide 429 hold.
+    assert.equal(runner.lastRateLimit, undefined);
   } finally {
     restore();
   }
@@ -1127,6 +1130,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
   );
   try {
     const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const before = Date.now();
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError);
@@ -1135,6 +1139,12 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
       warnings.some((w) => /rate-limited the request \(429/.test(w)),
       `expected a rate-limit retry warning, got: ${JSON.stringify(warnings)}`,
     );
+    // The run that ended on the 429 is this role's input to the orchestrator's fleet-wide hold
+    // (BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold"), even though the tick's
+    // retry went on to succeed: it is evidence the provider was limiting the fleet at that time.
+    assert.ok(runner.lastRateLimit, "the 429 is recorded on the runner");
+    assert.ok(runner.lastRateLimit.at >= before && runner.lastRateLimit.at <= Date.now());
+    assert.equal(runner.lastRateLimit.retryAfterSeconds, undefined, "no hint in the fleet's error text");
   } finally {
     restore();
   }

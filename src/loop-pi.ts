@@ -105,12 +105,15 @@ export class LoopPi {
             ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : ""}) — retrying the pi run once`
             : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
       );
+      // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
+      // fleet-wide rate-limit hold's input (LoopRunner.lastRateLimit, stamped at fold time), and
+      // folding after a retry that ran on for an hour would report the storm an hour late.
+      this.host.foldUsage(pi);
       const waitS = Math.min(pi.retryAfterSeconds ?? 0, RATE_LIMIT_RETRY_AFTER_CAP_S);
       if (waitS > 0) await new Promise((r) => setTimeout(r, waitS * 1000));
       // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
-      this.host.foldUsage(pi);
       this.host.foldUsage(retry);
       return retry;
     }

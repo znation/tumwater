@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runTimedRoleTick, sleepInterruptible } from "../src/orchestrator.js";
+import { pollRateLimitHold, runTimedRoleTick, sleepInterruptible } from "../src/orchestrator.js";
 import { Semaphore } from "../src/semaphore.js";
+import { readEvents } from "../src/events.js";
+import { RATE_LIMIT_HOLD_BASE_MS, RATE_LIMIT_OPEN } from "../src/rate-limit-hold.js";
 import type { TickOutcome } from "../src/types.js";
+import { tmpdir } from "./util.js";
 
 // The orchestrator's two exported unit-test seams (src/orchestrator.ts): the permit-holding
 // wrapper that times a role tick for the p75 redeploy window, and the abort-wakeable poll
@@ -222,4 +225,64 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
   hold = false;
   assert.notEqual(await parkedWaiter("after"), null);
   assert.deepEqual(ran, ["after"]);
+});
+
+// BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold": the orchestrator's per-poll
+// step reads every runner's latest 429 (LoopRunner.lastRateLimit), steps the pure gate
+// (rate-limit-hold.test.ts pins its rule), and logs exactly one event per crossing — the fleet
+// state transitions the digest's Fleet state changes section replays. Before the fix there was
+// no cross-role input at all: two roles 429ing seconds apart changed nothing.
+test("pollRateLimitHold trips on two roles' 429s, logs one event per crossing, and re-opens at its deadline", () => {
+  const root = tmpdir();
+  const now = 1_000_000_000;
+  const holdEvents = () =>
+    readEvents(root).filter((e) => e.type === "rate_limit_hold" || e.type === "rate_limit_resumed");
+  const runners = [
+    { role: "bugfix", lastRateLimit: { at: now - 5_000 } },
+    { role: "director", lastRateLimit: undefined },
+    { role: "clean", lastRateLimit: undefined },
+  ];
+
+  // One role's 429 is the per-run retry's business: no hold, no event.
+  let hold = pollRateLimitHold(root, RATE_LIMIT_OPEN, runners, now);
+  assert.equal(hold.until, null);
+  assert.equal(holdEvents().length, 0);
+
+  // A second role's run ends on a 429 inside the window: the hold trips, once.
+  runners[2]!.lastRateLimit = { at: now };
+  hold = pollRateLimitHold(root, hold, runners, now);
+  assert.equal(hold.until, now + RATE_LIMIT_HOLD_BASE_MS);
+  const [tripped] = holdEvents();
+  assert.equal(tripped?.type, "rate_limit_hold");
+  assert.equal(tripped?.loop, "harness");
+  assert.deepEqual(tripped?.roles, ["bugfix", "clean"]);
+  assert.equal(tripped?.holdMs, RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(tripped?.escalation, 0);
+
+  // Steady polls while held log nothing more.
+  hold = pollRateLimitHold(root, hold, runners, now + 2_000);
+  hold = pollRateLimitHold(root, hold, runners, now + 4_000);
+  assert.equal(holdEvents().length, 1);
+
+  // At the deadline it re-opens by itself with one resumed event — and the 429s that tripped
+  // it cannot re-trip it on the next poll.
+  hold = pollRateLimitHold(root, hold, runners, now + RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(hold.until, null);
+  hold = pollRateLimitHold(root, hold, runners, now + RATE_LIMIT_HOLD_BASE_MS + 2_000);
+  assert.deepEqual(
+    holdEvents().map((e) => e.type),
+    ["rate_limit_hold", "rate_limit_resumed"],
+  );
+
+  // The storm resumes right after re-open — the director's 429 counts as evidence too, since it
+  // is the same provider: the next hold doubles, and its event says so.
+  const relapseAt = now + RATE_LIMIT_HOLD_BASE_MS + 10_000;
+  runners[0]!.lastRateLimit = { at: relapseAt };
+  runners[1]!.lastRateLimit = { at: relapseAt };
+  hold = pollRateLimitHold(root, hold, runners, relapseAt);
+  const relapse = holdEvents().at(-1);
+  assert.equal(relapse?.type, "rate_limit_hold");
+  assert.deepEqual(relapse?.roles, ["bugfix", "director"]);
+  assert.equal(relapse?.escalation, 1);
+  assert.equal(relapse?.holdMs, 2 * RATE_LIMIT_HOLD_BASE_MS);
 });

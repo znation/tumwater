@@ -51,6 +51,14 @@ export class LoopRunner {
    * goes through this, so one assignment steers provider/model/thinking/instructions,
    * tick intervals, backoff, and role enablement for subsequent ticks. */
   config: TumwaterConfig;
+  /** This loop's most recent pi run that ended on a provider 429 — author run, retry,
+   * reviewer, build-fix or landing run alike, since every one folds through foldUsage — with
+   * the provider's Retry-After hint when it sent one. The orchestrator reads it every poll as
+   * this role's input to the fleet-wide 429 hold (src/rate-limit-hold.ts): the per-run retry
+   * has no cross-role view, and a field on a runner the orchestrator already holds carries the
+   * fact without a new cross-module channel. In memory only — a hold is minutes long, so a
+   * restart forgetting it costs nothing. Undefined until the first such run. */
+  lastRateLimit?: { at: number; retryAfterSeconds?: number };
   /** The raw user prompt a director tick is executing, so an unfulfilled tick (abort,
    * timeout, or failure without changes) can re-queue it instead of losing the request. */
   private pendingUserPrompt: string | null = null;
@@ -334,7 +342,8 @@ export class LoopRunner {
    * pi run of a tick — main attempt, transient-timeout retry, conflict resolution — lands here
    * exactly once, so adding a usage field to PiRunResult touches this single place. Landing
    * runs fold through the same place via foldLandingUsage, so the authoring role is charged
-   * for its reviewer and conflict-resolution spend too. */
+   * for its reviewer and conflict-resolution spend too — and that same once-per-run property
+   * makes it where a run ending on a 429 is recorded for the orchestrator (lastRateLimit). */
   private foldUsage(run: PiRunResult): void {
     const s = this.state;
     s.generatedTokens += run.outputTokens;
@@ -345,6 +354,12 @@ export class LoopRunner {
     // here exactly once, so the fleet's spend for the local day is complete at each tick end.
     recordDailyCost(s, run.costUsd);
     this.tickTurns += run.turns;
+    // The fleet-wide 429 hold's input (lastRateLimit above), from the same once-per-run choke
+    // point. Only a run that ENDED on the 429 counts: pi exits on the error, so "now" is when
+    // the provider refused — a run that merely logged one inside pi's own auto-retry and then
+    // finished would stamp a 429 at its end, possibly hours late, and could trip a false storm.
+    if (run.transientRateLimit && !run.ok)
+      this.lastRateLimit = { at: Date.now(), retryAfterSeconds: run.retryAfterSeconds };
   }
 
   /** Run pi for the orchestrator's landing slot (merge queue 3/5): the shared per-loop wiring

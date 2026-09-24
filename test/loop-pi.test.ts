@@ -18,6 +18,8 @@ import { assistantLine, errorLine, fakePi, tmpdir } from "./util.js";
 interface Recording {
   warns: string[];
   usage: PiRunResult[];
+  /** Wall-clock ms of each foldUsage call, parallel to `usage`. */
+  foldTimes: number[];
   abortRunSignal(): void;
 }
 
@@ -27,6 +29,7 @@ function makeHost(
 ): Recording & { loopPi: LoopPi; config: typeof config } {
   const warns: string[] = [];
   const usage: PiRunResult[] = [];
+  const foldTimes: number[] = [];
   const ctl = new AbortController();
   const host = {
     root,
@@ -35,12 +38,15 @@ function makeHost(
     signal: undefined as AbortSignal | undefined,
     runSignal: () => ctl.signal,
     warn: (message: string) => warns.push(message),
-    foldUsage: (run: PiRunResult) => usage.push(run),
+    foldUsage: (run: PiRunResult) => {
+      usage.push(run);
+      foldTimes.push(Date.now());
+    },
     tickNumber: () => 1,
     abortRunSignal: () => ctl.abort(),
   };
   const loopPi = new LoopPi(host as unknown as ConstructorParameters<typeof LoopPi>[0]);
-  return { loopPi, warns, usage, abortRunSignal: ctl.abort.bind(ctl), config };
+  return { loopPi, warns, usage, foldTimes, abortRunSignal: ctl.abort.bind(ctl), config };
 }
 
 /** A fake pi that records each invocation's argv (and wall-clock second when timesFile is
@@ -116,7 +122,7 @@ test("a rate-limited run earns exactly one retry that waits out the Retry-After 
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
   });
   try {
-    const { loopPi, warns, usage } = makeHost(root);
+    const { loopPi, warns, usage, foldTimes } = makeHost(root);
     const result = await loopPi.runRolePi(root, "work", "tumwater-feature-3-author");
     assert.equal(result.ok, true, "the retry succeeds");
     assert.match(result.finalText, /^done/);
@@ -131,6 +137,11 @@ test("a rate-limited run earns exactly one retry that waits out the Retry-After 
 
     const [t0, t1] = runTimes(times);
     assert.ok(t1! - t0! >= 2, `the 3s hint is waited out before the retry (gap ${t1! - t0!})`);
+    // The failed attempt folds BEFORE the wait and the retry, so the 429 it ended on reaches
+    // the orchestrator's fleet-wide hold (LoopRunner.lastRateLimit) while the retry waits — not
+    // after a retry that may run for an hour (BUGS.md 2026-09-21 "A 429 storm still has no
+    // fleet-wide hold"). `t1` is the retry's start, floored to the second.
+    assert.ok(foldTimes[0]! < t1! * 1000, "the rate-limited attempt is folded before the retry starts");
   } finally {
     restore();
   }
