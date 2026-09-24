@@ -48,6 +48,8 @@ v0.1: working harness. Commands: `init`, `run`, `tui`, `gui` (`--port N`, `--all
 come from `customLoops` in tumwater.json or by prompting the director.
 
 Open items:
+- Open bug: `tumwater init <prompt>` in a repo whose brief already lives in TUMWATER.md
+  silently drops the new prompt (found by clean 2026-09-26).
 - Open bug: the gate's "bounded" build-fix run has no time or resource budget — a dry-run
   load-test held the live host for 90 minutes and stalled the fleet (found 2026-09-23).
 - Open bug: the reviewer is never told about the gate's own build-fix commit, so a successful
@@ -101,14 +103,16 @@ Open items:
   without touching its README (planned 2026-09-23, requested by user; 1–6/7 landed by
   2026-09-25 and 7a/7 landed 2026-09-23 — the brief resolves as `TUMWATER.md` first, README.md
   as the compatibility path).
-- Planned: land-queue speed 1/3–3/3 — take the gate's build-fix run out of the landing slot,
-  vet queued changes in parallel (serialize only the merge), and the smaller fixes: bound
-  reviews, one writer to main, land the passing part of a red stack (planned 2026-09-23,
-  requested by user).
+- Planned: land-queue speed 1/3, 2/3, 3a–3e — take the gate's build-fix run out of the
+  landing slot, vet queued changes in parallel (serialize only the merge), and the smaller
+  fixes: give the reviewer a time budget, tell it not to re-run a verified suite, one writer
+  to main, land the passing part of a red stack, optional cheaper per-change gate check
+  (planned 2026-09-23, requested by user; 3/3 was split into standalone entries 3a–3e
+  2026-09-23).
 - Open questions: none (this repo's QUESTIONS.md has an empty Open section; `init` seeds one for
   new projects).
 
-Current main (`b067f0e`): build clean, suite 1438/1438.
+Current main (`505a091`): build clean, suite 1445/1445.
 <!-- tumwater:status:end -->
 
 ## How it works
