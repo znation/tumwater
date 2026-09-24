@@ -54,11 +54,12 @@ function targetRoles(root: string, args: string[]): string[] {
   return role ? [role] : Object.keys(loadConfig(root).roles);
 }
 
-/** The marker-writing core of `reset-counters`, shared with the GUI's POST /api/wake's
- * sibling pattern: zero each target's state file directly (works while the harness is not
- * running) and drop the fleet marker a running fleet consumes within one poll cycle. Returns
- * the confirmation the CLI prints verbatim and the GUI flashes. */
-export function requestResetCounters(root: string, roles: string[]): string {
+/** The marker-writing core of `reset-counters`: zero each target's state file directly (works
+ * while the harness is not running) and drop the fleet marker a running fleet consumes within
+ * one poll cycle. Returns the confirmation the CLI prints verbatim. Unlike the wake/abort
+ * request* cores the GUI's POST endpoints share, no dashboard route exposes reset-counters,
+ * so this stays module-internal. */
+function requestResetCounters(root: string, roles: string[]): string {
   for (const r of roles) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
   writeJsonFile(resetRequestPath(root), { at: Date.now(), roles });
   // Only a live fleet consumes the marker; without one the state files are already zeroed and
