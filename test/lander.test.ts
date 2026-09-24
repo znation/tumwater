@@ -857,10 +857,11 @@ test("a one-change batch is the single landing path: one ff, one merged event", 
   }
 });
 
-test("a red stack check abandons to one-at-a-time and both changes still land", async () => {
+test("a red stack check that does not reproduce bisects: both changes land, neither is re-reviewed or rejected", async () => {
   const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
   // The check fails on its THIRD run only: the two gate pre-checks pass, the batch's one
-  // shared check fails, and the fallback's in-lock re-check passes again.
+  // shared check fails, and every bisect step's check passes again — a flake. One red run
+  // never rejects a change: beta's own prefix is checked, not inferred red.
   const count = path.join(root, ".checkcount");
   declareCheck(
     root,
@@ -871,7 +872,7 @@ test("a red stack check abandons to one-at-a-time and both changes still land", 
 
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
-    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "the fallback lands both one at a time");
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "each prefix lands on its own green check");
     const checks = readEvents(root).filter((e) => e.type === "build_check");
     assert.deepEqual(
       checks.map((e) => [e.scope, e.status]),
@@ -879,16 +880,134 @@ test("a red stack check abandons to one-at-a-time and both changes still land", 
         ["gate", "passed"],
         ["gate", "passed"],
         ["batch", "failed"],
-        ["landing", "passed"],
+        ["batch", "passed"],
+        ["batch", "passed"],
       ],
-      "two gate pre-checks, the red batch check, and beta's in-lock re-check of its rebase onto alpha",
+      "two gate pre-checks, the red stack check, then alpha's prefix and beta on top of it",
     );
-    assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run for alpha: the fallback lands its approved head");
-    assert.equal(folded.get("beta")!.length, 1, "nor for beta: a clean rebase onto alpha is re-checked, not re-reviewed");
+    assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run for alpha: its prefix lands its approved head");
+    assert.equal(folded.get("beta")!.length, 1, "nor for beta");
+    assert.equal(readEvents(root).filter((e) => e.type === "review_rejected").length, 0, "nobody rejected");
+    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 2);
   } finally {
     restore();
   }
 });
+
+// ── A red stack check lands the largest passing prefix (PLANS.md land-queue 3d) ─────────
+// Not N more gates: the batch bisects in queue order, lands each green prefix with one ff,
+// and attributes the one change a check ran red over alone through main's own baseline.
+
+/** A check that passes its first `gates` runs (the Phase-A gate pre-checks, which all start
+ * before any batch check) and afterwards runs `after` — which sees `$n`, and the invoking
+ * worktree as `$INIT_CWD` (npm runs the script at the package root). */
+function checkAfterGates(root: string, gates: number, after: string): void {
+  const count = path.join(root, ".checkcount");
+  declareCheck(root, `#!/bin/sh\n${checkRunNumber(count)}if [ "$n" -gt ${gates} ]; then ${after}; fi\necho ok\n`);
+}
+
+test("a stack of three whose second change breaks the check lands the first, rejects the second, re-queues the third", async () => {
+  const roles = ["alpha", "beta", "gamma"];
+  const { root, shas, states, wiringFor, folded } = await batchFixture(roles);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  // beta breaks the suite — but only on the stacked tree (its own gate passed: an
+  // interaction the stack check exists to catch).
+  checkAfterGates(root, 3, `[ -f "$INIT_CWD/beta.txt" ] && { echo "planted failure: beta breaks the suite"; exit 1; }`);
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const results = await runBatch(root, shas, roles, wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "rejected", undefined]);
+    assert.deepEqual(
+      batchChecks(root).map((e) => e.status),
+      ["failed", "passed", "failed"],
+      "three batch checks: the whole stack, alpha's prefix, then beta alone on top of it",
+    );
+    assert.deepEqual(
+      sh(root, "git", "log", "--format=%s", `${mainBefore}..main`).split("\n"),
+      ["work by alpha"],
+      "only the passing prefix landed",
+    );
+    // beta: rejected deterministically with the check's own output, no pi run.
+    assert.equal(states.beta!.lastReview?.verdict, "reject");
+    assert.match(states.beta!.lastReview!.reasons[0]!, /^build check failed \(.*\): planted failure: beta breaks the suite$/);
+    assert.equal(states.beta!.unreviewFailures, 0);
+    const rejected = readEvents(root).filter((e) => e.type === "review_rejected");
+    assert.deepEqual(rejected.map((e) => e.loop), ["beta"], "one review_rejected, for beta");
+    assert.equal(await refSha(root, landingRefName("beta")), null, "the rejection deleted beta's ref");
+    // gamma: unattempted — entry and ref kept for the next drain.
+    assert.equal(await refSha(root, landingRefName("gamma")), shas.gamma!, "gamma keeps its pin for the next drain");
+    assert.equal(await refSha(root, landingRefName("alpha")), null, "alpha landed: its ref is gone");
+    // No model run past Phase A, and main's baseline was a cache hit (alpha's prefix seeded it).
+    assert.equal(readEvents(root).filter((e) => e.type === "review_start").length, 3, "one review per change, Phase A only");
+    for (const role of roles) assert.equal(folded.get(role)!.length, 1, `${role}: only its Phase-A reviewer run`);
+    assert.equal(
+      readEvents(root).filter((e) => e.type === "build_check" && e.scope === "baseline").length,
+      0,
+      "the prefix landing seeded main green, so attribution ran no baseline check",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a stack whose every change passes still takes exactly one batch check", async () => {
+  const roles = ["alpha", "beta", "gamma"];
+  const { root, shas, wiringFor } = await batchFixture(roles);
+  checkAfterGates(root, 3, "true");
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const results = await runBatch(root, shas, roles, wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed", "changed"]);
+    assert.deepEqual(batchChecks(root).map((e) => e.status), ["passed"], "one check over the whole stack");
+    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 3);
+  } finally {
+    restore();
+  }
+});
+
+// The head change fails alone on main's tip, so main's own baseline decides who owns the red:
+// a red main keeps the pin (not the author's failure), an unavailable baseline rejects.
+for (const baseline of ["red", "unavailable"] as const) {
+  test(`a change red alone on a main whose baseline is ${baseline} ${baseline === "red" ? "keeps its pin as main_red" : "is rejected, saying so"}`, async () => {
+    const { root, shas, states, wiringFor } = await batchFixture(["alpha", "beta"]);
+    // A main tip no other test's cache can know: the baseline check must actually run.
+    const tip = advanceMain(root, "main.txt", `${root}\n`);
+    // Runs 1-2: the gates. Runs 3-4: the whole stack, then alpha alone — both red. Run 5: main's
+    // own baseline, red or broken-toolchain (an environmental skip: no verdict).
+    const baselineRun =
+      baseline === "red" ? `echo "main is broken too"; exit 1` : `echo "xcrun: error: planted toolchain"; exit 1`;
+    checkAfterGates(root, 2, `if [ "$n" -le 4 ]; then echo "planted failure"; exit 1; else ${baselineRun}; fi`);
+    const restore = fakePi(APPROVE_PI);
+    try {
+      const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+      assert.deepEqual(batchChecks(root).map((e) => e.status), ["failed", "failed"]);
+      const baselineChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "baseline");
+      assert.deepEqual(baselineChecks.map((e) => e.status), [baseline === "red" ? "failed" : "skipped"]);
+      assert.equal(sh(root, "git", "rev-parse", "main"), tip, "nothing landed");
+      assert.equal(results[1]!.result, undefined, "beta is unattempted: entry and ref kept");
+      assert.ok(await refSha(root, landingRefName("beta")));
+      if (baseline === "red") {
+        assert.equal(results[0]!.result, "main_red");
+        assert.ok(await refSha(root, landingRefName("alpha")), "the pin is kept for a re-land once main is green");
+        assert.equal(states.alpha.lastReview?.verdict, "approve", "no rejection recorded against the author");
+        assert.equal(states.alpha.unreviewFailures, 0, "and no strike");
+        assert.match(states.alpha.lastError ?? "", /main \S+ is red — not this change's failure/);
+        assert.equal(readEvents(root).filter((e) => e.type === "review_rejected").length, 0);
+      } else {
+        assert.equal(results[0]!.result, "rejected");
+        assert.equal(await refSha(root, landingRefName("alpha")), null);
+        const reasons = states.alpha.lastReview!.reasons;
+        assert.match(reasons[0]!, /: planted failure$/);
+        assert.match(reasons.at(-1)!, /baseline was unavailable \(its check was skipped: toolchain\)/);
+      }
+    } finally {
+      restore();
+    }
+  });
+}
 
 /** Advance main past the fixture's pins with one commit touching only `file` — the "pins
  * based on an older main" shape: the queue's pins were taken before other landings moved
@@ -900,20 +1019,21 @@ function advanceMain(root: string, file: string, content: string): string {
   return sh(root, "git", "rev-parse", "main").trim();
 }
 
-test("a red stack check's fallback lands pins from an older main with one review per change, not two", async () => {
+test("an un-assemblable stack's fallback lands pins from an older main with one review per change, not two", async () => {
   // BUGS.md 2026-09-23 (the Repro): the fallback's landChange rebased each approved head
   // before its gate — main had moved (the entries before it landed, and here main was ahead
   // of every pin to begin with) — so the exact-sha approved short-circuit never hit and each
-  // change paid a second full gate: the reviewer count ended at 2N. It must end at N.
-  const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+  // change paid a second full gate: the reviewer count ended at 2N. It must end at N. (A red
+  // stack check bisects instead; a cherry-pick conflict is what abandons to the fallback.)
+  const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"], {
+    edit: (root, role) => {
+      fs.writeFileSync(path.join(root, `${role}.txt`), `work by ${role}\n`);
+      fs.writeFileSync(path.join(root, "shared.txt"), `${role}\n`); // the stack's pick of beta conflicts
+    },
+    resolve: (wt) => fs.writeFileSync(path.join(wt, "shared.txt"), "both\n"),
+  });
   advanceMain(root, "main.txt", "landed after the pins\n");
-  // Runs 1-2 are the Phase-A gate pre-checks (pass), run 3 the shared batch check (fails);
-  // every later run — a fallback's in-lock re-check — passes.
-  const count = path.join(root, ".checkcount");
-  declareCheck(
-    root,
-    `#!/bin/sh\n${checkRunNumber(count)}[ "$n" = "3" ] && { echo "planted batch failure"; exit 1; }\necho ok\n`,
-  );
+  declareCheck(root, "#!/bin/sh\necho ok\n");
   const restore = fakePi(APPROVE_PI);
   try {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
@@ -930,10 +1050,9 @@ test("a red stack check's fallback lands pins from an older main with one review
       [
         ["gate", "passed"],
         ["gate", "passed"],
-        ["batch", "failed"],
         ["landing", "passed"],
       ],
-      "alpha's approved head lands as judged; beta's clean rebase onto alpha is re-checked in-lock",
+      "no stack check (the assembly conflicted); alpha's approved head lands as judged; beta's resolved rebase onto alpha is re-checked in-lock",
     );
     for (const f of ["main.txt", "alpha.txt", "beta.txt"]) {
       assert.ok(fs.existsSync(path.join(root, f)), `main holds ${f}`);
@@ -1197,14 +1316,14 @@ test("a strike-cap discard and an uncheckable pin are final for onFinal; an unde
   }
 });
 
-test("an unlandable first fallback after a red stack check degrades to error and leaves the rest unattempted", async () => {
-  // The abandon path re-lands the stack one at a time through landChange; the same throw
-  // contract applies there: the first entry's throw is a terminal error, and the loop stops
-  // so the rest stay unattempted (entry + ref intact) for the next drain.
+test("an unlandable first bisect step after a red stack check degrades to error and leaves the rest unattempted", async () => {
+  // A red stack check bisects; past the first stack attempt the fallback's throw contract
+  // applies to every step: the throw is a terminal error for the change at the step's front,
+  // and the batch stops so the rest stay unattempted (entry + ref intact) for the next drain.
   const { root, shas, wiringFor, states } = await batchFixture(["alpha", "beta"]);
   // Runs 1-2 are the gate pre-checks (pass); run 3 is the batch's one shared check: make it
-  // fail AND make every later worktree recreate fail, so the fallback's first landChange
-  // cannot even check its entry out. npm runs the script at the package root, so the
+  // fail AND make every later worktree recreate fail, so the bisect's first prefix cannot
+  // even be assembled. npm runs the script at the package root, so the
   // worktrees dir is named by absolute path — the test's own sandbox, nothing above it.
   const count = path.join(root, ".checkcount");
   const worktrees = path.join(root, ".tumwater", "worktrees");
@@ -1561,6 +1680,8 @@ test("a batch reports each change as it reaches it: a rejection is done at its v
       "gamma:approved",
       "alpha:landing", // the stack's shared check + ff: every stacked change lands together
       "gamma:landing",
+      "alpha:done", // landed: the batch is done with them
+      "gamma:done",
     ]);
   } finally {
     restore();

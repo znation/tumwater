@@ -45,9 +45,10 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
  * that paid for it, with its duration — the gate's build_check sibling, so both halves of the
- * fleet's deterministic verification are priced in the feed. Shared by the bugfix healer and the
- * gate so the event's shape cannot drift between them. */
-function baselineCheckLogger(
+ * fleet's deterministic verification are priced in the feed. Shared by the bugfix healer, the
+ * gate, and the batch lander's red-check attribution (land-batch.ts) so the event's shape
+ * cannot drift between them. */
+export function baselineCheckLogger(
   root: string,
   role: string,
 ): (run: { outcome: BuildCheckOutcome; durationMs: number }) => void {

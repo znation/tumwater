@@ -309,7 +309,7 @@ export async function ffStackToMain(
   landed: Array<{ role: string; sha: string; summary: string }>,
 ): Promise<"changed" | "merge_blocked"> {
   const tip = landed.at(-1);
-  if (!tip) return "changed"; // Empty stack: nothing to fast-forward (never called in production — the lander batches >= 2).
+  if (!tip) return "changed"; // Empty stack: nothing to fast-forward (never called in production — the lander stacks at least one change).
   return withLock(mergeLockDir(root), async () => {
     const before = openQuestions(root);
     if (!(await ffMainTo(root, tip.sha, mainBranch))) return "merge_blocked";

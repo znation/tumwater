@@ -7,8 +7,12 @@ import { COMMIT_IDENT, deleteRef, gitLines, gitTry, headOf } from "./git.js";
 import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { ffStackToMain } from "./merge.js";
-import { runScopedBuildCheck } from "./build-check.js";
-import { noteGreenBaseline } from "./main-baseline.js";
+import { type BuildCheckOutcome, describeCheck, failureHeadline, runScopedBuildCheck } from "./build-check.js";
+import type { BuildCheck } from "./build-check-detect.js";
+import { checkMainBaseline, noteGreenBaseline } from "./main-baseline.js";
+import { baselineCheckLogger } from "./main-red.js";
+import { logEvent } from "./events.js";
+import { saveLoopState } from "./state.js";
 import { isExemptDiff } from "./exemptions.js";
 import {
   landApprovedChange,
@@ -17,7 +21,7 @@ import {
   type LandRequest,
   type LanderContext,
 } from "./lander.js";
-import { errorMessage } from "./text.js";
+import { errorMessage, shortSha } from "./text.js";
 import { setLandingStage, type LandingChangeStatus } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "./types.js";
@@ -285,6 +289,127 @@ async function exemptTreeDelta(
   return out !== null && isExemptDiff(gitLines(out), exemptPaths);
 }
 
+/** What one landStack call came to: `landed` — main fast-forwarded through every entry;
+ * `red` — the check over the stacked tree failed (the check and its outcome, for the reasons);
+ * `conflict` — the stack cannot be assembled on main's tip; `blocked` — the fast-forward lost
+ * the race to a moved main on every attempt; `aborted` — a stop arrived before an attempt. */
+type StackOutcome =
+  | { kind: "landed" }
+  | { kind: "red"; check: BuildCheck; outcome: BuildCheckOutcome }
+  | { kind: "conflict" | "blocked" | "aborted" };
+
+/** Land `entries` — the whole stack, or one bisect prefix of it — as ONE fast-forward on its
+ * own green check: assemble them on main's current tip in `wtPath`, run ONE scope-`batch`
+ * check over the combined tree, and ff main through the captured shas (ffStackToMain) with
+ * nothing rewritten in between — the in-lock invariant. A lost race re-stacks on the tip that
+ * won, up to BATCH_RESTACK_ATTEMPTS times, and a re-stack whose tree is the checked tree plus
+ * doc-only commits skips its re-check (exemptTreeDelta). On `landed` every entry's ref is
+ * deleted and the red-main baseline is seeded with the tip when a check PASSED on exactly it.
+ * The check's events log under the first entry's role. */
+async function landStack(ctx: BatchContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
+  // The last stacked tip a build check actually ran on: a re-stack whose tree differs from it
+  // only in doc-only paths lands on that run's verdict instead of paying another.
+  let checkedTip: string | null = null;
+  const exemptPaths = ctx.config.review.exemptPaths;
+  for (let attempt = 0; attempt <= BATCH_RESTACK_ATTEMPTS; attempt++) {
+    // A shutdown (or a user stop for any batched role) before an attempt — the first one
+    // included, so a stop that arrived after the last gate (a restart hand-off past its
+    // deadline, BUGS.md 2026-09-23) never starts the batch's one expensive shared step.
+    if (ctx.signal().aborted) return { kind: "aborted" };
+    const landed = await assembleStack(ctx.root, ctx.mainBranch, wtPath, entries);
+    if (landed === null) return { kind: "conflict" }; // main unreadable or a pick conflicted
+    const tip = landed.at(-1)!.sha;
+    // The expensive deterministic half, shared: ONE run over the combined tree. Outcome
+    // routing — null: no declared check, land directly; "failed": red or a merge-scope
+    // timeout, the caller bisects; "skipped": no npm / broken toolchain (the helper warned),
+    // proceed — never fail-closed; "passed": green. A re-stack skips the run only when its
+    // tree is the checked tree plus doc-only changes (exemptTreeDelta).
+    let seed: string | undefined; // the tip a PASSED check ran on exactly, seeded after the ff
+    const docOnlyRestack = checkedTip !== null && (await exemptTreeDelta(ctx.root, checkedTip, tip, exemptPaths));
+    if (!docOnlyRestack) {
+      // The landing cell names the check while it runs, then the merge steps after it — the ff
+      // or what the caller does next — on every stacked change's own record.
+      for (const e of entries) setLandingStage(ctx.root, e.role, "build-check");
+      const check = await runScopedBuildCheck(ctx.root, entries[0]!.role, "batch", wtPath, ctx.config);
+      for (const e of entries) setLandingStage(ctx.root, e.role, "merging");
+      if (check !== null && check.outcome.status === "failed") return { kind: "red", ...check };
+      checkedTip = tip;
+      if (check !== null && check.outcome.status === "passed") seed = tip;
+    }
+    if ((await ffStackToMain(ctx.root, ctx.mainBranch, landed)) === "changed") {
+      // A PASSED stack check ran on exactly the future main tip — seed the red-main
+      // baseline after (not before) the successful ff, so a merge_blocked stack seeds
+      // nothing; a skipped check seeds nothing either (skips never seed), and neither does
+      // a doc-only re-stack (like verifyLanding's exempt arm: nothing ran on this tip).
+      if (seed !== undefined) noteGreenBaseline(seed);
+      for (const e of entries) await deleteRef(ctx.root, landingRefName(e.role));
+      return { kind: "landed" };
+    }
+    // Main moved under the batch while the check ran (a role's in-tick leftover-recovery
+    // landing, or a human commit): diverged history, ff failed. Re-stack on the tip that won.
+  }
+  return { kind: "blocked" };
+}
+
+/** A red check's machine-generated reasons, in the gate pre-check's shape (review.ts): the
+ * headline — failureHeadline's first line that is not a stack frame — joined to the rest of
+ * the clipped tail, so the compiler error sits right after it in the author's next-tick note. */
+function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcome): string[] {
+  const tail = outcome.outputTail ?? [];
+  const headline = failureHeadline(tail);
+  const what = describeCheck(check);
+  return headline !== undefined
+    ? [`build check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
+    : [`build check failed (${what})`];
+}
+
+/** Attribute a red check that ran over ONE change alone on main's tip — the bisect's last
+ * step — by the gate's rule (PLANS.md land-queue 1/3): ask main's own baseline at its current
+ * tip, checked out pristine in `wtPath` (usually a cache hit: every landing seeds the SHA it
+ * moved main to, the bisect's own prefix landings included). Main green → the change broke
+ * the check: reject it exactly as the gate's deterministic reject does — reasons in
+ * lastReview for the author's next tick, the strike count reset, ref deleted,
+ * review_rejected logged, no pi run. Main red → not this change's failure: "main_red" with
+ * the ref kept and unreviewFailures untouched, so recovery re-lands it once main-red.ts's
+ * repair turns main green. Baseline unavailable (an environmental skip, or main unreadable)
+ * → reject, the safe default, and the reasons say so. Returns the change's result; the
+ * verdict is persisted before it returns. */
+async function attributeRedChange(
+  ctx: BatchContext,
+  wtPath: string,
+  entry: StackEntry,
+  red: { check: BuildCheck; outcome: BuildCheckOutcome },
+  state: LoopState,
+): Promise<TickResult> {
+  const tip = await gitTry(ctx.root, "rev-parse", ctx.mainBranch);
+  let baseline: Awaited<ReturnType<typeof checkMainBaseline>> = { baseline: null };
+  if (tip !== null) {
+    await ensureDetachedWorktree(ctx.root, wtPath, tip);
+    baseline = await checkMainBaseline(wtPath, ctx.config, baselineCheckLogger(ctx.root, entry.role));
+  }
+  if (baseline.baseline?.status === "red") {
+    state.lastError = `batch check failed: main ${shortSha(tip)} is red — not this change's failure`;
+    saveLoopState(ctx.root, state);
+    return "main_red";
+  }
+  const reasons = checkFailureReasons(red.check, red.outcome);
+  if (baseline.baseline === null) {
+    const why =
+      tip === null
+        ? "main is unreadable"
+        : baseline.skipReason
+          ? `its check was skipped: ${baseline.skipReason}`
+          : "no declared check";
+    reasons.push(`main's own baseline was unavailable (${why}), so the red check is attributed to this change`);
+  }
+  state.lastReview = { verdict: "reject", reasons, head: entry.sha, at: Date.now() };
+  state.unreviewFailures = 0;
+  saveLoopState(ctx.root, state);
+  await deleteRef(ctx.root, landingRefName(entry.role));
+  logEvent(ctx.root, { loop: entry.role, type: "review_rejected", head: entry.sha, reasons });
+  return "rejected";
+}
+
 /** Land a whole batch of queued changes (plans/merge-queue.md, entry 5/5): stop paying one
  * full build check per landing when several are queued. The flow:
  *
@@ -319,7 +444,7 @@ async function exemptTreeDelta(
  * — the expensive, deterministic half the batch shares (the model review already ran per
  * change in Phase A, because an adversarial review of a stack would blur which change a
  * criticism applies to). null (no declared check) → land directly; "failed" (a red tree or a
- * timeout remapped to a reject — the tree is unverified) → abandon; "skipped" (no npm /
+ * timeout remapped to a reject — the tree is unverified) → bisect; "skipped" (no npm /
  * broken toolchain — the helper already warned) → proceed, never fail-closed; "passed" → green. Green: under the merge lock, ffStackToMain ff's
  * main through the stack in ONE fast-forward, emits one `merged` event per change, and —
  * only when the check PASSED on exactly that tip — the lander seeds noteGreenBaseline with
@@ -330,13 +455,28 @@ async function exemptTreeDelta(
  * A re-stacked tree that differs from the last tree a check ran on only in review-exempt
  * paths (the gate's doc-only test, which verifyLanding applies to a moved landing too) goes
  * straight to the ff; any other re-stack pays one more scope-`batch` check. A re-stack
- * conflict or a red re-check abandons to one-at-a-time exactly like the first assembly; only
- * a race lost on every attempt leaves each S change its ref with "merge_blocked", nothing
- * seeded, for leftover recovery to re-land through its own gate + tryMerge (in-lock check).
+ * conflict abandons to one-at-a-time exactly like the first assembly, and a red re-check
+ * bisects like a red first check; only a race lost on every attempt leaves each change not yet
+ * landed its ref with "merge_blocked", nothing seeded, for leftover recovery to re-land through
+ * its own gate + tryMerge (in-lock check).
  *
- * Red or un-assemblable (a cherry-pick conflict) → ABANDON to one-at-a-time, not
- * blame-the-batch: every approved change lands on its own in queue order, stopping at the
- * first non-terminal outcome (the rest keep entry + ref and re-drain), each through
+ * Red → LAND THE LARGEST PASSING PREFIX, not blame-the-batch and not N more gates: bisect in
+ * queue order, each step the same assemble → check → ff (landStack) over a prefix of the
+ * changes not yet landed — the first half of the ones the last red check ran over — so every
+ * prefix that lands, lands on its own green check with nothing rewritten before its ff. A
+ * green prefix lands and the rest of the red run is bisected next; a red one is halved. The
+ * one change a red check ran over alone is attributed through main's own baseline
+ * (attributeRedChange — the gate's rule, PLANS.md land-queue 1/3): main green → rejected with
+ * the check's reasons, no pi run; main red → "main_red", pin kept for a re-land once main is
+ * green. Its red is the second one observed with it in the tree (the red run that started the
+ * bisect held it too), so a single flaky run never rejects a change. The changes after it
+ * stay unattempted, entry + ref kept, for the next drain: checking them here would cost one
+ * more run for changes that are ready to re-drain. A stack of N with one broken change costs
+ * about log2(N) + 1 extra checks, never a second model review.
+ *
+ * Un-assemblable (a cherry-pick conflict, on the first stack or any prefix) → ABANDON the
+ * changes not yet landed to one-at-a-time, not blame-the-batch: each lands on its own in queue
+ * order, stopping at the first non-terminal outcome (the rest keep entry + ref and re-drain), each through
  * landApprovedChange: no second gate and no model run, because only approved/exempt changes
  * enter S. landChange would re-gate instead: its pre-gate rebase onto the main the earlier
  * entries just moved rewrites the approved sha, so the exact-sha `lastApprovedHead`
@@ -354,16 +494,20 @@ async function exemptTreeDelta(
  * the batch's bounded commit point.
  *
  * One entry per request comes back in order; `result === undefined` means "unattempted — the
- * drain keeps that queue entry" (never launched after a Phase-A early stop, or a fallback
- * early stop), and a
- * defined result drops its entry through the drain's write-back (for the results `ctx.onFinal`
+ * drain keeps that queue entry" (never launched after a Phase-A early stop, behind a
+ * bisect's attributed change, or a fallback early stop), and a defined result drops its entry
+ * through the drain's write-back (for the results `ctx.onFinal`
  * already reported, done mid-batch — the drain skips them here). Never throws for a failed
  * landing: per-change landApprovedChange failures degrade to "error" results, and a Phase-A checkout
  * that cannot resolve the pinned sha (the queue entry outlived its commit) also degrades to
  * a terminal "error" so the drain drops that entry and the queue advances — exactly the
- * single path's catch-all (landQueuedEntry). Remaining git-level failures from a gate's or the
- * assembly/ff plumbing still propagate like any other tick failure — a gate's only once every
- * other launched gate has settled — and the drain's catch keeps every entry for re-drain. */
+ * single path's catch-all (landQueuedEntry); so does a throw from any bisect step after the
+ * first stack attempt (a prefix's assembly/ff plumbing, or an attribution), on the change at
+ * the front of that step, the rest unattempted — a prefix may already be on main, and a throw
+ * out of the batch would lose its "changed". Remaining git-level failures from a gate's or the
+ * first stack attempt's plumbing still propagate like any other tick failure — a gate's only
+ * once every other launched gate has settled — and the drain's catch keeps every entry for
+ * re-drain. */
 export async function landBatch(
   ctx: BatchContext,
   requests: LandRequest[],
@@ -467,9 +611,11 @@ export async function landBatch(
     return results;
   }
 
-  // ── Assemble the stack in S[0]'s lander worktree, then ONE check over the tree per attempt
+  // ── Assemble the stack in S[0]'s lander worktree: ONE check over the whole tree, and on a
+  // red one, the largest passing prefix
   const headReq = requests[stack[0]!]!;
-  // S[0]'s lander worktree hosts the assembly (its Phase A gate used it too).
+  // S[0]'s lander worktree hosts every assembly (its Phase A gate used it too) and the
+  // attribution's baseline check: the slot owns it for the whole batch.
   const wtPath = landWorktreePath(ctx.root, headReq.role);
   const entries: StackEntry[] = stack.map((i, s) => ({
     role: requests[i]!.role,
@@ -477,69 +623,64 @@ export async function landBatch(
     summary: requests[i]!.summary,
   }));
   let abandon = false;
-  let merged = false;
-  // The last stacked tip a build check actually ran on: a re-stack whose tree differs from it
-  // only in doc-only paths lands on that run's verdict instead of paying another.
-  let checkedTip: string | null = null;
-  const exemptPaths = ctx.config.review.exemptPaths;
   // Every stacked change is landing now: they share the assembly, the check, and the ff.
   for (const i of stack) report(i, "landing");
-  for (let attempt = 0; attempt <= BATCH_RESTACK_ATTEMPTS; attempt++) {
-    // A shutdown (or a user stop for any batched role) before an attempt — the first one
-    // included, so a stop that arrived after the last gate (a restart hand-off past its
-    // deadline, BUGS.md 2026-09-23) never starts the batch's one expensive shared step: stop
-    // here. Every S result is still undefined, so finishAborted reads them "aborted", refs kept.
-    if (ctx.signal().aborted) {
-      aborted = true;
-      break;
-    }
-    const landed = await assembleStack(ctx.root, ctx.mainBranch, wtPath, entries);
-    if (landed === null) {
-      abandon = true; // main unreadable or a pick conflicted: one-at-a-time
-      break;
-    }
-    const tip = landed.at(-1)!.sha;
-    // The expensive deterministic half, shared: ONE run over the combined tree. Outcome
-    // routing — null: no declared check, land directly; "failed": red or a merge-scope
-    // timeout, abandon; "skipped": no npm / broken toolchain (the helper warned), proceed —
-    // never fail-closed; "passed": green. A re-stack skips the run only when its tree is the
-    // checked tree plus doc-only changes (exemptTreeDelta).
-    let seed: string | undefined; // the tip a PASSED check ran on exactly, seeded after the ff
-    const docOnlyRestack = checkedTip !== null && (await exemptTreeDelta(ctx.root, checkedTip, tip, exemptPaths));
-    if (!docOnlyRestack) {
-      // The landing cell names the check while it runs, then the merge steps after it — the ff
-      // or the one-at-a-time fallback — on every stacked change's own record.
-      for (const i of stack) setLandingStage(ctx.root, requests[i]!.role, "build-check");
-      const check = await runScopedBuildCheck(ctx.root, headReq.role, "batch", wtPath, ctx.config);
-      for (const i of stack) setLandingStage(ctx.root, requests[i]!.role, "merging");
-      if (check !== null && check.outcome.status === "failed") {
-        abandon = true;
+  // Stack positions [0, landedCount) are on main. `suspect` is how many of the rest, from the
+  // front, the last red check ran over — the prefix that still holds what broke it; null when
+  // no red check stands against the rest, which are then tried together.
+  let landedCount = 0;
+  let suspect: number | null = null;
+  while (landedCount < entries.length) {
+    const front = landedCount;
+    const size: number = suspect === null ? entries.length - front : suspect === 1 ? 1 : Math.floor(suspect / 2);
+    const firstAttempt = front === 0 && suspect === null;
+    let outcome: StackOutcome;
+    try {
+      outcome = await landStack(ctx, wtPath, entries.slice(front, front + size));
+      if (outcome.kind === "red" && size === 1) {
+        // The one change this red check ran over alone: attribute it, and leave every change
+        // after it unattempted for the next drain.
+        const i = stack[front]!;
+        const { state } = wiringForRole(entries[front]!.role);
+        results[i]!.result = await attributeRedChange(ctx, wtPath, entries[front]!, outcome, state);
+        report(i, "done");
         break;
       }
-      checkedTip = tip;
-      if (check !== null && check.outcome.status === "passed") seed = tip;
-    }
-    if ((await ffStackToMain(ctx.root, ctx.mainBranch, landed)) === "changed") {
-      // A PASSED stack check ran on exactly the future main tip — seed the red-main
-      // baseline after (not before) the successful ff, so a merge_blocked stack seeds
-      // nothing; a skipped check seeds nothing either (skips never seed), and neither does
-      // a doc-only re-stack (like verifyLanding's exempt arm: nothing ran on this tip).
-      if (seed !== undefined) noteGreenBaseline(seed);
-      for (const i of stack) {
-        await deleteRef(ctx.root, landingRefName(requests[i]!.role));
-        results[i]!.result = "changed";
-      }
-      merged = true;
+    } catch (err) {
+      // The first attempt's plumbing propagates, as it always has — nothing has landed. A
+      // later step's degrades to "error" on the change at its front (ref kept for recovery),
+      // the rest unattempted, so the prefixes already on main keep their "changed".
+      if (firstAttempt) throw err;
+      const i = stack[front]!;
+      results[i]!.result = "error";
+      wiringForRole(entries[front]!.role).state.lastError = errorMessage(err);
+      report(i, "done");
       break;
     }
-    // Main moved under the batch while the check ran (a role's in-tick leftover-recovery
-    // landing, or a human commit): diverged history, ff failed. Re-stack on the tip that won.
-  }
-  if (!merged && !abandon && !aborted) {
-    // The race was lost on every attempt — main is moving faster than a check completes.
-    // Every S change keeps its ref with "merge_blocked": leftover recovery re-lands each
-    // through its own gate + tryMerge, whose in-lock check cannot lose this race.
-    for (const i of stack) results[i]!.result = "merge_blocked";
+    if (outcome.kind === "landed") {
+      for (let s = front; s < front + size; s++) {
+        results[stack[s]!]!.result = "changed";
+        report(stack[s]!, "done");
+      }
+      landedCount += size;
+      // What broke the red run is still in its remainder, unless this prefix WAS that run —
+      // then the red did not reproduce, and the rest are tried together.
+      suspect = suspect !== null && suspect > size ? suspect - size : null;
+    } else if (outcome.kind === "red") {
+      suspect = size; // what broke it is in this prefix: halve it next
+    } else if (outcome.kind === "conflict") {
+      abandon = true; // main unreadable or a pick conflicted: one-at-a-time from here
+      break;
+    } else if (outcome.kind === "blocked") {
+      // The race was lost on every attempt — main is moving faster than a check completes.
+      // Every change not yet landed keeps its ref with "merge_blocked": leftover recovery
+      // re-lands each through its own gate + tryMerge, whose in-lock check cannot lose it.
+      for (let s = front; s < entries.length; s++) results[stack[s]!]!.result = "merge_blocked";
+      break;
+    } else {
+      aborted = true; // every result still undefined reads "aborted" (finishAborted), refs kept
+      break;
+    }
   }
   if (abandon) {
     // One-at-a-time through the single path's landing half, queue order, stopping at the first
@@ -551,8 +692,8 @@ export async function landBatch(
     // re-check every change whose tree differs from the one its gate judged. Only the change
     // being landed reads `landing`; the rest are back to awaiting their turn, and each one
     // landed is done.
-    for (const i of stack) report(i, "approved");
-    for (let s = 0; s < stack.length; s++) {
+    for (const i of stack.slice(landedCount)) report(i, "approved");
+    for (let s = landedCount; s < stack.length; s++) {
       const i = stack[s]!;
       const req = { ...requests[i]!, sha: stackSha[s]! };
       report(i, "landing");
@@ -567,6 +708,11 @@ export async function landBatch(
       report(i, "done");
       if (results[i]!.result !== "changed") break;
     }
+  }
+  // A change the batch stopped short of is out of it (its entry and ref wait for the next
+  // drain, or an abort's write-back), so it must not keep a live row meanwhile.
+  for (const i of stack) {
+    if (results[i]!.result === undefined) report(i, "done");
   }
   finishAborted();
   return results;
