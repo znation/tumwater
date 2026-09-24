@@ -17,11 +17,11 @@ import {
 import {
   buildCutOffNote,
   buildDirectorPrompt,
-  buildRejectedReviewNote,
   buildResumePrompt,
   buildTickPrompt,
   readPrinciples,
 } from "./prompt.js";
+import { buildRejectedReviewNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 import { briefFile, readInitialPrompt } from "./readme.js";
 import { telemetryDigest } from "./failure-report.js";

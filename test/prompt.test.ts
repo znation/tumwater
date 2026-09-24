@@ -4,18 +4,20 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   PRINCIPLES_MAX_CHARS,
-  buildBuildFixPrompt,
-  buildConflictPrompt,
   buildCutOffNote,
   buildDirectorPrompt,
-  buildMainRedNote,
-  buildRejectedReviewNote,
   buildResumePrompt,
-  buildReviewPrompt,
   buildSummaryRequestPrompt,
   buildTickPrompt,
   readPrinciples,
 } from "../src/prompt.js";
+import {
+  buildBuildFixPrompt,
+  buildConflictPrompt,
+  buildMainRedNote,
+  buildRejectedReviewNote,
+  buildReviewPrompt,
+} from "../src/gate-prompts.js";
 import { parseVerdict } from "../src/review.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";

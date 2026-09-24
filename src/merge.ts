@@ -18,7 +18,7 @@ import { noteGreenBaseline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
 import { withLock } from "./lock.js";
-import { buildConflictPrompt } from "./prompt.js";
+import { buildConflictPrompt } from "./gate-prompts.js";
 import { CONFIG_BASENAME, configPath, mergeLockDir } from "./paths.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { PiRunResult, TickResult } from "./types.js";

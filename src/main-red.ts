@@ -3,7 +3,7 @@ import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
 import { BUILD_CHECK_TIMEOUT_MS, buildCheckSkipWarning, failureHeadline } from "./build-check.js";
 import type { BuildCheckOutcome } from "./build-check.js";
 import { checkMainBaseline } from "./main-baseline.js";
-import { buildMainRedNote } from "./prompt.js";
+import { buildMainRedNote } from "./gate-prompts.js";
 import { logEvent, warnEvent } from "./events.js";
 import type { TickOutcome } from "./types.js";
 import { shortSha } from "./text.js";
