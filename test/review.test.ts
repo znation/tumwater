@@ -911,6 +911,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     assert.equal(result.detail, `main ${shortSha(mainSha)} is red — not this change's failure`);
     assert.equal(result.aborted, undefined);
     assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
+    assert.equal(result.mainRed, true, "the landing reports main_red, not a reviewer failure");
     assert.ok(!fs.existsSync(marker), "no pi run: nothing was spent on main's failure");
     assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
     assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");

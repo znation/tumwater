@@ -416,7 +416,7 @@ test("a failing pre-check on a red main keeps the pin, records no rejection, and
   try {
     const state = freshLoopState(ROLE);
     const { ctx, folded } = makeCtx(root, state);
-    assert.equal(await landChange(ctx, request(sha)), "review_error");
+    assert.equal(await landChange(ctx, request(sha)), "main_red", "not a reviewer failure");
     const pinned = await refSha(root, REF);
     assert.ok(pinned, "the pin survives a red main");
     // The pre-gate sync rebased the pin onto the moved main; the gate left it exactly there.
@@ -426,7 +426,7 @@ test("a failing pre-check on a red main keeps the pin, records no rejection, and
     assert.equal(folded.length, 0);
     assert.equal(state.unreviewFailures ?? 0, 0, "no strike");
     assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");
-    assert.match(state.lastError ?? "", /^review failed: main [0-9a-f]+ is red — not this change's failure$/);
+    assert.match(state.lastError ?? "", /^gate check failed: main [0-9a-f]+ is red — not this change's failure$/);
     assert.ok(!readEvents(root).some((e) => e.type === "review_rejected"));
   } finally {
     restore();

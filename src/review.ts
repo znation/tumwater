@@ -152,6 +152,10 @@ export interface GateResult {
    * leaves this absent — its commit stays for re-review. The discard is invisible in the
    * decision alone, which is the same "failed" shape an under-cap failure reports. */
   discarded?: boolean;
+  /** The pre-check failed twice on a tree whose main is red at its tip ("failed"): not this
+   * change's failure, so its landing reports `main_red` — pin kept, no strike, and none of the
+   * error streak a dead reviewer backend feeds (the batch's own attribution says the same). */
+  mainRed?: boolean;
   /** Failure message ("failed") or first rejection reason ("rejected"), for lastSummary. */
   detail?: string;
   /** The reviewer's pi run, for usage folding into the loop totals — absent when no review
@@ -313,7 +317,7 @@ export async function reviewAheadOfMain(
         const detail = `main ${shortSha(main.sha)} is red — not this change's failure`;
         state.lastReview = { verdict: "failed", reasons: [detail], head, at: Date.now() };
         warnEvent(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; landing kept`);
-        return { decision: "failed", detail };
+        return { decision: "failed", detail, mainRed: true };
       }
       // Main green: the change broke the check — rejected deterministically through the shared
       // reject path, no pi run consumed, reasons injected into the author's next tick. With no

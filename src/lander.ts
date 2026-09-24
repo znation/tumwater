@@ -160,12 +160,19 @@ export async function reviewPinnedChange(
     return { kind: "result", result: "rejected" };
   }
 
+  if (gate.decision === "failed" && gate.mainRed) {
+    // Main is red at its tip: nothing judged this diff and nothing is wrong with the reviewer,
+    // so it is main_red, not review_error — the pin stays for a re-land once main is green.
+    state.lastError = `gate check failed: ${gate.detail}`;
+    return { kind: "result", result: "main_red" };
+  }
+
   if (gate.decision === "failed") {
     state.lastError = `review failed: ${gate.detail}`;
     // Strike-cap discard: the gate says so directly (it reset the worktree off the pin) — the
-    // commit is gone and the ref goes too. An under-cap failure — a dead reviewer, or a check
-    // that failed on a red main — keeps the pin as it is: the gate never commits, so the pin
-    // still names the tree the next re-land reviews.
+    // commit is gone and the ref goes too. An under-cap failure — a dead reviewer — keeps the
+    // pin as it is: the gate never commits, so the pin still names the tree the next re-land
+    // reviews.
     if (gate.discarded) {
       await deleteRef(root, ref);
       return { kind: "result", result: "review_error", discarded: true };

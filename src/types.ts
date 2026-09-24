@@ -18,7 +18,7 @@ export type TickResult =
   | "aborted" // harness shutdown killed the run mid-tick; partial work discarded
   | "quiet_killed" // the quiet watchdog killed a stalled tool call mid-run; session + worktree edits preserved and resumed promptly
   | "user_aborted" // a user-initiated abort (tumwater abort) killed the run mid-tick; work discarded, loop backed off
-  | "main_red" // baseline check found main's build/test suite red; authoring run skipped, code merges blocked until main is green
+  | "main_red" // main's build/test suite is red: a tick's baseline check skipped the authoring run, or a landing's check failed on a red main (pin kept, no strike)
   | "skipped"; // nothing to run (e.g. director with an empty inbox);
 
 /** The outcome of one full tick: its result plus what the harness learned from it.
