@@ -5,7 +5,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 7b/7 — `tumwater init --adopt` and `--dry-run`: adopt an existing repo without touching its README (planned 2026-09-26, split from 7/7)
+### 7b/7 — `tumwater init --adopt` and `--dry-run`: adopt an existing repo without touching its README (planned 2026-09-23, split from 7/7)
 
 **Goal.** Today `initProject` hard-fails when README.md exists without the `tumwater:prompt` markers (src/init.ts:147), which is why tumwater has only ever been pointed at repos it created itself. Add the adoption path — write `TUMWATER.md`, leave README.md and any existing backlog files untouched — plus `--dry-run` and an ecosystem-neutral PRINCIPLES template. Depends on 7a/7 (the adopted repo's loops must resolve `TUMWATER.md` first, or adoption creates a brief nobody reads). Design rationale and audit pins: plans/portability.md §7/7 (corrections 1, 4, 5, 6, 7).
 
@@ -30,9 +30,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Done
 
-### 7a/7 — Resolve the project brief as `TUMWATER.md`, with README.md as the compatibility path (planned 2026-09-26, split from 7/7, done 2026-09-23)
+### 7a/7 — Resolve the project brief as `TUMWATER.md`, with README.md as the compatibility path (planned 2026-09-23, split from 7/7, done 2026-09-23)
 
-**Goal.** `readInitialPrompt` (src/readme.ts) reads the brief only out of README.md's managed section, so the readme role owns a status block inside the project's own README — a non-starter for adopting an existing codebase (7b/7). Make the brief's home resolvable: `TUMWATER.md` first, README.md as the compatibility path, with no behavior change for repos that only have README.md. Design rationale and the 09-18/09-24 audit pins live in plans/portability.md §7/7 (its corrections 2, 3 and 8); line anchors below were re-verified 2026-09-26 and some have drifted a few lines since the audit — treat the audit's pins as indicative and re-`grep` before editing.
+**Sized 2026-09-23 by plan:** the original too-large-for-one-run note on 7/7 was resolved by splitting it into this plan (7a) and 7b/7; re-verified 2026-09-23 — 10 files but pin-pointed edits throughout (well under a few hundred lines incl. tests), and every line anchor below re-checked against main.
+
+**Goal.** `readInitialPrompt` (src/readme.ts) reads the brief only out of README.md's managed section, so the readme role owns a status block inside the project's own README — a non-starter for adopting an existing codebase (7b/7). Make the brief's home resolvable: `TUMWATER.md` first, README.md as the compatibility path, with no behavior change for repos that only have README.md. Design rationale and the 09-18/09-24 audit pins live in plans/portability.md §7/7 (its corrections 2, 3 and 8); line anchors below were re-verified 2026-09-23 and some have drifted a few lines since the audit — treat the audit's pins as indicative and re-`grep` before editing.
 
 **Series.** Part 7/7 of the portability series, first half. Depends only on 2/7 ✓ (done). 7b/7 depends on this.
 
