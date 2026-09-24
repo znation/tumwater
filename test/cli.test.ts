@@ -728,6 +728,8 @@ test("doctor runs outside a git repo — reports every problem instead of gating
   assert.match(r.stdout, /ok\s+state dir/);
   assert.match(r.stdout, /ok\s+merge lock/);
   assert.match(r.stdout, /warn\s+project check/);
+  // No ps on this PATH either: the orphan scan degrades to a warn instead of crashing doctor.
+  assert.match(r.stdout, /warn\s+orphans\s+could not scan the process table/);
   // The verdict counts the fails (repo + init + pi) and nothing else.
   assert.match(r.stdout, /3 problems/);
 });
@@ -755,6 +757,8 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
       /ok\s+state dir/,
       /warn\s+merge lock\s+stale — will be broken on next merge/,
       /warn\s+project check/,
+      // The real process-table scan: a fresh repo has no worktree, so no orphan either.
+      /ok\s+orphans\s+none/,
     ]) {
       assert.match(r.stdout, line);
     }

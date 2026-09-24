@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pidAlive } from "../src/process.js";
+import { parseLsofCwds, parsePsOutput, pidAlive, systemProcessProbe } from "../src/process.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead
 // holder's merge lock must be breakable) and state.ts's orchestrator-alive status. Its
@@ -67,4 +68,59 @@ test("pidAlive reads a non-positive or fractional pid as NOT alive", () => {
   assert.equal(pidAlive(0), false);
   assert.equal(pidAlive(-1), false);
   assert.equal(pidAlive(1.5), false);
+});
+
+// The process-table reader behind doctor's orphan check (checkOrphans in src/doctor.ts, where
+// the matching is pinned against a fake table). Here: the two parsers over fixed BSD/procps
+// and lsof output, and one smoke of the real probe against this test process itself — no
+// orphan is ever spawned.
+
+test("parsePsOutput reads BSD and procps rows, keeps argv spaces, and skips junk", () => {
+  const rows = parsePsOutput(
+    [
+      "    1     0     0 35-22:43:52 425:10.18 /sbin/launchd", // macOS: dd-hh:mm:ss, mm:ss.hh
+      "88052     1   501 2-21:44:01   0:03.12 node dist/src/test-runner.js",
+      " 4242     1  1000    01:02:03 00:00:05 node /r/.tumwater/worktrees/qa/dist/src/cli.js gui --port 41602", // procps
+      "  777   776   501     00:04 0:00.00", // a zombie: no argv at all
+      "not a ps row",
+      "",
+    ].join("\n"),
+  );
+  assert.deepEqual(rows, [
+    { pid: 1, ppid: 0, uid: 0, etime: "35-22:43:52", time: "425:10.18", command: "/sbin/launchd" },
+    { pid: 88052, ppid: 1, uid: 501, etime: "2-21:44:01", time: "0:03.12", command: "node dist/src/test-runner.js" },
+    {
+      pid: 4242,
+      ppid: 1,
+      uid: 1000,
+      etime: "01:02:03",
+      time: "00:00:05",
+      command: "node /r/.tumwater/worktrees/qa/dist/src/cli.js gui --port 41602",
+    },
+    { pid: 777, ppid: 776, uid: 501, etime: "00:04", time: "0:00.00", command: "" },
+  ]);
+});
+
+test("parseLsofCwds maps each pid to its cwd and leaves out a process lsof could not read", () => {
+  const cwds = parseLsofCwds(
+    ["p101", "fcwd", "n/Users/z/repo/.tumwater/worktrees/bugfix", "p102", "fcwd", "p103", "fcwd", "n/tmp/with space", ""].join("\n"),
+  );
+  assert.deepEqual([...cwds], [
+    [101, "/Users/z/repo/.tumwater/worktrees/bugfix"],
+    [103, "/tmp/with space"],
+  ]);
+});
+
+test("systemProcessProbe lists this process with its parent and reads its cwd past a vanished pid", async () => {
+  const rows = await systemProcessProbe.list();
+  const self = rows.find((r) => r.pid === process.pid);
+  assert.ok(self, "the table includes the calling process");
+  assert.equal(self.ppid, process.ppid);
+  assert.match(self.command, /node/);
+  // A pid beyond any pid space rides along: lsof exits 1 whenever any named pid is absent, and
+  // that exit must still yield the cwds it did print (on Linux the /proc read just skips it).
+  const cwds = await systemProcessProbe.cwds([process.pid, 2_000_000_000]);
+  assert.equal(cwds.get(process.pid), fs.realpathSync(process.cwd()));
+  assert.equal(cwds.has(2_000_000_000), false);
+  assert.deepEqual(await systemProcessProbe.cwds([]), new Map());
 });

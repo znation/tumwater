@@ -41,6 +41,11 @@ export function configRequestPath(wt: string): string {
   return path.join(wt, ".tumwater-config-request.json");
 }
 
+/** The directory every harness worktree lives under — role, lander and mirror alike. */
+export function worktreesDir(root: string): string {
+  return path.join(tumwaterDir(root), "worktrees");
+}
+
 /** A loop's persistent git worktree under .tumwater/worktrees/. */
 export function worktreePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "worktrees", role);
