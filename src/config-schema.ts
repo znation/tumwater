@@ -140,6 +140,11 @@ export interface TumwaterConfig {
    * shared build check, and fast-forwarded to main in one ff. 1 reproduces the single-
    * landing path exactly (no coalescing). */
   landBatchMax: number;
+  /** Max runs of the project's declared check (the full suite) in flight at once across the
+   * whole harness process — every gate, landing, batch, and main-baseline check takes one
+   * permit (src/build-check.ts's withCheckPermit), so a burst of landings cannot stack suites
+   * on the host. Read at each check's start, so an edit applies live. */
+  maxConcurrentChecks: number;
   /** Minimum seconds between two ticks of the same loop, even when woken early. */
   minTickIntervalSeconds: number;
   /** Hard cap on a single pi run, in seconds. */

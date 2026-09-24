@@ -58,6 +58,9 @@ discards a role's in-flight landing.
 
 - `maxConcurrent` caps parallel ticks. Work roles (feature, bugfix, plan) get slots before
   maintenance roles.
+- `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
+  once: gate, landing, batch, and main-baseline checks share it, the rest queue, and landings go
+  first.
 - A maintenance role whose last tick did nothing is deferred until feature, bugfix, director, or
   human work lands on main, and stays deferred while PLANS.md or BUGS.md has open work. `qa` is
   never deferred.

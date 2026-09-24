@@ -39,6 +39,8 @@ test("defaultConfig enables every role including director", () => {
   assert.ok(config.maxConcurrent >= 1);
   // Merge queue 5/5: the batch cap defaults to 3 — the fleet's realistic concurrent-role count.
   assert.equal(config.landBatchMax, 3);
+  // Land-queue speed 2b: two check suites at once, process-wide.
+  assert.equal(config.maxConcurrentChecks, 2);
   assert.ok(config.idleBackoff.maxSeconds >= config.idleBackoff.initialSeconds);
 });
 
@@ -373,6 +375,18 @@ test("landBatchMax is validated like maxConcurrent: a positive integer", () => {
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), landBatchMax: 1 }));
   // A typo'd cap must not silently disable coalescing: unknown top-level keys fail validation.
   assert.match(validationError({ landBatchmax: 1 }), /landBatchmax/);
+});
+
+test("maxConcurrentChecks is validated like maxConcurrent: a positive integer", () => {
+  // 0 would let no check ever start (every gate and landing would wait forever), a negative
+  // or fractional cap means nothing, and a string is a typo — each fails naming the key.
+  for (const [bad, shown] of [[0, "0"], [-1, "-1"], [1.5, "1\\.5"], ["2", '"2"']] as const) {
+    assert.match(
+      validationError({ maxConcurrentChecks: bad }),
+      new RegExp(`maxConcurrentChecks must be an integer of at least 1 \\(got ${shown}\\)`),
+    );
+  }
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maxConcurrentChecks: 1 }));
 });
 
 test("validateConfig reports every invalid value in one error", () => {

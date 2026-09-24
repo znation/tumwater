@@ -4,10 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   buildCheckSkipWarning,
+  CHECK_TIER,
   clipBuildTail,
   failureHeadline,
   runBuildCheck,
   runScopedBuildCheck,
+  withCheckPermit,
 } from "../src/build-check.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
@@ -866,4 +868,104 @@ test("an unset or blank check.gateCommand leaves the gate running check.command"
     );
     assert.equal(result!.outcome.script, "echo full", `gateCommand ${JSON.stringify(gateCommand)} is off`);
   }
+});
+
+// ── Process-wide check cap (PLANS.md "Land-queue speed 2b"): every full suite takes one permit
+// from a single semaphore sized by config.maxConcurrentChecks, so a burst of landings cannot
+// stack suites on the host.
+
+/** Let every already-queued continuation run, so a permit that could be granted has been. */
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+test("at the default cap of 2, a third concurrent check starts only after one of the first two finishes", async () => {
+  const { root, wt } = buildCheckFixture();
+  const log = path.join(tmpdir(), "checks.log");
+  // Each run marks its start and end; the sleep keeps the first two in flight long enough that
+  // an uncapped third would start beside them.
+  const config = { check: { command: `echo start >> ${log}; sleep 1; echo end >> ${log}` } };
+  const startedAt = Date.now();
+  const results = await Promise.all(
+    [1, 2, 3].map(() => runScopedBuildCheck(root, ROLE, "gate", wt, config, 30_000)),
+  );
+  const elapsedMs = Date.now() - startedAt;
+  for (const r of results) assert.equal(r!.outcome.status, "passed");
+  const lines = fs.readFileSync(log, "utf8").trim().split("\n");
+  assert.deepEqual(lines.slice(0, lines.indexOf("end")), ["start", "start"], "two run at once; the third waits");
+  assert.equal(lines.filter((l) => l === "start").length, 3, "the third still runs once a permit frees");
+  // Two waves of one-second runs, with generous slack under the two-second floor.
+  assert.ok(elapsedMs >= 1_900, `three capped checks took ${elapsedMs}ms — the third did not wait`);
+  // The event prices the run, not the wait: no check reports the queued second wave's time.
+  for (const e of readEvents(root).filter((ev) => ev.type === "build_check")) {
+    assert.ok(Number(e.durationMs) < 1_900, `durationMs ${e.durationMs} includes the permit wait`);
+  }
+});
+
+test("a check that fails or times out still releases its permit", { timeout: 30_000 }, async () => {
+  // At a cap of 1 a leaked permit parks every later check forever — the test timeout is the
+  // backstop that turns that hang into a failure.
+  const { root, wt } = buildCheckFixture();
+  const one = { maxConcurrentChecks: 1 };
+  const failed = await runScopedBuildCheck(root, ROLE, "gate", wt, { ...one, check: { command: "exit 1" } }, 30_000);
+  assert.equal(failed!.outcome.status, "failed");
+  for (const scope of ["gate", "landing"] as const) {
+    const timedOut = await runScopedBuildCheck(
+      root,
+      ROLE,
+      scope,
+      wt,
+      { ...one, check: { command: "sleep 5", timeoutSeconds: 0.4 } },
+      30_000,
+    );
+    assert.equal(timedOut!.outcome.status, scope === "gate" ? "skipped" : "failed", `${scope}: timed out`);
+  }
+  const passed = await runScopedBuildCheck(root, ROLE, "gate", wt, { ...one, check: { command: "true" } }, 30_000);
+  assert.equal(passed!.outcome.status, "passed", "the permit came back after every failure and timeout");
+});
+
+test("the check cap resizes from each caller's live config without preempting a running check", { timeout: 10_000 }, async () => {
+  const one = { maxConcurrentChecks: 1 };
+  const started: string[] = [];
+  let releaseA!: () => void;
+  const a = withCheckPermit(one, CHECK_TIER.other, () => new Promise<void>((resolve) => (releaseA = resolve)));
+  const b = withCheckPermit(one, CHECK_TIER.other, async () => void started.push("b"));
+  await settle();
+  assert.equal(started.length, 0, "at a cap of 1, b waits behind the running a");
+  // A live edit to 2 applies at the next acquire: the parked b is admitted beside a, then c.
+  const c = withCheckPermit({ maxConcurrentChecks: 2 }, CHECK_TIER.other, async () => void started.push("c"));
+  await Promise.all([b, c]);
+  assert.deepEqual(started, ["b", "c"]);
+  // Shrinking back to 1 never preempts a: the next check waits until a finishes.
+  const d = withCheckPermit(one, CHECK_TIER.other, async () => void started.push("d"));
+  await settle();
+  assert.deepEqual(started, ["b", "c"], "a shrink caps new grants while a still runs");
+  releaseA();
+  await Promise.all([a, d]);
+  assert.deepEqual(started, ["b", "c", "d"]);
+});
+
+test("a queued merge-scope check is granted the next permit ahead of queued gate checks", { timeout: 10_000 }, async () => {
+  // A landing's check runs inside the merge lock, so every check it waited behind would be
+  // lock-hold time for every other landing.
+  const one = { maxConcurrentChecks: 1 };
+  const order: string[] = [];
+  let release!: () => void;
+  const held = withCheckPermit(one, CHECK_TIER.other, () => new Promise<void>((resolve) => (release = resolve)));
+  const gate = withCheckPermit(one, CHECK_TIER.other, async () => void order.push("gate"));
+  const landing = withCheckPermit(one, CHECK_TIER.merge, async () => void order.push("landing"));
+  await settle();
+  release();
+  await Promise.all([held, gate, landing]);
+  assert.deepEqual(order, ["landing", "gate"]);
+});
+
+test("a check-permit request from inside a held permit runs under it instead of deadlocking", { timeout: 10_000 }, async () => {
+  // At a cap of 1 a second wait from the holder could never be granted — its own holder is the
+  // one blocking it. No call path nests today; this pins that a future one cannot wedge checks.
+  const one = { maxConcurrentChecks: 1 };
+  const inner = await withCheckPermit(one, CHECK_TIER.merge, () =>
+    withCheckPermit(one, CHECK_TIER.other, async () => "nested"),
+  );
+  assert.equal(inner, "nested");
+  // And the outer permit came back: a fresh request is granted at once.
+  assert.equal(await withCheckPermit(one, CHECK_TIER.other, async () => "after"), "after");
 });

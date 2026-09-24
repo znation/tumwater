@@ -1,7 +1,10 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck, gateCommandOf } from "./build-check-detect.js";
+import { defaultConfig } from "./config.js";
 import { logEvent, warnEvent } from "./events.js";
+import { Semaphore } from "./semaphore.js";
 import { truncate } from "./text.js";
 import { signalTree } from "./pi.js";
 
@@ -444,6 +447,60 @@ export async function runBuildCheck(
   return { status: "skipped", script, skipReason: "no-npm" };
 }
 
+// ── Process-wide check cap ────────────────────────────────────────────────────────────────
+
+/** One process-wide bound on concurrent runs of the declared check (config.maxConcurrentChecks,
+ * PLANS.md "Land-queue speed 2b"): every full suite the harness runs — runScopedBuildCheck's
+ * gate/landing/batch scopes and main-baseline.ts's checkMainBaseline, which runs the suite
+ * directly — takes a permit here first, so a burst of landings cannot stack suites on the host
+ * beside the authors' own test runs (the suite has load-sensitive tests). Separate from the
+ * orchestrator's maxConcurrent semaphore: a role tick holds one of those while it waits here,
+ * but a check permit is held only around the check process itself — never across a pi run, the
+ * merge lock, or another check — so no permit holder waits on anything a waiter holds. Sized at
+ * each acquire from the caller's live config (checkCap), so a tumwater.json edit applies to the
+ * next check; Semaphore.setCapacity never preempts a running check on a shrink. */
+const checkPermits = new Semaphore(defaultConfig().maxConcurrentChecks);
+
+/** Set while the current async context holds a check permit: a nested withCheckPermit runs
+ * inside the permit it already has instead of queueing for a second one — at a cap of 1 that
+ * second wait could never be granted (its own holder is the one blocking it). No call path
+ * nests today; this keeps a future one from deadlocking the fleet's checks. */
+const holdingPermit = new AsyncLocalStorage<true>();
+
+/** Waiting-queue tiers (Semaphore.acquire): a merge-scope check runs inside the merge lock, so
+ * it is granted the next free permit ahead of queued gate and baseline checks — every check it
+ * waited behind would be lock-hold time for every other landing. A running check is never
+ * preempted. */
+export const CHECK_TIER = { merge: 0, other: 1 } as const;
+
+/** The live cap: config.maxConcurrentChecks when it is a positive integer (validateConfig
+ * enforces that for tumwater.json), the default otherwise — a caller passing a partial config
+ * (the tests' `{ check }`) or none gets the default, never a cap the semaphore could not grant
+ * under. */
+function checkCap(config: { maxConcurrentChecks?: number } | undefined): number {
+  const n = config?.maxConcurrentChecks;
+  return typeof n === "number" && Number.isInteger(n) && n >= 1 ? n : defaultConfig().maxConcurrentChecks;
+}
+
+/** Run `run` under one process-wide check permit (see checkPermits), resizing the cap from the
+ * live config first and releasing in a finally — a check that fails, times out, or throws still
+ * gives its permit back. Reentrant (holdingPermit): called again from inside `run`, it runs the
+ * inner work under the permit already held. */
+export async function withCheckPermit<T>(
+  config: { maxConcurrentChecks?: number } | undefined,
+  tier: number,
+  run: () => Promise<T>,
+): Promise<T> {
+  if (holdingPermit.getStore()) return run();
+  checkPermits.setCapacity(checkCap(config));
+  await checkPermits.acquire(tier);
+  try {
+    return await holdingPermit.run(true, run);
+  } finally {
+    checkPermits.release();
+  }
+}
+
 /** The scopes named in a build_check event logged from this helper. The red-main baseline
  * names its own ("baseline") from main-red.ts, because the one-run-per-SHA cache and in-flight
  * dedup live in checkMainBaseline — the event there is logged by the paying role via the onRun
@@ -557,7 +614,10 @@ export async function runScopedBuildCheck(
   role: string,
   scope: BuildCheckScope,
   wt: string,
-  config?: { check?: { command: string; gateCommand?: string; cwd?: string; timeoutSeconds?: number } },
+  config?: {
+    check?: { command: string; gateCommand?: string; cwd?: string; timeoutSeconds?: number };
+    maxConcurrentChecks?: number;
+  },
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
   const gateCommand = scope === "gate" ? gateCommandOf(config) : undefined;
@@ -570,27 +630,36 @@ export async function runScopedBuildCheck(
   // under the caller's. Effective here so the reason text and the skip warning agree with
   // what runBuildCheck enforced.
   const effectiveMs = checkTimeoutMs(check, timeoutMs);
-  const startedAt = Date.now();
-  let raw = await runBuildCheck(wt, check, timeoutMs);
-  let durationMs = Date.now() - startedAt;
-  if (raw.status === "skipped" && raw.skipReason === "killed") {
-    // A check the harness did not stop itself says nothing about the tree — its death is
-    // another run's doing — so retry once; the second attempt's outcome stands. The killed
-    // first attempt is priced as its own event (the feed must answer how long a check took),
-    // then the final event below records the retry's classified outcome.
-    logEvent(root, {
-      loop: role,
-      type: "build_check",
-      scope,
-      status: raw.status,
-      script: checkScriptName(check),
-      durationMs,
-      ...buildCheckRunFields(raw),
-    });
-    const retryStart = Date.now();
-    raw = await runBuildCheck(wt, check, timeoutMs);
-    durationMs = Date.now() - retryStart;
-  }
+  // One permit covers both attempts (the killed-check retry re-runs under the permit it
+  // holds); durationMs prices the run itself, not the wait for a permit.
+  let durationMs = 0;
+  const raw = await withCheckPermit(
+    config,
+    MERGE_SCOPES.has(scope) ? CHECK_TIER.merge : CHECK_TIER.other,
+    async () => {
+      const startedAt = Date.now();
+      const first = await runBuildCheck(wt, check, timeoutMs);
+      durationMs = Date.now() - startedAt;
+      if (first.status !== "skipped" || first.skipReason !== "killed") return first;
+      // A check the harness did not stop itself says nothing about the tree — its death is
+      // another run's doing — so retry once; the second attempt's outcome stands. The killed
+      // first attempt is priced as its own event (the feed must answer how long a check took),
+      // then the final event below records the retry's classified outcome.
+      logEvent(root, {
+        loop: role,
+        type: "build_check",
+        scope,
+        status: first.status,
+        script: checkScriptName(check),
+        durationMs,
+        ...buildCheckRunFields(first),
+      });
+      const retryStart = Date.now();
+      const retry = await runBuildCheck(wt, check, timeoutMs);
+      durationMs = Date.now() - retryStart;
+      return retry;
+    },
+  );
   // A timeout or signal kill at a merge scope is not environmental: no verdict about the tree
   // was reached, and this is the check whose whole job is to catch a semantic conflict before
   // it lands, so it rejects deterministically — the author keeps its commit and retries.

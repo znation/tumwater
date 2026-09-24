@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { CHECK_TIER, withCheckPermit } from "../src/build-check.js";
 import { checkMainBaseline, noteGreenBaseline } from "../src/main-baseline.js";
 import { defaultConfig } from "../src/config.js";
 import { baselineFixture, makeRepo, runsOf, sh, tmpdir } from "./util.js";
@@ -263,4 +264,22 @@ test("a configured check.command verifies main on a repo with no npm install any
   assert.equal(runsOf(counter), 1, "the command ran once");
   assert.equal(runs[0]?.outcome.status, "failed", "the hook saw the classified failure");
   assert.equal(runs[0]?.outcome.script, `${checkScript} -q`, "the event's script field names the command");
+});
+
+test("a baseline run takes the same process-wide check permit as the scoped checks", { timeout: 30_000 }, async () => {
+  // PLANS.md "Land-queue speed 2b": checkMainBaseline runs the suite directly, not through
+  // runScopedBuildCheck, so it must count against maxConcurrentChecks on its own.
+  const counter = path.join(tmpdir(), "runs-permit");
+  const { wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo ok`);
+  const one = { ...CFG, maxConcurrentChecks: 1 };
+  let release!: () => void;
+  const held = withCheckPermit(one, CHECK_TIER.merge, () => new Promise<void>((resolve) => (release = resolve)));
+  const pending = checkMainBaseline(wt, one);
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  assert.equal(runsOf(counter), 0, "the suite waits while the only permit is held");
+  release();
+  await held;
+  const result = await pending;
+  assert.equal(result.baseline?.status, "green");
+  assert.equal(runsOf(counter), 1, "and runs once the permit frees");
 });

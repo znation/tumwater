@@ -491,8 +491,9 @@ export class Redeployer {
 export async function mainIsGreen(
   mirrorWt: string,
   /** The live config — the declared check is detected through it (plans/portability.md
-   * §6/7), so a configured command makes the green check run on a non-npm repo too. */
-  config: { check?: { command: string; cwd?: string; timeoutSeconds?: number } },
+   * §6/7), so a configured command makes the green check run on a non-npm repo too; its
+   * maxConcurrentChecks sizes the check permit this run takes. */
+  config: { check?: { command: string; cwd?: string; timeoutSeconds?: number }; maxConcurrentChecks?: number },
   /** Hook for the build_check event — this run is a minute of the fleet's time and belongs in
    * the feed like the role loops' own baseline checks. */
   onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,

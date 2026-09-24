@@ -1,4 +1,11 @@
-import { type BuildCheckOutcome, type BuildCheckRun, type BuildSkipReason, runBuildCheck } from "./build-check.js";
+import {
+  type BuildCheckOutcome,
+  type BuildCheckRun,
+  type BuildSkipReason,
+  CHECK_TIER,
+  runBuildCheck,
+  withCheckPermit,
+} from "./build-check.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { gitTry } from "./git.js";
 
@@ -132,7 +139,7 @@ export async function checkMainBaseline(
    * §6/7), so a configured command verifies main on a non-npm repo too. Required in this
    * position: detection needs it, and an optional trailing parameter would let future
    * callers skip the baseline gate entirely. */
-  config: { check?: { command: string; cwd?: string; timeoutSeconds?: number } },
+  config: { check?: { command: string; cwd?: string; timeoutSeconds?: number }; maxConcurrentChecks?: number },
   /** Called once per actual script run (never for cache hits or deduped waiters) with what ran
    * and how long it took — the caller's hook for a build_check event. */
   onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
@@ -155,9 +162,16 @@ export async function checkMainBaseline(
     pending = (async () => {
       const check = detectBuildCheck(wt, config);
       if (!check) return { baseline: null }; // No declared check — nothing to verify, nothing to block on.
-      const startedAt = Date.now();
-      const outcome = await runBuildCheck(wt, check);
-      onRun?.({ outcome, durationMs: Date.now() - startedAt });
+      // The same process-wide check permit the scoped checks take (build-check.ts's
+      // withCheckPermit): this runs the suite directly, so it must count against the cap too.
+      // Only the one run per key holds a permit; deduped waiters above await `pending` holding
+      // none.
+      const { outcome, durationMs } = await withCheckPermit(config, CHECK_TIER.other, async () => {
+        const startedAt = Date.now();
+        const run = await runBuildCheck(wt, check);
+        return { outcome: run, durationMs: Date.now() - startedAt };
+      });
+      onRun?.({ outcome, durationMs });
       if (outcome.status === "skipped") {
         // Environmental (timeout/no-npm): warn-and-proceed semantics like the gate's pre-check;
         // never cache red for a skip.

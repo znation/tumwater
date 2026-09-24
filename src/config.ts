@@ -52,6 +52,9 @@ export function defaultConfig(): TumwaterConfig {
     // Three is the fleet's realistic concurrent-role count: a busy queue coalesces the
     // common case (a few roles land in the same poll) while the worst case stays bounded.
     landBatchMax: 3,
+    // Two suites at once: one landing can verify while the next author's gate check runs,
+    // without a burst stacking every check on the host beside the authors' own test runs.
+    maxConcurrentChecks: 2,
     minTickIntervalSeconds: 20,
     tickTimeoutSeconds: 1800,
     quietTimeoutSeconds: 1800,
