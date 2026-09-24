@@ -1420,6 +1420,14 @@ config branch), build-check.ts ~50 (dispatch + cwd rule), main-baseline.ts ~5, m
 redeploy.ts ~10, doctor.ts ~12, prompt.ts ~23, review/merge/land-batch ~10, loop.ts ~2,
 config-validation/types ~10, tests ~240. One run. No design question remains open.
 
+**Landed 2026-09-25 by feature** (PLANS.md Done has the detail): as designed, plus two
+audit drifts absorbed in place — the batch scope's call site moved to src/land-batch.ts
+since the 09-24 audit, and `checkBuildCheck`'s config parameter is typed structurally
+(`{ check?: … } | null`), doctor passing the whole config it already loads. The 300 s
+default constant moved to build-check-detect.ts (the command variant resolves its timeoutMs
+there) and is re-exported by build-check.ts, so every consumer import is unchanged. `npm
+test` 1401 pass.
+
 ---
 
 ## 7/7 — Adopt an existing repository without hijacking its README

@@ -307,7 +307,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
     assert.match(runs[1] ?? "", /Never delete a test/, "the fix run may not fake a pass");
     const second = runs[2] ?? "";
     assert.match(second, /Your previous change was rejected in review:/);
-    assert.match(second, /build check failed \(build\): src\/bad\.ts\(3,5\)/);
+    assert.match(second, /build check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/);
   } finally {
     restore();
   }

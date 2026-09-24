@@ -268,13 +268,28 @@ export function checkMergeLock(root: string): CheckOutcome {
   }
 }
 
-/** Declared build check — names the script the review gate's deterministic pre-check will run,
- * without running it. None declared is informational (non-JS target projects are expected to
- * have no npm scripts), not a warning. */
-export function checkBuildCheck(root: string): CheckOutcome {
-  const check = detectBuildCheck(root);
+/** Declared project check — names what the review gate's deterministic pre-check, the
+ * red-main baseline, and redeploy's green check will run, without running it: a configured
+ * `check.command` (plans/portability.md §6/7), else the npm auto-detection. None declared is
+ * a warn, not informational (the 2026-09-05 stance predates non-npm targets being supported,
+ * when a warn would have been noise no operator could act on — with `check.command` available
+ * the warning is actionable): the three gates degrade to "no check" and a silently absent
+ * safety layer is the failure this check exists to surface. Warn does not fail the exit code
+ * (the checkFallbackModel precedent). */
+export function checkBuildCheck(
+  root: string,
+  config?: { check?: { command: string; cwd?: string; timeoutSeconds?: number } } | null,
+): CheckOutcome {
+  const check = detectBuildCheck(root, config ?? undefined);
   if (!check)
-    return { level: "ok", detail: "none declared — the review gate's deterministic pre-check will be skipped" };
+    return {
+      level: "warn",
+      detail: "none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo)",
+    };
+  if (check.kind === "command") {
+    const where = path.relative(root, check.cwd);
+    return { level: "ok", detail: where ? `${check.command} (cwd ${where})` : check.command };
+  }
   const where = path.relative(root, check.rootDir);
   return { level: "ok", detail: where ? `npm ${check.script} in ${where}` : `npm ${check.script}` };
 }
@@ -347,7 +362,7 @@ export async function runDoctor(root: string, pathEnv: string = process.env.PATH
     { name: "pi binary", ...checkAgentBinary(root, pathEnv) },
     { name: "state dir", ...checkStateDir(root) },
     { name: "merge lock", ...checkMergeLock(root) },
-    { name: "build check", ...checkBuildCheck(root) },
+    { name: "project check", ...checkBuildCheck(root, config) },
     // The running fleet's own view of its build (staleness and what auto-restart made of it)
     // when there is one; without it the check still stands on its own git comparison.
     { name: "build", ...(await checkBuild(root, undefined, undefined, (orchestratorAlive(root, info) && info?.build) || null)) },

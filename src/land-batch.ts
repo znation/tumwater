@@ -226,7 +226,7 @@ export async function landBatch(
     // routing — null: no declared check, land directly; "failed": red or a merge-scope
     // timeout, abandon; "skipped": no npm / broken toolchain (the helper warned), proceed —
     // never fail-closed; "passed": green.
-    const check = await runScopedBuildCheck(ctx.root, headReq.role, "batch", wt!);
+    const check = await runScopedBuildCheck(ctx.root, headReq.role, "batch", wt!, ctx.config);
     abandon = check !== null && check.outcome.status === "failed";
     if (!abandon) {
       const outcome = await ffStackToMain(ctx.root, ctx.mainBranch, landed);

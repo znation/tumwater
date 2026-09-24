@@ -685,7 +685,7 @@ test("doctor runs outside a git repo — reports every problem instead of gating
   assert.match(r.stdout, /fail\s+pi binary\s+pi not found on PATH/);
   assert.match(r.stdout, /ok\s+state dir/);
   assert.match(r.stdout, /ok\s+merge lock/);
-  assert.match(r.stdout, /ok\s+build check/);
+  assert.match(r.stdout, /warn\s+project check/);
   // The verdict counts the fails (repo + init + pi) and nothing else.
   assert.match(r.stdout, /3 problems/);
 });
@@ -712,7 +712,7 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
       /ok\s+pi binary/,
       /ok\s+state dir/,
       /warn\s+merge lock\s+stale — will be broken on next merge/,
-      /ok\s+build check/,
+      /warn\s+project check/,
     ]) {
       assert.match(r.stdout, line);
     }

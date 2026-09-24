@@ -212,6 +212,7 @@ export async function landChange(ctx: LanderContext, req: LandRequest): Promise<
       role: req.role,
       mainBranch: ctx.mainBranch,
       exemptPaths: ctx.config.review.exemptPaths,
+      config: ctx.config,
       tick: req.tick,
       runPi: ctx.runPi,
     },

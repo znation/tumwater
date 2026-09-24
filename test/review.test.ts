@@ -458,14 +458,14 @@ test("detectBuildCheck prefers test over typecheck and build when all three scri
     path.join(dir, "package.json"),
     JSON.stringify({ scripts: { build: "tsc", typecheck: "tsc --noEmit", test: "node --test" } }),
   );
-  assert.deepEqual(detectBuildCheck(dir), { rootDir: dir, script: "test" });
+  assert.deepEqual(detectBuildCheck(dir), { kind: "npm", rootDir: dir, script: "test" });
 
   // Without a test script the old preference stands: typecheck over build.
   fs.writeFileSync(
     path.join(dir, "package.json"),
     JSON.stringify({ scripts: { build: "tsc", typecheck: "tsc --noEmit" } }),
   );
-  assert.deepEqual(detectBuildCheck(dir), { rootDir: dir, script: "typecheck" });
+  assert.deepEqual(detectBuildCheck(dir), { kind: "npm", rootDir: dir, script: "typecheck" });
 });
 
 test("detectBuildCheck returns the NEAREST qualifying ancestor when several qualify", () => {
@@ -482,7 +482,7 @@ test("detectBuildCheck returns the NEAREST qualifying ancestor when several qual
   // Start from a worktree-shaped path below the inner root — inner is closer and must win.
   const start = path.join(inner, ".tumwater", "worktrees", ROLE);
   fs.mkdirSync(start, { recursive: true });
-  assert.deepEqual(detectBuildCheck(start), { rootDir: inner, script: "build" });
+  assert.deepEqual(detectBuildCheck(start), { kind: "npm", rootDir: inner, script: "build" });
 });
 
 test("detectBuildCheck stops at the first qualifying ancestor even when it has no check script", () => {
@@ -513,9 +513,9 @@ test("detectBuildCheck gives up past maxLevels ancestors", () => {
   // The start dir sits four levels below the install — beyond a cap of two.
   const start = path.join(root, "a", "b", "c", "d");
   fs.mkdirSync(start, { recursive: true });
-  assert.equal(detectBuildCheck(start, 2), null);
+  assert.equal(detectBuildCheck(start, undefined, 2), null);
   // …and the same walk with the default cap still finds it.
-  assert.deepEqual(detectBuildCheck(start), { rootDir: root, script: "build" });
+  assert.deepEqual(detectBuildCheck(start), { kind: "npm", rootDir: root, script: "build" });
 });
 
 test("clipBuildTail keeps the last ten non-empty lines", () => {
@@ -549,7 +549,7 @@ test("runBuildCheck skips (not fails closed) when npm is missing from PATH", asy
   const oldPath = process.env.PATH;
   process.env.PATH = tmpdir("empty-path-"); // a directory with no executables
   try {
-    const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+    const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "no-npm");
   } finally {
@@ -610,10 +610,10 @@ test("a red pre-check spends one fix run, and a no-change fix rejects with zero 
     assert.equal(result.run, undefined, "the reviewer never ran: the fix outcome decided alone");
     assert.ok(result.fixRun, "the spent fix run is reported for usage folding");
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
-    assert.match(result.detail ?? "", /^build check failed \(build\): /);
+    assert.match(result.detail ?? "", /^build check failed \(\`npm run build\`\): /);
     assert.equal(state.lastReview?.verdict, "reject");
     const reasons = state.lastReview?.reasons ?? [];
-    assert.match(reasons[0] ?? "", /^build check failed \(build\): src\/bad\.ts\(3,5\)/); // header + first output line
+    assert.match(reasons[0] ?? "", /^build check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/); // header + first output line
     assert.equal(state.unreviewFailures, 0); // a deterministic verdict resets strikes like a model reject
     const rejected = readEvents(root).find((e) => e.type === "review_rejected");
     assert.ok(rejected, "the rejection is logged for tumwater logs");
@@ -639,9 +639,9 @@ test("a red pre-check on the declared test script rejects after one spent fix ru
     assert.equal(result.decision, "rejected");
     assert.ok(fs.existsSync(marker), "the fix run ran before the reject");
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
-    assert.match(result.detail ?? "", /^build check failed \(test\): /);
+    assert.match(result.detail ?? "", /^build check failed \(\`npm run test\`\): /);
     const reasons = state.lastReview?.reasons ?? [];
-    assert.match(reasons[0] ?? "", /^build check failed \(test\): 1 failing/); // header names the script that ran
+    assert.match(reasons[0] ?? "", /^build check failed \(\`npm run test\`\): 1 failing/); // header names the script that ran
     assert.equal(state.unreviewFailures, 0); // a deterministic verdict resets strikes like a model reject
   } finally {
     restore();
@@ -687,7 +687,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
     assert.equal(result.decision, "rejected"); // the fix run had nothing to offer
     assert.ok(fs.existsSync(marker), "the fix run ran before the reject");
     const reasons = state.lastReview?.reasons ?? [];
-    assert.equal(reasons[0], "build check failed (test): AssertionError [ERR_ASSERTION]: 1 == 2");
+    assert.equal(reasons[0], "build check failed (`npm run test`): AssertionError [ERR_ASSERTION]: 1 == 2");
     assert.ok(reasons.some((r) => r.startsWith("at ")), "the rest of the clipped tail still follows");
     assert.ok(reasons.includes("actual: 1,"), "real diff content is not skipped as noise");
   } finally {
@@ -744,7 +744,7 @@ test("a fix run that leaves the check red rejects with the extra reason line", a
     assert.equal(result.decision, "rejected");
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
     const reasons = state.lastReview?.reasons ?? [];
-    assert.match(reasons[0] ?? "", /^build check failed \(build\): /);
+    assert.match(reasons[0] ?? "", /^build check failed \(\`npm run build\`\): /);
     assert.ok(
       reasons.includes("the fix attempt did not turn the check green"),
       `the fix attempt's outcome rides on the reasons; got: ${JSON.stringify(reasons)}`,
@@ -753,6 +753,62 @@ test("a fix run that leaves the check red rejects with the extra reason line", a
     assert.equal(result.run, undefined, "the reviewer never ran");
   } finally {
     restore();
+  }
+});
+
+test("a configured check.command gates a merge in a repo with no npm install at all", async () => {
+  // plans/portability.md §6/7: no package.json and no node_modules anywhere — today's walk-up
+  // detection finds nothing and every gate silently turns off; a configured command must run
+  // at the review gate instead, failing the diff deterministically with the command's tail.
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "wip change");
+  const ctx = {
+    ...gateCtx(root, wt),
+    config: { ...defaultConfig(), check: { command: "echo 'pytest: 3 failing'; exit 1" } },
+  };
+
+  // The fake pi serves the fix run (the pre-check failed): it touches a marker outside the
+  // worktree — no changes — so the gate rejects without ever reaching the reviewer.
+  const marker = path.join(tmpdir(), "pi-ran-command-check");
+  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(ctx, state);
+    assert.equal(result.decision, "rejected", "the configured check's failure gates the merge");
+    assert.equal(result.run, undefined, "the reviewer never ran: the check decided alone");
+    assert.equal(state.lastReview?.verdict, "reject");
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.match(reasons[0] ?? "", /^build check failed \(\`echo 'pytest: 3 failing'; exit 1\`\): pytest: 3 failing$/);
+    const rejected = readEvents(root).find((e) => e.type === "review_rejected");
+    assert.ok(rejected, "the rejection is logged");
+  } finally {
+    restore();
+  }
+
+  // And a green configured check passes the gate: the run is priced with the command in the
+  // build_check event's script field, exactly like an npm check's run. A fresh change — the
+  // reject above reset the branch to main, and an empty diff is exempt, not approved.
+  fs.appendFileSync(path.join(wt, "seed.txt"), "second change\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "wip change 2");
+  const greenCtx = {
+    ...gateCtx(root, wt),
+    config: { ...defaultConfig(), check: { command: "true" } },
+  };
+  const restoreGreen = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve\n1. checked the diff", { tokens: 17, output: 17, cost: 0.02 })}'`);
+  try {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain(greenCtx, state);
+    assert.equal(result.decision, "approved");
+    const events = readEvents(root);
+    const check = events.filter((e) => e.type === "build_check" && e.scope === "gate").at(-1);
+    assert.equal((check as { script?: string } | undefined)?.script, "true");
+    assert.equal((check as { status?: string } | undefined)?.status, "passed");
+  } finally {
+    restoreGreen();
   }
 });
 

@@ -888,7 +888,7 @@ test("landBatchMax caps the stack and live-reloads: five queue as 3+2 batches, t
     // in-lock check seeds too — but no single has landed yet, and the ticks are deferred, so
     // this hit can only come from the batch's noteGreenBaseline.)
     const runsBefore = Number(fs.readFileSync(count, "utf8"));
-    await checkMainBaseline(repo);
+    await checkMainBaseline(repo, defaultConfig());
     assert.equal(Number(fs.readFileSync(count, "utf8")), runsBefore, "the stacked tip is green-seeded: no re-run");
 
     // Phase 2: cap 1, LIVE — no restart: the next drain reads the reloaded config and takes

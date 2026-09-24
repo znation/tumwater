@@ -5,21 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### 6/7 — Make the project's verification command configurable (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-24 and 2026-09-25)
-
-**Goal.** Stop assuming the target project is an npm project. `detectBuildCheck`/`runBuildCheck` walk up for a directory holding both `package.json` and `node_modules`, then run `npm run test|typecheck|build`; against a Python, Rust, or Go repo the walk finds nothing, so the review gate's pre-check, the red-main baseline gate (src/main-red.ts), and redeploy's `mainGreen` all degrade to "no check". Add `check.command` in config with today's npm auto-detection as the fallback; the threading surface is the three `detectBuildCheck` sites (`runScopedBuildCheck` in build-check.ts, main-baseline.ts, doctor.ts), `MergeContext`, `checkMainBaseline`'s own callers (src/main-red.ts, src/redeploy.ts), and the gate's build-fix prompt (`buildBuildFixPrompt` names `npm run <script>`; it takes `describeCheck`'s wording instead, as do the rejection reasons and the gate's two `verifiedByHarness` success strings at review.ts:284/:296 — the 09-23 fix-on-the-spot feature added this npm assumption after the 09-21 audit, and the 09-25 audit caught the success strings). Detection and the batch drain were split into their own modules (src/build-check-detect.ts, src/land-batch.ts) after the last audit; both are now part of the surface.
-
-**Series.** Part 6/7 of the portability series. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §6/7.
-
-**Files touched.** src/types.ts, src/config-validation.ts, src/build-check-detect.ts, src/build-check.ts, src/prompt.ts, src/review.ts, src/merge.ts, src/land-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts, src/loop.ts, src/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts, test/main-baseline.test.ts, test/redeploy.test.ts, test/doctor.test.ts.
-
-**Acceptance criteria.**
-- A repo with `check.command = "pytest -q"` and no `package.json` anywhere has its check run at the review gate, at the red-main baseline, and in redeploy's green check; a failing check rejects the diff with the command's output tail as the reasons.
-- A repo with no `check` and a `package.json` behaves exactly as today (pinned by the existing build-check tests passing unmodified).
-- A configured command that hangs is killed at `timeoutSeconds`; at the `gate` scope it is classified `skipped` and the tick proceeds to model review with a warning, while at `landing`/`batch` it is remapped to `failed` with the "tree is unverified" reason and rejects the merge (the existing `MERGE_SCOPES` policy, unchanged).
-- Tick prompts in a non-npm repo never mention `node_modules`, and name the configured command where they used to say "if it has a build or test command".
-- `doctor` warns, naming the consequence, when neither a configured command nor an npm script is found.
-
 ### 7/7 — Adopt an existing repository without hijacking its README (planned 2026-09-14, refined 2026-09-18, re-audited 2026-09-24)
 
 **Goal.** Let `tumwater init` run against a repo that already exists and already has a README. Today it hard-fails when `README.md` exists without the `tumwater:prompt` markers, because `readInitialPrompt` (src/readme.ts) reads the brief only out of README.md's managed section. Introduce `TUMWATER.md` as the project brief with README as the compatibility path, plus `init --adopt` / `--dry-run`; the brief filename threads through `COMMON_RULES` (shared with the director prompt).
@@ -60,6 +45,40 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `tumwater wake`, `abort`, and `reset-counters` print exactly today's text in both the live and not-live cases (existing cli-operators tests pass unmodified).
 
 ## Done
+
+### 6/7 — Make the project's verification command configurable (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-24 and 2026-09-25, done 2026-09-25)
+
+**Done 2026-09-25 by feature.** Landed as designed: `check: { command, cwd?, timeoutSeconds? }`
+is a project key in TumwaterConfig (validated: object with a non-blank command, optional cwd
+string and positive timeoutSeconds), `BuildCheck` is a discriminated union — `npm`
+(rootDir/script, the walk-up, unchanged) or `command` (command verbatim, cwd resolved against
+the detection's start dir, timeoutMs = timeoutSeconds × 1000, default the shared 300 s) —
+and `detectBuildCheck(startDir, config?, maxLevels?)` returns the configured command first.
+`runBuildCheck` dispatches on kind: the command kind runs `sh -c <command>` in its resolved
+cwd, under the same group-wide timeout/escalation and the same classification (probe → skip,
+spawn failure → skip, timeout → skip, nonzero → failed with clipBuildTail's tail). Outcome
+shape unchanged — a command check's `script` field is the command verbatim, so the
+`build_check` event, the red-main note, and the skip warnings keep their shape.
+`describeCheck(check)` names the check in prompts (`` `npm run test` `` / `` `pytest -q` ``):
+COMMON_RULES became `commonRules(check)` — the Leave-the-project-working rule names the actual
+command (generic wording only when no check exists) and the node_modules borrowing sentence
+survives only for an npm check — and `buildBuildFixPrompt` plus the review reasons headline
+take the description instead of an npm script. Config threads to all three detect sites
+(`runScopedBuildCheck` gained it before timeoutMs; `checkMainBaseline(wt, config, onRun?,
+reverifyRed?)` requires it in 2nd position; `checkBuildCheck(root, config)`), through
+`MergeContext.config` (set in loop.ts's merge and lander.ts) and `mainIsGreen(mirrorWt,
+config, onRun?)` with createRedeployer reading the live config per call. Doctor's no-check
+stance flipped from informational to warn naming the consequence, and the check label is
+"project check". Two audit drifts resolved in place: the batch scope's call site lives in
+src/land-batch.ts (not lander.ts — the code moved since the 09-24 audit; lander.ts remains
+for the MergeContext wiring), and `checkBuildCheck`'s config parameter is typed structurally
+(`{ check?: … } | null`) since only the check key is read. The 09-25 audit's one correction is
+also in: the gate's `verifiedByHarness` success strings name the check via `describeCheck` at
+both review sites (src/review.ts:288/:300) instead of interpolating `npm run ${check.script}` —
+the second npm assumption the 09-23 fix-on-the-spot feature added, caught by that audit.
+Every acceptance criterion has a
+test; the npm fallback is pinned unmodified. `npm test` 1401 pass (was 1394; +7
+configured-command tests).
 
 ### Optional shared-token auth for the GUI dashboard — `gui --token <secret>` (planned 2026-09-23, re-audited 2026-09-25, done 2026-09-23)
 

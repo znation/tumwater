@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { type BuildCheck, detectBuildCheck } from "./build-check-detect.js";
+import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck } from "./build-check-detect.js";
 import { logEvent, warnEvent } from "./events.js";
 import { truncate } from "./text.js";
 import { signalTree } from "./pi.js";
@@ -42,8 +42,9 @@ export function clipReason(r: string): string {
 
 /** Hard cap on one build check run — a hung script (watch mode) must not wedge the tick, and
  * a timeout is environmental, never fail-closed. A parameter of runBuildCheck so tests can
- * shorten it. */
-export const BUILD_CHECK_TIMEOUT_MS = 300_000;
+ * shorten it. Defined in build-check-detect.ts (the configured command's timeoutSeconds
+ * resolves against it there) and re-exported here, where every consumer imports it. */
+export { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 
 /** SIGTERM → SIGKILL escalation window once a build check's timeout has FIRED: the whole
  * process group gets SIGTERM, and anything still alive this much later (a SIGTERM-trapping
@@ -251,57 +252,91 @@ function runScriptGroup(
   });
 }
 
-/** Probe the toolchain (see probeToolchain), then run `npm run <script>` in the worktree
- * (cwd = wt), capturing combined output with a hard timeout enforced GROUP-WIDE — the
- * process tree, not just the npm process — and classified per BuildCheckOutcome. Never
- * throws: every outcome is classified. Running a local script needs no network. No env
- * manipulation is needed even though the worktree has no node_modules of its own
- * (gitignored): npm's run-script walks UP from the project path, adding EVERY level's
- * `node_modules/.bin` to the script's PATH (@npmcli/run-script setPATH), so the toolchain at
- * check.rootDir — an ancestor of wt by detectBuildCheck construction — is resolvable without
- * any help. The script still runs in wt, compiling the branch state — which is what this
- * check exists for; build-check.test.ts pins the no-node_modules-worktree resolution. */
+/** The human/prompt-facing name of a check (plans/portability.md §6/7): the tick prompt and
+ * the build-fix prompt name the actual verification command instead of asserting npm —
+ * "verify with `pytest -q`" in a Python repo, "`npm run test`" in an npm one. */
+export function describeCheck(check: BuildCheck): string {
+  return check.kind === "npm" ? `\`npm run ${check.script}\`` : `\`${check.command}\``;
+}
+
+/** The timeout a check actually runs under: a configured command carries its own
+ * (check.timeoutSeconds → detectBuildCheck's timeoutMs), an npm check takes the caller's.
+ * One resolution so the run, the event, and the skip warning cannot disagree. */
+function checkTimeoutMs(check: BuildCheck, fallbackMs: number): number {
+  return check.kind === "command" ? check.timeoutMs : fallbackMs;
+}
+
+/** The name an outcome records for what ran: an npm check's script name, a configured
+ * command's command verbatim. Kept as one field so the build_check event and every reason
+ * headline keep their shape across both kinds. */
+function checkScriptName(check: BuildCheck): string {
+  return check.kind === "npm" ? check.script : check.command;
+}
+
+/** Probe the toolchain (see probeToolchain), then run the declared check in the worktree —
+ * `npm run <script>` (cwd = wt) for the npm kind, `check.command` through a shell
+ * (`sh -c`, cwd = check.cwd) for the configured-command kind — capturing combined output
+ * with a hard timeout enforced GROUP-WIDE — the process tree, not just the top process —
+ * and classified per BuildCheckOutcome. Never throws: every outcome is classified. Running
+ * a local script needs no network. No env manipulation is needed even though the worktree
+ * has no node_modules of its own (gitignored): npm's run-script walks UP from the project
+ * path, adding EVERY level's `node_modules/.bin` to the script's PATH (@npmcli/run-script
+ * setPATH), so the toolchain at check.rootDir — an ancestor of wt by detectBuildCheck
+ * construction — is resolvable without any help. The script still runs in wt, compiling the
+ * branch state — which is what this check exists for; build-check.test.ts pins the
+ * no-node_modules-worktree resolution. A configured command's cwd is resolved by
+ * detectBuildCheck against the worktree the detection started from. */
 export async function runBuildCheck(
   wt: string,
   check: BuildCheck,
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
   killGraceMs = KILL_GRACE_MS,
 ): Promise<BuildCheckOutcome> {
+  const script = checkScriptName(check);
+  const effectiveMs = checkTimeoutMs(check, timeoutMs);
   // Environmental probe first: a toolchain broken below the project (git exiting 69 on an
   // invalidated Xcode license) would fail the check with noise unrelated to the tree and the
   // failure would be misread as a red build — run nothing, read it as a skip (BUGS.md 2026-09-15).
   if ((await probeToolchain()) === "broken") {
-    return { status: "skipped", script: check.script, skipReason: "toolchain" };
+    return { status: "skipped", script, skipReason: "toolchain" };
   }
-  const r = await runScriptGroup("npm", ["run", check.script], {
-    cwd: wt,
-    timeoutMs,
-    killGraceMs,
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  // Spawn failed before anything ran — the npm binary is missing from PATH.
-  if (r.spawnError) return { status: "skipped", script: check.script, skipReason: "no-npm" };
+  const r =
+    check.kind === "command"
+      ? await runScriptGroup("sh", ["-c", check.command], {
+          cwd: check.cwd,
+          timeoutMs: effectiveMs,
+          killGraceMs,
+          maxBuffer: 32 * 1024 * 1024,
+        })
+      : await runScriptGroup("npm", ["run", check.script], {
+          cwd: wt,
+          timeoutMs: effectiveMs,
+          killGraceMs,
+          maxBuffer: 32 * 1024 * 1024,
+        });
+  // Spawn failed before anything ran — the runner is missing from PATH.
+  if (r.spawnError) return { status: "skipped", script, skipReason: "no-npm" };
   // The timeout fired (or the tree died on a signal): environmental — warn and proceed. A
   // timed-out check's whole process tree is already being taken down group-wide by
   // runScriptGroup (SIGTERM now, SIGKILL after the grace if anything survived).
-  if (r.timedOut || r.signal) return { status: "skipped", script: check.script, skipReason: "timeout" };
-  if (r.code === 0) return { status: "passed", script: check.script };
+  if (r.timedOut || r.signal) return { status: "skipped", script, skipReason: "timeout" };
+  if (r.code === 0) return { status: "passed", script };
   // A started process that exited nonzero is a deterministic failure of the build itself —
   // unless its output names a broken toolchain: then the environment, not the tree, killed it,
   // and the same skip semantics apply (never a deterministic rejection, never a red baseline).
   if (typeof r.code === "number") {
     const output = `${r.stdout}${r.stderr}`;
     if (toolchainErrorInOutput(output)) {
-      return { status: "skipped", script: check.script, skipReason: "toolchain" };
+      return { status: "skipped", script, skipReason: "toolchain" };
     }
     return {
       status: "failed",
-      script: check.script,
+      script,
       outputTail: clipBuildTail(output),
     };
   }
-  // Spawn failed before anything ran — the npm binary is missing from PATH.
-  return { status: "skipped", script: check.script, skipReason: "no-npm" };
+  // Spawn failed before anything ran — the runner is missing from PATH.
+  return { status: "skipped", script, skipReason: "no-npm" };
 }
 
 /** The scopes named in a build_check event logged from this helper. The red-main baseline
@@ -361,10 +396,15 @@ export async function runScopedBuildCheck(
   role: string,
   scope: BuildCheckScope,
   wt: string,
+  config?: { check?: { command: string; cwd?: string; timeoutSeconds?: number } },
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
-  const check = detectBuildCheck(wt);
+  const check = detectBuildCheck(wt, config);
   if (!check) return null;
+  // A configured command carries its own timeout (check.timeoutSeconds); an npm check runs
+  // under the caller's. Effective here so the reason text and the skip warning agree with
+  // what runBuildCheck enforced.
+  const effectiveMs = checkTimeoutMs(check, timeoutMs);
   const startedAt = Date.now();
   const raw = await runBuildCheck(wt, check, timeoutMs);
   // A timeout at a merge scope is not environmental: no verdict about the tree was reached,
@@ -374,23 +414,23 @@ export async function runScopedBuildCheck(
   // the model reviewer, which the landing path's own check backs up.
   const mergeTimeout =
     raw.status === "skipped" && raw.skipReason === "timeout" && MERGE_SCOPES.has(scope);
-  const timeoutReason = `${SCOPE_WORDS[scope].label} timed out after ${timeoutMs / 1000}s; the tree is unverified`;
+  const timeoutReason = `${SCOPE_WORDS[scope].label} timed out after ${effectiveMs / 1000}s; the tree is unverified`;
   const outcome: BuildCheckOutcome = mergeTimeout
-    ? { status: "failed", script: check.script, outputTail: [timeoutReason] }
+    ? { status: "failed", script: checkScriptName(check), outputTail: [timeoutReason] }
     : raw;
   logEvent(root, {
     loop: role,
     type: "build_check",
     scope,
     status: outcome.status,
-    script: check.script,
+    script: checkScriptName(check),
     durationMs: Date.now() - startedAt,
   });
   if (outcome.status === "skipped") {
     // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
     // code tick into the 3-strike discard (gate) or a merge behind the merge lock.
     const w = SCOPE_WORDS[scope];
-    warnEvent(root, role, buildCheckSkipWarning(outcome.skipReason!, w.label, w.proceeding, timeoutMs));
+    warnEvent(root, role, buildCheckSkipWarning(outcome.skipReason!, w.label, w.proceeding, effectiveMs));
   } else if (mergeTimeout) {
     warnEvent(root, role, `${timeoutReason}; rejecting the merge`);
   }

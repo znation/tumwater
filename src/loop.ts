@@ -33,6 +33,7 @@ import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBack
 import { recordDailyCost } from "./budget.js";
 import { recoverLeftover } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
+import { detectBuildCheck } from "./build-check-detect.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal } from "./refusal.js";
@@ -171,12 +172,16 @@ export class LoopRunner {
     // The project's design principles ride along in every prompt — tick and director alike — so
     // all loops share one standard of taste. Empty when the repo has no PRINCIPLES.md.
     const principles = readPrinciples(this.root);
+    // The project's resolved check (plans/portability.md §6/7): the prompt names the actual
+    // verify command instead of asserting npm. Detection is a handful of stat calls — a
+    // per-tick recompute keeps a config edit live on the next tick.
+    const check = detectBuildCheck(this.root, this.config) ?? undefined;
     let prompt: string;
     if (this.role === DIRECTOR_ROLE) {
       const userPrompt = dequeuePrompt(this.root);
       if (!userPrompt) return null;
       this.pendingUserPrompt = userPrompt;
-      prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles);
+      prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check);
     } else {
       // Catalog first, then user-defined loops (plans/user-defined-loops.md): a custom's task
       // is its entire find-something-to-do text and the title identifies it in the prompt.
@@ -204,6 +209,7 @@ export class LoopRunner {
         digest,
         coverage,
         extraInstructions: this.config.roles[this.role]?.instructions,
+        check,
       });
     }
     // A change rejected in review is the only cross-tick memory of what was built and why it
@@ -269,6 +275,7 @@ export class LoopRunner {
         role: this.role,
         mainBranch: this.mainBranch,
         exemptPaths: this.config.review.exemptPaths,
+        config: this.config,
         tick: this.state.ticks,
         runPi: (w, prompt, sessionName) => this.pi.runRolePi(w, prompt, sessionName),
       },

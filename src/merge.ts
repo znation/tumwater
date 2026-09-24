@@ -19,7 +19,7 @@ import { falseFixReason } from "./fix-claim.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./prompt.js";
 import { CONFIG_BASENAME, configPath, mergeLockDir } from "./paths.js";
-import type { PiRunResult, TickResult } from "./types.js";
+import type { PiRunResult, TumwaterConfig, TickResult } from "./types.js";
 
 /** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased
  * tree with the project's declared check when main moved under it, fast-forward, and —
@@ -43,6 +43,9 @@ export interface MergeContext {
   root: string;
   role: string;
   mainBranch: string;
+  /** The live config — the in-lock re-check detects the project's declared check through
+   * it (plans/portability.md §6/7), exactly as the review gate's pre-check does. */
+  config: TumwaterConfig;
   /** The review gate's exemption patterns (config.review.exemptPaths) — the in-lock re-check
    * skips doc-only deltas with exactly the same test the gate applies. */
   exemptPaths: string[];
@@ -152,7 +155,7 @@ async function verifyLanding(
   }
   // The run itself (build_check event, environmental-skip warning) lives in
   // runScopedBuildCheck, shared with the review gate's pre-check.
-  const check = await runScopedBuildCheck(ctx.root, ctx.role, "landing", wt);
+  const check = await runScopedBuildCheck(ctx.root, ctx.role, "landing", wt, ctx.config);
   if (!check) return true; // No declared check: nothing to run, exactly like the gate skipping its pre-check.
   if (check.outcome.status === "failed") return false;
   if (check.outcome.status === "skipped") return true; // No npm / broken toolchain — the helper already warned.

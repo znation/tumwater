@@ -98,10 +98,31 @@ test("every catalog role produces a prompt mentioning its id", () => {
 test("every tick prompt forbids scanning outside the worktree", () => {
   const role = roleById("bugfix");
   assert.ok(role);
-  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  // An npm check: the node_modules borrowing sentence is only true of an npm project — it
+  // names the remedy's location (the install at the repo root, two levels up).
+  const prompt = buildTickPrompt({
+    role,
+    initialPrompt: "",
+    check: { kind: "npm", rootDir: ".", script: "test" },
+  });
   assert.match(prompt, /Stay inside your worktree/);
   assert.match(prompt, /find \/\`/);
   assert.match(prompt, /\.\.\/\.\.\/node_modules/);
+
+  // A configured check names the command verbatim, and the npm-only sentence disappears —
+  // in a repo with no node_modules anywhere it is false and actively misleading.
+  const configured = buildTickPrompt({
+    role,
+    initialPrompt: "",
+    check: { kind: "command", command: "pytest -q", cwd: "/tmp/repo", timeoutMs: 300_000 },
+  });
+  assert.match(configured, /verify with `pytest -q`/);
+  assert.ok(!configured.includes("node_modules"), "no npm assertion in a non-npm repo's prompt");
+
+  // No check at all: the generic wording stays, and the npm-only sentence still disappears.
+  const none = buildTickPrompt({ role, initialPrompt: "" });
+  assert.match(none, /if it has a build or test command/);
+  assert.ok(!none.includes("node_modules"));
 });
 
 test("tick and director prompts share one worktree + initial-prompt preamble", () => {
@@ -313,23 +334,29 @@ test("buildConflictPrompt keeps the project building and ends by stopping", () =
 // pre-check. Its contract: pi knows which script failed and why, may not fake a pass by
 // weakening the suite, and may not commit — the harness commits the fix it made.
 
-test("buildBuildFixPrompt names the role, the failing script, and every failure line", () => {
-  const p = buildBuildFixPrompt("feature", "test", [
-    "build check failed (test): 1 failing of 3 tests: assert.equal",
+test("buildBuildFixPrompt names the role, the failing check, and every failure line", () => {
+  const p = buildBuildFixPrompt("feature", "`npm run test`", [
+    "build check failed (`npm run test`): 1 failing of 3 tests: assert.equal",
     "at TestContext.<anonymous> (file:///w/dist/test/x.test.js:3:35)",
   ]);
   assert.match(p, /"feature" loop/);
   assert.match(p, /`npm run test`/);
   assert.match(p, /FAILED/);
   assert.ok(
-    p.includes("- build check failed (test): 1 failing of 3 tests: assert.equal") &&
+    p.includes("- build check failed (`npm run test`): 1 failing of 3 tests: assert.equal") &&
       p.includes("- at TestContext.<anonymous>"),
     "every reason line as its own bullet, headline first",
   );
+
+  // The check's description rides in verbatim (describeCheck's output) — a configured
+  // command, not an npm script name the check union may not have.
+  const configured = buildBuildFixPrompt("feature", "`pytest -q`", ["build check failed (`pytest -q`): boom"]);
+  assert.match(configured, /check, `pytest -q`, FAILED/);
+  assert.match(configured, /Re-run `pytest -q` until it passes/);
 });
 
 test("buildBuildFixPrompt forbids deleting, skipping, or weakening tests", () => {
-  const p = buildBuildFixPrompt("bugfix", "build", ["build check failed (build): error TS2345"]);
+  const p = buildBuildFixPrompt("bugfix", "`npm run build`", ["build check failed (`npm run build`): error TS2345"]);
   // A fix that makes the check pass without the code being right is worse than no fix —
   // it would land a red tree behind a green headline.
   assert.match(p, /Never delete a test/);
@@ -339,7 +366,7 @@ test("buildBuildFixPrompt forbids deleting, skipping, or weakening tests", () =>
 });
 
 test("buildBuildFixPrompt forbids state-changing git commands (the harness commits)", () => {
-  const p = buildBuildFixPrompt("clean", "test", ["build check failed (test): boom"]);
+  const p = buildBuildFixPrompt("clean", "`npm run test`", ["build check failed (`npm run test`): boom"]);
   assert.match(p, /no add, commit, merge, rebase/);
   assert.match(p, /the harness commits your fix/i);
   // The run's exit condition: the check passes, then it stops — no retry loop, no new task.

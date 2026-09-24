@@ -24,7 +24,7 @@ test("runBuildCheck resolves the toolchain from the installed root when the work
   const { root, wt } = buildCheckFixture();
   // Pre-fix this was `sh: buildcheck-tool: command not found` (exit 127) — a deterministic
   // rejection of every code change in any JS project (BUGS.md).
-  const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+  const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
   assert.equal(outcome.status, "passed");
 });
 
@@ -39,7 +39,7 @@ test("runBuildCheck still classifies a genuinely failing build as failed with th
     tool,
     "#!/bin/sh\n[ \"$1\" = \"--ok\" ] && echo ok || { echo type error TS9999: boom; exit 1; }\n",
   );
-  const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+  const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
   assert.equal(outcome.status, "failed");
   assert.ok((outcome.outputTail ?? []).some((l) => l.includes("TS9999")));
 });
@@ -50,7 +50,7 @@ test("runBuildCheck skips (not fails closed) when the script times out", async (
     path.join(wt, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "sleep 5" } }),
   );
-  const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 400);
+  const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 400);
   assert.equal(outcome.status, "skipped");
   assert.equal(outcome.skipReason, "timeout");
 });
@@ -95,7 +95,7 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
     // which died by default action before trapping or writing its pid — the test then died
     // reading a pid file that never existed and falsely reddened main at 03edeba6 (BUGS.md
     // 2026-09-24). test/pi.test.ts hit and fixed this same startup race once already.
-    const outcome = await runBuildCheck(wt, { rootDir: root, script: "test" }, 4_000, 700);
+    const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 4_000, 700);
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "timeout");
     // The check resolves at timeout-fire and the pid write races the read under the same
@@ -136,7 +136,7 @@ test("a healthy check that outlasts the SIGKILL grace is not mistaken for a time
     path.join(wt, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "sleep 2" } }),
   );
-  const outcome = await runBuildCheck(wt, { rootDir: root, script: "test" }, 30_000, 500);
+  const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 30_000, 500);
   assert.equal(outcome.status, "passed");
 });
 
@@ -151,7 +151,7 @@ test("a landing- or batch-scope timeout is a deterministic reject, not an enviro
   );
 
   for (const scope of ["landing", "batch"] as const) {
-    const result = await runScopedBuildCheck(root, ROLE, scope, wt, 400);
+    const result = await runScopedBuildCheck(root, ROLE, scope, wt, undefined, 400);
     assert.equal(result!.outcome.status, "failed", `${scope}: a timeout rejects`);
     assert.match(
       result!.outcome.outputTail?.[0] ?? "",
@@ -168,7 +168,7 @@ test("a landing- or batch-scope timeout is a deterministic reject, not an enviro
     "the operator sees why the landing did not proceed",
   );
 
-  const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, 400);
+  const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, undefined, 400);
   assert.equal(gate!.outcome.status, "skipped");
   assert.equal(gate!.outcome.skipReason, "timeout");
 });
@@ -182,7 +182,7 @@ test("runBuildCheck skips (not fails closed) when npm is missing from PATH", asy
   const oldPath = process.env.PATH;
   process.env.PATH = emptyBin; // no npm (execFile resolves bare commands via PATH)
   try {
-    const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+    const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "no-npm");
   } finally {
@@ -214,7 +214,7 @@ test("runBuildCheck skips (not fails closed) when the toolchain probe fails, and
   const oldPath = process.env.PATH;
   process.env.PATH = `${brokenGitBin()}:${oldPath}`; // the broken git shadows the real one; npm stays
   try {
-    const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+    const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "toolchain");
     assert.ok(!fs.existsSync(counter), "the check itself never ran — the probe short-circuited it");
@@ -236,7 +236,7 @@ test("runBuildCheck reads a toolchain error in a failed run's output as skipped,
       scripts: { build: 'echo "You have not agreed to the Xcode license agreements."; echo "xcrun: error: missing input"; exit 1' },
     }),
   );
-  const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+  const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
   assert.equal(outcome.status, "skipped");
   assert.equal(outcome.skipReason, "toolchain");
 });
@@ -253,7 +253,7 @@ test("runBuildCheck proceeds when git is missing from PATH: a check that never t
   const oldPath = process.env.PATH;
   process.env.PATH = bin; // node + npm + sh, no git
   try {
-    const outcome = await runBuildCheck(wt, { rootDir: root, script: "build" }, 30_000);
+    const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
     assert.equal(outcome.status, "passed");
   } finally {
     process.env.PATH = oldPath;
@@ -262,7 +262,7 @@ test("runBuildCheck proceeds when git is missing from PATH: a check that never t
 
 test("detectBuildCheck walks up from a worktree without node_modules to the installed project root", () => {
   const { root, wt } = buildCheckFixture();
-  assert.deepEqual(detectBuildCheck(wt), { rootDir: root, script: "build" });
+  assert.deepEqual(detectBuildCheck(wt), { kind: "npm", rootDir: root, script: "build" });
 });
 
 // --- detectBuildCheck semantics: preference, first-qualifying-directory-wins, and failure modes.
@@ -280,14 +280,14 @@ test("detectBuildCheck prefers test over typecheck and build when all three scri
     path.join(root, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "b", typecheck: "t", test: "x" } }),
   );
-  assert.deepEqual(detectBuildCheck(root), { rootDir: root, script: "test" });
+  assert.deepEqual(detectBuildCheck(root), { kind: "npm", rootDir: root, script: "test" });
 
   // Without a test script the old preference stands: typecheck over build.
   fs.writeFileSync(
     path.join(root, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "b", typecheck: "t" } }),
   );
-  assert.deepEqual(detectBuildCheck(root), { rootDir: root, script: "typecheck" });
+  assert.deepEqual(detectBuildCheck(root), { kind: "npm", rootDir: root, script: "typecheck" });
 });
 
 test("detectBuildCheck stops at the first qualifying directory even when it declares no check script", () => {
@@ -346,7 +346,7 @@ test("detectBuildCheck tolerates a malformed or scriptless package.json without 
     path.join(root, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "  ", build: "echo ok" } }),
   );
-  assert.deepEqual(detectBuildCheck(root), { rootDir: root, script: "build" });
+  assert.deepEqual(detectBuildCheck(root), { kind: "npm", rootDir: root, script: "build" });
 });
 
 test("detectBuildCheck honors the maxLevels bound and terminates at the filesystem root", () => {
@@ -356,7 +356,7 @@ test("detectBuildCheck honors the maxLevels bound and terminates at the filesyst
   const base = tmpdir("buildcheck-none-");
   const deep = path.join(base, "a", "b", "c");
   fs.mkdirSync(deep, { recursive: true });
-  assert.equal(detectBuildCheck(deep, 10), null);
+  assert.equal(detectBuildCheck(deep, undefined, 10), null);
 
   // The bound is inclusive: an install exactly maxLevels up is found; one level further out is not.
   const chain = tmpdir("buildcheck-bound-");
@@ -367,8 +367,8 @@ test("detectBuildCheck honors the maxLevels bound and terminates at the filesyst
     path.join(chain, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "echo ok" } }),
   );
-  assert.deepEqual(detectBuildCheck(dir, 3), { rootDir: chain, script: "build" });
-  assert.equal(detectBuildCheck(dir, 2), null);
+  assert.deepEqual(detectBuildCheck(dir, undefined, 3), { kind: "npm", rootDir: chain, script: "build" });
+  assert.equal(detectBuildCheck(dir, undefined, 2), null);
 });
 
 // --- clipBuildTail: what of a chatty build's output survives into persisted state and the
@@ -505,3 +505,74 @@ test("resolveFromNodeModules climbs to an ancestor's install and gives up past t
   assert.equal(resolveFromNodeModules(nested, "nonesuch"), null, "nothing to find");
 });
 
+
+// --- A configured check.command (plans/portability.md §6/7): the walk-up cannot know how a
+// Python, Rust, or Go repo verifies itself, so `check` in tumwater.json names it and the same
+// detection → run → classification machinery executes it. No npm assumed anywhere.
+
+test("detectBuildCheck returns the configured check.command first, with cwd and timeout resolved", () => {
+  const { root, wt } = buildCheckFixture();
+  assert.deepEqual(detectBuildCheck(wt, { check: { command: "pytest -q" } }), {
+    kind: "command",
+    command: "pytest -q",
+    cwd: wt,
+    timeoutMs: 300_000,
+  });
+  assert.deepEqual(
+    detectBuildCheck(wt, { check: { command: "cargo test", cwd: "crates/core", timeoutSeconds: 5 } }),
+    { kind: "command", command: "cargo test", cwd: path.join(wt, "crates", "core"), timeoutMs: 5_000 },
+  );
+  // A blank command is no command — validation rejects one, but a degraded default config
+  // could still carry it; the walk-up detection takes over instead of running nonsense.
+  assert.deepEqual(detectBuildCheck(wt, { check: { command: "   " } }), {
+    kind: "npm",
+    rootDir: root,
+    script: "build",
+  });
+  // No config at all: today's npm auto-detection, unchanged.
+  assert.deepEqual(detectBuildCheck(wt), { kind: "npm", rootDir: root, script: "build" });
+});
+
+test("a configured command runs through a shell in its cwd, classified like an npm check", async () => {
+  const { wt } = buildCheckFixture();
+  fs.mkdirSync(path.join(wt, "sub"));
+  fs.writeFileSync(path.join(wt, "sub", "marker.txt"), "x");
+
+  // `&&` composition and a pipe prove shell semantics — split into argv this would ENOENT,
+  // and without the cwd it would look in the wrong directory and fail.
+  const passing = await runBuildCheck(
+    wt,
+    { kind: "command", command: "cat marker.txt | grep x && echo done", cwd: path.join(wt, "sub"), timeoutMs: 30_000 },
+    30_000,
+  );
+  assert.equal(passing.status, "passed");
+  assert.equal(passing.script, "cat marker.txt | grep x && echo done");
+
+  const failing = await runBuildCheck(
+    wt,
+    { kind: "command", command: "echo type error TS9999: boom; exit 1", cwd: wt, timeoutMs: 30_000 },
+    30_000,
+  );
+  assert.equal(failing.status, "failed", "a nonzero exit is a deterministic rejection");
+  assert.ok((failing.outputTail ?? []).some((l) => l.includes("TS9999")), "the tail carries the failure");
+});
+
+test("a configured command times out at its own timeoutSeconds, not the caller's", async () => {
+  const { wt } = buildCheckFixture();
+  const outcome = await runBuildCheck(wt, { kind: "command", command: "sleep 5", cwd: wt, timeoutMs: 400 }, 30_000);
+  assert.equal(outcome.status, "skipped");
+  assert.equal(outcome.skipReason, "timeout");
+});
+
+test("runScopedBuildCheck remaps a configured command's merge-scope timeout exactly as an npm one", async () => {
+  const { root, wt } = buildCheckFixture();
+  const config = { check: { command: "sleep 5", timeoutSeconds: 0.4 } };
+  for (const scope of ["landing", "batch"] as const) {
+    const result = await runScopedBuildCheck(root, ROLE, scope, wt, config, 30_000);
+    assert.equal(result!.outcome.status, "failed", `${scope}: a timeout rejects`);
+    assert.match(result!.outcome.outputTail?.[0] ?? "", /timed out after 0\.4s; the tree is unverified/);
+  }
+  const events = readEvents(root);
+  const check = events.find((e) => e.type === "build_check" && e.scope === "landing");
+  assert.equal((check as { script?: string } | undefined)?.script, "sleep 5", "the event names the command");
+});

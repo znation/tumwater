@@ -10,6 +10,7 @@ import {
   readBuildInfo,
 } from "./build-info.js";
 import { type BuildCheckOutcome } from "./build-check.js";
+import { defaultConfig, loadConfigCached } from "./config.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { compileStaged, swapDist } from "./build-stage.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
@@ -430,11 +431,14 @@ export class Redeployer {
  * per red head buys that, and a green from it promotes the SHA for every other gate too. */
 export async function mainIsGreen(
   mirrorWt: string,
+  /** The live config — the declared check is detected through it (plans/portability.md
+   * §6/7), so a configured command makes the green check run on a non-npm repo too. */
+  config: { check?: { command: string; cwd?: string; timeoutSeconds?: number } },
   /** Hook for the build_check event — this run is a minute of the fleet's time and belongs in
    * the feed like the role loops' own baseline checks. */
   onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
 ): Promise<boolean> {
-  const check = await checkMainBaseline(mirrorWt, onRun, true);
+  const check = await checkMainBaseline(mirrorWt, config, onRun, true);
   return check.baseline ? check.baseline.status === "green" : true;
 }
 
@@ -454,8 +458,13 @@ export async function createRedeployer(
   const deps: RedeployDeps = {
     staleness: (mainHead) => buildStaleness(root, build.sha, mainHead),
     mainGreen: async (mainHead) =>
-      mainIsGreen(await mirror(mainHead), ({ outcome, durationMs }) =>
-        log({ loop: "harness", type: "build_check", scope: "baseline", status: outcome.status, script: outcome.script, durationMs }),
+      // The live config per call (a mid-run edit applies to the next green check like it
+      // does everywhere else); a broken file degrades to defaults — no declared check.
+      mainIsGreen(
+        await mirror(mainHead),
+        loadConfigCached(root).config ?? defaultConfig(),
+        ({ outcome, durationMs }) =>
+          log({ loop: "harness", type: "build_check", scope: "baseline", status: outcome.status, script: outcome.script, durationMs }),
       ),
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
     swap: (mainHead) => swapDist(root, dist, mainHead),

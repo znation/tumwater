@@ -343,7 +343,12 @@ test("checkMergeLock classifies absent, live (with and without pid), and stale l
 
 test("checkBuildCheck names the declared script and walks up from a worktree to the installed root", () => {
   const none = checkBuildCheck(makeRepo());
-  assert.deepEqual(none, { level: "ok", detail: "none declared — the review gate's deterministic pre-check will be skipped" });
+  // The no-check case is a warn naming the consequence (plans/portability.md §6/7): the three
+  // gates degrade to "no check" and a silently absent safety layer is what doctor must surface.
+  assert.deepEqual(none, {
+    level: "warn",
+    detail: "none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo)",
+  });
 
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }));
@@ -354,10 +359,28 @@ test("checkBuildCheck names the declared script and walks up from a worktree to 
   const wt = path.join(root, ".tumwater", "worktrees", "cov");
   fs.mkdirSync(wt, { recursive: true });
   assert.deepEqual(checkBuildCheck(wt), { level: "ok", detail: "npm test in ../../.." });
+
+  // A configured command wins over npm detection and is named verbatim; its cwd (resolved
+  // against the start dir) shows when it is not the root itself.
+  const configured = makeRepo();
+  fs.writeFileSync(path.join(configured, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }));
+  fs.mkdirSync(path.join(configured, "node_modules"));
+  assert.deepEqual(checkBuildCheck(configured, { check: { command: "pytest -q" } }), {
+    level: "ok",
+    detail: "pytest -q",
+  });
+  assert.deepEqual(checkBuildCheck(configured, { check: { command: "pytest -q", cwd: "sub" } }), {
+    level: "ok",
+    detail: `pytest -q (cwd ${path.join("sub")})`,
+  });
 });
 
 test("runDoctor composes the full report — fixed check order, not-running header, ready verdict", async () => {
   const root = readyRepo();
+  // An npm check so the report's all-ok sweep below holds — a repo with neither a configured
+  // check nor an npm script reads a project-check warn (the warn case has its own test).
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }));
+  fs.mkdirSync(path.join(root, "node_modules"));
   fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
   fs.writeFileSync(path.join(root, ".tumwater", "keep.txt"), "x\n");
   const before = fs.readdirSync(path.join(root, ".tumwater")).sort();
@@ -366,7 +389,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "fallback", "pi binary", "state dir", "merge lock", "build check", "build"],
+    ["node", "git binary", "repo", "init", "fallback", "pi binary", "state dir", "merge lock", "project check", "build"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.

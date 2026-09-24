@@ -123,6 +123,11 @@ export function noteGreenBaseline(sha: string): void {
  * detection, and execution failures all resolve to "nothing blocks authoring". */
 export async function checkMainBaseline(
   wt: string,
+  /** The live config — the declared check is detected through it (plans/portability.md
+   * §6/7), so a configured command verifies main on a non-npm repo too. Required in this
+   * position: detection needs it, and an optional trailing parameter would let future
+   * callers skip the baseline gate entirely. */
+  config: { check?: { command: string; cwd?: string; timeoutSeconds?: number } },
   /** Called once per actual script run (never for cache hits or deduped waiters) with what ran
    * and how long it took — the caller's hook for a build_check event. */
   onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
@@ -143,7 +148,7 @@ export async function checkMainBaseline(
   let pending = baselineInFlight.get(key);
   if (!pending) {
     pending = (async () => {
-      const check = detectBuildCheck(wt);
+      const check = detectBuildCheck(wt, config);
       if (!check) return { baseline: null }; // No declared check — nothing to verify, nothing to block on.
       const startedAt = Date.now();
       const outcome = await runBuildCheck(wt, check);

@@ -74,6 +74,19 @@ export interface BackoffConfig {
   maxSeconds: number;
 }
 
+/** The project's declared verification command (plans/portability.md §6/7) — a property of
+ * the target repo, not of the machine running tumwater, which is why it is a project key in
+ * the shareable config rather than a host setting. */
+export interface CheckConfig {
+  /** Shell command that verifies the tree — often compound ("cargo fmt --check && cargo test").
+   * Runs in the worktree so it verifies the branch state, not a checkout of main. */
+  command: string;
+  /** Working directory for the command, resolved relative to the worktree root; defaults to ".". */
+  cwd?: string;
+  /** Hard cap on one run, in seconds; defaults to the built-in 300 s. */
+  timeoutSeconds?: number;
+}
+
 /** The tracked tumwater.json config. */
 export interface TumwaterConfig {
   /** pi provider name; omitted = pi's own default. */
@@ -86,6 +99,11 @@ export interface TumwaterConfig {
    * "main". Omitted, the fleet targets whatever branch the primary checkout has checked
    * out (the default that makes it branch-agnostic); an explicit value must exist. */
   baseBranch?: string;
+  /** The project's own verification command (plans/portability.md §6/7) — what the review
+   * gate's deterministic pre-check, the red-main baseline, and redeploy's green check run.
+   * When absent, npm auto-detection (scripts.test → typecheck → build at the nearest
+   * installed root) runs unchanged, so no existing project changes behavior. */
+  check?: CheckConfig;
   /** The agent binary to spawn (plans/portability.md §5/7): TUMWATER_PI_BIN overrides it
    * for one invocation, "pi" is the default. A value containing a path separator is
    * normalized to an absolute path against the harness process's cwd at resolution time

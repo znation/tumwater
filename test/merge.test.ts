@@ -11,7 +11,7 @@ import {
   restoreConfigBytes,
   type MergeContext,
 } from "../src/merge.js";
-import { loadConfig } from "../src/config.js";
+import { defaultConfig, loadConfig } from "../src/config.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
@@ -66,6 +66,7 @@ function makeCtx(
       role: "improve",
       mainBranch: "main",
       exemptPaths: ["*.md", "docs/**"],
+      config: defaultConfig(),
       tick: 7,
       runPi: async (wt, prompt, session) => {
         calls.push({ wt, prompt, session });
@@ -574,7 +575,7 @@ test("a no-op rebase skips the re-check and seeds the baseline for the landed SH
   );
   // The landed SHA (== main now) must be a baseline cache hit: checkMainBaseline runs nothing.
   const runs: unknown[] = [];
-  await checkMainBaseline(root, (run) => runs.push(run));
+  await checkMainBaseline(root, defaultConfig(), (run) => runs.push(run));
   assert.equal(runs.length, 0, "the landing path seeded the green verdict for the SHA that became main");
 });
 

@@ -44,6 +44,7 @@ const TOP_LEVEL_KEYS = [
   "thinking",
   "baseBranch",
   "agentBin",
+  "check",
   "piArgs",
   "maxConcurrent",
   "landBatchMax",
@@ -73,6 +74,9 @@ const ROLE_ENTRY_KEYS = [
   "minTickIntervalSeconds",
 ];
 const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking"];
+/** The `check` section's keys (plans/portability.md §6/7): the project's own verification
+ * command, its working directory (relative to the worktree), and its timeout. */
+const CHECK_KEYS = ["command", "cwd", "timeoutSeconds"];
 /** The provider/model/thinking triple every model-override section shares — top level,
  * `review`, `fallbackModel` (plans/fallback-model.md), and each `roles.<id>` entry — so one
  * mental model and one validator cover them all. */
@@ -270,6 +274,22 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   checkNumber(r, "", "thrashMinutes", NON_NEGATIVE);
 
   checkBoolean(r, "", "autoRestart");
+
+  // The project's own verification command (plans/portability.md §6/7): a blank command is the
+  // same silent-ignore class as a blank agentBin — the operator named a check, so an empty or
+  // whitespace-only value must fail validation, not silently fall back to npm detection.
+  if ("check" in r) {
+    const c = r.check;
+    if (!isJsonObject(c)) {
+      problems.push(`check must be an object (got ${show(c)})`);
+    } else {
+      const o = c;
+      checkKnownKeys(o, CHECK_KEYS, "check", problems);
+      checkString(o, "check.", "command", false);
+      checkString(o, "check.", "cwd");
+      checkNumber(o, "check.", "timeoutSeconds", POSITIVE);
+    }
+  }
 
   if ("idleBackoff" in r) {
     const b = r.idleBackoff;

@@ -11,14 +11,34 @@ import { isJsonObject } from "./json-object.js";
  * execution machinery to get it. The walk-up algorithm and its WALK_UP_LEVELS bound are
  * shared by both exported walks (and the one npm's run-script PATH walk makes). */
 
-/** The project's declared deterministic check: an npm script name plus the directory whose
- * package.json declares it (the walk-up target holding both package.json and node_modules). */
-export interface BuildCheck {
-  /** Directory holding the qualifying package.json + node_modules. */
-  rootDir: string;
-  /** The npm script to run — `test` preferred, then `typecheck`, else `build`. */
-  script: string;
-}
+/** The project's declared deterministic check. Two shapes: the npm auto-detection (an npm
+ * script name plus the directory whose package.json declares it — the walk-up target holding
+ * both package.json and node_modules) and a configured `check.command` (plans/portability.md
+ * §6/7) run through a shell, in the worktree, under its own timeout. */
+export type BuildCheck =
+  | {
+      kind: "npm";
+      /** Directory holding the qualifying package.json + node_modules. */
+      rootDir: string;
+      /** The npm script to run — `test` preferred, then `typecheck`, else `build`. */
+      script: string;
+    }
+  | {
+      kind: "command";
+      /** The shell command verbatim (often compound: "cargo fmt --check && cargo test"). */
+      command: string;
+      /** Working directory for the run, resolved against the worktree the detection started
+       * from (`cwd` in config, default ".") — the command verifies that tree, not main. */
+      cwd: string;
+      /** Hard cap on the run, in ms — `check.timeoutSeconds` × 1000, else the shared 300 s. */
+      timeoutMs: number;
+    };
+
+/** Hard cap on one build check run — a hung script (watch mode) must not wedge the tick, and
+ * a timeout is environmental, never fail-closed. The default `check.timeoutSeconds` resolves
+ * to this (via ms in detectBuildCheck); build-check.ts re-exports it as runBuildCheck's
+ * default timeout parameter so tests can shorten it. */
+export const BUILD_CHECK_TIMEOUT_MS = 300_000;
 
 /** How many ancestors a walk-up may climb before giving up. Five covers every layout the
  * harness sees — a tumwater worktree sits three levels under the install
@@ -57,9 +77,9 @@ function buildCheckFrom(dir: string): BuildCheck | null {
   const scripts = pkg.scripts;
   if (!isJsonObject(scripts)) return null;
   const s = scripts;
-  if (isCheckScript(s, "test")) return { rootDir: dir, script: "test" };
-  if (isCheckScript(s, "typecheck")) return { rootDir: dir, script: "typecheck" };
-  if (isCheckScript(s, "build")) return { rootDir: dir, script: "build" };
+  if (isCheckScript(s, "test")) return { kind: "npm", rootDir: dir, script: "test" };
+  if (isCheckScript(s, "typecheck")) return { kind: "npm", rootDir: dir, script: "typecheck" };
+  if (isCheckScript(s, "build")) return { kind: "npm", rootDir: dir, script: "build" };
   return null;
 }
 
@@ -89,18 +109,38 @@ function walkUp<T>(startDir: string, maxLevels: number, visit: (dir: string) => 
   return null;
 }
 
-/** Find the project's deterministic build check by walking UP from `startDir` — at most
- * `maxLevels` ancestors (default 5) — to the nearest directory containing BOTH a package.json
- * and a node_modules/ directory, then preferring scripts.test over scripts.typecheck and
- * scripts.build (npm convention: `test` is the canonical verify command). The
- * walk is required: tumwater worktrees live under `<repo>/.tumwater/worktrees/<role>` with no
- * install of their own (node_modules is gitignored — it exists only where someone ran npm
- * install), so a literal startDir check would silently disable the pre-check forever in
- * dogfood. The FIRST qualifying directory is the project: if its package.json has neither
+/** Find the project's deterministic check from `startDir` — at most `maxLevels` ancestors
+ * (default 5) — to the nearest directory containing BOTH a package.json and a node_modules/
+ * directory, then preferring scripts.test over scripts.typecheck and scripts.build (npm
+ * convention: `test` is the canonical verify command). A configured `check.command`
+ * (plans/portability.md §6/7) wins first: the right way to verify a repo is a property of
+ * the repo, and the walk cannot know it — a Python, Rust, or Go repo has no npm install for
+ * the walk to find, which silently turned every safety gate off there. `config`'s `check`
+ * shape is the validated CheckConfig (src/types.ts) read structurally so detection needs no
+ * import of the config machinery; a blank command (validation rejects one, but a degraded
+ * default config could still carry it) falls through to the walk-up.
+ * The walk is required: tumwater worktrees live under `<repo>/.tumwater/worktrees/<role>`
+ * with no install of their own (node_modules is gitignored — it exists only where someone
+ * ran npm install), so a literal startDir check would silently disable the pre-check forever
+ * in dogfood. The FIRST qualifying directory is the project: if its package.json has neither
  * script, there is no check (an unrelated ancestor further up must never be used). Returns
  * null when no ancestor qualifies or the file is missing/unreadable/malformed — detection
  * never throws into the gate. */
-export function detectBuildCheck(startDir: string, maxLevels = WALK_UP_LEVELS): BuildCheck | null {
+export function detectBuildCheck(
+  startDir: string,
+  config?: { check?: { command: string; cwd?: string; timeoutSeconds?: number } },
+  maxLevels = WALK_UP_LEVELS,
+): BuildCheck | null {
+  const c = config?.check;
+  if (c && typeof c.command === "string" && c.command.trim() !== "") {
+    const seconds = typeof c.timeoutSeconds === "number" && c.timeoutSeconds > 0 ? c.timeoutSeconds : BUILD_CHECK_TIMEOUT_MS / 1000;
+    return {
+      kind: "command",
+      command: c.command,
+      cwd: path.resolve(startDir, typeof c.cwd === "string" && c.cwd.trim() !== "" ? c.cwd : "."),
+      timeoutMs: seconds * 1000,
+    };
+  }
   const root = walkUp(startDir, maxLevels, (dir) => (hasInstall(dir) ? dir : null));
   return root === null ? null : buildCheckFrom(root);
 }

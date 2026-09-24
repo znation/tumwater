@@ -7,6 +7,7 @@ import type { HarnessEventInput } from "../src/events.js";
 import type { BuildStaleness } from "../src/build-info.js";
 import { readBuildInfo } from "../src/build-info.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
+import { defaultConfig } from "../src/config.js";
 import {
   autoRestartRecord,
   mainIsGreen,
@@ -28,6 +29,9 @@ import { makeRepo, sh, tmpdir } from "./util.js";
 // project, since those are exactly the parts that touch the filesystem and the toolchain.
 
 const BUILD = { sha: "a".repeat(40), builtAt: 1, root: "/proj" };
+/** The live config mainIsGreen now requires (plans/portability.md §6/7): these tests exercise
+ * npm auto-detection, so the defaults (no `check` configured) are the fixture. */
+const CFG = defaultConfig();
 const HEAD_B = "b".repeat(40);
 const HEAD_C = "c".repeat(40);
 const HEAD_D = "d".repeat(40);
@@ -733,7 +737,37 @@ test("mainIsGreen: no declared check reads as green", async () => {
   const head = sh(root, "git", "rev-parse", "HEAD");
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
   // No package.json anywhere up the tree of this temp repo: nothing to verify, nothing to block on.
-  assert.equal(await mainIsGreen(mirror), true);
+  assert.equal(await mainIsGreen(mirror, CFG), true);
+});
+
+test("mainIsGreen runs a configured check.command on a repo with no npm install anywhere", async () => {
+  // plans/portability.md §6/7: the green check must run on a Python/Rust/Go repo too — a
+  // configured command, no package.json and no node_modules in sight.
+  const counter = path.join(tmpdir(), "runs-green-cmd");
+  const root = makeRepo();
+  const checkScript = path.join(root, "check.sh");
+  fs.writeFileSync(checkScript, `#!/bin/sh\necho run >> ${counter}\n`);
+  fs.chmodSync(checkScript, 0o755);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "check");
+  const head = sh(root, "git", "rev-parse", "HEAD");
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+
+  const cfg = { ...defaultConfig(), check: { command: `${checkScript} -q` } };
+  const events: { outcome: { status?: string; script?: string }; durationMs: number }[] = [];
+  assert.equal(await mainIsGreen(mirror, cfg, (run) => events.push(run)), true);
+  assert.equal(fs.readFileSync(counter, "utf8").split("\n").filter((l) => l === "run").length, 1, "the configured command ran");
+  assert.equal(events.length, 1, "the run is priced in the feed like an npm check's");
+
+  // And a failing configured check reads as red, naming the command.
+  fs.writeFileSync(checkScript, "#!/bin/sh\necho 'pytest: 1 failing'; exit 1\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "check now fails");
+  const redHead = sh(root, "git", "rev-parse", "HEAD");
+  const redMirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), redHead);
+  const red = await checkMainBaseline(redMirror, cfg);
+  assert.equal(red.baseline?.status, "red");
+  assert.equal(red.baseline.status === "red" ? red.baseline.script : undefined, `${checkScript} -q`);
 });
 
 test("mainIsGreen re-verifies another worktree's red in the mirror, and its green promotes the SHA fleet-wide", async () => {
@@ -759,18 +793,18 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
   const role = path.join(root, ".tumwater", "worktrees", "role");
   fs.mkdirSync(path.dirname(role), { recursive: true });
   sh(root, "git", "worktree", "add", "-q", "--detach", role, head);
-  assert.equal((await checkMainBaseline(role)).baseline?.status, "red");
+  assert.equal((await checkMainBaseline(role, CFG)).baseline?.status, "red");
 
   // The redeploy gate's mirror, where the same tree passes: it re-runs instead of inheriting.
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
   fs.writeFileSync(path.join(mirror, "marker"), "");
-  assert.equal(await mainIsGreen(mirror), true, "the red is re-verified here, not believed");
+  assert.equal(await mainIsGreen(mirror, CFG), true, "the red is re-verified here, not believed");
   assert.equal(runsOf(counter), 2);
 
-  assert.equal(await mainIsGreen(mirror), true);
+  assert.equal(await mainIsGreen(mirror, CFG), true);
   assert.equal(runsOf(counter), 2, "a cached green short-circuits — re-verification is for reds only");
   assert.equal(
-    (await checkMainBaseline(role)).baseline?.status,
+    (await checkMainBaseline(role, CFG)).baseline?.status,
     "green",
     "and the green promotes the SHA for every other gate, unblocking the role loops too",
   );
@@ -796,7 +830,7 @@ test("a toolchain-broken suite leaves no latched block: the skip reads as green 
   const head = sh(root, "git", "rev-parse", "HEAD");
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
 
-  const f = fakeDeps({ mainGreen: () => mainIsGreen(mirror) }); // the production wiring, real check
+  const f = fakeDeps({ mainGreen: () => mainIsGreen(mirror, CFG) }); // the production wiring, real check
   const { r, events } = harness(f.deps);
   assert.equal(await r.poll(head, IDLE, true), "hold");
   // The real check runs a full `npm run` — poll as the orchestrator would until the green

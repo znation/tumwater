@@ -66,7 +66,10 @@ function baselineCheckLogger(
  * at the failure. Returns undefined on green, no declared check, or an environmental skip — the
  * healer's tick then proceeds exactly as it did before this existed. Never throws. */
 export async function bugfixMainRedNote(root: string, role: string, wt: string): Promise<string | undefined> {
-  const baseline = await checkMainBaseline(wt, baselineCheckLogger(root, role));
+  // The declared check is detected through the live config (plans/portability.md §6/7); a
+  // broken file degrades to defaults, which declare none — the tick then proceeds as before.
+  const config = loadConfigCached(root).config ?? defaultConfig();
+  const baseline = await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
   const red = baseline.baseline;
   if (red?.status !== "red") return undefined;
   warnMainRedOnce(root, red);
@@ -86,7 +89,7 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
   // which know no customs).
   const cfg = loadConfigCached(root).config ?? defaultConfig();
   if (!BASELINE_BLOCKED_ROLES.has(role) && !isCustomRole(cfg, role)) return null;
-  const baseline = await checkMainBaseline(wt, baselineCheckLogger(root, role));
+  const baseline = await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role));
   if (baseline.skipReason) {
     warnEvent(
       root,

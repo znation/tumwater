@@ -1,5 +1,7 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
+import { describeCheck } from "./build-check.js";
+import type { BuildCheck } from "./build-check-detect.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, type Role } from "./roles.js";
 import { NOTHING_TO_DO, REFUSED_SENTINEL } from "./reply-contract.js";
 import { shortSha } from "./text.js";
@@ -57,7 +59,25 @@ const CONTEXT_BUDGET_RULE = `- Your context window is finite and everything you 
   that names the omitted amount and where the full output lives — follow the pointer (re-read
   with \`offset\`/\`limit\`, or open the full-output file path) instead of retrying the same read.`;
 
-const COMMON_RULES = `
+/** The rules every loop prompt carries — tick and director alike, so the two cannot drift.
+ * `check` — the project's resolved check (plans/portability.md §6/7) — names the actual
+ * verification command in the Leave-the-project-working rule instead of asserting npm, and
+ * only an npm check keeps the node_modules borrowing sentence: false and actively misleading
+ * in a repo with no node_modules anywhere (a Python, Rust, or Go repo, or one with no check
+ * at all). Undefined keeps the generic wording, exactly as prompts read before a check could
+ * be configured. */
+function commonRules(check?: BuildCheck): string {
+  const verify = check
+    ? `verify with ${describeCheck(check)} (the project's declared check) — run it after your
+  change and fix what you broke.`
+    : `if it has a build or test command, run it after your change and fix what you broke.`;
+  const modules =
+    check?.kind === "npm"
+      ? ` Your worktree has no node_modules of its own; it borrows the install at the repo
+  root, two levels up (\`../../node_modules\`). To inspect a dependency's types or source,
+  read that directory directly instead of widening the search outward.`
+      : "";
+  return `
 Rules for this run:
 
 Orientation — read this much before choosing your task, and no more:
@@ -80,12 +100,9 @@ Scope:
 - Stay inside your worktree: never run an unbounded scan or write above it (\`find /\`,
   \`grep -r /\`, any recursive search rooted outside the repo) — an unmatched full-disk scan runs
   for tens of minutes with no output and blocks your whole tick until the harness kills it as
-  hung. Your worktree has no node_modules of its own; it borrows the install at the repo root,
-  two levels up (\`../../node_modules\`). To inspect a dependency's types or source, read that
-  directory directly instead of widening the search outward.
+  hung.${modules}
 ${CONTEXT_BUDGET_RULE}
-- Leave the project working: if it has a build or test command, run it after your change and fix
-  what you broke. Pipe its output through \`tail\` — only the failures matter.
+- Leave the project working: ${verify} Pipe its output through \`tail\` — only the failures matter.
 
 Boundaries:
 - Never create, amend, or revert git commits, branches, or merges — the harness handles all git
@@ -124,6 +141,7 @@ How to end your reply — the harness parses it, so the form matters:
 - If you find nothing worth doing for your role right now, make no changes and reply with the
   single line ${NOTHING_TO_DO} instead.
 ${SUMMARY_RULE}`;
+}
 
 /** The project's design principles (PRINCIPLES.md), capped for injection into prompts. Empty
  * string when the file is missing or unreadable — prompt building must never throw on it. */
@@ -159,6 +177,10 @@ interface TickPromptInput {
   /** Rendered flow-coverage block (see qa-coverage.ts); qa only, omitted when unreadable. */
   coverage?: string;
   extraInstructions?: string;
+  /** The project's resolved check (detectBuildCheck against the live config), when one is
+   * configured or detected (plans/portability.md §6/7) — names the verify command in the
+   * rules instead of asserting npm. Omitted: no check — generic wording, no npm assertion. */
+  check?: BuildCheck;
 }
 
 /** Shared opening of every loop prompt: where the run happens and why the project exists.
@@ -175,7 +197,7 @@ function sharedPreamble(initialPrompt: string): string[] {
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, extraInstructions } = input;
+  const { role, initialPrompt, principles, digest, coverage, extraInstructions, check } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt),
@@ -185,7 +207,7 @@ export function buildTickPrompt(input: TickPromptInput): string {
   if (digest) parts.push(digestBlock(digest));
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
-  parts.push(COMMON_RULES.trim());
+  parts.push(commonRules(check).trim());
   return parts.join("\n\n");
 }
 
@@ -194,6 +216,9 @@ export function buildDirectorPrompt(
   userPrompt: string,
   initialPrompt: string,
   principles?: string,
+  /** The project's resolved check (plans/portability.md §6/7) — same threading as the tick
+   * prompt, since commonRules is shared by both builders. */
+  check?: BuildCheck,
 ): string {
   const parts = [
     `You are the "director" loop of tumwater, an autonomous development harness. The user steers
@@ -244,7 +269,7 @@ work yourself:
   implementation itself.
 - ${DECOMPOSITION_GUIDANCE}`,
   );
-  parts.push(COMMON_RULES.trim());
+  parts.push(commonRules(check).trim());
   parts.push(
     `Note on one boundary above, director only: user-defined-loop requests are executed by
 writing .tumwater-config-request.json in your worktree (shape and worked example above) — never
@@ -351,9 +376,9 @@ Rules for this run:
  * the tree about to land, and this run gets one chance to make it green before the landing is
  * rejected — a red main otherwise rejects every queued landing for a failure none of their
  * authors caused. The harness commits whatever the run produces; the run must not. */
-export function buildBuildFixPrompt(roleId: string, script: string, reasons: string[]): string {
+export function buildBuildFixPrompt(roleId: string, check: string, reasons: string[]): string {
   return `You are the "${roleId}" loop of tumwater, an autonomous development harness. The
-project's declared check, \`npm run ${script}\`, FAILED on the tree that is about to be merged
+project's declared check, ${check}, FAILED on the tree that is about to be merged
 to main. Reproduce the failure, fix the source, and make the check pass.
 
 Failure output (headline first, then the clipped tail):
@@ -363,7 +388,7 @@ Rules for this run:
 - Fix the underlying cause in source. Never delete a test, skip a test, weaken an assertion, or
   otherwise make the check pass without the code being right.
 - Keep the change minimal: only what the failure requires.
-- Re-run \`npm run ${script}\` until it passes, then stop. Do not start other work.
+- Re-run ${check} until it passes, then stop. Do not start other work.
 - Never run any git command that changes state (no add, commit, merge, rebase, reset,
   checkout) — the harness commits your fix. Reading git state is fine.
 - Never touch the .tumwater directory or tumwater.json.`;

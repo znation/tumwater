@@ -14,6 +14,7 @@ import { shortSha } from "./text.js";
 import {
   BUILD_CHECK_TIMEOUT_MS,
   clipReason,
+  describeCheck,
   failureHeadline,
   runScopedBuildCheck,
 } from "./build-check.js";
@@ -218,6 +219,7 @@ export async function reviewAheadOfMain(
     role,
     "gate",
     wt,
+    config,
     ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
   );
   if (preCheck) {
@@ -232,10 +234,11 @@ export async function reviewAheadOfMain(
       // like a model reject.
       const tail = outcome.outputTail ?? [];
       const headline = failureHeadline(tail);
+      const what = describeCheck(check);
       const reasons =
         headline !== undefined
-          ? [`build check failed (${check.script}): ${headline}`, ...tail.filter((l) => l !== headline)]
-          : [`build check failed (${check.script})`];
+          ? [`build check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
+          : [`build check failed (${what})`];
       // One bounded fix run before rejecting: a red tree otherwise rejects every queued
       // landing for a failure none of their authors caused. The run edits the worktree; the
       // harness commits whatever it produced. Its spend folds through GateResult.fixRun on
@@ -243,7 +246,7 @@ export async function reviewAheadOfMain(
       // alike — so accounting never drops a consumed run.
       const fixPi = await runPi({
         cwd: wt,
-        prompt: buildBuildFixPrompt(role, check.script, reasons),
+        prompt: buildBuildFixPrompt(role, describeCheck(check), reasons),
         config: reviewConfig(config),
         sessionDir: reviewSessionDir(root, role),
         sessionName: `tumwater-buildfix-${role}-${ctx.tick}${ctx.sessionSuffix ?? ""}`,
@@ -269,6 +272,7 @@ export async function reviewAheadOfMain(
         role,
         "gate",
         wt,
+        config,
         ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
       );
       if (recheck && recheck.outcome.status === "failed") {
@@ -281,7 +285,7 @@ export async function reviewAheadOfMain(
         // The fix turned the check green: this exact tree just went green under the declared
         // check — carry it to the landing path the way an initial pass would.
         verifiedHead = head;
-        verifiedByHarness = `\`npm run ${recheck.check.script}\` (the project's declared check) passed`;
+        verifiedByHarness = `${describeCheck(recheck.check)} (the project's declared check) passed`;
       }
       // A skipped re-check (environmental) proceeds like an initial skip: unverified tree, the
       // model reviewer and the landing path's own in-lock check still stand behind it.
@@ -293,7 +297,7 @@ export async function reviewAheadOfMain(
       // so every role's next fresh tick is a cache hit instead of one redundant full-suite
       // re-run on an already-verified tree.
       verifiedHead = head;
-      verifiedByHarness = `\`npm run ${check.script}\` (the project's declared check) passed`;
+      verifiedByHarness = `${describeCheck(check)} (the project's declared check) passed`;
     }
   }
 
