@@ -55,6 +55,23 @@ test("runBuildCheck skips (not fails closed) when the script times out", async (
   assert.equal(outcome.skipReason, "timeout");
 });
 
+// A check that dies on a signal the harness did not send (another run's pkill, an operator's
+// cleanup) must not be reported as a timeout: the 2026-09-23 gate incident logged "timed out
+// after 300s" for a check killed by pkill at 7.4s and sent the change to review unverified.
+// npm re-raises a script child's signal death, so the group leader itself closes with the
+// signal — no timeout has fired, and the classification is a distinct "killed" skip naming it.
+test("a check killed by an external signal is skipped as killed, naming the signal (regression)", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "kill -9 $$" } }),
+  );
+  const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 30_000);
+  assert.equal(outcome.status, "skipped");
+  assert.equal(outcome.skipReason, "killed");
+  assert.equal(outcome.killedBy, "SIGKILL");
+});
+
 // A timed-out check must take its whole process tree with it. npm runs detached as its own
 // process group leader; the old execFileAsync `timeout` signalled npm alone, so everything
 // below it survived and reparented to PID 1 — four orphaned trees on the fleet, one alive 12
@@ -171,6 +188,48 @@ test("a landing- or batch-scope timeout is a deterministic reject, not an enviro
   const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, undefined, 400);
   assert.equal(gate!.outcome.status, "skipped");
   assert.equal(gate!.outcome.skipReason, "timeout");
+});
+
+// A gate check killed by an external signal says nothing about the tree: one retry, whose
+// verdict stands (the 2026-09-23 incident — a build-fix run's `pkill` killed organize's gate
+// check and the change went to review unverified). Each attempt is priced as its own event.
+test("a gate check killed by an external signal is retried once, and the retry's verdict stands", async () => {
+  const { root, wt } = buildCheckFixture();
+  // wt needs its own node_modules or detectBuildCheck walks up to the fixture root's package.json.
+  fs.mkdirSync(path.join(wt, "node_modules"));
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({
+      name: "proj",
+      version: "1.0.0",
+      scripts: { test: "if [ -f killed-once ]; then exit 0; else touch killed-once; kill -9 $$; fi" },
+    }),
+  );
+  const result = await runScopedBuildCheck(root, ROLE, "gate", wt, undefined, 30_000);
+  assert.equal(result!.outcome.status, "passed", "the clean retry's verdict stands");
+  const events = readEvents(root).filter((e) => e.type === "build_check");
+  assert.equal(events.length, 2, "each attempt is priced as its own build_check event");
+  assert.equal(events[0]?.status, "skipped");
+  assert.equal(events[1]?.status, "passed");
+});
+
+// A persistently killed check at a merge scope is unverified, not environmental: it rejects
+// deterministically, and the reason names the signal and the real duration — never the
+// timeout bound, which did not fire.
+test("a merge-scope check killed by an external signal rejects, naming the signal and real duration", async () => {
+  const { root, wt } = buildCheckFixture();
+  // wt needs its own node_modules or detectBuildCheck walks up to the fixture root's package.json.
+  fs.mkdirSync(path.join(wt, "node_modules"));
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "kill -9 $$" } }),
+  );
+  const result = await runScopedBuildCheck(root, ROLE, "batch", wt, undefined, 30_000);
+  assert.equal(result!.outcome.status, "failed", "an unverified tree must not land");
+  assert.match(result!.outcome.outputTail?.[0] ?? "", /was killed by SIGKILL after \d+(?:\.\d+)?s; the tree is unverified/);
+  const warning = readEvents(root).find((e) => e.type === "warning");
+  assert.match(String(warning?.message ?? ""), /was killed by SIGKILL after \d+(?:\.\d+)?s/);
+  assert.doesNotMatch(String(warning?.message ?? ""), /timed out/);
 });
 
 test("runBuildCheck skips (not fails closed) when npm is missing from PATH", async () => {

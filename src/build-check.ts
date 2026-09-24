@@ -54,20 +54,23 @@ export { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
  * completion) and that a surviving grandchild is taken down. */
 const KILL_GRACE_MS = 10_000;
 
-/** Why a declared check reached no verdict: the script never finished (timeout), npm is not on
- * PATH, or the toolchain below the project is broken. Shared with main-baseline.ts's
- * MainBaselineCheck, whose skip is the same three-way environmental case — the string literals
- * live in one place so a new reason can be added without two unions drifting apart. */
-export type BuildSkipReason = "timeout" | "no-npm" | "toolchain";
+/** Why a declared check reached no verdict: the script never finished (timeout), the script
+ * died on a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md
+ * 2026-09-23), npm is not on PATH, or the toolchain below the project is broken. Shared with
+ * main-baseline.ts's MainBaselineCheck, whose skip is the same environmental case family — the
+ * string literals live in one place so a new reason can be added without two unions drifting
+ * apart. */
+export type BuildSkipReason = "timeout" | "killed" | "no-npm" | "toolchain";
 
 /** What the deterministic build check concluded. "passed": proceed to the reviewer unchanged.
  * "failed": a started process exited nonzero — a deterministic REJECTION with the clipped
  * output tail as machine-generated reasons (no pi run consumed). "skipped": environmental
- * (timeout, no npm on PATH, or a broken toolchain) — warn and still proceed to the model
- * review; deliberately NOT fail-closed so a hung build script cannot wedge every code tick into
+ * (timeout, an external signal kill, no npm on PATH, or a broken toolchain) — warn and still
+ * proceed to the model review; deliberately NOT fail-closed so a hung build script cannot wedge every code tick into
  * the 3-strike discard, and a toolchain broken below the project (BUGS.md 2026-09-15) cannot be
- * misread as a red build of the tree. runScopedBuildCheck remaps a timeout at a merge scope
- * (landing/batch) to "failed": a suite that never finished is unverified, not environmental. */
+ * misread as a red build of the tree. runScopedBuildCheck remaps a timeout or a signal kill at
+ * a merge scope (landing/batch) to "failed": a suite that never finished is unverified, not
+ * environmental. */
 export interface BuildCheckOutcome {
   status: "passed" | "failed" | "skipped";
   /** The script that was run (or attempted). */
@@ -77,6 +80,9 @@ export interface BuildCheckOutcome {
   outputTail?: string[];
   /** Why no verdict was reached ("skipped"). */
   skipReason?: BuildSkipReason;
+  /** On a "killed" skip: the signal that stopped the check — the harness's own timeout is
+   * classified as "timeout", so this is always a signal it did not send. */
+  killedBy?: NodeJS.Signals;
 }
 
 /** Probe the check's environment BEFORE spending a run on it: `git --version`, unambiguous
@@ -316,10 +322,17 @@ export async function runBuildCheck(
         });
   // Spawn failed before anything ran — the runner is missing from PATH.
   if (r.spawnError) return { status: "skipped", script, skipReason: "no-npm" };
-  // The timeout fired (or the tree died on a signal): environmental — warn and proceed. A
-  // timed-out check's whole process tree is already being taken down group-wide by
-  // runScriptGroup (SIGTERM now, SIGKILL after the grace if anything survived).
-  if (r.timedOut || r.signal) return { status: "skipped", script, skipReason: "timeout" };
+  // The harness's own timeout: environmental — warn and proceed. A timed-out check's whole
+  // process tree is already being taken down group-wide by runScriptGroup (SIGTERM now,
+  // SIGKILL after the grace if anything survived).
+  if (r.timedOut) return { status: "skipped", script, skipReason: "timeout" };
+  // The tree died on a signal the harness did NOT send (runScriptGroup resolves its own
+  // timeout with timedOut already set, so a signal reaching this line is external — another
+  // run's `pkill`, an operator's cleanup): the outcome says nothing about the tree, but it is
+  // not a timeout, and its skip reason and warning must say so instead of claiming the 300 s
+  // bound fired (BUGS.md 2026-09-23). npm re-raises a script child's signal death, so the
+  // group leader is what closes with the signal.
+  if (r.signal) return { status: "skipped", script, skipReason: "killed", killedBy: r.signal };
   if (r.code === 0) return { status: "passed", script };
   // A started process that exited nonzero is a deterministic failure of the build itself —
   // unless its output names a broken toolchain: then the environment, not the tree, killed it,
@@ -356,7 +369,8 @@ const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }
   batch: { label: "batch build check", proceeding: "proceeding to merge" },
 };
 
-/** Scopes whose outcome gates a merge to main. A timeout here leaves the tree unverified, and
+/** Scopes whose outcome gates a merge to main. A timeout or an external signal kill here
+ * leaves the tree unverified, and
  * these are the last checks before main, so it rejects deterministically; the gate scope's
  * pre-check stays fail-open because the model reviewer and the landing path's own check still
  * stand behind it (BUGS.md: a landing build check that times out must not merge unverified). */
@@ -365,15 +379,24 @@ const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"])
 /** The one-line warning for an environmental check skip, keyed on why the check could not run.
  * `label` names the check in the feed and `proceeding` says what happens despite the skip; the
  * scoped check (SCOPE_WORDS above) and the red-main baseline gate (main-red.ts) differ only in
- * those two words, so the three-way mapping lives here once instead of drifting per surface. */
+ * those two words, so the mapping lives here once instead of drifting per surface. A "killed"
+ * skip carries the caller's `killed` info when it has it — the signal and the check's real
+ * wall-clock, not the timeout bound — and a signal-less form otherwise, so the warning never
+ * again names a timeout that did not fire. */
 export function buildCheckSkipWarning(
   skipReason: BuildSkipReason,
   label: string,
   proceeding: string,
   timeoutMs: number,
+  killed?: { signal: string; durationMs: number },
 ): string {
   if (skipReason === "no-npm") return `no npm on PATH; skipping ${label}`;
   if (skipReason === "toolchain") return `the toolchain is broken; skipping ${label}; ${proceeding}`;
+  if (skipReason === "killed") {
+    return killed
+      ? `${label} was killed by ${killed.signal} after ${killed.durationMs / 1000}s; ${proceeding}`
+      : `${label} was killed by an external signal; ${proceeding}`;
+  }
   return `${label} timed out after ${timeoutMs / 1000}s; ${proceeding}`;
 }
 
@@ -388,9 +411,12 @@ export function buildCheckSkipWarning(
  * the caller passes, exactly as before this split), otherwise the declared check plus its
  * classified outcome. A "skipped" outcome also logs its standard warning here (wording keyed
  * on the scope, the timeout as actually set); "failed" and "passed" are the caller's to decide
- * (deterministic reject vs. verifiedHead / baseline seeding). A timeout at a merge scope is
- * remapped to a deterministic "failed" — the tree is unverified, so it must not land. Never
- * throws. */
+ * (deterministic reject vs. verifiedHead / baseline seeding). A timeout or signal kill at a
+ * merge scope is remapped to a deterministic "failed" — the tree is unverified, so it must
+ * not land. A check killed by a signal the harness did not send is retried once at any scope
+ * — the first run's death says nothing about the tree (it is another run's `pkill`), so one
+ * verdict from a clean attempt is owed before the skip is honoured; each attempt is priced
+ * as its own build_check event. Never throws. */
 export async function runScopedBuildCheck(
   root: string,
   role: string,
@@ -406,17 +432,40 @@ export async function runScopedBuildCheck(
   // what runBuildCheck enforced.
   const effectiveMs = checkTimeoutMs(check, timeoutMs);
   const startedAt = Date.now();
-  const raw = await runBuildCheck(wt, check, timeoutMs);
-  // A timeout at a merge scope is not environmental: no verdict about the tree was reached,
-  // and this is the check whose whole job is to catch a semantic conflict before it lands, so
-  // it rejects deterministically — the author keeps its commit and retries. no-npm and a
-  // broken toolchain still say nothing about the tree, and the gate scope still proceeds to
-  // the model reviewer, which the landing path's own check backs up.
-  const mergeTimeout =
-    raw.status === "skipped" && raw.skipReason === "timeout" && MERGE_SCOPES.has(scope);
-  const timeoutReason = `${SCOPE_WORDS[scope].label} timed out after ${effectiveMs / 1000}s; the tree is unverified`;
-  const outcome: BuildCheckOutcome = mergeTimeout
-    ? { status: "failed", script: checkScriptName(check), outputTail: [timeoutReason] }
+  let raw = await runBuildCheck(wt, check, timeoutMs);
+  let durationMs = Date.now() - startedAt;
+  if (raw.status === "skipped" && raw.skipReason === "killed") {
+    // A check the harness did not stop itself says nothing about the tree — its death is
+    // another run's doing — so retry once; the second attempt's outcome stands. The killed
+    // first attempt is priced as its own event (the feed must answer how long a check took),
+    // then the final event below records the retry's classified outcome.
+    logEvent(root, {
+      loop: role,
+      type: "build_check",
+      scope,
+      status: raw.status,
+      script: checkScriptName(check),
+      durationMs,
+    });
+    const retryStart = Date.now();
+    raw = await runBuildCheck(wt, check, timeoutMs);
+    durationMs = Date.now() - retryStart;
+  }
+  // A timeout or signal kill at a merge scope is not environmental: no verdict about the tree
+  // was reached, and this is the check whose whole job is to catch a semantic conflict before
+  // it lands, so it rejects deterministically — the author keeps its commit and retries.
+  // no-npm and a broken toolchain still say nothing about the tree, and the gate scope still
+  // proceeds to the model reviewer, which the landing path's own check backs up.
+  const unverifiedSkip =
+    raw.status === "skipped" &&
+    (raw.skipReason === "timeout" || raw.skipReason === "killed") &&
+    MERGE_SCOPES.has(scope);
+  const unverifiedReason =
+    raw.skipReason === "killed"
+      ? `${SCOPE_WORDS[scope].label} was killed by ${raw.killedBy} after ${durationMs / 1000}s; the tree is unverified`
+      : `${SCOPE_WORDS[scope].label} timed out after ${effectiveMs / 1000}s; the tree is unverified`;
+  const outcome: BuildCheckOutcome = unverifiedSkip
+    ? { status: "failed", script: checkScriptName(check), outputTail: [unverifiedReason] }
     : raw;
   logEvent(root, {
     loop: role,
@@ -424,15 +473,27 @@ export async function runScopedBuildCheck(
     scope,
     status: outcome.status,
     script: checkScriptName(check),
-    durationMs: Date.now() - startedAt,
+    durationMs,
   });
   if (outcome.status === "skipped") {
     // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
     // code tick into the 3-strike discard (gate) or a merge behind the merge lock.
     const w = SCOPE_WORDS[scope];
-    warnEvent(root, role, buildCheckSkipWarning(outcome.skipReason!, w.label, w.proceeding, effectiveMs));
-  } else if (mergeTimeout) {
-    warnEvent(root, role, `${timeoutReason}; rejecting the merge`);
+    warnEvent(
+      root,
+      role,
+      buildCheckSkipWarning(
+        outcome.skipReason!,
+        w.label,
+        w.proceeding,
+        effectiveMs,
+        outcome.skipReason === "killed" && outcome.killedBy
+          ? { signal: outcome.killedBy, durationMs }
+          : undefined,
+      ),
+    );
+  } else if (unverifiedSkip) {
+    warnEvent(root, role, `${unverifiedReason}; rejecting the merge`);
   }
   return { check, outcome };
 }

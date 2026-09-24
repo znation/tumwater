@@ -38,13 +38,14 @@ interface MainBaseline {
 
 /** checkMainBaseline's result. `baseline` is null when nothing blocks authoring: either no
  * declared build check at all (nothing to verify → nothing to block on, consistent with the
- * gate skipping its pre-check) or an environmental skip (`skipReason` set — timeout/no-npm/
- * broken toolchain), which the caller warns about and proceeds with, exactly like the gate's
+ * gate skipping its pre-check) or an environmental skip (`skipReason` set — timeout/external
+ * signal kill/no-npm/broken toolchain), which the caller warns about and proceeds with, exactly like the gate's
  * pre-check. Skips are never cached red: a hung script — or a broken toolchain (BUGS.md
  * 2026-09-15) — must not wedge authoring, or the fleet's restart, for the life of the process. */
 interface MainBaselineCheck {
   baseline: MainBaseline | null;
-  /** Set when a detected check could not be run (timeout, no npm on PATH, or a broken toolchain). */
+  /** Set when a detected check could not be run (timeout, an external signal kill, no npm on
+   * PATH, or a broken toolchain). */
   skipReason?: BuildSkipReason;
 }
 

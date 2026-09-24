@@ -24,16 +24,6 @@ While this ran, the fleet crawled. From 05:18:00 to 05:37:48 the event log holds
 
 **Suspected cause:** Merge-queue work (4803c07, 2026-09-22) added the fix run by reusing the reviewer's wiring, and the reviewer never needed a tighter bound than the tick's. The "bounded" in the comments at src/review.ts:238 and src/prompt.ts:350 counts runs, not time. The test suite has load-sensitive assertions, so a gate failure is often a flake, and the prompt's "reproduce" turns a flake into a load test on the live host.
 
-### A build check killed by a signal is reported as "timed out after 300s", and at gate scope the change then goes to review unverified (found by human log analysis 2026-09-23)
-
-**Symptom:** On 2026-09-23 at 05:37:56 organize's gate logged `build_check scope:gate status:skipped durationMs:7388` with the warning `build check timed out after 300s; proceeding to model review`. The check had run for 7.4 s. It was killed by the build-fix run's `pkill -f test-runner` at 05:37:51–57 (entry above), not by the timeout. Organize's change was then reviewed and landed with no verified check. The warning names a cause that did not happen and hides a check that was killed from outside.
-
-**Repro:** Deterministic, no model needed: run `runScopedBuildCheck` on a check script that sends SIGKILL to itself (or `kill` its `node` child from outside) well inside the timeout. `runBuildCheck` returns `{ status: "skipped", skipReason: "timeout" }` (src/build-check.ts:287, `if (r.timedOut || r.signal)`), the warning claims the 300 s timeout fired, and at gate scope the change goes on to model review. `MERGE_SCOPES` (src/build-check.ts:328) covers only `landing` and `batch`, so only those scopes fail closed.
-
-**Expected:** Keep "timed out" and "killed by a signal" apart: a distinct `skipReason` (e.g. `killed`) whose warning names the signal and the real duration. A check the harness did not stop itself says nothing about the tree, so retry it once before proceeding unverified.
-
-**Suspected cause:** The comment at src/build-check.ts:284 ("The timeout fired (or the tree died on a signal)") folds the two together on purpose, assuming the only signal a check ever receives is the harness's own timeout kill. A tool call from another pi run on the same host breaks that assumption.
-
 ### The reviewer is never told about the gate's own build-fix commit, so a successful fix reads as an unclaimed change and the landing is rejected (found by human log analysis 2026-09-23)
 
 **Symptom:** On 2026-09-23 dry's build-fix run (first entry above) committed `b020f67` "tumwater(dry): fix failing build check" (src/pi.ts, +22 −4) at 05:40. The re-check passed, and the gate went on to the model reviewer. The reviewer rejected it at 05:43:07: "The branch's diff includes an unclaimed production change (commit `b020f67`, `src/pi.ts` …)". Nearly two hours of fix run, and a gate re-check that passed, were thrown away by a reviewer doing exactly what its prompt asks: flag changes the author's summary and body do not claim.
@@ -225,6 +215,20 @@ While this ran, the fleet crawled. From 05:18:00 to 05:37:48 the event log holds
 **Suspected cause:** `plans/fallback-model.md` framed readiness as a property of the *model* ("is it free?"), which is answerable from a static file, and `budgetGate` was built from that single boolean; whether the *backend* can serve is a property of the world that nothing in the gate's inputs represents. `doctor.ts:127` consults the same cost-only predicate, so `tumwater doctor` also reports a dead fallback as ready.
 
 ## Fixed
+
+### A build check killed by a signal is reported as "timed out after 300s", and at gate scope the change then goes to review unverified (found by human log analysis 2026-09-23, fixed 2026-09-23)
+
+**Symptom:** On 2026-09-23 at 05:37:56 organize's gate logged `build_check scope:gate status:skipped durationMs:7388` with the warning `build check timed out after 300s; proceeding to model review`. The check had run for 7.4 s. It was killed by the build-fix run's `pkill -f test-runner` at 05:37:51–57 (see the no-budget entry's history), not by the timeout. Organize's change was then reviewed and landed with no verified check. The warning names a cause that did not happen and hides a check that was killed from outside.
+
+**Repro:** Deterministic, no model needed: a check script that SIGKILLs itself (`scripts: { test: "kill -9 $$" }`) — npm re-raises a script child's signal death, so the group leader itself closes with the signal — well inside the timeout. Pre-fix `runBuildCheck` returned `{ status: "skipped", skipReason: "timeout" }` (the `if (r.timedOut || r.signal)` fold), the warning claimed the 300 s timeout fired, and at gate scope the change went on to model review.
+
+**Expected:** Keep "timed out" and "killed by a signal" apart: a distinct `skipReason` whose warning names the signal and the real duration. A check the harness did not stop itself says nothing about the tree, so retry it once before proceeding unverified.
+
+**Suspected cause:** The old comment ("The timeout fired (or the tree died on a signal)") folds the two together on purpose, assuming the only signal a check ever receives is the harness's own timeout kill. A tool call from another pi run on the same host breaks that assumption.
+
+**Fix:** The two classifications are separate again: `runBuildCheck` returns `skipReason: "killed"` with `killedBy: <signal>` when a check closes on a signal it did not send (its own timeout resolves with `timedOut` already set, so any signal reaching that line is external — and `runScriptGroup` prices the timeout attempt, not the external kill, as the timed-out path). `buildCheckSkipWarning` has a killed branch naming the signal and the check's real wall-clock (`build check was killed by SIGKILL after 7.4s; …`), with a signal-less fallback for callers without the info (main-red.ts's baseline warning), so no skip warning ever again names a timeout that did not fire. `runScopedBuildCheck` retries a killed check ONCE at any scope — the first run's death is another run's doing, so one verdict from a clean attempt is owed — pricing each attempt as its own `build_check` event, and treats a persistent killed skip at a merge scope (landing/batch) exactly like a timeout: a deterministic reject whose reason names the signal and the real duration. Pins in test/build-check.test.ts: the killed classification (runBuildCheck), the gate retry whose clean verdict stands with both attempts priced, and the merge-scope killed reject whose warning never says "timed out". Full suite 1415/1415 passing.
+
+**Validation gap:** no-observability (closest fit) — the failure left a trace, but a false one: the skip warning named a timeout that never fired, so neither the feed nor the suite's existing pins could distinguish an external kill from a real timeout until a regression test classified the two apart; the bug itself was confirmed only by human log analysis of the raw gate sessions.
 
 ### Any reply that merely mentions `TUMWATER_REFUSED` is treated as a refusal and its code is hard-reset: `TUMWATER_REFUSED: none` discarded two finished, tested bugfix ticks (found by human log analysis 2026-09-23; re-opened by telemetry loop 2026-09-24, fixed 2026-09-23)
 
