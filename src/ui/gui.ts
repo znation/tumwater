@@ -56,9 +56,11 @@ function validRoleIds(root: string): string[] {
  * present-but-unknown one reads "unknown role X (valid ids: …)". /api/transcript and the
  * wake/abort operator endpoints share it so their validation and 400 wording cannot drift. */
 function rejectBadRole(root: string, res: http.ServerResponse, role: unknown, allowMissing = false): boolean {
+  // The all-roles default rides only a truly absent id — check it first, so the wake path
+  // (allowMissing with `{}`) never computes the id list it will not validate against.
+  if (role === undefined && allowMissing) return false;
   const validIds = validRoleIds(root);
   if (role === undefined || role === null) {
-    if (role === undefined && allowMissing) return false;
     sendJson(res, 400, { error: `role required (valid ids: ${validIds.join(", ")})` });
     return true;
   }
