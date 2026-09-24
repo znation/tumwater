@@ -381,30 +381,32 @@ test("the lander worktree is per-role and detached at the pinned sha", async () 
 /** A repo where every listed role has a single-commit pin based on main — the queue shape
  * the batch drain reads. One separate file per role by default so cherry-picks apply
  * cleanly; `edit` overrides the per-role change (the conflict test rewrites one line). */
-// The gate's bounded build-fix run (a red deterministic pre-check gets one model run to turn
-// the check green): the pin, the landing tree, and the usage accounting must all track the
-// fixed tree, whichever way the gate then decides. The fake shim tells its runs apart by the
-// session name pi is handed (`-n tumwater-buildfix-<role>-…` vs `…review…`).
+// The gate's build-fix run (a pre-check failure that survives the harness's one re-run gets one
+// time-capped model run to turn the check green): the pin, the landing tree, and the usage
+// accounting must all track the fixed tree, whichever way the gate then decides. The fake shim
+// tells its runs apart by the session name pi is handed (`-n tumwater-buildfix-<role>-…` vs
+// `…review…`).
 const FIX_PI = (fix: string, review: string) =>
   // Match the session-name argument exactly — the prompt itself may quote the word.
   `b=review\nfor a in "$@"; do case "$a" in tumwater-buildfix-*) b=fix ;; esac; done\nif [ "$b" = fix ]; then ${fix}; else ${review}; fi`;
 
-/** A fail-once build check: the first invocation fails (the pre-check), every later one
- * passes — as if the fix run's edit had made it green. */
-function failOnceCheck(root: string, flag: string): void {
-  declareCheck(
-    root,
-    `if [ -f '${flag}' ]; then exit 0; fi\ntouch '${flag}'\necho 'error TS2345: boom' >&2\nexit 1\n`,
-  );
+/** A build check that stays red until the fix run has run: every invocation fails (the
+ * pre-check AND the gate's one re-run — a fail-once check is a flake, which never reaches a fix
+ * run) until `flag` exists, and the fix shim touches it beside its edit — as if the fix run's
+ * edit had made it green. */
+function redUntilFixedCheck(root: string, flag: string): void {
+  declareCheck(root, `if [ -f '${flag}' ]; then exit 0; fi\necho 'error TS2345: boom' >&2\nexit 1\n`);
 }
 
 test("a gate fix run commits the fix and the landing carries work AND fix to main", async () => {
   const flag = path.join(tmpdir(), "lander-fix-green");
   fs.rmSync(flag, { force: true });
   const { root, sha, wt } = await pinnedFixture();
-  failOnceCheck(root, flag);
+  redUntilFixedCheck(root, flag);
   const mainBefore = sh(root, "git", "rev-parse", "main");
-  const restore = fakePi(FIX_PI(`echo 'fixed' >> seed.txt`, `printf '%s\n' '${assistantLine("VERDICT: approve")}'`));
+  const restore = fakePi(
+    FIX_PI(`touch '${flag}'; echo 'fixed' >> seed.txt`, `printf '%s\n' '${assistantLine("VERDICT: approve")}'`),
+  );
   try {
     const state = freshLoopState(ROLE);
     const { ctx, folded } = makeCtx(root, state);
@@ -431,9 +433,9 @@ test("a fix followed by an under-cap reviewer failure keeps the pin on the fixed
   const flag = path.join(tmpdir(), "lander-fix-red-review");
   fs.rmSync(flag, { force: true });
   const { root, sha } = await pinnedFixture();
-  failOnceCheck(root, flag);
+  redUntilFixedCheck(root, flag);
   const restore = fakePi(
-    FIX_PI(`echo 'fixed' >> seed.txt`, `printf '%s\n' '${assistantLine("still no verdict here")}'`),
+    FIX_PI(`touch '${flag}'; echo 'fixed' >> seed.txt`, `printf '%s\n' '${assistantLine("still no verdict here")}'`),
   );
   try {
     const state = freshLoopState(ROLE);
@@ -631,9 +633,11 @@ test("a batch stacks a fixed change's work AND fix commits, not the fix alone", 
   const flag = path.join(tmpdir(), "batch-fix-range");
   fs.rmSync(flag, { force: true });
   const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
-  failOnceCheck(root, flag);
+  redUntilFixedCheck(root, flag);
   const mainBefore = sh(root, "git", "rev-parse", "main");
-  const restore = fakePi(FIX_PI(`echo 'fixed' >> fix.txt`, `printf '%s\n' '${assistantLine("VERDICT: approve")}'`));
+  const restore = fakePi(
+    FIX_PI(`touch '${flag}'; echo 'fixed' >> fix.txt`, `printf '%s\n' '${assistantLine("VERDICT: approve")}'`),
+  );
   try {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);

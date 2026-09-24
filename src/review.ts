@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult } from "./types.js";
-import { reviewConfig } from "./config.js";
+import { buildFixConfig, reviewConfig } from "./config.js";
 import { logEvent, warnEvent } from "./events.js";
 import { commitAll, git, gitLines, gitTry, headOf } from "./git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "./git-diff.js";
@@ -172,10 +172,11 @@ export interface GateResult {
   /** The reviewer run was killed by harness shutdown mid-review: fail closed, leave the
    * commit, and let the tick report aborted (resume re-reviews via the combined diff). */
   aborted?: boolean;
-  /** The gate's bounded build-fix run (a failed deterministic pre-check gets one model run to
-   * turn the check green before rejecting). Present on every outcome the fix run reached —
-   * approve, reject, and failure alike — so its spend folds into the loop totals exactly once
-   * per invocation, whichever way the gate then decided. */
+  /** The gate's build-fix run (a pre-check failure that survives one re-run gets one model run,
+   * capped at BUILD_FIX_TIMEOUT_S wall-clock, to turn the check green before rejecting).
+   * Present on every outcome the fix run reached — approve, reject, and failure alike — so its
+   * spend folds into the loop totals exactly once per invocation, whichever way the gate then
+   * decided. */
   fixRun?: PiRunResult;
   /** The strike-cap discard fired: the gate itself reset the worktree off the reviewed head,
    * so the commit is gone and any pin naming the old head must go too. An under-cap failure
@@ -287,7 +288,33 @@ export async function reviewAheadOfMain(
     ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
   );
   if (preCheck) {
-    const { check, outcome } = preCheck;
+    const { check } = preCheck;
+    let { outcome } = preCheck;
+    if (outcome.status === "failed") {
+      // A failure that does not reproduce on one immediate re-run is a flake, not a red tree:
+      // the suite has load-sensitive assertions, and a fix run handed a flake hunts it with
+      // stress runs on the host the whole fleet shares (BUGS.md 2026-09-23). The re-run is one
+      // more check, priced as its own build_check event; if it passes, the tree is verified
+      // exactly like a first-time pass and the flake is named in a warning (the headline
+      // clusters in the digest, so telemetry and bugfix can go after the flaky test). A
+      // re-run that fails again is the observation the fix run gets; a skipped one says
+      // nothing about the tree, so the first failure stands.
+      const retry = await runScopedBuildCheck(
+        root,
+        role,
+        "gate",
+        wt,
+        config,
+        ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
+      );
+      if (retry?.outcome.status === "passed") {
+        const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
+        warnEvent(root, role, `gate check failed then passed on retry — flaky: ${flaky}`);
+        outcome = retry.outcome;
+      } else if (retry?.outcome.status === "failed") {
+        outcome = retry.outcome;
+      }
+    }
     if (outcome.status === "failed") {
       // Machine-generated reasons: the headline joined to the rest of the clipped tail (so the
       // compiler error sits right after it in the injected next-tick note). The headline is
@@ -303,15 +330,19 @@ export async function reviewAheadOfMain(
         headline !== undefined
           ? [`build check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
           : [`build check failed (${what})`];
-      // One bounded fix run before rejecting: a red tree otherwise rejects every queued
-      // landing for a failure none of their authors caused. The run edits the worktree; the
-      // harness commits whatever it produced. Its spend folds through GateResult.fixRun on
+      // One fix run before rejecting a failure that reproduced: a red tree otherwise rejects
+      // every queued landing for a failure none of their authors caused. Bounded in count (one
+      // run, no retry loop), in wall-clock (buildFixConfig's BUILD_FIX_TIMEOUT_S and quiet caps
+      // in place of the tick's hours-long budget — the run holds the landing slot), and in
+      // blast radius only by its prompt's shared-host rules. The run edits the worktree; the
+      // harness commits whatever it produced — even from a capped run, since the re-check
+      // below judges the tree, not the run. Its spend folds through GateResult.fixRun on
       // EVERY outcome it reached — abort, no-change reject, still-red reject, and approval
       // alike — so accounting never drops a consumed run.
       const fixPi = await runPi({
         cwd: wt,
         prompt: buildBuildFixPrompt(role, describeCheck(check), reasons),
-        config: reviewConfig(config),
+        config: buildFixConfig(config),
         sessionDir: reviewSessionDir(root, role),
         sessionName: `tumwater-buildfix-${role}-${ctx.tick}${ctx.sessionSuffix ?? ""}`,
         rawLogFile: piLogPath(root, role),
@@ -325,6 +356,10 @@ export async function reviewAheadOfMain(
         return { decision: "failed", aborted: true, fixRun: fixPi };
       }
       fixRun = fixPi;
+      // A run that hit a cap (timeout, quiet kill) or failed goes on to the same judgement as a
+      // finished one; the warning makes the bound visible in the feed instead of leaving a
+      // silent reject or a half-done fix commit to explain itself.
+      if (!fixPi.ok) warnEvent(root, role, `build-fix run ended early: ${fixPi.errorMessage ?? "pi failed"}`);
       if ((await git(wt, "status", "--porcelain")).trim() === "") {
         // No changes: the fix run had nothing to offer — reject exactly as before, one run
         // spent, no retry loop.

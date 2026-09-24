@@ -32,8 +32,9 @@ loops keep ticking while a change is under review.
 - **Rebase.** The change is rebased onto current main first, so the gate checks what will
   actually land.
 - **Build check.** The project's declared check runs: `check.command` in tumwater.json, else
-  `npm test`, else typecheck/build. A failure gets one bounded fix run; only a still-red check
-  rejects.
+  `npm test`, else typecheck/build. A failure is re-run once; one that then passes is warned
+  as a flake and proceeds. A failure that repeats gets one fix run, capped at 20 minutes; only
+  a still-red check rejects.
 - **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
   `VERDICT: approve|reject`. Markdown-only diffs skip review.
 - **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear.

@@ -20,6 +20,7 @@ import {
 } from "../src/gate-prompts.js";
 import { parseVerdict } from "../src/review.js";
 import { todayStamp } from "../src/budget.js";
+import { BUILD_FIX_TIMEOUT_S } from "../src/config.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
 import { customRole, DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, ROLES, roleById, searchGuidance, VALIDATION_GAP_GUIDANCE, VALIDATION_GAP_TAGS } from "../src/roles.js";
@@ -333,9 +334,10 @@ test("buildConflictPrompt keeps the project building and ends by stopping", () =
   assert.ok(!p.includes(NOTHING_TO_DO), "no tick sentinel in a conflict run");
 });
 
-// The build-fix prompt drives the gate's one bounded run against a red deterministic
-// pre-check. Its contract: pi knows which script failed and why, may not fake a pass by
-// weakening the suite, and may not commit — the harness commits the fix it made.
+// The build-fix prompt drives the gate's one time-capped run against a deterministic pre-check
+// failure that survived a re-run. Its contract: pi knows which script failed and why, may not
+// fake a pass by weakening the suite, may not commit — the harness commits the fix it made —
+// and keeps its footprint off the host the fleet shares.
 
 test("buildBuildFixPrompt names the role, the failing check, and every failure line", () => {
   const p = buildBuildFixPrompt("feature", "`npm run test`", [
@@ -355,7 +357,7 @@ test("buildBuildFixPrompt names the role, the failing check, and every failure l
   // command, not an npm script name the check union may not have.
   const configured = buildBuildFixPrompt("feature", "`pytest -q`", ["build check failed (`pytest -q`): boom"]);
   assert.match(configured, /check, `pytest -q`, FAILED/);
-  assert.match(configured, /Re-run `pytest -q` until it passes/);
+  assert.match(configured, /ONE full run of `pytest -q`; when it passes, stop/);
 });
 
 test("buildBuildFixPrompt forbids deleting, skipping, or weakening tests", () => {
@@ -373,8 +375,38 @@ test("buildBuildFixPrompt forbids state-changing git commands (the harness commi
   assert.match(p, /no add, commit, merge, rebase/);
   assert.match(p, /the harness commits your fix/i);
   // The run's exit condition: the check passes, then it stops — no retry loop, no new task.
-  assert.match(p, /until it passes, then stop/i);
+  assert.match(p, /when it passes, stop/i);
   assert.match(p, /Never touch the \.tumwater directory/);
+});
+
+// BUGS.md 2026-09-23: the old prompt said "Reproduce the failure … Re-run until it passes", and
+// two fix runs turned load flakes into hours-long load tests of the host the whole fleet runs
+// on — 24 busy-loop spinners beside 6 concurrent suites, detached `setsid`/`nohup` spinners, a
+// `pkill -f test-runner` that killed every other loop's check, patched dist/ files, and a
+// ~1.5M-entry directory in $TMPDIR. The prompt now bounds the run's blast radius and states its
+// wall-clock budget; a failure that passes one re-run of its test file gets no change at all.
+test("buildBuildFixPrompt keeps the run off the shared host and makes a flake a no-change stop", () => {
+  const p = buildBuildFixPrompt("dry", "`npm run test`", [
+    "build check failed (`npm run test`): AssertionError [ERR_ASSERTION]: startup latency is not a hung tool call",
+  ]);
+  // The flake rule: one re-run of the failing file; passing means no change, said so.
+  assert.match(p, /re-running only the failing test file \(for a compile error, the build\) ONCE/);
+  assert.match(p, /flake, not a defect: make no change, reply that it did not\s+reproduce, and stop/);
+  assert.match(p, /Never hunt a flake — no repeated runs, no parallel copies, no load/);
+  // The shared-host rules, each naming what the incident runs actually did.
+  assert.match(p, /shared with a running fleet/);
+  assert.match(p, /Generate no load: no busy loops or spinners/);
+  assert.match(p, /Start no background or detached process \(`&`, `nohup`, `setsid`, `disown`\)/);
+  assert.match(p, /Never kill a process you did not start: no `kill`, `pkill`, or `killall`/);
+  assert.match(p, /Write only inside this worktree: create nothing under the system temp directory/);
+  assert.match(p, /never edit build output such as\s+dist\//);
+  // The wall-clock cap the harness enforces is the one the prompt states.
+  assert.match(p, new RegExp(`stops this run after ${BUILD_FIX_TIMEOUT_S / 60} minutes at\\s+most`));
+  // Verification is bounded by count too: the failing file, then ONE full run — never "re-run
+  // until it passes", the retry loop that turned a flake into a load test.
+  assert.match(p, /Verify with the failing test file, then ONE full run of `npm run test`/);
+  assert.ok(!/until it passes/i.test(p), "no open-ended re-run loop");
+  assert.ok(!/Reproduce the failure/.test(p), "no instruction to reproduce a flake");
 });
 
 // The rejected-review note is the ONLY cross-tick memory of a failed change: every tick

@@ -741,6 +741,12 @@ test("a red pre-check spends one fix run, and a no-change fix rejects with zero 
     assert.ok(fs.existsSync(marker), "the fix run ran before the reject");
     assert.equal(result.run, undefined, "the reviewer never ran: the fix outcome decided alone");
     assert.ok(result.fixRun, "the spent fix run is reported for usage folding");
+    // The fix run is spent only on a failure that reproduced: the harness re-ran the check once
+    // first, and both runs are priced as gate build_check events.
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "build_check").map((e) => `${e.scope}:${e.status}`),
+      ["gate:failed", "gate:failed"],
+    );
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
     assert.match(result.detail ?? "", /^build check failed \(\`npm run build\`\): /);
     assert.equal(state.lastReview?.verdict, "reject");
@@ -827,20 +833,18 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
   }
 });
 
-// The one bounded fix run: a red deterministic pre-check gets a single model run to turn the
-// check green before the landing is rejected — a red main otherwise rejects every queued
-// landing for a failure none of their authors caused. The fake shim tells the runs apart by
-// the session name pi is handed (`-n tumwater-buildfix-<role>-…` vs `…review…`).
+// The one fix run: a deterministic pre-check failure that survives the harness's re-run gets a
+// single time-capped model run to turn the check green before the landing is rejected — a red
+// main otherwise rejects every queued landing for a failure none of their authors caused. The
+// fake shim tells the runs apart by the session name pi is handed (`-n tumwater-buildfix-<role>-…`
+// vs `…review…`).
 const FIX_AND_APPROVE_PI = (fix: string, verdict = "VERDICT: approve") =>
   `b=review\nfor a in "$@"; do case "$a" in tumwater-buildfix-*) b=fix ;; esac; done\nif [ "$b" = fix ]; then ${fix}; else printf '%s\n' '${assistantLine(verdict)}'; fi`;
 
 test("a fix run that turns the check green commits the fix and proceeds to the reviewer", async () => {
-  // The tool fails its first invocation (the pre-check) and passes afterwards — as if the
-  // fix run's edit had made it green.
-  const flag = path.join(tmpdir(), "buildfix-green");
-  fs.rmSync(flag, { force: true });
+  // The check stays red (pre-check and its re-run) until the fix run's edit lands in seed.txt.
   const { root, wt } = await gateBuildFixture(
-    `if [ -f '${flag}' ]; then exit 0; fi\ntouch '${flag}'\necho 'error TS2345: boom' >&2\nexit 1\n`,
+    `if grep -q fixed seed.txt; then exit 0; fi\necho 'error TS2345: boom' >&2\nexit 1\n`,
     "#!/bin/sh\ntrue\n",
   );
   const restore = fakePi(FIX_AND_APPROVE_PI(`echo 'fixed' >> seed.txt`));
@@ -918,6 +922,82 @@ test("a fix run that leaves the check red rejects with the extra reason line", a
     );
     assert.ok(result.fixRun, "the spent fix run is reported even on the still-red reject");
     assert.equal(result.run, undefined, "the reviewer never ran");
+  } finally {
+    restore();
+  }
+});
+
+// BUGS.md 2026-09-23: the gate's failures were mostly load flakes, and a fix run handed one
+// load-tested the shared host for hours to reproduce it. A failure that does not reproduce on
+// one immediate re-run is a flake: the tree is verified like a first-time pass, the flake is
+// named in a warning, and no fix run is spent.
+test("a pre-check failure that passes its one re-run is a flake: no fix run, verified, warned", async () => {
+  const flag = path.join(tmpdir(), "flaky-once");
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --flaky",
+    `#!/bin/sh\nif [ -f '${flag}' ]; then exit 0; fi\ntouch '${flag}'\necho 'AssertionError [ERR_ASSERTION]: startup latency is not a hung tool call' >&2\nexit 1\n`,
+  );
+  const fixMarker = path.join(tmpdir(), "fix-ran");
+  const prompts = path.join(tmpdir(), "prompts.log");
+  const restore = fakePi(
+    `{ printf '%s\\n' "$@"; echo "===RUN==="; } >> "${prompts}"\n` +
+      FIX_AND_APPROVE_PI(`touch '${fixMarker}'; echo 'fixed' >> seed.txt`),
+  );
+  try {
+    const state = freshLoopState(ROLE);
+    const head = await headOf(wt, "HEAD");
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "approved");
+    assert.ok(!fs.existsSync(fixMarker), "no fix run was spent on a flake");
+    assert.equal(result.fixRun, undefined);
+    assert.ok(result.run, "the reviewer ran, exactly as after a first-time pass");
+    assert.equal(await aheadOfMain(wt, "main"), 1, "no fix commit");
+    assert.equal(result.verifiedHead, head, "the re-run's green verdict verifies the tree");
+    const events = readEvents(root);
+    assert.deepEqual(
+      events.filter((e) => e.type === "build_check").map((e) => `${e.scope}:${e.status}`),
+      ["gate:failed", "gate:passed"],
+      "both attempts are priced",
+    );
+    const flaky = events.filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.deepEqual(flaky, [
+      "gate check failed then passed on retry — flaky: AssertionError [ERR_ASSERTION]: startup latency is not a hung tool call",
+    ]);
+    // The reviewer is told the check passed, the same claim a first-time pass makes — and no
+    // build-fix block: a flake leaves no harness commit on the branch to explain.
+    const reviewed = fs.readFileSync(prompts, "utf8");
+    assert.match(reviewed, /`npm run build` \(the project's declared check\) passed/);
+    assert.ok(!reviewed.includes("The harness itself added a commit"), "no build-fix block without a fix commit");
+  } finally {
+    restore();
+  }
+});
+
+// The fix run's wall-clock bound is its own (config.ts buildFixConfig — BUILD_FIX_TIMEOUT_S over
+// the tick's hours-long budget; config.test.ts pins the caps): a run that hits it is killed, the
+// cap is named in the feed, and the gate judges whatever the run left — here nothing, so the
+// failure rejects. A configured tick smaller than the cap still wins, which keeps this offline
+// test to seconds.
+test("a fix run that hits its time cap is killed, warned, and the failure rejects", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
+  );
+  const restore = fakePi(FIX_AND_APPROVE_PI(`exec sleep 30`));
+  try {
+    const state = freshLoopState(ROLE);
+    const ctx = { ...gateCtx(root, wt), config: { ...defaultConfig(), tickTimeoutSeconds: 2 } };
+    const startedAt = Date.now();
+    const result = await reviewAheadOfMain(ctx, state);
+    assert.ok(Date.now() - startedAt < 25_000, "the cap stopped the run, not the 30 s sleep");
+    assert.equal(result.decision, "rejected");
+    assert.equal(result.fixRun?.timedOut, true, "the fix run was killed at its cap");
+    assert.equal(result.run, undefined, "the reviewer never ran");
+    const warnings = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.includes("build-fix run ended early: timed out after 2s"),
+      `the cap is named in the feed; got: ${JSON.stringify(warnings)}`,
+    );
   } finally {
     restore();
   }

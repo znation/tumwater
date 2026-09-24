@@ -1,9 +1,10 @@
+import { BUILD_FIX_TIMEOUT_S } from "./config.js";
 import { shortSha } from "./text.js";
 import { dateLine } from "./prompt.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
- * (merge.ts), the one bounded build-fix run (review.ts), the adversarial pre-merge review
+ * (merge.ts), the one time-capped build-fix run (review.ts), the adversarial pre-merge review
  * (review.ts), and the notes that carry the gate's verdicts back to the loop that authored the
  * change (loop.ts, main-red.ts). The machine-detectable half of the gate's reply contract —
  * verdict constants and detection for parsing a reviewer's VERDICT line — lives in
@@ -34,26 +35,51 @@ Rules for this run:
 - When every marker is resolved and the project is consistent, just stop.`;
 }
 
-/** The prompt for the gate's one bounded build-fix run: the deterministic pre-check failed on
- * the tree about to land, and this run gets one chance to make it green before the landing is
- * rejected — a red main otherwise rejects every queued landing for a failure none of their
- * authors caused. The harness commits whatever the run produces; the run must not. `today`
+/** The prompt for the gate's build-fix run: the deterministic pre-check failed on the tree
+ * about to land (the harness re-runs a failure once first, so one that passed its re-run never
+ * gets here), and this run gets one chance to make it green before the landing is rejected — a
+ * red main otherwise rejects every queued landing for a failure none of their authors caused.
+ * The harness bounds the run's wall-clock (BUILD_FIX_TIMEOUT_S, stated here so the run can plan
+ * for it); nothing but this prompt bounds its blast radius. The host is shared with the running
+ * fleet, and the runs these rules answer load-tested it for hours with spinners and parallel
+ * suites, `pkill`ed every test runner on it, patched dist/, and left a ~1.5M-entry directory in
+ * $TMPDIR (BUGS.md 2026-09-23) — so: one re-run of the failing file, and a flake that passes it
+ * gets no change. The harness commits whatever the run produces; the run must not. `today`
  * pins the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. */
 export function buildBuildFixPrompt(roleId: string, check: string, reasons: string[], today?: string): string {
   return `You are the "${roleId}" loop of tumwater, an autonomous development harness. The
 project's declared check, ${check}, FAILED on the tree that is about to be merged
-to main. Reproduce the failure, fix the source, and make the check pass.
+to main. Find the cause, fix the source, and make the check pass.
 
 ${dateLine(today)}
 
 Failure output (headline first, then the clipped tail):
 ${reasons.map((r) => `- ${r}`).join("\n")}
 
+Start by re-running only the failing test file (for a compile error, the build) ONCE. If it
+passes, the failure was a flake, not a defect: make no change, reply that it did not
+reproduce, and stop. Never hunt a flake — no repeated runs, no parallel copies, no load to
+provoke it.
+
+This machine is shared with a running fleet: other loops are building, testing, and landing
+on it right now, and the harness stops this run after ${BUILD_FIX_TIMEOUT_S / 60} minutes at
+most. Keep your footprint to what the fix needs:
+- Generate no load: no busy loops or spinners (\`yes\`, \`while :; do :; done\`), no stress
+  scripts, no parallel or repeated runs of the suite.
+- Start no background or detached process (\`&\`, \`nohup\`, \`setsid\`, \`disown\`): every
+  command you run finishes before you run the next.
+- Never kill a process you did not start: no \`kill\`, \`pkill\`, or \`killall\` by name or
+  pattern — \`pkill -f test-runner\` kills every other loop's check.
+- Write only inside this worktree: create nothing under the system temp directory or anywhere
+  else outside it (the suite's own temp files are fine), and never edit build output such as
+  dist/ — the check rebuilds it from source.
+
 Rules for this run:
 - Fix the underlying cause in source. Never delete a test, skip a test, weaken an assertion, or
   otherwise make the check pass without the code being right.
 - Keep the change minimal: only what the failure requires.
-- Re-run ${check} until it passes, then stop. Do not start other work.
+- Verify with the failing test file, then ONE full run of ${check}; when it passes, stop. Do
+  not start other work.
 - Never run any git command that changes state (no add, commit, merge, rebase, reset,
   checkout) — the harness commits your fix. Reading git state is fine.
 - Never touch the .tumwater directory or tumwater.json.`;
