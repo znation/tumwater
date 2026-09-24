@@ -5,7 +5,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Land-queue speed 2c — Split landing into a parallel vetting stage and a serial merge stage (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26)
+## Done
+
+### Land-queue speed 2c — Split landing into a parallel vetting stage and a serial merge stage (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26, done 2026-09-24)
 
 **Status 2026-09-24 (partly delivered by the BUGS.md sweep):** two of its pieces landed as bug fixes. A batch's Phase A gates run concurrently, two at a time (`PHASE_A_CONCURRENCY`; each extra gate takes its own `maxConcurrent` permit through `BatchContext.gatePermit`), and a terminal Phase A verdict writes its outcome and drops its entry at once (`BatchContext.onFinal`). Still to do: the vetting/merge split, `maxConcurrentLandings`, and merging vetted entries ahead of an unvetted head.
 
@@ -40,7 +42,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Series.** Sibling of 2a, 2b, 2d. Depends on 2a (patch-id approvals survive the rebase into the merge stage) and 2b (concurrent vets mean concurrent suites); 1/3 first so a load flake costs one retry.
 
-## Done
+**Implemented 2026-09-24** in 84af95b. All criteria are met, including a live-orchestrator e2e test at `maxConcurrentLandings: 3`. Above 1, `drainVetting` in src/landing-drain.ts runs up to that many vets at once, in queue order. Each vet is land-batch.ts's exported `vetRequest`, in its own `_land-<role>` worktree and under its own resizable `Semaphore(maxConcurrentLandings)`. A terminal verdict writes its outcome at once and frees the author; an approved change stays queued, marked vetted in memory. `drainMerge` then lands every vetted entry, up to `landBatchMax`, through `landVetted`, which is the post-Phase-A stack/check/ff and 3d's prefix bisect. It does not wait for an unvetted queue head. Shutdown, the restart hand-off and `abort --role` reach every vet and the merge, and pins survive a shutdown. Deltas: at 1, today's drain (`drainLandingQueue` with its two-at-a-time Phase A) runs unchanged behind the `drainLandings` dispatcher, instead of the split with one vet, which would have been slower; a single vetted change lands through `landApprovedChange`, not `landChange`, so no review re-runs inside the serial slot (the check still re-runs in the merge lock when main moved); vetted state is in memory, so after a restart those changes are vetted again, with the review reused through the patch-id. The fallback clamp and live width switching have no dedicated test. This repo's tumwater.json is unchanged; raise it only once this build is the one running.
 
 ### Land-queue speed 1/3 — Take the build-fix run out of the landing slot: retry a failed gate check once, then hand the failure to whoever caused it (planned 2026-09-23, requested by user, done 2026-09-24)
 
