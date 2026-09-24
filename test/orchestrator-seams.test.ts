@@ -152,3 +152,74 @@ test("a parked waiter holds no permit until acquire grants it, which the landing
   assert.equal(parked.waiter, undefined);
   assert.equal(parked.landing, undefined);
 });
+
+// BUGS.md 2026-09-23 — the restart drain's `hold` was checked only at scheduling, so a tick
+// reserved in an earlier poll and parked in the semaphore queue started a fresh pi run the
+// moment a slot freed mid-drain. The gate is re-checked when the permit is granted: the Repro,
+// against the real Semaphore — park waiters behind a held permit, flip the hold on, free the
+// permit.
+test("a waiter parked before a restart hold is turned away at its permit, which it hands on unused", async () => {
+  const semaphore = new Semaphore(1);
+  let hold = false;
+  const held = () => hold;
+  let releaseHolder = () => {};
+  const gate = new Promise<void>((r) => (releaseHolder = r));
+  let holderAcquired = false;
+  const holder = runTimedRoleTick(
+    new AbortController().signal,
+    async () => {
+      await semaphore.acquire(1);
+      holderAcquired = true;
+    },
+    () => semaphore.release(),
+    async () => {
+      await gate;
+      return { result: "changed" } as TickOutcome;
+    },
+    Date.now,
+    held,
+  );
+  while (!holderAcquired) await new Promise((r) => setTimeout(r, 1));
+
+  // Two waiters reserved while the gate was still open (the scheduling-time check passed).
+  const ran: string[] = [];
+  const released: string[] = [];
+  const parkedWaiter = (name: string) =>
+    runTimedRoleTick(
+      new AbortController().signal,
+      () => semaphore.acquire(1),
+      () => {
+        released.push(name);
+        semaphore.release();
+      },
+      async () => {
+        ran.push(name);
+        return { result: "changed" } as TickOutcome;
+      },
+      Date.now,
+      held,
+    );
+  const first = parkedWaiter("first");
+  const second = parkedWaiter("second");
+  await new Promise((r) => setTimeout(r, 5));
+
+  hold = true; // the redeploy flips into `hold` while both are parked
+  releaseHolder();
+  assert.notEqual(await holder, null, "the permit holder that was already running finishes normally");
+  assert.equal(await first, null, "a tick turned away at its permit yields no drain sample");
+  assert.equal(await second, null);
+  assert.deepEqual(ran, [], "neither parked tick started its run mid-drain");
+  // Each released the permit it was handed, so the next waiter was granted it in turn and the
+  // whole queue drained without starting anything — the permit is free again.
+  assert.deepEqual(released, ["first", "second"]);
+  let free = false;
+  void semaphore.acquire(1).then(() => (free = true));
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(free, true, "no permit leaked to a tick that never started");
+  semaphore.release();
+
+  // Control: once the hold lifts, a waiter granted a permit starts as before.
+  hold = false;
+  assert.notEqual(await parkedWaiter("after"), null);
+  assert.deepEqual(ran, ["after"]);
+});

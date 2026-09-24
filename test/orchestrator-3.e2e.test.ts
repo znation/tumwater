@@ -462,15 +462,16 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
 
 /** A Redeployer whose effects are scripted: main is always stale and green, the compile succeeds
  * at once, and the swap only records itself — so the orchestrator's half of the contract (hold,
- * drain, abort, exit) is what these tests pin. */
+ * drain, abort, exit) is what these tests pin. `mainGreen` replaces the instant green verdict,
+ * for a test that needs the hold to last until something happens and then lift. */
 function scriptedRedeployer(
   repo: string,
-  opts: { drainMaxMs?: number; compileOk?: boolean; stale?: () => boolean } = {},
+  opts: { drainMaxMs?: number; compileOk?: boolean; stale?: () => boolean; mainGreen?: () => Promise<boolean> } = {},
 ) {
   const swaps: string[] = [];
   const deps: RedeployDeps = {
     staleness: async () => ({ stale: opts.stale ? opts.stale() : true, aheadCommits: 4 }),
-    mainGreen: async () => true,
+    mainGreen: opts.mainGreen ?? (async () => true),
     compile: async () => ({ ok: opts.compileOk ?? true, detail: opts.compileOk === false ? "tsc exited 2" : "" }),
     swap: (h) => {
       swaps.push(h);
@@ -584,6 +585,110 @@ test("a drain past its cap aborts the in-flight tick resumably and still restart
     assert.equal(restart.abortedTicks, 1);
   } finally {
     clearTimeout(timeout);
+    restore();
+  }
+});
+
+/** Two maintenance roles under maxConcurrent 1, both due on the first poll: one tick takes the
+ * only permit, the other parks in the semaphore queue — the shape of every mid-drain start in
+ * BUGS.md's restart-drain entry (2026-09-23). `started()` lists the roles whose fake pi ran. */
+async function parkedPairRepo(label: string) {
+  const repo = makeRepo();
+  await initProject(repo, label);
+  const cfg = fastConfig(["clean", "dry"]);
+  cfg.maxConcurrent = 1;
+  saveConfig(repo, cfg);
+  const started = () =>
+    ["clean", "dry"].filter((r) => fs.existsSync(path.join(worktreePath(repo, r), "started.txt")));
+  return { repo, started };
+}
+
+test("a drain past its cap aborts and counts only the permit holder — the tick parked behind it never starts", async () => {
+  const { repo, started } = await parkedPairRepo("parked drain cap test");
+  // The permit holder never finishes on its own; the parked role would run the same script.
+  const restore = fakePi(`touch started.txt\nexec sleep 30`);
+  const { redeployer, swaps } = scriptedRedeployer(repo, { drainMaxMs: 500, stale: () => started().length > 0 });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const run = runOrchestrator({
+      root: repo,
+      config: loadConfig(repo),
+      mainBranch: "main",
+      signal: controller.signal,
+      pollMs: FAST_POLL_MS,
+      redeploy: redeployer,
+    });
+    await waitFor(() => started().length > 0, "the permit holder's tick to start");
+    const [holder] = started();
+    const parked = holder === "clean" ? "dry" : "clean";
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running tick");
+    const exit = await run;
+    assert.deepEqual(exit, { restart: true });
+    assert.equal(swaps.length, 1);
+    const events = readEvents(repo);
+    assert.deepEqual(
+      events.filter((e) => e.type === "tick_start").map((e) => e.loop),
+      [holder],
+      "the parked waiter got the aborted holder's permit and released it without starting",
+    );
+    const ends = events.filter((e) => e.type === "tick_end");
+    assert.deepEqual(ends.map((e) => [e.loop, e.result]), [[holder, "aborted"]]);
+    // abortedTicks is what the restart cut off — the one permit holder — not the reservation
+    // parked behind it (the 2026-09-21 restart reported 12 against 3 aborted tick_ends).
+    assert.equal(events.find((e) => e.type === "restart")!.abortedTicks, 1);
+    assert.deepEqual(started(), [holder], "the parked role's pi never ran");
+    assert.equal(loadLoopState(repo, parked).ticks, 0, "no state write for a tick that never started");
+  } finally {
+    clearTimeout(timeout);
+    restore();
+  }
+});
+
+test("a tick parked through a restart hold does not start when the permit frees, and ticks once the hold lifts", async () => {
+  const { repo, started } = await parkedPairRepo("parked hold test");
+  // The permit holder's pi blocks until the test releases it, so the permit changes hands
+  // strictly INSIDE the hold — no timing race on how long the holder runs.
+  const go = path.join(tmpdir(), "go");
+  const restore = fakePi(
+    `touch started.txt\nwhile [ ! -f '${go}' ]; do sleep 0.05; done\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+  );
+  const holderEnded = () => readEvents(repo).some((e) => e.type === "tick_end");
+  const { redeployer, swaps } = scriptedRedeployer(repo, {
+    stale: () => started().length > 0,
+    // The green check outlasts the holder's tick, then comes back red: the hold lifts without a
+    // restart, so the parked role's reservation must have been handed back for it to tick again.
+    mainGreen: async () => {
+      await waitFor(holderEnded, "the holder's tick to end", 20_000);
+      return false;
+    },
+  });
+  const controller = new AbortController();
+  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal, pollMs: FAST_POLL_MS, redeploy: redeployer });
+  try {
+    await waitFor(() => started().length > 0, "the permit holder's tick to start");
+    const [holder] = started();
+    const parked = holder === "clean" ? "dry" : "clean";
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running tick");
+    await waitFor(() => readOrchestratorInfo(repo)?.build?.restartPending === true, "the restart hold");
+    fs.writeFileSync(go, "");
+    const isRed = (e: ReturnType<typeof readEvents>[number]) => e.type === "warning" && /is red/.test(String(e.message));
+    await waitFor(() => readEvents(repo).some(isRed), "the red verdict that lifts the hold", 20_000);
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "tick_start" && e.loop === parked),
+      "the parked role to tick once the hold lifts",
+      20_000,
+    );
+    const events = readEvents(repo);
+    const red = events.findIndex(isRed);
+    const holderEnd = events.findIndex((e) => e.type === "tick_end" && e.loop === holder);
+    const parkedStart = events.findIndex((e) => e.type === "tick_start" && e.loop === parked);
+    assert.ok(holderEnd >= 0 && red > holderEnd, "the holder freed its permit while the hold was still on");
+    assert.ok(parkedStart > red, "the parked tick did not start inside the hold — only after it lifted");
+    assert.deepEqual(swaps, []);
+  } finally {
+    controller.abort();
+    await done.catch(() => undefined);
     restore();
   }
 });

@@ -39,23 +39,32 @@ import { WorkLandedCache } from "./work-landed-cache.js";
 const POLL_MS = 2000;
 
 /** Run one role tick under the concurrency semaphore and return how long the tick itself ran,
- * in ms — null when it never started (the harness is already stopping) or was cut off by an
- * abort. This is the restart drain's p75 sample (BUGS.md 2026-09-18). The clock starts only
- * once the permit is granted, so time a tick spends parked in the semaphore queue is not
+ * in ms — null when it never started (the harness is already stopping, or `held`) or was cut
+ * off by an abort. This is the restart drain's p75 sample (BUGS.md 2026-09-18). The clock starts
+ * only once the permit is granted, so time a tick spends parked in the semaphore queue is not
  * counted as work: the drain waits on ticks that are already running, and folding queue wait
  * into the window would overstate how long they have left (the `tick_start`..`tick_end` span
  * the window was sized against excludes it too). Aborted ticks return null so their short
- * cut-off lengths cannot drag the window down. `now` is a test seam. */
+ * cut-off lengths cannot drag the window down. `now` is a test seam.
+ *
+ * `held` is the fleet-wide hold on new ticks (today the restart drain's), re-checked at the one
+ * moment a reserved tick actually begins: when its permit is granted. A tick scheduled before
+ * the hold may have parked in the semaphore queue long before it; checking the hold only at
+ * scheduling let every such waiter start a fresh pi run mid-drain as slots freed — the very
+ * ticks the restart then aborted (BUGS.md 2026-09-23). A held tick releases its permit without
+ * calling `tick`, so it writes no state and logs no tick_start/tick_end; the caller hands its
+ * reservation back. */
 export async function runTimedRoleTick(
   signal: AbortSignal,
   acquire: () => Promise<void>,
   release: () => void,
   tick: () => Promise<TickOutcome>,
   now: () => number = Date.now,
+  held: () => boolean = () => false,
 ): Promise<number | null> {
   await acquire();
   try {
-    if (signal.aborted) return null;
+    if (signal.aborted || held()) return null;
     const startedAt = now();
     const outcome = await tick();
     if (outcome.result === "aborted" || outcome.result === "user_aborted") return null;
@@ -171,8 +180,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // self-redeploy (BUGS.md 2026-09-08). The landing slot is deliberately OUTSIDE this split:
   // it is a single in-process task (one at a time, since 2026-09-18 under the same maxConcurrent
   // permit as role ticks) that graceful shutdown still awaits — an aborted landing keeps its ref
-  // and drops its entry, recovering on next start.
+  // and drops its entry, recovering on next start. roleInFlight holds every RESERVED role tick
+  // (permit holders and waiters parked in the semaphore queue alike), since shutdown awaits
+  // both; what the restart drain waits on, aborts, and reports as abortedTicks is only
+  // rolePermitHolders, the role ticks actually holding a permit. A parked waiter has nothing to
+  // drain — the start gate (tickStartHeld below) keeps it from starting while a restart is
+  // pending — and counting it held drains open for ticks that had not begun and inflated
+  // abortedTicks (12 reported against 3 aborted tick_ends on 2026-09-21; BUGS.md 2026-09-23).
   const roleInFlight = new Set<Promise<void>>();
+  const rolePermitHolders = new Set<LoopRunner>();
   const directorInFlight = new Set<Promise<void>>();
   // The restart drain's window tracks the fleet's real tick duration (BUGS.md 2026-09-18): the
   // durations of recent COMPLETED role ticks feed a p75 that poll uses in place of the
@@ -227,6 +243,16 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // logs exactly once — on the transition in, never while merely not-due and never on exit.
   // In-memory only: a restart mid-episode can re-log at most one event.
   const deferredDue = new Map<string, boolean>();
+
+  // Whether the last poll found a self-redeploy pending (`hold`). Hoisted out of the poll loop
+  // because it is read at two points: at scheduling (no new tick is reserved) and — through
+  // tickStartHeld — whenever a parked waiter is granted its permit, which happens between polls.
+  let holdForRestart = false;
+  // The start gate every reserved tick passes the moment its permit is granted
+  // (runTimedRoleTick's `held`): closed while a restart is pending, and after one is decided so
+  // no waiter the shutdown hands a permit to starts on the build being replaced. One predicate,
+  // so another fleet-wide hold on new ticks can close the same gate point.
+  const tickStartHeld = () => holdForRestart || restart;
 
   try {
     while (!signal.aborted) {
@@ -403,16 +429,20 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // Self-redeploy (src/redeploy.ts): with main's head in hand, let the policy observe it.
       // `hold` starts no new ticks at all — director included; a restart lands within minutes
       // and its prompt waits in the inbox — while the green check/compile/drain run in the
-      // background. `restart` means dist/ already holds the new build: stop scheduling, abort
-      // whatever role ticks the drain gave up waiting for (they resume on the new build), and
-      // return. A director tick can never be in flight here — poll only returns `restart` once
-      // it has finished.
-      let holdForRestart = false;
+      // background. That covers ticks reserved before the hold too: a waiter parked in the
+      // semaphore queue that is granted a permit mid-drain meets the closed start gate
+      // (tickStartHeld), releases the permit, and hands its reservation back so it re-schedules
+      // once the hold lifts or on the new build. `restart` means dist/ already holds the new
+      // build: stop scheduling, abort whatever role ticks the drain gave up waiting for — the
+      // permit holders; they resume on the new build — and return. A director tick can never be
+      // in flight here — poll only returns `restart` once it has finished. (holdForRestart keeps
+      // the previous poll's verdict until this one's is in: resetting it before the await
+      // would open the gate for a waiter granted a permit while poll runs.)
       if (redeploy) {
         const action = await redeploy.poll(
           mainHead,
           {
-            roleInFlight: roleInFlight.size,
+            roleInFlight: rolePermitHolders.size,
             directorInFlight: directorInFlight.size,
             roleTickP75Ms: p75TickDurationMs(roleTickDurationsMs),
           },
@@ -426,7 +456,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         }
         if (action === "restart") {
           restart = true;
-          if (roleInFlight.size > 0) internalStop.abort(); // the director is guaranteed finished by then
+          // Only permit holders have a pi run to cut off (the director is guaranteed finished by
+          // then): a parked waiter meets the closed start gate whenever the shutdown hands it a
+          // permit, so it needs no abort — and aborting for it alone would also cut off an
+          // in-flight landing that no permit-holding tick put at stake.
+          if (rolePermitHolders.size > 0) internalStop.abort();
           break;
         }
         holdForRestart = action === "hold";
@@ -531,19 +565,41 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // The tick's own run time (null when it never ran or was cut off): the drain-window
         // sample is taken only for a tick that finished on its own.
         let durationMs: number | null = null;
+        // Whether runner.tick() was ever called — false when the start gate (or a shutdown)
+        // turned the tick away at its permit.
+        let started = false;
         const task = (async () => {
           durationMs = await runTimedRoleTick(
             signal,
             usesSlot
               ? async () => {
                   await semaphore.acquire(roleTier(runner.role));
-                  // Permit granted: the tick is now an active, permit-holding state.
+                  // Permit granted: the tick is now an active, permit-holding state until the
+                  // release below. A tick the start gate turns away releases within the same
+                  // microtask chain, so no poll ever counts it as a permit holder.
                   runner.state.parkedSince = undefined;
+                  rolePermitHolders.add(runner);
                 }
               : async () => {},
-            usesSlot ? () => semaphore.release() : () => {},
-            () => runner.tick(),
+            usesSlot
+              ? () => {
+                  rolePermitHolders.delete(runner);
+                  semaphore.release();
+                }
+              : () => {},
+            () => {
+              started = true;
+              return runner.tick();
+            },
+            Date.now,
+            tickStartHeld,
           );
+          // A reservation whose tick never started hands itself back, so the role re-schedules
+          // once the hold lifts (or on the new build) instead of sitting `running` forever with
+          // nothing in flight. Memory only, on purpose: nothing started, so no state write and
+          // no tick_start/tick_end — the persisted state still reads exactly as the last real
+          // tick left it, and the next generation schedules the role from that.
+          if (!started) runner.state.running = false;
         })();
         const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
         bucket.add(task);

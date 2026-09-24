@@ -84,6 +84,10 @@ type RedeployAction = "none" | "hold" | "restart";
 /** How many ticks are running, split by who requested them: role ticks get one drain window,
  * a director tick (an explicit human prompt) holds the restart open without any cap. */
 interface InFlightCounts {
+  /** Role ticks holding a maxConcurrent permit — the ones with a pi run to wait for or abort,
+   * and what `abortedTicks` reports. A tick reserved but still parked in the semaphore queue is
+   * not counted: the orchestrator's start gate keeps it from starting while a restart is
+   * pending, so there is nothing of it to drain (BUGS.md 2026-09-23). */
   roleInFlight: number;
   directorInFlight: number;
   /** p75 of recent completed role-tick durations (ms), or null/absent when too few samples: the
@@ -375,8 +379,9 @@ export class Redeployer {
     }
     this.lastAutoRestartAt = now;
     // The director is guaranteed finished by here (poll only reaches the swap with
-    // directorInFlight === 0), so what gets aborted — and counted — are role ticks only. A
-    // director-extended hold reports drainedMs past the window: correct and informative.
+    // directorInFlight === 0), so what gets aborted — and counted — are role ticks only, and
+    // only those holding a permit (see InFlightCounts). A director-extended hold reports
+    // drainedMs past the window: correct and informative.
     this.log({
       loop: "harness",
       type: "restart",
