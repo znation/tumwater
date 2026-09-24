@@ -181,8 +181,9 @@ interface LoopSortRow {
 /** Is this phase one of the in-flight states? The three labels come from loopPhase:
  * `working …`, `reviewing …`, and the marker-driven `landing …` (merge queue 4/5). Named once
  * so the two rendered tables and their lockstep test share the rule instead of restating the
- * prefixes. */
-function isActivePhase(phase: string): boolean {
+ * prefixes — and statusPayload reuses it for each loop row's `inFlight` flag, so the GUI's
+ * row actions never re-derive the three phase prefixes client-side. */
+export function isActivePhase(phase: string): boolean {
   return phase.startsWith("working") || phase.startsWith("reviewing") || phase.startsWith("landing");
 }
 

@@ -52,7 +52,7 @@ export const GUI_PAGE = `<!doctype html>
 </form>
 <div id="fleet-view">
 <table>
-  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>today</th><th>last tick</th><th>last result</th></tr></thead>
+  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>today</th><th>last tick</th><th>last result</th><th>controls</th></tr></thead>
   <tbody id="loops"></tbody>
 </table>
 <div id="transcript" hidden></div>

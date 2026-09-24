@@ -484,7 +484,13 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
           // today: the loop's spend for the local day (0 while its stamp is stale), same
           // two-decimal rule as cost — formatted client-side from the payload, like cost.
           "</td><td>$" + l.costUsd.toFixed(2) + "</td><td>$" + l.todayUsd.toFixed(2) + "</td><td>" + fmtLastTick(l.lastTickEndedAt) +
-          "</td><td class='wide'>" + esc(last) + "</td></tr>";
+          "</td><td class='wide'>" + esc(last) +
+          // The row's operator controls: wake always (it is safe on an idle loop — it just
+          // clears any backoff), abort only while a tick is actually in flight (the payload's
+          // inFlight flag; there is nothing to abort otherwise).
+          "</td><td><a href='#' class='rowaction' data-action='wake' data-role='" + esc(l.role) + "'>wake</a>" +
+          (l.inFlight ? " <a href='#' class='rowaction' data-action='abort' data-role='" + esc(l.role) + "'>abort</a>" : "") +
+          "</td></tr>";
       }).join("");
       // Project status: planned features, open bugs, and open questions — fresh from
       // /api/status each poll. Each entry line is a link into the detail panel (its full text,
@@ -517,6 +523,26 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     transcriptRole = transcriptRole === a.dataset.role ? null : a.dataset.role; // toggle / switch
     refresh();
   });
+  // row-actions:start
+  // The loop rows' wake/abort controls: one delegated listener beside the looplink one above.
+  // A click POSTs to the same marker-writing core the CLI commands use (/api/wake, /api/abort),
+  // no confirmation dialog — a wake is harmless and an abort matches the row's visible
+  // in-flight state. The server's confirmation message flashes in the header (the budget/pause
+  // error-flash mechanism), and the next 1 s poll re-renders the state (abort → the row's
+  // phase drops to idle once the marker is consumed); a failed POST flashes the error instead.
+  document.getElementById("loops").addEventListener("click", async (ev) => {
+    const a = ev.target.closest("a.rowaction");
+    if (!a) return;
+    ev.preventDefault();
+    const path = a.dataset.action === "abort" ? "/api/abort" : "/api/wake";
+    try {
+      const d = await postJson(path, { role: a.dataset.role });
+      showFlash(d && typeof d.message === "string" ? d.message : path + " accepted");
+    } catch (e) {
+      showFlash("error: " + e.message);
+    }
+  });
+  // row-actions:end
   document.getElementById("backlog").addEventListener("click", (ev) => {
     const a = ev.target.closest("a.backloglink");
     if (!a) return;

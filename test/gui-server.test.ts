@@ -254,3 +254,27 @@ test("gui survives a client that disconnects mid-upload and keeps serving", asyn
     server.close();
   }
 });
+
+test("gui rejects oversized wake and abort bodies with 413 and keeps serving", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui operator body limit test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // Same shared readJsonObject guard as /api/prompt: just over the 64KB cap is a client
+    // error, not a server failure, and no marker file is left behind by either endpoint.
+    const huge = JSON.stringify({ role: "feature", pad: "x".repeat(70 * 1024) });
+    for (const endpoint of ["/api/wake", "/api/abort"]) {
+      const res = await fetch(base + endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: huge,
+      });
+      assert.equal(res.status, 413, endpoint);
+      assert.match(await res.text(), /body too large/);
+    }
+    // The server stays healthy and still serves its status payload.
+    assert.equal((await fetch(base + "/api/status")).status, 200);
+  } finally {
+    server.close();
+  }
+});

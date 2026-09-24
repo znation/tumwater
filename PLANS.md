@@ -7,6 +7,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### 7/7 — Adopt an existing repository without hijacking its README (planned 2026-09-14, refined 2026-09-18, re-audited 2026-09-24)
 
+**Needs review 2026-09-23 by feature: too large for one run** (14 source/test files touched).
+
 **Goal.** Let `tumwater init` run against a repo that already exists and already has a README. Today it hard-fails when `README.md` exists without the `tumwater:prompt` markers, because `readInitialPrompt` (src/readme.ts) reads the brief only out of README.md's managed section. Introduce `TUMWATER.md` as the project brief with README as the compatibility path, plus `init --adopt` / `--dry-run`; the brief filename threads through `COMMON_RULES` (shared with the director prompt).
 
 **Series.** Part 7/7 of the portability series. Depends on: 2/7. Approach, design rationale, and audit pins: plans/portability.md §7/7.
@@ -21,7 +23,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Series critical path.** 1/7 ✓, 2/7 ✓, 3/7 ✓ (landed 2026-09-23), 4a/7 ✓ (landed 2026-09-22) and 4b/7 ✓ (landed 2026-09-22) are done. 5/7, 6/7 and 7/7 depend only on 2/7 and may land in any order from here — the series has no critical path left.
 
-### Wake and abort from the GUI dashboard (planned 2026-09-25)
+
+## Done
+
+### Wake and abort from the GUI dashboard (planned 2026-09-25, done 2026-09-23)
 
 **Goal.** An operator watching the dashboard can pause the fleet, edit the budget, and prompt the director — but `tumwater wake` and `tumwater abort` exist only as CLI commands (src/operator-commands.ts), so clearing a stuck role's backoff or killing its runaway tick means leaving the browser. Give the dashboard per-loop `wake` and `abort` controls backed by two new POST endpoints that reuse the CLI's marker-writing logic.
 
@@ -33,18 +38,19 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   Body discipline via `readJsonObject` like `/api/prompt`.
 - src/ui/status-payload.ts — each loop row gains `inFlight: boolean` from `isActivePhase` (src/ui/status-model.ts:185), so the client does not re-derive the three phase prefixes.
 - src/ui/gui-client.ts — each row of the loop table (the map at :474) gains a trailing controls cell: `wake` always; `abort` only when `l.inFlight`. Both `data-role` links handled by one delegated click listener beside the existing `.looplink` one (comment-tagged `row-actions:start/end` like the pause-control block): `postJson("/api/wake", { role })` or `/api/abort`, no confirmation dialog, the returned message flashed in the header the way a failed budget/pause POST flashes, the 1 s poll re-renders state. `postJson`'s error path (gui-client.ts:50) already surfaces a JSON `{error}` body.
-- src/ui/gui-page.ts — untouched unless the static markup needs the new column; the table is client-rendered.
+- src/ui/gui-page.ts — the static loop-table header gains the `controls` `<th>` the client-rendered rows now end with.
 
-**Files touched.** src/operator-commands.ts, src/ui/gui.ts, src/ui/status-payload.ts, src/ui/gui-client.ts, test/gui-server.test.ts, test/gui-operator.test.ts, test/cli-operators.test.ts (assertions only if the extraction perturbs them — output text is pinned to stay identical).
+**Files touched.** src/operator-commands.ts, src/ui/gui.ts, src/ui/status-payload.ts, src/ui/status-model.ts (isActivePhase exported for the payload's inFlight — the plan referenced it without listing the file), src/ui/gui-client.ts, src/ui/gui-page.ts (the static header needed the controls column), test/gui-server.test.ts, test/gui-operator.test.ts. test/cli-operators.test.ts needed no change — output text stayed byte-identical, as planned.
 
 **Acceptance criteria.**
 - `POST /api/wake` with `{}` (or `{"role":"feature"}`) returns `{ok:true}` and writes the same state-file + marker state as `tumwater wake [--role feature]`; a running fleet consumes it within one poll (covered by the existing operator-requests tests' mechanism, asserted here by marker-file presence).
 - `POST /api/abort {"role":"feature"}` on a live fleet writes the abort marker and returns the CLI's confirmation text; with no harness running it answers 409 with the "no harness is running" error; the director variant's message mentions the discarded prompt.
 - Unknown or missing role ids on both endpoints → 400 naming every valid id (built-ins + customLoops), same as `/api/transcript`; both endpoints sit behind the `--token` gate.
 - The dashboard's loop rows show `wake` on every row and `abort` only on in-flight ones; clicking flashes the server message and the next poll reflects the effect (abort → the row's phase drops to idle on a live fleet).
-- `tumwater wake`, `abort`, and `reset-counters` print exactly today's text in both the live and not-live cases (existing cli-operators tests pass unmodified).
+- `tumwater wake`, `abort`, and `reset-counters` print exactly today's text in both the live and not-live cases (existing cli-operators tests pass unmodified — verified: the full cli suite passed with no edits to that file).
 
-## Done
+**Landed as.** Both endpoints sit behind the token gate, in the same handler chain after `/api/pause`; the transcript role-validation block was lifted into a shared `validRoleIds` helper so all three loop-targeting endpoints cannot drift on ids or 400 wording. gui-server.test.ts carries the 413 body-discipline pin; gui-operator.test.ts the marker/409/400 pins and the evaled row-actions client block. Full suite 2026-09-23: 1405 pass, 0 fail.
+
 
 ### 6/7 — Make the project's verification command configurable (planned 2026-09-14, refined 2026-09-21, re-audited 2026-09-24 and 2026-09-25, done 2026-09-25)
 

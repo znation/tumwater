@@ -5,8 +5,8 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
-import { landingStatePath, orchestratorStatePath, pausedPath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, wakeRequestPath } from "../src/paths.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
 import { enqueueLanding } from "../src/land-queue.js";
 import { makeRepo, startLocalGui } from "./util.js";
@@ -65,7 +65,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
   const payload = statusPayload(repo) as {
     landQueue: { depth: number; inFlight?: { role: string; sha: string; summary: string; startedAt: number } };
     landingBadge: string;
-    loops: Array<{ role: string; phase: string }>;
+    loops: Array<{ role: string; phase: string; inFlight: boolean }>;
   };
   // Idle: depth 0 (the field is never null/absent — one stable shape for JSON consumers)
   // and the preformatted badge is empty, so the page appends nothing.
@@ -91,6 +91,10 @@ test("status payload carries the land queue depth and the in-flight landing", as
   assert.equal(p.landQueue.inFlight?.sha, "abc1234");
   assert.match(p.loops.find((l) => l.role === "clean")!.phase, /^landing \d+s$/, "the landing role's phase is marker-driven");
   assert.equal(p.loops.find((l) => l.role === "bugfix")!.phase, "queued", "other roles keep their normal phase");
+  // The row-level inFlight flag (isActivePhase over the rendered phase) is what the GUI's
+  // row actions key off: the landing role is in flight, every other row is not.
+  assert.equal(p.loops.find((l) => l.role === "clean")!.inFlight, true, "the landing row is in flight");
+  assert.equal(p.loops.find((l) => l.role === "bugfix")!.inFlight, false, "idle rows are not");
 });
 
 // Regression (review of the editable-budget feature): the payload's budget object is now
@@ -458,4 +462,156 @@ test("the pause badge reflects the payload and its click POSTs the opposite stat
   assert.match(wrap.innerHTML, /paused — resume/, "paused: the resume affordance");
   await togglePause();
   assert.deepEqual(posts, [{ paused: true }, { paused: false }], "clicking resume asks the server to resume");
+});
+
+// --- POST /api/wake and POST /api/abort — the dashboard's per-row controls, backed by the
+// same marker-writing cores (requestWake/requestAbort in operator-commands.ts) the CLI
+// commands call, so the two surfaces cannot drift on the state they write or the text they
+// report. The fleet-side marker consumption is pinned in test/orchestrator.e2e.test.ts;
+// here we pin the HTTP layer: the markers it writes, its validation, and its status codes.
+
+test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bodies", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui wake test");
+  const s = freshLoopState("feature");
+  s.backoffSeconds = 15;
+  saveLoopState(repo, s);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // One named role: the row's wake link. The message is the CLI's own confirmation text
+    // (no harness here, so the not-live form), and the marker + state-file edits match.
+    let res = await fetch(base + "/api/wake", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: "feature" }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), {
+      ok: true,
+      message: "wake requested for feature — takes effect on the next `tumwater run` (no harness is running)",
+    });
+    const marker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
+    assert.deepEqual(marker.roles, ["feature"]);
+    assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0, "the row's backoff cleared");
+
+    // `{}` — the empty/missing-role body targets every configured role, like the CLI's
+    // all-roles default.
+    fs.rmSync(wakeRequestPath(repo));
+    res = await fetch(base + "/api/wake", { method: "POST", body: "{}" });
+    assert.equal(res.status, 200);
+    const fleetMarker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
+    assert.deepEqual([...fleetMarker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
+
+    // Unknown / non-string roles get the transcript endpoint's 400 wording, and change nothing.
+    for (const body of ['{"role": "bogus"}', '{"role": 7}']) {
+      const bad = await fetch(base + "/api/wake", { method: "POST", body });
+      assert.equal(bad.status, 400, body);
+      assert.match(((await bad.json()) as { error: string }).error, /valid ids: feature, bugfix/);
+    }
+    fs.rmSync(wakeRequestPath(repo));
+    // Malformed / non-object bodies get readJsonObject's shared 400, and an oversized body 413.
+    for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", pad: "x".repeat(70000) })]) {
+      const bad = await fetch(base + "/api/wake", { method: "POST", body });
+      assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
+    }
+    assert.equal(fs.existsSync(wakeRequestPath(repo)), false, "rejected bodies leave the marker untouched");
+  } finally {
+    server.close();
+  }
+});
+
+test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 400 for bad roles", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui abort test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // No harness running: the marker is valid but nothing can consume it — a conflict, not a
+    // client error, so the CLI's not-live error rides out as 409 and nothing is written.
+    let res = await fetch(base + "/api/abort", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: "feature" }),
+    });
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), { error: "no harness is running — start it with `tumwater run` first" });
+    assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "not-live writes no marker");
+
+    // Record this test process as the running orchestrator (it is alive): now the request
+    // drops the marker and reports the CLI's confirmation text verbatim.
+    const infoFile = orchestratorStatePath(repo);
+    fs.mkdirSync(path.dirname(infoFile), { recursive: true });
+    fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["feature"] }));
+    res = await fetch(base + "/api/abort", {
+      method: "POST",
+      body: JSON.stringify({ role: "feature" }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), {
+      ok: true,
+      message: "abort requested for feature — a running fleet applies it within ~2s",
+    });
+    const marker = JSON.parse(fs.readFileSync(abortRequestPath(repo, "feature"), "utf8")) as { at: number };
+    assert.ok(marker.at > 0);
+
+    // The director variant's message names the discarded prompt, like the CLI's does.
+    res = await fetch(base + "/api/abort", { method: "POST", body: JSON.stringify({ role: "director" }) });
+    assert.equal(res.status, 200);
+    assert.match(((await res.json()) as { message: string }).message, /prompt will be discarded/);
+
+    // Missing / unknown / non-string roles get 400 naming the accepted ids; malformed
+    // bodies get readJsonObject's shape 400 instead (both touch nothing).
+    for (const body of ["{}", '{"role": "bogus"}', '{"role": null}', '{"role": 1}']) {
+      const bad = await fetch(base + "/api/abort", { method: "POST", body });
+      assert.equal(bad.status, 400, body);
+      assert.match(((await bad.json()) as { error: string }).error, /valid ids: feature, bugfix/);
+    }
+    const malformed = await fetch(base + "/api/abort", { method: "POST", body: "not json" });
+    assert.equal(malformed.status, 400);
+    assert.match(((await malformed.json()) as { error: string }).error, /JSON object/);
+  } finally {
+    server.close();
+  }
+});
+
+// The loop rows' wake/abort controls run in the page's script scope; their marker-delimited
+// block is evaled against a minimal DOM stub, like the budget/pause badge tests above: a click
+// on a rowaction anchor POSTs the row's role to the matching endpoint and flashes the server's
+// confirmation, and a failed POST flashes the error instead.
+test("the loop rows' controls post the row's role and flash the server's message", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const block = GUI_PAGE.split("// row-actions:start")[1]!.split("// row-actions:end")[0]!;
+  const listeners: Array<(ev: unknown) => Promise<void> | void> = [];
+  const loopsEl = {
+    addEventListener: (_: string, fn: (ev: unknown) => void) => listeners.push(fn),
+  };
+  const document = {
+    getElementById: (id: string) => (id === "loops" ? loopsEl : null),
+    addEventListener: () => {},
+  };
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; payload: unknown }> = [];
+  const postJson = async (path: string, payload: unknown) => {
+    posts.push({ path, payload });
+    if (path === "/api/abort") throw new Error("/api/abort failed: HTTP 409 — no harness is running");
+    return { ok: true, message: "wake requested for feature — a running fleet applies it within ~2s" };
+  };
+  new Function("document", "postJson", "showFlash", block)(document, postJson, (msg: string) => flashes.push(msg));
+  assert.equal(listeners.length, 1, "the block registers its delegated listener");
+  const handler = listeners[0]!;
+
+  // A wake anchor: the row's role rides the POST, the confirmation flashes.
+  const wakeAnchor = { dataset: { action: "wake", role: "feature" } };
+  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? wakeAnchor : null) }, preventDefault: () => {} });
+  assert.deepEqual(posts, [{ path: "/api/wake", payload: { role: "feature" } }]);
+  assert.match(flashes[0]!, /wake requested for feature/);
+
+  // An abort anchor posts to /api/abort; the failure surfaces in the flash.
+  const abortAnchor = { dataset: { action: "abort", role: "bugfix" } };
+  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? abortAnchor : null) }, preventDefault: () => {} });
+  assert.deepEqual(posts[1], { path: "/api/abort", payload: { role: "bugfix" } });
+  assert.match(flashes[1]!, /^error: \/api\/abort failed: HTTP 409/);
+
+  // A click on a plain loop link (the closest match fails) is left to the other listener.
+  await handler({ target: { closest: () => null }, preventDefault: () => {} });
+  assert.equal(posts.length, 2, "a non-rowaction click posts nothing");
 });

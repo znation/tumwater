@@ -4,7 +4,7 @@ import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { budgetGate, budgetReached, dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, displayTokenMetrics, landingBadge, landingForRole, loopPhase, progressKind } from "./status-model.js";
+import { buildBadge, budgetBadge, displayTokenMetrics, isActivePhase, landingBadge, landingForRole, loopPhase, progressKind } from "./status-model.js";
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -58,22 +58,27 @@ export function statusPayload(root: string): object {
       // The kind follows the phase (progressKind) — see renderStatus / BUGS.md 2026-09-22.
       const live = s.running && !s.parkedSince ? readLiveProgress(root, s.role, progressKind(s)) : null;
       const m = displayTokenMetrics(root, s, live);
+      const phase = loopPhase(
+        s,
+        snap.running,
+        root,
+        budgetPausedNow,
+        live,
+        snap.paused,
+        // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed>`
+        // (the marker-driven record, filtered to this role); every other row is untouched.
+        landingForRole(snap.landQueue, s.role),
+      );
       return {
         role: s.role,
         // User-defined-loop marker (computed in snapshot — see StatusSnapshot.loops): the GUI
         // renders it as an asterisk beside the loop name.
         custom: s.custom,
-        phase: loopPhase(
-          s,
-          snap.running,
-          root,
-          budgetPausedNow,
-          live,
-          snap.paused,
-          // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed>`
-          // (the marker-driven record, filtered to this role); every other row is untouched.
-          landingForRole(snap.landQueue, s.role),
-        ),
+        phase,
+        // In-flight flag derived from the same rendered phase (isActivePhase's three
+        // prefixes: working/reviewing/landing) — the GUI shows `abort` on a row only when
+        // this is true, without re-deriving the prefixes client-side.
+        inFlight: isActivePhase(phase),
         // What a working loop is doing right now (first assistant text of the in-flight run).
         // Null when idle — never show a stale item from a finished tick.
         currentWork: live?.currentWork ?? null,

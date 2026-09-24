@@ -54,49 +54,51 @@ function targetRoles(root: string, args: string[]): string[] {
   return role ? [role] : Object.keys(loadConfig(root).roles);
 }
 
-/** `tumwater reset-counters [--role <id>]`: zero the per-loop counters shown in the
- * dashboards so a fresh observation window can begin. Zeroes each target's state file
- * directly (works while the harness is not running) and drops a marker that a running fleet
- * consumes within one poll cycle — it must also zero the runners' in-memory copies, or their
- * next save resurrects the pre-reset values. Scheduling fields and pi session continuity are
- * untouched: loops keep sleeping/waking exactly as before. */
-export async function cmdResetCounters(root: string, args: string[]): Promise<void> {
-  const targets = targetRoles(root, args);
-  for (const r of targets) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
-  writeJsonFile(resetRequestPath(root), { at: Date.now(), roles: targets });
+/** The marker-writing core of `reset-counters`, shared with the GUI's POST /api/wake's
+ * sibling pattern: zero each target's state file directly (works while the harness is not
+ * running) and drop the fleet marker a running fleet consumes within one poll cycle. Returns
+ * the confirmation the CLI prints verbatim and the GUI flashes. */
+export function requestResetCounters(root: string, roles: string[]): string {
+  for (const r of roles) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
+  writeJsonFile(resetRequestPath(root), { at: Date.now(), roles });
   // Only a live fleet consumes the marker; without one the state files are already zeroed and
   // the next `tumwater run` is when the in-memory copies catch up. Name which case this is
   // rather than promising a ~2s pickup that no process will make.
   const { live, when } = markerApplyNote(root);
-  process.stdout.write(
-    `counters reset for ${targets.join(", ")} — ${
-      live ? `a running fleet picks this up${when}` : "takes effect on the next `tumwater run` (no harness is running)"
-    }\n`,
-  );
+  return `counters reset for ${roles.join(", ")} — ${
+    live ? `a running fleet picks this up${when}` : "takes effect on the next `tumwater run` (no harness is running)"
+  }`;
 }
 
-/** `tumwater wake [--role <id>]`: tell the fleet "whatever the loops were failing on is
- * fixed — try again": clear the named roles' (or every role's) backoff and pull nextRunAt
- * to now, so they tick within one poll instead of sleeping until the backoff expires. The
- * counterpart of reset-counters' documented hands-off stance toward scheduling: this one
- * touches ONLY the schedule — counters, wake tracking, and session continuity are
- * untouched. Works like reset-counters on both planes: rewrites each target's state file
- * directly (takes effect on the next `tumwater run` even when no fleet is up) and drops a
- * marker a running fleet consumes within one poll — it must also clear the runners'
- * in-memory schedules, or their next save resurrects the pre-wake sleep window. */
-export async function cmdWake(root: string, args: string[]): Promise<void> {
-  const targets = targetRoles(root, args);
+/** `tumwater reset-counters [--role <id>]`: zero the per-loop counters shown in the
+ * dashboards so a fresh observation window can begin. Scheduling fields and pi session
+ * continuity are untouched: loops keep sleeping/waking exactly as before. */
+export async function cmdResetCounters(root: string, args: string[]): Promise<void> {
+  process.stdout.write(requestResetCounters(root, targetRoles(root, args)) + "\n");
+}
+
+/** The marker-writing core of `wake`, shared with the GUI's POST /api/wake: clear the named
+ * roles' backoff and pull nextRunAt to now (touching ONLY the schedule — counters, wake
+ * tracking, and session continuity are untouched), and drop the marker a running fleet
+ * consumes within one poll. Returns the confirmation the CLI prints verbatim and the GUI
+ * flashes. */
+export function requestWake(root: string, roles: string[]): string {
   const now = Date.now();
-  for (const r of targets) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
-  writeJsonFile(wakeRequestPath(root), { at: now, roles: targets });
+  for (const r of roles) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
+  writeJsonFile(wakeRequestPath(root), { at: now, roles });
   // Same liveness contract as reset-counters and pause/resume: only a live fleet consumes the
   // marker, so say so instead of promising a poll that will not happen.
   const { live, when } = markerApplyNote(root);
-  process.stdout.write(
-    `wake requested for ${targets.join(", ")} — ${
-      live ? `a running fleet applies it${when}` : "takes effect on the next `tumwater run` (no harness is running)"
-    }\n`,
-  );
+  return `wake requested for ${roles.join(", ")} — ${
+    live ? `a running fleet applies it${when}` : "takes effect on the next `tumwater run` (no harness is running)"
+  }`;
+}
+
+/** `tumwater wake [--role <id>]`: tell the fleet "whatever the loops were failing on is
+ * fixed — try again", so the named roles tick within one poll instead of sleeping until
+ * their backoff expires. */
+export async function cmdWake(root: string, args: string[]): Promise<void> {
+  process.stdout.write(requestWake(root, targetRoles(root, args)) + "\n");
 }
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot
@@ -110,7 +112,19 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
   // user-defined loops; a missing --role fails before it is ever needed.
   const role = namedRole(root, args);
   if (!role) fail("abort requires --role <id> (e.g. `--role feature`)");
-  if (!orchestratorAlive(root)) fail("no harness is running — start it with `tumwater run` first");
+  const result = requestAbort(root, role);
+  if (!result.ok) fail(result.error);
+  process.stdout.write(result.message + "\n");
+}
+
+/** The marker-writing core of `abort`, shared with the GUI's POST /api/abort: drop the
+ * per-role marker a running fleet consumes within one poll cycle. Reports the liveness gate
+ * and the director's discarded-prompt note structurally ({ok, message|error}) so the CLI can
+ * fail() and the GUI can shape its 409/200 — neither re-derives the wording. */
+export function requestAbort(root: string, role: string): { ok: true; message: string } | { ok: false; error: string } {
+  if (!orchestratorAlive(root)) {
+    return { ok: false, error: "no harness is running — start it with `tumwater run` first" };
+  }
   writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
   let confirmation = `abort requested for ${role} — a running fleet applies it within ~2s`;
   if (role === DIRECTOR_ROLE) {
@@ -119,7 +133,7 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
     confirmation +=
       "; its current in-flight prompt will be discarded (re-submit with `tumwater prompt` if you want it retried)";
   }
-  process.stdout.write(confirmation + "\n");
+  return { ok: true, message: confirmation };
 }
 
 /** `tumwater pause`: stop every role loop from starting NEW ticks while in-flight ones finish

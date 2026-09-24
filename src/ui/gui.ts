@@ -12,6 +12,7 @@ import { isJsonObject } from "../json-object.js";
 import { knownRoleIds, loadConfigCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, resumeFleet } from "../fleet-state.js";
+import { requestAbort, requestWake } from "../operator-commands.js";
 import { GUI_PAGE } from "./gui-page.js";
 import { allRoleIds } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "./report.js";
@@ -39,17 +40,24 @@ function tokenMatches(expected: string, provided: string): boolean {
   return crypto.timingSafeEqual(a, b);
 }
 
+/** The role ids a loop-targeting endpoint accepts: when tumwater.json parses, catalog +
+ * customLoops (knownRoleIds); a transiently broken file falls back to the built-in catalog
+ * rather than refusing every id. Shared by /api/transcript and the two operator endpoints so
+ * their validation and 400 wording cannot drift. */
+function validRoleIds(root: string): string[] {
+  const { config } = loadConfigCached(root);
+  return config ? knownRoleIds(config) : allRoleIds();
+}
+
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
  * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
- * one must open its transcript: when tumwater.json parses, ids validate against catalog +
- * customLoops (knownRoleIds); a transiently broken file falls back to the built-in catalog
- * rather than refusing every id. The 400 message lists exactly the ids accepted. */
+ * one must open its transcript: ids validate through validRoleIds. The 400 message lists
+ * exactly the ids accepted. */
 function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
   const q = new URL(req.url ?? "", "http://localhost").searchParams;
   const role = q.get("role");
-  const { config } = loadConfigCached(root);
-  const validIds = config ? knownRoleIds(config) : allRoleIds();
+  const validIds = validRoleIds(root);
   if (role === null) {
     sendJson(res, 400, { error: `role required (valid ids: ${validIds.join(", ")})` });
     return;
@@ -374,6 +382,40 @@ export function startGui(
         if (value) pauseFleet(root);
         else resumeFleet(root);
         sendJson(res, 200, { ok: true, paused: value });
+      } else if (req.method === "POST" && pathname === "/api/wake") {
+        // The dashboard's per-row wake control: the same marker-writing core `tumwater wake`
+        // calls (requestWake), so the CLI and the GUI cannot drift on the state-file edits or
+        // the marker. `{}`/a missing role targets every configured role (the CLI's all-roles
+        // default); a given role validates exactly like /api/transcript. Same body
+        // discipline as /api/pause (readJsonObject → 400 malformed/non-object, 413 oversized).
+        const body = await readJsonObject(req, res, '{"role": "feature"}');
+        if (!body) return; // 4xx already sent — oversized or not a JSON object
+        const validIds = validRoleIds(root);
+        const role = body.role;
+        if (role !== undefined && (typeof role !== "string" || !validIds.includes(role))) {
+          sendJson(res, 400, { error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})` });
+          return;
+        }
+        sendJson(res, 200, { ok: true, message: requestWake(root, role === undefined ? validIds : [role]) });
+      } else if (req.method === "POST" && pathname === "/api/abort") {
+        // The dashboard's per-row abort control: the same marker-writing core `tumwater abort`
+        // calls (requestAbort). The role is required and validated like /api/transcript;
+        // requestAbort's not-live error comes back 409 — the marker is valid but nothing can
+        // consume it, a conflict rather than a client 400. The director variant's message
+        // (the discarded-prompt note) rides through verbatim.
+        const body = await readJsonObject(req, res, '{"role": "feature"}');
+        if (!body) return; // 4xx already sent — oversized or not a JSON object
+        const validIds = validRoleIds(root);
+        if (typeof body.role !== "string" || !validIds.includes(body.role)) {
+          sendJson(res, 400, { error: `unknown role ${JSON.stringify(body.role)} (valid ids: ${validIds.join(", ")})` });
+          return;
+        }
+        const result = requestAbort(root, body.role);
+        if (!result.ok) {
+          sendJson(res, 409, { error: result.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, message: result.message });
       } else {
         res.writeHead(404, { "content-type": "text/plain" });
         res.end("not found");
