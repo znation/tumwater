@@ -9,7 +9,8 @@ import {
   isSelfHosted,
   readBuildInfo,
 } from "./build-info.js";
-import { type BuildCheckOutcome, buildCheckEvent } from "./build-check.js";
+import type { BuildCheckOutcome } from "./build-check.js";
+import { buildCheckEvent } from "./build-check-events.js";
 import { defaultConfig, loadConfigCached } from "./config.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { compileStaged, swapDist } from "./build-stage.js";

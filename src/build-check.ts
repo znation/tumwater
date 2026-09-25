@@ -3,7 +3,15 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck, gateCommandOf } from "./build-check-detect.js";
 import { defaultConfig } from "./config.js";
-import { logEvent, warnEvent, type HarnessEventInput } from "./events.js";
+import { logEvent, warnEvent } from "./events.js";
+import {
+  MERGE_SCOPES,
+  SCOPE_WORDS,
+  buildCheckEvent,
+  buildCheckSkipWarning,
+  timedOutPhrase,
+  type BuildCheckScope,
+} from "./build-check-events.js";
 import { Semaphore } from "./semaphore.js";
 import { truncate } from "./text.js";
 import { signalTree } from "./pi.js";
@@ -23,7 +31,9 @@ const execFileAsync = promisify(execFile);
  * in-lock re-check (merge.ts). The red-main baseline gate (main-red.ts) reuses this same
  * detection and execution from main-baseline.ts to verify main itself once per SHA before an
  * authoring run is spent on top of it. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
- * by clipBuildTail and parseVerdict in review.ts — so that helper has a single home. */
+ * by clipBuildTail and parseVerdict in review.ts — so that helper has a single home. The build_check
+ * event's shape and the skip-warning wording are presentation, not execution, and live in
+ * build-check-events.ts (type-only back-reference here — no runtime cycle). */
 
 /** Per-reason length cap with ellipsis — bounds one line of machine-generated or reviewer
  * text so it cannot bloat persisted state (shared by clipBuildTail here and parseVerdict in
@@ -58,14 +68,6 @@ export { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
  * grace period must run to completion), that a surviving grandchild is taken down before the
  * check settles, and that a tree the SIGTERM already took down does not wait out the grace. */
 const KILL_GRACE_MS = 10_000;
-
-/** How late a check's deadline timer may fire before the timeout's wording stops naming the
- * configured bound alone. Normal timer lag is milliseconds; past this the warning and the
- * merge-scope reason name the wall-clock time the deadline actually fired and how late (see
- * BuildCheckRun.deadlineLateMs), because "timed out after 300s" for a check that ran 712 s is
- * the false claim BUGS.md 2026-09-21 recorded. The exact lateness is on the build_check event
- * either way; this only keeps sub-second jitter out of the one-line warning. */
-const DEADLINE_LATE_TOLERANCE_MS = 5_000;
 
 /** Why a declared check reached no verdict: the script never finished (timeout), the script
  * died on a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md
@@ -515,115 +517,6 @@ export async function withCheckPermit<T>(
   } finally {
     checkPermits.release();
   }
-}
-
-/** The scopes named in a build_check event logged from this helper. The red-main baseline
- * names its own ("baseline") from main-red.ts, because the one-run-per-SHA cache and in-flight
- * dedup live in checkMainBaseline — the event there is logged by the paying role via the onRun
- * hook. */
-type BuildCheckScope = "gate" | "landing" | "batch";
-
-/** Per-scope wording for the environmental-skip warning. The call sites' current messages
- * are identical apart from these words, so keying them on the scope keeps each surface's feed
- * line byte-for-byte what it is today. */
-const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }> = {
-  gate: { label: "build check", proceeding: "proceeding to model review" },
-  landing: { label: "landing build check", proceeding: "proceeding to merge" },
-  // The batch's next step after the check is the fast-forward — the same phrase the landing
-  // scope uses (gate says "proceeding to model review" because its next step is the reviewer).
-  batch: { label: "batch build check", proceeding: "proceeding to merge" },
-};
-
-/** Scopes whose outcome gates a merge to main: runScopedBuildCheck remaps a timeout or an
- * external signal kill at these scopes to a deterministic "failed" — the tree is unverified,
- * and these are the last checks before main. The gate scope's pre-check stays fail-open
- * because the model reviewer and the landing path's own check still stand behind it
- * (BUGS.md: a landing build check that times out must not merge unverified). */
-const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"]);
-
-/** How a timed-out check is described: "timed out after <bound>s" when the deadline fired on
- * time, and otherwise the wall-clock time it actually fired at, with the configured bound and
- * the lateness beside it — so no warning or reject reason claims a bound the run did not keep
- * (BUGS.md 2026-09-21: "timed out after 300s" for checks that ran 331–1158 s, each one a host
- * that slept through the deadline). The bound is the run's own when it has one — what
- * runScriptGroup actually armed — and the caller's otherwise. Shared by buildCheckSkipWarning
- * and runScopedBuildCheck's merge-scope reason. */
-function timedOutPhrase(timeoutMs: number, run?: BuildCheckRun): string {
-  const bound = run?.timeoutMs ?? timeoutMs;
-  const late = run?.deadlineLateMs ?? 0;
-  if (late <= DEADLINE_LATE_TOLERANCE_MS) return `timed out after ${bound / 1000}s`;
-  const secs = (ms: number) => Math.round(ms / 100) / 10;
-  return (
-    `timed out after ${secs(bound + late)}s (its ${bound / 1000}s deadline fired ${secs(late)}s ` +
-    "late: the host was asleep or the harness stalled)"
-  );
-}
-
-/** The one-line warning for an environmental check skip, keyed on why the check could not run.
- * `label` names the check in the feed and `proceeding` says what happens despite the skip; the
- * scoped check (SCOPE_WORDS above) and the red-main baseline gate (main-red.ts) differ only in
- * those two words, so the mapping lives here once instead of drifting per surface. A "killed"
- * skip carries the caller's `killed` info when it has it — the signal and the check's real
- * wall-clock, not the timeout bound — and a signal-less form otherwise, so the warning never
- * again names a timeout that did not fire. A "timeout" skip names the bound the run was armed
- * with, and when the caller passes the run and its deadline fired late, the time it really
- * fired at (timedOutPhrase). */
-export function buildCheckSkipWarning(
-  skipReason: BuildSkipReason,
-  label: string,
-  proceeding: string,
-  timeoutMs: number,
-  killed?: { signal: string; durationMs: number },
-  run?: BuildCheckRun,
-): string {
-  if (skipReason === "no-npm") return `no npm on PATH; skipping ${label}`;
-  if (skipReason === "toolchain") return `the toolchain is broken; skipping ${label}; ${proceeding}`;
-  if (skipReason === "killed") {
-    return killed
-      ? `${label} was killed by ${killed.signal} after ${killed.durationMs / 1000}s; ${proceeding}`
-      : `${label} was killed by an external signal; ${proceeding}`;
-  }
-  return `${label} ${timedOutPhrase(timeoutMs, run)}; ${proceeding}`;
-}
-
-/** The build_check event's record of when the check itself ran (BuildCheckRun): spawn and
- * settle times on every run, plus the armed bound and the deadline's lateness when it fired.
- * Spread into every build_check event by buildCheckEvent below, so the feed can separate the
- * check's own wall-clock from the probe around it, and a deadline that fired late from one
- * that fired on time. Empty when nothing was spawned. */
-function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number> {
-  const run = outcome.run;
-  if (!run) return {};
-  return {
-    spawnedAt: run.spawnedAt,
-    settledAt: run.settledAt,
-    ...(run.deadlineLateMs === undefined
-      ? {}
-      : { timeoutMs: run.timeoutMs, deadlineLateMs: run.deadlineLateMs }),
-  };
-}
-
-/** The one home of the build_check event's shape — `{ loop, type: "build_check", scope,
- * status, script, durationMs }` plus the run-timing fields (buildCheckRunFields above) —
- * so the feed's most expensive event type cannot drift a field between its four surfaces:
- * runScopedBuildCheck's two priced events here (the killed retry and the final verdict) and
- * the red-main baseline loggers (main-red.ts's baselineCheckLogger, redeploy.ts's redeploy
- * mirror), which all paid the run whose timings the event carries. */
-export function buildCheckEvent(
-  loop: string,
-  scope: BuildCheckScope | "baseline",
-  outcome: Pick<BuildCheckOutcome, "status" | "script" | "run">,
-  durationMs: number,
-): HarnessEventInput {
-  return {
-    loop,
-    type: "build_check",
-    scope,
-    status: outcome.status,
-    script: outcome.script,
-    durationMs,
-    ...buildCheckRunFields(outcome),
-  };
 }
 
 /** Run the project's declared check for a named scope — the detect → run → build_check

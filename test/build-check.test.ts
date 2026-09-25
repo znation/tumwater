@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  buildCheckSkipWarning,
   CHECK_TIER,
   clipBuildTail,
   failureHeadline,
@@ -11,6 +10,7 @@ import {
   runScopedBuildCheck,
   withCheckPermit,
 } from "../src/build-check.js";
+import { buildCheckSkipWarning } from "../src/build-check-events.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
