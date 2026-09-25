@@ -21,8 +21,8 @@ import { errorMessage, shortSha } from "./text.js";
 /** Self-redeploy for a self-hosting fleet (see build-info.ts for why): when main's build inputs
  * have moved past the running build, verify that main is green, compile it into a staging dir,
  * drain the fleet (no new ticks; in-flight ones finish or are aborted resumably after
- * RESTART_DRAIN_MAX_MS), swap the compiled tree into dist/, and ask the supervisor (cli.ts,
- * supervisor.ts) to respawn the harness onto it by exiting RESTART_EXIT_CODE. Every step is
+ * RESTART_DRAIN_MAX_MS), swap the compiled tree into dist/, and ask the supervisor
+ * (supervisor.ts) to respawn the harness onto it by exiting RESTART_EXIT_CODE. Every step is
  * non-blocking from the orchestrator's poll: the green check and the compile run in the
  * background and are consulted on later polls, so a slow `npm test` never stalls scheduling.
  * Completed restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11), so
@@ -482,8 +482,9 @@ export class Redeployer {
 export async function createRedeployer(
   root: string,
   log: (event: RedeployEvent) => void,
-  /** The successor's startup gate (RedeployDeps.bootProblem) — cli.ts binds runStartupProblem
-   * to the invocation's own flags, the ones the supervisor forwards to every generation. */
+  /** The successor's startup gate (RedeployDeps.bootProblem) — cli-run.ts binds
+   * runStartupProblem to the invocation's own flags, the ones the supervisor forwards to every
+   * generation. */
   bootProblem: () => Promise<string | null>,
 ): Promise<Redeployer | null> {
   const build = readBuildInfo();

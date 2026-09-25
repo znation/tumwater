@@ -30,7 +30,8 @@ export function readJsonFile<T extends object>(file: string): T | null {
 
 /** Write `value` to `file` as pretty-printed (2-space) JSON, creating the parent directory
  * first — the shared pre-write step for every harness marker/info file that is a plain
- * overwrite (the reset-counters and abort markers in cli.ts, the orchestrator info file), so
+ * overwrite (the reset-counters, wake, and abort markers in operator-commands.ts, the
+ * orchestrator info file), so
  * their format cannot drift per writer. Writers with stronger guarantees keep their own
  * paths: the event log appends + rotates (events.ts). */
 export function writeJsonFile(file: string, value: unknown): void {

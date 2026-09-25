@@ -14,7 +14,7 @@ import { piLogPath } from "../paths.js";
  * last newline: a trailing partial line (torn write in flight) is NOT consumed, so it is
  * re-read next poll once its writer has written the newline instead of being parsed torn
  * or lost. Shared by every JSONL reader that consumes incrementally — progress.ts's live
- * tail, followFile, and the transcript one-shot reads (transcript.ts, cli.ts). */
+ * tail, followFile, and the transcript one-shot reads (transcript.ts, transcript-tail.ts). */
 export function readCompleteLines(file: string, offset: number, size: number): { lines: string[]; end: number } {
   const len = size - offset;
   if (len <= 0) return { lines: [], end: offset };

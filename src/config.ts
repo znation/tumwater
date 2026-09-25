@@ -242,7 +242,7 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
  * reconfiguration (BUGS.md 2026-09-23: a landing's fast-forward deleted it and the fleet ran
  * 8.6 h on defaults), so callers keep their last-known-good exactly as for a broken file, or
  * fall back to defaults only when they never saw one. Startup's "missing ⇒ not initialized"
- * gate (cli.ts) and loadConfig's first-run defaults are unaffected. */
+ * gate (startup-gate.ts) and loadConfig's first-run defaults are unaffected. */
 export function loadConfigCached(root: string): { config?: TumwaterConfig; error?: string; missing?: true } {
   const file = configPath(root);
   try {
