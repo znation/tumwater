@@ -208,3 +208,57 @@ test("applyConfigRequest survives structurally malformed requests without throwi
   assert.ok(result && result.error && /must be a JSON object/.test(result.error), JSON.stringify(result));
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 });
+
+// The one failure the delete-on-every-path rule cannot absorb: the unlink itself fails (a
+// permissions surprise on the worktree directory — the same shape as a full disk or an
+// externally locked file). The application stands (its write already happened), the failure is
+// surfaced as the error string (the caller logs it; the file would otherwise survive into
+// commitAll's `git add -A` and reach a review gate), and the file is still there for a retry.
+// Skipped under root, where chmod cannot stop the unlink (the success path already covers it).
+test("a request whose unlink fails is still applied, with the failed deletion surfaced as the error", (t) => {
+  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  if (asRoot) {
+    t.skip("chmod cannot stop a root process");
+    return;
+  }
+  const root = tmpdir();
+  const wt = tmpdir();
+  saveConfig(root, defaultConfig());
+  writeRequest(wt, { customLoops: [{ name: "docs", task: "Keep the examples current." }] });
+  fs.chmodSync(wt, 0o555); // readable and searchable — the read succeeds, the unlink cannot
+  try {
+    const result = applyConfigRequest(root, wt);
+    assert.ok(result, "a present request file is never read as null");
+    assert.deepEqual(result.applied, ["docs"], "the write happened before the failed cleanup");
+    assert.deepEqual(customLoopNames(loadConfig(root)), ["docs"], "the loop is live");
+    assert.match(result.error ?? "", /could not be deleted/);
+    assert.ok(fs.existsSync(configRequestPath(wt)), "the undeletable request is still on disk");
+  } finally {
+    fs.chmodSync(wt, 0o755); // restore so temp-dir cleanup can remove it
+  }
+});
+
+// The ??= precedence: a request that failed validation AND could not be deleted reports the
+// validation problem — the reason the caller acts on — never the cleanup noise.
+test("a validation failure outranks a failed deletion in the surfaced error", (t) => {
+  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  if (asRoot) {
+    t.skip("chmod cannot stop a root process");
+    return;
+  }
+  const root = tmpdir();
+  const wt = tmpdir();
+  saveConfig(root, defaultConfig());
+  writeRequest(wt, { customLoops: [{ name: "Docs", task: "uppercase name" }] });
+  fs.chmodSync(wt, 0o555);
+  try {
+    const result = applyConfigRequest(root, wt);
+    assert.ok(result);
+    assert.deepEqual(result.applied, []);
+    assert.match(result.error ?? "", /customLoops\[0\]\.name/);
+    assert.doesNotMatch(result.error ?? "", /could not be deleted/);
+  } finally {
+    fs.chmodSync(wt, 0o755);
+  }
+  assert.ok(fs.existsSync(configRequestPath(wt)), "still undeletable after the failure");
+});
