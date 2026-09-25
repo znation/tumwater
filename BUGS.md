@@ -9,6 +9,33 @@ _None yet._
 
 ## Fixed
 
+### A Done/Fixed entry's body bullets that mention a completion date count as entries, inflating the usage report's featuresDone/bugsFixed tallies (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `entryDates` (src/report-data.ts, formerly ui/report.ts) treats every unfenced
+`### ` or `- ` line in a Done/Fixed section as an entry start and matches its metadata for a
+date. Body bullets are common in these entries — a bug's repro steps, a plan's task
+breakdown — and a body bullet that mentions a sibling's completion ("- same shape as the
+sibling bug (fixed 2026-09-24)") was parsed as an entry of its own, crediting the sibling's
+day with phantom completions.
+
+**Reproduce:** confirmed 2026-09-25 by a scratch `collectReport` run against a BUGS.md whose
+single Fixed entry carried a two-item body bullet list mentioning "(fixed 2026-09-24)": the
+report totaled 3 bugsFixed (2 on the phantom day) where the file records 1. Now also pinned
+by the regression test "a body bullet that mentions a completion date is not an entry…" in
+test/report.test.ts, which failed the same way pre-fix.
+
+**Fix:** an epitaph guard on `- ` lines: a bullet counts only when its trailing `(…)` group
+carries the completion date beside a `commit` reference — the epitaph shape every compressed
+entry in PLANS.md and BUGS.md already follows ("(planned …, done …; commit abc1234)",
+"(found …, fixed …; commit …; gap: …)") — while a body bullet's bare "(fixed DATE)" no
+longer matches. `### ` headings keep the plain metadata match. The distinction is now
+recorded in the function's doc comment so the entry-vs-body convention is written down
+rather than implied.
+
+**Validation gap:** unclear-invariant (closest tag) — the suite already exercised body
+bullets and epitaphs, but only in the shapes that could not collide (undated body bullets,
+commit-bearing epitaphs), so nothing failed until the entry-vs-body convention itself was
+reconstructed from the corpus and an adversarial dated body bullet was written against it.
 ### `onceSummary`'s settle-map fallback re-derives backoff from `nextRunAt` alone, so a not-yet-due role in an aborted round's summary reads as "backoff" (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `onceSummary` (src/cli-run.ts) reports each skipped role with the orchestrator's

@@ -202,6 +202,42 @@ test("a ### heading quoted in a fenced block inside a Fixed entry adds no phanto
   assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 1);
 });
 
+test("a body bullet that mentions a completion date is not an entry; an epitaph's commit-bearing tail still is", () => {
+  // A Fixed entry's body can carry a bulleted list whose items mention a sibling's completion
+  // ("- same shape as the sibling bug (fixed 2026-09-24)") — those are body text, not entries,
+  // and before the epitaph guard each one inflated the report's fixed count on the sibling's
+  // day. An epitaph bullet keeps counting: its trailing parenthetical carries the date beside
+  // its landing commit.
+  const root = tmpdir();
+  const d1 = dayKey(at(2));
+  const d2 = dayKey(at(1));
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    [
+      "# Bugs",
+      "",
+      "## Fixed",
+      "",
+      `### Real entry with a body list (found by bugfix loop ${d1}, fixed ${d1})`,
+      "",
+      "The sibling symptom was recorded twice before:",
+      "",
+      `- a first false start (fixed ${d2})`,
+      `- a second false start (fixed ${d2})`,
+      "",
+      "And a closing note.",
+      "",
+      `- A real epitaph in the compressed style (found by telemetry loop ${d2}, fixed ${d2}; commit abc1234)`,
+      "",
+    ].join("\n"),
+  );
+
+  const data = collectReport(root, 5);
+  assert.equal(data.totals.bugsFixed, 2); // the entry's own day + the epitaph's day — not 5
+  assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 1);
+  assert.equal(data.series.find((d) => d.date === d2)?.bugsFixed, 1); // the epitaph only
+});
+
 test("collectReport degrades to zeros when every source is missing", () => {
   const root = tmpdir(); // no .tumwater/, no PLANS.md, no BUGS.md
   const data = collectReport(root, 3);

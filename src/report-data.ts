@@ -60,7 +60,16 @@ function readMarkdown(file: string): string {
  * first line ending in `)` (capped at 3 lines) — wrapped headings carry their date on the
  * second line, while `- ` epitaphs are single-line by construction, so a bullet's own line is
  * its whole metadata (a following prose paragraph is body, never matched). Joining with a
- * space keeps "done\n2026-…" matchable. Entries without a parseable date are skipped. */
+ * space keeps "done\n2026-…" matchable. Entries without a parseable date are skipped.
+ *
+ * A `- ` line needs more than a date to be an entry: the sections also hold body bullets (an
+ * entry's repro steps, a plan's task breakdown), and a body bullet that merely mentions a
+ * completion — "- same shape as the sibling bug (fixed 2026-09-24)" — is not one. The epitaph
+ * shape separates them: an epitaph always closes its line with a parenthetical that records
+ * both the completion date and the landing commit ("(planned …, done …; commit abc1234)"),
+ * so a bullet counts only when its trailing `(…)` group carries the date AND a `commit`
+ * reference; a heading entry keeps the plain metadata match (headings are the primary entry
+ * format and always close their metadata parenthetical by convention). */
 function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] {
   const dates: string[] = [];
   // A section always starts at its non-fenced `## ` heading, so a fresh tracker is in sync
@@ -81,7 +90,16 @@ function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] 
       j++;
       closed = next.endsWith(")");
     }
-    const m = meta.join(" ").match(dateRe);
+    let m: RegExpMatchArray | null;
+    if (line.startsWith("- ")) {
+      // Epitaph guard (see the doc comment): the date must live in the line's trailing
+      // parenthetical beside a commit reference, or the bullet is body text, not an entry.
+      const tail = line.match(/\(([^()]*)\)\s*$/)?.[1] ?? "";
+      m = tail.match(dateRe);
+      if (m && !/\bcommits?\b/.test(tail)) m = null;
+    } else {
+      m = meta.join(" ").match(dateRe);
+    }
     if (m && m[1]) dates.push(m[1]);
     i = j - 1; // The loop's ++ resumes at the first line not consumed as metadata.
   }
