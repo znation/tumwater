@@ -230,9 +230,25 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   let backlogKey = null; // "file:index" of the open backlog entry (null = closed) — mutually
                          // exclusive with transcriptRole: both render into #transcript, so only
                          // one can be open at a time.
+  // The detail panel's currently rendered HTML: the 1s poll re-fetches while a panel is open,
+  // but a quiet loop returns the same content poll after poll, so skip the innerHTML rebuild
+  // when the frame is unchanged — rewriting identical HTML re-parses it (multi-KB backlog
+  // bodies every second) and wipes the operator's text selection mid-read for nothing.
+  let lastPanelHtml = null;
+  function renderDetail(panel, html) {
+    if (html !== lastPanelHtml) {
+      panel.innerHTML = html;
+      lastPanelHtml = html;
+    }
+    panel.hidden = false;
+  }
   async function refreshTranscript() {
     const panel = document.getElementById("transcript");
-    if (!transcriptRole && !backlogKey) { panel.hidden = true; panel.innerHTML = ""; return; }
+    if (!transcriptRole && !backlogKey) {
+      if (lastPanelHtml !== "") { panel.innerHTML = ""; lastPanelHtml = ""; }
+      panel.hidden = true;
+      return;
+    }
     try {
       if (transcriptRole) {
         // The shared getJson guard (same as the backlog branch below and fetchReport above):
@@ -242,10 +258,9 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
         // Throwing keeps the previous panel content, like every other failed poll here.
         const d = await getJson("/api/transcript?role=" + encodeURIComponent(transcriptRole) + "&n=50");
         const lines = Array.isArray(d.lines) ? d.lines : [];
-        panel.hidden = false;
-        panel.innerHTML = "<span class='muted'>transcript: " + esc(transcriptRole) +
+        renderDetail(panel, "<span class='muted'>transcript: " + esc(transcriptRole) +
           " — click the loop name again to close</span>\\n" +
-          (lines.length ? lines.map(esc).join("\\n") : "(no transcript yet for this loop)");
+          (lines.length ? lines.map(esc).join("\\n") : "(no transcript yet for this loop)"));
       } else {
         // A backlog entry's full text, fetched on demand (bodies can be multi-KB) and re-fetched
         // on the same 1s poll while open — the panel's pre-wrap preserves its newlines. The body
@@ -253,9 +268,8 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
         // or HTML in a plan/bug entry would execute in the dashboard (XSS).
         const [file, index] = backlogKey.split(":");
         const d = await getJson("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index));
-        panel.hidden = false;
-        panel.innerHTML = "<span class='muted'>" + esc(d.title) +
-          " — click the entry again to close</span>\\n" + (esc(d.body) || "(no details for this entry)");
+        renderDetail(panel, "<span class='muted'>" + esc(d.title) +
+          " — click the entry again to close</span>\\n" + (esc(d.body) || "(no details for this entry)"));
       }
     } catch { /* keep the previous panel content on a failed poll */ }
   }
