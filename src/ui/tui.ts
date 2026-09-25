@@ -39,6 +39,9 @@ import {
   stepEntryScroll,
 } from "./tui-backlog.js";
 
+/** How long a TUI flash notice stays visible (ms). */
+const FLASH_MS = 3000;
+
 const CLEAR = "\x1b[2J\x1b[H";
 const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
@@ -94,6 +97,13 @@ export async function runTui(root: string): Promise<void> {
   let currentBudgetFree = false;
   let flash = "";
   let flashUntil = 0;
+  // Flash a one-line notice on the prompt line: the single owner of the message+expiry
+  // pair, so every notice expires on the same clock and no keypress branch grows its
+  // own copy of the two assignments.
+  const flashMessage = (message: string): void => {
+    flash = message;
+    flashUntil = Date.now() + FLASH_MS;
+  };
   // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
   // status (planned features + open bugs + open questions), then the usage report — Ctrl+T.
   let view = 0;
@@ -293,8 +303,7 @@ export async function runTui(root: string): Promise<void> {
           // Mutually exclusive with role-prompt mode: the two editors share one prompt line,
           // so a mode may not enter while the other holds it. Flash the way out instead of
           // silently dropping either mode's saved draft.
-          flash = `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`;
-          flashUntil = Date.now() + 3000;
+          flashMessage(`finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`);
           render();
           return;
         }
@@ -304,16 +313,14 @@ export async function runTui(root: string): Promise<void> {
           // An all-free fleet has no spend a cap could bind: the editor would pre-fill a
           // value that can never take effect, so Ctrl+B flashes a one-line notice and
           // leaves the prompt line untouched (toggle/Esc logic unchanged).
-          flash = "budget n/a — all models free";
-          flashUntil = Date.now() + 3000;
+          flashMessage("budget n/a — all models free");
         } else {
           savedInput = input;
           savedCursor = cursor;
           budgetMode = true;
           input = currentCapUsd > 0 ? String(currentCapUsd) : "";
           cursor = input.length;
-          flash = "edit daily cost budget (USD): Enter to save, Esc to cancel";
-          flashUntil = Date.now() + 3000;
+          flashMessage("edit daily cost budget (USD): Enter to save, Esc to cancel");
         }
         render();
         return;
@@ -344,14 +351,14 @@ export async function runTui(root: string): Promise<void> {
             // Ctrl+B branch.
             if (rolePromptFor) {
               exitRolePromptMode();
-              flash = "role prompt cancelled";
+              flashMessage("role prompt cancelled");
             } else {
               roleSavedInput = input;
               roleSavedCursor = cursor;
               rolePromptFor = role;
               input = "";
               cursor = 0;
-              flash = `prompt for ${role}: Enter to send, Esc to cancel`;
+              flashMessage(`prompt for ${role}: Enter to send, Esc to cancel`);
             }
           } else if (key.name === "p") {
             // Toggle by the marker's current state, read fresh: pauseRole/resumeRole's false
@@ -359,19 +366,20 @@ export async function runTui(root: string): Promise<void> {
             // helpers render that honestly — the changed-state contract the CLI prints.
             const paused = pausedRoles(root).includes(role);
             const changed = paused ? resumeRole(root, role) : pauseRole(root, role);
-            flash = paused
-              ? roleResumeMessage(root, role, changed)
-              : rolePauseMessage(root, role, changed);
+            flashMessage(
+              paused
+                ? roleResumeMessage(root, role, changed)
+                : rolePauseMessage(root, role, changed),
+            );
           } else if (key.name === "a") {
             const result = requestAbort(root, role);
-            flash = result.ok ? result.message : `error: ${result.error}`;
+            flashMessage(result.ok ? result.message : `error: ${result.error}`);
           } else {
-            flash = requestWake(root, [role]);
+            flashMessage(requestWake(root, [role]));
           }
         } catch (err) {
-          flash = `error: ${errorMessage(err)}`;
+          flashMessage(`error: ${errorMessage(err)}`);
         }
-        flashUntil = Date.now() + 3000;
         render();
         return;
       }
@@ -457,21 +465,21 @@ export async function runTui(root: string): Promise<void> {
           // fix it; success restores the saved prompt text.
           const parsed = parseBudgetInput(input);
           if (!parsed.ok) {
-            flash = parsed.error;
+            flashMessage(parsed.error);
           } else {
             const result = setDailyBudgetUsd(root, parsed.value);
             if (result.ok) {
               exitBudgetMode();
               currentCapUsd = parsed.value; // the next render's snapshot agrees within ~2 s
-              flash =
+              flashMessage(
                 parsed.value === 0
                   ? "budget disabled"
-                  : `budget set to ${usdCap(parsed.value)}`;
+                  : `budget set to ${usdCap(parsed.value)}`,
+              );
             } else {
-              flash = result.error; // broken config or write failure — stay in edit mode
+              flashMessage(result.error); // broken config or write failure — stay in edit mode
             }
           }
-          flashUntil = Date.now() + 3000;
         } else if (rolePromptFor) {
           // Enter in role-prompt mode submits for the viewed loop through the same path
           // `tumwater prompt --role` uses: submitRolePrompt enqueues into that loop's own
@@ -482,19 +490,18 @@ export async function runTui(root: string): Promise<void> {
           // below honors; success restores the saved draft.
           const parsed = parseRolePromptInput(input);
           if (!parsed.ok) {
-            flash = parsed.error;
+            flashMessage(parsed.error);
           } else {
             const role = rolePromptFor;
             try {
               submitRolePrompt(root, role, parsed.value);
               requestWake(root, [role]);
               exitRolePromptMode();
-              flash = `queued for the ${role} loop`;
+              flashMessage(`queued for the ${role} loop`);
             } catch (err) {
-              flash = `error: ${errorMessage(err)}`;
+              flashMessage(`error: ${errorMessage(err)}`);
             }
           }
-          flashUntil = Date.now() + 3000;
         } else {
           const prompt = input.trim();
           if (!prompt) {
@@ -506,15 +513,14 @@ export async function runTui(root: string): Promise<void> {
               submitPrompt(root, prompt);
               input = "";
               cursor = 0;
-              flash = "queued for the director loop";
+              flashMessage("queued for the director loop");
             } catch (err) {
               // The queue write failed (disk full, permissions): keep the operator's text so
               // it can be resubmitted, and flash the reason — the same contract the GUI's
               // prompt form honors. Clearing the line first would silently lose the prompt,
               // and an unguarded throw would escape the keypress handler and kill the TUI.
-              flash = `error: ${errorMessage(err)}`;
+              flashMessage(`error: ${errorMessage(err)}`);
             }
-            flashUntil = Date.now() + 3000;
           }
         }
       } else {
