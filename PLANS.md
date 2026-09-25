@@ -5,7 +5,88 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-(nothing right now)
+### Per-role prompts 1/2 — `tumwater prompt --role <id> <text...>`: steer one loop directly from the terminal (planned 2026-09-25)
+
+**Goal.** Today the only steering channel is `tumwater prompt`, which queues a request for the
+*director* (src/inbox.ts, one shared queue in `inboxDir(root)`; `src/tick-prompt.ts` dequeues it
+only in the `DIRECTOR_ROLE` branch of `assembleTickPrompt`). A user who knows exactly which loop
+they want to talk to must phrase their wish as a director instruction and wait for the director to
+redistribute it. Add a per-role queue: `tumwater prompt --role qa "check the X flow"` queues a
+prompt only that loop's next tick sees, appended to its tick prompt as an explicit user request.
+
+**Approach.** Reuse the file-queue mechanics (src/file-queue.ts `queueFileName`/`listQueueFiles`)
+with one subdirectory per role under the inbox dir (src/paths.ts `inboxDir`): the director keeps
+its existing queue untouched, roles get `inboxDir(root)/<role>/`.
+
+1. **src/inbox.ts** — parameterize the queue by target: `enqueueRolePrompt(root, role, text)`,
+   `dequeueRolePrompt(root, role)`, `queuedRolePrompts(root, role)`, `cancelRolePrompt(root,
+   role, position)`; the existing director functions keep their signatures (they become the
+   `"director"` special case so `tumwater prompt --list` stays truthful). Reuse `promptPreview`,
+   `promptLengthProblem` (the `DIRECTOR_PROMPT_MAX_CHARS` cap applies to role prompts too —
+   rename its exported name only if trivial; otherwise alias it as the shared cap) and the
+   stat-keyed prompt cache.
+2. **src/cli-args.ts** `parsePromptArgs` + **src/cli.ts** case `"prompt"` — accept `--role <id>`
+   with enqueue, `--list`, and `--cancel <n>`; validate the role through the same
+   `knownRoleIds(config)` fallback the other `--role` consumers use (unknown role fails naming
+   the valid ids). `--list` groups output as `director:` then each role with queued prompts.
+   Submitting to a live fleet also wakes that one role so a sleeping loop sees the prompt now:
+   call src/operator-commands.ts `requestWake(root, [role])` (its marker is safe with no fleet
+   running — same as `tumwater wake`).
+3. **src/tick-prompt.ts** `assembleTickPrompt`, non-director branch — dequeue the role's queue
+   before building the prompt; when one is present, set `userPrompt` to it (loop.ts's
+   `pendingUserPrompt` machinery — requeue on unfulfilled, clear on landing — is already generic
+   over `userPrompt`), and pass the text to `buildTickPrompt` via a new optional field.
+4. **src/prompt.ts** `buildTickPrompt` — new optional `userRequest` field rendered as a clearly
+   labeled block ("an explicit request from the user, aimed at this loop") near the top of the
+   role's task text. The loop still owns find-something-to-do: the request steers, the role's
+   rules and the landing gate still apply unchanged.
+5. **src/loop.ts** `requeueUnfulfilledPrompt` — requeue to the role's own queue (it has
+   `this.role`), not the director's, so a re-queued request never leaks across loops.
+
+**Files touched:** src/inbox.ts, src/paths.ts, src/cli-args.ts, src/cli.ts, src/help.ts (usage
+stanza), src/tick-prompt.ts, src/prompt.ts, src/loop.ts, src/operator-commands.ts (caller only);
+tests in test/inbox.test.ts, test/cli.test.ts (or cli-2), test/prompt.test.ts, and a tick-level
+test that the dequeued text lands in the assembled prompt.
+
+**Acceptance criteria.** (a) `tumwater prompt --role qa hello` queues only for qa: qa's next tick
+prompt contains the request verbatim, every other role's does not, and the director's inbox is
+untouched. (b) An unfulfilled tick (no change) re-queues the prompt to qa's queue, not the
+director's; a landed change clears it. (c) `tumwater prompt --list` shows role queues grouped by
+role; `--cancel` removes from the named role's queue. (d) An unknown `--role` fails with the valid
+ids; `--role` is rejected where unsupported exactly like today. (e) Full suite passes.
+
+Cross-reference: **Per-role prompts 2/2** (dashboard surface) lands after this one and depends on
+its queue format.
+
+### Per-role prompts 2/2 — surface the per-role queue on the dashboards (planned 2026-09-25)
+
+**Goal.** Sub-plan 1/2 gives the CLI a per-role prompt queue (`tumwater prompt --role <id>`);
+this plan makes it visible and usable from the GUI and TUI, so steering one loop does not require
+a terminal.
+
+**Approach.**
+
+1. **src/ui/status.ts** `snapshot` — alongside the director's `inbox`/`inboxPrompts`, add a
+   per-role count (`roleInbox: Record<string, number>`) filled from `queuedRolePrompts` (1/2);
+   **src/ui/status-render.ts**/**src/ui/tui.ts** — a loop row with queued prompts shows a small
+   `p:N` marker next to its state, and the TUI's per-loop controls (pause/wake/abort row) gain a
+   `P` key that prompts for text and submits for the viewed loop.
+2. **src/ui/gui-endpoints.ts** — `POST /api/prompt-role` `{ role, text }`, reusing the body
+   discipline of `POST /api/prompt` (readJsonObject → 400 malformed, 413 oversized, role validated
+   like `/api/transcript`) and calling the same submit path the CLI uses (enqueue + single-role
+   wake). **src/ui/gui-page.ts**/**src/ui/gui-client.ts** — a per-row prompt affordance on the
+   loop table; the queued prompts section lists role prompts labeled with their role.
+
+**Files touched:** src/ui/status.ts, src/ui/status-render.ts, src/ui/tui.ts, src/ui/tui-input.ts,
+src/ui/gui-endpoints.ts, src/ui/gui-page.ts, src/ui/gui-client.ts; tests in
+test/gui-server.test.ts, test/gui-operator.test.ts, test/tui-adjacent suites.
+
+**Acceptance criteria.** (a) `status --json` exposes `roleInbox` counts matching the on-disk
+queues. (b) The TUI can submit a prompt to the currently viewed loop, and it appears in that
+loop's queue (verifiable with `tumwater prompt --list`). (c) The GUI's per-row prompt posts to
+`/api/prompt-role`, a malformed or oversized body reads 400/413, and an unknown role reads the
+same error text as `/api/transcript`. (d) The director's own prompt box and inbox display are
+unchanged. (e) Full suite passes.
 
 ## Done
 
