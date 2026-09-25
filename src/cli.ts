@@ -46,11 +46,11 @@ Usage:
                                    --adopt: brief in TUMWATER.md, --dry-run: write nothing)
   tumwater run [--branch <name>]   Run all enabled loops (headless; Ctrl+C stops)
   tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
-  tumwater gui [--port N] [--all-interfaces]
+  tumwater gui [--port N] [--all-interfaces] [--token <secret>]
                                    Same dashboard in the browser (default port 7180,
                                    localhost only; --all-interfaces serves the whole
-                                   network — no auth, anyone reaching it can prompt
-                                   the director)
+                                   network — without --token there is no auth, anyone
+                                   reaching it can prompt the director)
   tumwater status [--json]         One-shot status table (--json prints machine-readable
                                    fleet state — the GUI's /api/status payload minus the
                                    serving process's serverBuildSha)
