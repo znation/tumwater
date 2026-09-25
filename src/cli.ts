@@ -21,6 +21,7 @@ import {
   submitPrompt,
 } from "./inbox.js";
 import { renderDoctor, runDoctor } from "./doctor.js";
+import { renderBacklogMarkdown } from "./backlog-report.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport, renderReportMarkdown } from "./ui/report.js";
 import { collectFailureReport } from "./failure-data.js";
 import { renderFailureMarkdown } from "./failure-report.js";
@@ -175,6 +176,13 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       await cmdLogs(root, args);
       break;
+    case "backlog": {
+      // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
+      // command prints three empty sections in any directory (report's rationale, not config's).
+      rejectUnknownArgs("backlog", args, []);
+      process.stdout.write(renderBacklogMarkdown(root) + "\n");
+      break;
+    }
     case "prompt": {
       await requireReadyRepo(root);
       const parsed = parsePromptArgs(args);

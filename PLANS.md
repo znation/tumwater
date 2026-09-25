@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater backlog` — read the project's planned features, open bugs, and open questions from the terminal (planned 2026-09-25)
+_None yet._
+
+## Done
+
+### `tumwater backlog` — read the project's planned features, open bugs, and open questions from the terminal (planned 2026-09-25, done 2026-09-25)
 
 **Goal.** The backlog is visible only on the two dashboards: the GUI's /api/backlog endpoint and the TUI's project-status browse. An operator working in terminals — the same person `tumwater status`, `tumwater report`, and `tumwater logs` serve — has no way to see what the fleet plans to build, which bugs are open, or what questions await a human decision, short of opening PLANS.md/BUGS.md/QUESTIONS.md and reading them raw (and those files grow without bound; the dashboards' parsed views exist precisely so nobody has to). Add `tumwater backlog`: a read-only command that prints the three open sections — Planned (PLANS.md), Open bugs (BUGS.md), Open questions (QUESTIONS.md) — through the same parser the dashboards use, so the terminal view cannot drift from the dashboard view.
 
@@ -22,7 +26,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `tumwater backlog --anything` fails fast with the standard `unknown argument` message; the command works in a directory without an initialized project (no `requireReadyRepo` gate).
 - `tumwater help` lists the new command; `npm run test` passes with the new tests.
 
-## Done
+**Done 2026-09-25.** Landed as planned: src/backlog-report.ts (renderer, calling the three backlog.ts entry readers so there is one parser for terminal and dashboards; a `# tumwater backlog` h1 tops the document, matching the usage report's shape), the `case "backlog"` dispatch in src/cli.ts (no flags, no requireReadyRepo gate), the usage line in src/help.ts, and test/backlog-report.test.ts (renderer on seeded and bare roots, CLI smoke test, help listing). One wording correction to the criteria above: with zero accepted flags the standard rejectUnknownArgs message is `tumwater backlog takes no arguments` — the `unknown argument: …` shape only exists for commands that accept some flags — so the fast-fail test pins `takes no arguments`.
 
 ### TUI per-loop controls — pause/resume, abort, and wake the loop whose transcript you are viewing (planned 2026-09-25, done 2026-09-25)
 

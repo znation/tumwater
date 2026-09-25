@@ -28,6 +28,7 @@ Usage:
   tumwater logs --role <id> [-f] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
                                    (--prompt also shows each run's exact prompt text)
+  tumwater backlog                 Show planned features, open bugs, and open questions (the dashboards' backlog view)
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater prompt --list           Show queued prompts, numbered in execution order
   tumwater prompt --cancel <n>     Remove the Nth queued prompt (as shown by --list)
