@@ -18,7 +18,7 @@ local git repo, and no remote is ever touched.
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
 
-Current main (`642155a`): build clean, suite 1683/1683.
+Current main (`5a7af10`): build clean, suite 1709/1709.
 <!-- tumwater:status:end -->
 
 ## Usage
@@ -41,7 +41,7 @@ Then, from another terminal:
 | Control the loops | `tumwater pause` / `resume [--role <id>]` (fleet or one loop), `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
 | Audit | `tumwater doctor` (pre-flight), `tumwater report` (usage and cost), `tumwater report --failures` |
 
-`tumwater help` lists every command and flag. `gui --all-interfaces` exposes the dashboard, and
+`tumwater help` lists every command and flag; `tumwater help <command>` shows one command's usage. `gui --all-interfaces` exposes the dashboard, and
 with it the director prompt, to your whole network, so pair it with `--token <secret>`.
 
 Settings live in `tumwater.json`: enabled roles, model, intervals, the daily spend cap
