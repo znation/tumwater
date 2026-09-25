@@ -18,7 +18,7 @@ local git repo, and no remote is ever touched.
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
 
-Current main (`df93fd6`): build clean, suite 1761/1761.
+Current main (`ccf54a6`): build clean, suite 1773/1773.
 <!-- tumwater:status:end -->
 
 ## Usage
