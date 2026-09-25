@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { followFile, readCompleteLines, withTail, type TailState } from "../src/ui/tail.js";
-import { tmpdir, vanishOnOpen } from "./util.js";
+import { tmpdir } from "./util.js";
+import { vanishOnOpen } from "./fs-faults.js";
 
 /** Poll until `pred` holds or the timeout elapses; returns whether it held. */
 async function waitFor(pred: () => boolean, timeoutMs = 3000): Promise<boolean> {

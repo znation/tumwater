@@ -7,7 +7,8 @@ import { readTranscriptTail } from "../src/ui/transcript-tail.js";
 import { formatTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/ui/tail.js";
-import { expectedTimestamp, recreateSmallerOnOpen, tmpdir, vanishOnOpen } from "./util.js";
+import { expectedTimestamp, tmpdir } from "./util.js";
+import { recreateSmallerOnOpen, vanishOnOpen } from "./fs-faults.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
 
 /** A harness-written run-label marker line (src/pi.ts writes it for labeled runs). */

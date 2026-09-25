@@ -10,7 +10,8 @@ import {
   rotateIfLarge,
   statOrNull,
 } from "../src/files.js";
-import { tmpdir, vanishOnOpen, vanishOnReadFile } from "./util.js";
+import { tmpdir } from "./util.js";
+import { vanishOnOpen, vanishOnReadFile } from "./fs-faults.js";
 
 test("rotateIfLarge rotates once over the cap and replaces the previous rotation", () => {
   const dir = tmpdir();
