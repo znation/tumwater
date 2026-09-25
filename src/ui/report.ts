@@ -152,6 +152,17 @@ function barWidth(v: number, max: number): number {
   return Math.max(1, Math.round((20 * v) / max));
 }
 
+/** Window totals per role: fold the per-day role maps (any `Record<string, number>` day field,
+ * e.g. ticksByRole or costByRole) across the series, then rank by total desc and name asc so
+ * identical totals render deterministically. Callers filter/s format the ranked pairs. */
+function rankedRoleTotals(series: ReportDay[], pick: (d: ReportDay) => Record<string, number>): [string, number][] {
+  const totals = new Map<string, number>();
+  for (const d of series) {
+    for (const [role, n] of Object.entries(pick(d))) totals.set(role, (totals.get(role) ?? 0) + n);
+  }
+  return [...totals.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
 /** Render a report as Markdown — the pinned shape the CLI prints and the TUI usage pane
  * (report 3/3) reuses; the GUI tab (report 2/3) renders its own SVG charts from the same
  * ReportData instead. Pure function of ReportData: no I/O, no clock reads. */
@@ -175,23 +186,14 @@ export function renderReportMarkdown(data: ReportData): string {
     const bar = w > 0 ? ` ${"█".repeat(w)}` : ""; // Zero days carry no bar (and no stray space).
     lines.push(`| ${d.date.slice(5)} | ${compactTokens(d.tokensOut)}${bar} | ${ticks} | ${d.commits} | ${usd(d.costUsd)} |`);
   }
-  const byRole = new Map<string, number>();
-  for (const d of data.series) {
-    for (const [role, n] of Object.entries(d.ticksByRole)) byRole.set(role, (byRole.get(role) ?? 0) + n);
-  }
-  // Window totals per role: count desc, then name asc so identical counts render deterministically.
-  const roles = [...byRole.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const roles = rankedRoleTotals(data.series, (d) => d.ticksByRole);
   lines.push("");
   lines.push(`**Ticks by role:** ${roles.length === 0 ? "-" : roles.map(([r, n]) => `${r} — ${n}`).join(" · ")}`);
   // The same breakdown for spend: window totals per role from costByRole, ranked by spend
   // desc then name asc — spend is what the operator acts on (an operator tuning per-role
   // intervals wants the burning loop first, not the busiest one). Zero-spend roles are
   // omitted; an all-zero window renders "-" like the ticks line.
-  const byCost = new Map<string, number>();
-  for (const d of data.series) {
-    for (const [role, c] of Object.entries(d.costByRole)) byCost.set(role, (byCost.get(role) ?? 0) + c);
-  }
-  const spenders = [...byCost.entries()].filter(([, c]) => c > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const spenders = rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0);
   lines.push(`**Cost by role:** ${spenders.length === 0 ? "-" : spenders.map(([r, c]) => `${r} — ${usd(c)}`).join(" · ")}`);
   return lines.join("\n");
 }
