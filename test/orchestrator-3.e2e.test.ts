@@ -33,9 +33,8 @@ import {
   landHead,
   makeFastRepo,
   startLiveOrchestrator,
-  makeLoopRunner,
-  eventsOfType,
-} from "./util.js";
+} from "./orchestrator-fixtures.js";
+import { makeLoopRunner, eventsOfType } from "./util.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";

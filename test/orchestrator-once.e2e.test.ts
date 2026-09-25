@@ -14,7 +14,7 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import { FAST_POLL_MS, fastConfig, makeFastRepo } from "./util.js";
+import { FAST_POLL_MS, fastConfig, makeFastRepo } from "./orchestrator-fixtures.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { cli } from "./cli-harness.js";
