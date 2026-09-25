@@ -13,7 +13,8 @@ import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { loadLoopState } from "../src/state.js";
 import { configRequestPath, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
-import { eventsOfType, fakePi, fakePiIdle, initializedRepo, landHead, makeLoopRunner, makeRepo, sh, tmpdir } from "./util.js";
+import { eventsOfType, initializedRepo, landHead, makeLoopRunner, makeRepo, sh, tmpdir } from "./util.js";
+import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
 

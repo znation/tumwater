@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { TickUsage } from "../src/tick-usage.js";
 import { freshLoopState } from "../src/state.js";
 import type { LoopState, PiRunResult } from "../src/types.js";
-import { piRunResult } from "./util.js";
+import { piRunResult } from "./fake-pi.js";
 
 // TickUsage's accounting (src/tick-usage.ts): the once-per-run choke point every pi run of a
 // tick folds through. Pure in-memory logic — no filesystem, no pi — so each clause is pinned

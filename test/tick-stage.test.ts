@@ -11,7 +11,8 @@ import { readQaCoverage } from "../src/qa-coverage.js";
 import { queueDepth, queuedLandings } from "../src/land-queue.js";
 import type { LoopState, PiRunResult, TickOutcome } from "../src/types.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { makeRepo, piRunResult, sh } from "./util.js";
+import { makeRepo, sh } from "./util.js";
+import { piRunResult } from "./fake-pi.js";
 
 /** A successful pi run result; tests override only what they exercise. */
 function okPi(over: Partial<PiRunResult> = {}): PiRunResult {

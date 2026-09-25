@@ -5,7 +5,8 @@ import path from "node:path";
 import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/events.js";
-import { eventsOfType, fakePi, sh, tmpdir } from "./util.js";
+import { eventsOfType, sh, tmpdir } from "./util.js";
+import { fakePi } from "./fake-pi.js";
 import {
   request,
   checkRunNumber,

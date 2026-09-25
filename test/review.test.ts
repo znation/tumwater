@@ -13,7 +13,8 @@ import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import { shortSha } from "../src/text.js";
 import { piLogPath } from "../src/paths.js";
-import { eventsOfType, fakePi, makeRepo, sh, tmpdir, writeScript } from "./util.js";
+import { eventsOfType, makeRepo, sh, tmpdir, writeScript } from "./util.js";
+import { fakePi } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 

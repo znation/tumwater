@@ -16,7 +16,8 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/state.js";
-import { fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import { makeRepo, sh, tmpdir } from "./util.js";
+import { fakePi } from "./fake-pi.js";
 
 // Regression coverage for the 2026-09-22 false-fix record (BUGS.md): commit 9cea8c3 was an
 // md-only BUGS.md edit that moved a bug to Fixed with a Fix paragraph naming runScriptGroup

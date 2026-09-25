@@ -29,7 +29,8 @@ import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { readEvents } from "../src/events.js";
 import { LoopRunner } from "../src/loop.js";
 import type { LandingEntry, PiRunResult } from "../src/types.js";
-import { fakePi, landHead, makeRepo, piRunResult, sh, tmpdir, makeLoopRunner } from "./util.js";
+import { landHead, makeRepo, sh, tmpdir, makeLoopRunner } from "./util.js";
+import { fakePi, piRunResult } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 
 /** A minimal successful pi run carrying the given usage — only the fields the fold reads matter,

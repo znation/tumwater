@@ -6,7 +6,8 @@ import { LoopPi } from "../src/loop-pi.js";
 import { sessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
 import type { PiRunResult } from "../src/types.js";
-import { fakePi, tmpdir } from "./util.js";
+import { tmpdir } from "./util.js";
+import { fakePi } from "./fake-pi.js";
 import { assistantLine, errorLine } from "./pi-events.js";
 
 // LoopPi (src/loop-pi.ts) is the pi-invocation plumbing of one role loop: the shared

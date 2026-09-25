@@ -15,7 +15,8 @@ import { defaultConfig, loadConfig } from "../src/config.js";
 import { configForRole } from "../src/config-views.js";
 import { initProject } from "../src/init.js";
 import { pidAlive } from "../src/process.js";
-import { fakePi, makeLoopRunner, makeRepo, tmpdir } from "./util.js";
+import { makeLoopRunner, makeRepo, tmpdir } from "./util.js";
+import { fakePi } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 

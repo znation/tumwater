@@ -14,15 +14,8 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import {
-  fakePi,
-  fakePiIdle,
-  FAST_POLL_MS,
-  fastConfig,
-  makeFastRepo,
-  makeRepo,
-  sh,
-} from "./util.js";
+import { FAST_POLL_MS, fastConfig, makeFastRepo, makeRepo, sh } from "./util.js";
+import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { cli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
 

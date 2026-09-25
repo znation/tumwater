@@ -12,16 +12,8 @@ import { readEvents } from "../src/events.js";
 import { loadLoopState } from "../src/state.js";
 import { orchestratorStatePath, resetRequestPath } from "../src/paths.js";
 import { lanAddresses } from "../src/ui/gui.js";
-import {
-  fakePi,
-  makeRepo,
-  seedCounters,
-  sh,
-  tmpdir,
-  writeConfig,
-  writeScript,
-  eventsOfType,
-} from "./util.js";
+import { makeRepo, seedCounters, sh, tmpdir, writeConfig, writeScript, eventsOfType } from "./util.js";
+import { fakePi } from "./fake-pi.js";
 import { cli, cliWithEnv, exitCode, spawnCli } from "./cli-harness.js";
 
 // Second half of the CLI tests (see cli.test.ts for the split): gui, argument validation,

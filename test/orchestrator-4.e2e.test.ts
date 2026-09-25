@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import { eventsOfType, fakePi, fastConfig, landWork, makeRepo, readSamples, startLiveOrchestrator, tmpdir } from "./util.js";
+import { eventsOfType, fastConfig, landWork, makeRepo, readSamples, startLiveOrchestrator, tmpdir } from "./util.js";
+import { fakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 

@@ -10,7 +10,8 @@ import { freshLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "../src/types.js";
-import { makeRepo, piRunResult, sh, writeScript } from "./util.js";
+import { makeRepo, sh, writeScript } from "./util.js";
+import { piRunResult } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 
 /** Shared fixtures for the landing tests — lander.test.ts, lander-2.test.ts and lander-3.test.ts,

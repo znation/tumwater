@@ -19,7 +19,8 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/types.js";
-import { eventsOfType, makeRepo, piRunResult, sh, tmpdir, writeScript } from "./util.js";
+import { eventsOfType, makeRepo, sh, tmpdir, writeScript } from "./util.js";
+import { piRunResult } from "./fake-pi.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
 function piResult(over: Partial<PiRunResult> = {}): PiRunResult {

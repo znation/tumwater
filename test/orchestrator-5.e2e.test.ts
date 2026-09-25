@@ -9,7 +9,8 @@ import path from "node:path";
 import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import { fakePi, FAST_POLL_MS, fastConfig, makeRepo, readSamples, startLiveOrchestrator, tmpdir } from "./util.js";
+import { FAST_POLL_MS, fastConfig, makeRepo, readSamples, startLiveOrchestrator, tmpdir } from "./util.js";
+import { fakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 

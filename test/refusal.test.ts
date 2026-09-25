@@ -7,7 +7,8 @@ import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { freshLoopState } from "../src/state.js";
 import type { LoopState, PiRunResult, TickResult } from "../src/types.js";
-import { makeRepo, piRunResult, sh } from "./util.js";
+import { makeRepo, sh } from "./util.js";
+import { piRunResult } from "./fake-pi.js";
 
 /** A refused pi run result; tests override only what they exercise. */
 function refusedPi(over: Partial<PiRunResult> = {}): PiRunResult {

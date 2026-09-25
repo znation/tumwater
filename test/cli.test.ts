@@ -9,7 +9,8 @@ import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, queuedPrompts, submitPrompt, queuedRolePrompts, submitRolePrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { inboxDir } from "../src/paths.js";
-import { fakePi, makeRepo, sh, tmpdir, writeConfig } from "./util.js";
+import { makeRepo, sh, tmpdir, writeConfig } from "./util.js";
+import { fakePi } from "./fake-pi.js";
 import { cli, cliWithEnv } from "./cli-harness.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is

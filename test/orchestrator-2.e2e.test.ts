@@ -20,19 +20,8 @@ import { DIRECTOR_ROLE } from "../src/roles.js";
 import { todayStamp } from "../src/budget.js";
 import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import {
-  fastConfig,
-  fakePi,
-  fakePiIdle,
-  landWork,
-  makeFastRepo,
-  makeRepo,
-  recordingFakePi,
-  sh,
-  startLiveOrchestrator,
-  tmpdir,
-  eventsOfType,
-} from "./util.js";
+import { fastConfig, landWork, makeFastRepo, makeRepo, sh, startLiveOrchestrator, tmpdir, eventsOfType } from "./util.js";
+import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 

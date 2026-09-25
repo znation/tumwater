@@ -26,20 +26,8 @@ import {
 } from "../src/state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
-import {
-  fakePi,
-  fakePiIdle,
-  FAST_POLL_MS,
-  fastConfig,
-  landWork,
-  makeFastRepo,
-  makeRepo,
-  recordingFakePi,
-  sh,
-  startLiveOrchestrator,
-  tmpdir,
-  eventsOfType,
-} from "./util.js";
+import { FAST_POLL_MS, fastConfig, landWork, makeFastRepo, makeRepo, sh, startLiveOrchestrator, tmpdir, eventsOfType } from "./util.js";
+import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
