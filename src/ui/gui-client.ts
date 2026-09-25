@@ -82,14 +82,17 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
   // next-run-fmt:start
   // Next-run cell — mirrors the TUI's nextRunCell in status-render.ts: "-" for a loop in
   // flight (an active phase — working/reviewing/landing, the same three prefixes sortLoops
-  // classifies; the payload's inFlight flag derives from the same check) or a stopped fleet; "now" when due;
+  // classifies; the payload's inFlight flag derives from the same check) or parked awaiting
+  // a slot (an inactive phase prefix, but a reserved loop with no next run to speak of — the
+  // TUI twin catches it via s.running, which the payload does not carry, so the prefix is
+  // this copy's equivalent check), or a stopped fleet; "now" when due;
   // otherwise the remaining time through the same s/m/h bucketing as fmtLastTick's age,
   // prefixed "backoff " while backoffSeconds > 0 (the wake row-action clears exactly that).
   // Raw nextRunAt/backoffSeconds come from the payload; Date.now() at render time keeps the
   // countdown fresh on the existing 1-second poll. The page cannot import TS (the fmtTokens
   // precedent), so the two copies stay in lockstep by test.
   const fmtNextRun = (l, fleetRunning) => {
-    const active = l.phase.startsWith("working") || l.phase.startsWith("reviewing") || l.phase.startsWith("landing");
+    const active = l.phase.startsWith("working") || l.phase.startsWith("reviewing") || l.phase.startsWith("landing") || l.phase.startsWith("awaiting slot");
     if (!fleetRunning || active) return "-";
     const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
     if (sec <= 0) return "now";

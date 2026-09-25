@@ -9,6 +9,18 @@ _None._
 
 ## Fixed
 
+### The GUI's next-run cell counts down for a loop parked awaiting a slot: the `fmtNextRun` mirror of the TUI's `nextRunCell` lacks the parked-waiter case, so the two dashboards disagree (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** The next-run column landed as a TUI cell plus a GUI client-JS twin kept in lockstep by test (test/gui.test.ts). The TUI's `nextRunCell` returns `-` when `s.running` — which covers a parked waiter (reserved against double-scheduling but holding no permit, rendered `awaiting slot …`). The GUI's `fmtNextRun` decides `-` from phase prefixes only (working/reviewing/landing), and `awaiting slot` is deliberately NOT an active prefix (the maxConcurrent-counting rule, BUGS.md 2026-09-24), so a parked loop fell through to the countdown: in daemon mode it read `now` (nextRunAt is past once the tick went due), and in a once round with the clock override it read a future time (`1h`, `backoff 15m`) while the loop was actually queued behind a slot and could start at any moment — telling the operator waking it is meaningful when the tick is already admitted.
+
+**Reproduce:** Add a parked-waiter case to the gui.test.ts lockstep table (`running: true, parkedSince`, phase `awaiting slot 5s`, future `nextRunAt`): `nextRunCell` returns `-`, `fmtNextRun` returned `1h`.
+
+**Cause:** The twin was written from the three active-phase prefixes instead of the TUI's actual gate (`s.running || isActivePhase`), and the payload carries neither `running` nor `parkedSince`, so the copy could not see the difference.
+
+**Fix:** src/ui/gui-client.ts's `fmtNextRun` also treats an `awaiting slot` phase as in flight (the prefix is this copy's equivalent of the TUI's `s.running`, since loopPhase renders exactly working/reviewing/landing/awaiting-slot for a reserved loop); comment updated to name the parked case. Two lockstep cases added to test/gui.test.ts pinning `-` for a parked waiter with and without backoff.
+
+**Validation gap:** unclear-invariant (closest tag — no listed tag names a lockstep test missing a case) — the lockstep suite existed and passed, so nothing was broken in it; confirming the divergence required reconstructing the full set of phases `loopPhase` can render for a reserved loop (including the deliberately non-active `awaiting slot`) before the unpinned parked-waiter case was evident.
+
 ### A `Retry-After: 0` hint sneaks the zero-wait 429 bug back in: a hint that asks for no wait is kept as a hint, so the retry fires instantly into the exhausted bucket (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** A provider that echoes `Retry-After: 0` into its 429 text produces `retryAfterSeconds = 0` (src/pi-stream.ts parses only digits, so no NaN). In src/loop-pi.ts the wait then computed `Math.min(pi.retryAfterSeconds ?? RATE_LIMIT_NO_HINT_RETRY_S, cap)` — and since `0` is not nullish, the `??` keeps the 0, the wait is 0, and the retry burns itself on the same exhausted per-minute bucket: the exact bug fixed earlier today, through a side door. The warning message even said `no hint — waiting 60s` while the code waited 0, so the digest would have shown a refill pause that never happened.
