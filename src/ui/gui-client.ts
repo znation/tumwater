@@ -1,6 +1,7 @@
 /** The browser-side dashboard app inlined as the GUI page's only <script>: it polls
  * /api/status every second, renders the loop table, event feed, backlog, and report, and
- * posts prompts to /api/prompt. Split out of gui-page.ts — which keeps the page's markup
+ * drives the write endpoints (/api/prompt, /api/budget, /api/pause, /api/wake, /api/abort,
+ * /api/pause-role). Split out of gui-page.ts — which keeps the page's markup
  * and CSS shell — because this runs in the browser as a separate runtime that cannot import
  * the harness modules; it keeps its own copies of the small display formatters (see
  * text.ts). The report tab's chart builders live in gui-client-report.ts, interpolated
