@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { test } from "node:test";
 import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { orderByDuration, selectTestFiles, suiteGitEnv } from "../src/test-runner.js";
 import { tmpdir } from "./repo-fixtures.js";
 
@@ -110,4 +113,52 @@ test("suiteGitEnv appends maintenance.auto=false after any env-injected git conf
 
   // An unparsable count is treated as none rather than propagated.
   assert.equal(suiteGitEnv({ GIT_CONFIG_COUNT: "junk" }).GIT_CONFIG_COUNT, "1");
+});
+
+/** The compiled entry point, as a developer's `npm test <filter>` spawns it. */
+const runnerPath = fileURLToPath(new URL("../src/test-runner.js", import.meta.url));
+
+/** The runner's env with the outer node --test's child marker removed: inheriting it would
+ * make the nested node --test run think it is a test child and write nothing to stdout. */
+function runnerEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  return env;
+}
+
+// main() itself — the spawn, the filter announcement, the durations ledger, the exit code —
+// only runs when dist/src/test-runner.js is the program, so these exercise it as a subprocess.
+// json-object is the suite's cheapest file (fractions of a second), keeping the nested run
+// well inside a tick's budget.
+
+test("the spawned runner runs exactly the filtered file and exits with its result", () => {
+  const r = spawnSync(process.execPath, [runnerPath, "json-object"], {
+    encoding: "utf8",
+    env: runnerEnv(),
+  });
+  assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  // The one-line announcement only appears on the filtered path (the unfiltered suite's
+  // output stays byte-identical for the harness's build gate).
+  assert.match(r.stdout ?? "", /^running 1 test file\(s\): json-object\.test\.ts$/m);
+  // The nested node --test run really executed the file, and its summary came through.
+  assert.match(r.stdout ?? "", /^ℹ\s+fail 0$/m);
+  assert.match(r.stdout ?? "", /^ℹ\s+pass \d+$/m);
+  // The run folded the file's fresh duration into the ledger beside the compiled tests,
+  // so later runs of the same build order this file by its real cost.
+  const durations = JSON.parse(
+    fs.readFileSync(path.join(path.dirname(runnerPath), "../test/.durations.json"), "utf8"),
+  );
+  assert.ok(
+    typeof durations["json-object.test.js"] === "number" && durations["json-object.test.js"] >= 0,
+    `expected a json-object.test.js duration, got ${JSON.stringify(durations)}`,
+  );
+});
+
+test("the spawned runner exits 1 and lists candidates when a filter matches nothing", () => {
+  const r = spawnSync(process.execPath, [runnerPath, "nosuchfilter"], {
+    encoding: "utf8",
+    env: runnerEnv(),
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr ?? "", /^tumwater: no test file matches "nosuchfilter" — available:/m);
 });
