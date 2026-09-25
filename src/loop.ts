@@ -16,7 +16,7 @@ import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
 import { enqueueRolePrompt, takeQueuedPromptFile } from "./inbox.js";
 import { stageTickLanding } from "./tick-stage.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, restoreMidTickWake, saveLoopState, zeroCounters } from "./state.js";
 import { TickUsage } from "./tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
@@ -393,6 +393,12 @@ export class LoopRunner {
     // Record the outcome on state and schedule the next run (see src/state.ts for the
     // per-result policy: prompt retry, backoff, bounded cut-off resumes).
     applyTickOutcome(s, cfg, this.role, outcome);
+    // A wake consumed while this tick ran stamped the shared state in place, but the outcome
+    // schedule above overwrites it (lastTickEndedAt past wokenAt, nextRunAt a fresh gap or
+    // backoff out), so a plain `tumwater wake --role` with an empty queue would silently wait
+    // out the whole interval (BUGS.md 2026-09-25). Re-apply it here — exactly like a wake
+    // arriving one poll after the tick ended.
+    restoreMidTickWake(s);
     this.save();
     // One warning per error episode (BUGS.md 2026-09-15: every loop failing identically
     // looked like a quiet fleet). applyTickOutcome increments the streak on error and

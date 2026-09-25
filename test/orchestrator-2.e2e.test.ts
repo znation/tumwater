@@ -217,6 +217,49 @@ test("a queued per-role prompt pulls a slow-clock loop in even when its wake was
   }
 });
 
+test("a plain wake consumed mid-tick survives the tick's end-save", async () => {
+  // The bare-wake half of the mid-tick race (BUGS.md 2026-09-25): `tumwater wake --role`
+  // with an EMPTY queue, consumed while the target's tick is running. r.wake() stamps the
+  // shared in-memory state, but the tick's end-save re-stamps lastTickEndedAt past wokenAt
+  // and schedules a fresh gap out — the demand used to vanish and the loop slept out its
+  // whole hour. restoreMidTickWake re-applies it at the end-save, so the next tick follows
+  // within a poll, exactly like a wake arriving after the tick ended.
+  const repo = await makeFastRepo("mid-tick wake test", ["feature"]);
+  const cfg = loadConfig(repo);
+  cfg.roles.feature = { enabled: true, minTickIntervalSeconds: 3600 };
+  saveConfig(repo, cfg);
+  const seeded = freshLoopState("feature");
+  seeded.lastMainHead = "";
+  seeded.nextRunAt = Date.now() - 1000; // due now
+  saveLoopState(repo, seeded);
+  // A fake pi run slow enough to leave room for a wake to land and be consumed mid-tick.
+  const restore = fakePi(`sleep 1\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(() => loadLoopState(repo, "feature").running === true, "the first tick to start");
+    // What `tumwater wake --role feature` does from the CLI side, while the tick is in flight:
+    // the state stamp plus the marker the orchestrator consumes (consumeWakeRequest →
+    // r.wake() on the state object the tick holds).
+    saveLoopState(repo, clearBackoff(loadLoopState(repo, "feature"), Date.now()));
+    writeMarker(wakeRequestPath(repo), { at: Date.now(), roles: ["feature"] });
+    // The demand must actually be consumed mid-tick — the wake event fired while running
+    // holds — or the test would pass by waking an already-idle loop.
+    await waitFor(
+      () => eventsOfType(repo, "wake").some((w) => w.loop === "feature") && loadLoopState(repo, "feature").running === true,
+      "the wake to be consumed mid-tick",
+    );
+    // The tick ends, its end-save runs — and the woken loop must come straight back.
+    await waitFor(() => loadLoopState(repo, "feature").ticks >= 2, "the woken tick to follow within polls, not an hour", 10_000);
+    await waitFor(() => !loadLoopState(repo, "feature").running, "the woken tick to finish");
+    // Then the ordinary clock re-arms: no third tick.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(loadLoopState(repo, "feature").ticks, 2, "the gap window re-arms after the woken tick");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
 test("a corrupt wake marker wakes every runner and is still consumed", async () => {
   const repo = await makeFastRepo("corrupt wake marker test", ["clean", "dry"]);
   for (const role of ["clean", "dry"]) {

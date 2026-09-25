@@ -67,6 +67,28 @@ export function clearBackoff(s: LoopState, now: number): LoopState {
   return { ...s, backoffSeconds: 0, nextRunAt: now, wokenAt: now };
 }
 
+/** Re-apply a wake that was consumed while the just-ended tick was still in flight. The tick
+ * holds the same state object wake() mutated in place, but applyTickOutcome's own schedule
+ * overwrites the wake: lastTickEndedAt is re-stamped past wokenAt (so the min-gap exemption
+ * reads stale) and nextRunAt is scheduled a fresh gap or backoff out — the operator's "try
+ * again now" silently waits out the whole interval. Called by the tick's end-save after
+ * applyTickOutcome, it re-applies the demand exactly like a wake arriving one poll after the
+ * tick ended: backoff cleared, nextRunAt now, wokenAt re-armed past the new gap window's
+ * opening. Returns whether a mid-tick wake was found. Two cases deliberately do not restore:
+ * a wake older than the tick's start was already honored by the tick that just ran (the
+ * ordinary self-clearing must hold), and a cut-off/aborted outcome's `resumePending` — the
+ * next run deliberately waits one interval from the compacted context, and a mid-tick wake
+ * must not shortcut that wait. */
+export function restoreMidTickWake(s: LoopState): boolean {
+  if (s.resumePending) return false;
+  if (s.wokenAt === undefined || s.wokenAt <= (s.lastTickStartedAt ?? 0)) return false;
+  // clearBackoff stamps wokenAt = now, which must read NEWER than the end-save's
+  // lastTickEndedAt for isEligible's exemption to fire — both are Date.now() reads, so a
+  // same-millisecond tie would swallow the demand; floor it just past the end stamp.
+  Object.assign(s, clearBackoff(s, Math.max(Date.now(), (s.lastTickEndedAt ?? 0) + 1)));
+  return true;
+}
+
 /** Next step of a backoff ladder: initial (capped) on the first step, then multiplied, capped. */
 export function nextBackoffSeconds(current: number, ladder: BackoffConfig): number {
   const { initialSeconds, factor, maxSeconds } = ladder;

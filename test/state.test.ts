@@ -10,6 +10,7 @@ import {
   freshLoopState,
   loadLoopState,
   nextBackoffSeconds,
+  restoreMidTickWake,
   saveLoopState,
   zeroCounters,
 } from "../src/state.js";
@@ -232,6 +233,63 @@ test("clearBackoff zeroes the backoff and pulls nextRunAt to now, preserving eve
   // Pure: the input is unchanged and the result is a new object.
   assert.equal(s.backoffSeconds, 7680);
   assert.notEqual(w, s);
+});
+
+test("restoreMidTickWake re-applies a wake that was consumed while the tick was in flight", () => {
+  // The residual race the queue-due-ness fix leaves (BUGS.md 2026-09-25): a plain
+  // `tumwater wake --role` with an empty queue consumed mid-tick is clobbered by the
+  // end-save — applyTickOutcome re-stamps lastTickEndedAt past wokenAt and schedules
+  // nextRunAt a fresh interval out, so the demand silently waits out qa's two-hour clock.
+  // restoreMidTickWake, called by the tick's end-save after applyTickOutcome, re-applies the
+  // demand exactly like a wake arriving one poll after the tick ended.
+  const s = freshLoopState("qa");
+  const start = Date.now() - 2000; // the tick began two seconds ago and is still running
+  s.lastTickStartedAt = start;
+  s.running = true;
+  s.nextRunAt = start + 2 * 3600 * 1000;
+  // One second into the tick, the operator wakes the loop — what consumeWakeRequest's
+  // r.wake() does to the in-memory state the in-flight tick holds.
+  Object.assign(s, clearBackoff(s, start + 1000));
+  assert.equal(s.wokenAt, start + 1000);
+  // The tick ends: the outcome's own schedule overwrites the wake.
+  applyTickOutcome(s, testConfig(), "qa", { result: "no_change" });
+  assert.ok(s.nextRunAt > (s.lastTickEndedAt ?? 0), "the outcome's fresh gap clock is armed");
+  assert.ok((s.wokenAt ?? 0) < (s.lastTickEndedAt ?? 0), "wokenAt no longer exempts the fresh gap");
+  // The end-save path re-applies the mid-tick wake.
+  assert.equal(restoreMidTickWake(s), true);
+  assert.equal(s.backoffSeconds, 0);
+  assert.ok(s.nextRunAt <= Date.now() + 1, "due now, like a wake arriving after the tick (the +1 floors a same-ms wokenAt tie)");
+  assert.ok((s.wokenAt ?? 0) > (s.lastTickEndedAt ?? 0), "the min-gap exemption is re-armed");
+});
+
+test("restoreMidTickWake leaves a wake older than the tick's start alone", () => {
+  // Self-clearing must hold: a wake honored by the tick that just ran (stamped before its
+  // start, e.g. an old wokenAt carried in state) must not re-arm itself at every end-save.
+  const s = freshLoopState("qa");
+  const now = Date.now();
+  s.lastTickStartedAt = now - 60_000;
+  s.wokenAt = now - 120_000;
+  s.nextRunAt = now + 2 * 3600 * 1000;
+  applyTickOutcome(s, testConfig(), "qa", { result: "no_change" });
+  const scheduled = s.nextRunAt;
+  assert.equal(restoreMidTickWake(s), false);
+  assert.equal(s.nextRunAt, scheduled, "the outcome's own schedule stands");
+});
+
+test("restoreMidTickWake does not pull a cut-off resume past its deliberate wait", () => {
+  // A cut-off outcome deliberately waits one interval before resuming the compacted session;
+  // a mid-tick wake must not shortcut that wait (the resume is the loop acting on a demand
+  // already — isEligible's resume gate is documented as intentional).
+  const s = freshLoopState("qa");
+  const start = Date.now();
+  s.lastTickStartedAt = start;
+  s.running = true;
+  Object.assign(s, clearBackoff(s, start + 1000));
+  applyTickOutcome(s, testConfig(), "qa", { result: "no_change", cutOff: true });
+  assert.equal(s.resumePending, true);
+  const scheduled = s.nextRunAt;
+  assert.equal(restoreMidTickWake(s), false);
+  assert.equal(s.nextRunAt, scheduled, "the resume's deliberate wait stands");
 });
 
 test("nextBackoffSeconds caps an initial above max and treats non-positive current as first", () => {
