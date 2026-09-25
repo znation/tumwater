@@ -9,10 +9,9 @@ import {
   isSelfHosted,
   readBuildInfo,
 } from "./build-info.js";
-import type { BuildCheckOutcome } from "./build-check.js";
 import { buildCheckEvent } from "./build-check-events.js";
 import { defaultConfig, loadConfigCached } from "./config.js";
-import { checkMainBaseline } from "./main-baseline.js";
+import { mainIsGreen } from "./main-baseline.js";
 import { compileStaged, swapDist } from "./build-stage.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { ensureDetachedWorktree } from "./worktree.js";
@@ -476,31 +475,6 @@ export class Redeployer {
   private warn(message: string): void {
     this.log({ loop: "harness", type: "warning", message });
   }
-}
-
-/** Is main green at the mirror worktree's HEAD? The landing path seeds a green verdict for
- * every merged code SHA (noteGreenBaseline — its in-lock post-rebase re-check, or the gate's
- * pre-check when the rebase was a no-op), so the common case is a cache hit; otherwise the
- * project's declared check runs once in the mirror. No declared check or an
- * environmental skip reads as green — the gates' warn-and-proceed policy.
- *
- * A cached RED, though, is re-verified here (checkMainBaseline's `reverifyRed`) instead of
- * being taken as given. A red verdict can belong to the worktree that produced it rather than
- * to the tree, and this gate is the one place where believing a wrong red is expensive: it
- * strands the whole fleet on a stale build with no retry until main moves. One extra suite run
- * per red head buys that, and a green from it promotes the SHA for every other gate too. */
-export async function mainIsGreen(
-  mirrorWt: string,
-  /** The live config — the declared check is detected through it (plans/portability.md
-   * §6/7), so a configured command makes the green check run on a non-npm repo too; its
-   * maxConcurrentChecks sizes the check permit this run takes. */
-  config: { check?: { command: string; cwd?: string; timeoutSeconds?: number }; maxConcurrentChecks?: number },
-  /** Hook for the build_check event — this run is a minute of the fleet's time and belongs in
-   * the feed like the role loops' own baseline checks. */
-  onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
-): Promise<boolean> {
-  const check = await checkMainBaseline(mirrorWt, config, onRun, true);
-  return check.baseline ? check.baseline.status === "green" : true;
 }
 
 /** The production Redeployer for `root`, or null when the running dist carries no build stamp
