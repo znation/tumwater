@@ -893,6 +893,11 @@ test("the dashboard page escapes backlog entry bodies before innerHTML", async (
   const esc = new Function(m[1]!, `return (${m[2]});`) as (s: string) => string;
   assert.equal(esc("<img src=x onerror=alert(1)>"), "&lt;img src=x onerror=alert(1)&gt;", "tags are neutralized");
   assert.equal(esc("a & b < c > d"), "a &amp; b &lt; c &gt; d", "ampersands and angle brackets escape");
+  // Quotes escape too: esc is interpolated inside single-quoted attribute contexts
+  // (data-role='…', the budget input's value='…'), where an unescaped quote would break
+  // out of the attribute and let the value inject markup of its own.
+  assert.equal(esc("' onmouseover='x"), "&#39; onmouseover=&#39;x", "single quotes escape (attribute context)");
+  assert.equal(esc('a "b"'), "a &quot;b&quot;", "double quotes escape");
 
   // The server contract is unchanged: /api/backlog still serves the raw markdown body —
   // escaping is the page's job, like every other field it renders.

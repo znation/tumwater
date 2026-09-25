@@ -9,7 +9,7 @@
  * the pre-split single blob; edit here when the fleet view, badges, transcript, or
  * prompt form change. */
 import { GUI_CLIENT_REPORT_JS } from "./gui-client-report.js";
-export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   // A failed API call, named for the operator: endpoint, HTTP status, and the server's
   // error text — every error body this server sends is JSON {error} except the 404's
   // plain "not found", so parse leniently. The message surfaces in the budget-save flash
