@@ -5,6 +5,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### A rejection note rides every later prompt undated: a `reject` in `lastReview` is injected verbatim until some future landing overwrites it, so an objection main has since satisfied keeps telling the author to address a verdict that no longer holds (found by telemetry loop 2026-09-25)
+
+**Symptom:** This tick's telemetry prompt carries "Your previous change was rejected in review: 1. md-only BUGS.md edit moves … to Fixed, but none of the symbols its Fix paragraph names exist on this tree: setLandingStage — land the fix in the same commit, or keep the bug Open until the code exists". That verdict was true when issued — `setLandingStage` entered main with 127157a4 (2026-09-24 01:32), after the rejected edit was gated — and became false half an hour later. The note carries no date, so telling stale from live took archaeology: the symbol's introduction commit from `git log -S`, plus the digest's outcome table (5 telemetry ticks today, none of them the editing tick) to establish the rejection predates the digest's window. The digest correctly reports telemetry rejections 0 today — the event is out of its 1-day window — so the undated note is the only trace of the stale verdict, and nothing else names it.
+
+**Why the response is wrong:** The rejection is recorded with its time (`state.lastReview = { verdict, reasons, head, at: Date.now() }` in src/review.ts's reject path), but `buildRejectedReviewNote` (src/gate-prompts.ts) renders only the reasons, and src/tick-prompt.ts injects it whenever `lastReview.verdict === "reject"`. A `reject` persists until overwritten: the approve/failed paths set `lastReview` only on model-reviewed landings, while the md-only exempt fast path (the very kind of change this note is about) never touches it — so the note rode ~37 hours and at least 6 telemetry prompts across two later filings, repeatedly instructing the author to "address the objections" to an objection main had already answered. An author that obeys literally re-does work against a moving target or "takes a different approach" from a stale objection.
+
+**Reproduce:** Reject any role's md-only BUGS.md edit through the false-fix check while the named symbol is genuinely absent from the tree; let another loop land that symbol on main; every later prompt of the rejected role (until one of its changes goes through a model review) still carries the rejection undated, with no hint that main moved past it.
+
+**Expected:** The injected note carries the rejection's timestamp (and head), e.g. "Your previous change was rejected in review (2026-09-24 01:20):", so the author can weigh it against main's current state instead of treating it as fresh. A stricter variant re-runs the deterministic check the rejection came from (`falseFixReason` for md-only objections) at injection time and annotates objections that no longer reproduce.
+
+**Suspected cause:** `buildRejectedReviewNote(reasons)` takes only the reasons array (src/gate-prompts.ts); the `at` and `head` fields sit on `state.lastReview` unused, and nothing revalidates the note against main before injecting it.
+
 ## Fixed
 
 ### A suite that a fleet runs inherits the operator's `TUMWATER_PI_BIN`, which outranks the fake pis the suite puts on PATH: every fake-pi test spawns the agent binary it names (found 2026-09-28, fixed 2026-09-28)
