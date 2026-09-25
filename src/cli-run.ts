@@ -122,7 +122,11 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
  * deferred role reads as set aside, not as "nothing was due"); a role the map lacks (defensively
  * — the round only exits once every role is settled) falls back to deriving the reason from
  * state: a pause marker when one is held, a pending resume when one is flagged, backoff when
- * nextRunAt is still in the future, otherwise idle. */
+ * `backoffSeconds` is raised, otherwise idle — the same classification settleSkipped draws,
+ * and keyed on the same signal: backoffSeconds is the backoff indicator, while nextRunAt is
+ * shared with the scheduled clock a productive tick also writes (with backoffSeconds 0), so a
+ * future nextRunAt alone reads as a not-yet-due role, not as backoff (BUGS.md 2026-09-25,
+ * the same conflation settleSkipped itself carried). */
 export function onceSummary(
   root: string,
   roles: string[],
@@ -145,7 +149,7 @@ export function onceSummary(
           ? "paused"
           : s.resumePending
             ? "resume pending"
-            : s.nextRunAt > Date.now()
+            : s.backoffSeconds > 0
               ? "backoff"
               : "idle");
       skipped.push(reason);

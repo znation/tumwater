@@ -9,6 +9,33 @@ _None yet._
 
 ## Fixed
 
+### `onceSummary`'s settle-map fallback re-derives backoff from `nextRunAt` alone, so a not-yet-due role in an aborted round's summary reads as "backoff" (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `onceSummary` (src/cli-run.ts) reports each skipped role with the orchestrator's
+settle reason, falling back to a state derivation when the map lacks the role — reachable when a
+once round is interrupted (the start pass drops due-but-unstarted roles when the signal is
+aborted, so they exit unsettled). That fallback keyed `backoff` on `nextRunAt > Date.now()` —
+but `nextRunAt` is shared with the scheduled clock a productive tick also writes (with
+`backoffSeconds` 0), so a merely not-yet-due role read as "backoff" in the cron log, the exact
+clock-vs-backoff conflation the 2026-09-25 fixes removed from `isEligible` and
+`OnceRound.settleSkipped` and left alive in the summary's third copy of the classification.
+
+**Reproduce:** confirmed 2026-09-25 by the regression test now in test/cli-run.test.ts: a
+saved state with `backoffSeconds: 0` and a future `nextRunAt` (the shape every productive tick
+leaves) read "1 skipped (backoff)" pre-fix from a settle-map-missing round; the fix reads it as
+"idle". Companion tests pin the raised-`backoffSeconds` → "backoff" and `resumePending` →
+"resume pending" fallback arms.
+
+**Fix:** the fallback now keys `backoff` on `backoffSeconds > 0` — the persisted signal that
+tells a backoff deadline from the scheduled clock, the same one `settleSkipped` draws on — and
+keeps the pause-marker and resume checks ahead of it. The doc comment records the shared
+invariant so the two classifiers cannot drift apart again.
+
+**Validation gap:** no-fake (fixture sense, closest tag) — the suite's fallback coverage stopped
+at the unambiguous pause-marker branch, so no fixture ever seeded a settle-map-missing role whose
+state carried the scheduled-clock shape (backoffSeconds 0, future nextRunAt); confirming the bug
+and the fix required building that saved-state fixture, not a new shim.
+
 ### `settleSkipped` reads a pending resume as "idle — nothing was due" in the once round's summary: a cut-off tick waits one interval with `backoffSeconds` 0, the same shape as a fresh scheduled clock (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** A role whose tick was cut off by the context ceiling resumes deliberately one interval

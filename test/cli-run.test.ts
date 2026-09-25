@@ -105,3 +105,50 @@ test("a role the settle map lacks falls back to state, via the pause marker", ()
 
   assert.equal(line, "once: 0 ticks — nothing ran, 1 skipped (paused)");
 });
+
+test("the fallback reads a scheduled-clock wait as idle, not backoff", () => {
+  const root = makeRepo();
+  // The shape a productive tick leaves behind: backoffSeconds 0 with a future nextRunAt —
+  // the scheduled clock, not a backoff deadline. The old fallback keyed backoff on
+  // nextRunAt alone (the same clock-vs-backoff conflation the 2026-09-25 settleSkipped
+  // fix removed), so a merely not-due role in a settle-map-missing round's summary read
+  // as "backoff".
+  saveLoopState(
+    root,
+    state("clean", { ticks: 1, backoffSeconds: 0, nextRunAt: Date.now() + 600_000 }),
+  );
+
+  assert.equal(
+    onceSummary(root, ["clean"], new Map([["clean", 1]]), new Map()),
+    "once: 0 ticks — nothing ran, 1 skipped (idle)",
+  );
+});
+
+test("the fallback reads a raised backoffSeconds as backoff", () => {
+  const root = makeRepo();
+  saveLoopState(
+    root,
+    state("qa", { ticks: 1, backoffSeconds: 42, nextRunAt: Date.now() + 42_000 }),
+  );
+
+  assert.equal(
+    onceSummary(root, ["qa"], new Map([["qa", 1]]), new Map()),
+    "once: 0 ticks — nothing ran, 1 skipped (backoff)",
+  );
+});
+
+test("the fallback reads a pending resume as pending work, not backoff or idle", () => {
+  const root = makeRepo();
+  // A cut-off tick waits one interval with backoffSeconds 0 and a future nextRunAt: the
+  // resume check must outrank the clock, or the wait reads as backoff (or, post-fix, as
+  // idle — both hide that half-finished work is pending).
+  saveLoopState(
+    root,
+    state("improve", { ticks: 1, resumePending: true, nextRunAt: Date.now() + 600_000 }),
+  );
+
+  assert.equal(
+    onceSummary(root, ["improve"], new Map([["improve", 1]]), new Map()),
+    "once: 0 ticks — nothing ran, 1 skipped (resume pending)",
+  );
+});
