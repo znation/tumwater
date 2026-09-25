@@ -13,7 +13,7 @@ import { buildCheckSkipWarning } from "../src/build-check-events.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
-import { buildCheckFixture, sh, tmpdir, writeScript } from "./util.js";
+import { buildCheckFixture, pathPrepend, sh, tmpdir, writeScript } from "./util.js";
 
 /** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
 function groupAlive(pgid: number): boolean {
@@ -464,15 +464,14 @@ test("runBuildCheck skips (not fails closed) when the toolchain probe fails, and
     path.join(wt, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: `echo run >> ${counter}` } }),
   );
-  const oldPath = process.env.PATH;
-  process.env.PATH = `${brokenGitBin()}:${oldPath}`; // the broken git shadows the real one; npm stays
+  const restore = pathPrepend(brokenGitBin()); // the broken git shadows the real one; npm stays
   try {
     const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "toolchain");
     assert.ok(!fs.existsSync(counter), "the check itself never ran — the probe short-circuited it");
   } finally {
-    process.env.PATH = oldPath;
+    restore();
   }
 });
 

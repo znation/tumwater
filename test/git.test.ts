@@ -43,7 +43,7 @@ import {
   rebaseOntoMainLeaveConflicts,
 } from "../src/merge.js";
 import { branchName } from "../src/paths.js";
-import { makeRepo, sh, tmpdir, writeScript } from "./util.js";
+import { makeRepo, pathPrepend, sh, tmpdir, writeScript } from "./util.js";
 
 test("isGitRepo and hasCommits", async () => {
   const repo = makeRepo();
@@ -711,11 +711,7 @@ function loggingGit(logFile: string): () => void {
   const dir = tmpdir("fake-git-");
   const real = execFileSync("which", ["git"], { encoding: "utf8" }).trim().split("\n")[0];
   writeScript(path.join(dir, "git"), `echo "$@" >> ${logFile}\nexec "${real}" "$@"`);
-  const oldPath = process.env.PATH;
-  process.env.PATH = `${dir}:${oldPath}`;
-  return () => {
-    process.env.PATH = oldPath;
-  };
+  return pathPrepend(dir);
 }
 
 test("abortSync spawns no git when nothing is in progress", async () => {
@@ -983,12 +979,11 @@ test("patchId is null, never a throw, when there is nothing to identify or git f
     path.join(bin, "git"),
     `if [ "$1" = patch-id ]; then echo 'unknown option' >&2; exit 129; fi\nexec '${realGit}' "$@"`,
   );
-  const oldPath = process.env.PATH;
-  process.env.PATH = `${bin}${path.delimiter}${oldPath ?? ""}`;
+  const restore = pathPrepend(bin);
   try {
     assert.equal(await patchId(repo, "main", side), null, "a failed patch-id");
   } finally {
-    process.env.PATH = oldPath;
+    restore();
   }
 });
 

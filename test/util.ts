@@ -256,16 +256,23 @@ export function writeScript(file: string, body: string): void {
   fs.symlinkSync(SCRIPT_SHIM, file);
 }
 
+/** Put a directory at the front of PATH for the duration of a test, so executables dropped
+ * into it shadow the real ones (the same technique behind every fake-* helper here).
+ * Returns a restore function. */
+export function pathPrepend(dir: string): () => void {
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${dir}${path.delimiter}${oldPath ?? ""}`;
+  return () => {
+    process.env.PATH = oldPath;
+  };
+}
+
 /** Install a fake `pi` executable at the front of PATH for the duration of a test.
  * The script runs with the worktree as cwd. Returns a restore function. */
 export function fakePi(script: string): () => void {
   const dir = tmpdir("fake-pi-");
   writeScript(path.join(dir, "pi"), script);
-  const oldPath = process.env.PATH;
-  process.env.PATH = `${dir}:${oldPath}`;
-  return () => {
-    process.env.PATH = oldPath;
-  };
+  return pathPrepend(dir);
 }
 
 /** A fake pi whose only action is emitting one compliant TUMWATER_NOTHING_TO_DO assistant

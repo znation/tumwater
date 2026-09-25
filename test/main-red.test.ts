@@ -6,7 +6,7 @@ import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/main-red.
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
-import { baselineFixture, makeRepo, runsOf, sh, tmpdir, worktreeAt, writeScript } from "./util.js";
+import { baselineFixture, makeRepo, pathPrepend, runsOf, sh, tmpdir, worktreeAt, writeScript } from "./util.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
@@ -21,11 +21,7 @@ const ROLE = "coverage"; // a BASELINE_BLOCKED_ROLES member (code-producing)
 function fakeNpm(script: string): () => void {
   const dir = tmpdir("fake-npm-");
   writeScript(path.join(dir, "npm"), script);
-  const oldPath = process.env.PATH;
-  process.env.PATH = `${dir}:${oldPath}`;
-  return () => {
-    process.env.PATH = oldPath;
-  };
+  return pathPrepend(dir);
 }
 
 test("mainRedGate lets a non-blocked role through without running the check", async () => {
