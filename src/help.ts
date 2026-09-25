@@ -47,7 +47,7 @@ off while the project is quiet and wake when main moves. Everything is local: no
 
 /** One usage stanza: the command its `  tumwater <command>` line names and that line plus
  * its deeper-indented description continuations, verbatim. */
-export interface HelpStanza {
+interface HelpStanza {
   /** The command token from the stanza's first line (e.g. "gui", "report", "help"). */
   command: string;
   /** The stanza's lines, verbatim from HELP. */
