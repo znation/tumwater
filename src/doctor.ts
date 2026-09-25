@@ -407,7 +407,9 @@ export async function checkBuild(
   if (!info) return { level: "ok", detail: "no build stamp — dist/ compiled without `npm run build`" };
   const sha = shortSha(info.sha);
   if (!(await isSelfHosted(root, info)))
-    return { level: "ok", detail: `dist/ from ${sha} (this project is not the harness itself)` };
+    // Not "dist/ from …": in someone else's project that names a dist/ directory the project
+    // does not have — the stamp read here is the running harness install's own, so say that.
+    return { level: "ok", detail: `harness build ${sha} (this project is not the harness itself)` };
   const mainHead = head === undefined ? await currentHead(root) : head;
   if (!mainHead) return { level: "ok", detail: `dist/ from ${sha}` };
   const stale = await buildStaleness(root, info.sha, mainHead);

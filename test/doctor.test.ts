@@ -583,6 +583,10 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   const foreign = await checkBuild(repo, { ...here, root: "/somewhere/else" });
   assert.equal(foreign.level, "ok");
   assert.match(foreign.detail, /not the harness itself/);
+  // The foreign stamp is the harness install's own build — it must not read as this project's
+  // dist/, which a non-harness project does not even have.
+  assert.match(foreign.detail, /^harness build [0-9a-f]{8} /);
+  assert.doesNotMatch(foreign.detail, /dist\//);
 
   const fresh = await checkBuild(repo, here, head);
   assert.equal(fresh.level, "ok");
