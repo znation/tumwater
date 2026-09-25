@@ -143,6 +143,10 @@ export interface LoopState {
    * prompts until its next change is queued — the author's only memory that the work is gone
    * and must be redone against current main if it is still wanted. */
   conflictDiscard?: { sha: string; summary: string; attempts: number; at: number };
+  /** Consecutive landings of one patch (git.ts patchId, stable across a clean rebase) whose
+   * in-lock check went red on the rebased tree. At lander.ts's LANDING_CHECK_FAILURE_LIMIT the
+   * red is attributed through main's own verdict instead of re-queued as merge_blocked again. */
+  landingCheckFailures?: { patchId: string; count: number };
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick
    * window (loop.ts resets it at tick start), not a lifetime total. */
   generatedTokens: number;

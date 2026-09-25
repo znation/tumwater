@@ -15,6 +15,7 @@ import { saveLoopState } from "./state.js";
 import { shortSha } from "./text.js";
 import {
   BUILD_CHECK_TIMEOUT_MS,
+  checkFailureReasons,
   clipReason,
   describeCheck,
   failureHeadline,
@@ -124,9 +125,6 @@ interface ReviewContext {
   config: TumwaterConfig;
   /** Current tick number, for the unique per-run session name. */
   tick: number;
-  /** Suffix for the session name — recovery reviews pass "-recovery" so a single tick's
-   * recovery review and gate review (both numbered by the same tick) never collide. */
-  sessionSuffix?: string;
   signal?: AbortSignal;
   /** Cap for the deterministic build pre-check run; defaults to BUILD_CHECK_TIMEOUT_MS.
    * A test seam — production callers leave it unset. */
@@ -287,18 +285,7 @@ export async function reviewAheadOfMain(
       }
     }
     if (outcome.status === "failed") {
-      // Machine-generated reasons: the headline joined to the rest of the clipped tail (so the
-      // compiler error sits right after it in the injected next-tick note). The headline is
-      // failureHeadline's — the first line that is not a stack frame — not outputTail[0]: a
-      // suite that dies on an unhandled rejection opens mid-stack, and naming the frame tells
-      // the author where it broke, never what (BUGS.md 2026-09-19).
-      const tail = outcome.outputTail ?? [];
-      const headline = failureHeadline(tail);
-      const what = describeCheck(check);
-      const reasons =
-        headline !== undefined
-          ? [`build check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
-          : [`build check failed (${what})`];
+      const reasons = checkFailureReasons(check, outcome);
       // A failure that reproduced is attributed, never fixed here: the one landing slot the
       // whole queue waits on is no place for a model run (the in-slot build-fix run this
       // replaces held it for hours and never once led to a landing — PLANS.md "Land-queue
@@ -385,7 +372,7 @@ export async function reviewAheadOfMain(
     // context. Unique name per run — a fixed name would let pi resume an old review's
     // context; old files are cleaned by the age-based prune at orchestrator start.
     sessionDir: reviewSessionDir(root, role),
-    sessionName: `tumwater-review-${role}-${ctx.tick}${ctx.sessionSuffix ?? ""}`,
+    sessionName: `tumwater-review-${role}-${ctx.tick}`,
     rawLogFile: piLogPath(root, role),
     // Label this run in the shared transcript (src/ui/transcript.ts renders it as
     // `── review @ <ts> ──`) so an operator can tell reviewer runs from author ticks.

@@ -239,8 +239,16 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
   }
 }
 
+/** How many vets may be in flight (parked or running) at once: every `maxConcurrent` permit but
+ * one, so a deep land queue never takes the last slot from the roles that could author — at
+ * least one, so `maxConcurrent` 1 still lands. The merge's short conflict-resolution run is not
+ * counted: it is the one serial step every queued change waits on. */
+export function vetLimit(maxConcurrent: number): number {
+  return Math.max(1, maxConcurrent - 1);
+}
+
 /** Start a vet, in queue order, for every queued entry whose role the pipeline does not already
- * hold — the shared semaphore, not this loop, bounds how many run. The torn-head drop comes
+ * hold, up to vetLimit — the shared semaphore bounds how many of them run. The torn-head drop comes
  * first, and each entry is deduped against main before its vet starts: an entry whose sha main
  * already holds (a crash between the fast-forward and the drop) is dropped without a run, with
  * its marker record; a crash mid-vet leaves both entry and ref, so the entry is vetted again —
@@ -248,6 +256,7 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
 async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeline): Promise<void> {
   dropTornHead(ctx.root);
   for (const { entry, file } of queuedLandingFiles(ctx.root)) {
+    if (p.vetting.size >= vetLimit(ctx.semaphore.limit)) return;
     if (liveRoles(p).has(entry.role)) continue;
     if (await isMergedInto(ctx.root, entry.sha, ctx.mainBranch)) {
       dropLanding(file);

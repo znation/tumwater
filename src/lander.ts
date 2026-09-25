@@ -1,12 +1,25 @@
-import { deleteRef, headOf, setRef } from "./git.js";
+import { deleteRef, headOf, patchId, setRef } from "./git.js";
 import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { mergeToMain, rebaseOntoMain } from "./merge.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { saveLoopState } from "./state.js";
 import { setLandingStage } from "./landing-slot.js";
+import { type BuildCheckOutcome, checkFailureReasons } from "./build-check.js";
+import type { BuildCheck } from "./build-check-detect.js";
+import { mainTipVerdict } from "./main-red.js";
+import { logEvent } from "./events.js";
+import { shortSha } from "./text.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "./types.js";
+
+/** Consecutive red in-lock landing checks of one patch (LoopState.landingCheckFailures) before
+ * the landing is attributed instead of retried: the first red keeps the pin for one more
+ * attempt — a load flake gets its retry, as the gate's pre-check gets one (PLANS.md land-queue
+ * 1/3) — and the second is judged by main's own verdict at its tip (attributeRedCheck). Without
+ * a limit a change whose gate passes but whose landing check fails (a cheaper check.gateCommand
+ * than the full check) would re-queue as merge_blocked forever, its role never authoring. */
+export const LANDING_CHECK_FAILURE_LIMIT = 2;
 
 /** Reviewing and landing a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A tick commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,
@@ -33,9 +46,6 @@ export interface LandRequest {
    * is gone); a hand-made or pre-contract commit has none. */
   body?: string;
   highFriction?: boolean;
-  /** Suffix for the review session name — recovery landings pass "-recovery" so a tick's own
-   * gate and its recovery re-review (both numbered by the same tick) never collide. */
-  sessionSuffix?: string;
   /** The head its vet's gate pre-check ran green on, when it ran one on exactly `sha`
    * (GateResult.verifiedHead, carried by land-batch.ts's VetVerdict) — so a landing whose
    * in-lock rebase is a no-op seeds the red-main baseline with the SHA that becomes main. */
@@ -131,7 +141,7 @@ export async function reviewPinnedChange(
   // (fail closed) exactly as for an abort mid-review below.
   if (ctx.signal().aborted) return { kind: "result", result: "aborted" };
   const gate = await reviewAheadOfMain(
-    { root, role, wt, mainBranch, config, tick: req.tick, sessionSuffix: req.sessionSuffix, signal: ctx.signal() },
+    { root, role, wt, mainBranch, config, tick: req.tick, signal: ctx.signal() },
     state,
     req.summary,
     req.body,
@@ -228,6 +238,7 @@ export const RETRIABLE_LANDING_RESULTS: ReadonlySet<TickResult> = new Set([
 export async function landApprovedChange(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
   if (ctx.signal().aborted) return "aborted";
   const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
+  let red: { check: BuildCheck; outcome: BuildCheckOutcome } | undefined;
   const result = await mergeToMain(
     {
       root: ctx.root,
@@ -237,6 +248,9 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
       config: ctx.config,
       tick: req.tick,
       runPi: ctx.runPi,
+      onLandingCheckRed: (check, outcome) => {
+        red = { check, outcome };
+      },
     },
     wt,
     req.summary,
@@ -244,9 +258,73 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
   );
   if (result === "changed") {
     await deleteRef(ctx.root, landingRefName(req.role)); // landed: the pin has done its job
-  } else {
-    // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-lands it.
-    ctx.state.lastError = `merge failed: ${result}`;
+    return result;
   }
+  if (result === "merge_blocked" && red) return landingCheckRed(ctx, req.role, wt, red);
+  // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-lands it.
+  ctx.state.lastError = `merge failed: ${result}`;
   return result;
+}
+
+/** A landing blocked because its in-lock check went red on the rebased tree (merge.ts's
+ * verifyLanding). The count is keyed by the patch-id, which a clean rebase onto a moved main
+ * keeps, so the retries of one change add up while a different change starts fresh. Under
+ * LANDING_CHECK_FAILURE_LIMIT the pin is kept (merge_blocked) for recovery's re-land; at the
+ * limit the red is attributed like any single-change red. The other merge_blocked causes — a
+ * fast-forward that fails on a dirty primary checkout, or main moving under the ff — are never
+ * the change's fault and never counted. An unreadable patch-id cannot be matched, so it never
+ * reaches the limit: the pre-cap behavior, never a wrong attribution. */
+async function landingCheckRed(
+  ctx: LanderContext,
+  role: string,
+  wt: string,
+  red: { check: BuildCheck; outcome: BuildCheckOutcome },
+): Promise<TickResult> {
+  const head = await headOf(wt, "HEAD");
+  const patch = await patchId(wt, ctx.mainBranch, head);
+  const prior = ctx.state.landingCheckFailures;
+  const count = (patch !== null && prior?.patchId === patch ? prior.count : 0) + 1;
+  if (patch === null || count < LANDING_CHECK_FAILURE_LIMIT) {
+    ctx.state.landingCheckFailures = patch === null ? undefined : { patchId: patch, count };
+    ctx.state.lastError = `merge failed: merge_blocked — ${checkFailureReasons(red.check, red.outcome)[0]}`;
+    return "merge_blocked";
+  }
+  ctx.state.landingCheckFailures = undefined;
+  return attributeRedCheck(ctx, role, head, "landing check", red, ctx.state);
+}
+
+/** Attribute a check that went red over ONE change's tree after its vet approved it — a batch
+ * bisect's last step (land-batch.ts), or a single landing's in-lock check at
+ * LANDING_CHECK_FAILURE_LIMIT — by the gate's rule (PLANS.md land-queue 1/3): ask main's own
+ * verdict at its current tip (mainTipVerdict — usually a cache hit, since every landing seeds
+ * the SHA it moved main to). Main green → the change broke the check: rejected deterministically
+ * — reasons in lastReview for the author's next tick, the strike count reset, ref deleted,
+ * review_rejected logged, no pi run. Main red → not this change's failure: "main_red" with the
+ * ref kept and unreviewFailures untouched, so recovery re-lands it once main-red.ts's repair
+ * turns main green. No verdict → reject, the safe default, and the reasons say so. The verdict
+ * is persisted before it returns. */
+export async function attributeRedCheck(
+  ctx: { root: string; mainBranch: string; config: TumwaterConfig },
+  role: string,
+  head: string,
+  label: "batch check" | "landing check",
+  red: { check: BuildCheck; outcome: BuildCheckOutcome },
+  state: LoopState,
+): Promise<TickResult> {
+  const main = await mainTipVerdict(ctx.root, role, ctx.mainBranch, ctx.config);
+  if (main.status === "red") {
+    state.lastError = `${label} failed: main ${shortSha(main.sha)} is red — not this change's failure`;
+    saveLoopState(ctx.root, state);
+    return "main_red";
+  }
+  const reasons = checkFailureReasons(red.check, red.outcome);
+  if (main.status === "unavailable") {
+    reasons.push(`main's own baseline was unavailable (${main.why}), so the red ${label} is attributed to this change`);
+  }
+  state.lastReview = { verdict: "reject", reasons, head, at: Date.now() };
+  state.unreviewFailures = 0;
+  saveLoopState(ctx.root, state);
+  await deleteRef(ctx.root, landingRefName(role));
+  logEvent(ctx.root, { loop: role, type: "review_rejected", head, reasons });
+  return "rejected";
 }

@@ -195,8 +195,7 @@ test("setLandingStage advances only its own role's record, and only its stage", 
   assert.equal(readLandingMarker(root), null);
   addLandingChange(root, { role: "bugfix", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
   const before = readLandingMarker(root)!;
-  // Another role's gate (a leftover-recovery gate inside that role's own tick) must not
-  // restage it.
+  // Another role's gate (one with no record of its own) must not restage it.
   setLandingStage(root, "clean", "reviewing");
   assert.deepEqual(readLandingMarker(root), before, "a gate with no record changes nothing");
   // The matching role's stage advances; identity (the snapshot cross-check's sha) and the

@@ -203,9 +203,10 @@ export function abandonFallbackProbe(b: FallbackBreaker): FallbackBreaker {
  * for landing (`queued`, `changed`), an explicit decision (`no_change`, `refused`), or a
  * reviewer's rejection. Everything else is no evidence: harness and operator kills (`aborted`,
  * `user_aborted`), ticks that never reached the model (`skipped`, `main_red`), a quiet kill
- * (the model had answered before the stall — a tool call or the stream stopped), and a
- * leftover recovery's landing failures (`merge_conflict`, `merge_blocked`, `review_error`),
- * whose result does not say whether the backend was involved. */
+ * (the model had answered before the stall — a tool call or the stream stopped), and the
+ * landing results (`merge_conflict`, `merge_blocked`, `review_error`) — a tick no longer
+ * returns them since leftover recovery queues its pin instead of landing it, and they would
+ * not say whether the backend was involved. */
 export function fallbackEvidence(result: TickResult): "served" | "failed" | "none" {
   switch (result) {
     case "error":

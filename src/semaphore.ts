@@ -12,6 +12,11 @@ export class Semaphore {
 
   constructor(private capacity: number) {}
 
+  /** The current cap — the live `maxConcurrent`, for callers that size work against it. */
+  get limit(): number {
+    return this.capacity;
+  }
+
   /** Acquire a permit, parking in the wait queue when none is free. `tier` orders WAITING
    * requests only: on arrival a waiter inserts ahead of every parked waiter with a strictly
    * greater tier (the orchestrator passes roleTier so work roles beat maintenance across

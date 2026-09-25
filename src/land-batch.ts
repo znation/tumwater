@@ -9,21 +9,19 @@ import { COMMIT_IDENT, deleteRef, gitLines, gitTry, headOf } from "./git.js";
 import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { ffStackToMain } from "./merge.js";
-import { type BuildCheckOutcome, describeCheck, failureHeadline, runScopedBuildCheck } from "./build-check.js";
+import { type BuildCheckOutcome, runScopedBuildCheck } from "./build-check.js";
 import type { BuildCheck } from "./build-check-detect.js";
-import { checkMainBaseline, noteGreenBaseline } from "./main-baseline.js";
-import { baselineCheckLogger } from "./main-red.js";
-import { logEvent } from "./events.js";
-import { saveLoopState } from "./state.js";
+import { noteGreenBaseline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
 import {
+  attributeRedCheck,
   landApprovedChange,
   reviewPinnedChange,
   syncPinToMain,
   type LandRequest,
   type LanderContext,
 } from "./lander.js";
-import { errorMessage, shortSha } from "./text.js";
+import { errorMessage } from "./text.js";
 import { setLandingStage, type LandingChangeStatus } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "./types.js";
@@ -103,7 +101,7 @@ export async function vetRequest(ctx: BatchContext, req: LandRequest, w: BatchRo
 /** How many times a batch whose fast-forward lost the race to a moved main re-stacks onto the
  * new tip and goes round again before handing every change to leftover recovery as
  * `merge_blocked`. The race window is the whole batch check, and main still has writers
- * outside the land queue (a role's in-tick leftover-recovery landing, a human commit), so a
+ * outside the land queue (a human commit, or a second fleet on the same repo), so a
  * lost race is routine and one re-stack almost always wins it — the second is headroom for a
  * busy stretch. The bound keeps a main that moves faster than a check completes from holding
  * the merge slot (and every vetted landing behind it) indefinitely: each re-stack
@@ -235,69 +233,10 @@ async function landStack(ctx: BatchContext, wtPath: string, entries: readonly St
       for (const e of entries) await deleteRef(ctx.root, landingRefName(e.role));
       return { kind: "landed" };
     }
-    // Main moved under the batch while the check ran (a role's in-tick leftover-recovery
-    // landing, or a human commit): diverged history, ff failed. Re-stack on the tip that won.
+    // Main moved under the batch while the check ran (a human commit): diverged history, ff
+    // failed. Re-stack on the tip that won.
   }
   return { kind: "blocked" };
-}
-
-/** A red check's machine-generated reasons, in the gate pre-check's shape (review.ts): the
- * headline — failureHeadline's first line that is not a stack frame — joined to the rest of
- * the clipped tail, so the compiler error sits right after it in the author's next-tick note. */
-function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcome): string[] {
-  const tail = outcome.outputTail ?? [];
-  const headline = failureHeadline(tail);
-  const what = describeCheck(check);
-  return headline !== undefined
-    ? [`build check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
-    : [`build check failed (${what})`];
-}
-
-/** Attribute a red check that ran over ONE change alone on main's tip — the bisect's last
- * step — by the gate's rule (PLANS.md land-queue 1/3): ask main's own baseline at its current
- * tip, checked out pristine in `wtPath` (usually a cache hit: every landing seeds the SHA it
- * moved main to, the bisect's own prefix landings included). Main green → the change broke
- * the check: reject it exactly as the gate's deterministic reject does — reasons in
- * lastReview for the author's next tick, the strike count reset, ref deleted,
- * review_rejected logged, no pi run. Main red → not this change's failure: "main_red" with
- * the ref kept and unreviewFailures untouched, so recovery re-lands it once main-red.ts's
- * repair turns main green. Baseline unavailable (an environmental skip, or main unreadable)
- * → reject, the safe default, and the reasons say so. Returns the change's result; the
- * verdict is persisted before it returns. */
-async function attributeRedChange(
-  ctx: BatchContext,
-  wtPath: string,
-  entry: StackEntry,
-  red: { check: BuildCheck; outcome: BuildCheckOutcome },
-  state: LoopState,
-): Promise<TickResult> {
-  const tip = await gitTry(ctx.root, "rev-parse", ctx.mainBranch);
-  let baseline: Awaited<ReturnType<typeof checkMainBaseline>> = { baseline: null };
-  if (tip !== null) {
-    await ensureDetachedWorktree(ctx.root, wtPath, tip);
-    baseline = await checkMainBaseline(wtPath, ctx.config, baselineCheckLogger(ctx.root, entry.role));
-  }
-  if (baseline.baseline?.status === "red") {
-    state.lastError = `batch check failed: main ${shortSha(tip)} is red — not this change's failure`;
-    saveLoopState(ctx.root, state);
-    return "main_red";
-  }
-  const reasons = checkFailureReasons(red.check, red.outcome);
-  if (baseline.baseline === null) {
-    const why =
-      tip === null
-        ? "main is unreadable"
-        : baseline.skipReason
-          ? `its check was skipped: ${baseline.skipReason}`
-          : "no declared check";
-    reasons.push(`main's own baseline was unavailable (${why}), so the red check is attributed to this change`);
-  }
-  state.lastReview = { verdict: "reject", reasons, head: entry.sha, at: Date.now() };
-  state.unreviewFailures = 0;
-  saveLoopState(ctx.root, state);
-  await deleteRef(ctx.root, landingRefName(entry.role));
-  logEvent(ctx.root, { loop: entry.role, type: "review_rejected", head: entry.sha, reasons });
-  return "rejected";
 }
 
 /** Land changes whose own vet already approved them — the merge slot's whole task
@@ -333,7 +272,7 @@ async function attributeRedChange(
  * the first half of the ones the last red check ran over — so every prefix that lands, lands on
  * its own green check with nothing rewritten before its ff. A green prefix lands and the rest of
  * the red run is bisected next; a red one is halved. The one change a red check ran over alone
- * is attributed through main's own baseline (attributeRedChange): main green → rejected with the
+ * is attributed through main's own baseline (lander.ts's attributeRedCheck): main green → rejected with the
  * check's reasons, no pi run; main red → "main_red", pin kept. Its red is the second one observed
  * with it in the tree, so a single flaky run never rejects a change. The changes after it stay
  * unattempted for the next merge. A stack of N with one broken change costs about log2(N) + 1
@@ -417,7 +356,8 @@ export async function landVetted(
         // The one change this red check ran over alone: attribute it, and leave every change
         // after it unattempted for the next drain.
         const { state } = wiringFor(entries[front]!.role);
-        results[front] = await attributeRedChange(ctx, wtPath, entries[front]!, outcome, state);
+        const entry = entries[front]!;
+        results[front] = await attributeRedCheck(ctx, entry.role, entry.sha, "batch check", outcome, state);
         report(front, "done");
         break;
       }

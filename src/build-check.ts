@@ -357,6 +357,22 @@ export function describeCheck(check: BuildCheck): string {
   return check.kind === "npm" ? `\`npm run ${check.script}\`` : `\`${check.command}\``;
 }
 
+/** The machine-generated reasons a red check hands its author: the headline joined to the rest
+ * of the clipped tail, so the compiler error sits right after it in the injected next-tick note.
+ * The headline is failureHeadline's — the first line that is not a stack frame — not
+ * outputTail[0]: a suite that dies on an unhandled rejection opens mid-stack, and naming the
+ * frame tells the author where it broke, never what (BUGS.md 2026-09-19). One definition for
+ * every red that rejects a change: the gate's pre-check, a batch's single-change red, and a
+ * single landing's in-lock check. */
+export function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcome): string[] {
+  const tail = outcome.outputTail ?? [];
+  const headline = failureHeadline(tail);
+  const what = describeCheck(check);
+  return headline !== undefined
+    ? [`build check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
+    : [`build check failed (${what})`];
+}
+
 /** The timeout a check actually runs under: a configured command carries its own
  * (check.timeoutSeconds → detectBuildCheck's timeoutMs), an npm check takes the caller's.
  * One resolution so the run, the event, and the skip warning cannot disagree. */

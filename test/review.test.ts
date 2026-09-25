@@ -516,7 +516,7 @@ test("gate skips the run when this exact HEAD was already approved", async () =>
   }
 });
 
-test("recovery reviews get a -recovery session suffix so they never collide with the gate's session", async () => {
+test("a review's session is named by its role and tick", async () => {
   const { root, wt } = await gateFixture();
   // The fake pi records its own argv (outside the worktree) so the test can assert on the
   // exact session name the harness chose for this run.
@@ -529,13 +529,6 @@ test("recovery reviews get a -recovery session suffix so they never collide with
     await reviewAheadOfMain(gateCtx(root, wt), freshLoopState(ROLE)); // tick 1 gate run
     const gateArgs = fs.readFileSync(argsFile, "utf8").split("\n");
     assert.ok(gateArgs.includes("tumwater-review-improve-1"), `gate session name missing in ${gateArgs}`);
-
-    await reviewAheadOfMain({ ...gateCtx(root, wt), sessionSuffix: "-recovery" }, freshLoopState(ROLE));
-    const recoveryArgs = fs.readFileSync(argsFile, "utf8").split("\n");
-    assert.ok(
-      recoveryArgs.includes("tumwater-review-improve-1-recovery"),
-      `recovery session name missing in ${recoveryArgs}`,
-    ); // same tick number, distinct name — no pi session collision
   } finally {
     restore();
   }

@@ -13,8 +13,8 @@ import {
 } from "./git.js";
 import { aheadOfMainFiles, unquotePorcelainPath } from "./git-diff.js";
 import { abortSync } from "./worktree.js";
-import { runScopedBuildCheck } from "./build-check.js";
-import { gateCommandOf } from "./build-check-detect.js";
+import { type BuildCheckOutcome, runScopedBuildCheck } from "./build-check.js";
+import { type BuildCheck, gateCommandOf } from "./build-check-detect.js";
 import { noteGreenBaseline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
@@ -56,6 +56,10 @@ export interface MergeContext {
   tick: number;
   /** Run one pi run in `wt` with the loop's shared wiring and fold its usage into the tick. */
   runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
+  /** Told when the in-lock check went red on the rebased tree — the one merge_blocked cause
+   * that is the change's own (lander.ts counts it toward LANDING_CHECK_FAILURE_LIMIT); a failed
+   * fast-forward or a false fix never calls it. */
+  onLandingCheckRed?(check: BuildCheck, outcome: BuildCheckOutcome): void;
 }
 
 /** Land the worktree branch on main under the shared merge lock: rebase it onto main (keeping
@@ -165,7 +169,10 @@ async function verifyLanding(
   // runScopedBuildCheck, shared with the review gate's pre-check.
   const check = await runScopedBuildCheck(ctx.root, ctx.role, "landing", wt, ctx.config);
   if (!check) return true; // No declared check: nothing to run, exactly like the gate skipping its pre-check.
-  if (check.outcome.status === "failed") return false;
+  if (check.outcome.status === "failed") {
+    ctx.onLandingCheckRed?.(check.check, check.outcome);
+    return false;
+  }
   if (check.outcome.status === "skipped") return true; // No npm / broken toolchain — the helper already warned.
   // Green on exactly the tree that becomes main: seed it so the next tick's red-main baseline
   // check is a cache hit instead of one redundant full-suite run.

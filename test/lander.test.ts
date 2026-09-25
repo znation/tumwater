@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { type LandRequest, type LanderContext } from "../src/lander.js";
+import { LANDING_CHECK_FAILURE_LIMIT, landApprovedChange, type LandRequest, type LanderContext } from "../src/lander.js";
 import {
   BATCH_RESTACK_ATTEMPTS,
   landVetted,
@@ -410,6 +410,45 @@ test("a failing pre-check on a green main rejects the landing and spends no pi r
   }
 });
 
+// A change whose gate passes but whose in-lock landing check goes red (a cheaper
+// check.gateCommand, say) used to come back merge_blocked on every re-land, its role never
+// authoring again. The first red keeps the pin for one retry; at LANDING_CHECK_FAILURE_LIMIT the
+// red is judged by main's own verdict, like a red gate check.
+for (const main of ["green", "red"] as const) {
+  test(`a single landing's red in-lock check retries once, then ${main === "green" ? "rejects on a green main" : "keeps its pin as main_red"}`, async () => {
+    assert.equal(LANDING_CHECK_FAILURE_LIMIT, 2);
+    const { root, sha } = await pinnedFixture();
+    // Main moves after the pin, so the in-lock rebase rewrites it and the landing check runs.
+    const tip = advanceMain(root, `main-${main}-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+    if (main === "green") noteGreenBaseline(tip); // what main's own last landing left behind
+    const state = freshLoopState(ROLE);
+    const { ctx, calls } = makeCtx(root, state);
+    ctx.config = { ...ctx.config, check: { command: "echo 'error: planted landing failure'; exit 1" } };
+
+    assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one retry");
+    assert.equal(await refSha(root, REF), sha);
+    assert.equal(state.landingCheckFailures?.count, 1);
+    assert.match(state.lastError ?? "", /^merge failed: merge_blocked — build check failed .*planted landing failure/);
+
+    const second = await landApprovedChange(ctx, request(sha));
+    if (main === "green") {
+      assert.equal(second, "rejected", "the change broke the check: rejected with its output");
+      assert.equal(await refSha(root, REF), null, "the pin is gone");
+      assert.equal(state.lastReview?.verdict, "reject");
+      assert.match(state.lastReview!.reasons[0]!, /planted landing failure/);
+      assert.equal(readEvents(root).filter((e) => e.type === "review_rejected").length, 1);
+    } else {
+      assert.equal(second, "main_red", "main fails too: not this change's failure");
+      assert.equal(await refSha(root, REF), sha, "the pin is kept for a re-land once main is green");
+      assert.match(state.lastError ?? "", /^landing check failed: main \S+ is red — not this change's failure$/);
+      assert.equal(readEvents(root).filter((e) => e.type === "review_rejected").length, 0);
+    }
+    assert.equal(state.landingCheckFailures, undefined, "the streak ends at the attribution");
+    assert.equal(calls.length, 0, "no model run");
+    assert.equal(sh(root, "git", "rev-parse", "main"), tip, "nothing landed");
+  });
+}
+
 test("a failing pre-check on a red main keeps the pin, records no rejection, and spends no pi run", async () => {
   const { root, sha } = await pinnedFixture();
   declareCheck(root, "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n");
@@ -690,8 +729,8 @@ test("a batch stacks every commit of a multi-commit pin, not its head alone", as
 });
 
 // ── A fast-forward lost to a moved main: re-stack, not merge_blocked (BUGS.md 2026-09-23) ──
-// Main moves while the batch's shared check runs — the window is the whole check, and a role's
-// in-tick leftover-recovery landing still writes main outside the land queue. The stack was
+// Main moves while the batch's shared check runs — the window is the whole check, and a human
+// commit still writes main outside the land queue. The stack was
 // assembled on the old tip, so its single ff fails; the batch must re-stack on the new tip
 // and go round again rather than send every approved change back through recovery.
 
@@ -1021,7 +1060,7 @@ for (const baseline of ["red", "unavailable"] as const) {
         assert.equal(await refSha(root, landingRefName("alpha")), null);
         const reasons = states.alpha.lastReview!.reasons;
         assert.match(reasons[0]!, /: planted failure$/);
-        assert.match(reasons.at(-1)!, /baseline was unavailable \(its check was skipped: toolchain\)/);
+        assert.match(reasons.at(-1)!, /baseline was unavailable \(its check was skipped \(toolchain\)\), so the red batch check is attributed to this change$/);
       }
     } finally {
       restore();

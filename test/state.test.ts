@@ -376,8 +376,10 @@ test("applyLandingOutcome counts consecutive merge conflicts per pinned sha", ()
   for (const result of ["changed", "rejected"] as const) {
     const n = freshLoopState("feature");
     n.mergeConflicts = { sha: "aaa", count: 2 };
+    n.landingCheckFailures = { patchId: "p1", count: 1 };
     applyLandingOutcome(n, result, { sha: "aaa", summary: "x" });
     assert.equal(n.mergeConflicts, undefined, `${result} clears the streak`);
+    assert.equal(n.landingCheckFailures, undefined, `${result} clears the red-landing-check streak`);
   }
 });
 

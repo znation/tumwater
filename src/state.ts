@@ -283,6 +283,8 @@ export function applyLandingOutcome(
   } else if (result === "changed" || result === "rejected") {
     s.mergeConflicts = undefined;
   }
+  // Likewise the red-landing-check streak (keyed by patch-id): its change is gone either way.
+  if (result === "changed" || result === "rejected") s.landingCheckFailures = undefined;
   if (result !== "aborted") s.phase = undefined;
 }
 

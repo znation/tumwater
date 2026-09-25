@@ -8,6 +8,7 @@ import {
   landingTasks,
   newLandingPipeline,
   settleAbortedVetted,
+  vetLimit,
   type InFlightLanding,
   type LandingPipeline,
   type LandingPipelineContext,
@@ -450,13 +451,16 @@ test("a red stack lands its passing prefix, rejects the change red alone, and me
   }
 });
 
-test("every vet holds a shared permit: at cap 1 one reviews while the other parks, showing nothing, and no permit leaks", async () => {
+test("every vet holds a shared permit: with one free, one reviews while the other parks, showing nothing, and no permit leaks", async () => {
   // A landing's pi runs take the same permit role ticks do (BUGS.md 2026-09-18), and landings
-  // count as active work: at cap 2 both reviews run at once; at cap 1 the second vet parks
-  // for the permit — no marker record, its row plainly queued, out of reach of abort --role and
-  // of the shutdown wait — until the first vet frees it. Each review records how many reviews
-  // were in flight as it started.
-  for (const cap of [2, 1]) {
+  // count as active work. At cap 3 (vetLimit 2) with no role tick running, both reviews run at
+  // once; with two role ticks holding permits, one is free, so the second vet parks for it — no
+  // marker record, its row plainly queued, out of reach of abort --role and of the shutdown
+  // wait — until the first vet frees it. Each review records how many reviews were in flight as
+  // it started.
+  const cap = 3;
+  for (const ticks of [0, 2]) {
+    const free = cap - ticks;
     const root = makeRepo();
     const roles = ["alpha", "beta"];
     await queueChanges(root, roles);
@@ -472,29 +476,30 @@ test("every vet holds a shared permit: at cap 1 one reviews while the other park
       ].join("\n"),
     );
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap });
+    for (let k = 0; k < ticks; k++) await ctx.semaphore.acquire(0); // role ticks already running
     const bg = pump(ctx, pipeline);
     try {
       await waitForFile(path.join(flags, "alpha-reviewing"));
-      if (cap === 1) {
+      if (ticks > 0) {
         await waitFor(() => pipeline.vetting.get("beta")?.parked === true, "beta's vet to park for the permit", 30_000);
-        assert.match(rowOf("alpha"), REVIEWING, "cap 1: the vet holding the permit shows its stage");
-        assert.equal(rowOf("beta"), "queued", "cap 1: the parked vet's role reads plainly queued");
-        assert.deepEqual(readLandingMarker(root)?.changes?.map((c) => c.role), ["alpha"], "cap 1: no record for the parked vet");
-        assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "cap 1: the parked vet is not in flight");
-        assert.deepEqual(abortableLandings(pipeline).flatMap((t) => t.roles), ["alpha"], "cap 1: nor abortable");
+        assert.match(rowOf("alpha"), REVIEWING, "one free: the vet holding the permit shows its stage");
+        assert.equal(rowOf("beta"), "queued", "one free: the parked vet's role reads plainly queued");
+        assert.deepEqual(readLandingMarker(root)?.changes?.map((c) => c.role), ["alpha"], "one free: no record for the parked vet");
+        assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: the parked vet is not in flight");
+        assert.deepEqual(abortableLandings(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: nor abortable");
       } else {
         await waitFor(() => readEvents(root).some((e) => e.type === "review_verdict" && e.loop === "beta"), "beta's review beside alpha's", 30_000);
       }
       fs.writeFileSync(path.join(flags, "alpha-release"), "");
-      await waitFor(drained(root, pipeline), `cap ${cap}: both changes to land`, 60_000);
+      await waitFor(drained(root, pipeline), `${free} free: both changes to land`, 60_000);
 
       const samples = fs.readFileSync(path.join(flags, "samples.log"), "utf8").trim().split("\n").map(Number);
-      assert.equal(samples.length, 2, `cap ${cap}: one review per change`);
-      assert.equal(Math.max(...samples), cap, `cap ${cap}: reviews in flight at each start never exceed the cap (${samples})`);
+      assert.equal(samples.length, 2, `${free} free: one review per change`);
+      assert.equal(Math.max(...samples), Math.min(free, 2), `${free} free: reviews in flight at each start never exceed the free permits (${samples})`);
       await bg.stop();
-      // Every permit came back: the full cap is acquirable again.
-      for (let k = 0; k < cap; k++) {
-        assert.ok(await within(ctx.semaphore.acquire(0), 5_000), `cap ${cap}: permit ${k + 1} was never released`);
+      // Every vet's permit came back: all the ticks left free are acquirable again.
+      for (let k = 0; k < free; k++) {
+        assert.ok(await within(ctx.semaphore.acquire(0), 5_000), `${free} free: permit ${k + 1} was never released`);
       }
     } finally {
       fs.writeFileSync(path.join(flags, "alpha-release"), "");
@@ -518,10 +523,13 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
     const shutdown = new AbortController();
     let held = false;
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, shutdown.signal), {
-      cap: 1,
+      cap: 3,
       signal: shutdown.signal,
       held: () => held,
     });
+    // Two role ticks hold two of the three permits: one is free, so beta's vet parks behind alpha's.
+    await ctx.semaphore.acquire(0);
+    await ctx.semaphore.acquire(0);
     try {
       await drainLandings(ctx, pipeline);
       await waitForFile(path.join(flags, "alpha-reviewing"));
@@ -560,7 +568,7 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
   }
 });
 
-test("three T-long reviews run at once at cap 3, so all three merge in about T, not 3T", async () => {
+test("three T-long reviews run at once at cap 4, so all three merge in about T, not 3T", async () => {
   // Acceptance for land-queue speed 2c. Each review holds T and records how many reviews were in
   // flight as it started. As in lander.test.ts's timing tests, the span is read off the
   // harness's own timeline — first review_start to last `merged` — and held against the reviews'
@@ -581,7 +589,8 @@ test("three T-long reviews run at once at cap 3, so all three merge in about T, 
     ].join("\n"),
   );
   try {
-    const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 3 });
+    // Cap 4: vetLimit keeps one permit for authoring, so three vets may run.
+    const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 4 });
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to land");
 
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3", "all three landed");
@@ -601,6 +610,39 @@ test("three T-long reviews run at once at cap 3, so all three merge in about T, 
     assert.equal(events.filter((e) => e.type === "landed").length, 3, "each change's outcome written once");
     assert.equal(readLandingMarker(root), null, "the marker is gone once nothing is in flight");
   } finally {
+    restore();
+  }
+});
+
+test("vets leave one permit for authoring: at cap 3 two review, the third waits unstarted, and a role tick gets the last permit", async () => {
+  assert.deepEqual([1, 2, 3, 6].map(vetLimit), [1, 1, 2, 5], "maxConcurrent − 1, never below one");
+  const root = makeRepo();
+  const roles = ["alpha", "beta", "gamma"];
+  await queueChanges(root, roles);
+  const rowOf = rowReader(root, roles);
+  const flags = tmpdir("vet-reserve-");
+  const restore = fakePi(reviewers(flags, roles, {}, roles));
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 3 });
+  const bg = pump(ctx, pipeline);
+  let ticked = false;
+  try {
+    await waitForFile(path.join(flags, "alpha-reviewing"));
+    await waitForFile(path.join(flags, "beta-reviewing"));
+    await new Promise((r) => setTimeout(r, 500)); // a few more polls: nothing more may start
+    assert.deepEqual([...pipeline.vetting.keys()], ["alpha", "beta"], "only vetLimit(3) vets exist");
+    assert.equal(rowOf("gamma"), "queued", "the third change waits in the queue, not parked on a permit");
+    assert.ok(await within(ctx.semaphore.acquire(0), 5_000), "a role tick takes the permit the vets left free");
+    ticked = true;
+
+    ctx.semaphore.release();
+    ticked = false;
+    for (const role of roles) fs.writeFileSync(path.join(flags, `${role}-release`), "");
+    await waitFor(drained(root, pipeline), "all three to land", 60_000);
+  } finally {
+    if (ticked) ctx.semaphore.release();
+    for (const role of roles) fs.writeFileSync(path.join(flags, `${role}-release`), "");
+    await bg.stop();
+    await Promise.allSettled(allTasks(pipeline));
     restore();
   }
 });
@@ -653,7 +695,7 @@ test("a vetted change merges while an earlier queue entry is still in review", a
   const rowOf = rowReader(root, roles);
   const flags = tmpdir("vet-ahead-");
   const restore = fakePi(reviewers(flags, roles, {}, ["alpha"]));
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 2 });
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 3 });
   const bg = pump(ctx, pipeline);
   try {
     await waitForFile(path.join(flags, "alpha-reviewing"));
@@ -688,7 +730,7 @@ test("a shutdown reaches every vet and keeps their pins; a vetted change waits o
   const flags = tmpdir("vet-shutdown-");
   const restore = fakePi(reviewers(flags, roles, {}, ["alpha", "beta"]));
   const shutdown = new AbortController();
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, shutdown.signal), { cap: 3, signal: shutdown.signal });
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, shutdown.signal), { cap: 4, signal: shutdown.signal });
   pipeline.merge = busySlot();
   const bg = pump(ctx, pipeline);
   try {
@@ -728,7 +770,7 @@ test("abort --role stops that role's vet, or discards its vetted change, pin and
   const shas = await queueChanges(root, roles);
   const flags = tmpdir("vet-abort-");
   const restore = fakePi(reviewers(flags, roles, {}, ["alpha", "beta"]));
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 3 });
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 4 });
   pipeline.merge = busySlot();
   const bg = pump(ctx, pipeline);
   try {

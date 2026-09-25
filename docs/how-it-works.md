@@ -58,10 +58,12 @@ merge step lands them, so other loops keep ticking while a change is under revie
 - **Parallel vetting.** Each queued change is rebased, checked and reviewed in its own lander
   worktree, several at once. A vet counts as active work: it holds one of the `maxConcurrent`
   slots role ticks use, ahead of any waiting tick, so landings never add streams to the
-  provider beyond `maxConcurrent` plus the director. A change that fails vetting frees its
-  author at once, and the merge step lands vetted changes in queue order, up to `landBatchMax`
-  per stack, without waiting on a slower review ahead of them. A vetted change whose base moved
-  is checked again before it lands.
+  provider beyond `maxConcurrent` plus the director. Vets take at most `maxConcurrent` − 1 of
+  those slots (at least one), so a deep queue always leaves one for authoring. A change that
+  fails vetting frees its author at once, and the merge step lands vetted changes in queue
+  order, up to `landBatchMax` per stack, without waiting on a slower review ahead of them. A
+  vetted change whose base moved is checked again before it lands; a change whose landing check
+  fails twice is judged by main's own check, like a red gate check.
 
 Errors keep the commit for re-review, up to three strikes. `tumwater abort --role <id>`
 discards a role's in-flight landing.
