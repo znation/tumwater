@@ -499,3 +499,62 @@ test("stop takes no flags and appears in the help table", async () => {
   assert.equal(help.code, 0);
   assert.match(help.stdout, /tumwater stop\s+Stop a running fleet/);
 });
+
+// --- config: print the effective merged config as JSON ---
+// A pure read of loadConfig(root) — defaults filled in and custom loops merged — so the
+// oracle is a direct loadConfig call on the same repo, never a hand-built expectation.
+
+test("config prints the effective merged config as JSON, deep-equal to loadConfig", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli config");
+
+  // Overrides plus a custom loop: the output must show the MERGED view (defaults filled
+  // in, the custom loop present in roles) — the same shape the orchestrator's runners see —
+  // not the overrides-only tumwater.json.
+  const cfg = loadConfig(repo);
+  cfg.minTickIntervalSeconds = 25;
+  cfg.customLoops.push({ name: "docs-sync", task: "keep the README examples current" });
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+
+  const r = await cli(repo, "config");
+  assert.equal(r.code, 0);
+  const printed = JSON.parse(r.stdout);
+  assert.deepStrictEqual(printed, loadConfig(repo));
+  // Role defaults the file never mentions are in the output (the merge is visible, not just
+  // pass-through), and the custom loop is merged into roles exactly as the file's own
+  // roles-override entries would be.
+  assert.equal(printed.minTickIntervalSeconds, 25);
+  assert.deepEqual(printed.roles["docs-sync"], { enabled: true });
+  assert.ok(printed.roles.feature, "built-in role defaults are printed");
+});
+
+test("config fails with validateConfig's message and prints no JSON for an invalid file", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli config invalid");
+
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify({ minTickIntervalSeconds: -1 }));
+  const r = await cli(repo, "config");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /invalid tumwater.json/);
+  assert.match(r.stderr, /minTickIntervalSeconds must be a number of 0 or more/);
+  assert.equal(r.stdout, "");
+});
+
+test("config takes no flags, is repo-gated, and appears in the help table", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli config args");
+
+  const r = await cli(repo, "config", "--anything");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /tumwater config takes no arguments/);
+
+  const help = await cli(repo, "help");
+  assert.equal(help.code, 0);
+  assert.match(help.stdout, /tumwater config\s+Show the effective config/);
+
+  // Outside an initialized repo the ready-repo gate fires before any config is read.
+  const bare = makeRepo();
+  const b = await cli(bare, "config");
+  assert.equal(b.code, 1);
+  assert.match(b.stderr, /not initialized/);
+});

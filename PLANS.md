@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater config` — print the effective merged config as JSON (planned 2026-09-25)
+_None right now._
+
+## Done
+
+### `tumwater config` — print the effective merged config as JSON (planned 2026-09-25, done 2026-09-25)
 
 **Goal.** Every setting edits apply live, but an operator debugging "why is `qa` not ticking?" or "what interval does my custom loop actually run at?" has no way to see what the fleet would actually use: tumwater.json holds only the overrides, and the defaults live in `defaultConfig()` (src/config.ts:29), merged in by `loadConfig` (src/config.ts:182) together with the customLoops-into-roles merge (src/config.ts:117–120). Mental overlaying is error-prone, and `tumwater doctor` reduces the whole config to one "N roles enabled" line. Add `tumwater config`: print the effective config — exactly what `loadConfig(root)` returns, defaults filled in and custom loops merged — as pretty JSON.
 
@@ -23,7 +27,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `tumwater config --anything` fails via `rejectUnknownArgs`; `tumwater config` outside an initialized repo fails with the not-initialized message (the `requireReadyRepo` gate); the help table lists `config`.
 - The existing cli-operators suite passes unmodified; the full `npm run test` is green.
 
-## Done
+Implemented as planned: `cmdConfig` in src/operator-commands.ts, the `config` case and help-table
+line in src/cli.ts, and three cli-operators tests pinning the deep-equal-to-loadConfig output,
+the invalid-file failure, and the flags/gate/help contract. Full suite 1622/1622 green.
 
 ### `tumwater stop` — stop a running fleet from another terminal (planned 2026-09-24, done 2026-09-25)
 

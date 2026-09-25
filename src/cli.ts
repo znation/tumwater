@@ -10,7 +10,7 @@ import {
   parsePromptArgs,
   rejectUnknownArgs,
 } from "./cli-args.js";
-import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
+import { cmdAbort, cmdConfig, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdLogs } from "./ui/log-commands.js";
 import { orchestratorAlive } from "./fleet-state.js";
 import { repoToplevel } from "./git.js";
@@ -58,6 +58,7 @@ Usage:
   tumwater report --failures [--days N]
                                    Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
   tumwater doctor                  Pre-flight check: node, git, repo, config, fallback model, pi, locks, build, orphans (read-only; exit 0/1)
+  tumwater config                 Show the effective config (defaults + tumwater.json) as JSON
   tumwater logs [-f] [-n N]        Show (and follow) harness events
   tumwater logs --role <id> [-f] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
@@ -283,6 +284,16 @@ async function main(): Promise<void> {
         );
       }
       break;
+    case "config": {
+      // One format, no flags: an operator who wants to see what they wrote reads
+      // tumwater.json; this prints the resolved config the fleet loads, nothing else.
+      rejectUnknownArgs("config", args, []);
+      // An initialized repo always has tumwater.json, so this gate doubles as "a config
+      // exists to print" — the command never runs outside a project.
+      await requireReadyRepo(root);
+      await cmdConfig(root);
+      break;
+    }
     case "report": {
       // No requireReadyRepo gate: the report aggregates files that degrade to zeros when
       // missing, so it runs (and prints an all-zero window) in any directory.

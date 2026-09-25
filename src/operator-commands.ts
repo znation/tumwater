@@ -177,6 +177,23 @@ export async function cmdStop(root: string): Promise<void> {
   process.stdout.write("stop requested — the fleet drains its in-flight ticks and exits (the same path as Ctrl+C)\n");
 }
 
+/** `tumwater config`: print the effective merged config — exactly what `loadConfig(root)`
+ * returns — as pretty JSON, so an operator debugging scheduling or custom-loop wiring sees
+ * what the fleet would actually load instead of overlaying defaults onto tumwater.json by
+ * hand. A query, not a writer: no redaction (the config holds no secrets — provider keys
+ * belong to pi's own env) and no transformation, including the per-role entries custom loops
+ * merge into. A malformed or invalid tumwater.json fails with validateConfig's actionable
+ * message and prints no JSON — the same surfacing doctor's config check produces. */
+export async function cmdConfig(root: string): Promise<void> {
+  let config;
+  try {
+    config = loadConfig(root);
+  } catch (err) {
+    fail(errorMessage(err));
+  }
+  process.stdout.write(JSON.stringify(config, null, 2) + "\n");
+}
+
 /** `tumwater resume`: lift a fleet pause by removing its marker. Idempotent like pause: with
  * no marker there is nothing to do. No live harness required — resuming before startup just
  * means the next `tumwater run` starts unpaused. */
