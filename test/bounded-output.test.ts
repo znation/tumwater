@@ -147,6 +147,38 @@ test("boundReadResult falls back to a plain cut when lines are too long to snap"
   assert.match(result, /chars of this read were omitted/);
 });
 
+test("boundReadResult passes astral-heavy text through when the code-point count fits the limit", () => {
+  // The read-side twin of boundBashResult's astral seam: UTF-16 length (24000) is far past
+  // the read limit, but the code-point count (12000 — one per emoji) sits exactly on it,
+  // so the text is under the limit and passes through untruncated, with no re-read marker.
+  const text = "\u{1f680}".repeat(READ_LIMIT_CHARS);
+  assert.ok(text.length > READ_LIMIT_CHARS, "test must sit in the length>limit window");
+  assert.equal(boundReadResult(text), text);
+});
+
+test("boundReadResult falls back to a plain cut when the line snap swallows the whole text", () => {
+  // A single-line text barely over a small limit: the per-side budget halves what is left
+  // after the marker, but the line-boundary snap (max drift 2000) walks both cut points to
+  // the text's ends — the omitted span is zero, so there is no missing middle to wrap a
+  // marker around. The plain character cut takes over and keeps the at-most-limit contract.
+  const text = "z".repeat(1_200);
+  const result = boundReadResult(text, { path: "f.ts" }, 1_000);
+  assert.ok(cps(result) <= 1_000, `result is ${cps(result)} code points`);
+  assert.match(result, /chars truncated/);
+  assert.doesNotMatch(result, /re-read/, "no read marker: there is no missing middle to re-read");
+});
+
+test("boundReadResult falls back to a plain cut when snapping overgrows the kept head past the limit", () => {
+  // A long first line: the head's cut point snaps forward to the first line boundary —
+  // 1501 code points, far past the per-side budget — so head + marker no longer fit the
+  // limit. The plain character cut takes over rather than returning the flood.
+  const text = `${"z".repeat(1_500)}\n${"y".repeat(400)}`;
+  const result = boundReadResult(text, { path: "f.ts" }, 1_000);
+  assert.ok(cps(result) <= 1_000, `result is ${cps(result)} code points`);
+  assert.match(result, /chars truncated/);
+  assert.doesNotMatch(result, /re-read/);
+});
+
 // ---- boundBashResult -------------------------------------------------------
 
 test("boundBashResult keeps the first and last line on either side of the marker", () => {
@@ -218,6 +250,17 @@ test("boundText returns astral-heavy text with cps within the limit unchanged", 
 });
 
 // ---- findTumwaterRoot / writeFullOutput ------------------------------------
+
+test("boundBashResult returns empty output untouched", () => {
+  // The empty guard sits before every other branch: an empty result is never truncated
+  // and never earns a full-output write, even with a writer wired up.
+  let wrote = false;
+  assert.equal(boundBashResult("", null, () => {
+    wrote = true;
+    return "/repo/.tumwater/log/tool-output/never.log";
+  }), "");
+  assert.ok(!wrote, "no full-output write for empty output");
+});
 
 test("writeFullOutput writes into .tumwater/log/tool-output named by toolCallId", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bound-"));
@@ -320,6 +363,21 @@ test("adapter bounds oversized read results and passes everything else through",
   }), undefined);
 });
 
+test("writeFullOutput falls back to a timestamped name when the tool call has no id", () => {
+  // Parallel tool mode names files by toolCallId; a call without one (or with a junk-free
+  // empty id) still gets a file — named by the current time instead of crashing or
+  // colliding on a bare ".log".
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bound-id-"));
+  fs.mkdirSync(path.join(dir, ".tumwater"));
+  const nested = path.join(dir, "worktrees", "feature");
+  fs.mkdirSync(nested, { recursive: true });
+  const file = writeFullOutput("full output text", undefined, nested);
+  assert.ok(file, "returns the written path");
+  assert.match(file!, /result-\d+\.log$/, "timestamped name");
+  assert.equal(fs.readFileSync(file!, "utf-8"), "full output text");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("adapter bounds oversized bash results using pi's fullOutputPath", () => {
   const { handler } = captureHandler();
   const text = bigFileText(700);
@@ -330,6 +388,15 @@ test("adapter bounds oversized bash results using pi's fullOutputPath", () => {
     content: [{ type: "text", text }],
   }) as { content: Array<{ type: string; text: string }> };
   assert.match(patched.content[0]!.text, /complete output in \/repo\/\.tumwater\/snapshot\.log/);
+});
+
+test("adapter leaves a non-array content payload untouched", () => {
+  // pi tool results are normally block arrays, but a non-array content shape (a bare
+  // string, an object) is not something this extension understands: it returns no patch
+  // instead of crashing on the missing array.
+  const { handler } = captureHandler();
+  assert.equal(handler({ toolName: "read", toolCallId: "t6", input: { path: "f.ts" }, content: "plain text" }), undefined);
+  assert.equal(handler({ toolName: "bash", toolCallId: "t7", content: { type: "text", text: "big" } }), undefined);
 });
 
 // ---- piArgs wiring ---------------------------------------------------------
