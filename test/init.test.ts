@@ -183,6 +183,43 @@ test("initProject --adopt writes TUMWATER.md even with no README, and never crea
   assert.equal(briefFile(created), "README.md");
 });
 
+test("initProject --adopt against an already-marked TUMWATER.md brief is a plain re-seed", async () => {
+  // The variant the marked-README.md re-seed above cannot catch: a repo whose ONLY brief is a
+  // marked TUMWATER.md and which has no README.md at all. --adopt — and a plain init naming
+  // the brief's own prompt — must recognize the existing brief and stay a re-seed, never take
+  // the fresh-repo branch and fabricate a README.md carrying a duplicate prompt block.
+  const repo = makeRepo();
+  await initProject(repo, "Explicitly adopted.", undefined, { adopt: true });
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")));
+  const brief = fs.readFileSync(path.join(repo, "TUMWATER.md"), "utf8");
+
+  // Re-run with --adopt: nothing brief-shaped is written, README.md never appears.
+  const again = await initProject(repo, "Explicitly adopted.", undefined, { adopt: true });
+  assert.ok(!again.adopted);
+  assert.deepEqual(again.created, []);
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")), "no README.md appears on a re-adopt");
+  assert.equal(fs.readFileSync(path.join(repo, "TUMWATER.md"), "utf8"), brief, "brief byte-identical");
+
+  // The same without --adopt, and as a dry run (same lists, zero writes).
+  const plain = await initProject(repo, "Explicitly adopted.");
+  assert.ok(!plain.adopted);
+  assert.deepEqual(plain.created, []);
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")));
+  const dry = await initProject(repo, "Explicitly adopted.", undefined, { adopt: true, dryRun: true });
+  assert.ok(!dry.adopted);
+  assert.deepEqual(dry.created, []);
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")));
+
+  // A checkout that lost its untracked tumwater.json re-seeds the config — still no README.md,
+  // and the adopted brief keeps answering every tick.
+  fs.rmSync(path.join(repo, "tumwater.json"));
+  const reseed = await initProject(repo, "", undefined, { adopt: true });
+  assert.ok(reseed.created.includes("tumwater.json"));
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")));
+  assert.equal(readInitialPrompt(repo), "Explicitly adopted.");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+});
+
 test("initProject refuses to adopt over a TUMWATER.md without markers", async () => {
   // Create-if-absent would leave the marker-less file alone and drop the prompt — every loop
   // would run blind — so this is the one case adoption still refuses, before any side effect.

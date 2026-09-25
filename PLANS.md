@@ -243,6 +243,8 @@ This supersedes the in-slot fix run from that plan and keeps its goal: a red **m
 
 **Implemented 2026-09-24** in 063d9b4. All criteria are met. A README.md without markers, or `--adopt`, now takes the adoption path: the brief goes to TUMWATER.md and README.md plus any existing backlog files stay byte-identical. The one refusal left is a marker-less TUMWATER.md. `--dry-run` prints `would create` / `would leave alone` and writes, inits and commits nothing. Deltas: a missing BUGS.md is created on adoption (the criterion's file list omitted it); the Setup description changed in docs/how-it-works.md, not README.md; test/cli.test.ts gained a CLI-level case.
 
+**Review follow-up 2026-09-24 by feature:** review flagged that no test pinned the re-seed against a repo whose only brief is a marked TUMWATER.md with no README.md — the suite could not have caught a fall-through to the fresh-repo README write there (the marked-README.md re-seed test was the only coverage). Behavior verified correct (no README.md is created, with or without `--adopt`, real or dry-run); test/init.test.ts now pins it across re-adopt, plain init, dry-run, and the lost-config re-seed.
+
 ### Give every failure an automated trace: retire the recurring `no-observability` validation gap (planned 2026-09-26, promoted from the Fixed validation-gap tally by steward, done 2026-09-24)
 
 **Why.** The Fixed backlog's validation-gap tally is dominated by one tag — `gap: no-observability` — the failure mode where nothing automated could see the bug: seven recorded repairs were confirmed only by a human reading raw logs or running `git log -S` / `ps` forensics. Six retained Fixed entries carry it:
