@@ -35,7 +35,7 @@ export function cli(cwd: string, ...args: string[]): Promise<CliResult> {
   return cliWithEnv(cwd, {}, args);
 }
 
-export interface SpawnedCli {
+interface SpawnedCli {
   out: () => string;
   /** Resolves once `pred` matches the captured stdout; fails the test with the output on timeout. */
   waitFor(pred: (out: string) => boolean, what: string, ms?: number): Promise<void>;

@@ -150,8 +150,8 @@ export function makeBatchCtx(root: string, config?: TumwaterConfig, controller?:
 
 /** Per-role wiring resolved the way the drain resolves its authors: a live state object per
  * role, usage recorded per role, and the shared runPi stub (with an optional resolver) for
- * the one-at-a-time fallback landings. */
-export function makeWiring(
+ * the one-at-a-time fallback landings. File-internal: only this module's batch fixture uses it. */
+function makeWiring(
   states: Record<string, LoopState>,
   resolve?: (wt: string) => void,
 ): { wiringFor: (role: string) => BatchRoleWiring; folded: Map<string, PiRunResult[]>; calls: PiCall[] } {
