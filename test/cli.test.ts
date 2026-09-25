@@ -149,6 +149,28 @@ test("init --dry-run prints the file lists and exits 0 without writing; --adopt 
   assert.equal(readInitialPrompt(repo), "Adopt me.");
 });
 
+test("init --dry-run in a fresh directory previews the repo seeding and writes nothing", async () => {
+  // The adopt dry run above covers an existing repo; this is the other half of the preview —
+  // a bare directory, where the run would `git init` — and it is the branch the operator sees
+  // before init ever touches an un-versioned project.
+  const dir = tmpdir();
+  const dry = await cli(dir, "init", "Build a tiny widget.", "--dry-run");
+  assert.equal(dry.code, 0, dry.stderr);
+  assert.match(dry.stdout, /dry run — would initialize a new git repository on branch main/);
+  assert.match(dry.stdout, /dry run — would create: .*README\.md/);
+  assert.match(dry.stdout, /would leave alone: nothing/);
+  assert.match(dry.stdout, /nothing written; re-run without --dry-run to apply/);
+  // Nothing written means nothing: no seeded git repo, no document set.
+  assert.deepEqual(fs.readdirSync(dir), []);
+
+  // The --branch flag the real run would honor is named by the preview too.
+  const named = tmpdir();
+  const branched = await cli(named, "init", "Build a thing.", "--branch", "trunk", "--dry-run");
+  assert.equal(branched.code, 0, branched.stderr);
+  assert.match(branched.stdout, /dry run — would initialize a new git repository on branch trunk/);
+  assert.deepEqual(fs.readdirSync(named), []);
+});
+
 test("run --branch fails at startup when the branch does not exist, listing what does", async () => {
   const repo = makeRepo();
   await cli(repo, "init", "Ready repo.");
