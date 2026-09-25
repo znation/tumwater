@@ -13,11 +13,20 @@
  * existing Fixed record's narrative (the exact shape a second phantom landing takes) faces
  * the same symbol check a new entry does; and the comparison base is the diff's own
  * merge-base, not main's tip, so a stacked batch's earlier change (which moved the entry
- * Fixed→Open) is what an Open→Fixed restoration is measured against. */
+ * Fixed→Open) is what an Open→Fixed restoration is measured against.
+ *
+ * A third hole this check closed after those (BUGS.md 2026-09-25): both readers were
+ * fence-blind. A `### ` line quoted inside a fenced code block counted as a Fixed heading,
+ * and an entry body was cut at its own quoted fence — so base and head bodies truncated at
+ * the same fence compared equal, and a rewrite confined to text after the fence (including
+ * a Fix paragraph placed there) never faced the symbol check. Both readers now see fences:
+ * fixedHeadings walks parseEntryDetails — backlog.ts's fence-aware entry parser, the same
+ * one the dashboards read — and bugEntryBody consults fenceTracker before treating any line
+ * as entry structure. */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { sectionLines } from "./backlog.js";
+import { fenceTracker, parseEntryDetails } from "./backlog.js";
 import { gitTry } from "./git.js";
 
 /** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix tick appends
@@ -32,20 +41,31 @@ export function normalizeFixedHeading(heading: string): string {
 
 /** Headings (as written, `### ` stripped) under the `## Fixed` section of a BUGS.md
  * document. Empty when the document has no Fixed section. Walks the section through
- * sectionLines — backlog.ts's single home of "where a `## ` section starts and ends" — so
- * this reader and the backlog browsers can never disagree about the boundary. */
+ * parseEntryDetails — backlog.ts's fence-aware entry parser, the same reader the dashboards
+ * use — so this reader and the backlog browsers can never disagree about what is an entry
+ * and what is quoted content: a `### ` line inside a fenced code block is body text, never
+ * a Fixed entry. */
 export function fixedHeadings(doc: string): string[] {
-  return sectionLines(doc, "Fixed")
-    .filter((line) => /^### /.test(line))
-    .map((line) => line.replace(/^###\s+/, "").trim());
+  return parseEntryDetails(doc, "Fixed").map((entry) => entry.title);
 }
 
 /** The body of one `### ` entry in a BUGS.md document: everything from after its heading to
- * the next `### ` or `## ` heading. Empty when the heading is absent. */
+ * the next `### ` or `## ` heading. Empty when the heading is absent. Fence-aware: a heading
+ * line inside a fenced code block is quoted content, never a boundary, and a fence inside
+ * the entry itself (an entry quoting a markdown template) is body content the entry keeps —
+ * the body runs to the next heading outside the fence, not to the fence's first quoted
+ * `## `/`### ` line. */
 export function bugEntryBody(doc: string, heading: string): string {
   const lines = doc.split("\n");
   let body: string[] | undefined;
+  const fenced = fenceTracker();
   for (const line of lines) {
+    // fenceTracker must see every line in order (fence state is document-wide), so it runs
+    // even while the body has not opened yet; inside a fence a line is never structure.
+    if (fenced.inside(line)) {
+      if (body) body.push(line);
+      continue;
+    }
     if (/^### /.test(line)) {
       if (body) break;
       if (line.replace(/^###\s+/, "").trim() === heading) body = [];

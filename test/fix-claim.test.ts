@@ -59,6 +59,39 @@ test("bugEntryBody returns the entry's text up to the next heading", () => {
   assert.ok(!body.includes("## Open"));
 });
 
+// Regression coverage for the 2026-09-25 fence-blind reader record (BUGS.md): fixedHeadings
+// counted a `### ` line quoted inside a fenced code block as a Fixed entry, and bugEntryBody
+// cut an entry's body at its own quoted fence — so a rewrite confined to text after the
+// fence compared equal against the base and skipped the false-fix symbol check, and a Fix
+// paragraph placed after the fence contributed no symbols (the check passed vacuously).
+
+const QUOTED_FENCE_DOC =
+  "## Fixed\n\n" +
+  "### A quoted-template bug (found 2026-09-25, fixed 2026-09-25)\n\n" +
+  "**Symptom:** quoting a template.\n\n" +
+  "```md\n## Done\n\n### Quoted entry (fixed 2026-01-01)\n\nSome quoted body.\n```\n\n" +
+  "**Fix:** `totallyFakeSymbolXyz` now handles it.\n";
+
+test("fixedHeadings never counts a `### ` quoted inside a fence", () => {
+  assert.deepEqual(fixedHeadings(QUOTED_FENCE_DOC), [
+    "A quoted-template bug (found 2026-09-25, fixed 2026-09-25)",
+  ]);
+});
+
+test("bugEntryBody keeps the entry's fence and everything after it", () => {
+  const body = bugEntryBody(
+    QUOTED_FENCE_DOC,
+    "A quoted-template bug (found 2026-09-25, fixed 2026-09-25)",
+  );
+  assert.ok(body.includes("```md"), "the fence itself stays in the body");
+  assert.ok(body.includes("## Done"), "a quoted `## ` line does not cut the body");
+  assert.ok(body.includes("### Quoted entry"), "a quoted `### ` line does not cut the body");
+  assert.match(body, /\*\*Fix:\*\* `totallyFakeSymbolXyz`/);
+  // The symbol check reads the body: a Fix paragraph living after the entry's fence must
+  // contribute its symbols instead of leaving the check vacuously empty.
+  assert.deepEqual(fixSymbols(body), ["totallyFakeSymbolXyz"]);
+});
+
 test("fixSymbols keeps whitespace-free backticked spans, drops prose and call parens", () => {
   assert.deepEqual(
     fixSymbols("The fix: `npm test` passes, `runScriptGroup()` in `src/build-check.ts` signals."),
@@ -256,7 +289,28 @@ test("falseFixReason measures an Open→Fixed restoration against the merge-base
   assert.match(reason!, /runScriptGroup/);
 });
 
-// ── Gate orchestration ────────────────────────────────────────────────────────────────────
+test("falseFixReason checks a Fixed entry whose narrative after its quoted fence the diff rewrites", async () => {
+  // The fence-blind readers truncated base and head bodies at the same quoted fence, so a
+  // rewrite confined to text after the fence compared equal and skipped the symbol check —
+  // and the Fix paragraph itself lived after the fence, so fixSymbols saw none of it.
+  const root = makeRepo();
+  const entry =
+    "## Fixed\n\n### A leak (found 2026-09-22, fixed 2026-09-23)\n\n" +
+    "**Symptom:** the kill leaked grandchildren.\n\n" +
+    "```md\n## Done\n\n### Quoted entry (fixed 2026-01-01)\n```\n\n" +
+    "**Fix:** the kill now goes through `runScriptGroup`.\n";
+  fs.writeFileSync(path.join(root, "BUGS.md"), entry);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "the record with a quoted fence");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    entry + "\nRewritten narrative: the kill also handles signals now.\n",
+  );
+  const reason = await falseFixReason(root, "main", ["BUGS.md"]);
+  assert.match(reason!, /runScriptGroup/);
+});
+
+// ── Gate orchestration ──────────────────────────────────────────────────────────────────
 
 const ROLE = "improve";
 

@@ -5,13 +5,19 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### `fixedHeadings` and `bugEntryBody` in src/fix-claim.ts have no fenced-code state: a quoted `### ` line counts as a Fixed entry, and an entry body quoting a fence is cut at it, so a narrative rewrite after the fence compares equal and skips the false-fix symbol check (found by bugfix loop 2026-09-25)
+_None yet._
 
-**Symptom:** the false-fix guard reads BUGS.md through two fence-blind scanners. `fixedHeadings` filters `### ` lines out of `sectionLines`'s output without consulting `fenceTracker`, so an entry legitimately quoting a markdown template adds a phantom Fixed entry; `bugEntryBody` breaks at any `## `/`### ` line with no fence state, so an entry's body is cut at its own quoted fence. The guard hole is the worse half: `falseFixReason` skips an already-Fixed entry only when its body is unchanged, but base and head bodies are both truncated at the same fence, so an md-only rewrite confined to text after the fence compares equal and never faces the symbol check — the exact evasion the 2026-09-23 fix closed for prose bodies, reopened wherever an entry quotes one. `fixSymbols` inherits the truncation: a Fix paragraph placed after the entry's fence contributes no symbols, so the check passes vacuously.
+## Fixed
+
+### `fixedHeadings` and `bugEntryBody` in src/fix-claim.ts have no fenced-code state: a quoted `### ` line counts as a Fixed entry, and an entry body quoting a fence is cut at it, so a narrative rewrite after the fence compares equal and skips the false-fix symbol check (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** the false-fix guard read BUGS.md through two fence-blind scanners. `fixedHeadings` filtered `### ` lines out of `sectionLines`'s output without consulting `fenceTracker`, so an entry legitimately quoting a markdown template added a phantom Fixed entry; `bugEntryBody` broke at any `## `/`### ` line with no fence state, so an entry's body was cut at its own quoted fence. The guard hole was the worse half: `falseFixReason` skips an already-Fixed entry only when its body is unchanged, but base and head bodies were both truncated at the same fence, so an md-only rewrite confined to text after the fence compared equal and never faced the symbol check — the exact evasion the 2026-09-23 fix closed for prose bodies, reopened wherever an entry quotes one. `fixSymbols` inherited the truncation: a Fix paragraph placed after the entry's fence contributed no symbols, so the check passed vacuously.
 
 **Reproduce:** confirmed by execution 2026-09-25 against dist with a one-entry Fixed section whose body is a `​```md` fence holding `## Done` and `### Quoted entry (fixed 2026-01-01)`, then a `**Fix:**` paragraph naming a symbol that exists nowhere on the tree: `fixedHeadings` returned 2 while `parseEntryDetails(md, "Fixed")` returned 1 (the quoted heading counts as an entry), `bugEntryBody` returned only `​```md` (cut at the fenced `## Done` line), and `fixSymbols` of it returned `[]`. Sibling of the fixed 2026-09-25 `fenceTracker` entry below — same invariant, last fence-blind reader pair.
 
-## Fixed
+**Fix:** both readers see fences now. `fixedHeadings` walks `parseEntryDetails` — backlog.ts's fence-aware entry parser, the same one the dashboards read — so a quoted `### ` line can never split the section into a phantom entry, and the guard and the dashboards cannot disagree about what is an entry. `bugEntryBody` consults `fenceTracker` before treating any line as structure: a quoted `## `/`### ` line is body content while the entry is open, and a fence inside the entry is kept, so the body runs to the next heading outside the fence — base and head bodies compare whole, and a `**Fix:**` paragraph after the fence contributes its symbols to the check.
+
+**Validation gap:** no-observability — the guard failed open silently: a skipped symbol check looks exactly like a passing one and leaves no error or test failure anywhere, and it surfaced only by cross-checking two readers' counts over a hand-built fixture, since no suite fixture held an entry quoting a fence.
 
 ### `fenceTracker` opens a fence at a backtick-fence line whose info string contains a backtick, which CommonMark forbids: one unclosable fence swallowed 46 Fixed entries and the `## Verified` section (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
