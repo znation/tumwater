@@ -38,46 +38,10 @@ import { runTui } from "./ui/tui.js";
 import { lanAddresses, startGui } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { errorMessage, shortSha } from "./text.js";
+import { HELP, helpTopic } from "./help.js";
 
-const HELP = `tumwater — autonomous development harness built on pi
-
-Usage:
-  tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --branch <name>,
-                                   --adopt: brief in TUMWATER.md, --dry-run: write nothing)
-  tumwater run [--branch <name>]   Run all enabled loops (headless; Ctrl+C stops)
-  tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
-  tumwater gui [--port N] [--all-interfaces] [--token <secret>]
-                                   Same dashboard in the browser (default port 7180,
-                                   localhost only; --all-interfaces serves the whole
-                                   network — without --token there is no auth, anyone
-                                   reaching it can prompt the director)
-  tumwater status [--json]         One-shot status table (--json prints machine-readable
-                                   fleet state — the GUI's /api/status payload minus the
-                                   serving process's serverBuildSha)
-  tumwater report [--days N]       Markdown usage report — tokens/ticks/commits per day (default 14 days)
-  tumwater report --failures [--days N]
-                                   Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
-  tumwater doctor                  Pre-flight check: node, git, repo, config, fallback model, pi, locks, build, orphans (read-only; exit 0/1)
-  tumwater config                 Show the effective config (defaults + tumwater.json) as JSON
-  tumwater logs [-f] [-n N]        Show (and follow) harness events
-  tumwater logs --role <id> [-f] [-n N] [--prompt]
-                                   Show (and follow) that loop's pi transcript
-                                   (--prompt also shows each run's exact prompt text)
-  tumwater prompt <text...>        Queue a prompt for the director loop
-  tumwater prompt --list           Show queued prompts, numbered in execution order
-  tumwater prompt --cancel <n>     Remove the Nth queued prompt (as shown by --list)
-  tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
-  tumwater wake [--role <id>]             Wake a backed-off fleet — the named roles (or all) tick within one poll
-  tumwater abort --role <id>              Abort that loop's in-flight tick (work discarded; the loop keeps running)
-  tumwater pause [--role <id>]            Stop role loops (or just the named loop) starting new ticks; in-flight finish
-  tumwater resume [--role <id>]           Lift a fleet or per-role pause
-  tumwater stop                    Stop a running fleet (drains in-flight ticks, like Ctrl+C)
-  tumwater help | version
-
-The harness runs inside a git repo. Each role loop owns a persistent worktree and branch
-under .tumwater/, does one task per tick with pi, commits, and merges to main. Loops back
-off while the project is quiet and wake when main moves. Everything is local: no remotes.
-`;
+// The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts
+// would run main(), so tests pin the topics against help.ts directly.
 
 /** Fail fast on the first unmet repo precondition (startup-gate.ts's repoNotReady — the repo
  * half of `tumwater run`'s startup gate, shared by every repo-bound command). */
@@ -424,12 +388,22 @@ async function main(): Promise<void> {
     case "help":
     case "--help":
     case "-h":
-    case undefined:
-      // `help` selects nothing (there is no per-command help), so any argument is a mistake
-      // and fails rather than printing usage as though it were that token's help.
-      rejectUnknownArgs("help", args, []);
-      process.stdout.write(HELP);
+    case undefined: {
+      // `help <command>` prints that command's usage stanza(s), parsed from the same text the
+      // full listing prints, so a topic cannot drift from it; a bare `help` (or an unknown
+      // topic) points back at the full list rather than pretending the token was answered.
+      if (args.length > 1) fail("help takes at most one command name");
+      if (args.length === 1) {
+        const name = args[0] ?? "";
+        const topic = helpTopic(name);
+        if (topic === null)
+          fail(`no help topic: ${name} (try \`tumwater help\` for the full command list)`);
+        process.stdout.write(topic + "\n");
+      } else {
+        process.stdout.write(HELP);
+      }
       break;
+    }
     default:
       fail(`unknown command: ${command} (try \`tumwater help\`)`);
   }

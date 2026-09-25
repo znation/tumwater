@@ -1,0 +1,65 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { HELP, helpStanzas, helpTopic } from "../src/help.js";
+
+/** Every command the full help lists — the set a `tumwater help <command>` topic must cover. */
+const ALL_COMMANDS = [
+  "init",
+  "run",
+  "tui",
+  "gui",
+  "status",
+  "report",
+  "doctor",
+  "config",
+  "logs",
+  "prompt",
+  "reset-counters",
+  "wake",
+  "abort",
+  "pause",
+  "resume",
+  "stop",
+  "help",
+  "version",
+] as const;
+
+test("every command listed in the full help resolves to a topic", () => {
+  for (const command of ALL_COMMANDS) {
+    const topic = helpTopic(command);
+    assert.ok(topic !== null, `no help topic for ${command}`);
+    assert.match(topic, new RegExp(`^  tumwater ${command}`), `${command} topic starts at its usage line`);
+  }
+});
+
+test("helpStanzas keeps each stanza's description continuations and nothing else", () => {
+  const stanzas = helpStanzas();
+  const gui = stanzas.filter((s) => s.command === "gui");
+  assert.equal(gui.length, 1);
+  assert.match(gui[0]!.text, /Same dashboard in the browser/); // continuation attached
+  assert.doesNotMatch(gui[0]!.text, /One-shot status table/); // neighbor stanza does not bleed in
+  assert.doesNotMatch(gui[0]!.text, /persistent worktree/); // closing paragraph is not a stanza
+});
+
+test("multi-form commands yield every usage form in their topic", () => {
+  const report = helpTopic("report")!;
+  assert.match(report, /report \[--days N\]/);
+  assert.match(report, /report --failures \[--days N\]/);
+  const prompt = helpTopic("prompt")!;
+  assert.match(prompt, /prompt <text\.\.\.>/);
+  assert.match(prompt, /prompt --list/);
+  assert.match(prompt, /prompt --cancel <n>/);
+});
+
+test("helpTopic returns null for an unknown command", () => {
+  assert.equal(helpTopic("statu"), null);
+  assert.equal(helpTopic("--json"), null);
+});
+
+test("topics end with the pointer back to the full list", () => {
+  assert.match(helpTopic("tui")!, /See `tumwater help` for the full command list\./);
+});
+
+test("HELP still lists the per-command help form itself", () => {
+  assert.match(HELP, /tumwater help \[<command>\]/);
+});

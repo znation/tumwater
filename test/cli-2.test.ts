@@ -187,9 +187,15 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   assert.equal(r.code, 1);
   assert.match(r.stderr, /takes no arguments/);
 
+  // `help <command>` now prints that command's usage stanza; only a NON-command token is
+  // still an error — pointed back at the full list instead of pretending it was answered.
+  r = await cli(repo, "help", "gui");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /tumwater gui/);
+
   r = await cli(repo, "help", "extra");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /takes no arguments/);
+  assert.match(r.stderr, /no help topic: extra/);
 
   // Stray non-flag tokens are rejected too.
   r = await cli(repo, "reset-counters", "--role", "feature", "extra");
