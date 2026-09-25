@@ -11,30 +11,11 @@ import { readQaCoverage } from "../src/qa-coverage.js";
 import { queueDepth, queuedLandings } from "../src/land-queue.js";
 import type { LoopState, PiRunResult, TickOutcome } from "../src/types.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { makeRepo, sh } from "./util.js";
+import { makeRepo, piRunResult, sh } from "./util.js";
 
 /** A successful pi run result; tests override only what they exercise. */
 function okPi(over: Partial<PiRunResult> = {}): PiRunResult {
-  return {
-    ok: true,
-    finalText: "",
-    nothingToDo: false,
-    refused: false,
-    outputTokens: 0,
-    peakContextTokens: 0,
-    turns: 3,
-    costUsd: 0,
-    timedOut: false,
-    quietKilled: false,
-    aborted: false,
-    contextExceeded: false,
-    transientServerTimeout: false,
-    transientRateLimit: false,
-    transientPiCrash: false,
-    finalMessageContentless: false,
-    compacted: false,
-    ...over,
-  };
+  return piRunResult({ turns: 3, ...over });
 }
 
 interface CtxOverrides {

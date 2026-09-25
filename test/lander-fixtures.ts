@@ -10,7 +10,7 @@ import { freshLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "../src/types.js";
-import { assistantLine, makeRepo, sh, writeScript } from "./util.js";
+import { assistantLine, makeRepo, piRunResult, sh, writeScript } from "./util.js";
 
 /** Shared fixtures for the landing tests — lander.test.ts, lander-2.test.ts and lander-3.test.ts,
  * split from one file so node --test runs the three in parallel processes (top-level tests
@@ -22,26 +22,8 @@ export const ROLE = "improve";
 export const REF = landingRefName(ROLE);
 
 /** A compliant pi run result for the stubbed conflict-resolution runs. */
-export function piResult(): PiRunResult {
-  return {
-    ok: true,
-    finalText: "resolved",
-    nothingToDo: false,
-    refused: false,
-    outputTokens: 0,
-    peakContextTokens: 0,
-    turns: 1,
-    costUsd: 0,
-    timedOut: false,
-    quietKilled: false,
-    aborted: false,
-    contextExceeded: false,
-    transientServerTimeout: false,
-    transientRateLimit: false,
-    transientPiCrash: false,
-    finalMessageContentless: false,
-    compacted: false,
-  };
+export function piResult(over: Partial<PiRunResult> = {}): PiRunResult {
+  return piRunResult({ finalText: "resolved", ...over });
 }
 
 export interface PiCall {

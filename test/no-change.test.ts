@@ -2,30 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { diagnoseNoChange } from "../src/no-change.js";
 import type { PiRunResult } from "../src/types.js";
+import { piRunResult } from "./util.js";
 
 /** A no-change pi run result; tests override only what they exercise. */
 function noChangePi(over: Partial<PiRunResult> = {}): PiRunResult {
-  return {
-    ok: true,
+  return piRunResult({
     finalText: "TUMWATER_NOTHING_TO_DO",
     nothingToDo: true,
-    refused: false,
-    outputTokens: 0,
-    peakContextTokens: 0,
-    turns: 1,
-    costUsd: 0,
     stopReason: "stop",
-    timedOut: false,
-    quietKilled: false,
-    aborted: false,
-    contextExceeded: false,
-    transientServerTimeout: false,
-    transientRateLimit: false,
-    transientPiCrash: false,
-    finalMessageContentless: false,
-    compacted: false,
     ...over,
-  };
+  });
 }
 
 test("a compliant nothing-to-do run is not cut off and carries no notes", () => {

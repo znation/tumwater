@@ -19,30 +19,11 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/types.js";
-import { makeRepo, sh, tmpdir, writeScript } from "./util.js";
+import { makeRepo, piRunResult, sh, tmpdir, writeScript } from "./util.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
 function piResult(over: Partial<PiRunResult> = {}): PiRunResult {
-  return {
-    ok: true,
-    finalText: "resolved",
-    nothingToDo: false,
-    refused: false,
-    outputTokens: 0,
-    peakContextTokens: 0,
-    turns: 1,
-    costUsd: 0,
-    timedOut: false,
-    quietKilled: false,
-    aborted: false,
-    contextExceeded: false,
-    transientServerTimeout: false,
-    transientRateLimit: false,
-    transientPiCrash: false,
-    finalMessageContentless: false,
-    compacted: false,
-    ...over,
-  };
+  return piRunResult({ finalText: "resolved", ...over });
 }
 
 interface PiCall {

@@ -29,31 +29,13 @@ import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { readEvents } from "../src/events.js";
 import { LoopRunner } from "../src/loop.js";
 import type { LandingEntry, PiRunResult } from "../src/types.js";
-import { assistantLine, fakePi, landHead, makeRepo, sh, tmpdir, makeLoopRunner,
+import { assistantLine, fakePi, landHead, makeRepo, piRunResult, sh, tmpdir, makeLoopRunner,
 } from "./util.js";
 
 /** A minimal successful pi run carrying the given usage — only the fields the fold reads matter,
  * but PiRunResult is fully required, so the rest are neutral defaults. */
 function piRun(outputTokens: number, costUsd: number): PiRunResult {
-  return {
-    ok: true,
-    finalText: "",
-    nothingToDo: false,
-    refused: false,
-    outputTokens,
-    peakContextTokens: 0,
-    turns: 1,
-    costUsd,
-    timedOut: false,
-    aborted: false,
-    quietKilled: false,
-    contextExceeded: false,
-    transientServerTimeout: false,
-    transientRateLimit: false,
-    transientPiCrash: false,
-    finalMessageContentless: false,
-    compacted: false,
-  };
+  return piRunResult({ outputTokens, costUsd });
 }
 
 /** Queue one landing in a fresh repo and return its entry plus the file a drop removes. */

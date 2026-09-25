@@ -7,30 +7,16 @@ import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { freshLoopState } from "../src/state.js";
 import type { LoopState, PiRunResult, TickResult } from "../src/types.js";
-import { makeRepo, sh } from "./util.js";
+import { makeRepo, piRunResult, sh } from "./util.js";
 
 /** A refused pi run result; tests override only what they exercise. */
 function refusedPi(over: Partial<PiRunResult> = {}): PiRunResult {
-  return {
-    ok: true,
+  return piRunResult({
     finalText: "TUMWATER_REFUSED",
-    nothingToDo: false,
     refused: true,
-    outputTokens: 0,
-    peakContextTokens: 0,
     turns: 3,
-    costUsd: 0,
-    timedOut: false,
-    quietKilled: false,
-    aborted: false,
-    contextExceeded: false,
-    transientServerTimeout: false,
-    transientRateLimit: false,
-    transientPiCrash: false,
-    finalMessageContentless: false,
-    compacted: false,
     ...over,
-  };
+  });
 }
 
 interface MergeCall {

@@ -16,7 +16,7 @@ import { LoopRunner } from "../src/loop.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import type { TickResult } from "../src/types.js";
+import type { PiRunResult, TickResult } from "../src/types.js";
 import { startGui } from "../src/ui/gui.js";
 
 /** Per-process root for every test temp dir: created on first use, torn down synchronously at
@@ -715,6 +715,34 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
         // Already exited.
       }
     },
+  };
+}
+
+/** A fully-neutral successful PiRunResult: every field the harness reads at its inert value,
+ * overridden by whatever the test exercises (`piRunResult({ refused: true })`). One home for
+ * the neutral defaults — six test modules each hand-rolled the full 17-field literal and had
+ * already drifted (turns 1 vs 3, three different finalTexts), so a new PiRunResult field had
+ * to be added to every copy. */
+export function piRunResult(over: Partial<PiRunResult> = {}): PiRunResult {
+  return {
+    ok: true,
+    finalText: "",
+    nothingToDo: false,
+    refused: false,
+    outputTokens: 0,
+    peakContextTokens: 0,
+    turns: 1,
+    costUsd: 0,
+    timedOut: false,
+    quietKilled: false,
+    aborted: false,
+    contextExceeded: false,
+    transientServerTimeout: false,
+    transientRateLimit: false,
+    transientPiCrash: false,
+    finalMessageContentless: false,
+    compacted: false,
+    ...over,
   };
 }
 
