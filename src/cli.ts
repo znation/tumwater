@@ -6,6 +6,7 @@ import {
   parsePortFlag,
   parsePromptArgs,
   rejectUnknownArgs,
+  ROLE_FLAG,
 } from "./cli-args.js";
 import { cmdAbort, cmdConfig, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdLogs } from "./ui/log-commands.js";
@@ -168,7 +169,7 @@ async function main(): Promise<void> {
       rejectUnknownArgs("logs", args, [
         { names: ["-f", "--follow"] },
         { names: ["-n"], value: true, valueName: "<count>" },
-        { names: ["--role"], value: true, valueName: "<id>" },
+        ROLE_FLAG,
         { names: ["--prompt"] },
       ]);
       await requireReadyRepo(root);
@@ -208,31 +209,31 @@ async function main(): Promise<void> {
       break;
     }
     case "reset-counters": {
-      rejectUnknownArgs("reset-counters", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
+      rejectUnknownArgs("reset-counters", args, [ROLE_FLAG]);
       await requireReadyRepo(root);
       await cmdResetCounters(root, args);
       break;
     }
     case "wake": {
-      rejectUnknownArgs("wake", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
+      rejectUnknownArgs("wake", args, [ROLE_FLAG]);
       await requireReadyRepo(root);
       await cmdWake(root, args);
       break;
     }
     case "abort": {
-      rejectUnknownArgs("abort", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
+      rejectUnknownArgs("abort", args, [ROLE_FLAG]);
       await requireReadyRepo(root);
       await cmdAbort(root, args);
       break;
     }
     case "pause": {
-      rejectUnknownArgs("pause", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
+      rejectUnknownArgs("pause", args, [ROLE_FLAG]);
       await requireReadyRepo(root);
       await cmdPause(root, args);
       break;
     }
     case "resume": {
-      rejectUnknownArgs("resume", args, [{ names: ["--role"], value: true, valueName: "<id>" }]);
+      rejectUnknownArgs("resume", args, [ROLE_FLAG]);
       await requireReadyRepo(root);
       await cmdResume(root, args);
       break;

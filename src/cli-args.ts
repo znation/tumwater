@@ -68,7 +68,7 @@ export function parseBranchFlag(args: string[]): string | null {
 
 /** One flag in a command's fixed argument vocabulary: every spelling it accepts and whether
  * it takes one following token as its value (named for the error message). */
-interface FlagSpec {
+export interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
   names: string[];
   /** True when the flag consumes one following token as its value. */
@@ -76,6 +76,12 @@ interface FlagSpec {
   /** How the value is named in error messages (e.g. "<id>"); defaults to "<value>". */
   valueName?: string;
 }
+
+/** The `--role <id>` flag spec, shared by every role-targeting command (logs, reset-counters,
+ * wake, abort, pause, resume): one definition of the flag's spelling and value shape so the
+ * accepted vocabulary and its rendering in rejectUnknownArgs' error messages cannot drift
+ * apart. */
+export const ROLE_FLAG: FlagSpec = { names: ["--role"], value: true, valueName: "<id>" };
 
 /** Fail when any argument was not consumed by this command's known flags — a misspelled flag
  * (e.g. `--rol` instead of `--role`) would otherwise be silently ignored and the command runs
