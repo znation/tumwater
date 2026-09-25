@@ -100,10 +100,18 @@ async function main(): Promise<void> {
       const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
       const allInterfaces = args.includes("--all-interfaces");
       // A valueless or empty --token is a CLI error, not an open server: an operator who
-      // asked for protection must never silently get none.
+      // asked for protection must never silently get none. A flag-looking value is the
+      // same mistake in disguise — a valued flag claims the next token even when it is a
+      // known flag, so `--token --all-interfaces` would serve with the literal secret
+      // "--all-interfaces" (--all-interfaces still takes effect, since it is read straight
+      // from args) while the real secret sits unreached after another flag.
       const tokenFlag = args.indexOf("--token");
       const token = tokenFlag >= 0 ? (args[tokenFlag + 1] ?? "") : "";
       if (tokenFlag >= 0 && !token) fail("--token requires a non-empty secret (e.g. `--token s3cret`)");
+      if (tokenFlag >= 0 && token.startsWith("--"))
+        fail(
+          `--token got the flag-looking value "${token}" instead of a secret — write the secret as its own argument (e.g. \`tumwater gui --token s3cret --all-interfaces\`)`,
+        );
       try {
         await startGui(root, port, allInterfaces, token);
       } catch (err) {

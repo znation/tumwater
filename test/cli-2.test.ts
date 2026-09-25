@@ -125,6 +125,15 @@ test("gui --token demands a non-empty secret instead of serving unauthenticated"
   const empty = await cli(repo, "gui", "--token", "");
   assert.equal(empty.code, 1);
   assert.match(empty.stderr, /--token requires a non-empty secret/);
+
+  // A flag-looking value is rejected too: a valued flag claims the next token even when
+  // it is a known flag, so without this guard `--token --all-interfaces` would serve with
+  // the literal secret "--all-interfaces" — and --all-interfaces still takes effect (it
+  // is read straight from args), so the error is about the secret, not the bind width.
+  const flagValue = await cli(repo, "gui", "--token", "--all-interfaces");
+  assert.equal(flagValue.code, 1);
+  assert.match(flagValue.stderr, /flag-looking value "--all-interfaces"/);
+  assert.match(flagValue.stderr, /its own argument/);
 });
 
 test("gui --token serves behind the gate and prints the token-bearing URL", async () => {
