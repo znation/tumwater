@@ -206,6 +206,9 @@ export function clipBuildTail(output: string): string[] {
  * headline they are. */
 const FRAMING_LINE = /^(?:at\s|ℹ\s|✖ failing tests:|test at \S+:\d+:\d+)/;
 
+/** The one-line headline for a red check's clipped tail (clipBuildTail's output): the first
+ * line that is not framing (FRAMING_LINE), else the tail's first line when every line is
+ * framing, so a caller always has something to print. Undefined for an absent or empty tail. */
 export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
   if (!tail?.length) return undefined;
   return tail.find((line) => !FRAMING_LINE.test(line)) ?? tail[0];

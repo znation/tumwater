@@ -165,6 +165,8 @@ export interface LandingPipeline {
   merge: InFlightLanding | null;
 }
 
+/** A fresh pipeline: nothing in flight anywhere — no vet running, no approved change waiting,
+ * no merge holding main. The orchestrator builds one per fleet start (orchestrator.ts). */
 export function newLandingPipeline(): LandingPipeline {
   return { vetting: new Map(), vetted: new Map(), merge: null };
 }
