@@ -1104,3 +1104,49 @@ test("the dashboard client sends the Bearer token and strips ?token= from the ad
     "?token= cleared from the address bar after load",
   );
 });
+
+test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { nextRunCell } = await import("../src/ui/status-render.js");
+  const { freshLoopState } = await import("../src/state.js");
+  type LoopState = ReturnType<typeof freshLoopState>;
+
+  // The column sits between last result and controls, rendered from the payload's raw
+  // nextRunAt/backoffSeconds fields.
+  assert.match(GUI_PAGE, /<th>last result<\/th><th>next run<\/th><th>controls<\/th>/);
+  assert.match(GUI_PAGE, /fmtNextRun\(l, d\.running\)/);
+
+  // Extract the marked region — same regex-extract + new Function pattern as the esc, sortLoops,
+  // and fmtLastTick tests. fmtNextRun is pure (no DOM), so nothing is injected.
+  const m = GUI_PAGE.match(/\/\/ next-run-fmt:start\n([\s\S]*?)\n  \/\/ next-run-fmt:end/);
+  assert.ok(m, "next-run-fmt region found in the page");
+  const fmtNextRun = new Function(`${m[1]}\nreturn fmtNextRun;`)() as
+    (l: { phase: string; nextRunAt: number; backoffSeconds: number }, fleetRunning: boolean) => string;
+
+  const now = Date.now();
+  // Each case pins the TUI helper and the GUI twin to the same output, so the two copies
+  // cannot drift (the sortLoops/fmtLastTick lockstep precedent).
+  const cases: Array<{
+    state: Partial<LoopState>;
+    phase: string;
+    fleet: boolean;
+    want: string;
+  }> = [
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", fleet: true, want: "3m" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 240 }, phase: "queued", fleet: true, want: "backoff 3m" },
+    { state: { nextRunAt: now - 5_000, backoffSeconds: 0 }, phase: "queued", fleet: true, want: "now" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 0, running: true }, phase: "working 3m", fleet: true, want: "-" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "landing 1m · build check", fleet: true, want: "-" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", fleet: false, want: "-" },
+  ];
+  for (const c of cases) {
+    const s = { ...freshLoopState("clean"), ...c.state } as LoopState;
+    const label = `${c.phase} / fleet ${c.fleet ? "running" : "stopped"}`;
+    assert.equal(nextRunCell(s, c.phase, now, c.fleet), c.want, `TUI: ${label}`);
+    assert.equal(
+      fmtNextRun({ phase: c.phase, nextRunAt: s.nextRunAt, backoffSeconds: s.backoffSeconds }, c.fleet),
+      c.want,
+      `GUI: ${label}`,
+    );
+  }
+});

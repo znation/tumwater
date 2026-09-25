@@ -79,6 +79,24 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
     return s + " · " + age;
   };
   // last-tick-fmt:end
+  // next-run-fmt:start
+  // Next-run cell — mirrors the TUI's nextRunCell in status-render.ts: "-" for a loop in
+  // flight (an active phase — working/reviewing/landing, the same three prefixes sortLoops
+  // classifies; the payload's inFlight flag derives from the same check) or a stopped fleet; "now" when due;
+  // otherwise the remaining time through the same s/m/h bucketing as fmtLastTick's age,
+  // prefixed "backoff " while backoffSeconds > 0 (the wake row-action clears exactly that).
+  // Raw nextRunAt/backoffSeconds come from the payload; Date.now() at render time keeps the
+  // countdown fresh on the existing 1-second poll. The page cannot import TS (the fmtTokens
+  // precedent), so the two copies stay in lockstep by test.
+  const fmtNextRun = (l, fleetRunning) => {
+    const active = l.phase.startsWith("working") || l.phase.startsWith("reviewing") || l.phase.startsWith("landing");
+    if (!fleetRunning || active) return "-";
+    const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
+    if (sec <= 0) return "now";
+    const label = sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h";
+    return (l.backoffSeconds > 0 ? "backoff " : "") + label;
+  };
+  // next-run-fmt:end
   // loop-sort:start
   // Loop-table row order — shared by rule with the TUI/status table's TS twin
   // (status-model.ts sortLoopsByState, cross-checked against this copy in test/gui.test.ts):
@@ -348,6 +366,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
           // two-decimal rule as cost — formatted client-side from the payload, like cost.
           "</td><td>" + fmtUsd(l.costUsd) + "</td><td>" + fmtUsd(l.todayUsd) + "</td><td>" + fmtLastTick(l.lastTickEndedAt) +
           "</td><td class='wide'>" + esc(last) +
+          "</td><td>" + fmtNextRun(l, d.running) +
           // The row's operator controls: wake always (it is safe on an idle loop — it just
           // clears any backoff), abort only while a tick is actually in flight (the payload's
           // inFlight flag; there is nothing to abort otherwise), and a pause/resume toggle

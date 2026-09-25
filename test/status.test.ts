@@ -7,6 +7,7 @@ import { loadConfig, saveConfig } from "../src/config.js";
 import { dequeuePrompt, submitPrompt } from "../src/inbox.js";
 import { allRoleIds } from "../src/roles.js";
 import { snapshot } from "../src/ui/status.js";
+import { statusPayload } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { loopPhase, sortLoopsByState } from "../src/ui/status-model.js";
 import { enqueueLanding } from "../src/land-queue.js";
@@ -509,4 +510,19 @@ test("the marker is cross-checked per change and each row reads its own change's
   assert.equal(snap.landQueue.depth, 1);
   assert.equal(snap.landQueue.inFlight, undefined, "a marker whose live records are all done never displays");
   fs.rmSync(orchestratorStatePath(repo));
+});
+
+test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload schedule test");
+  const state = freshLoopState("clean");
+  state.nextRunAt = 1_758_800_000_000;
+  state.backoffSeconds = 90;
+  saveLoopState(repo, state);
+
+  const payload = statusPayload(repo) as { loops: Array<{ role: string; nextRunAt: number; backoffSeconds: number }> };
+  const clean = payload.loops.find((l) => l.role === "clean");
+  assert.ok(clean, "the loop has a payload row");
+  assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms, formatted client-side");
+  assert.equal(clean.backoffSeconds, 90);
 });

@@ -97,6 +97,11 @@ export function statusPayload(root: string): object {
         lastResult: s.lastResult ?? null,
         lastSummary: s.lastSummary ?? null,
         lastTickEndedAt: s.lastTickEndedAt ?? null,
+        // The scheduling facts behind the `next run` column: raw epoch ms and seconds, formatted
+        // client-side like lastTickEndedAt/costUsd — the GUI's fmtNextRun twin applies the same
+        // rules nextRunCell does (see status-render.ts).
+        nextRunAt: s.nextRunAt,
+        backoffSeconds: s.backoffSeconds,
       };
     }),
     events: readEvents(root, 40).map((e) => formatEvent(e)),

@@ -3,7 +3,7 @@
  * status-model.test.ts; the fixtures both assemble snapshots from are in status-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lastTickCell, renderStatus } from "../src/ui/status-render.js";
+import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { buildBadge, loopPhase } from "../src/ui/status-model.js";
 import type { StatusSnapshot } from "../src/ui/status.js";
 import { applyLandingOutcome, applyTickOutcome, freshLoopState } from "../src/state.js";
@@ -496,7 +496,12 @@ test("renderStatus shows the main-red blockage in a blocked loop's state cell an
 test("the last-result cell keeps the prior completed result and its summary while a change is pending", () => {
   const s = pendingFeature();
   // Queued behind another landing, then in flight on the landing slot: both windows render
-  // the prior pair, and the live landing state stays in the state column.
+  // the prior pair, and the live landing state stays in the state column. The `last result`
+  // cell is read by column position — `next run` sits after it (see the next-run tests).
+  const lastResultCell = (out: string) => {
+    const { headers, cellAt, lines } = tableCells(out);
+    return cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result"));
+  };
   const queuedOnly = renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } });
   const inFlight = renderStatus(tmpdir(), {
     ...snapshotWith([s]),
@@ -505,7 +510,7 @@ test("the last-result cell keeps the prior completed result and its summary whil
   });
   for (const out of [queuedOnly, inFlight]) {
     const row = rowOf(out, "feature");
-    assert.ok(row.endsWith("refused — objected to the plan"), `prior pair in the last-result cell: ${row}`);
+    assert.equal(lastResultCell(out), "refused — objected to the plan", `prior pair in the last-result cell: ${row}`);
     assert.doesNotMatch(row, /\bqueued\b/, "the live landing status is not a last result");
     assert.doesNotMatch(row, /add the widget/, "the pending change's summary is not paired with the prior result");
   }
@@ -519,7 +524,8 @@ test("the last-result cell shows the landing's outcome beside the summary of the
     const s = pendingFeature();
     applyLandingOutcome(s, result, { sha: PENDING_SHA, summary: "add the widget" });
     const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true }), "feature");
-    assert.ok(row.endsWith(`${result} — add the widget`), `landing pair in the last-result cell: ${row}`);
+    const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true }));
+    assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), `${result} — add the widget`, `landing pair in the last-result cell: ${row}`);
     assert.doesNotMatch(row, /objected to the plan/, "the prior summary does not outlive its result");
   }
 });
@@ -535,7 +541,8 @@ test("a pending change after a main-red tick does not keep the state cell readin
   assert.match(loopPhase(s, true), /^sleeping/, "the pending change's tick was not blocked");
   const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } }), "feature");
   assert.doesNotMatch(row, /main red/);
-  assert.ok(row.endsWith("main_red — code merges blocked until main is green"), `prior pair kept: ${row}`);
+  const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } }));
+  assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), "main_red — code merges blocked until main is green", `prior pair kept: ${row}`);
 });
 
 test("renderStatus shows budget paused in idle role loops' state cells while the cap is reached", () => {
@@ -738,4 +745,46 @@ test("status table groups a landing role above queued/sleeping rows with newer l
   assert.ok(rowOf("landing-r") < rowOf("sleepy"), "landing sorts above a sleeping row with a newer last tick");
   assert.ok(rowOf("landing-r") < rowOf("queued-z"), "landing sorts above a queued row with a newer last tick");
   assert.match(lines[rowOf("landing-r")]!, /landing \dm\d+s/);
+});
+// The `next run` column (PLANS.md "Next-run visibility"): nextRunCell's rules — a due idle
+// loop reads `now`, a future one its remaining time (`backoff `-prefixed while backing off),
+// in-flight loops and a stopped fleet read `-` — and the column is appended last so
+// FLEXIBLE_COLUMNS' positional indices stay untouched.
+
+test("nextRunCell reads now for a due idle loop and the remaining time for a future one", () => {
+  const now = Date.now();
+  const due = freshLoopState("clean");
+  const future = freshLoopState("dry");
+  future.nextRunAt = now + 180_000;
+  const backoff = freshLoopState("feature");
+  backoff.nextRunAt = now + 180_000;
+  backoff.backoffSeconds = 240;
+  assert.equal(nextRunCell(due, "queued", now, true), "now");
+  assert.equal(nextRunCell(future, "queued", now, true), "3m");
+  assert.equal(nextRunCell(backoff, "queued", now, true), "backoff 3m", "a backing-off loop says so — that is what wake clears");
+});
+
+test("nextRunCell reads - for a loop in flight or a fleet that is not running", () => {
+  const now = Date.now();
+  const working = freshLoopState("clean");
+  working.nextRunAt = now + 60_000;
+  working.running = true;
+  assert.equal(nextRunCell(working, "working 3m", now, true), "-");
+  // A landing is in flight though the loop itself is not running: the rendered phase says so.
+  const landing = freshLoopState("dry");
+  landing.nextRunAt = now + 60_000;
+  assert.equal(nextRunCell(landing, "landing 1m · build check", now, true), "-");
+  const idle = freshLoopState("feature");
+  idle.nextRunAt = now + 60_000;
+  assert.equal(nextRunCell(idle, "queued", now, false), "-", "a stopped fleet's nextRunAts are stale leftovers, not plans");
+});
+
+test("status table appends the next run column after last result", () => {
+  const snap = { ...snapshotWith([{ role: "clean" }]), running: true };
+  const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), snap));
+  assert.equal(headers[headers.length - 1], "next run", "the new column is last");
+  assert.equal(headers[headers.length - 2], "last result");
+  // A fresh state is due immediately (nextRunAt 0): the idle row reads now.
+  const row = lines.find((l) => l.startsWith("clean ")) ?? "";
+  assert.equal(cellAt(row, headers.indexOf("next run")), "now");
 });

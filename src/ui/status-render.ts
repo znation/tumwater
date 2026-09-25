@@ -9,6 +9,7 @@ import {
   budgetBadge,
   displayTokenMetrics,
   humanSeconds,
+  isActivePhase,
   landingBadge,
   landingForRole,
   loopPhase,
@@ -39,6 +40,25 @@ export function lastTickCell(ts: number | undefined): string {
   let s = formatTime(d);
   if (Date.now() - ts > 86_400_000) s = `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${s}`;
   return `${s} · ${ago(ts)}`;
+}
+
+/** The table's `next run` cell: when the loop may tick again, or `-` when that is not the
+ * operator's question — a loop in flight (an active rendered phase: working/reviewing/landing,
+ * or `s.running`) has no next run to speak of, and a stopped fleet renders no schedule at all
+ * (its `nextRunAt`s are stale leftovers, not plans). A due idle loop reads `now`; a future one
+ * reads its remaining time through humanSeconds (the same bucketing the sleeping phase label
+ * uses, so the two cannot drift), prefixed `backoff ` while `backoffSeconds > 0` — the wake
+ * row-action clears exactly that, so the prefix is what makes waking meaningful. The GUI
+ * renders the same rules from its own JS copy in gui-client.ts (fmtNextRun). The `phase` and
+ * `fleetRunning` arguments come from the caller because neither fact lives on LoopState: the
+ * active-phase check needs the rendered label (a landing is visible only there), and the
+ * fleet's running flag lives on the snapshot, not the loop. */
+export function nextRunCell(s: LoopState, phase: string, now: number, fleetRunning: boolean): string {
+  if (!fleetRunning || s.running || isActivePhase(phase)) return "-";
+  const remain = Math.round((s.nextRunAt - now) / 1000);
+  if (remain <= 0) return "now";
+  const label = humanSeconds(remain);
+  return s.backoffSeconds > 0 ? `backoff ${label}` : label;
 }
 
 /** The table's state cell: a loop's phase label (loopPhase, computed once per row by
@@ -95,7 +115,12 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // or missing, so loops that never ticked — or last ticked yesterday — read zero without a
   // save. It renders whether or not the cap is enabled: spend observability does not depend
   // on it.
-  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last result"];
+  // `next run` is appended last and never flexible (a short fixed-width cell like `today`):
+  // FLEXIBLE_COLUMNS' positional indices above stay untouched when columns change.
+  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last result", "next run"];
+  // One clock read per render, shared by every row's next-run cell — a per-row Date.now()
+  // could tick over between rows and disagree with itself.
+  const now = Date.now();
   // The budget gate is fleet-wide (plans/daily-cost-budget.md) and three-valued since
   // plans/fallback-model.md: only `paused` — the cap reached with no usable free fallback —
   // stops the loops, so only it turns an idle role row into `budget paused`. Under `fallback`
@@ -139,6 +164,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     usd(dailyCost(s)),
     lastTickCell(s.lastTickEndedAt),
     s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
+    nextRunCell(s, phase, now, snap.running),
   ]);
   const totalsRow = [
     "total",
@@ -151,6 +177,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     // The fleet's today-spend — by construction equal to the header badge's spend while
     // enabled (snapshot derives both from the same loops), so table and badge cannot drift.
     usd(fleetDailyCost(snap.loops)),
+    "",
     "",
     "",
   ];

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { initProject } from "../src/init.js";
+import { freshLoopState, saveLoopState } from "../src/state.js";
 import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize } from "../src/inbox.js";
 import { startLocalGui } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
@@ -297,6 +298,27 @@ test("gui rejects oversized wake and abort bodies with 413 and keeps serving", a
     }
     // The server stays healthy and still serves its status payload.
     assert.equal((await fetch(base + "/api/status")).status, 200);
+  } finally {
+    server.close();
+  }
+});
+
+test("/api/status exposes each loop's nextRunAt and backoffSeconds", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui schedule test");
+  const state = freshLoopState("clean");
+  state.nextRunAt = 1_758_800_000_000;
+  state.backoffSeconds = 90;
+  saveLoopState(repo, state);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const status = (await (await fetch(base + "/api/status")).json()) as {
+      loops: Array<{ role: string; nextRunAt: number; backoffSeconds: number }>;
+    };
+    const clean = status.loops.find((l) => l.role === "clean");
+    assert.ok(clean, "the loop has a payload row");
+    assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms — the GUI formats it client-side");
+    assert.equal(clean.backoffSeconds, 90);
   } finally {
     server.close();
   }
