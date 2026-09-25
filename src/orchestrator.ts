@@ -57,11 +57,12 @@ import {
   sessionsRootDir,
   toolOutputDir,
 } from "./paths.js";
-import { p75TickDurationMs, type Redeployer } from "./redeploy.js";
+import { type Redeployer } from "./redeploy.js";
 import { WorkLandedCache } from "./work-landed-cache.js";
 import {
   awaitLandingForHandoff,
   HANDOFF_LANDING_WINDOW_MS,
+  p75TickDurationMs,
   pollRateLimitHold,
   runTimedRoleTick,
   sleepInterruptible,

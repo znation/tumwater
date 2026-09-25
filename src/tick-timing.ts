@@ -14,6 +14,21 @@ import type { TickOutcome } from "./types.js";
  * in-flight landing. Split out of orchestrator.ts — which had grown into both the poll loop and
  * the timing helpers it schedules with — so the loop reads as control flow over these named
  * steps. */
+/** How many completed role-tick samples the p75 needs before it is trusted as the drain window.
+ * Below this the orchestrator reports no p75 and poll keeps the cold-start constant. */
+const DRAIN_P75_MIN_SAMPLES = 10;
+
+/** The p75 of completed role-tick durations (ms), or null when there are too few samples to
+ * trust. The orchestrator's half of the adaptive drain window (BUGS.md 2026-09-18): a tick that
+ * finishes inside it is waited for, a longer one is aborted resumably. The samples come from
+ * runTimedRoleTick above; the consumer is the redeploy policy's InFlightCounts.roleTickP75Ms.
+ * Exported for its unit test; the p75 is the statistic the bug's expected fix names. */
+export function p75TickDurationMs(durations: readonly number[]): number | null {
+  if (durations.length < DRAIN_P75_MIN_SAMPLES) return null;
+  const sorted = [...durations].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.75))] ?? null;
+}
+
 /** How long a restart's hand-off waits on an in-flight landing, per phase: one window for it to
  * finish on its own, then — having aborted it — one more for the step it was in to end
  * (awaitLandingForHandoff; BUGS.md 2026-09-23). By the time a restart reaches its `finally` the

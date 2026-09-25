@@ -10,7 +10,6 @@ import { checkMainBaseline, mainIsGreen } from "../src/main-baseline.js";
 import { defaultConfig } from "../src/config.js";
 import {
   autoRestartRecord,
-  p75TickDurationMs,
   type AutoRestartRecord,
   type RedeployDeps,
   Redeployer,
@@ -208,14 +207,6 @@ test("the drain window tracks the observed p75 tick duration, not the cold-start
   assert.equal(await r.poll(HEAD_B, inFlight, true, (now += 4000)), "restart", "past the observed p75: the caller aborts them");
   assert.equal(events.at(-1)!.drainWindowMs, 5000);
   assert.equal(events.at(-1)!.abortedTicks, 3);
-});
-
-test("p75TickDurationMs: null below the sample floor, then the p75 of the samples", () => {
-  assert.equal(p75TickDurationMs([]), null);
-  assert.equal(p75TickDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9]), null, "nine samples is below the floor");
-  // Ten samples 1..10: floor(10 * 0.75) = 7 -> the 8th value, 8.
-  assert.equal(p75TickDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), 8);
-  assert.equal(p75TickDurationMs([10, 1, 9, 2, 8, 3, 7, 4, 6, 5]), 8, "order-independent");
 });
 
 test("a director tick in flight holds past the drain window without a cap; the swap lands once it clears", async () => {

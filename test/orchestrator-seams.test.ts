@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { awaitLandingForHandoff, pollRateLimitHold, runTimedRoleTick, sleepInterruptible } from "../src/tick-timing.js";
+import {
+  awaitLandingForHandoff,
+  p75TickDurationMs,
+  pollRateLimitHold,
+  runTimedRoleTick,
+  sleepInterruptible,
+} from "../src/tick-timing.js";
 import { Semaphore } from "../src/semaphore.js";
 import { readEvents } from "../src/events.js";
 import { RATE_LIMIT_HOLD_BASE_MS, RATE_LIMIT_OPEN } from "../src/rate-limit-hold.js";
@@ -8,9 +14,9 @@ import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import type { TickOutcome } from "../src/types.js";
 import { tmpdir } from "./util.js";
 
-// The orchestrator's two exported unit-test seams (src/orchestrator.ts): the permit-holding
-// wrapper that times a role tick for the p75 redeploy window, and the abort-wakeable poll
-// sleep. Both are small enough to pin without a fleet — the live orchestrator loop around
+// The orchestrator's exported unit-test seams (src/orchestrator.ts): the permit-holding
+// wrapper that times a role tick for the p75 redeploy window (and the p75 itself), the
+// abort-wakeable poll sleep, and the restart hand-off's bounded landing wait. Both are small enough to pin without a fleet — the live orchestrator loop around
 // them is the e2e tier's job — but each carries a documented edge case that could plausibly
 // break (an already-aborted signal that addEventListener alone would never fire; an aborted
 // tick whose duration must not drag the window down), and none of that was under any unit
@@ -73,6 +79,14 @@ test("runTimedRoleTick releases its permit when the tick throws", async () => {
     /tick exploded/,
   );
   assert.equal(h.calls.release, 1); // the finally block, not the happy path
+});
+
+test("p75TickDurationMs: null below the sample floor, then the p75 of the samples", () => {
+  assert.equal(p75TickDurationMs([]), null);
+  assert.equal(p75TickDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9]), null, "nine samples is below the floor");
+  // Ten samples 1..10: floor(10 * 0.75) = 7 -> the 8th value, 8.
+  assert.equal(p75TickDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), 8);
+  assert.equal(p75TickDurationMs([10, 1, 9, 2, 8, 3, 7, 4, 6, 5]), 8, "order-independent");
 });
 
 test("sleepInterruptible sleeps out its duration when the signal never aborts", async () => {

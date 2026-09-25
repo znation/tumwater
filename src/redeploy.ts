@@ -60,20 +60,6 @@ export const RESTART_EXIT_CODE = 75;
  * not waiting. */
 const RESTART_DRAIN_MAX_MS = 30 * 60_000;
 
-/** How many completed role-tick samples the p75 needs before it is trusted as the drain window.
- * Below this the orchestrator reports no p75 and poll keeps the cold-start constant. */
-const DRAIN_P75_MIN_SAMPLES = 10;
-
-/** The p75 of completed role-tick durations (ms), or null when there are too few samples to
- * trust. The orchestrator's half of the adaptive drain window (BUGS.md 2026-09-18): a tick that
- * finishes inside it is waited for, a longer one is aborted resumably. Exported for its unit
- * test; the p75 is the statistic the bug's expected fix names. */
-export function p75TickDurationMs(durations: readonly number[]): number | null {
-  if (durations.length < DRAIN_P75_MIN_SAMPLES) return null;
-  const sorted = [...durations].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.75))] ?? null;
-}
-
 /** How often a COMPLETED auto-restart may land — at most once per this window (BUGS.md
  * 2026-09-11): under sustained main churn every stale head would otherwise drive a full
  * hold+drain+swap episode back to back, halting the fleet for a drain over and over. Bounds
