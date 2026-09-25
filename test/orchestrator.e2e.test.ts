@@ -26,20 +26,8 @@ import {
 } from "../src/state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
-import {
-  assistantLine,
-  fakePi,
-  fakePiIdle,
-  FAST_POLL_MS,
-  fastConfig,
-  landWork,
-  makeRepo,
-  recordingFakePi,
-  sh,
-  startLiveOrchestrator,
-  tmpdir,
-  waitFor,
-} from "./util.js";
+import { fakePi, fakePiIdle, FAST_POLL_MS, fastConfig, landWork, makeRepo, recordingFakePi, sh, startLiveOrchestrator, tmpdir, waitFor } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {
   // BUGS.md 2026-09-18: the restart drain's p75 sample spans `tick_start`..`tick_end`, so the

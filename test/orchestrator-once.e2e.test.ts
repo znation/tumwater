@@ -14,16 +14,8 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import {
-  assistantLine,
-  cli,
-  fakePi,
-  fakePiIdle,
-  FAST_POLL_MS,
-  fastConfig,
-  makeRepo,
-  sh,
-} from "./util.js";
+import { cli, fakePi, fakePiIdle, FAST_POLL_MS, fastConfig, makeRepo, sh } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 /** Run one once round in-process with the repo's on-disk config, failing loudly if the round
  * does not exit on its own — a once round that hangs is the bug this feature exists to avoid. */

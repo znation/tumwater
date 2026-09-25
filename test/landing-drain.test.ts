@@ -26,8 +26,8 @@ import { freshLoopState, loadLoopState } from "../src/state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { snapshot } from "../src/ui/status.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
-import { assistantLine, fakePi, makeRepo, reviewerPi, sh, tmpdir, waitFor, waitForFile, makeLoopRunner,
-} from "./util.js";
+import { fakePi, makeRepo, sh, tmpdir, waitFor, waitForFile, makeLoopRunner } from "./util.js";
+import { assistantLine, reviewerPi } from "./pi-events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LandingEntry } from "../src/types.js";
 

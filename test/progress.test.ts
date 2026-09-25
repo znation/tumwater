@@ -10,7 +10,8 @@ import {
   toolCallStallMs,
 } from "../src/ui/progress.js";
 import { landWorktreePath, piLogPath, worktreePath } from "../src/paths.js";
-import { assistantLine, tmpdir, writeConfig } from "./util.js";
+import { tmpdir, writeConfig } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 function toolStart(toolName: string, args: unknown): string {
   return JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName, args });

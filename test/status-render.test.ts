@@ -10,7 +10,8 @@ import { applyLandingOutcome, applyTickOutcome, freshLoopState } from "../src/st
 import { defaultConfig } from "../src/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget.js";
 import { piLogPath, landWorktreePath } from "../src/paths.js";
-import { assistantLine, tmpdir } from "./util.js";
+import { tmpdir } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 

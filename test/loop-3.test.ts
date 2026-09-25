@@ -17,8 +17,8 @@ import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { APPROVE_PI, assistantLine, errorLine, fakePi, initializedRepo, landHead, reviewerPi, sh, tmpdir, waitForFile, makeLoopRunner,
-} from "./util.js";
+import { fakePi, initializedRepo, landHead, sh, tmpdir, waitForFile, makeLoopRunner } from "./util.js";
+import { APPROVE_PI, assistantLine, errorLine, reviewerPi } from "./pi-events.js";
 
 test("resume falls back to a fresh tick when there is no session to continue", async () => {
   const repo = await initializedRepo();

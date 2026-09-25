@@ -20,20 +20,8 @@ import { DIRECTOR_ROLE } from "../src/roles.js";
 import { todayStamp } from "../src/budget.js";
 import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import {
-  APPROVE_PI,
-  assistantLine,
-  fastConfig,
-  fakePi,
-  fakePiIdle,
-  landWork,
-  makeRepo,
-  recordingFakePi,
-  sh,
-  startLiveOrchestrator,
-  tmpdir,
-  waitFor,
-} from "./util.js";
+import { fastConfig, fakePi, fakePiIdle, landWork, makeRepo, recordingFakePi, sh, startLiveOrchestrator, tmpdir, waitFor } from "./util.js";
+import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;
 

@@ -15,23 +15,8 @@ import { readEvents } from "../src/events.js";
 import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/land-queue.js";
 import { landingRefName, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
-import {
-  APPROVE_PI,
-  assistantLine,
-  errorLine,
-  fakePi,
-  initializedRepo,
-  landHead,
-  makeRepo,
-  sh,
-  thinkingOnlyLine,
-  tmpdir,
-  waitForFile,
-  waitForLogLines,
-  watchdogClock,
-  writeScript,
-  makeLoopRunner,
-} from "./util.js";
+import { fakePi, initializedRepo, landHead, makeRepo, sh, tmpdir, waitForFile, waitForLogLines, watchdogClock, writeScript, makeLoopRunner } from "./util.js";
+import { APPROVE_PI, assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 
 const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
 test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {

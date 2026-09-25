@@ -5,7 +5,8 @@ import path from "node:path";
 import { cmdLogs } from "../src/ui/log-commands.js";
 import { logEvent } from "../src/events.js";
 import { eventsLogPath, piLogPath } from "../src/paths.js";
-import { assistantLine, makeRepo } from "./util.js";
+import { makeRepo } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 // The follow half of `tumwater logs` (`-f`) never returns — it polls until Ctrl+C — so the
 // end-to-end tests run it in a spawned child. That leaves the in-process coverage of both

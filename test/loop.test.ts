@@ -14,22 +14,8 @@ import { readEvents } from "../src/events.js";
 import { loadLoopState } from "../src/state.js";
 import { configRequestPath, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
-import {
-  APPROVE_PI,
-  assistantLine,
-  fakePi,
-  fakePiIdle,
-  initializedRepo,
-  landHead,
-  makeRepo,
-  sh,
-  thinkingOnlyLine,
-  tmpdir,
-  waitForFile,
-  waitForLogLines,
-  watchdogClock,
-  makeLoopRunner,
-} from "./util.js";
+import { fakePi, fakePiIdle, initializedRepo, landHead, makeRepo, sh, tmpdir, waitForFile, waitForLogLines, watchdogClock, makeLoopRunner } from "./util.js";
+import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
 
 
 test("a tick that changes files commits and merges to main", async () => {

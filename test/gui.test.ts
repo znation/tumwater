@@ -11,7 +11,8 @@ import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
-import { assistantLine, makeRepo, startLocalGui } from "./util.js";
+import { makeRepo, startLocalGui } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 

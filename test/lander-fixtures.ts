@@ -10,7 +10,8 @@ import { freshLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "../src/types.js";
-import { assistantLine, makeRepo, piRunResult, sh, writeScript } from "./util.js";
+import { makeRepo, piRunResult, sh, writeScript } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 /** Shared fixtures for the landing tests — lander.test.ts, lander-2.test.ts and lander-3.test.ts,
  * split from one file so node --test runs the three in parallel processes (top-level tests
@@ -76,7 +77,7 @@ export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: 
 
 // The reviewer's fake-pi shim and its approver preset live in test/util.ts (next to the
 // assistant-line helpers they build on); re-exported here for the lander fixtures' imports.
-export { reviewerPi, APPROVE_PI } from "./util.js";
+export { reviewerPi, APPROVE_PI } from "./pi-events.js";
 
 export function request(sha: string, overrides: Partial<LandRequest> = {}): LandRequest {
   return { role: ROLE, sha, tick: 7, summary: "the work", ...overrides };

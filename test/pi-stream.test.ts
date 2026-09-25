@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PiStreamParser } from "../src/pi-stream.js";
-import { assistantLine } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 /** Focused unit coverage for the pi stdout parser's edge shapes — the branches pi.test.ts's
  * end-to-end runs do not reach. The module exists so this parsing can be exercised without a

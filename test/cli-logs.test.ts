@@ -5,7 +5,8 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { submitPrompt } from "../src/inbox.js";
 import { piLogPath } from "../src/paths.js";
-import { assistantLine, cli, expectedTimestamp, makeRepo, spawnCli } from "./util.js";
+import { cli, expectedTimestamp, makeRepo, spawnCli } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 // The `logs` command family through the real CLI entry point: argument validation, the
 // rendered per-role pi transcript, --prompt, and the -f follow mode (spawned with a live

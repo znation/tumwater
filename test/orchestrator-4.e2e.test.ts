@@ -7,17 +7,8 @@ import assert from "node:assert/strict";
 import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import {
-  assistantLine,
-  fakePi,
-  fastConfig,
-  landWork,
-  makeRepo,
-  readSamples,
-  startLiveOrchestrator,
-  tmpdir,
-  waitFor,
-} from "./util.js";
+import { fakePi, fastConfig, landWork, makeRepo, readSamples, startLiveOrchestrator, tmpdir, waitFor } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 /** A fake pi that records how many runs were in flight when it started (one sample line per
  * run), holds its slot for ~1.5s so overlapping runs are observable, and declares

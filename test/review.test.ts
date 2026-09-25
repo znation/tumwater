@@ -15,17 +15,8 @@ import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import { shortSha } from "../src/text.js";
 import { piLogPath } from "../src/paths.js";
-import {
-  assistantLine,
-  buildCheckFixture,
-  fakePi,
-  makeRepo,
-  sh,
-  tmpdir,
-  waitForLogLines,
-  watchdogClock,
-  writeScript,
-} from "./util.js";
+import { buildCheckFixture, fakePi, makeRepo, sh, tmpdir, waitForLogLines, watchdogClock, writeScript } from "./util.js";
+import { assistantLine } from "./pi-events.js";
 
 // Regression coverage for the 2026-08-27 build break (BUGS.md): src/review.ts shipped with a
 // syntax error and latent type errors and had zero tests, so nothing caught it. The pure
