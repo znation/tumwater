@@ -20,7 +20,19 @@ import { DIRECTOR_ROLE } from "../src/roles.js";
 import { todayStamp } from "../src/budget.js";
 import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { fastConfig, fakePi, fakePiIdle, landWork, makeRepo, recordingFakePi, sh, startLiveOrchestrator, tmpdir, waitFor } from "./util.js";
+import {
+  fastConfig,
+  fakePi,
+  fakePiIdle,
+  landWork,
+  makeFastRepo,
+  makeRepo,
+  recordingFakePi,
+  sh,
+  startLiveOrchestrator,
+  tmpdir,
+  waitFor,
+} from "./util.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;
@@ -35,9 +47,7 @@ function seedCounters(repo: string, ...roles: string[]): void {
 }
 
 test("a multi-role reset request zeroes every listed runner and logs one harness-level event", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "multi role reset test");
-  saveConfig(repo, fastConfig(["clean", "dry"]));
+  const repo = await makeFastRepo("multi role reset test", ["clean", "dry"]);
   seedCounters(repo, "clean", "dry");
   const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
@@ -68,9 +78,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
 });
 
 test("a corrupt reset marker resets every runner and is still consumed", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "corrupt reset marker test");
-  saveConfig(repo, fastConfig(["clean", "dry"]));
+  const repo = await makeFastRepo("corrupt reset marker test", ["clean", "dry"]);
   seedCounters(repo, "clean", "dry");
   const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
@@ -100,9 +108,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
 });
 
 test("a wake request makes a backed-off loop due within one poll and logs it under the role", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "wake request test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("wake request test", ["clean"]);
   // Deep backoff: the loop is two hours out and has ticked before, so the woken run reads as
   // "scheduled", not "startup". lastTickEndedAt is long past, so no min-gap gate applies.
   const seeded = freshLoopState("clean");
@@ -142,9 +148,7 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
 });
 
 test("a corrupt wake marker wakes every runner and is still consumed", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "corrupt wake marker test");
-  saveConfig(repo, fastConfig(["clean", "dry"]));
+  const repo = await makeFastRepo("corrupt wake marker test", ["clean", "dry"]);
   for (const role of ["clean", "dry"]) {
     const s = freshLoopState(role);
     s.ticks = 3;
@@ -184,9 +188,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
 });
 
 test("roles can be enabled and disabled mid-run without a restart", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "role toggling test");
-  saveConfig(repo, fastConfig(["clean", "dry"]));
+  const repo = await makeFastRepo("role toggling test", ["clean", "dry"]);
   const argsFile = path.join(tmpdir(), "argv.log");
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
@@ -239,9 +241,7 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
 });
 
 test("a live config edit logs one config_changed naming the keys, and an identical rewrite logs none", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "config change event test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("config change event test", ["clean"]);
   const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
@@ -348,9 +348,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
 // --- User-defined loops (plans/user-defined-loops.md, PLANS.md "User-defined loops 1/3") ---
 
 test("custom loops can be added, removed, and reordered mid-run without a restart", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "custom loop e2e test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("custom loop e2e test", ["clean"]);
   const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
@@ -820,9 +818,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
 // CLI side is pinned in test/cli.test.ts; here the marker's effect on a live fleet. ---
 
 test("a pause marker blocks new role ticks for any reason while the director runs; resume unblocks", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "operator pause e2e test");
-  saveConfig(repo, fastConfig(["clean", "director"]));
+  const repo = await makeFastRepo("operator pause e2e test", ["clean", "director"]);
   const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
@@ -884,9 +880,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
 // is the only state involved — a fleet that starts already paused stays blocked until resume,
 // with no restart and no loop-state or config changes.
 test("starting already paused keeps role ticks blocked until resume — no restart needed", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "operator pause at startup test");
-  saveConfig(repo, fastConfig(["clean", "director"]));
+  const repo = await makeFastRepo("operator pause at startup test", ["clean", "director"]);
   const restore = fakePiIdle();
 
   // The operator paused before starting the fleet (the marker is persistent state): startup
@@ -931,9 +925,7 @@ test("starting already paused keeps role ticks blocked until resume — no resta
 // The in-flight bullet of the same plan: a tick already running when the marker drops is not
 // killed — it finishes and lands its outcome even though no new one starts.
 test("an in-flight tick finishes and lands while the fleet is paused", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "operator pause in-flight test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("operator pause in-flight test", ["clean"]);
   // A slow fake pi that makes a real change: it stays in flight long enough for the marker to
   // drop mid-run. The review gate approves with zero usage so the tick's outcome is clean.
   const restore = fakePi(
@@ -984,9 +976,7 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
 // within one poll. Each crossing logs exactly one harness-level event naming the role. ---
 
 test("a per-role pause gates only that role, holds a named director, and resumes", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "per-role pause test");
-  saveConfig(repo, fastConfig(["clean", "dry"]));
+  const repo = await makeFastRepo("per-role pause test", ["clean", "dry"]);
   // Pause clean before startup: the marker survives into the run.
   pauseRole(repo, "clean");
   const restore = fakePiIdle();

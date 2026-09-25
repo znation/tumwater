@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { strict as assert } from "node:assert";
-import { defaultConfig, loadConfig } from "../src/config.js";
+import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { drainMerge, newLandingPipeline, startVet, type LandingPipelineContext } from "../src/landing-drain.js";
@@ -472,6 +472,16 @@ export function fastConfig(roles: string[], model?: string): TumwaterConfig {
   c.idleBackoff = { initialSeconds: 1, factor: 1, maxSeconds: 1 };
   for (const id of Object.keys(c.roles)) c.roles[id]!.enabled = roles.includes(id);
   return c;
+}
+
+/** The standard opening of a live-orchestrator e2e test in one call: a fresh repo, run through
+ * initProject, configured so the given roles tick quickly (see fastConfig; `model` forwards to
+ * it for tests that pin the model). Returns the repo path. */
+export async function makeFastRepo(label: string, roles: string[], model?: string): Promise<string> {
+  const repo = makeRepo();
+  await initProject(repo, label);
+  saveConfig(repo, fastConfig(roles, model));
+  return repo;
 }
 
 /** Start a live orchestrator on `repo` with the config currently on disk, for tests that

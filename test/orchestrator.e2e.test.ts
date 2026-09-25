@@ -26,7 +26,20 @@ import {
 } from "../src/state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
-import { fakePi, fakePiIdle, FAST_POLL_MS, fastConfig, landWork, makeRepo, recordingFakePi, sh, startLiveOrchestrator, tmpdir, waitFor } from "./util.js";
+import {
+  fakePi,
+  fakePiIdle,
+  FAST_POLL_MS,
+  fastConfig,
+  landWork,
+  makeFastRepo,
+  makeRepo,
+  recordingFakePi,
+  sh,
+  startLiveOrchestrator,
+  tmpdir,
+  waitFor,
+} from "./util.js";
 import { assistantLine } from "./pi-events.js";
 
 test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {
@@ -285,12 +298,10 @@ test("a main move and a queued prompt each log exactly one wake event with their
 });
 
 test("a no_change maintenance role defers due ticks until work lands on main", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "deferral test");
   // organize ticks fast (no min gap, 1s backoff) and declares nothing-to-do every run — so
   // after its startup tick it keeps coming due with lastResult no_change: only deferral can
   // keep it quiet while non-work commits land.
-  saveConfig(repo, fastConfig(["organize"]));
+  const repo = await makeFastRepo("deferral test", ["organize"]);
   const argsFile = path.join(tmpdir(), "pi-args.txt");
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
@@ -332,11 +343,9 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
 });
 
 test("an open bug backlog defers due maintenance ticks even when work lands, until it drains", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "backlog-aware deferral test");
   // organize ticks fast (no min gap, 1s backoff) and declares nothing-to-do every run — so
   // after its startup tick it keeps coming due with lastResult no_change.
-  saveConfig(repo, fastConfig(["organize"]));
+  const repo = await makeFastRepo("backlog-aware deferral test", ["organize"]);
   const argsFile = path.join(tmpdir(), "pi-args.txt");
   const restore = recordingFakePi(argsFile);
   // Open the backlog: one entry under BUGS.md `## Open` (the section-anchored pattern hits
@@ -387,9 +396,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
 });
 
 test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an open backlog", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "deferral cap test");
-  saveConfig(repo, fastConfig(["organize"]));
+  const repo = await makeFastRepo("deferral cap test", ["organize"]);
   // Open the backlog: the deferral predicate's backlog term holds permanently, which before
   // the cap froze `lastResult` at no_change and silenced the role forever.
   fs.writeFileSync(
@@ -571,12 +578,10 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
 // --- Live-reload tumwater.json while running ---
 
 test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-known-good", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "live reload test");
   // bugfix (a work-tier role) on purpose: it is never deferred by need-based prioritization,
   // so this config-reload pin stays decoupled from scheduling timing — deferral itself is
   // pinned in its own test below.
-  saveConfig(repo, fastConfig(["bugfix"], "good-model"));
+  const repo = await makeFastRepo("live reload test", ["bugfix"], "good-model");
   const argsFile = path.join(tmpdir(), "argv.log");
   fs.rmSync(argsFile, { force: true }); // A previous run's lines must not leak into this one.
   const restore = recordingFakePi(argsFile);
@@ -626,9 +631,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
 });
 
 test("a reset request zeroes in-memory counters, survives tick boundaries, and logs an event", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "reset counters e2e test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("reset counters e2e test", ["clean"]);
   const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
@@ -680,9 +683,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
 });
 
 test("a reset consumed while a tick is in flight does not wedge the loop", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "mid-tick reset test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("mid-tick reset test", ["clean"]);
   // A slow fake pi: each tick holds for ~2s — long enough that a marker dropped while the
   // first tick is in flight (observed within a poll or two of start, consumed within one)
   // lands mid-tick. That is the documented use case (resetting a running fleet), where most
@@ -733,9 +734,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
 
 
 test("the primary checkout moving branches mid-run logs exactly one warning (portability 2/7)", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "branch divergence test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("branch divergence test", ["clean"]);
   const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {

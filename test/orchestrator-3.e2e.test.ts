@@ -28,7 +28,20 @@ import {
 import { enqueueLanding, queueDepth } from "../src/land-queue.js";
 import { setRef } from "../src/git.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
-import { fastConfig, fakePi, fakePiIdle, landHead, landWork, makeRepo, sh, startLiveOrchestrator, tmpdir, waitFor, makeLoopRunner } from "./util.js";
+import {
+  fastConfig,
+  fakePi,
+  fakePiIdle,
+  landHead,
+  landWork,
+  makeFastRepo,
+  makeRepo,
+  sh,
+  startLiveOrchestrator,
+  tmpdir,
+  waitFor,
+  makeLoopRunner,
+} from "./util.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;
@@ -110,10 +123,8 @@ test("a user abort during a landing kills it and discards the pinned ref", async
 });
 
 test("a role with a queued or in-flight landing never starts a new tick (interlock)", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "interlock e2e test");
   // minTickInterval 0: the role is due on EVERY poll — only the interlock can hold it.
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("interlock e2e test", ["clean"]);
   // Author run: first time a change, after that nothing to do. Review run: touch the marker,
   // then hang until the test's abort kills it — the landing stays in flight through the window.
   const hang = path.join(tmpdir(), "interlock-hang");
@@ -158,9 +169,7 @@ test("a role with a queued or in-flight landing never starts a new tick (interlo
 });
 
 test("a queue entry surviving a restart drains through the gate on next start", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "restart drain e2e test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("restart drain e2e test", ["clean"]);
   // Review run approves; the role's own ticks find nothing to do.
   const restore = fakePi(
     [
@@ -218,9 +227,7 @@ test("a queue entry surviving a restart drains through the gate on next start", 
 });
 
 test("an entry whose sha main already holds is dropped at the drain without a landing run", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "dedup drain e2e test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("dedup drain e2e test", ["clean"]);
   // Every reviewer run increments its own counter — a deduped drain must burn none of them.
   const rev = path.join(tmpdir(), "interlock-review-count");
   const did = path.join(tmpdir(), "dedup-did");
@@ -268,9 +275,7 @@ test("a stale marker beside an already-merged queue head is cleared so an idle f
   // main hold the entry's sha, but the process died before the write-back dropped the entry.
   // The dedup arm drops the entry; the marker must go with it, or a liveness-cross-checking
   // observer (status/TUI/GUI) keeps reading an in-flight landing that no process is running.
-  const repo = makeRepo();
-  await initProject(repo, "stale marker drain e2e test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("stale marker drain e2e test", ["clean"]);
   // Nothing-to-do runs: the drain must drop the entry without any author or reviewer run.
   const restore = fakePi(["printf '%s\\n' '" + assistantLine("TUMWATER_NOTHING_TO_DO") + "'"].join("\n"));
   const sha = sh(repo, "git", "rev-parse", "HEAD");
@@ -300,9 +305,7 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
   // file that sorts before a live entry. headLanding reads null for the torn head and
   // nothing else drops it, so before the fix the live entry behind it never landed and
   // its role's interlock (a non-empty landingFor) held the role's ticks forever.
-  const repo = makeRepo();
-  await initProject(repo, "torn head drain e2e test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("torn head drain e2e test", ["clean"]);
   // The review run approves; the role's own ticks never start — the interlock holds from
   // the first poll, because the entry is queued before the orchestrator starts.
   const restore = fakePi(
@@ -491,9 +494,7 @@ function scriptedRedeployer(
 }
 
 test("a stale self-hosted build drains the fleet, swaps, and returns restart", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "self-redeploy test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("self-redeploy test", ["clean"]);
   const restore = fakePiIdle();
   const { redeployer, swaps } = scriptedRedeployer(repo);
   // A prompt for the director sits in the inbox: while a restart is pending nothing new starts
@@ -526,9 +527,7 @@ test("a stale self-hosted build drains the fleet, swaps, and returns restart", a
 });
 
 test("the orchestrator publishes the build's staleness in orchestrator.json while it runs", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "build status test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("build status test", ["clean"]);
   const cfg = loadConfig(repo);
   cfg.autoRestart = false; // observe only: no drain, no restart
   saveConfig(repo, cfg);
@@ -552,9 +551,7 @@ test("the orchestrator publishes the build's staleness in orchestrator.json whil
 });
 
 test("a drain past its cap aborts the in-flight tick resumably and still restarts", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "drain cap test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("drain cap test", ["clean"]);
   // The tick never finishes on its own: only the drain cap (or a stop) can end it.
   const partial = path.join(worktreePath(repo, "clean"), "partial.txt");
   const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
@@ -698,9 +695,7 @@ test("an in-flight director tick is waited for, not aborted, when the drain wind
   // The 2026-09-08 incident end to end: a human prompt outlives the drain cap. Role ticks are
   // aborted resumably at the cap; the director's tick must run to completion — no swap and no
   // abort until it finishes (BUGS.md).
-  const repo = makeRepo();
-  await initProject(repo, "director drain test");
-  saveConfig(repo, fastConfig(["director"]));
+  const repo = await makeFastRepo("director drain test", ["director"]);
   // The prompt's run outlives the window: it marks itself started (so staleness can flip while
   // it is in flight), then sleeps past the cap before answering.
   const marker = path.join(worktreePath(repo, "director"), "started.txt");
@@ -736,9 +731,7 @@ test("an in-flight director tick is waited for, not aborted, when the drain wind
 });
 
 test("a failed compile leaves the fleet running the old build", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "compile failure test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("compile failure test", ["clean"]);
   const restore = fakePiIdle();
   const { redeployer, swaps } = scriptedRedeployer(repo, { compileOk: false });
   const controller = new AbortController();
@@ -890,9 +883,7 @@ test("a role rejected in its vet ticks again while another queued change is stil
   // back, so the interlock skipped the rejected author's due tick every poll through every
   // later review, the stack check, and the ff. clean's reviewer rejects at once; dry's parks
   // until released, keeping a landing in flight while the test watches clean.
-  const repo = makeRepo();
-  await initProject(repo, "vet early drop e2e test");
-  saveConfig(repo, fastConfig(["clean", "dry"])); // minTickInterval 0: due on every poll
+  const repo = await makeFastRepo("vet early drop e2e test", ["clean", "dry"]); // minTickInterval 0: due on every poll
   await seedLandQueue(repo, "clean", "dry");
   const dir = tmpdir("early-drop-");
   const held = path.join(dir, "dry-reviewing");
@@ -992,9 +983,7 @@ test("a lander worktree that can no longer be created is contained: the healthy 
   // re-created, drops as a terminal error, and dry lands. Trigger: clean's own review run
   // deletes clean's lander worktree and makes its parent unwritable before it approves, so no
   // merge of clean can ever find the worktree.
-  const repo = makeRepo();
-  await initProject(repo, "lander worktree throw recovery test");
-  saveConfig(repo, fastConfig(["clean", "dry"]));
+  const repo = await makeFastRepo("lander worktree throw recovery test", ["clean", "dry"]);
   await seedLandQueue(repo, "clean", "dry");
   const worktrees = path.join(repo, ".tumwater", "worktrees");
   const headWt = path.join(worktrees, "_land-clean");
@@ -1051,9 +1040,7 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
   // landings still running. Their reviewers each take a minute; the unbounded shutdown await sat
   // through every one of them in silence. Bounded, the hand-off announces the wait, aborts
   // every vet when the window lapses, and exits — the pins surviving for the new build.
-  const repo = makeRepo();
-  await initProject(repo, "restart hand-off test");
-  saveConfig(repo, fastConfig(["clean", "dry"]));
+  const repo = await makeFastRepo("restart hand-off test", ["clean", "dry"]);
   // Both roles are interlocked by their queued entries, so no role tick ever starts: the drain
   // has nothing to wait for and the restart lands mid-review — the incident's shape.
   await seedLandQueue(repo, "clean", "dry");

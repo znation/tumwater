@@ -14,7 +14,16 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import { cli, fakePi, fakePiIdle, FAST_POLL_MS, fastConfig, makeRepo, sh } from "./util.js";
+import {
+  cli,
+  fakePi,
+  fakePiIdle,
+  FAST_POLL_MS,
+  fastConfig,
+  makeFastRepo,
+  makeRepo,
+  sh,
+} from "./util.js";
 import { assistantLine } from "./pi-events.js";
 
 /** Run one once round in-process with the repo's on-disk config, failing loudly if the round
@@ -36,9 +45,7 @@ function onceRound(repo: string): Promise<{ restart: boolean }> {
 }
 
 test("once: a fleet where every role finds nothing to do exits on its own, one tick each", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "once round test");
-  saveConfig(repo, fastConfig(["clean", "dry"]));
+  const repo = await makeFastRepo("once round test", ["clean", "dry"]);
   const restore = fakePiIdle();
   try {
     const exit = await onceRound(repo);
@@ -51,9 +58,7 @@ test("once: a fleet where every role finds nothing to do exits on its own, one t
 });
 
 test("once: a round that produces a change merges it before exiting", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "once landing test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("once landing test", ["clean"]);
   const before = sh(repo, "git", "rev-parse", "main").trim();
   // Author run: make a change and finish. Review run (its prompt carries VERDICT): approve.
   const restore = fakePi(
@@ -78,9 +83,7 @@ test("once: a round that produces a change merges it before exiting", async () =
 });
 
 test("once: a role in error backoff is skipped and does not run, and the round still ends", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "once backoff test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("once backoff test", ["clean"]);
   // Persisted backoff: nextRunAt in the future — once mode honors it (it overrides only the
   // min-tick-interval gap, never error backoff).
   saveLoopState(repo, {
@@ -105,9 +108,7 @@ test("once: a role in error backoff is skipped and does not run, and the round s
 });
 
 test("once: a deferrable role with an open backlog is deferred and does not block exit", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "once deferral test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("once deferral test", ["clean"]);
   // An open backlog (PLANS.md ## Planned) plus a no_change history defers clean's due tick —
   // in once mode that deferral is the role's round answer, not something to wait out.
   fs.writeFileSync(path.join(repo, "PLANS.md"), "# Plans\n\n## Planned\n\n### a queued feature (planned 2026-09-25)\n");
@@ -134,9 +135,7 @@ test("once: a deferrable role with an open backlog is deferred and does not bloc
 });
 
 test("once: the CLI prints a per-role summary line and exits 0", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "once cli test");
-  saveConfig(repo, fastConfig(["clean"]));
+  const repo = await makeFastRepo("once cli test", ["clean"]);
   const restore = fakePiIdle();
   try {
     const r = await cli(repo, "run", "--once");
