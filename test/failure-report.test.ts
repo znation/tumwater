@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { TELEMETRY_DIGEST_DAYS, renderFailureMarkdown, telemetryDigest } from "../src/failure-report.js";
 import { collectFailureReport, normalizeClusterKey } from "../src/failure-data.js";
-import { atLocalTs as at, cli, dayKey, makeRepo, tmpdir, writeEvents } from "./util.js";
+import { atLocalTs as at, dayKey, makeRepo, tmpdir, writeEvents } from "./util.js";
+import { cli } from "./cli-harness.js";
 
 // The digest buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings), matching the reader and collectReport (dayKey).
@@ -540,7 +541,7 @@ test("a log of malformed lines still yields a digest: garbage is skipped, not fa
 });
 
 // The CLI runs main() on import, so it is tested as a child process against the built dist
-// (util's cli(); same bridge as report.test.ts — assertions here match combined output).
+// (cli-harness's cli(); same bridge as report.test.ts — assertions here match combined output).
 function runCli(cwd: string, ...args: string[]): Promise<{ code: number; out: string }> {
   return cli(cwd, ...args).then((r) => ({ code: r.code, out: r.stdout + r.stderr }));
 }

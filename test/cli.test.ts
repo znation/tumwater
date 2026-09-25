@@ -9,11 +9,12 @@ import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { inboxDir } from "../src/paths.js";
-import { cli, cliWithEnv, fakePi, makeRepo, sh, tmpdir, writeConfig } from "./util.js";
+import { fakePi, makeRepo, sh, tmpdir, writeConfig } from "./util.js";
+import { cli, cliWithEnv } from "./cli-harness.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
 // tested as a child process — the spawn helpers (CLI, cli, cliWithEnv, spawnCli,
-// exitCode) live in util.ts alongside the rest of the test scaffolding.
+// exitCode) live in cli-harness.ts, beside the run-to-completion capture they share.
 //
 // Split in two so node --test runs the halves in parallel processes — nearly every test here
 // spawns the CLI, so each half is CPU-bound on its own. This half holds help/version, status

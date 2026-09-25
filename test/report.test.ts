@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { collectReport, renderReportMarkdown, type ReportData } from "../src/ui/report.js";
-import { atLocalTs as at, cli, dayKey, makeRepo, tmpdir, writeEvents } from "./util.js";
+import { atLocalTs as at, dayKey, makeRepo, tmpdir, writeEvents } from "./util.js";
+import { cli } from "./cli-harness.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings) and compute expected keys the same way (dayKey).
@@ -341,7 +342,7 @@ test("renderReportMarkdown prints a Cost by role line ranked by spend desc then 
 });
 
 // The CLI runs main() on import and reports failures via process.exit, so it is tested as a
-// child process (util's cli(): the built dist/src/cli.js, cwd a temp repo, output captured).
+// child process (cli-harness's cli(): the built dist/src/cli.js, cwd a temp repo, output captured).
 // This file's assertions match combined stdout+stderr, so bridge CliResult to that shape.
 function runCli(cwd: string, ...args: string[]): Promise<{ code: number; out: string }> {
   return cli(cwd, ...args).then((r) => ({ code: r.code, out: r.stdout + r.stderr }));

@@ -15,7 +15,6 @@ import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
 import {
-  cli,
   fakePi,
   fakePiIdle,
   FAST_POLL_MS,
@@ -24,6 +23,7 @@ import {
   makeRepo,
   sh,
 } from "./util.js";
+import { cli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
 
 /** Run one once round in-process with the repo's on-disk config, failing loudly if the round

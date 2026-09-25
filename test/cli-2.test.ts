@@ -13,18 +13,15 @@ import { loadLoopState } from "../src/state.js";
 import { orchestratorStatePath, resetRequestPath } from "../src/paths.js";
 import { lanAddresses } from "../src/ui/gui.js";
 import {
-  cli,
-  cliWithEnv,
-  exitCode,
   fakePi,
   makeRepo,
   seedCounters,
   sh,
-  spawnCli,
   tmpdir,
   writeConfig,
   writeScript,
 } from "./util.js";
+import { cli, cliWithEnv, exitCode, spawnCli } from "./cli-harness.js";
 
 // Second half of the CLI tests (see cli.test.ts for the split): gui, argument validation,
 // status --json, tui, doctor, report, and run's lifecycle. The CLI runs main() on import and
