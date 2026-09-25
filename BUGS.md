@@ -5,7 +5,25 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### `fixedHeadings` and `bugEntryBody` in src/fix-claim.ts have no fenced-code state: a quoted `### ` line counts as a Fixed entry, and an entry body quoting a fence is cut at it, so a narrative rewrite after the fence compares equal and skips the false-fix symbol check (found by bugfix loop 2026-09-25)
+
+**Symptom:** the false-fix guard reads BUGS.md through two fence-blind scanners. `fixedHeadings` filters `### ` lines out of `sectionLines`'s output without consulting `fenceTracker`, so an entry legitimately quoting a markdown template adds a phantom Fixed entry; `bugEntryBody` breaks at any `## `/`### ` line with no fence state, so an entry's body is cut at its own quoted fence. The guard hole is the worse half: `falseFixReason` skips an already-Fixed entry only when its body is unchanged, but base and head bodies are both truncated at the same fence, so an md-only rewrite confined to text after the fence compares equal and never faces the symbol check — the exact evasion the 2026-09-23 fix closed for prose bodies, reopened wherever an entry quotes one. `fixSymbols` inherits the truncation: a Fix paragraph placed after the entry's fence contributes no symbols, so the check passes vacuously.
+
+**Reproduce:** confirmed by execution 2026-09-25 against dist with a one-entry Fixed section whose body is a `​```md` fence holding `## Done` and `### Quoted entry (fixed 2026-01-01)`, then a `**Fix:**` paragraph naming a symbol that exists nowhere on the tree: `fixedHeadings` returned 2 while `parseEntryDetails(md, "Fixed")` returned 1 (the quoted heading counts as an entry), `bugEntryBody` returned only `​```md` (cut at the fenced `## Done` line), and `fixSymbols` of it returned `[]`. Sibling of the fixed 2026-09-25 `fenceTracker` entry below — same invariant, last fence-blind reader pair.
+
 ## Fixed
+
+### `fenceTracker` opens a fence at a backtick-fence line whose info string contains a backtick, which CommonMark forbids: one unclosable fence swallowed 46 Fixed entries and the `## Verified` section (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** the 2026-09-25 `sectionLines` entry's scratch-repro line — ````md / ## Planned / ## Done / ````` quoted inline in its prose — matched `fenceTracker`'s opener regex. CommonMark forbids backticks in a backtick fence's info string, so a conforming reader treats that line as paragraph text; `fenceTracker` took it as a four-backtick fence opener no later line can close (the file's later `​``` fences are three backticks, too short), so everything after it read as fenced content to EOF. On the pre-fix tree, `parseEntryDetails(BUGS.md, "Fixed")` returned 2 entries instead of 48 — every Fixed entry after that line vanished from the dashboards' Fixed lists, and the last remaining entry's body absorbed the whole `## Verified` section — and the usage report's `entryDates` (it excludes fenced lines) saw none of the later Fixed records, collapsing `totals.bugsFixed` for every window it covers. `fixedHeadings` (fence-blind; see the Open entry above) still counted 48, and that cross-reader disagreement is how the bug surfaced.
+
+**Reproduce:** on the pre-fix dist, `node -e 'const {parseEntryDetails}=require("./dist/src/backlog.js");const fs=require("fs");const f=parseEntryDetails(fs.readFileSync("BUGS.md","utf8"),"Fixed");console.log(f.length, f.at(-1).body.includes("## Verified"))'` printed `2 true` while `grep -c '^### ' BUGS.md` printed 48; the same probe prints `48 false` on the fixed tree. Confirmed 2026-09-25; the line is now a regression fixture in test/backlog.test.ts.
+
+**Cause:** `fenceTracker` opened a fence at any `​```/`~~~`-shaped line, with no info-string rule for backtick fences.
+
+**Fix:** a backtick fence's info string may not contain a backtick (CommonMark); such a line is paragraph text and opens nothing. Tilde fences keep their free-form info strings, and closing-fence detection is unchanged. `sectionLines`, `parseEntryDetails`, and the report's `entryDates` all inherit the correction from the one fence home in src/backlog.ts.
+
+**Validation gap:** no-observability — the mis-parse raised no error and no test failure anywhere: the dashboards and the report rendered plausible-but-wrong data silently, and it surfaced only by cross-checking two readers' counts over the real BUGS.md, since no suite fixture held an inline-quoted fence with backticks in its info string.
 
 ### `parseEntryDetails` and the report's date scan treat a `### `/`- ` line inside a fenced code block as entry structure: a quoted heading splits the entry on the dashboards and phantom `(fixed DATE)` lines inflate the usage report's fixed count (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 

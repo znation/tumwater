@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  fenceTracker,
   openBugEntries,
   openBugs,
   openQuestions,
@@ -242,6 +243,47 @@ test("fence tracking follows CommonMark: marker character and bare close matter"
     { title: "Two (reported 2026-09-24)", body: "```ts\nconst heading = \"## Fixed\";\n```" },
     { title: "Three (reported 2026-09-23)", body: "Tail." },
   ]);
+});
+
+test("a backtick fence whose info string contains a backtick is not a fence", () => {
+  // CommonMark: an info string for a backtick fence cannot contain a backtick, so a prose line
+  // quoting a template inline — ````md / ## Planned / ## Done / ````` — is paragraph text, not
+  // a fence opener. Taken as one, no later bare fence line can close it and the fence runs to
+  // EOF: the live BUGS.md lost every Fixed entry after that line and its `## Verified` section
+  // to exactly such a line on 2026-09-25. A tilde fence keeps its free-form info string.
+  const md = [
+    "# Bugs",
+    "",
+    "## Fixed",
+    "",
+    "### Real entry (fixed 2026-09-25)",
+    "",
+    "A scratch repro: an entry quoting",
+    "````md / ## Planned / ## Done / ````` made the next planned entry disappear entirely.",
+    "",
+    "### The next entry (fixed 2026-09-24)",
+    "",
+    "Its body.",
+  ].join("\n");
+  assert.deepEqual(parseEntryDetails(md, "Fixed"), [
+    {
+      title: "Real entry (fixed 2026-09-25)",
+      body:
+        "A scratch repro: an entry quoting\n````md / ## Planned / ## Done / ````` made the next planned entry disappear entirely.",
+    },
+    { title: "The next entry (fixed 2026-09-24)", body: "Its body." },
+  ]);
+});
+
+test("fenceTracker: backtick info strings reject backticks, tilde info strings do not", () => {
+  const t = fenceTracker();
+  assert.equal(t.inside("````md / ## Done / `````"), false); // Paragraph text, opens nothing.
+  assert.equal(t.inside("## Done"), false); // ...so this is structure, not fenced content.
+  assert.equal(t.inside("```ts `x`"), false); // Same rule for a simple backtick-bearing info.
+  assert.equal(t.inside("~~~md `x` ~~~"), true); // Tilde info strings are free-form: a fence.
+  assert.equal(t.inside("## Done"), true); // ...so this one is fenced content.
+  assert.equal(t.inside("~~~"), true); // A bare ~~~ closes it — but is fence syntax itself.
+  assert.equal(t.inside("## Done"), false); // ...so this is structure again.
 });
 
 test("a ### heading inside a fenced code block is body content, not an entry boundary", () => {

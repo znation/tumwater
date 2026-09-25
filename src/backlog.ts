@@ -28,10 +28,11 @@ export interface BacklogEntry {
 /** A per-line CommonMark fenced-code state machine, shared by every line-level parser of
  * backlog markdown. `inside(line)` feeds one line and returns whether it is fence syntax or
  * fenced content — never markdown structure: a fence opens at a ```` ``` ````/`~~~` line (an
- * info string is allowed), closes only at a bare fence line of the same character at least as
- * long, and an unclosed fence runs to EOF. Every reader that classifies backlog lines as
- * markdown structure (section boundaries, entry headings, bullets) must consult this, so two
- * readers can never disagree about what is body content. */
+ * info string is allowed, except that a backtick fence's info string may not contain a
+ * backtick — such a line is paragraph text that opens nothing), closes only at a bare fence
+ * line of the same character at least as long, and an unclosed fence runs to EOF. Every reader
+ * that classifies backlog lines as markdown structure (section boundaries, entry headings,
+ * bullets) must consult this, so two readers can never disagree about what is body content. */
 export function fenceTracker(): { inside(line: string): boolean } {
   // The open fence's marker (null = none): only a matching bare fence line closes it.
   let fence: { char: string; length: number } | null = null;
@@ -40,7 +41,15 @@ export function fenceTracker(): { inside(line: string): boolean } {
       const fenceLine = /^ {0,3}(`{3,}|~{3,})/.exec(line);
       if (fenceLine) {
         const marker = fenceLine[1] ?? ""; // The group always participates; "" keeps types honest.
-        if (fence === null) fence = { char: marker.charAt(0), length: marker.length };
+        if (fence === null) {
+          // CommonMark: an info string for a backtick fence cannot contain a backtick, so a
+          // line like ````md / ## Done / ````` quoted in prose is paragraph text, not a fence
+          // opener — taken as one, no later bare fence line can close it and the fence runs to
+          // EOF, swallowing the rest of the document as fenced content.
+          const info = line.replace(/^ {0,3}/, "").slice(marker.length);
+          if (marker.charAt(0) === "`" && info.includes("`")) return false;
+          fence = { char: marker.charAt(0), length: marker.length };
+        }
         else if (marker.charAt(0) === fence.char && marker.length >= fence.length && line.trim() === marker)
           fence = null;
         return true; // The fence line itself is fence syntax, never structure.
