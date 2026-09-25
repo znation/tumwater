@@ -133,8 +133,6 @@ export function baselineFixture(role: string, testScript: string): { root: strin
   return { root, wt };
 }
 
-/** How many times a fixture's test script actually ran (its appends to `counter`). Zero when
- * the counter was never written — an environmental skip ran nothing. */
 /** Seed a role's state file with non-zero counters plus scheduling fields. */
 export function seedCounters(repo: string, role: string): void {
   const s = freshLoopState(role);
@@ -149,6 +147,8 @@ export function seedCounters(repo: string, role: string): void {
   saveLoopState(repo, s);
 }
 
+/** How many times a fixture's test script actually ran (its appends to `counter`). Zero when
+ * the counter was never written — an environmental skip ran nothing. */
 export function runsOf(counter: string): number {
   try {
     return fs.readFileSync(counter, "utf8").trim().split("\n").length;
