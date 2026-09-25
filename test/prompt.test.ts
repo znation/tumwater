@@ -21,7 +21,8 @@ import { parseVerdict } from "../src/review.js";
 import { todayStamp } from "../src/budget.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
-import { customRole, DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, ROLES, roleById, searchGuidance, VALIDATION_GAP_GUIDANCE, VALIDATION_GAP_TAGS } from "../src/roles.js";
+import { customRole, ROLES, roleById } from "../src/roles.js";
+import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, searchGuidance, VALIDATION_GAP_GUIDANCE, VALIDATION_GAP_TAGS } from "../src/role-guidance.js";
 import { sh, tmpdir } from "./util.js";
 
 test("readInitialPrompt extracts the managed block", () => {

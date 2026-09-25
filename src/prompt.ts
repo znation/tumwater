@@ -2,7 +2,8 @@ import path from "node:path";
 import { readTextOrNull } from "./files.js";
 import { describeCheck } from "./build-check.js";
 import type { BuildCheck } from "./build-check-detect.js";
-import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, type Role } from "./roles.js";
+import { type Role } from "./roles.js";
+import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "./role-guidance.js";
 import { NOTHING_TO_DO, REFUSED_SENTINEL } from "./reply-contract.js";
 import { todayStamp } from "./budget.js";
 

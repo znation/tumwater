@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { parseEntryDetails, type BacklogEntry } from "../src/backlog.js";
-import { VALIDATION_GAP_TAGS } from "../src/roles.js";
+import { VALIDATION_GAP_TAGS } from "../src/role-guidance.js";
 
 /** The enforcement side of the validation-gap convention (`plans/repair-traces.md`): the
  * bugfix prompt asks every Fixed entry to carry `**Validation gap:** <tag> — <one sentence>`,
