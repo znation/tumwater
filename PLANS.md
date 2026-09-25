@@ -5,6 +5,24 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### `tumwater stop` — stop a running fleet from another terminal (planned 2026-09-24)
+
+**Goal.** A fleet started with `tumwater run` can only be stopped from its own terminal (Ctrl+C) or by a hand-rolled `kill <pid>` after digging the pid out of `tumwater status`. Every other operator verb — pause, resume, wake, abort — works from any terminal against the on-disk state; stopping the fleet is the one gap. Add `tumwater stop`: deliver the same graceful SIGTERM shutdown the child already handles, addressed via the recorded orchestrator pid.
+
+**Approach.** No marker file and no fleet-side change: the supervised `run` child already installs SIGINT/SIGTERM handlers that abort the controller and drain in-flight ticks (src/cli.ts:134–141, "stopping — waiting for in-flight ticks"), and the supervisor (src/supervisor.ts) treats a clean child exit as done, so a signal to the child is the entire mechanism. The only new work is addressing it:
+
+- src/operator-commands.ts — add `cmdStop(root)`: read the orchestrator info via `readOrchestratorInfo` (src/fleet-state.ts:64); when the file is missing/unreadable or `pidAlive(info.pid)` (src/process.ts:24) is false, `fail("no harness is running — start it with `tumwater run` first")` — the same wording and liveness gate `requestAbort` uses. Otherwise `process.kill(info.pid, "SIGTERM")` and print `stop requested — the fleet drains its in-flight ticks and exits (the same path as Ctrl+C)`. Document in a comment that a recycled pid is the accepted risk `orchestratorAlive` already carries everywhere (status, abort, pause) — the info file is refreshed by the live orchestrator, so the window is small and the signal is the same one a human `kill` would send.
+- src/cli.ts — a `case "stop"` alongside pause/resume: `rejectUnknownArgs("stop", args, [])` (no flags), then `cmdStop(root)`. Add the help-table line `tumwater stop                       Stop a running fleet (drains in-flight ticks, like Ctrl+C)`. Note for the implementer: `run`'s terminal Ctrl+C reaches the whole process group, while `stop` signals only the child — the supervisor needs no signal because a clean child exit already ends `superviseRun`'s loop.
+- README.md — one row in the "Control the loops" usage table: `tumwater stop` (the docs loop may also pick this up; one line here keeps the release honest).
+
+**Files touched.** src/operator-commands.ts, src/cli.ts, README.md, test/cli-operators.test.ts.
+
+**Acceptance criteria.**
+- `tumwater stop` with no `.tumwater/state/orchestrator.json`, an unreadable one, or a dead pid fails with the "no harness is running" message (exit non-zero), matching `abort`'s behavior.
+- With a live pid recorded (test: spawn a `sleep 30` child, write its pid into orchestrator.json via the real `orchestratorStatePath` layout), `cmdStop` SIGTERMs it — asserted by the child's exit signal being SIGTERM — and prints the confirmation.
+- `tumwater stop --anything` fails via `rejectUnknownArgs`; the help table lists `stop`.
+- The existing cli-operators and fleet-state suites pass unmodified; the full `npm run test` is green.
+
 ## Done
 
 ### Land-queue speed 2c — Split landing into a parallel vetting stage and a serial merge stage (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26, done 2026-09-24)
