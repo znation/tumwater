@@ -5,7 +5,50 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Pause countdown — show when a timed pause auto-resumes (`status`/TUI header badge, GUI pause badge) (planned 2026-09-25)
+
+**Depends on** the "Timed pause" entry in this file (it adds `pause --for` and exposes
+`pausedUntil` on the snapshot and payload); land this only once that one is in the running
+build. Note: that entry currently sits under a `## Done` heading without a Landed-as note —
+it is planned, not landed.
+
+**Goal.** The Timed pause plan deliberately leaves the display out: every surface shows a timed
+pause as plain `paused`, indistinguishable from an indefinite one, so an operator cannot see at
+a glance whether the fleet will come back on its own or needs a manual `resume`. Show the
+countdown where the pause is already visible.
+
+**Approach.**
+
+1. **src/ui/status-model.ts** — `pauseBadge(pausedUntil: number | undefined, now: number): string`,
+   shaped like the neighboring `budgetBadge`/`landingBadge`: empty when `pausedUntil` is absent
+   or in the past (the parent plan's read side already treats an expired marker as unpaused, so
+   the badge never lies); otherwise ` · paused — auto-resumes in <humanSeconds(until - now)>`,
+   reusing the exported `humanSeconds` so one helper owns duration phrasing. The badge appears
+   for either marker shape (fleet or `--role`): the parent plan stores one shared deadline per
+   marker and the snapshot carries only the winning `pausedUntil`, and `auto-resumes` stays true
+   whether the whole fleet or one loop is the paused part.
+2. **src/ui/status-render.ts** — append `${pauseBadge(snap.pausedUntil, now)}` to the header
+   line (the `tumwater · …` push, after `budgetBadge`), reusing the render's existing one-clock
+   `now`. `tumwater status` and the TUI's status pane both go through `renderStatus`
+   (src/ui/tui.ts imports it), so they pick the badge up unchanged.
+3. **src/ui/gui-client.ts** — the `pausewrap` badge (the `d.paused ? " · paused — resume" …`
+   branch): while the payload's `pausedUntil` stands, render ` · paused — auto-resumes in 12m —
+   resume` as the link text (recomputed on each 1 s poll, like the rest of the badge); a pause
+   without a deadline keeps today's wording. The link keeps its resume behavior either way —
+   lifting early stays one click. No endpoint or payload change: the parent plan already puts
+   `pausedUntil` on the payload for exactly this consumer.
+
+**Files touched:** src/ui/status-model.ts, src/ui/status-render.ts, src/ui/gui-client.ts;
+tests in test/status-model.test.ts, test/status-render.test.ts, test/gui.test.ts (the badge is
+client-side rendering over the payload the parent plan already pins).
+
+**Acceptance criteria.** (a) `pauseBadge` reads empty for an absent or past `pausedUntil` and
+` · paused — auto-resumes in <duration>` for a future one, with the duration exactly
+`humanSeconds(until - now)` at the passed `now`. (b) The `tumwater status`/TUI header shows the
+badge only while a timed pause stands — a `pause` without `--for` renders today's header
+unchanged — and an expired deadline renders nothing, matching the unpaused read. (c) The GUI's
+pause badge shows the countdown while `pausedUntil` stands and today's ` · paused — resume`
+otherwise, and remains a working resume link in both states. (d) Full suite passes.
 
 ## Done
 
