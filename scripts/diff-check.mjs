@@ -4,6 +4,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+// Before any dist/ import below: a tree without a build would otherwise die here with a raw
+// ERR_MODULE_NOT_FOUND stack for dist/src/roles.js (repro: rm -rf dist && node scripts/diff-check.mjs)
+// instead of the fix. This script's whole subject is comparing builds, so a missing build is
+// not an edge case — name it and the command that produces one.
+if (!fs.existsSync(new URL("../dist/src/roles.js", import.meta.url))) {
+  console.error("diff-check compares compiled builds: run `npm run build` first (dist/src is missing).");
+  process.exit(1);
+}
+
 // Every role the catalog knows, straight from the compiled harness. A hardcoded copy once
 // drifted — it silently omitted `telemetry` — so the fixture tracks the real role set instead.
 const { allRoleIds } = await import("../dist/src/roles.js");
