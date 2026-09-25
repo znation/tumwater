@@ -1,6 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { OrchestratorInfo } from "./fleet-state.js";
-import { applyFallbackModel, changedConfigKeys, enabledRoleIds, fallbackPair, loadConfigCached } from "./config.js";
+import { applyFallbackModel, enabledRoleIds, fallbackPair } from "./config.js";
+import { newLiveConfigReload } from "./config-live.js";
 import {
   deferTick,
   dueForPrune,
@@ -50,7 +51,6 @@ import {
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import {
-  configPath,
   orchestratorStatePath,
   sessionsRootDir,
   toolOutputDir,
@@ -179,13 +179,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // changes they vetted, and the merge slot.
   const landings = newLandingPipeline();
 
-  // Live-reload bookkeeping: the last config error already warned about (a broken file must
-  // warn once per distinct text, not every poll), whether the file is currently missing (one
-  // warning per vanish, one line when it reappears), and the previous cycle's enabled set (for
-  // one-shot enable/disable transition warnings).
-  let lastConfigError: string | null = null;
-  let configMissing = false;
-  let prevEnabled = new Set<string>(enabled);
   // The previous poll's budget gate, for one-shot transition events. Three-valued since
   // plans/fallback-model.md: open → fallback → paused are distinct states, and every crossing
   // between two of them is worth exactly one event.
@@ -197,11 +190,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // The live config the last successful reload produced (last-known-good while the file is
   // broken or missing) and, derived from it, the view role loops run under while a fallback is
   // engaged (the fallback gate, or its breaker-demoted pause) — recomputed only when the config
-  // object itself changes.
-  let liveConfig = config;
-  // The previous successful reload's config, for the one-shot config_changed event. Seeded from
-  // the startup config, so the first poll of an unchanged file logs nothing.
-  let prevLiveConfig = config;
+  // object itself changes. The reload bookkeeping itself lives in src/config-live.ts.
+  const liveReload = newLiveConfigReload({ root, config, mainBranch, signal, runners, semaphore });
   let fallbackFrom: TumwaterConfig | null = null;
   let fallbackConfig: TumwaterConfig = config;
   // Same bookkeeping for the operator pause (the marker file), so each pause/resume logs
@@ -216,9 +206,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // budget gate's prevGate it is the gate's own memory (deadline, relapse count), not just the
   // last value for edge-triggered events. In memory only: a restart starts open.
   let rateHold: RateLimitHold = RATE_LIMIT_OPEN;
-  // The cap last applied to the semaphore (live-resized on each reload), so a change logs
-  // exactly one event per distinct value — not once per ~2s poll.
-  let lastMaxConcurrent = Math.max(1, config.maxConcurrent);
   // Live session-retention bookkeeping: the window last applied and when we last pruned —
   // both seeded from the startup prune above, so a mid-run edit re-prunes immediately while
   // an unchanged fleet prunes at most once per day (dueForPrune).
@@ -251,62 +238,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   try {
     while (!signal.aborted) {
-      // Live-reload tumwater.json — the single reload point shared by all loops. A broken
-      // file keeps the last-known-good config and warns once per distinct error text.
-      // Unchanged files are served from a stat-keyed cache (one stat per poll, no read).
-      const reloaded = loadConfigCached(root);
-      // A missing file keeps the last-known-good config too, and never reloads as defaults: the
-      // fleet was started on a real file (startup refuses to run without one), so its vanishing
-      // mid-run is an incident — a landing's fast-forward deleted it on 2026-09-22 and the fleet
-      // silently ran 8.6 h on defaults (BUGS.md 2026-09-23). One warning per vanish, not per
-      // poll; its return logs one line, then the normal reload below diffs it against the
-      // retained config — so config_changed names only what the returned file really changed.
-      if (reloaded.missing) {
-        if (!configMissing) {
-          warnEvent(root, "harness", `tumwater.json missing — keeping current config until it returns (${configPath(root)})`);
-          configMissing = true;
-          lastConfigError = null; // Whatever state it returns in is stated afresh.
-        }
-      } else if (configMissing) {
-        warnEvent(root, "harness", "tumwater.json reappeared — reloading it");
-        configMissing = false;
-      }
-      if (reloaded.config) {
-        liveConfig = reloaded.config;
-        // A live edit that changes behavior elsewhere logs one event naming the settings that
-        // changed (maxConcurrent and sessionRetentionDays have their own events above/below).
-        const changedKeys = changedConfigKeys(prevLiveConfig, reloaded.config);
-        if (changedKeys.length > 0)
-          logEvent(root, { loop: "harness", type: "config_changed", keys: changedKeys });
-        prevLiveConfig = reloaded.config;
-        for (const r of runners) r.config = reloaded.config;
-        // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute
-        // concurrently within this poll — no restart. Growing admits already-queued ticks;
-        // shrinking never preempts in-flight work, it only caps future grants.
-        const newMaxConcurrent = Math.max(1, reloaded.config.maxConcurrent);
-        if (newMaxConcurrent !== lastMaxConcurrent) {
-          semaphore.setCapacity(newMaxConcurrent);
-          logEvent(root, { loop: "harness", type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
-          lastMaxConcurrent = newMaxConcurrent;
-        }
-        const nowEnabled = enabledRoleIds(reloaded.config);
-        // Enabling a role mid-run starts it: create its runner (its persisted state survives).
-        for (const role of nowEnabled) {
-          if (!runners.some((r) => r.role === role))
-            runners.push(new LoopRunner(root, role, reloaded.config, mainBranch, signal));
-        }
-        for (const role of prevEnabled)
-          if (!nowEnabled.includes(role))
-            warnEvent(root, "harness", `role ${role} disabled — stopping ticks`);
-        for (const role of nowEnabled)
-          if (!prevEnabled.has(role))
-            warnEvent(root, "harness", `role ${role} enabled — starting ticks`);
-        prevEnabled = new Set(nowEnabled);
-        lastConfigError = null;
-      } else if (reloaded.error && reloaded.error !== lastConfigError) {
-        warnEvent(root, "harness", `tumwater.json invalid — keeping current config: ${reloaded.error}`);
-        lastConfigError = reloaded.error;
-      }
+      // Live-reload tumwater.json — the single reload point shared by all loops (src/config-live.ts
+      // owns the last-known-good retention and the edge-triggered warnings/events around it).
+      const liveConfig = liveReload.poll();
 
       // Live session retention (the last restart-only setting): a mid-run edit to the window
       // re-prunes immediately; independently of edits, an unchanged fleet prunes at most once
