@@ -24,7 +24,7 @@ import {
 import { errorMessage } from "./text.js";
 import { setLandingStage, type LandingChangeStatus } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { LoopState, PiRunResult, TickResult } from "./types.js";
+import type { LoopState, PiRunWiring, TickResult } from "./types.js";
 
 /** The identity a vet or a merge needs from the harness: root, main branch, live config, and
  * the task's abort signal. Deliberately thinner than LanderContext — no single `state` and no
@@ -50,12 +50,8 @@ export interface BatchContext {
  * the gate updates and the drain folds the outcome into, this role's usage fold (reviewer spend
  * charges to the authoring role), and the role's shared pi wiring for landApprovedChange's
  * conflict resolver. */
-export interface BatchRoleWiring {
+export interface BatchRoleWiring extends PiRunWiring {
   state: LoopState;
-  /** Fold one pi run's usage into this role's landing counters (the reviewer's run). */
-  foldUsage(run: PiRunResult): void;
-  /** Run one pi run in `wt` with this role's shared wiring (the conflict resolver). */
-  runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
 }
 
 /** One change's vetting verdict: `stack` — approved or exempt, to land at `sha` (the synced

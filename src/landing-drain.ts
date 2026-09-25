@@ -19,7 +19,7 @@ import { landingRefName } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { saveLoopState } from "./state.js";
 import type { AbortableLanding } from "./operator-requests.js";
-import type { LandingEntry, LoopState, PiRunResult, TickResult } from "./types.js";
+import type { FoldsUsage, LandingEntry, LoopState, TickResult } from "./types.js";
 
 /** The semaphore tier a vet waits at, below every roleTier (0/1): committed work whose author
  * the interlock has already blocked jumps ahead of parked role waiters rather than starving
@@ -152,7 +152,7 @@ function dropTornHead(root: string): void {
  * restart the entry is vetted again, and its review carries over through the patch-id while
  * its check runs once more. It holds no task, so `tumwater abort --role` only flags it
  * (AbortableLanding); the next drain settles it as "aborted" and discards its pin. */
-export interface VettedLanding extends AbortableLanding {
+export interface VettedLanding extends AbortableLanding, FoldsUsage {
   entry: LandingEntry;
   /** The queue file to drop once its outcome is written. */
   file: string;
@@ -164,9 +164,8 @@ export interface VettedLanding extends AbortableLanding {
   startedAt: number;
   /** The authoring runner its vet ran with — reused by its merge, so both fold into one state. */
   author: LoopRunner;
-  /** The landing's own spend so far (its reviewer), and the fold that adds to it. */
+  /** The landing's own spend so far (its reviewer). */
   usage: { tokens: number; cost: number };
-  foldUsage(run: PiRunResult): void;
 }
 
 /** The scheduler's landing state across polls (land-queue speed 2c), in three parts:

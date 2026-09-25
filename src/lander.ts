@@ -11,7 +11,7 @@ import { mainTipVerdict } from "./main-red.js";
 import { logEvent } from "./events.js";
 import { shortSha } from "./text.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { LoopState, PiRunResult, TickResult } from "./types.js";
+import type { LoopState, PiRunResult, PiRunWiring, TickResult } from "./types.js";
 
 /** Consecutive red in-lock landing checks of one patch (LoopState.landingCheckFailures) before
  * the landing is attributed instead of retried: the first red keeps the pin for one more
@@ -57,15 +57,11 @@ export interface LandRequest {
  * for merge.ts's conflict resolver — which folds usage internally — an explicit foldUsage for
  * the reviewer run (reviewAheadOfMain starts its own raw pi call and returns it as `gate.run`),
  * and the landing's abort signal, captured per call. */
-export interface LanderContext {
+export interface LanderContext extends PiRunWiring {
   root: string;
   mainBranch: string;
   config: TumwaterConfig;
   state: LoopState;
-  /** Run one pi run in `wt` with the loop's shared wiring and fold its usage into the tick. */
-  runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
-  /** Fold one pi run's usage into the tick's counters (the reviewer's run). */
-  foldUsage(run: PiRunResult): void;
   /** The landing's abort signal (harness shutdown or user abort), fresh per call. */
   signal(): AbortSignal;
 }

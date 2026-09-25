@@ -22,7 +22,7 @@ import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./gate-prompts.js";
 import { CONFIG_BASENAME, configPath, mergeLockDir } from "./paths.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { PiRunResult, TickResult } from "./types.js";
+import type { RunsPi, TickResult } from "./types.js";
 
 /** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased
  * tree with the project's declared check when main moved under it, fast-forward, and —
@@ -42,7 +42,7 @@ import type { PiRunResult, TickResult } from "./types.js";
  * tick number that names the conflict-resolution session, and the loop's shared pi runner (role
  * config, session dir, raw log, transient-timeout retry) with usage folded into the tick counters
  * — every pi run of a tick lands there exactly once. */
-export interface MergeContext {
+export interface MergeContext extends RunsPi {
   root: string;
   role: string;
   mainBranch: string;
@@ -54,8 +54,6 @@ export interface MergeContext {
   exemptPaths: string[];
   /** The current tick number (names the conflict-resolution pi session). */
   tick: number;
-  /** Run one pi run in `wt` with the loop's shared wiring and fold its usage into the tick. */
-  runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
   /** Told when the in-lock check went red on the rebased tree — the one merge_blocked cause
    * that is the change's own (lander.ts counts it toward LANDING_CHECK_FAILURE_LIMIT); a failed
    * fast-forward or a false fix never calls it. */
