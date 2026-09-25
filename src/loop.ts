@@ -1,19 +1,11 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
 import { customRole, DIRECTOR_ROLE, roleById } from "./roles.js";
-import { branchHead, commitAll, isDirty, setRef } from "./git.js";
-import { changedFiles } from "./git-diff.js";
+import { branchHead, isDirty, setRef } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events.js";
 import { hasResumableSession } from "./pi.js";
-import {
-  buildCommitMessage,
-  commitTrailer,
-  extractCommitBody,
-  extractSummary,
-  fallbackSummary,
-  formatCommitBody,
-} from "./commit-message.js";
+import { extractSummary } from "./commit-message.js";
 import {
   buildCutOffNote,
   buildDirectorPrompt,
@@ -28,8 +20,8 @@ import { telemetryDigest } from "./failure-report.js";
 import { configForRole } from "./config.js";
 import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
-import { enqueueLanding } from "./land-queue.js";
 import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
+import { stageTickLanding } from "./tick-stage.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
 import { recordDailyCost } from "./budget.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
@@ -694,96 +686,32 @@ export class LoopRunner {
       return { result: "no_change", cutOff: diagnosis.cutOff || undefined };
     }
 
-    // The commit subject and body come from the reply's closing block. A run that changed files
-    // without one — a cut-off final message, or plain non-compliance — gets one bounded follow-up
-    // turn in its own session to produce it (the session still holds everything the run did);
-    // only if that too yields nothing is the subject derived from the changed paths.
-    let summary = extractSummary(pi.finalText);
-    let body = extractCommitBody(pi.finalText);
-    if (summary === null) {
-      const followUp = await this.pi.requestSummary(wt);
-      if (followUp?.aborted) return this.finishAbortedTick(userPrompt, wt);
-      if (followUp) {
-        summary = extractSummary(followUp.finalText);
-        body = body ?? extractCommitBody(followUp.finalText);
-      }
-      if (summary === null) summary = fallbackSummary(await changedFiles(wt), this.role, s.ticks);
-      this.warn(
-        `reply had no SUMMARY line — ` +
-          (followUp && extractSummary(followUp.finalText) !== null
-            ? "recovered it with a follow-up turn"
-            : `follow-up gave none; subject derived from the changed files: "${summary}"`),
-      );
-    }
-
-    // Friction as a signal (plans/refusal-and-thrash.md): a changed tick that burned BOTH more
-    // than thrashTurns turns and thrashMinutes of wall clock is flagged high-friction —
-    // difficulty suggests the work may not fit, so it goes to review marked and leaves a warning
-    // event. Requiring both (not either) keeps the absolute turn count from measuring model
-    // speed: a fast model emits 40+ turns in a few minutes, which is ordinary work, not
-    // difficulty (BUGS.md 2026-09-19). Measured over this tick's main authoring run (a transient
-    // retry included via runRolePi), like the trailer; conflict-resolution runs happen later
-    // inside merge().
-    const minutes = (Date.now() - piStartedAt) / 60_000;
-    // Friction is measured over this tick's authoring runs only — the review gate folds its
-    // run into tickTurns AFTER the commit, so every friction artifact (flag, warning event,
-    // trailer line, final summary) reads this pre-gate snapshot instead of the live counter.
-    const authoringTurns = this.tickTurns;
-    const highFriction =
-      authoringTurns > this.config.thrashTurns && minutes > this.config.thrashMinutes;
-    if (highFriction) {
-      this.warn(
-        `high-friction tick: ${authoringTurns} turns in ${Math.round(minutes)} min ` +
-          `(thresholds: ${this.config.thrashTurns} turns / ${this.config.thrashMinutes} min)`,
-      );
-    }
-    // The trailer is harness-stamped truth: turns and peak ctx over this tick's pre-commit
-    // runs only (conflict-resolution and review runs fold after the commit). A high-friction
-    // tick appends its Friction line here — both values are already computed above.
-    const message = buildCommitMessage(
-      `tumwater(${this.role}): ${summary}`,
-      body,
-      commitTrailer(this.role, s.ticks, authoringTurns, s.peakContextTokens, highFriction ? minutes : undefined),
-    );
-    const commit = await commitAll(wt, message);
-
-    // Pin the commit by its landing ref BEFORE freeing the worktree (invariant 4), then hand it
-    // to the land queue: from here on the review gate and the rebase run in _land-<role>, never
-    // in this worktree (plans/merge-queue.md 2/5). A failed pin defers to next-tick recovery —
-    // landing without a pin would lose the ref lifecycle this whole flow depends on. The
-    // reviewer checks the author's claimed WHY/VERIFIED against the actual diff; no diff reaches
-    // main unreviewed.
-    if (!(await this.pinAndReset(wt, commit))) {
-      s.lastError = "failed to pin the landing ref; left for next-tick recovery";
-      return { result: "error", summary: s.lastError };
-    }
-
-    // The commit is pinned and the worktree is free: enqueue the landing and END the tick — the
-    // orchestrator drains the queue through its landing pipeline, so this tick's permit is free
-    // the moment the work is committed (plans/merge-queue.md 3/5); the change's vet takes a
-    // permit of its own. The landing
-    // runs the same gate + landing flow through runLandingPi/foldLandingUsage on this same state
-    // object — recording the commit count, the outcome, and the reviewer spend into it — and logs
+    // The commit is pinned and the worktree is free (src/tick-stage.ts): stage it for the
+    // land queue and END the tick — the orchestrator drains the queue on its single landing
+    // slot, outside the author semaphore, so this slot is free the moment the work is
+    // committed (plans/merge-queue.md 3/5). Staging derives the commit message from the reply's
+    // SUMMARY block (one bounded follow-up turn when the run left none), flags high-friction
+    // ticks, pins the commit by the role's landing ref BEFORE freeing the worktree (invariant
+    // 4 — a failed pin defers to next-tick recovery), and enqueues the landing, which runs the
+    // same gate + landing flow through runLandingPi/foldLandingUsage on this same state object
+    // — recording the commit count, the outcome, and the reviewer spend into it — and logs
     // landed/land_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
     // `commits` was NOT incremented above: it counts landed changes only.
-    enqueueLanding(this.root, {
+    return stageTickLanding({
+      root: this.root,
       role: this.role,
-      sha: commit,
-      tick: s.ticks,
-      summary,
-      body: body ? formatCommitBody(body) : undefined,
-      highFriction: highFriction || undefined,
-      enqueuedAt: Date.now(),
+      state: s,
+      config: this.config,
+      tickTurns: this.tickTurns,
+      userPrompt,
+      wt,
+      finalText: pi.finalText,
+      flow,
+      piStartedAt,
+      warn: (message) => this.warn(message),
+      requestSummary: (w) => this.pi.requestSummary(w),
+      pinAndReset: (w, sha) => this.pinAndReset(w, sha),
+      finishAbortedTick: () => this.finishAbortedTick(userPrompt, wt),
     });
-    logEvent(this.root, { loop: this.role, type: "land_queued", commit, summary });
-    // The flag's durable record is the Friction trailer line stamped on the commit above;
-    // the tick_end event carries it too for logs, and lastSummary for dashboards once the
-    // landing resolves (state.ts stashes this summary until then — a `queued` tick is not a
-    // completed result).
-    const finalSummary = highFriction
-      ? `${summary} (high friction: ${authoringTurns} turns / ${Math.round(minutes)}m)`
-      : summary;
-    if (flow) recordFlow(this.root, flow.flow, flow.result, flow.result === "bug" ? summary : undefined);
-    return { result: "queued", summary: finalSummary, commit, highFriction };
   }
 }
