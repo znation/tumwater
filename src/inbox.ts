@@ -47,10 +47,12 @@ function queuedFiles(root: string, role: string): string[] {
   return listQueueFiles(roleInboxDir(root, role), ".md");
 }
 
-/** Number of prompts currently queued for the director — a directory listing only; no file
- * content is read. A missing inbox dir reads as 0, like queuedPrompts and dequeuePrompt. */
-export function inboxSize(root: string): number {
-  return queuedFiles(root, DIRECTOR_ROLE).length;
+/** Number of prompts currently queued for one loop — a directory listing only; no file
+ * content is read. Defaults to the director's queue; a role argument counts that loop's own
+ * per-role queue (scheduling passes it so a queued prompt makes its loop due by itself).
+ * A missing inbox dir reads as 0, like queuedPrompts and dequeuePrompt. */
+export function inboxSize(root: string, role: string = DIRECTOR_ROLE): number {
+  return queuedFiles(root, role).length;
 }
 
 // Per-poll prompt-content cache (stat-cache.cachedByStat): both dashboards poll snapshot() every

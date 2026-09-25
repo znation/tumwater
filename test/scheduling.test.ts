@@ -83,6 +83,41 @@ test("a wake older than the last tick restores the ordinary min gap", () => {
   assert.equal(isEligible(r, now, "abc", 0).run, false);
 });
 
+test("a queued per-role prompt is due by itself, past every schedule gate", () => {
+  // The durable form of wake due-ness: the queue file, not the wake marker, carries the
+  // demand. A wake consumed while a tick is in flight is clobbered by that tick's end-save
+  // (wokenAt and nextRunAt both overwritten), but the prompt it enqueued survives — so a
+  // loop inside a fresh min-gap, hours from its clock, even backing off, must run the
+  // queued request on the first poll after its current tick ends.
+  const r = runner("qa");
+  const now = Date.now();
+  r.state.ticks = 1;
+  r.state.lastTickEndedAt = now - 5 * 60 * 1000;
+  r.state.nextRunAt = now + 2 * 3600 * 1000;
+  r.state.lastMainHead = "abc";
+  assert.equal(isEligible(r, now, "abc", 0).run, false, "asleep inside its own gap");
+  const due = isEligible(r, now, "abc", 1);
+  assert.equal(due.run, true, "the queued prompt pulls the loop in");
+  assert.equal(due.reason, "inbox");
+  // A raised backoff ladder does not hold a user request either — the director's inbox
+  // never waited for one.
+  r.state.backoffSeconds = 900;
+  assert.equal(isEligible(r, now, "abc", 1).run, true, "backoff does not gate a queued prompt");
+});
+
+test("a queued per-role prompt does not preempt a pending resume's deliberate wait", () => {
+  // A resuming tick assembles buildResumePrompt and never dequeues the per-role queue, so
+  // letting the inbox check fire here would only resume sooner than its cut-off wait while
+  // still not running the prompt. It stays queued for the fresh tick the resume's end makes
+  // due immediately.
+  const r = runner("qa");
+  const now = Date.now();
+  r.state.resumePending = true;
+  r.state.nextRunAt = now + 2 * 3600 * 1000;
+  assert.equal(isEligible(r, now, "abc", 1).run, false);
+  assert.equal(isEligible(r, now, "abc", 1).reason, undefined);
+});
+
 test("isEligible gates on the role's own interval, not the global knob", () => {
   const now = Date.now();
 

@@ -12,7 +12,7 @@ import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { snapshot } from "../src/ui/status.js";
 import { initProject } from "../src/init.js";
-import { enqueuePrompt } from "../src/inbox.js";
+import { enqueuePrompt, submitRolePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, saveLoopState, clearBackoff } from "../src/state.js";
 import { readOrchestratorInfo, pauseRole, resumeRole } from "../src/fleet-state.js";
@@ -173,6 +173,44 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
     // not immediately tick again.
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(loadLoopState(repo, "clean").ticks, 2, "the gap window re-arms after the woken tick");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+test("a queued per-role prompt pulls a slow-clock loop in even when its wake was clobbered", async () => {
+  // The mid-tick wake race's end state, made deterministic: the enqueue's auto-wake landed
+  // while a tick was in flight and that tick's end-save overwrote wokenAt and nextRunAt —
+  // so only the queue file is left carrying the demand. The old code read the schedule and
+  // kept the loop asleep for the rest of its interval despite the p:1 marker; now the
+  // queued prompt is due on its own existence and the next poll runs it.
+  const repo = await makeFastRepo("clobbered wake queue due test", ["clean"]);
+  const cfg = loadConfig(repo);
+  cfg.roles.clean = { enabled: true, minTickIntervalSeconds: 3600 };
+  saveConfig(repo, cfg);
+  // The in-flight tick just ended: fresh gap, hours-out clock, no wokenAt — the end-save
+  // already won. The queued prompt is the only trace of the request.
+  const seeded = freshLoopState("clean");
+  seeded.ticks = 1;
+  seeded.lastTickEndedAt = Date.now() - 2000;
+  seeded.nextRunAt = Date.now() + 3600 * 1000;
+  seeded.lastMainHead = "";
+  saveLoopState(repo, seeded);
+  submitRolePrompt(repo, "clean", "check the queue-due path");
+  const restore = fakePiIdle();
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // The tick runs within a poll or two — a schedule-gated loop would sit for the hour.
+    await waitFor(() => loadLoopState(repo, "clean").ticks >= 2, "the queued prompt's tick");
+    await waitFor(() => !loadLoopState(repo, "clean").running, "the queue-due tick to finish");
+    // The wake event names the queue as the cause, like the director's inbox wake.
+    const wakes = eventsOfType(repo, "wake").filter((w) => w.loop === "clean");
+    assert.equal(wakes.length, 1);
+    assert.equal(wakes[0]?.reason, "inbox");
+    // And the ordinary clock re-arms after the queue-due tick: no second tick.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(loadLoopState(repo, "clean").ticks, 2, "the gap window re-arms after the tick");
   } finally {
     restore();
     await orch.stop();

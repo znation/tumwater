@@ -291,7 +291,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       } else {
         warnedBranchDivergence = false;
       }
-      const inboxCount = inboxSize(root);
       const now = Date.now();
 
       // Daily cost budget gate (plans/daily-cost-budget.md, plans/fallback-model.md): once the
@@ -514,7 +513,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         if ((userPaused || (gate === "paused" && !probeDue)) && runner.role !== DIRECTOR_ROLE)
           continue; // no new role ticks while either gate holds
         if (rateHeld && runner.role !== DIRECTOR_ROLE) continue; // nor while a 429 storm holds
-        const { run, reason } = isEligible(runner, now, mainHead, inboxCount, {
+        // The loop's OWN queue decides inbox due-ness: the director counts its historical
+        // inbox, every other loop its per-role queue (tumwater prompt --role <id>) — so a
+        // queued prompt makes its loop due by itself, no wake marker needed (isEligible).
+        const { run, reason } = isEligible(runner, now, mainHead, inboxSize(root, runner.role), {
           once: once.active,
         });
         if (!run) {

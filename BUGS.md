@@ -5,15 +5,17 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A wake consumed while the target's tick is in flight is clobbered by that tick's end-save, so a prompt enqueued mid-tick waits out a full fresh min-gap despite the `p:N` marker (found by bugfix loop 2026-09-25)
+## Fixed
+
+### A wake consumed while the target's tick is in flight is clobbered by that tick's end-save, so a prompt enqueued mid-tick waits out a full fresh min-gap despite the `p:N` marker (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `tumwater prompt --role qa` lands while qa's tick is running: `requestWake` writes the state file and marker, `consumeWakeRequest` applies `r.wake()` to the in-memory state — but the in-flight tick holds the same state object and its end-save stays authoritative (loop.ts's wake() docstring says so itself): `applyTickOutcome` re-stamps `lastTickEndedAt` past `wokenAt` and schedules `nextRunAt` a full interval out, so the queued prompt waits out the whole fresh gap (qa: up to 2 h) even though the dashboards show `p:1`.
 
-**Reproduce:** Timing-shaped — needs the enqueue to land inside a tick's run window; not yet reproduced deterministically (the fixed 2026-09-25 wake-vs-min-gap entry covers the tick-idle case; this is the mid-tick race it left).
+**Cause:** wake-stamping cannot survive a concurrent tick's end-save by construction, so any fix keyed on the marker races the same save. The durable record of the demand is the queue file itself — it survives every end-save — so due-ness should come from the queue, the way the director's `inbox` reason already works.
 
-**Suspected cause / fix shape:** wake-stamping cannot survive a concurrent tick's end-save by construction. The durable fix is due-ness from the queue itself: `isEligible` (or the orchestrator's pass) treating a non-empty per-role inbox the way the director's `inbox` reason already works — a queued user prompt makes that loop due, no min-gap, no backoff — so the prompt's own existence, not a marker racing a tick save, carries the demand.
+**Fix:** `isEligible` now treats a non-empty per-role inbox as due on its own existence (`reason: "inbox"`) — no min-gap, no backoff, no scheduled clock — placed after the resume gate so a queued prompt never preempts a cut-off resume's deliberate wait (a resuming tick builds `buildResumePrompt` and does not dequeue the queue; the prompt is consumed by the fresh tick the resume's end makes due immediately). The orchestrator passes each runner its own queue size (`inboxSize(root, role)`; the director's count is unchanged), and the wake event logs `reason: "inbox"` for the role. The `wokenAt` min-gap exemption stays for wake-without-prompt (`tumwater wake --role`). Note the residual narrow race the queue fix does not cover: a plain wake with an empty queue consumed mid-tick is still clobbered by the end-save — an operator can simply wake again.
 
-## Fixed
+**Validation gap:** no-fake — confirming it deterministically needed a fixture that seeds a queued per-role prompt against a fresh min-gap window with the wake already clobbered (fresh `lastTickEndedAt`, hours-out `nextRunAt`, no `wokenAt`), which neither the existing wake e2e (it dodged the gap by seeding an hour-old tick) nor any unit test built; the original mid-tick repro stayed timing-shaped until that fixture existed.
 
 ### An operator wake cannot pull a slow-clock loop in: `isEligible`'s min-gap check gates every reason, so `tumwater wake --role qa` and a queued per-role prompt's auto-wake silently do nothing for the rest of the interval the loop ticked inside (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
@@ -23,7 +25,7 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Cause:** `wake` was built as "skip backoff" and the min-gap check was never given an exception for it: after any tick, `lastTickEndedAt` is fresh, so the gap check rejects the woken loop regardless of the pulled-forward `nextRunAt`. The director's inbox is explicitly gap-exempt ("a queued prompt runs as soon as the previous one finishes"), and a per-role prompt is the same class of user request — the asymmetry was an oversight, not a throttle (a wake is one explicit demand, not a cadence change).
 
-**Fix:** `clearBackoff` stamps `wokenAt: now` (LoopState, persisted), and `isEligible` exempts the min gap when the wake is newer than the last tick's end. Self-clearing: the woken tick's own end re-stamps `lastTickEndedAt` past `wokenAt`, so the ordinary gap re-arms without a separate erase and a stale wake cannot exempt later windows.
+**Fix:** `clearBackoff` stamps `wokenAt: now` (LoopState, persisted), and `isEligible` exempts the min gap when the wake is newer than the last tick's end. Self-clearing: the woken tick's own end re-stamps `lastTickEndedAt` past `wokenAt`, so the ordinary gap re-arms without a separate erase and a stale wake cannot exempt later windows. (Superseded in part the same day: a queued per-role prompt no longer relies on its auto-wake at all — the queue itself makes the loop due, see the 2026-09-25 wake-clobber entry above.)
 
 **Validation gap:** no-fake — confirming it needed a slow-clock wake fixture that did not exist: the existing e2e wake test seeded `lastTickEndedAt` an hour in the past precisely to dodge the min-gap gate (its own comment says so), and fastConfig zeroes the interval, so the suite never exercised wake against a live gap.
 

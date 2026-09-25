@@ -27,7 +27,9 @@ interface EligibilityOptions {
   once?: boolean;
 }
 
-/** Should this loop tick now? Exported for tests. */
+/** Should this loop tick now? `inboxCount` is the calling loop's own queued-prompt count
+ * (the director's queue for the director, the per-role queue for everyone else) — see the
+ * inbox check below. Exported for tests. */
 export function isEligible(
   runner: LoopRunner,
   now: number,
@@ -51,9 +53,21 @@ export function isEligible(
   // session and worktree: resume it promptly on restart instead of holding it for a full
   // interval — the min gap below throttles scheduled ticks, not recovery. nextRunAt still
   // gates cut-off resumes, which deliberately wait one interval from their compacted context.
+  // A queued prompt never preempts this gate: a resuming tick assembles buildResumePrompt
+  // and does not dequeue the per-role queue, so an early run would only resume sooner than
+  // its deliberate wait — the prompt is consumed by the fresh tick the inbox check below
+  // makes due the moment the resume finishes.
   if (s.resumePending) {
     return now >= s.nextRunAt ? { run: true, reason: "resume" } : { run: false };
   }
+
+  // A queued per-role prompt is due on its own existence, exactly like the director's inbox:
+  // no min-gap, no backoff, no scheduled clock. The queue is the durable record of the
+  // demand, so it survives every race a wake marker cannot — a wake consumed while a tick
+  // is in flight is overwritten by that tick's end-save (loop.ts's wake() contract), but the
+  // prompt file it enqueued is not, and this check picks the demand up on the first poll
+  // after the tick ends.
+  if (inboxCount > 0) return { run: true, reason: "inbox" };
 
   // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates scheduled ticks and
   // "main moved" early wakes — resolved here so a live-reloaded config applies. An operator
@@ -64,8 +78,9 @@ export function isEligible(
     : configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000;
   const sinceLast = now - (s.lastTickEndedAt ?? 0);
   // An operator wake newer than the gap window's opening tick overrides the interval
-  // (LoopState.wokenAt): "try again now" — or the auto-wake a queued per-role prompt
-  // sends — must not silently wait out the remaining slow clock it ticked inside.
+  // (LoopState.wokenAt): an explicit "try again now" with an empty queue must not silently
+  // wait out the remaining slow clock it ticked inside — a queued prompt carries its own
+  // due-ness in the inbox check above, so it never depends on this stamp surviving.
   const woken = s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0);
   if (sinceLast < minGap && !woken) return { run: false };
   // Once mode's clock override, second half: a raised backoffSeconds means nextRunAt is a
