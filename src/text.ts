@@ -2,9 +2,10 @@ import path from "node:path";
 
 /** Shared text-shaping helpers for human-facing one-line text — the observability layer's
  * display labels (live progress, transcripts, tool-call descriptions), tick commit subjects and
- * body fields, and build-check reason lines — plus number and time formats: whitespace
- * collapsing, ellipsis truncation, compact token counts, abbreviated commit hashes, plain-
- * decimal integer parsing, and zero-padded local date/time parts. Presentation only:
+ * body fields, and build-check reason lines — plus number formats: whitespace collapsing,
+ * ellipsis truncation, compact token counts, abbreviated commit hashes, and plain-decimal
+ * integer parsing. (Local date/time formatting and calendar-day arithmetic live in
+ * datetime.ts.) Presentation only:
  * depends on node built-ins alone, so any layer (harness or observer) can import it without
  * reaching into another module's internals — and the collapse/truncation/compaction/
  * abbreviation semantics live in exactly one place instead of drifting per consumer. */
@@ -212,47 +213,6 @@ export function rateLimitHoldPhrase(holdMs: unknown, escalation: unknown): strin
   const span = shortSpanPhrase(ms);
   const relapse = Number(escalation ?? 0);
   return `for ${span}${relapse > 0 ? ` (relapse ${relapse})` : ""}`;
-}
-
-/** Zero-pad an integer to two digits — the clock and calendar components every local-time
- * display in the harness renders through (transcript run separators, the status table's last-
- * tick cell, the daily-budget day stamp), so zero-padding cannot drift per consumer. */
-export function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-/** Calendar date as `YYYY-MM-DD` in local time — shared by the transcript run separators,
- * the daily-budget day stamp (todayStamp), and the usage report's per-day buckets, which must
- * all agree on what counts as one day. */
-export function formatDate(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-/** Wall-clock time as zero-padded `HH:MM:SS` in local time — shared by the transcript run
- * separators and the status table's last-tick cell. */
-export function formatTime(d: Date): string {
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-}
-
-/** Local midnight of the day `offsetFromToday` days before `now` (0 = today): the day-count
- * arithmetic the usage report and the failure digest share, so their windows select the same
- * calendar days. The Date constructor handles month/year edges; `now` is passed explicitly so
- * every day in one window derives from the same instant. */
-export function dayAt(offsetFromToday: number, now: Date): Date {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - offsetFromToday);
-}
-
-/** `N days`, singular at 1 — the window label both report headers render, so a one-day window
- * reads the same on either surface. */
-export function dayLabel(days: number): string {
-  return `${days} day${days === 1 ? "" : "s"}`;
-}
-
-/** The report header both renderers print: the window's day-key bounds, its length in days
- * (singular at 1), and the event log it was read from. The failure digest appends its own tick
- * count. */
-export function reportWindow(from: string, to: string, days: number): string {
-  return `Window: ${from} → ${to} (${dayLabel(days)}) · source: events.jsonl (rotated at 16 MB)`;
 }
 
 /** One-line description of a tool call from its name and args — shared by live progress data

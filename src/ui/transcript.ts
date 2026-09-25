@@ -1,6 +1,7 @@
 import { parsePiEventLine } from "../pi-event-line.js";
 import { statRoleLog, type TailState, withTail } from "./tail.js";
-import { collapseWhitespace, describeToolCall, formatDate, formatTime, truncate } from "../text.js";
+import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
+import { formatDate, formatTime } from "../datetime.js";
 
 /** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its
  * run's separator) or a lone retry warning / run separator. Exported because transcript-tail.ts

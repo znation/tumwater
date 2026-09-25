@@ -32,7 +32,7 @@ export function atLocalTs(daysAgo: number, hour = 12): number {
 }
 
 /** The local-day key `YYYY-MM-DD` the report/digest collectors bucket by, built from raw
- * local date parts as a test-local oracle — never through text.ts's formatDate — so a drift
+ * local date parts as a test-local oracle — never through datetime.ts's formatDate — so a drift
  * in the collector's day keying fails an assertion instead of matching its own format. */
 export function dayKey(ms: number): string {
   const d = new Date(ms);
@@ -52,7 +52,7 @@ export function writeEvents(root: string, lines: unknown[]): void {
 
 /** Local wall-clock rendering of an epoch-ms timestamp as `YYYY-MM-DD HH:MM:SS` — the same
  * shape the transcript's run separators print. Test-local oracle: built from raw local date
- * parts, never through text.ts's formatDate/formatTime, so the transcript renderers stay
+ * parts, never through datetime.ts's formatDate/formatTime, so the transcript renderers stay
  * pinned against an implementation-independent expectation. */
 export function expectedTimestamp(ts: number): string {
   const d = new Date(ts);

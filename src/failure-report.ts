@@ -4,7 +4,8 @@
  * reads — so the byte bound argued at collection holds here unchanged. */
 import type { TickResult } from "./types.js";
 import { collectFailureReport, type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
-import { dayLabel, formatTime, reportWindow, shortSha, formatDate } from "./text.js";
+import { shortSha } from "./text.js";
+import { dayLabel, formatDate, formatTime, reportWindow } from "./datetime.js";
 
 /** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
  * The CLI keeps the usage report's 14-day default; the role reads one day so a cluster

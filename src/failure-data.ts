@@ -8,7 +8,7 @@
 import type { HarnessEvent, TickResult } from "./types.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
-import { dayAt, formatDate } from "./text.js";
+import { dayAt, formatDate } from "./datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N

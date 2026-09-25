@@ -11,7 +11,7 @@ import { readTextOrNull } from "./files.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
 import { fenceTracker, sectionLines } from "./backlog.js";
-import { dayAt, formatDate } from "./text.js";
+import { dayAt, formatDate } from "./datetime.js";
 
 /** One day of a usage report: the local calendar day key plus what the fleet did on it.
  * `ticksByRole` counts tick_end events per loop id (role ids — works for custom loops too);

@@ -11,7 +11,7 @@ import { enqueueLanding } from "../src/land-queue.js";
 import { pauseFleet, pausedRoles } from "../src/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { runTui } from "../src/ui/tui.js";
-import { formatDate } from "../src/text.js";
+import { formatDate } from "../src/datetime.js";
 import { atLocalTs as atNoon } from "./util.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
 

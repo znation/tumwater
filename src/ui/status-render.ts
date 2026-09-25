@@ -3,7 +3,8 @@ import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
 import { budgetGate, dailyCost, fleetDailyCost, budgetReached } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
-import { clipToWidth, compactTokens, formatTime, pad2, usd } from "../text.js";
+import { clipToWidth, compactTokens, usd } from "../text.js";
+import { formatTime, pad2 } from "../datetime.js";
 import {
   buildBadge,
   budgetBadge,

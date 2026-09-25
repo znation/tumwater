@@ -9,7 +9,7 @@
 
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, TickResult } from "./types.js";
-import { formatDate } from "./text.js";
+import { formatDate } from "./datetime.js";
 
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other
  * wall-clock display in the harness (lastTickCell). */

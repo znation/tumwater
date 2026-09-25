@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { formatDate } from "./text.js";
+import { formatDate } from "./datetime.js";
 import { isJsonObject } from "./json-object.js";
 import {
   ensureParentDir,

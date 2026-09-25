@@ -2,7 +2,8 @@
  * bounded Markdown the CLI prints and the TUI usage pane reuses. Pure function of the data —
  * no I/O, no clock reads — so the bounds argued at collection hold here unchanged. */
 import type { ReportData, ReportDay } from "../report-data.js";
-import { compactTokens, reportWindow, usd } from "../text.js";
+import { compactTokens, usd } from "../text.js";
+import { reportWindow } from "../datetime.js";
 
 // The windowed tail read (and the REPORT_*_DAYS bounds it serves) moved to core
 // event-window.ts so the failure digest can share it without a core→ui import. Re-exported
