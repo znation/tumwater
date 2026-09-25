@@ -78,6 +78,14 @@ function scheduleBackoff(s: LoopState, ladder: BackoffConfig): void {
   s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
 }
 
+/** Schedule the loop's next tick at its minimum interval — the role-resolved config's
+ * minTickIntervalSeconds (a per-role slow clock), converted seconds→ms here so every outcome
+ * arm that shares this cadence cannot drift apart. The productive-side counterpart of
+ * scheduleBackoff: together the two own the whole "when does this loop run again" decision. */
+function scheduleAtMinInterval(s: LoopState, cfg: TumwaterConfig): void {
+  s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
+}
+
 /** Backoff ladder for failed ticks (`error` results). The idle ladder prices hour-long model
  * runs — its cap exists so a loop that keeps finding nothing stops burning model time. A tick
  * that fails (a broken toolchain, a dead pi subprocess) often never reaches the model, so it
@@ -173,16 +181,16 @@ export function applyTickOutcome(
     // The role committed new work, so the note about its discarded change has been delivered.
     s.conflictDiscard = undefined;
     s.backoffSeconds = 0;
-    s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
+    scheduleAtMinInterval(s, cfg);
   } else if (outcome.result === "rejected") {
     // The reviewer objected and the gate already reset the branch: the author should address
     // the recorded reasons on its next eligible tick, not sleep through them — schedule like
     // a change without counting a commit (nothing landed).
     s.backoffSeconds = 0;
-    s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
+    scheduleAtMinInterval(s, cfg);
   } else if (outcome.result === "skipped") {
     // Director idles until the inbox has work; no backoff bookkeeping.
-    s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
+    scheduleAtMinInterval(s, cfg);
   } else if (outcome.result === "aborted") {
     // Shutdown, not a verdict about the project: resume promptly on restart. The pi
     // session and the worktree's uncommitted edits were left in place, so the next tick
@@ -231,7 +239,7 @@ export function applyTickOutcome(
     // would cycle forever, so after CUT_OFF_RESUME_LIMIT resumes the loop gives up on it
     // and falls back to a fresh tick with normal backoff (its prompt carrying the streak).
     s.resumePending = true;
-    s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
+    scheduleAtMinInterval(s, cfg);
   } else if (OBSERVER_ROLES.has(role)) {
     // An observer's no_change is a success ("checked, all well"), not an idle verdict: it must
     // not climb the idle ladder, which would punish the role monotonically for the product
@@ -239,7 +247,7 @@ export function applyTickOutcome(
     // (plans/observer-roles.md). The error/user_aborted arms above are untouched — a broken
     // toolchain and a deliberate operator stop still back off like any other role.
     s.backoffSeconds = 0;
-    s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
+    scheduleAtMinInterval(s, cfg);
   } else {
     scheduleBackoff(s, cfg.idleBackoff);
   }
