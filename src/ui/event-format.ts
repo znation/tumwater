@@ -107,8 +107,11 @@ export function formatEvent(e: HarnessEvent): string {
     case "build_check":
       // The deterministic check's cost, per run: scope names which gate paid (the pre-merge
       // review gate, the red-main baseline check of main itself, or the merge lock's
-      // post-rebase re-check of the tree about to land).
-      return `${time} ${loop} build check (${e.scope}): npm ${e.script} ${e.status}${elapsed(e.durationMs)}`;
+      // post-rebase re-check of the tree about to land). script carries the npm script name
+      // for an npm check but the FULL configured command otherwise (checkScriptName in
+      // build-check.ts), so no "npm" prefix is asserted here — the bare name reads correctly
+      // for both kinds ("npm test" would misrender a cargo or make-based project's check).
+      return `${time} ${loop} build check (${e.scope}): ${e.script} ${e.status}${elapsed(e.durationMs)}`;
     case "budget_paused": {
       // Routine state change, like counters_reset — no warning prefix. A configured fallback
       // the gate refused is named here: it is the whole reason the fleet stopped instead of
