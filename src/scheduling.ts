@@ -1,7 +1,7 @@
 /** Tick-scheduling POLICY, split out of orchestrator.ts (the poll-loop runtime that calls it):
  * pure decisions over a runner's state and the world — when a loop may tick, in what order
- * eligible loops take slots, whether landed work or an open backlog defers idle maintenance,
- * and when the once-per-day session prune is due. No I/O, no process state: every function
+ * eligible loops take slots, and whether landed work or an open backlog defers idle
+ * maintenance. No I/O, no process state: every function
  * takes plain data (a LoopRunner's observable fields, timestamps, commit subjects) so the
  * policy is unit-tested without running an orchestrator, and a future change to how ticks are
  * driven (e.g. the merge queue's async landing, PLANS.md 3/5) reuses these decisions instead of
@@ -152,12 +152,4 @@ export function deferTick(
     (workBacklogOpen || !workLandedSinceLast) &&
     !deferralExpired(s, now)
   );
-}
-
-/** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
- * has passed since the last prune (or no prune has run yet). */
-export function dueForPrune(lastPruneAt: number | null, now: number, retentionDays: number): boolean {
-  if (retentionDays <= 0) return false; // 0 disables pruning — never due.
-  if (lastPruneAt === null) return true; // Never pruned yet — due immediately.
-  return now - lastPruneAt >= 24 * 3600 * 1000;
 }

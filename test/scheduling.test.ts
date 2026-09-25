@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFER_MAX_MS, deferTick, dueForPrune, fairOrder, isEligible, workLanded } from "../src/scheduling.js";
+import { DEFER_MAX_MS, deferTick, fairOrder, isEligible, workLanded } from "../src/scheduling.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig } from "../src/config.js";
@@ -9,7 +9,7 @@ import { makeLoopRunner } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 /** Unit tests for the pure tick-scheduling policy in src/scheduling.ts — eligibility, fair
- * order, work-landed/deferral, and the once-per-day prune gate. Moved out of
+ * order, and work-landed/deferral. Moved out of
  * orchestrator.e2e.test.ts, which now covers only the orchestrator runtime, so the policy module
  * has the module-named test file the rest of src/ follows and its pure tests run in their own
  * parallel process. */
@@ -274,19 +274,6 @@ test("deferTick: a deferral that outlasts DEFER_MAX_MS stops deferring (the latc
   assert.equal(deferTick(base, "organize", true, true, 1_000_000 + DEFER_MAX_MS), false);
   // A never-scheduled role (nextRunAt 0) is never expired by the cap.
   assert.equal(deferTick({ ...base, nextRunAt: 0 }, "organize", false, true, 1_000_000 + DEFER_MAX_MS), true);
-});
-
-test("dueForPrune: the once-per-day gate with fake timestamps", () => {
-  const day = 24 * 3600 * 1000;
-  // Due when a full day has passed since the last prune.
-  assert.equal(dueForPrune(1_000, 1_000 + day, 7), true);
-  // Not due within a day — one millisecond short is still inside the window.
-  assert.equal(dueForPrune(1_000, 1_000 + day - 1, 7), false);
-  // Never due at retention 0, whether or not a prune has run before.
-  assert.equal(dueForPrune(null, Number.MAX_SAFE_INTEGER, 0), false);
-  assert.equal(dueForPrune(1_000, 1_000 + day * 2, 0), false);
-  // Never pruned (null) → immediately due when retention is positive.
-  assert.equal(dueForPrune(null, 1_000, 7), true);
 });
 
 test("once mode overrides the scheduled clock, not just the min gap", () => {

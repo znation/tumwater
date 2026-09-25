@@ -5,7 +5,6 @@ import { applyFallbackModel, fallbackPair } from "./config-views.js";
 import { newLiveConfigReload } from "./config-live.js";
 import {
   deferTick,
-  dueForPrune,
   fairOrder,
   isEligible,
 } from "./scheduling.js";
@@ -41,7 +40,7 @@ import {
   settleAbortedVetted,
 } from "./landing-drain.js";
 import { logEvent, warnEvent } from "./events.js";
-import { pruneOldFiles, removeQuiet } from "./files.js";
+import { removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { inboxSize } from "./inbox.js";
 import { OnceRound } from "./once-round.js";
@@ -52,12 +51,9 @@ import {
 } from "./operator-requests.js";
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
 import { Semaphore } from "./semaphore.js";
-import {
-  orchestratorStatePath,
-  sessionsRootDir,
-  toolOutputDir,
-} from "./paths.js";
+import { orchestratorStatePath } from "./paths.js";
 import { type Redeployer } from "./redeploy.js";
+import { RetentionPruner } from "./retention.js";
 import { WorkLandedCache } from "./work-landed-cache.js";
 import {
   drainInFlightWork,
@@ -157,17 +153,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     ...(redeploy ? { build: redeploy.build.sha } : {}),
   });
 
-  // 0 disables pruning — the same convention as quietTimeoutSeconds. (With a positive N,
-  // pruneOldFiles deletes everything older than N days; JSON has no "keep forever" value, so
-  // 0 is the off switch rather than "delete all sessions now".)
-  if (config.sessionRetentionDays > 0) {
-    const pruned =
-      pruneOldFiles(sessionsRootDir(root), config.sessionRetentionDays) +
-      pruneOldFiles(toolOutputDir(root), config.sessionRetentionDays);
-    if (pruned > 0) {
-      warnEvent(root, "harness", `pruned ${pruned} old pi session/tool-output file(s)`);
-    }
-  }
+  // Session retention (src/retention.ts owns the whole concern): construction runs the
+  // startup prune, seeding the once-per-day gate so an unchanged fleet prunes at most once
+  // per day — and 0 disables pruning, the same convention as quietTimeoutSeconds.
+  const retentionPruner = new RetentionPruner(root, config.sessionRetentionDays);
 
   // In-flight tasks, split by who requested them: the redeploy drain caps role ticks at its
   // window but waits for a director tick without one — an explicit human prompt outranks the
@@ -226,11 +215,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // budget gate's prevGate it is the gate's own memory (deadline, relapse count), not just the
   // last value for edge-triggered events. In memory only: a restart starts open.
   let rateHold: RateLimitHold = RATE_LIMIT_OPEN;
-  // Live session-retention bookkeeping: the window last applied and when we last pruned —
-  // both seeded from the startup prune above, so a mid-run edit re-prunes immediately while
-  // an unchanged fleet prunes at most once per day (dueForPrune).
-  let lastRetention = config.sessionRetentionDays;
-  let lastPruneAt: number | null = config.sessionRetentionDays > 0 ? Date.now() : null;
   // The primary checkout's branch, for the edge-triggered divergence warning: the fleet
   // resolved its target branch at startup, and a human checking out something else mid-run
   // must not silently change what the fleet merges into — every role worktree is based on
@@ -262,31 +246,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // owns the last-known-good retention and the edge-triggered warnings/events around it).
       const liveConfig = liveReload.poll();
 
-      // Live session retention (the last restart-only setting): a mid-run edit to the window
-      // re-prunes immediately; independently of edits, an unchanged fleet prunes at most once
-      // per day so a never-restarted fleet still honors its window. Both paths log the startup
-      // warning shape only when files were actually deleted — quiet polls stay silent. The live
-      // config (last-known-good while the file is broken or missing) drives both checks, like the
-      // budget gate.
-      const retention = liveConfig.sessionRetentionDays;
-      if (retention !== lastRetention || dueForPrune(lastPruneAt, Date.now(), retention)) {
-        // A change to a positive window prunes immediately even inside the daily window — an
-        // operator tightening the window wants it applied now, not at tomorrow's pass. Every
-        // distinct value change logs one event (like its maxConcurrent sibling) so live edits
-        // are visible in logs/TUI/GUI even when nothing was pruned; pruning itself still runs
-        // only for a positive window.
-        if (retention !== lastRetention) {
-          logEvent(root, { loop: "harness", type: "retention_changed", from: lastRetention, to: retention });
-        }
-        const pruneNow = Date.now();
-        if (retention > 0) {
-          const pruned =
-            pruneOldFiles(sessionsRootDir(root), retention) + pruneOldFiles(toolOutputDir(root), retention);
-          if (pruned > 0) warnEvent(root, "harness", `pruned ${pruned} old pi session/tool-output file(s)`);
-          lastPruneAt = pruneNow;
-        }
-        lastRetention = retention;
-      }
+      // Live session retention (the last restart-only setting): the edge-triggered
+      // retention_changed event, the once-per-day gate, and the prune itself live in
+      // src/retention.ts. The live config (last-known-good while the file is broken or
+      // missing) drives the check, like the budget gate.
+      retentionPruner.poll(root, liveConfig.sessionRetentionDays);
 
       // Consume CLI request markers: a reset-counters request, a wake request, and per-role
       // abort requests.
