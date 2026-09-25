@@ -73,6 +73,32 @@ test("currentBranch reads the HEAD file: symref, detached HEAD, and linked-workt
   assert.equal(await currentBranch(wt), branchName("clean"));
 });
 
+test("an unreadable HEAD file falls back to the spawn instead of throwing", async () => {
+  const repo = makeRepo();
+  // With the HEAD file gone the fast-path reader cannot answer, so the spawn decides:
+  // `git symbolic-ref` fails on the HEAD-less repo and the caller gets the same null the
+  // detached case reports — the every-poll branch watch must see "cannot tell", never a
+  // thrown read error.
+  const head = path.join(repo, ".git", "HEAD");
+  const saved = fs.readFileSync(head, "utf8");
+  fs.rmSync(head);
+  assert.equal(await currentBranch(repo), null);
+  fs.writeFileSync(head, saved);
+  assert.equal(await currentBranch(repo), "main", "a restored HEAD answers from the file again");
+
+  // The same through a linked worktree: the gitdir its .git pointer names has no HEAD, so
+  // the read fails inside the pointed-at directory and the spawn decides there too.
+  const wt = await ensureWorktree(repo, "clean", "main");
+  const pointer = fs.readFileSync(path.join(wt, ".git"), "utf8").trim();
+  const gitdir = path.resolve(wt, pointer.slice("gitdir:".length).trim());
+  const wtHead = path.join(gitdir, "HEAD");
+  const wtSaved = fs.readFileSync(wtHead, "utf8");
+  fs.rmSync(wtHead);
+  assert.equal(await currentBranch(wt), null);
+  fs.writeFileSync(wtHead, wtSaved);
+  assert.equal(await currentBranch(wt), branchName("clean"));
+});
+
 test("ensureWorktree recovers from a deleted worktree directory", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "clean", "main");
