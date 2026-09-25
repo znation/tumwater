@@ -112,8 +112,8 @@ export function eventRole(ev: HarnessEvent): string {
 }
 
 /** Read the last `limit` events (best-effort; skips malformed lines).
- * A non-positive limit reads as an empty window — `[]` — matching readTranscriptTail's
- * zero-boundary semantics (the raw `lines.slice(-limit)` below would not: `slice(-0)` is
+ * A limit that is not a positive number reads as an empty window — `[]` — matching
+ * readTranscriptTail's zero-boundary semantics (the raw `lines.slice(-limit)` below would not: `slice(-0)` is
  * `slice(0)`, which returns the whole scanned window, and a negative limit makes `slice`
  * positive-started, returning the window minus its first `-limit` lines).
  * Observers poll this every second and only ever need the tail, so for logs past the small-file
@@ -121,7 +121,10 @@ export function eventRole(ev: HarnessEvent): string {
  * rescanning the whole log: per-poll I/O is bounded by what `limit` lines occupy, not by how far
  * the log has grown (the backwards chunk scan lives in files.readTailText). */
 export function readEvents(root: string, limit = 200): HarnessEvent[] {
-  if (limit <= 0) return []; // slice(-0) is slice(0): the guard must precede the scan and the slice.
+  // A non-positive guard (`limit <= 0`) passes NaN — every comparison with NaN is false —
+  // and slice(-NaN) is slice(0), the whole scanned window; the sibling readTranscriptTail
+  // and readTranscript guards are `limit > 0` positives-checks for exactly this reason.
+  if (!(limit > 0)) return []; // NaN, 0, negatives: none — and the guard must precede the scan and the slice.
   const file = eventsLogPath(root);
   let newlines = 0;
   const text = readTailText(file, (chunk) => {

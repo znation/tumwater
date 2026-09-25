@@ -7,6 +7,40 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `readEvents`' NaN limit passes the `limit <= 0` guard and returns the whole log instead of none: every comparison with NaN is false (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** today's earlier fix guarded `readEvents(root, limit)` with
+`if (limit <= 0) return []` — a form NaN slips through, because every comparison
+with NaN is false (`NaN <= 0` is false). A NaN limit then reached
+`lines.slice(-limit)`, where `slice(-NaN)` is `slice(0)`: the whole scanned
+window — the exact widening the same-day sibling entry fixed for limit 0 and
+negatives. The scan compounds it: the arming condition `newlines >= limit + 1`
+compares against NaN too, so it never fires and the tail-scan reads the entire
+file. No shipped caller passes NaN (the CLI's `parseCountFlag` rejects it, the
+default is 200, the TUI's budget is clamped to ≥ 3), but the guard is the
+function's stated boundary and its siblings — readTranscriptTail and
+readTranscript — already use `limit > 0 ? … : []` positive-checks that send NaN
+to `[]`; only events.ts used the early-return form.
+
+**Reproduce:** a 10-event log: `readEvents(dir, NaN)` → all 10 events. The new
+test/events.test.ts case "readEvents honors a non-numeric limit as an empty
+window" asserts `[]` and failed against the pre-fix module (10 events,
+machine-run 2026-09-25).
+
+**Cause:** the guard tested the wrong polarity — `limit <= 0` (a non-positive
+check) instead of `!(limit > 0)` (a positive check) — leaving the one numeric
+value that is neither positive nor non-positive unguarded.
+
+**Fix:** src/events.ts now guards `if (!(limit > 0)) return []` (with the NaN
+rationale in a comment) and the doc states "a limit that is not a positive
+number" instead of "non-positive". Pinned by the new NaN regression test.
+
+**Validation gap:** unclear-invariant — the recorded contract pinned the
+non-positive boundary only, and confirming the NaN behavior as a bug rather
+than out-of-contract garbage input required reconstructing the intended
+boundary from the siblings' `limit > 0` ternaries first; no test had ever
+passed a non-integer limit.
+
 ### `readEvents`' non-positive limit returns a wrong window instead of none: `slice(-0)` is `slice(0)` and a negative limit is a positive-start `slice(k)` (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `readEvents(root, limit)`'s contract is the last `limit` events. A `limit`

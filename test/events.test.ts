@@ -87,6 +87,16 @@ test("readEvents honors non-positive limits: slice(-0) must not widen the window
   assert.deepEqual(readEvents(dir, -3), []);
 });
 
+// NaN is not <= 0 (every comparison with NaN is false), so a `limit <= 0` guard passes it —
+// and slice(-NaN) is slice(0), the whole window, exactly the widening the sibling entry
+// fixed for 0 and negatives. The non-numeric boundary reads as none, like every
+// non-positive one: with 10 events the pre-NaN-guard module returned all 10.
+test("readEvents honors a non-numeric limit as an empty window: NaN must not pass the guard", () => {
+  const dir = tmpdir();
+  for (let i = 1; i <= 10; i++) logEvent(dir, { loop: "x", type: "warning", message: `event ${i}` });
+  assert.deepEqual(readEvents(dir, NaN), []);
+});
+
 // Reference implementation: read the whole file (what readEvents used to do).
 function referenceTail(root: string, limit: number) {
   const lines = fs.readFileSync(eventsLogPath(root), "utf8").split("\n").filter(Boolean);
