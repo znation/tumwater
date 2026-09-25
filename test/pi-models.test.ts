@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../src/pi-models.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 /** A models.json shaped like the one on a local-model machine: an unpriced model (no cost
  * field), an all-zero-cost model, and a paid one. */

@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readLockPid, withLock, withSyncLock } from "../src/lock.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
   const dir = path.join(tmpdir(), "pid-read.lock");

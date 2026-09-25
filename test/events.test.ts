@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { logEvent, parseEventLine, readEvents, subscribeEvents } from "../src/events.js";
 import { eventsLogPath } from "../src/paths.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 test("logEvent appends and readEvents tails in order", () => {
   const dir = tmpdir();

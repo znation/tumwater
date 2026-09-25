@@ -28,7 +28,15 @@ import {
 import { enqueueLanding, queueDepth } from "../src/land-queue.js";
 import { setRef } from "../src/git.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
-import { fastConfig, landHead, landWork, makeFastRepo, makeRepo, sh, startLiveOrchestrator, tmpdir, makeLoopRunner, eventsOfType } from "./util.js";
+import {
+  fastConfig,
+  landHead,
+  makeFastRepo,
+  startLiveOrchestrator,
+  makeLoopRunner,
+  eventsOfType,
+} from "./util.js";
+import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";

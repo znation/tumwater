@@ -9,7 +9,7 @@ import type { StatusSnapshot } from "../src/ui/status.js";
 import { applyLandingOutcome, applyTickOutcome, freshLoopState } from "../src/state.js";
 import { defaultConfig } from "../src/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import {
   DEFAULT_BUDGET,

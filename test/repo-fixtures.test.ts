@@ -7,11 +7,11 @@ import { test } from "node:test";
 import { strict as assert } from "node:assert";
 
 test("a test process that used tmpdir() leaves no temp dir behind at exit", () => {
-  const utilPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "util.js");
+  const fixturesPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "repo-fixtures.js");
   const script = `
     import fs from "node:fs";
     import path from "node:path";
-    import { tmpdir, makeRepo } from ${JSON.stringify(pathToFileURL(utilPath).href)};
+    import { tmpdir, makeRepo } from ${JSON.stringify(pathToFileURL(fixturesPath).href)};
     const dir = tmpdir();
     const repo = makeRepo();
     fs.writeFileSync(path.join(repo, "leftover.txt"), "x");

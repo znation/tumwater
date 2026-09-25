@@ -22,7 +22,7 @@ import { autoRestartStampPath, mirrorWorktreePath, stagingDir, stagingRootDir } 
 import { initProject } from "../src/init.js";
 import { NOT_INITIALIZED_MESSAGE } from "../src/readiness.js";
 import { runStartupProblem } from "../src/startup-gate.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 
 // The self-redeploy policy (src/redeploy.ts): drive the state machine with scripted effects so

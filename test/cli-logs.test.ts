@@ -5,7 +5,8 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { submitPrompt } from "../src/inbox.js";
 import { piLogPath } from "../src/paths.js";
-import { expectedTimestamp, makeRepo } from "./util.js";
+import { expectedTimestamp } from "./util.js";
+import { makeRepo } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
 

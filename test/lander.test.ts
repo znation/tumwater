@@ -10,7 +10,8 @@ import { freshLoopState, saveLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import type { LoopState } from "../src/types.js";
-import { eventsOfType, sh, tmpdir } from "./util.js";
+import { eventsOfType } from "./util.js";
+import { sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import {
   ROLE,

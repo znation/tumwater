@@ -15,7 +15,7 @@ import { recordDailyCost } from "../src/budget.js";
 import { initProject } from "../src/init.js";
 import { landingStatePath, landQueueDir, orchestratorStatePath } from "../src/paths.js";
 import { writeJsonFile } from "../src/json-files.js";
-import { makeRepo, tmpdir, writeConfig } from "./util.js";
+import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();

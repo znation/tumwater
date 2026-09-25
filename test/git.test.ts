@@ -43,7 +43,8 @@ import {
   rebaseOntoMainLeaveConflicts,
 } from "../src/merge.js";
 import { branchName } from "../src/paths.js";
-import { makeRepo, pathPrepend, sh, tmpdir, writeScript } from "./util.js";
+import { pathPrepend, writeScript } from "./util.js";
+import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 test("isGitRepo and hasCommits", async () => {
   const repo = makeRepo();

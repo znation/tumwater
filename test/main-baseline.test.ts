@@ -5,7 +5,8 @@ import path from "node:path";
 import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
 import { checkMainBaseline, noteGreenBaseline } from "../src/main-baseline.js";
 import { defaultConfig } from "../src/config.js";
-import { baselineFixture, makeRepo, runsOf, sh, tmpdir, worktreeAt } from "./util.js";
+import { baselineFixture, runsOf } from "./util.js";
+import { makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental

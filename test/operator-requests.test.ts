@@ -16,7 +16,8 @@ import {
   STATE_DIR,
 } from "../src/paths.js";
 import type { LoopRunner } from "../src/loop.js";
-import { eventsOfType, tmpdir } from "./util.js";
+import { eventsOfType } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 /** A recording stand-in for LoopRunner covering exactly the surface operator-requests.ts
  * touches: role, in-memory running flag, and the three mutators it calls. */

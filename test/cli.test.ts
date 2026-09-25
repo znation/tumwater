@@ -9,7 +9,7 @@ import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, queuedPrompts, submitPrompt, queuedRolePrompts, submitRolePrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { inboxDir } from "../src/paths.js";
-import { makeRepo, sh, tmpdir, writeConfig } from "./util.js";
+import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli, cliWithEnv } from "./cli-harness.js";
 

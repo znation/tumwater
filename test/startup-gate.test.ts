@@ -5,7 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { DETACHED_HEAD_MESSAGE, NOT_INITIALIZED_MESSAGE } from "../src/readiness.js";
 import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/startup-gate.js";
-import { makeRepo, sh } from "./util.js";
+import { makeRepo, sh } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 
 // `tumwater run`'s startup gate (src/startup-gate.ts) in-process: the one answer cmdRun fails

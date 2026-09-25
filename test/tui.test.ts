@@ -12,7 +12,8 @@ import { pauseFleet, pausedRoles } from "../src/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { runTui } from "../src/ui/tui.js";
 import { formatDate } from "../src/text.js";
-import { atLocalTs as atNoon, makeRepo, tmpdir } from "./util.js";
+import { atLocalTs as atNoon } from "./util.js";
+import { makeRepo, tmpdir } from "./repo-fixtures.js";
 
 
 /** A fake-TTY harness around runTui: no real terminal is involved. The isTTY flags are

@@ -6,7 +6,8 @@ import { newLiveConfigReload } from "../src/config-live.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { Semaphore } from "../src/semaphore.js";
-import { eventsOfType, makeLoopRunner, makeRepo, writeConfig } from "./util.js";
+import { eventsOfType, makeLoopRunner } from "./util.js";
+import { makeRepo, writeConfig } from "./repo-fixtures.js";
 
 function cloneConfig(c: TumwaterConfig): TumwaterConfig {
   return JSON.parse(JSON.stringify(c)) as TumwaterConfig;

@@ -14,7 +14,8 @@ import {
   submitPrompt,
   submitRolePrompt,
 } from "../src/inbox.js";
-import { eventsOfType, tmpdir } from "./util.js";
+import { eventsOfType } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 test("inbox is FIFO and dequeues to empty", () => {
   const dir = tmpdir();

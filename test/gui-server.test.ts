@@ -5,7 +5,8 @@ import net from "node:net";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize } from "../src/inbox.js";
-import { makeRepo, startLocalGui } from "./util.js";
+import { startLocalGui } from "./util.js";
+import { makeRepo } from "./repo-fixtures.js";
 
 // The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,
 // raw-socket framing edge cases, and dropped clients. Each test pins a survivability

@@ -16,7 +16,7 @@ import {
   type OrchestratorInfo,
 } from "../src/fleet-state.js";
 import { pausedRolesLockPath } from "../src/paths.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 test("isFleetPaused reads false with no .tumwater dir and no marker", () => {
   const root = tmpdir();

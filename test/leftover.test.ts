@@ -10,7 +10,8 @@ import { enqueueLanding, queuedLandings } from "../src/land-queue.js";
 import { landQueueDir, landingRefName } from "../src/paths.js";
 import { shortSha } from "../src/text.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { eventsOfType, makeRepo, sh, tmpdir } from "./util.js";
+import { eventsOfType } from "./util.js";
+import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 // Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that puts a commit a
 // previous tick left unlanded back on the durable land queue (land-queue speed 3c: the slot is

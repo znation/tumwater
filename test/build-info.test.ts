@@ -10,7 +10,7 @@ import {
   readBuildInfo,
   stampBuild,
 } from "../src/build-info.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 // Build provenance (src/build-info.ts): the stamp `npm run build` writes into dist/, and the
 // comparison against main that tells a self-hosting fleet whether it is running the code main

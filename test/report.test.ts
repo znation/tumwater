@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { collectReport, type ReportData } from "../src/report-data.js";
 import { renderReportMarkdown } from "../src/ui/report.js";
-import { atLocalTs as at, dayKey, makeRepo, tmpdir, writeEvents } from "./util.js";
+import { atLocalTs as at, dayKey, writeEvents } from "./util.js";
+import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts

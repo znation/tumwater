@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { readWindowEvents } from "../src/event-window.js";
-import { atLocalTs as tsDaysAgo, tmpdir } from "./util.js";
+import { atLocalTs as tsDaysAgo } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 // `readWindowEvents` scans the append-only event log BACKWARDS in 8 KB chunks and early-stops
 // once the oldest complete line in hand predates the window. The subtle parts — a line torn by

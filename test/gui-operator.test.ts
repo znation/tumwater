@@ -9,7 +9,8 @@ import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, 
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
 import { enqueueLanding } from "../src/land-queue.js";
-import { makeRepo, startLocalGui } from "./util.js";
+import { startLocalGui } from "./util.js";
+import { makeRepo } from "./repo-fixtures.js";
 
 // The GUI's operator controls, split out of gui.test.ts: the daily budget cap
 // (plans/daily-cost-budget.md) — its /api/status field, preformatted header badge,

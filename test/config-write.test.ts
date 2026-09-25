@@ -5,7 +5,7 @@ import path from "node:path";
 import { applyConfigRequest, setDailyBudgetUsd } from "../src/config-write.js";
 import { customLoopNames, defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { configRequestPath } from "../src/paths.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 // Tests for src/config-write.ts — the harness-mediated write paths split out of src/config.ts
 // (the budget setter behind both dashboards, and the director's config request file). Tests for

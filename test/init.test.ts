@@ -13,7 +13,7 @@ import {
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { VALIDATION_GAP_TAGS } from "../src/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 test("initProject creates and commits the harness files", async () => {
   const repo = makeRepo();

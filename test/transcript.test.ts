@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
-import { expectedTimestamp, tmpdir } from "./util.js";
+import { expectedTimestamp } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
 
 test("formatTranscript renders a run separator and an assistant turn", () => {

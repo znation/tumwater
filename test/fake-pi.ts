@@ -1,6 +1,7 @@
 import type { PiRunResult } from "../src/types.js";
 import { assistantLine } from "./pi-events.js";
-import { pathPrepend, tmpdir, writeScript } from "./util.js";
+import { pathPrepend, writeScript } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 import path from "node:path";
 
 // --- The fake pi shim (fakePi/fakePiIdle/recordingFakePi/piRunResult), split out of util.ts ---

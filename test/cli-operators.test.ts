@@ -15,7 +15,8 @@ import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/state.js";
 import { abortRequestPath, orchestratorStatePath, pausedPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { signalOrchestrator } from "../src/operator-commands.js";
-import { makeRepo, seedCounters, writeConfig } from "./util.js";
+import { seedCounters } from "./util.js";
+import { makeRepo, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 
 // --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---

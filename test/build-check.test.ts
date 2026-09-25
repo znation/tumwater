@@ -13,7 +13,8 @@ import { buildCheckSkipWarning } from "../src/build-check-events.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
-import { eventsOfType, buildCheckFixture, pathPrepend, sh, tmpdir, writeScript } from "./util.js";
+import { eventsOfType, buildCheckFixture, pathPrepend, writeScript } from "./util.js";
+import { sh, tmpdir } from "./repo-fixtures.js";
 
 /** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
 function groupAlive(pgid: number): boolean {

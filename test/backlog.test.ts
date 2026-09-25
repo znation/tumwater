@@ -12,7 +12,7 @@ import {
   plannedPlanEntries,
   plannedPlans,
 } from "../src/backlog.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 const PLANS_MD = `# Plans
 

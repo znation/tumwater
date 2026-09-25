@@ -28,7 +28,7 @@ import { exampleConfigPath } from "../src/paths.js";
 import { show, validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
-import { tmpdir, writeConfig } from "./util.js";
+import { tmpdir, writeConfig } from "./repo-fixtures.js";
 
 test("defaultConfig enables every role including director", () => {
   const config = defaultConfig();

@@ -18,7 +18,7 @@ import {
 } from "../src/land-queue.js";
 import { landQueueDir } from "../src/paths.js";
 import type { LandingEntry } from "../src/types.js";
-import { makeRepo } from "./util.js";
+import { makeRepo } from "./repo-fixtures.js";
 
 function entry(role: string, sha: string, tick = 1): LandingEntry {
   return { role, sha, tick, summary: `summary from ${role} #${tick}`, enqueuedAt: Date.now() };

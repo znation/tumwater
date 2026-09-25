@@ -6,7 +6,15 @@ import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/main-red.
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
-import { eventsOfType, harnessWarnings, baselineFixture, makeRepo, pathPrepend, runsOf, sh, tmpdir, worktreeAt, writeScript } from "./util.js";
+import {
+  eventsOfType,
+  harnessWarnings,
+  baselineFixture,
+  pathPrepend,
+  runsOf,
+  writeScript,
+} from "./util.js";
+import { makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,

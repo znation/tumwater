@@ -12,7 +12,8 @@ import { readEvents } from "../src/events.js";
 import { loadLoopState } from "../src/state.js";
 import { orchestratorStatePath, resetRequestPath } from "../src/paths.js";
 import { lanAddresses } from "../src/ui/gui.js";
-import { makeRepo, seedCounters, sh, tmpdir, writeConfig, writeScript, eventsOfType } from "./util.js";
+import { seedCounters, writeScript, eventsOfType } from "./util.js";
+import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli, cliWithEnv, exitCode, spawnCli } from "./cli-harness.js";
 

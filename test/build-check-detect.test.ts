@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 import {
   BUILD_CHECK_TIMEOUT_MS,
   detectBuildCheck,

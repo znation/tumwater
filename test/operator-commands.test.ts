@@ -25,7 +25,7 @@ import {
   resetRequestPath,
   wakeRequestPath,
 } from "../src/paths.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 /** Producer-side tests for the operator-intent protocol (src/operator-commands.ts). Its
  * consumer half is pinned in operator-requests.test.ts; until now these five CLI commands

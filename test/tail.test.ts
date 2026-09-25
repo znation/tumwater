@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { followFile, readCompleteLines, withTail, type TailState } from "../src/ui/tail.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 import { vanishOnOpen } from "./fs-faults.js";
 
 /** Poll until `pred` holds or the timeout elapses; returns whether it held. */

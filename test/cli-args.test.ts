@@ -13,7 +13,7 @@ import {
   parsePromptArgs,
 } from "../src/cli-args.js";
 import { allRoleIds } from "../src/roles.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 // src/cli-args.ts is the only module with no direct unit tests: until now every branch was
 // reached (slowly) through a spawned CLI child in test/cli.test.ts. These tests drive the

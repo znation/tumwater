@@ -13,7 +13,7 @@ import {
   spawnRunChild,
   superviseRun,
 } from "../src/supervisor.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 // The respawn loop behind `tumwater run` (src/supervisor.ts), driven with a scripted child so
 // the policy is pinned without spawning processes: respawn on the restart code, exit with any

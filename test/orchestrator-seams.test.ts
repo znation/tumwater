@@ -12,7 +12,7 @@ import { readEvents } from "../src/events.js";
 import { RATE_LIMIT_HOLD_BASE_MS, RATE_LIMIT_OPEN } from "../src/rate-limit-hold.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import type { TickOutcome } from "../src/types.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 // The orchestrator's exported unit-test seams (src/orchestrator.ts): the permit-holding
 // wrapper that times a role tick for the p75 redeploy window (and the p75 itself), the

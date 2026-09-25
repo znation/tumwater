@@ -26,7 +26,7 @@ import type { LoopState } from "../src/types.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
 import { OBSERVER_ROLES } from "../src/roles.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 /** Every field a fresh state has must hold its default value (extra junk keys are allowed). */
 function assertFreshFields(s: LoopState, role: string): void {

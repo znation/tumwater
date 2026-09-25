@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { OnceRound } from "../src/once-round.js";
-import { makeLoopRunner, makeRepo } from "./util.js";
+import { makeLoopRunner } from "./util.js";
+import { makeRepo } from "./repo-fixtures.js";
 
 function configWithRole(role: string, enabled: boolean): TumwaterConfig {
   const config = defaultConfig();

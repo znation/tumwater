@@ -8,7 +8,8 @@ import { renderFailureMarkdown } from "../src/failure-report.js";
 import { eventsLogPath } from "../src/paths.js";
 import { compactTokens } from "../src/text.js";
 import { initProject } from "../src/init.js";
-import { atLocalTs as atNoon, makeRepo, startLocalGui } from "./util.js";
+import { atLocalTs as atNoon, startLocalGui } from "./util.js";
+import { makeRepo } from "./repo-fixtures.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { test } from "node:test";
 import path from "node:path";
 import { orderByDuration, selectTestFiles, suiteGitEnv } from "../src/test-runner.js";
-import { tmpdir } from "./util.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
 function fakeDistDir(...files: string[]): string {

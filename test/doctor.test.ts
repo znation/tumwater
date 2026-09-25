@@ -25,7 +25,7 @@ import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { makeRepo, sh, tmpdir, writeConfig } from "./util.js";
+import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 
 // Unit coverage for the pre-flight environment check (src/doctor.ts): every check's ok/fail/warn
 // branches plus report composition and rendering. The binary checks take an explicit PATH so the
