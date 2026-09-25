@@ -1,12 +1,11 @@
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import { stampBuild } from "./build-info.js";
 import { clipBuildTail } from "./build-check.js";
 import { resolveFromNodeModules } from "./build-check-detect.js";
 import { ensureDir, removeTree } from "./files.js";
 import { stagingDir, stagingRootDir } from "./paths.js";
+import { execFileAsync } from "./process.js";
 import { shortSha } from "./text.js";
 
 /** Producing and swapping the compiled tree behind a self-redeploy (redeploy.ts): compile a
@@ -14,8 +13,6 @@ import { shortSha } from "./text.js";
  * place as dist/. The redeploy state machine decides WHEN this happens (red main, cooldown,
  * drain, block); this module owns HOW — the filesystem mechanics — so the scheduler's policy
  * reads without the staging and rename detail. Split out of redeploy.ts for that reason. */
-
-const execFileAsync = promisify(execFile);
 
 /** Hard cap on one compile of the harness; tsc on this codebase takes well under a minute. */
 const COMPILE_TIMEOUT_MS = 5 * 60_000;
@@ -44,7 +41,6 @@ export async function compileStaged(
     await execFileAsync(process.execPath, [tsc, "-p", mirrorWt, "--outDir", staged], {
       cwd: mirrorWt,
       timeout: timeoutMs,
-      maxBuffer: 32 * 1024 * 1024,
     });
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string; killed?: boolean; code?: unknown };

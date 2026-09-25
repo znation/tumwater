@@ -1,9 +1,6 @@
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { execFileAsync } from "./process.js";
 
 /** Identity used for harness-authored commits so ticks work without global git config. */
 export const COMMIT_IDENT = [
@@ -53,7 +50,6 @@ export async function runGit(
   try {
     const { stdout } = await execFileAsync("git", args, {
       cwd,
-      maxBuffer: 32 * 1024 * 1024,
       ...(extraEnv ? { env: { ...process.env, ...extraEnv } } : {}),
     });
     return stdout.trimEnd();
@@ -321,7 +317,7 @@ export async function patchId(wt: string, base: string, head: string): Promise<s
     const { stdout: diff } = await execFileAsync(
       "git",
       ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--binary", `${base}...${head}`],
-      { cwd: wt, maxBuffer: 32 * 1024 * 1024 },
+      { cwd: wt },
     );
     if (diff === "") return null;
     const run = execFileAsync("git", ["patch-id", "--verbatim"], { cwd: wt });

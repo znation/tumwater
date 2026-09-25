@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { execFile, spawn } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck, gateCommandOf } from "./build-check-detect.js";
 import { defaultConfig } from "./config.js";
 import { logEvent, warnEvent } from "./events.js";
@@ -13,10 +12,9 @@ import {
   type BuildCheckScope,
 } from "./build-check-events.js";
 import { Semaphore } from "./semaphore.js";
+import { EXEC_MAX_BUFFER, execFileAsync } from "./process.js";
 import { truncate } from "./text.js";
 import { signalTree } from "./pi.js";
-
-const execFileAsync = promisify(execFile);
 
 /** The deterministic build pre-check the review gate runs before any model reviewer: detect
  * the project's declared check (an npm script — `test` preferred per npm convention, then
@@ -425,13 +423,13 @@ export async function runBuildCheck(
           cwd: check.cwd,
           timeoutMs: effectiveMs,
           killGraceMs,
-          maxBuffer: 32 * 1024 * 1024,
+          maxBuffer: EXEC_MAX_BUFFER,
         })
       : await runScriptGroup("npm", ["run", check.script], {
           cwd: wt,
           timeoutMs: effectiveMs,
           killGraceMs,
-          maxBuffer: 32 * 1024 * 1024,
+          maxBuffer: EXEC_MAX_BUFFER,
         });
   // Spawn failed before anything ran — the runner is missing from PATH.
   if (r.spawnError) return { status: "skipped", script, skipReason: "no-npm" };

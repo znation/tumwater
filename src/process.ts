@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileOptions, type PromiseWithChild } from "node:child_process";
 import fs from "node:fs";
 import { promisify } from "node:util";
 
@@ -7,7 +7,24 @@ import { promisify } from "node:util";
  * orchestrator-alive status (state.ts). Also the host process-table reader behind doctor's
  * orphaned-worktree-process check (ProcessProbe, below). */
 
-const execFileAsync = promisify(execFile);
+const execFileRaw = promisify(execFile);
+
+/** The output ceiling every execFile the harness runs shares (git, tsc, the build check, the
+ * ps/lsof probes): a busy macOS host's full-width process table is already ~250 KB — a quarter
+ * of execFile's 1 MB default — and a long argv or two grows it fast. */
+export const EXEC_MAX_BUFFER = 32 * 1024 * 1024;
+
+/** The harness's one execFile helper: promisify(execFile) with the shared output ceiling baked
+ * in as the default. Every module that shells out — git.ts, build-stage.ts, build-check.ts —
+ * runs through this, so the ceiling and the child handle (a caller may end the spawned stdin,
+ * as patch-id does) behave the same everywhere. */
+export function execFileAsync(
+  file: string,
+  args: readonly string[],
+  options: Omit<ExecFileOptions, "encoding"> = {},
+): PromiseWithChild<{ stdout: string; stderr: string }> {
+  return execFileRaw(file, args, { maxBuffer: EXEC_MAX_BUFFER, ...options });
+}
 
 /** True when a process with this pid exists — a signal-0 send, which cannot affect the
  * target. Any error reads as "not alive": no such process (ESRCH), or permission denied
@@ -54,10 +71,6 @@ export interface ProcessProbe {
    * when no lookup could run at all. */
   cwds(pids: number[]): Promise<Map<number, string>>;
 }
-
-/** Output buffer for ps/lsof — the git.ts ceiling. A busy macOS host's full-width table is
- * already ~250 KB, a quarter of execFile's 1 MB default, and a long argv or two grows it fast. */
-const PROBE_MAX_BUFFER = 32 * 1024 * 1024;
 
 /** Both lookups normally finish in well under a second; a wedged one must not hang doctor. */
 const PROBE_TIMEOUT_MS = 10_000;
@@ -107,7 +120,7 @@ export const systemProcessProbe: ProcessProbe = {
     const { stdout } = await execFileAsync(
       "ps",
       ["-A", "-ww", "-o", "pid=,ppid=,uid=,etime=,time=,command="],
-      { maxBuffer: PROBE_MAX_BUFFER, timeout: PROBE_TIMEOUT_MS },
+      { timeout: PROBE_TIMEOUT_MS },
     );
     return parsePsOutput(stdout);
   },
@@ -126,7 +139,6 @@ export const systemProcessProbe: ProcessProbe = {
     }
     try {
       const { stdout } = await execFileAsync("lsof", ["-w", "-a", "-d", "cwd", "-Fn", "-p", pids.join(",")], {
-        maxBuffer: PROBE_MAX_BUFFER,
         timeout: PROBE_TIMEOUT_MS,
       });
       return parseLsofCwds(stdout);
