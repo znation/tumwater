@@ -19,7 +19,7 @@ import { landingRefName } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { saveLoopState } from "./state.js";
 import type { AbortableLanding } from "./operator-requests.js";
-import type { LandingEntry, PiRunResult, TickResult } from "./types.js";
+import type { LandingEntry, LoopState, PiRunResult, TickResult } from "./types.js";
 
 /** The semaphore tier a vet waits at, below every roleTier (0/1): committed work whose author
  * the interlock has already blocked jumps ahead of parked role waiters rather than starving
@@ -61,6 +61,27 @@ async function discardPinnedRefs(root: string, roles: string[]): Promise<void> {
       /* already gone */
     }
   }
+}
+
+/** Settle a landing queue entry that reached a terminal outcome — the drain's one home of the
+ * write-plus-drop pairing every settled landing goes through: the result lands in the role's
+ * state and the landed/land_failed event (writeLandingOutcome), then the change's marker record
+ * is dropped (removeLandingChange — landing-slot leaves the marker to the caller). Shared by
+ * settleAbortedVetted, the vet's final-verdict branch, and the merge's per-change write-back, so
+ * no settled entry can keep a stale marker or lose its outcome write. The pinned-ref discard
+ * stays with the callers: only a user abort throws work away, and the merge discards its whole
+ * stack at once rather than change by change. */
+function settleLandingOutcome(
+  root: string,
+  entry: LandingEntry,
+  state: LoopState,
+  result: TickResult,
+  durationMs: number,
+  usage: { tokens: number; cost: number },
+  file: string,
+): void {
+  writeLandingOutcome(root, entry, state, result, durationMs, usage, file);
+  removeLandingChange(root, entry.role);
 }
 
 /** The per-poll state the pipeline reads from the scheduler, resolved once by the poll loop.
@@ -235,8 +256,7 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
   for (const [role, v] of [...p.vetted]) {
     if (!v.userAborted) continue;
     p.vetted.delete(role);
-    writeLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
-    removeLandingChange(root, role);
+    settleLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
     await discardPinnedRefs(root, [role]);
   }
 }
@@ -347,8 +367,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
         setLandingChangeStatus(root, role, "vetted");
       } else {
         const result = verdict.kind === "stack" ? "aborted" : verdict.result;
-        writeLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);
-        removeLandingChange(root, role);
+        settleLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);
         if (vet.userAborted) await discardPinnedRefs(root, [role]);
       }
     } finally {
@@ -458,9 +477,10 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
           return;
         }
         if (result !== undefined) {
-          writeLandingOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file);
+          settleLandingOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file);
+        } else {
+          removeLandingChange(root, role);
         }
-        removeLandingChange(root, role);
       });
     } finally {
       if (merge.userAborted) await discardPinnedRefs(root, merge.roles);
