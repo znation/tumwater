@@ -17,7 +17,7 @@ import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { fakePi, initializedRepo, landHead, sh, tmpdir, waitForFile, makeLoopRunner } from "./util.js";
+import { eventsOfType, fakePi, initializedRepo, landHead, sh, tmpdir, waitForFile, makeLoopRunner } from "./util.js";
 import { APPROVE_PI, assistantLine, errorLine, reviewerPi } from "./pi-events.js";
 
 test("resume falls back to a fresh tick when there is no session to continue", async () => {
@@ -39,7 +39,7 @@ test("resume falls back to a fresh tick when there is no session to continue", a
     assert.ok(!run.includes("--continue"), "nothing to resume: a fresh session is started");
     assert.ok(run.includes(" -n"));
     assert.equal(runner.state.resumePending, false, "the flag is still consumed");
-    assert.equal(readEvents(repo).filter((e) => e.type === "resume").length, 0);
+    assert.equal(eventsOfType(repo, "resume").length, 0);
   } finally {
     restore();
   }
@@ -123,7 +123,7 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     assert.ok(s.nextRunAt > Date.now(), "backed off, not immediate");
 
     // The outcome is observable in the event feed.
-    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    const ends = eventsOfType(repo, "tick_end");
     assert.equal(ends.length, 1);
     assert.equal(ends[0]?.result, "user_aborted");
   } finally {
@@ -329,7 +329,7 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
     assert.match(body, /^Tick: improve #\d+ · turns 1 · ctx 0$/m);
     // Routine conflict → pi-resolve → land is normal operation, not something to warn
     // about: the merged event and tick_end already cover observability.
-    const warnings = readEvents(repo).filter((e) => e.type === "warning");
+    const warnings = eventsOfType(repo, "warning");
     assert.equal(
       warnings.length,
       0,
@@ -517,7 +517,7 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     // The stranded work landed on main via recovery.
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
-    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    const merged = eventsOfType(repo, "merged");
     assert.ok(
       merged.some((e) => String(e.summary) === "recovered leftover work from improve: branch edit of seed"),
       "recovery is recorded as a merge of the leftover work, naming its subject",
@@ -583,7 +583,7 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
     // The interrupted work landed on main via recovery — reviewed, not smuggled in.
     assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
     assert.ok(fs.existsSync(path.join(repo, "crash.txt")), "the recovered file is on main");
-    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    const merged = eventsOfType(repo, "merged");
     assert.ok(
       merged.some(
         (e) => String(e.summary) === "recovered leftover work from improve: interrupted tick's commit",
@@ -634,7 +634,7 @@ test("a pin at the merge-conflict cap is discarded and the tick authors, told wh
     const prompt = fs.readFileSync(prompts, "utf8");
     assert.match(prompt, /Your previous change \("work main outgrew"\) was discarded without landing/);
     assert.match(prompt, new RegExp(`conflicted with main ${MERGE_CONFLICT_LIMIT} times`));
-    const queued = readEvents(repo).filter((e) => e.type === "land_queued").map((e) => e.commit);
+    const queued = eventsOfType(repo, "land_queued").map((e) => e.commit);
     assert.deepEqual(queued, [outcome.commit], "only the fresh change was queued, never the discarded pin");
     assert.equal(headLanding(repo)?.entry.sha, outcome.commit);
     assert.equal(runner.state.mergeConflicts, undefined, "the streak ended with the pin");
@@ -758,7 +758,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
     // The unpinned work landed on main via recovery — reviewed, not smuggled in.
     assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
     assert.ok(fs.existsSync(path.join(repo, "unpinned.txt")), "the recovered file is on main");
-    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    const merged = eventsOfType(repo, "merged");
     assert.ok(
       merged.some(
         (e) => String(e.summary) === "recovered leftover work from improve: the pin write never happened",
@@ -866,7 +866,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
     assert.equal(sh(wt, "git", "status", "--porcelain"), "", "no uncommitted edits remain");
     const landWt = path.join(repo, ".tumwater/worktrees/_land-improve");
     assert.ok(!fs.existsSync(path.join(landWt, "stray.txt")), "the reviewer's stray file is cleaned on re-landing");
-    const failed = readEvents(repo).filter((e) => e.type === "review_failed");
+    const failed = eventsOfType(repo, "review_failed");
     assert.equal(failed.length, 2, "both the tick's review and its recovery review failed");
     assert.ok(
       failed.some((e) => /no parseable VERDICT/.test(String(e.message))),
@@ -875,7 +875,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
     // Tick 2's own result was `queued`; the first landing's review failure (still in the shared
     // `lastError` when tick 2 started) must not latch onto its `tick_end` as the tick's error
     // (BUGS.md 2026-09-21). The review_failed events above are where the landing failures live.
-    const tickEnds = readEvents(repo).filter((e) => e.type === "tick_end");
+    const tickEnds = eventsOfType(repo, "tick_end");
     const tick2End = tickEnds[tickEnds.length - 1]!;
     assert.equal(tick2End.result, "queued");
     assert.equal(tick2End.error, undefined, "a healthy tick's tick_end carries no stale landing error");
@@ -921,7 +921,7 @@ test("a persistent recovery review failure feeds the error streak and reads fail
 
     // One warning names the stuck gate, carrying the review failure's own reason (the detail
     // is not in lastError, which the sibling mislabel fix clears before tick_end).
-    const warnings = readEvents(repo).filter((e) => e.type === "warning");
+    const warnings = eventsOfType(repo, "warning");
     assert.ok(
       warnings.some(
         (e) =>
@@ -1138,7 +1138,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError);
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(
       warnings.some((w) => /retrying the pi run once/.test(w)),
       `expected a retry warning, got: ${JSON.stringify(warnings)}`,
@@ -1174,7 +1174,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError);
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(
       warnings.some((w) => /rate-limited the request \(429/.test(w)),
       `expected a rate-limit retry warning, got: ${JSON.stringify(warnings)}`,

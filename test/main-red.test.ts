@@ -6,7 +6,7 @@ import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/main-red.
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
-import { baselineFixture, makeRepo, pathPrepend, runsOf, sh, tmpdir, worktreeAt, writeScript } from "./util.js";
+import { eventsOfType, harnessWarnings, baselineFixture, makeRepo, pathPrepend, runsOf, sh, tmpdir, worktreeAt, writeScript } from "./util.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
@@ -105,7 +105,7 @@ test("mainRedGate warns once per red SHA: a repeat tick on the same HEAD re-bloc
     const again = await mainRedGate(root, "feature", wt);
     assert.equal(again?.result, "main_red");
     assert.equal(runsOf(counter), 1, "the verdict is cached per SHA — no second run");
-    const warnings = readEvents(root).filter((e) => e.type === "warning" && e.loop === "harness");
+    const warnings = harnessWarnings(root);
     assert.equal(warnings.length, 1, "one harness warning for the red SHA, not one per blocked tick");
   } finally {
     restore();
@@ -131,7 +131,7 @@ test("mainRedGate blocks a user-defined loop on red main like the code roles", a
     );
     // The check ran once under the role that paid for it — same pricing as a built-in.
     assert.equal(runsOf(counter), 1);
-    const checks = readEvents(root).filter((e) => e.type === "build_check");
+    const checks = eventsOfType(root, "build_check");
     assert.equal(checks.length, 1);
     assert.equal(checks[0]?.loop, "docs-auditor");
     // A role that is neither in the catalog nor in customLoops still passes through ungated.
@@ -229,7 +229,7 @@ test("bugfixMainRedNote hands the healer the failing script and headline, warnin
     assert.equal(blocked?.result, "main_red");
     assert.equal(runsOf(counter), 1, "the cached verdict was reused — no second run");
     assert.equal(
-      readEvents(root).filter((e) => e.type === "warning" && e.loop === "harness").length,
+      harnessWarnings(root).length,
       1,
       "the healer's check did not add a second warning",
     );
@@ -246,7 +246,7 @@ test("bugfixMainRedNote yields no note on a green main", async () => {
   try {
     assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
     assert.equal(runsOf(counter), 1, "the green check still ran once");
-    assert.equal(readEvents(root).filter((e) => e.type === "warning").length, 0);
+    assert.equal(eventsOfType(root, "warning").length, 0);
   } finally {
     restore();
   }
@@ -272,7 +272,7 @@ test("bugfixMainRedNote yields no note on an environmental skip (no npm)", async
   try {
     assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
     assert.equal(runsOf(counter), 0, "nothing ran");
-    assert.equal(readEvents(root).filter((e) => e.type === "warning").length, 0);
+    assert.equal(eventsOfType(root, "warning").length, 0);
   } finally {
     process.env.PATH = oldPath;
   }

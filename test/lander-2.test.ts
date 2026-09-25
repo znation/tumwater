@@ -6,8 +6,7 @@ import { BATCH_RESTACK_ATTEMPTS } from "../src/land-batch.js";
 import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
 import { freshLoopState } from "../src/state.js";
-import { readEvents } from "../src/events.js";
-import { fakePi, sh, waitForFile } from "./util.js";
+import { eventsOfType, fakePi, sh, waitForFile } from "./util.js";
 import {
   makeCtx,
   request,
@@ -59,7 +58,7 @@ test("a batch whose base main moves mid-check through a tick-path landing re-sta
       ["work by beta", "work by alpha", "work by gamma"],
       "the stack landed on top of the racer, in queue order",
     );
-    const merged = readEvents(root).filter((e) => e.type === "merged");
+    const merged = eventsOfType(root, "merged");
     assert.deepEqual(merged.map((e) => e.loop), ["gamma", "alpha", "beta"]);
     assert.equal(merged[2]!.commit, sh(root, "git", "rev-parse", "main"), "the re-stacked tip is main's head");
     assert.deepEqual(
@@ -91,7 +90,7 @@ test("a fast-forward lost to a doc-only commit re-stacks without a second batch 
       ["work by beta", "work by alpha", "concurrent NOTES.md"],
     );
     assert.equal(batchChecks(root).length, 1, "the doc-only re-stack reused the first check's verdict");
-    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 2);
+    assert.equal(eventsOfType(root, "merged").length, 2);
   } finally {
     restore();
   }
@@ -117,7 +116,7 @@ test("a batch that loses the fast-forward race on every attempt keeps every ref 
     );
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the head keeps its ref");
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "and the stacked change keeps its");
-    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0, "nothing merged");
+    assert.equal(eventsOfType(root, "merged").length, 0, "nothing merged");
   } finally {
     restore();
   }
@@ -187,7 +186,7 @@ test("a one-change merge lands on its own: one ff, one merged event", async () =
 
     assert.deepEqual(results.map((r) => r.result), ["changed"]);
     assert.equal(sh(root, "git", "rev-parse", "main"), shas.alpha!, "landed through landApprovedChange: the pin itself on an unmoved main");
-    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 1);
+    assert.equal(eventsOfType(root, "merged").length, 1);
   } finally {
     restore();
   }
@@ -209,7 +208,7 @@ test("a red stack check that does not reproduce bisects: both changes land, neit
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "each prefix lands on its own green check");
-    const checks = readEvents(root).filter((e) => e.type === "build_check");
+    const checks = eventsOfType(root, "build_check");
     assert.deepEqual(
       checks.map((e) => [e.scope, e.status]),
       [
@@ -223,8 +222,8 @@ test("a red stack check that does not reproduce bisects: both changes land, neit
     );
     assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run for alpha: its prefix lands its approved head");
     assert.equal(folded.get("beta")!.length, 1, "nor for beta");
-    assert.equal(readEvents(root).filter((e) => e.type === "review_rejected").length, 0, "nobody rejected");
-    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 2);
+    assert.equal(eventsOfType(root, "review_rejected").length, 0, "nobody rejected");
+    assert.equal(eventsOfType(root, "merged").length, 2);
   } finally {
     restore();
   }

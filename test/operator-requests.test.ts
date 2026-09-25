@@ -16,7 +16,7 @@ import {
   STATE_DIR,
 } from "../src/paths.js";
 import type { LoopRunner } from "../src/loop.js";
-import { tmpdir } from "./util.js";
+import { eventsOfType, tmpdir } from "./util.js";
 
 /** A recording stand-in for LoopRunner covering exactly the surface operator-requests.ts
  * touches: role, in-memory running flag, and the three mutators it calls. */
@@ -69,7 +69,7 @@ test("consumeResetRequest is a no-op without a marker", () => {
   const a = fakeRunner("coverage");
   consumeResetRequest(root, asRunners(a));
   assert.equal(a.resets, 0);
-  assert.equal(readEvents(root).filter((e) => e.type === "counters_reset").length, 0);
+  assert.equal(eventsOfType(root, "counters_reset").length, 0);
 });
 
 test("consumeResetRequest resets only the named roles and logs one loop event", () => {
@@ -81,7 +81,7 @@ test("consumeResetRequest resets only the named roles and logs one loop event", 
   assert.equal(a.resets, 1);
   assert.equal(b.resets, 0);
   assert.equal(fs.existsSync(resetRequestPath(root)), false);
-  const events = readEvents(root).filter((e) => e.type === "counters_reset");
+  const events = eventsOfType(root, "counters_reset");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.loop, "coverage");
 });
@@ -94,7 +94,7 @@ test("consumeResetRequest resets every role and logs a harness event when the ma
   consumeResetRequest(root, asRunners(a, b));
   assert.equal(a.resets, 1);
   assert.equal(b.resets, 1);
-  const events = readEvents(root).filter((e) => e.type === "counters_reset");
+  const events = eventsOfType(root, "counters_reset");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.loop, "harness");
   assert.deepEqual(events[0]?.roles, ["coverage", "clean"]);
@@ -118,7 +118,7 @@ test("consumeResetRequest consumes a marker naming an unknown role without reset
   consumeResetRequest(root, asRunners(a));
   assert.equal(a.resets, 0);
   assert.equal(fs.existsSync(resetRequestPath(root)), false);
-  assert.equal(readEvents(root).filter((e) => e.type === "counters_reset").length, 0);
+  assert.equal(eventsOfType(root, "counters_reset").length, 0);
 });
 
 test("consumeWakeRequest wakes only the named roles and logs the operator reason", () => {
@@ -130,7 +130,7 @@ test("consumeWakeRequest wakes only the named roles and logs the operator reason
   assert.equal(a.wakes, 0);
   assert.equal(b.wakes, 1);
   assert.equal(fs.existsSync(wakeRequestPath(root)), false);
-  const events = readEvents(root).filter((e) => e.type === "wake");
+  const events = eventsOfType(root, "wake");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.loop, "clean");
   assert.equal(events[0]?.reason, "operator");
@@ -159,7 +159,7 @@ test("consumeAbortRequests aborts a running role's tick and logs tick_aborted", 
   consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 1);
   assert.equal(fs.existsSync(marker), false);
-  const events = readEvents(root).filter((e) => e.type === "tick_aborted");
+  const events = eventsOfType(root, "tick_aborted");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.loop, "coverage");
 });
@@ -172,7 +172,7 @@ test("consumeAbortRequests silently clears a marker for an idle role", () => {
   consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 0);
   assert.equal(fs.existsSync(marker), false);
-  assert.equal(readEvents(root).filter((e) => e.type === "tick_aborted").length, 0);
+  assert.equal(eventsOfType(root, "tick_aborted").length, 0);
 });
 
 test("consumeAbortRequests clears a marker for a role with no runner at all", () => {

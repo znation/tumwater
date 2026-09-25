@@ -15,7 +15,8 @@ import { Semaphore } from "../src/semaphore.js";
 import { LoopRunner } from "../src/loop.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import type { PiRunResult, TickResult } from "../src/types.js";
+import type { HarnessEvent, PiRunResult, TickResult } from "../src/types.js";
+import { readEvents } from "../src/events.js";
 import { startGui } from "../src/ui/gui.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -622,5 +623,18 @@ export function piRunResult(over: Partial<PiRunResult> = {}): PiRunResult {
     compacted: false,
     ...over,
   };
+}
+
+/** Every event of one type in the repo's harness event log. This was the dominant way tests
+ * consumed the log — `readEvents(x).filter((e) => e.type === "...")` appeared well over a hundred
+ * times — so the filter lives here once and each call site names just the type it wants. */
+export function eventsOfType(root: string, type: HarnessEvent["type"]): HarnessEvent[] {
+  return readEvents(root).filter((e) => e.type === type);
+}
+
+/** The harness's own warnings (loop "harness") — the events tests assert on when pinning that a
+ * misbehavior was reported instead of silently swallowed. */
+export function harnessWarnings(root: string): HarnessEvent[] {
+  return eventsOfType(root, "warning").filter((e) => e.loop === "harness");
 }
 

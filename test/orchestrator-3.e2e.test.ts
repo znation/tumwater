@@ -41,6 +41,7 @@ import {
   tmpdir,
   waitFor,
   makeLoopRunner,
+  eventsOfType,
 } from "./util.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
@@ -111,10 +112,10 @@ test("a user abort during a landing kills it and discards the pinned ref", async
     assert.ok(!landingRefExists(repo, "clean"), "the pinned commit was discarded with the deliberate stop");
 
     // The landing, not the tick, was aborted: one land_failed, no tick_aborted, no second tick.
-    const failed = readEvents(repo).filter((e) => e.type === "land_failed");
+    const failed = eventsOfType(repo, "land_failed");
     assert.equal(failed.length, 1, "the aborted landing logged its failure");
     assert.equal(failed[0]!.result, "aborted");
-    assert.equal(readEvents(repo).filter((e) => e.type === "tick_aborted").length, 0);
+    assert.equal(eventsOfType(repo, "tick_aborted").length, 0);
     assert.equal(loadLoopState(repo, "clean").ticks, 1);
   } finally {
     restore();
@@ -203,12 +204,12 @@ test("a queue entry surviving a restart drains through the gate on next start", 
     );
     assert.equal(queueDepth(repo), 0, "the entry was consumed");
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "landed").length,
+      eventsOfType(repo, "landed").length,
       1,
       "the surviving change landed through the gate",
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "land_failed").length,
+      eventsOfType(repo, "land_failed").length,
       0,
       "no failed landing",
     );
@@ -255,12 +256,12 @@ test("an entry whose sha main already holds is dropped at the drain without a la
       "exactly one reviewer run: the stale entry was deduped, not re-landed",
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "landed").length,
+      eventsOfType(repo, "landed").length,
       1,
       "no second landed event",
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "land_failed").length,
+      eventsOfType(repo, "land_failed").length,
       0,
       "the dedup drop logs no failure",
     );
@@ -290,7 +291,7 @@ test("a stale marker beside an already-merged queue head is cleared so an idle f
       "the stale marker naming the dropped head is cleared",
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "landed").length,
+      eventsOfType(repo, "landed").length,
       0,
       "the deduped entry ran no landing",
     );
@@ -337,12 +338,12 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
       "the live entry to drain behind the torn head",
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "landed").length,
+      eventsOfType(repo, "landed").length,
       1,
       "the live change landed through the gate",
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "land_failed").length,
+      eventsOfType(repo, "land_failed").length,
       0,
       "no failed landing",
     );
@@ -378,12 +379,12 @@ test("a landing whose pinned sha no longer exists degrades to an error outcome, 
   // the same tail a landed or rejected entry goes through.
   assert.ok(!fs.existsSync(landingStatePath(repo)), "the landing marker survives the error outcome");
   assert.equal(queueDepth(repo), 0, "the entry is dropped after the error outcome");
-  const failed = readEvents(repo).filter((e) => e.type === "land_failed");
+  const failed = eventsOfType(repo, "land_failed");
   assert.equal(failed.length, 1);
   assert.equal(failed[0]?.loop, "clean");
   assert.equal(failed[0]?.result, "error");
   assert.equal(failed[0]?.commit, sha);
-  assert.equal(readEvents(repo).filter((e) => e.type === "landed").length, 0);
+  assert.equal(eventsOfType(repo, "landed").length, 0);
   // The degraded outcome is persisted on the author's state, like any other tick result.
   assert.equal(loadLoopState(repo, "clean").lastResult, "error");
   assert.equal(loadLoopState(repo, "clean").lastError, author.state.lastError);
@@ -422,7 +423,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
     // The fleet consumes the request within a poll cycle: kills the run and removes the marker.
     await waitFor(() => !fs.existsSync(markerFile), "the abort marker to be consumed");
 
-    const aborted = () => readEvents(repo).filter((e) => e.type === "tick_aborted");
+    const aborted = () => eventsOfType(repo, "tick_aborted");
     assert.equal(aborted().length, 1, "exactly one tick_aborted event");
     assert.equal(aborted()[0]?.loop, "clean", "filed under the role's loop");
 
@@ -540,7 +541,7 @@ test("the orchestrator publishes the build's staleness in orchestrator.json whil
     const info = readOrchestratorInfo(repo)!;
     assert.equal(info.build?.sha, "0".repeat(40));
     assert.equal(info.build?.aheadCommits, 4);
-    assert.equal(readEvents(repo).filter((e) => e.type === "restart_pending").length, 0, "autoRestart off: never drains");
+    assert.equal(eventsOfType(repo, "restart_pending").length, 0, "autoRestart off: never drains");
     const start = readEvents(repo).find((e) => e.type === "orchestrator_start")!;
     assert.equal(start.build, "0".repeat(40), "the start event names the build");
   } finally {
@@ -575,7 +576,7 @@ test("a drain past its cap aborts the in-flight tick resumably and still restart
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1);
-    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    const ends = eventsOfType(repo, "tick_end");
     assert.equal(ends.length, 1);
     assert.equal(ends[0]!.result, "aborted", "the drain cap aborted the tick like a shutdown would");
     assert.equal(loadLoopState(repo, "clean").resumePending, true, "…so it resumes on the new build");
@@ -718,7 +719,7 @@ test("an in-flight director tick is waited for, not aborted, when the drain wind
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1);
-    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    const ends = eventsOfType(repo, "tick_end");
     assert.equal(ends.length, 1);
     assert.notEqual(ends[0]!.result, "aborted", "the director tick finished on its own — the hold waited it out");
     const restart = readEvents(repo).find((e) => e.type === "restart")!;
@@ -751,8 +752,8 @@ test("a failed compile leaves the fleet running the old build", async () => {
       "the startup tick to finish",
     );
     landWork(repo);
-    const before = readEvents(repo).filter((e) => e.type === "tick_start").length;
-    await waitFor(() => readEvents(repo).filter((e) => e.type === "tick_start").length > before, "ticks resume after the hold lifts");
+    const before = eventsOfType(repo, "tick_start").length;
+    await waitFor(() => eventsOfType(repo, "tick_start").length > before, "ticks resume after the hold lifts");
     assert.deepEqual(swaps, []);
   } finally {
     controller.abort();
@@ -867,7 +868,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
     await waitFor(() => loadLoopState(repo, "clean").lastResult === "changed", "clean's vet to land", 60_000);
     assert.ok(fs.existsSync(path.join(repo, "clean.txt")), "clean landed on main");
     assert.ok(!fs.existsSync(path.join(repo, "dry.txt")), "the aborted change never did");
-    assert.equal(readEvents(repo).filter((e) => e.type === "tick_aborted").length, 0, "no tick was running");
+    assert.equal(eventsOfType(repo, "tick_aborted").length, 0, "no tick was running");
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "the interlock held: no tick ever started");
     assert.equal(loadLoopState(repo, "dry").ticks, 0);
   } finally {
@@ -959,14 +960,14 @@ test("maxConcurrent 4 vets three queued changes at once on the live orchestrator
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => readEvents(repo).filter((e) => e.type === "landed").length >= 3 && queueDepth(repo) === 0,
+      () => eventsOfType(repo, "landed").length >= 3 && queueDepth(repo) === 0,
       "all three to land",
       60_000,
     );
     const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
     assert.equal(samples.length, 3, "one review per change");
     assert.equal(Math.max(...samples), 3, `the three reviews overlapped (in flight at each start: ${samples})`);
-    assert.equal(readEvents(repo).filter((e) => e.type === "merged").length, 3, "every change merged");
+    assert.equal(eventsOfType(repo, "merged").length, 3, "every change merged");
   } finally {
     restore();
     await orch.stop();
@@ -1020,7 +1021,7 @@ test("a lander worktree that can no longer be created is contained: the healthy 
       (e) => e.type === "land_failed" && e.loop === "clean" && e.result === "error",
     );
     assert.ok(cleanErrors.length >= 1, "clean ended in a terminal error outcome");
-    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    const merged = eventsOfType(repo, "merged");
     assert.equal(
       merged.filter((e) => e.loop === "dry").length,
       1,

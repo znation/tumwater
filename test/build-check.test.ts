@@ -13,7 +13,7 @@ import { buildCheckSkipWarning } from "../src/build-check-events.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
-import { buildCheckFixture, pathPrepend, sh, tmpdir, writeScript } from "./util.js";
+import { eventsOfType, buildCheckFixture, pathPrepend, sh, tmpdir, writeScript } from "./util.js";
 
 /** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
 function groupAlive(pgid: number): boolean {
@@ -367,7 +367,7 @@ test("a gate check killed by an external signal is retried once, and the retry's
   );
   const result = await runScopedBuildCheck(root, ROLE, "gate", wt, undefined, 30_000);
   assert.equal(result!.outcome.status, "passed", "the clean retry's verdict stands");
-  const events = readEvents(root).filter((e) => e.type === "build_check");
+  const events = eventsOfType(root, "build_check");
   assert.equal(events.length, 2, "each attempt is priced as its own build_check event");
   assert.equal(events[0]?.status, "skipped");
   assert.equal(events[1]?.status, "passed");
@@ -408,7 +408,7 @@ test("a gate check killed on every attempt stays skipped, and the warning names 
   assert.equal(result!.outcome.skipReason, "killed");
   assert.equal(result!.outcome.killedBy, "SIGKILL");
   // Both attempts are priced as build_check events (the feed answers how long a check took).
-  const checks = readEvents(root).filter((e) => e.type === "build_check");
+  const checks = eventsOfType(root, "build_check");
   assert.equal(checks.length, 2, "the killed attempt and the retry each priced one event");
   const warning = readEvents(root).find((e) => e.type === "warning");
   assert.match(String(warning?.message ?? ""),

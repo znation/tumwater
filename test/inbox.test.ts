@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { readEvents } from "../src/events.js";
 import {
   cancelPrompt,
   dequeuePrompt,
@@ -11,7 +10,7 @@ import {
   queuedPrompts,
   submitPrompt,
 } from "../src/inbox.js";
-import { tmpdir } from "./util.js";
+import { eventsOfType, tmpdir } from "./util.js";
 
 test("inbox is FIFO and dequeues to empty", () => {
   const dir = tmpdir();
@@ -32,7 +31,7 @@ test("submitPrompt trims, enqueues, and logs a prompt_enqueued event", () => {
   assert.equal(queued, long); // trimmed
   assert.equal(inboxSize(dir), 1);
   assert.equal(dequeuePrompt(dir), long);
-  const events = readEvents(dir).filter((e) => e.type === "prompt_enqueued");
+  const events = eventsOfType(dir, "prompt_enqueued");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.loop, "director");
   assert.equal(
@@ -55,7 +54,7 @@ test("submitPrompt rejects an over-long prompt before anything is queued or logg
   });
   assert.equal(inboxSize(dir), 0); // rejected before the queue write
   assert.equal(
-    readEvents(dir).filter((e) => e.type === "prompt_enqueued").length,
+    eventsOfType(dir, "prompt_enqueued").length,
     0, // and before the event log too
   );
   // Exactly at the cap is fine — the check is a ceiling, not a floor off by one.
@@ -67,7 +66,7 @@ test("submitPrompt rejects an over-long prompt before anything is queued or logg
 test("submitPrompt's event preview never carries a lone surrogate", () => {
   const dir = tmpdir();
   submitPrompt(dir, `${"x".repeat(78)}🎉y`); // the emoji straddles the cut point (code unit 79)
-  const events = readEvents(dir).filter((e) => e.type === "prompt_enqueued");
+  const events = eventsOfType(dir, "prompt_enqueued");
   assert.equal(events.length, 1);
   // The pair is dropped whole rather than split: no lone high surrogate at the cut.
   assert.equal(String(events[0]?.preview), `${"x".repeat(78)}…`);
@@ -95,7 +94,7 @@ test("cancelPrompt removes by 1-based position and reports the cancelled text", 
   assert.deepEqual(queuedPrompts(dir), ["alpha", "gamma"]);
 
   // Exactly one prompt_cancelled event under the director loop, like its enqueued sibling.
-  const events = readEvents(dir).filter((e) => e.type === "prompt_cancelled");
+  const events = eventsOfType(dir, "prompt_cancelled");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.loop, "director");
   assert.equal(String(events[0]?.preview), "beta");
@@ -105,7 +104,7 @@ test("cancelPrompt's event preview is truncated to 80 chars and surrogate-safe",
   const dir = tmpdir();
   enqueuePrompt(dir, `${"x".repeat(78)}🎉y`); // the emoji straddles code unit 79
   cancelPrompt(dir, 1);
-  const events = readEvents(dir).filter((e) => e.type === "prompt_cancelled");
+  const events = eventsOfType(dir, "prompt_cancelled");
   assert.equal(events.length, 1);
   // The pair is dropped whole rather than split: no lone high surrogate at the cut.
   assert.equal(String(events[0]?.preview), `${"x".repeat(78)}…`);
@@ -135,7 +134,7 @@ test("cancelPrompt returns gone when the file disappears between listing and rem
     t.mock.restoreAll();
   }
   // A prompt the director just dequeued ran — it was not cancelled, so no event is logged.
-  assert.equal(readEvents(dir).filter((e) => e.type === "prompt_cancelled").length, 0);
+  assert.equal(eventsOfType(dir, "prompt_cancelled").length, 0);
 });
 
 test("cancelPrompt returns gone when the file disappears between listing and reading", (t) => {
@@ -154,7 +153,7 @@ test("cancelPrompt returns gone when the file disappears between listing and rea
     t.mock.restoreAll();
   }
   // A prompt the director just dequeued ran — it was not cancelled, so no event is logged.
-  assert.equal(readEvents(dir).filter((e) => e.type === "prompt_cancelled").length, 0);
+  assert.equal(eventsOfType(dir, "prompt_cancelled").length, 0);
 });
 
 test("cancelPrompt rethrows non-ENOENT errors instead of reporting them as gone", (t) => {
@@ -185,7 +184,7 @@ test("cancelPrompt rethrows non-ENOENT errors instead of reporting them as gone"
 
   // The prompt is still queued and nothing was logged.
   assert.deepEqual(queuedPrompts(dir), ["locked"]);
-  assert.equal(readEvents(dir).filter((e) => e.type === "prompt_cancelled").length, 0);
+  assert.equal(eventsOfType(dir, "prompt_cancelled").length, 0);
 });
 
 test("dequeuePrompt returns null when the file disappears between listing and reading", (t) => {

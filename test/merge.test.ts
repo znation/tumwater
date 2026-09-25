@@ -19,7 +19,7 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/types.js";
-import { makeRepo, piRunResult, sh, tmpdir, writeScript } from "./util.js";
+import { eventsOfType, makeRepo, piRunResult, sh, tmpdir, writeScript } from "./util.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
 function piResult(over: Partial<PiRunResult> = {}): PiRunResult {
@@ -96,7 +96,7 @@ test("a clean rebase lands as changed with a merged event and linear history", a
   assert.equal(sh(root, "git", "rev-parse", "main"), sh(wt, "git", "rev-parse", "HEAD"));
   assert.equal(fs.readFileSync(path.join(root, "hello.txt"), "utf8"), "hi\n");
   assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "", "history stays linear");
-  const merged = readEvents(root).filter((e) => e.type === "merged");
+  const merged = eventsOfType(root, "merged");
   assert.equal(merged.length, 1);
   assert.equal(merged[0]!.commit, sh(root, "git", "rev-parse", "main"));
   assert.equal(merged[0]!.summary, "branch work");
@@ -140,7 +140,7 @@ test("a conflict pi leaves unresolved aborts and reports merge_conflict", async 
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "branch\n", "branch state restored");
   assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "main is untouched");
   assert.equal(await aheadOfMain(wt, "main"), 1, "the tick's commit survives for the next attempt");
-  assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0);
+  assert.equal(eventsOfType(root, "merged").length, 0);
 });
 
 test("a failed pi run aborts even when it resolved every marker", async () => {
@@ -207,7 +207,7 @@ test("a fast-forward that git refuses reports merge_blocked without landing", as
   assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "main never moved");
   assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "local\n", "the local edit survives");
   assert.equal(await aheadOfMain(wt, "main"), 1, "the branch keeps its commit for a later landing");
-  assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0);
+  assert.equal(eventsOfType(root, "merged").length, 0);
 });
 
 test("the landing-flow git helpers are exported from merge.js (regression)", async () => {
@@ -490,7 +490,7 @@ test("a red post-rebase check blocks the landing and keeps the commit for recove
     readEvents(root).some((e) => e.type === "build_check" && e.scope === "landing" && e.status === "failed"),
     "the failed re-check is priced in the feed",
   );
-  assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0);
+  assert.equal(eventsOfType(root, "merged").length, 0);
   // The commit stays on the branch: next tick's recovery routes it through the gate, whose
   // pre-check rejects it deterministically and injects the build tail into the author's prompt.
   assert.equal(await aheadOfMain(wt, "main"), 1);
@@ -575,7 +575,7 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
 
   assert.equal(result, "merge_blocked", "the red full check blocks the landing");
   assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore);
-  const checks = readEvents(root).filter((e) => e.type === "build_check");
+  const checks = eventsOfType(root, "build_check");
   assert.deepEqual(
     checks.map((e) => [e.scope, e.status, (e as { script?: string }).script]),
     [["landing", "failed", "exit 1"]],
@@ -658,7 +658,7 @@ test("ffStackToMain fast-forwards main through the whole stack in one ff with pe
 
   assert.equal(await ffStackToMain(root, "main", stack), "changed");
   assert.equal(sh(root, "git", "rev-parse", "main"), shaB, "main fast-forwarded to the stacked tip");
-  const merged = readEvents(root).filter((e) => e.type === "merged");
+  const merged = eventsOfType(root, "merged");
   assert.equal(merged.length, 2, "one merged event per change, in queue order");
   assert.equal(merged[0]!.loop, "alpha");
   assert.equal(merged[0]!.commit, shaA, "the head's own sha");
@@ -667,7 +667,7 @@ test("ffStackToMain fast-forwards main through the whole stack in one ff with pe
 
   // An empty stack is a no-op: nothing to fast-forward, nothing logged.
   assert.equal(await ffStackToMain(root, "main", []), "changed");
-  assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 2, "the empty stack logged nothing");
+  assert.equal(eventsOfType(root, "merged").length, 2, "the empty stack logged nothing");
 });
 
 test("ffStackToMain returns merge_blocked when main diverged under the stack, with no events", async () => {
@@ -687,7 +687,7 @@ test("ffStackToMain returns merge_blocked when main diverged under the stack, wi
     "merge_blocked",
   );
   assert.equal(sh(root, "git", "rev-parse", "main"), mainAfter, "main is untouched");
-  assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 0, "no events on a blocked ff");
+  assert.equal(eventsOfType(root, "merged").length, 0, "no events on a blocked ff");
 });
 
 test("ffStackToMain emits question_posted for questions the stack adds, not pre-existing ones", async () => {
@@ -728,7 +728,7 @@ test("ffStackToMain emits question_posted for questions the stack adds, not pre-
     ]),
     "changed",
   );
-  const posted = readEvents(root).filter((e) => e.type === "question_posted");
+  const posted = eventsOfType(root, "question_posted");
   assert.deepEqual(
     posted.map((e) => e.question),
     ["New question (asked by improve)"],

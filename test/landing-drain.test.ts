@@ -26,7 +26,7 @@ import { freshLoopState, loadLoopState } from "../src/state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { snapshot } from "../src/ui/status.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
-import { fakePi, makeRepo, sh, tmpdir, waitFor, waitForFile, makeLoopRunner } from "./util.js";
+import { eventsOfType, fakePi, makeRepo, sh, tmpdir, waitFor, waitForFile, makeLoopRunner } from "./util.js";
 import { assistantLine, reviewerPi } from "./pi-events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LandingEntry } from "../src/types.js";
@@ -265,7 +265,7 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
     assert.ok(await isMergedInto(root, sha, "main"), "the pinned commit is contained in main");
     assert.equal(await refSha(root, landingRefName("improve")), null, "the ff deleted the landing ref");
     assert.equal(readLandingMarker(root), null, "the in-flight marker was cleared");
-    const landed = readEvents(root).filter((e) => e.type === "landed");
+    const landed = eventsOfType(root, "landed");
     assert.equal(landed.length, 1, "one landed event for the queue's bookkeeping");
     assert.equal(landed[0]!.loop, "improve");
     assert.equal(landed[0]!.result, "changed");
@@ -300,11 +300,11 @@ test("changes vetted while the merge slot is busy merge as one stack: one shared
       assert.equal(await refSha(root, landingRefName(role)), null, `${role}'s ref was deleted`);
     }
     assert.equal(readLandingMarker(root), null, "the marker was cleared");
-    const checks = readEvents(root).filter((e) => e.type === "build_check");
+    const checks = eventsOfType(root, "build_check");
     assert.equal(checks.filter((e) => e.scope === "batch").length, 1, "ONE shared check over the stacked tree");
     assert.equal(checks.filter((e) => e.scope === "landing").length, 0, "and no per-change in-lock re-check");
     assert.deepEqual(
-      readEvents(root).filter((e) => e.type === "merged").map((e) => e.loop),
+      eventsOfType(root, "merged").map((e) => e.loop),
       ["alpha", "beta"],
       "one merged event per change, in queue order",
     );
@@ -340,7 +340,7 @@ test("landBatchMax caps each merge's stack, read from the live config at each dr
       ],
       "one shared check for the stack of two, then gamma's own in-lock re-check on the main they moved",
     );
-    assert.deepEqual(readEvents(root).filter((e) => e.type === "merged").map((e) => e.loop), roles);
+    assert.deepEqual(eventsOfType(root, "merged").map((e) => e.loop), roles);
   } finally {
     await Promise.allSettled(allTasks(pipeline));
     restore();
@@ -488,8 +488,8 @@ test("a red stack lands its passing prefix, rejects the change red alone, and me
     const beta = loadLoopState(root, "beta");
     assert.equal(beta.lastResult, "rejected");
     assert.match(beta.lastReview!.reasons[0]!, /: planted failure: beta breaks the suite$/);
-    assert.deepEqual(readEvents(root).filter((e) => e.type === "review_rejected").map((e) => e.loop), ["beta"]);
-    assert.equal(readEvents(root).filter((e) => e.type === "review_start").length, 3, "one review per change, all in the vets");
+    assert.deepEqual(eventsOfType(root, "review_rejected").map((e) => e.loop), ["beta"]);
+    assert.equal(eventsOfType(root, "review_start").length, 3, "one review per change, all in the vets");
     assert.equal(await refSha(root, landingRefName("beta")), null, "the rejection deleted beta's pin");
     assert.equal(await isMergedInto(root, shas.beta!, "main"), false);
     assert.deepEqual(
@@ -773,7 +773,7 @@ test("a vetted change merges while an earlier queue entry is still in review", a
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
     await waitFor(drained(root, pipeline), "alpha to land", 30_000);
     assert.deepEqual(
-      readEvents(root).filter((e) => e.type === "merged").map((e) => e.loop),
+      eventsOfType(root, "merged").map((e) => e.loop),
       ["beta", "alpha"],
       "each merged as soon as it was vetted",
     );

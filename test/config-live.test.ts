@@ -6,7 +6,7 @@ import { newLiveConfigReload } from "../src/config-live.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { Semaphore } from "../src/semaphore.js";
-import { makeLoopRunner, makeRepo, writeConfig } from "./util.js";
+import { eventsOfType, makeLoopRunner, makeRepo, writeConfig } from "./util.js";
 
 function cloneConfig(c: TumwaterConfig): TumwaterConfig {
   return JSON.parse(JSON.stringify(c)) as TumwaterConfig;
@@ -83,7 +83,7 @@ test("a maxConcurrent edit live-resizes the semaphore and logs its own event", (
 
   assert.equal(live.poll().maxConcurrent, 3);
   assert.equal(sem.limit, 3);
-  const resize = readEvents(root).filter((e) => e.type === "max_concurrent_changed");
+  const resize = eventsOfType(root, "max_concurrent_changed");
   assert.equal(resize.length, 1);
   assert.deepEqual(resize[0], { ...resize[0], from: 1, to: 3 });
   // maxConcurrent has its own event, so config_changed must not repeat it.

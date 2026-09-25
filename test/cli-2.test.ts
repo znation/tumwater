@@ -20,6 +20,7 @@ import {
   tmpdir,
   writeConfig,
   writeScript,
+  eventsOfType,
 } from "./util.js";
 import { cli, cliWithEnv, exitCode, spawnCli } from "./cli-harness.js";
 
@@ -465,7 +466,7 @@ test("a generation that dies unasked leaves a supervisor_exit event: the fleet i
     const r = await cli(repo, "run");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /no roles enabled/);
-    const down = readEvents(repo).filter((e) => e.type === "supervisor_exit");
+    const down = eventsOfType(repo, "supervisor_exit");
     assert.equal(down.length, 1, `expected one supervisor_exit event:\n${JSON.stringify(readEvents(repo))}`);
     assert.equal(down[0]!.generation, 1);
     assert.equal(down[0]!.code, 1);

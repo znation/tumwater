@@ -5,7 +5,7 @@ import path from "node:path";
 import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/events.js";
-import { fakePi, sh, tmpdir } from "./util.js";
+import { eventsOfType, fakePi, sh, tmpdir } from "./util.js";
 import {
   request,
   checkRunNumber,
@@ -55,14 +55,14 @@ test("a stack of three whose second change breaks the check lands the first, rej
     assert.equal(states.beta!.lastReview?.verdict, "reject");
     assert.match(states.beta!.lastReview!.reasons[0]!, /^build check failed \(.*\): planted failure: beta breaks the suite$/);
     assert.equal(states.beta!.unreviewFailures, 0);
-    const rejected = readEvents(root).filter((e) => e.type === "review_rejected");
+    const rejected = eventsOfType(root, "review_rejected");
     assert.deepEqual(rejected.map((e) => e.loop), ["beta"], "one review_rejected, for beta");
     assert.equal(await refSha(root, landingRefName("beta")), null, "the rejection deleted beta's ref");
     // gamma: unattempted — entry and ref kept for the next drain.
     assert.equal(await refSha(root, landingRefName("gamma")), shas.gamma!, "gamma keeps its pin for the next drain");
     assert.equal(await refSha(root, landingRefName("alpha")), null, "alpha landed: its ref is gone");
     // No model run past the vets, and main's baseline was a cache hit (alpha's prefix seeded it).
-    assert.equal(readEvents(root).filter((e) => e.type === "review_start").length, 3, "one review per change, in its vet only");
+    assert.equal(eventsOfType(root, "review_start").length, 3, "one review per change, in its vet only");
     for (const role of roles) assert.equal(folded.get(role)!.length, 1, `${role}: only its vet's reviewer run`);
     assert.equal(
       readEvents(root).filter((e) => e.type === "build_check" && e.scope === "baseline").length,
@@ -84,7 +84,7 @@ test("a stack whose every change passes still takes exactly one batch check", as
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed", "changed"]);
     assert.deepEqual(batchChecks(root).map((e) => e.status), ["passed"], "one check over the whole stack");
-    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 3);
+    assert.equal(eventsOfType(root, "merged").length, 3);
   } finally {
     restore();
   }
@@ -118,7 +118,7 @@ for (const baseline of ["red", "unavailable"] as const) {
         assert.equal(states.alpha.lastReview?.verdict, "approve", "no rejection recorded against the author");
         assert.equal(states.alpha.unreviewFailures, 0, "and no strike");
         assert.match(states.alpha.lastError ?? "", /main \S+ is red — not this change's failure/);
-        assert.equal(readEvents(root).filter((e) => e.type === "review_rejected").length, 0);
+        assert.equal(eventsOfType(root, "review_rejected").length, 0);
       } else {
         assert.equal(results[0]!.result, "rejected");
         assert.equal(await refSha(root, landingRefName("alpha")), null);
@@ -152,7 +152,7 @@ test("an un-assemblable stack's fallback lands pins from an older main with one 
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "the fallback lands both");
-    const reviews = readEvents(root).filter((e) => e.type === "review_start");
+    const reviews = eventsOfType(root, "review_start");
     assert.equal(reviews.length, 2, "one model review per change (N), not a second one in the fallback (2N)");
     assert.equal(folded.get("alpha")!.length, 1);
     assert.equal(folded.get("beta")!.length, 1);
@@ -195,7 +195,7 @@ test("a vet reviews each pin rebased onto main's current tip, so no reviewer's c
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     assert.deepEqual(fs.readFileSync(rec, "utf8").trim().split("\n"), ["synced", "synced"], "no reviewer sat behind main");
     // Keyed by role: in the pipeline the two vets run at once, so their review_start order is a race.
-    const starts = readEvents(root).filter((e) => e.type === "review_start");
+    const starts = eventsOfType(root, "review_start");
     assert.equal(starts.length, 2);
     const heads = new Map(starts.map((e) => [e.loop, String(e.head)]));
     for (const role of ["alpha", "beta"] as const) {
@@ -230,7 +230,7 @@ test("a vet's rebase conflict reviews the bare pin and the fallback's resolver l
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     // Keyed by role: in the pipeline the two vets run at once, so their review_start order is a race.
-    const starts = readEvents(root).filter((e) => e.type === "review_start");
+    const starts = eventsOfType(root, "review_start");
     assert.equal(starts.length, 2, "one review per change: the fallback re-reviewed neither");
     const heads = new Map(starts.map((e) => [e.loop, e.head]));
     assert.equal(heads.get("alpha"), shas.alpha!, "alpha's rebase conflicted: its gate judged the restored pin");
@@ -259,7 +259,7 @@ test("a cherry-pick conflict abandons to one-at-a-time and the conflicting chang
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "both\n", "the resolution landed on main");
     assert.equal(calls.length, 1, "one resolution run — only the conflicting change needs it");
-    assert.equal(readEvents(root).filter((e) => e.type === "merged").length, 2);
+    assert.equal(eventsOfType(root, "merged").length, 2);
     assert.equal(await refSha(root, landingRefName("beta")), null, "the fallback deleted its ref");
   } finally {
     restore();
@@ -293,7 +293,7 @@ test("a lost pin degrades its vet to a terminal error instead of starving the qu
     assert.ok(states.alpha.lastError, "the git failure is recorded where the next tick's prompt reads it");
     assert.equal(folded.get("alpha"), undefined, "no reviewer run for the uncheckable pin");
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "beta and gamma landed");
-    assert.deepEqual(readEvents(root).filter((e) => e.type === "merged").map((e) => e.loop), ["beta", "gamma"]);
+    assert.deepEqual(eventsOfType(root, "merged").map((e) => e.loop), ["beta", "gamma"]);
   } finally {
     restore();
   }

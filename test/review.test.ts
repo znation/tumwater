@@ -15,7 +15,7 @@ import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import { shortSha } from "../src/text.js";
 import { piLogPath } from "../src/paths.js";
-import { buildCheckFixture, fakePi, makeRepo, sh, tmpdir, waitForLogLines, watchdogClock, writeScript } from "./util.js";
+import { eventsOfType, buildCheckFixture, fakePi, makeRepo, sh, tmpdir, waitForLogLines, watchdogClock, writeScript } from "./util.js";
 import { assistantLine } from "./pi-events.js";
 
 // Regression coverage for the 2026-08-27 build break (BUGS.md): src/review.ts shipped with a
@@ -332,7 +332,7 @@ test("gate handles a bare VERDICT: reject with no reasons: fallback detail, empt
     assert.deepEqual(state.lastReview?.reasons, []);
     assert.equal(state.lastReview?.head, head);
     assert.equal(state.unreviewFailures, 0); // a parseable verdict is a successful review
-    const rejected = readEvents(root).filter((e) => e.type === "review_rejected");
+    const rejected = eventsOfType(root, "review_rejected");
     assert.equal(rejected.length, 1);
     assert.deepEqual(rejected[0]?.reasons, []); // the event's fallback renders "no reasons given"
   } finally {
@@ -431,7 +431,7 @@ test("a reviewer that outruns review.timeoutSeconds fails in its own budget: com
     assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for the next tick's re-review
     assert.equal(state.unreviewFailures ?? 0, 0); // a timed-out run is not a strike against the commit
     assert.equal(state.lastApprovedHead, undefined);
-    const failed = readEvents(root).filter((e) => e.type === "review_failed");
+    const failed = eventsOfType(root, "review_failed");
     assert.equal(failed.length, 1);
     assert.equal(failed[0]?.head, head);
     assert.match(String(failed[0]?.message), /timed out after 2s/);
@@ -464,7 +464,7 @@ test("a stalled tool call during review warns in the event feed while the watchd
     clock.advance(30_000);
     const result = await review;
     assert.equal(result.decision, "failed");
-    const warnings = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
     assert.ok(
       warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
       `the review stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
@@ -1145,7 +1145,7 @@ test("an approved change cleanly rebased onto a moved main reuses its approval: 
     const approvedHead = await headOf(wt, "HEAD");
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
     assert.ok(state.lastApprovedPatchId, "the approval is keyed by its patch-id too");
-    const checksBefore = readEvents(root).filter((e) => e.type === "build_check").length;
+    const checksBefore = eventsOfType(root, "build_check").length;
 
     const rebased = await moveMainAndRebase(root, wt);
     assert.notEqual(rebased, approvedHead, "the rebase rewrote the sha: the exact-sha short-circuit misses");
@@ -1154,14 +1154,14 @@ test("an approved change cleanly rebased onto a moved main reuses its approval: 
     assert.equal(result.run, undefined, "no reviewer run was spent");
     assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 1, "one reviewer run across both gates");
     // The model review is reused; the check that the new tree still builds is not.
-    const checks = readEvents(root).filter((e) => e.type === "build_check").slice(checksBefore);
+    const checks = eventsOfType(root, "build_check").slice(checksBefore);
     assert.deepEqual(checks.map((e) => `${e.scope}:${e.status}`), ["gate:passed"]);
     // The landing path trusts exactly this tree (its in-lock rebase is then a no-op), so the
     // pre-check is the only check the re-landing pays.
     assert.equal(result.verifiedHead, rebased);
     assert.equal(state.lastApprovedHead, rebased, "a retry of the rebased head is an exact-sha hit");
     assert.equal(
-      readEvents(root).filter((e) => e.type === "review_start").length,
+      eventsOfType(root, "review_start").length,
       1,
       "the reused approval never shows as reviewing",
     );

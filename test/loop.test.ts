@@ -10,11 +10,10 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { defaultConfig, customLoopNames, loadConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
-import { readEvents } from "../src/events.js";
 import { loadLoopState } from "../src/state.js";
 import { configRequestPath, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
-import { fakePi, fakePiIdle, initializedRepo, landHead, makeRepo, sh, tmpdir, waitForFile, waitForLogLines, watchdogClock, makeLoopRunner } from "./util.js";
+import { eventsOfType, fakePi, fakePiIdle, initializedRepo, landHead, makeRepo, sh, tmpdir, waitForFile, waitForLogLines, watchdogClock, makeLoopRunner } from "./util.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
 
 
@@ -277,7 +276,7 @@ test("a nothing-to-do declaration in an intermediate turn does not warn (regress
   try {
     const runner = makeLoopRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
-    const warnings = readEvents(repo).filter((e) => e.type === "warning");
+    const warnings = eventsOfType(repo, "warning");
     assert.deepEqual(warnings, [], "no spurious warning when the sentinel was declared mid-run");
   } finally {
     restore();
@@ -290,7 +289,7 @@ test("a non-compliant tick warns and notes a truncated final message", async () 
   try {
     const runner = makeLoopRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
-    const [warning] = readEvents(repo).filter((e) => e.type === "warning");
+    const [warning] = eventsOfType(repo, "warning");
     assert.ok(warning, "expected exactly one warning");
     assert.match(String(warning.message), /stopReason=length/);
   } finally {
@@ -311,7 +310,7 @@ test("a tick cut off at the context ceiling warns, skips backoff, and resumes", 
   try {
     const runner = makeLoopRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
-    const [warning] = readEvents(repo).filter((e) => e.type === "warning");
+    const [warning] = eventsOfType(repo, "warning");
     assert.ok(warning, "expected exactly one warning");
     assert.match(String(warning.message), /cut off at the context ceiling/);
     assert.match(String(warning.message), /auto-compacted/);
@@ -380,7 +379,7 @@ test("a silent tick warns that no assistant text was captured", async () => {
   try {
     const runner = makeLoopRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
-    const [warning] = readEvents(repo).filter((e) => e.type === "warning");
+    const [warning] = eventsOfType(repo, "warning");
     assert.ok(warning, "expected exactly one warning");
     assert.match(String(warning.message), /no assistant text/);
   } finally {
@@ -410,7 +409,7 @@ test("consecutive error ticks raise one warning per episode, not one per tick", 
   const restore = fakePi(`echo 'git is broken' >&2\nexit 1`);
   try {
     const runner = makeLoopRunner(repo, "clean");
-    const warnings = () => readEvents(repo).filter((e) => e.type === "warning");
+    const warnings = () => eventsOfType(repo, "warning");
     assert.equal((await runner.tick()).result, "error");
     assert.equal((await runner.tick()).result, "error");
     assert.equal(warnings().length, 0, "below the threshold there is no alarm");
@@ -447,7 +446,7 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
     config.tickTimeoutSeconds = 3600;
     const clock = watchdogClock(t);
     const runner = makeLoopRunner(repo, "improve", config);
-    const warnings = () => readEvents(repo).filter((e) => e.type === "warning");
+    const warnings = () => eventsOfType(repo, "warning");
     // Each tick's run speaks once and then hangs; the kill is the watchdog's, on logical time.
     const quietKilledTick = async (n: number) => {
       const tick = runner.tick();
@@ -502,7 +501,7 @@ test("an unexpected throw inside runTick degrades to an error result instead of 
   assert.ok(runner.state.nextRunAt > Date.now(), "next run scheduled in the future");
 
   // The tick stays observable: tick_end lands with the error result and message.
-  const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+  const ends = eventsOfType(repo, "tick_end");
   assert.equal(ends.length, 1);
   assert.equal(ends[0]?.result, "error");
   assert.match(String(ends[0]?.error), /simulated internal failure/);
@@ -583,7 +582,7 @@ test("a config request naming a disallowed key applies customLoops and warns nam
     // The good half still applies...
     assert.deepEqual(customLoopNames(loadConfig(repo)), ["docs"]);
     // ...and the ignored key is named in a warning event, not dropped silently.
-    const warnings = readEvents(repo).filter((e) => e.type === "warning");
+    const warnings = eventsOfType(repo, "warning");
     assert.ok(
       warnings.some((e) => String(e.message).includes("maxDailyCostUsd")),
       `expected a warning naming the ignored key, got: ${JSON.stringify(warnings.map((e) => String(e.message)))}`,
@@ -615,7 +614,7 @@ test("worktree changes commit even when pi forgets the summary line: the subject
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "dry"), "changed");
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /^tumwater\(dry\): Update x\.txt$/);
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(warnings.some((w) => /reply had no SUMMARY line — follow-up gave none; subject derived from the changed files: "Update x\.txt"/.test(w)), JSON.stringify(warnings));
   } finally {
     restore();
@@ -651,7 +650,7 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
     // Author run (fresh), follow-up (--continue), reviewer (fresh): the follow-up is the only
     // continuation, so the model sees its own work rather than a cold prompt.
     assert.equal(runs.filter((r) => r.includes("--continue")).length, 1, JSON.stringify(runs));
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(warnings.some((w) => /recovered it with a follow-up turn/.test(w)), JSON.stringify(warnings));
   } finally {
     restore();
@@ -725,7 +724,7 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
     assert.ok(!run.includes(" -n"), "no fresh session is started");
     assert.ok(fs.existsSync(path.join(repo, "partial.txt")), "the interrupted edits landed on main");
     assert.equal(resumed.state.resumePending, false, "the flag is consumed");
-    assert.equal(readEvents(repo).filter((e) => e.type === "resume").length, 1);
+    assert.equal(eventsOfType(repo, "resume").length, 1);
   } finally {
     restore();
   }

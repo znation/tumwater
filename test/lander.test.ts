@@ -10,7 +10,7 @@ import { freshLoopState, saveLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import type { LoopState } from "../src/types.js";
-import { fakePi, sh, tmpdir } from "./util.js";
+import { eventsOfType, fakePi, sh, tmpdir } from "./util.js";
 import {
   ROLE,
   REF,
@@ -358,12 +358,12 @@ for (const main of ["green", "red"] as const) {
       assert.equal(await refSha(root, REF), null, "the pin is gone");
       assert.equal(state.lastReview?.verdict, "reject");
       assert.match(state.lastReview!.reasons[0]!, /planted landing failure/);
-      assert.equal(readEvents(root).filter((e) => e.type === "review_rejected").length, 1);
+      assert.equal(eventsOfType(root, "review_rejected").length, 1);
     } else {
       assert.equal(second, "main_red", "main fails too: not this change's failure");
       assert.equal(await refSha(root, REF), sha, "the pin is kept for a re-land once main is green");
       assert.match(state.lastError ?? "", /^landing check failed: main \S+ is red — not this change's failure$/);
-      assert.equal(readEvents(root).filter((e) => e.type === "review_rejected").length, 0);
+      assert.equal(eventsOfType(root, "review_rejected").length, 0);
     }
     assert.equal(state.landingCheckFailures, undefined, "the streak ends at the attribution");
     assert.equal(calls.length, 0, "no model run");
@@ -438,7 +438,7 @@ test("a green batch stacks every approved change, fast-forwards main once, and l
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes landed on main");
-    const merged = readEvents(root).filter((e) => e.type === "merged");
+    const merged = eventsOfType(root, "merged");
     assert.equal(merged.length, 2, "one merged event per change, in queue order");
     assert.equal(merged[0]!.commit, sh(root, "git", "rev-parse", "main~1"), "the head is the first new commit on main");
     assert.notEqual(merged[0]!.commit, shas.alpha!, "the head re-committed onto the fresh main base");
@@ -569,7 +569,7 @@ test("an abort after the last gate approved stops the batch before its shared ch
     assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the refs survive for recovery");
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
-    const checks = readEvents(root).filter((e) => e.type === "build_check");
+    const checks = eventsOfType(root, "build_check");
     assert.equal(checks.filter((e) => e.scope === "gate").length, 2, "both gates ran their pre-check");
     assert.equal(checks.filter((e) => e.scope === "batch").length, 0, "the shared check never started");
   } finally {

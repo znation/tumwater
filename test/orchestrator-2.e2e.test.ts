@@ -32,6 +32,7 @@ import {
   startLiveOrchestrator,
   tmpdir,
   waitFor,
+  eventsOfType,
 } from "./util.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
@@ -67,7 +68,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
       );
     }
     // Several roles → ONE harness-level event listing them, not one per role.
-    const resets = readEvents(repo).filter((e) => e.type === "counters_reset");
+    const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.loop, "harness");
     assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
@@ -97,7 +98,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
         `${role} counters start from zero after a corrupt marker (got ${loadLoopState(repo, role).ticks})`,
       );
     }
-    const resets = readEvents(repo).filter((e) => e.type === "counters_reset");
+    const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.loop, "harness", "a superset reset is filed harness-level with the roles list");
     assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
@@ -137,7 +138,7 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
     await waitFor(() => !loadLoopState(repo, "clean").running, "the woken tick to finish");
 
     // The wake is visible as exactly one plain event filed under the role, not a warning.
-    const wakes = readEvents(repo).filter((e) => e.type === "wake");
+    const wakes = eventsOfType(repo, "wake");
     assert.equal(wakes.length, 1);
     assert.equal(wakes[0]?.loop, "clean");
     assert.equal(wakes[0]?.reason, "operator");
@@ -174,7 +175,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
     for (const role of ["clean", "dry"]) {
       await waitFor(() => loadLoopState(repo, role).ticks >= 4, `${role} to tick after the wake`);
     }
-    const wakes = readEvents(repo).filter((e) => e.type === "wake");
+    const wakes = eventsOfType(repo, "wake");
     assert.equal(wakes.length, 2, "one wake event per woken role");
     assert.deepEqual(
       wakes.map((e) => e.loop).sort(),
@@ -245,7 +246,7 @@ test("a live config edit logs one config_changed naming the keys, and an identic
   const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    const changeds = () => readEvents(repo).filter((e) => e.type === "config_changed");
+    const changeds = () => eventsOfType(repo, "config_changed");
     await waitFor(() => loadLoopState(repo, "clean").ticks >= 1, "a startup tick");
     assert.equal(changeds().length, 0, "no config_changed while the file is unchanged");
 
@@ -457,7 +458,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
       "the startup tick to finish",
     );
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
-    const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
+    const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused.length, 1, "one transition event per pause");
     assert.equal(paused[0]?.loop, "harness");
     assert.equal(paused[0]?.capUsd, 0.5);
@@ -486,7 +487,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     raised.maxDailyCostUsd = 100;
     saveConfig(repo, raised);
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_resumed"), "a budget_resumed event");
-    const resumed = readEvents(repo).filter((e) => e.type === "budget_resumed");
+    const resumed = eventsOfType(repo, "budget_resumed");
     assert.equal(resumed.length, 1, "one transition event per resume");
     assert.equal(resumed[0]?.loop, "harness");
     assert.equal(resumed[0]?.capUsd, 100);
@@ -499,8 +500,8 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     );
 
     // Exactly one of each transition for the whole run — no per-poll event spam.
-    assert.equal(readEvents(repo).filter((e) => e.type === "budget_paused").length, 1);
-    assert.equal(readEvents(repo).filter((e) => e.type === "budget_resumed").length, 1);
+    assert.equal(eventsOfType(repo, "budget_paused").length, 1);
+    assert.equal(eventsOfType(repo, "budget_resumed").length, 1);
   } finally {
     restore();
     await orch.stop();
@@ -533,7 +534,7 @@ test("startup with spend already at the cap starts no role ticks", async () => {
     await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "a fleet at cap starts no role ticks");
     // The pause is announced exactly once, with the spend and cap that closed the gate.
-    const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
+    const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused.length, 1);
     assert.equal(paused[0]?.capUsd, 1);
     assert.equal(paused[0]?.spentUsd, 1);
@@ -626,7 +627,7 @@ test("a reached cap switches role loops to the free fallback model instead of st
     // One transition event naming the pair that took over: the operator must be able to tell
     // this from a pause.
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "a budget_fallback event");
-    const fallback = readEvents(repo).filter((e) => e.type === "budget_fallback");
+    const fallback = eventsOfType(repo, "budget_fallback");
     assert.equal(fallback.length, 1, "one transition event per switch");
     assert.equal(fallback[0]?.loop, "harness");
     assert.equal(fallback[0]?.capUsd, 0.5);
@@ -704,7 +705,7 @@ test("a fallback pi cannot price at zero is refused and the fleet pauses as befo
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
     // The event names the refused pair: why the fleet stopped instead of switching is the one
     // thing the operator can act on.
-    const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
+    const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused[0]?.fallbackRejected, "local/typo-free");
     assert.ok(!readEvents(repo).some((e) => e.type === "budget_fallback"));
 
@@ -780,7 +781,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
 
     // One transition event naming the demoted pair and the evidence — not a refusal: the price
     // was fine, the backend was not.
-    const paused = readEvents(repo).filter((e) => e.type === "budget_paused");
+    const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused.length, 1, "one transition event per demotion");
     assert.equal(paused[0]?.fallbackDemoted, "local/local-free");
     assert.equal(paused[0]?.failures, 2);
@@ -798,7 +799,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
     // the fleet is back on the fallback — no restart and no config edit needed.
     fs.writeFileSync(healed, "");
     await waitFor(
-      () => readEvents(repo).filter((e) => e.type === "budget_fallback").length >= 2,
+      () => eventsOfType(repo, "budget_fallback").length >= 2,
       "the probe to restore the fallback",
     );
     assert.equal(clean().ticks, 4, "one probe tick restored it");
@@ -868,8 +869,8 @@ test("a pause marker blocks new role ticks for any reason while the director run
     );
 
     // Exactly one of each transition for the whole run — no per-poll event spam.
-    assert.equal(readEvents(repo).filter((e) => e.type === "fleet_paused").length, 1);
-    assert.equal(readEvents(repo).filter((e) => e.type === "fleet_resumed").length, 1);
+    assert.equal(eventsOfType(repo, "fleet_paused").length, 1);
+    assert.equal(eventsOfType(repo, "fleet_resumed").length, 1);
   } finally {
     restore();
     await orch.stop();
@@ -914,8 +915,8 @@ test("starting already paused keeps role ticks blocked until resume — no resta
     );
 
     // One transition event per direction for the whole run — including the startup read.
-    assert.equal(readEvents(repo).filter((e) => e.type === "fleet_paused").length, 1);
-    assert.equal(readEvents(repo).filter((e) => e.type === "fleet_resumed").length, 1);
+    assert.equal(eventsOfType(repo, "fleet_paused").length, 1);
+    assert.equal(eventsOfType(repo, "fleet_resumed").length, 1);
   } finally {
     restore();
     await orch.stop();
@@ -991,7 +992,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "a paused role starts no new ticks");
 
     // One harness-level event per crossing, naming the role — not one per poll.
-    const paused = readEvents(repo).filter((e) => e.type === "role_paused");
+    const paused = eventsOfType(repo, "role_paused");
     assert.equal(paused.length, 1);
     assert.equal(paused[0]?.loop, "harness");
     assert.equal(paused[0]?.role, "clean");
@@ -1015,7 +1016,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
       () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
       "the resumed role to tick",
     );
-    const resumed = readEvents(repo).filter((e) => e.type === "role_resumed");
+    const resumed = eventsOfType(repo, "role_resumed");
     assert.equal(resumed.length, 1);
     assert.equal(resumed[0]?.loop, "harness");
     assert.equal(resumed[0]?.role, "clean");

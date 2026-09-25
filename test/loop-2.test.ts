@@ -15,7 +15,7 @@ import { readEvents } from "../src/events.js";
 import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/land-queue.js";
 import { landingRefName, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
-import { fakePi, initializedRepo, landHead, makeRepo, sh, tmpdir, waitForFile, waitForLogLines, watchdogClock, writeScript, makeLoopRunner } from "./util.js";
+import { eventsOfType, harnessWarnings, fakePi, initializedRepo, landHead, makeRepo, sh, tmpdir, waitForFile, waitForLogLines, watchdogClock, writeScript, makeLoopRunner } from "./util.js";
 import { APPROVE_PI, assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 
 const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
@@ -38,7 +38,7 @@ test("a run that recovers from a predict-stream timeout internally is not re-run
     assert.ok(!runner.state.lastError);
     // Exactly one pi invocation: no harness-level retry of an already-healthy run.
     assert.equal(fs.readFileSync(counter, "utf8").trim().split("\n").length, 1);
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(
       !warnings.some((w) => /retrying the pi run once/.test(w)),
       `no retry warning expected: ${JSON.stringify(warnings)}`,
@@ -170,7 +170,7 @@ test("a stalled tool call warns in the event feed with the command named", async
     clock.advance(30_000); // past the stall threshold, then past the quiet window
     const outcome = await tick;
     assert.equal(outcome.result, "quiet_killed");
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(
       warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
       `the stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
@@ -459,7 +459,7 @@ test("a refusal contradicted by its own SUMMARY beside work keeps the work behin
     assert.equal(outcome.result, "queued", "contradicted work runs the normal flow");
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
     assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(
       warnings.some((w) => /refusal contradicted by its own reply/.test(w) && w.includes("seed.txt")),
       `warning names the kept work: ${JSON.stringify(warnings)}`,
@@ -821,7 +821,7 @@ test("a changed tick's tick_end event carries its per-tick tokens and cost", asy
     const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
 
-    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    const ends = eventsOfType(repo, "tick_end");
     assert.equal(ends.length, 1, "one tick ran");
     // tokens is the AUTHOR run's window, costUsd its spend — the landing's own spend (the
     // zero-usage reviewer) rides the `landed` event instead.
@@ -831,7 +831,7 @@ test("a changed tick's tick_end event carries its per-tick tokens and cost", asy
     assert.equal(runner.state.generatedTokens, 18400);
 
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
-    const landed = readEvents(repo).filter((e) => e.type === "landed");
+    const landed = eventsOfType(repo, "landed");
     assert.equal(landed.length, 1, "the landing slot logged its own outcome");
     assert.equal(landed[0]!.result, "changed");
     assert.equal(landed[0]!.tokens, undefined, "the zero-usage reviewer omits the token field");
@@ -847,7 +847,7 @@ test("a skipped tick's tick_end event carries no usage fields", async () => {
   const runner = makeLoopRunner(repo, "director");
   assert.equal((await runner.tick()).result, "skipped");
 
-  const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+  const ends = eventsOfType(repo, "tick_end");
   assert.equal(ends.length, 1, "one tick ran");
   assert.equal(ends[0]!.tokens, undefined, "no tokens field on a skipped tick");
   assert.equal(ends[0]!.costUsd, undefined, "no costUsd field on a skipped tick");
@@ -907,7 +907,7 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
 
     // The one baseline run is priced in the feed under the role that paid for it; the cached
     // second skip logs nothing.
-    const checks = readEvents(repo).filter((e) => e.type === "build_check");
+    const checks = eventsOfType(repo, "build_check");
     assert.equal(checks.length, 1);
     assert.equal(checks[0]!.scope, "baseline");
     assert.equal(checks[0]!.status, "failed");
@@ -915,14 +915,14 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
     assert.ok(Number(checks[0]!.durationMs) >= 0);
 
     // Exactly one harness-level warning for the red SHA: script name + clipped first failure line.
-    const warnings = readEvents(repo).filter((e) => e.type === "warning" && e.loop === "harness");
+    const warnings = harnessWarnings(repo);
     assert.equal(warnings.length, 1);
     const message = String(warnings[0]?.message ?? "");
     assert.match(message, /is red \(test: baseline-failure-line\)/);
     assert.match(message, /code merges blocked until main is green/);
 
     // The tick_end lines carry the result + summary for the dashboards' last-result column.
-    const ends = readEvents(repo).filter((e) => e.type === "tick_end");
+    const ends = eventsOfType(repo, "tick_end");
     assert.equal(ends.length, 2);
     assert.equal(String(ends[1]?.result), "main_red");
     assert.match(String(ends[1]?.summary ?? ""), /code merges blocked/);
@@ -949,7 +949,7 @@ test("a green main passes the baseline check and authoring proceeds normally", a
     assert.equal(await landHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "the authoring run started on a green main");
     // Two priced check runs: main's baseline before authoring, the gate's pre-check before merge.
-    const scopes = readEvents(repo).filter((e) => e.type === "build_check").map((e) => `${e.scope}:${e.status}`);
+    const scopes = eventsOfType(repo, "build_check").map((e) => `${e.scope}:${e.status}`);
     assert.deepEqual(scopes, ["baseline:passed", "gate:passed"]);
   } finally {
     restore();
@@ -1010,12 +1010,12 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
     assert.ok(run.includes("test"), "…and the failing script");
 
     // The healer's check is priced in the feed under bugfix, and the red SHA warns once.
-    const checks = readEvents(repo).filter((e) => e.type === "build_check");
+    const checks = eventsOfType(repo, "build_check");
     assert.equal(checks.length, 1);
     assert.equal(checks[0]!.loop, "bugfix");
     assert.equal(checks[0]!.scope, "baseline");
     assert.equal(checks[0]!.status, "failed");
-    assert.equal(readEvents(repo).filter((e) => e.type === "warning" && e.loop === "harness").length, 1);
+    assert.equal(harnessWarnings(repo).length, 1);
   } finally {
     restore();
   }
@@ -1107,8 +1107,8 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
 
     // No red-main block event: the harness-level "is red … blocked" warning is for a VERIFIED
     // red SHA only — an unverifiable main must not announce itself as red.
-    const harnessWarnings = readEvents(repo).filter((e) => e.type === "warning" && e.loop === "harness");
-    assert.equal(harnessWarnings.length, 0, `no verified-red warning for an unverified main:\n${JSON.stringify(harnessWarnings)}`);
+    const harnessEvents = harnessWarnings(repo);
+    assert.equal(harnessEvents.length, 0, `no verified-red warning for an unverified main:\n${JSON.stringify(harnessEvents)}`);
   } finally {
     process.env.PATH = oldPath;
   }
@@ -1147,7 +1147,7 @@ test("a cut-off resume is bridged as a cut-off, and the fresh tick after the lim
     assert.match(runs[4]!, /Your previous 4 runs as this loop ran out of context before landing anything/);
     assert.match(runs[4]!, /Your task this run:/, "…on an otherwise normal tick prompt");
     assert.equal(runner.state.cutOffStreak, 5);
-    const resumes = readEvents(repo).filter((e) => e.type === "resume");
+    const resumes = eventsOfType(repo, "resume");
     assert.equal(resumes.length, 3);
     assert.ok(resumes.every((e) => e.cause === "cut-off"), "resume events name the cut-off cause");
   } finally {
@@ -1184,7 +1184,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
     const run = fs.readFileSync(promptsFile, "utf8");
     assert.match(run, /The harness was restarted while you/);
     assert.doesNotMatch(run, /ran out of context/);
-    const [resume] = readEvents(repo).filter((e) => e.type === "resume");
+    const [resume] = eventsOfType(repo, "resume");
     assert.equal(resume?.cause, "restart");
   } finally {
     restore();
@@ -1220,7 +1220,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
     assert.equal(runs.length, 2);
     assert.ok(!runs[0]!.includes("--continue"), "the first attempt was the fresh tick run");
     assert.ok(runs[1]!.includes("--continue"), "the retry continued the crashed run's session");
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(warnings.some((w) => /pi crashed on malformed JSON .*Unterminated string.* — resuming the session once/.test(w)), JSON.stringify(warnings));
   } finally {
     restore();
@@ -1265,7 +1265,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     assert.equal(await refSha(repo, landingRefName("improve")), null);
 
     // The failure is observable as a warning naming the recovery plan.
-    const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(
       warnings.some((w) =>
         /failed to pin \S+ by its landing ref — leaving the commit on the branch for next-tick recovery/.test(w),
@@ -1299,7 +1299,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     assert.equal(queueDepth(repo), 0);
     // Like the pinned-recovery case, the landing is recorded as a merged event (what the
     // usage report counts), from the landing slot rather than the tick.
-    const merged = readEvents(repo).filter((e) => e.type === "merged");
+    const merged = eventsOfType(repo, "merged");
     assert.equal(merged.length, 1);
     // The merged summary names what landed — the recovered commit's own subject — not
     // merely that a recovery happened, so the failure digest's "Landed in the window" is

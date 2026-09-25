@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import { fakePi, fastConfig, landWork, makeRepo, readSamples, startLiveOrchestrator, tmpdir, waitFor } from "./util.js";
+import { eventsOfType, fakePi, fastConfig, landWork, makeRepo, readSamples, startLiveOrchestrator, tmpdir, waitFor } from "./util.js";
 import { assistantLine } from "./pi-events.js";
 
 /** A fake pi that records how many runs were in flight when it started (one sample line per
@@ -92,7 +92,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
     );
 
     // Exactly one change event per distinct value — unchanged polls log nothing.
-    const changes = readEvents(repo).filter((e) => e.type === "max_concurrent_changed");
+    const changes = eventsOfType(repo, "max_concurrent_changed");
     assert.equal(changes.length, 2);
     assert.deepEqual(
       changes.map((c) => [c.loop, c.from, c.to]),

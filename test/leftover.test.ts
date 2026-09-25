@@ -10,7 +10,7 @@ import { enqueueLanding, queuedLandings } from "../src/land-queue.js";
 import { landQueueDir, landingRefName } from "../src/paths.js";
 import { shortSha } from "../src/text.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { eventsOfType, makeRepo, sh, tmpdir } from "./util.js";
 
 // Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that puts a commit a
 // previous tick left unlanded back on the durable land queue (land-queue speed 3c: the slot is
@@ -95,7 +95,7 @@ test("a pin whose landings hit the merge-conflict cap is discarded, not re-queue
   assert.deepEqual(recovered, { kind: "discarded", sha, summary: "stranded work", attempts: MERGE_CONFLICT_LIMIT });
   assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin is deleted");
   assert.deepEqual(queuedLandings(root), [], "nothing is queued");
-  const warned = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
+  const warned = eventsOfType(root, "warning").map((e) => String(e.message));
   assert.ok(
     warned.some((m) => m.includes(`discarding leftover ${shortSha(sha)} after ${MERGE_CONFLICT_LIMIT} landings`)),
     "the discard is warned, naming the sha",
@@ -112,7 +112,7 @@ test("a role whose landing is already queued is not enqueued twice", async () =>
   assert.equal(recovered?.kind, "already_queued");
   assert.equal(recovered?.kind === "already_queued" && recovered.entry.summary, "the original entry");
   assert.equal(queuedLandings(root).length, 1, "the queue still holds one entry for the role");
-  assert.equal(readEvents(root).filter((e) => e.type === "land_queued").length, 0, "no second land_queued");
+  assert.equal(eventsOfType(root, "land_queued").length, 0, "no second land_queued");
   assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin is untouched");
 });
 

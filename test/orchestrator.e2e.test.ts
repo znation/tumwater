@@ -39,6 +39,7 @@ import {
   startLiveOrchestrator,
   tmpdir,
   waitFor,
+  eventsOfType,
 } from "./util.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -283,7 +284,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
 
     // Exactly one wake per cause: the running-flag reservation must prevent a re-wake on
     // every poll while the prompt is pending or the tick is in flight.
-    const wakes = readEvents(repo).filter((e) => e.type === "wake");
+    const wakes = eventsOfType(repo, "wake");
     assert.deepEqual(
       wakes.map((w) => [w.loop, w.reason]),
       [
@@ -334,7 +335,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
     // Exactly one deferral episode so far: one event on the transition in, none while merely
     // not-due and none on exit. (The woken tick's own no_change outcome starts a fresh
     // episode only after its 1s backoff — outside this assertion window.)
-    const deferred = readEvents(repo).filter((e) => e.type === "tick_deferred");
+    const deferred = eventsOfType(repo, "tick_deferred");
     assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
   } finally {
     restore();
@@ -387,7 +388,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
 
     // One deferral episode: one event on the transition in, none while merely not-due and
     // none on exit.
-    const deferred = readEvents(repo).filter((e) => e.type === "tick_deferred");
+    const deferred = eventsOfType(repo, "tick_deferred");
     assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
   } finally {
     restore();
@@ -536,7 +537,7 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
     loose.sessionRetentionDays = 30;
     saveConfig(repo, loose);
     await waitFor(
-      () => readEvents(repo).filter((e) => e.type === "retention_changed").length >= 2,
+      () => eventsOfType(repo, "retention_changed").length >= 2,
       "the second retention_changed event",
     );
     assert.equal(pruneWarnings(repo), 1, "loosening the window prunes nothing");
@@ -549,7 +550,7 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
     off.sessionRetentionDays = 0;
     saveConfig(repo, off);
     await waitFor(
-      () => readEvents(repo).filter((e) => e.type === "retention_changed").length >= 3,
+      () => eventsOfType(repo, "retention_changed").length >= 3,
       "the third retention_changed event",
     );
     // The on-change path already ran when the third event was logged; a few fast poll cycles
@@ -559,7 +560,7 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
     assert.ok(fs.existsSync(ancient), "retention 0 disables pruning — the ancient file survives");
 
     // Exactly one change event per distinct edit (three total); unchanged polls log nothing.
-    const changes = readEvents(repo).filter((e) => e.type === "retention_changed");
+    const changes = eventsOfType(repo, "retention_changed");
     assert.equal(changes.length, 3);
     assert.deepEqual(
       changes.map((c) => [c.loop, c.from, c.to]),
@@ -673,7 +674,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     );
 
     // The reset is visible as one plain event (no warning prefix), filed under the role.
-    const resets = readEvents(repo).filter((e) => e.type === "counters_reset");
+    const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.loop, "clean");
   } finally {
@@ -723,7 +724,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
     );
 
     // The reset is still visible as one plain event, filed under the role.
-    const resets = readEvents(repo).filter((e) => e.type === "counters_reset");
+    const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.loop, "clean");
   } finally {
