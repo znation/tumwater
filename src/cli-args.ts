@@ -84,13 +84,15 @@ interface FlagSpec {
 export const ROLE_FLAG: FlagSpec = { names: ["--role"], value: true, valueName: "<id>" };
 
 /** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
- * parseBranchFlag) and `--once` (one full round of ticks, then exit). Exported so the
+ * parseBranchFlag), `--once` (one full round of ticks, then exit), and `--role <id>`
+ * (scope a --once round to one loop, parsed by parseRoleFlag). Exported so the
  * caller's rejectUnknownArgs check and its tests share one definition of what `run`
  * accepts — before this vocabulary existed, run parsed --branch and silently ignored
  * every other flag, so a typo'd option ran the daemon with default behavior. */
 export const RUN_FLAG_SPECS: FlagSpec[] = [
   { names: ["--branch"], value: true, valueName: "<name>" },
   { names: ["--once"] },
+  ROLE_FLAG,
 ];
 
 /** Fail when any argument was not consumed by this command's known flags — a misspelled flag

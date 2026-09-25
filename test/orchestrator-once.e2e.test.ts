@@ -21,8 +21,9 @@ import { cli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
 
 /** Run one once round in-process with the repo's on-disk config, failing loudly if the round
- * does not exit on its own — a once round that hangs is the bug this feature exists to avoid. */
-function onceRound(repo: string): Promise<{ restart: boolean }> {
+ * does not exit on its own — a once round that hangs is the bug this feature exists to avoid.
+ * `roleFilter` scopes the round to one role (`run --once --role <id>`, PLANS.md 2026-09-25). */
+function onceRound(repo: string, roleFilter?: string): Promise<{ restart: boolean }> {
   const done = runOrchestrator({
     root: repo,
     config: loadConfig(repo),
@@ -30,6 +31,7 @@ function onceRound(repo: string): Promise<{ restart: boolean }> {
     signal: new AbortController().signal,
     pollMs: FAST_POLL_MS,
     once: true,
+    roleFilter,
   });
   const timeout = new Promise<never>((_, reject) => {
     const t = setTimeout(() => reject(new Error("once round did not exit on its own")), 30_000);
@@ -225,7 +227,105 @@ test("once: a typo'd flag fails fast with the unknown-argument wording", async (
     const r = await cli(repo, "run", "--onc");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /unknown argument: --onc/);
-    assert.match(r.stderr, /valid flags for tumwater run: --branch <name>, --once/);
+    assert.match(r.stderr, /valid flags for tumwater run: --branch <name>, --once, --role <id>/);
+  } finally {
+    restore();
+  }
+});
+
+// --- Scoped once rounds (`run --once --role <id>`, PLANS.md 2026-09-25) ---
+
+test("once --role: a scoped round ticks only the named role", async () => {
+  const repo = await makeFastRepo("once scoped test", ["clean", "dry"]);
+  const restore = fakePiIdle();
+  try {
+    const exit = await onceRound(repo, "clean");
+    assert.equal(exit.restart, false, "a scoped round still exits on its own");
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "the scoped role ticked exactly once");
+    assert.equal(loadLoopState(repo, "dry").ticks, 0, "the other role never ran");
+  } finally {
+    restore();
+  }
+});
+
+test("once --role: a scoped round that produces a change merges it before exiting", async () => {
+  const repo = await makeFastRepo("once scoped landing test", ["clean", "dry"]);
+  const before = sh(repo, "git", "rev-parse", "main").trim();
+  // Author run: make a change and finish. Review run (its prompt carries VERDICT): approve.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\\n' '${assistantLine("done\\nSUMMARY: add hello file")}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+  );
+  try {
+    const exit = await onceRound(repo, "clean");
+    assert.equal(exit.restart, false);
+    assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change landed on main");
+    assert.notEqual(sh(repo, "git", "rev-parse", "main").trim(), before, "main's head moved");
+    assert.equal(loadLoopState(repo, "dry").ticks, 0, "the unscoped role never ran");
+  } finally {
+    restore();
+  }
+});
+
+test("once --role: the CLI scopes the round — banner and summary name only that role", async () => {
+  const repo = await makeFastRepo("once scoped cli test", ["clean", "dry"]);
+  const restore = fakePiIdle();
+  try {
+    const r = await cli(repo, "run", "--once", "--role", "clean");
+    assert.equal(r.code, 0, `exit 0 on its own (stderr: ${r.stderr})`);
+    assert.match(r.stdout, /loops: clean\n/, `the banner names only the scoped role: ${r.stdout}`);
+    assert.match(r.stdout, /once: 1 tick — 1 no_change/,
+      `the summary counts only the scoped role's tick: ${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /\bdry\b/);
+    assert.equal(loadLoopState(repo, "dry").ticks, 0, "the other role's persisted counter is unchanged");
+  } finally {
+    restore();
+  }
+});
+
+test("once --role: an unknown or disabled role fails fast with the shared wording", async () => {
+  const repo = await makeFastRepo("once scoped invalid test", ["clean"]); // dry is disabled
+  const restore = fakePi("exit 0");
+  try {
+    const unknown = await cli(repo, "run", "--once", "--role", "nope");
+    assert.equal(unknown.code, 1);
+    assert.match(unknown.stderr, /unknown role: nope \(valid ids: .*clean/);
+    const disabled = await cli(repo, "run", "--once", "--role", "dry");
+    assert.equal(disabled.code, 1);
+    assert.match(disabled.stderr, /unknown role: dry \(valid ids: .*clean/,
+      "a disabled id reads as unknown: it is not a role this round can run");
+  } finally {
+    restore();
+  }
+});
+
+test("once --role: --role without --once fails with its own message", async () => {
+  const repo = await makeFastRepo("once scoped daemon test", ["clean"]);
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "run", "--role", "clean");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--role is only valid with --once/,
+      "daemon `run --role` stays an error: scoping is a once-round concept");
+  } finally {
+    restore();
+  }
+});
+
+test("once --role: a custom loop id is a valid target", async () => {
+  const repo = await makeFastRepo("once scoped custom test", ["clean"]);
+  const config = loadConfig(repo);
+  config.customLoops.push({ name: "docs-sync", task: "Keep the docs current." });
+  saveConfig(repo, config);
+  const restore = fakePiIdle();
+  try {
+    const r = await cli(repo, "run", "--once", "--role", "docs-sync");
+    assert.equal(r.code, 0, `a custom loop scopes like a built-in (stderr: ${r.stderr}; stdout: ${r.stdout})`);
+    assert.equal(loadLoopState(repo, "docs-sync").ticks, 1, "the custom loop ticked once");
+    assert.equal(loadLoopState(repo, "clean").ticks, 0, "the enabled built-in never ran");
   } finally {
     restore();
   }

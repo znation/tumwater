@@ -173,14 +173,15 @@ test("rejectUnknownArgs accepts empty args and every known flag spelling", () =>
   expectOk(() => rejectUnknownArgs("gui", ["--port", "8080", "--all-interfaces"], GUI_SPECS));
 });
 
-test("run's flag vocabulary accepts --branch and --once and rejects everything else", () => {
-  // The specs cmdRun itself passes: both spellings, combined and alone.
+test("run's flag vocabulary accepts --branch, --once, and --role and rejects everything else", () => {
+  // The specs cmdRun itself passes: all spellings, combined and alone.
   expectOk(() => rejectUnknownArgs("run", ["--branch", "trunk", "--once"], RUN_FLAG_SPECS));
   expectOk(() => rejectUnknownArgs("run", ["--once"], RUN_FLAG_SPECS));
+  expectOk(() => rejectUnknownArgs("run", ["--once", "--role", "feature"], RUN_FLAG_SPECS));
   // A typo'd --once must fail with the standard wording, not silently run a daemon round.
   const r = expectFail(() => rejectUnknownArgs("run", ["--onc"], RUN_FLAG_SPECS));
   assert.match(r.stderr, /unknown argument: --onc/);
-  assert.match(r.stderr, /valid flags for tumwater run: --branch <name>, --once/);
+  assert.match(r.stderr, /valid flags for tumwater run: --branch <name>, --once, --role <id>/);
   // --once takes no value: a following token is a stray, not its argument.
   const valued = expectFail(() => rejectUnknownArgs("run", ["--once", "yes"], RUN_FLAG_SPECS));
   assert.match(valued.stderr, /unknown argument: yes/);

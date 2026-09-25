@@ -92,6 +92,12 @@ interface RunOptions {
    * graceful-shutdown path an operator's Ctrl+C takes, so drainInFlightWork drains exactly
    * as it always does. Never self-redeploys: the hand-off machinery stays daemon-only. */
   once?: boolean;
+  /** Scope the whole round to this one role (`run --once --role <id>`): the runners map
+   * starts with just it, the director never runs, and a mid-round config edit that enables
+   * another role does not widen the round (config-live skips runners past the filter). The
+   * land queue still drains fully before exit. cmdRun validates the id against the enabled
+   * set before booting, so an unreachable-without-filter guard upstream is not re-checked. */
+  roleFilter?: string;
 }
 
 /** How runOrchestrator ended: `restart` means dist/ now holds a newer build and the caller should
@@ -112,10 +118,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const pollMs = opts.pollMs ?? POLL_MS;
   const modelsPath = opts.modelsPath ?? piModelsPath();
   const breakerPolicy = opts.fallbackBreakerPolicy ?? FALLBACK_BREAKER_POLICY;
-  const enabled = enabledRoleIds(config);
+  const enabled = opts.roleFilter !== undefined ? [opts.roleFilter] : enabledRoleIds(config);
   // Name the fix, not just the failure: an operator who disabled the last role (or hand-edited
   // a roles map to all-false) gets the exact edit that unblocks `tumwater run`, and the
-  // defaults they can fall back to.
+  // defaults they can fall back to. With a role filter this is unreachable — cmdRun validated
+  // the id against the enabled set before booting — but the guard stays for in-process callers.
   if (enabled.length === 0)
     throw new Error(
       'no roles enabled in tumwater.json — enable at least one role in its "roles" section (e.g. `"feature": { "enabled": true }`), or remove that section to restore every role\'s default',
@@ -200,7 +207,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // broken or missing) and, derived from it, the view role loops run under while a fallback is
   // engaged (the fallback gate, or its breaker-demoted pause) — recomputed only when the config
   // object itself changes. The reload bookkeeping itself lives in src/config-live.ts.
-  const liveReload = newLiveConfigReload({ root, config, mainBranch, signal, runners, semaphore });
+  const liveReload = newLiveConfigReload({ root, config, mainBranch, signal, runners, semaphore, roleFilter: opts.roleFilter });
   let fallbackFrom: TumwaterConfig | null = null;
   let fallbackConfig: TumwaterConfig = config;
   // Same bookkeeping for the operator pause (the marker file), so each pause/resume logs
@@ -489,6 +496,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         ) {
           once.settle(runner.role, "paused");
         }
+        // Once mode's at-most-one-tick contract (src/once-round.ts): a role that already ran
+        // its tick — or was settled with a skip reason — runs nothing further this round, even
+        // when its backoff has expired or the clock override would admit it again. Without this
+        // gate the one-tick guarantee held only for deferrable built-ins (their deferral
+        // settles them); a custom loop or work role with a short backoff re-qualified every
+        // poll and the round never ended.
+        if (once.active && !runner.state.running && once.isSettled(runner)) continue;
         if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
         // The per-role pause gates BEFORE the fleet check and exempts nothing — the director
         // included (the operator named that one loop deliberately).

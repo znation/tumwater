@@ -3,7 +3,7 @@
  * command it dispatches already delegates to a module (operator-commands.ts, ui/log-commands.ts,
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
 import { enabledRoleIds } from "./config.js";
-import { fail, parseBranchFlag, parseInitArgs } from "./cli-args.js";
+import { fail, parseBranchFlag, parseInitArgs, parseRoleFlag } from "./cli-args.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles } from "./fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "./startup-gate.js";
 import { initProject } from "./init.js";
@@ -64,6 +64,15 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const startup = await runStartupCheck(root, branchArg);
   if ("problem" in startup) fail(startup.problem);
   const { config, mainBranch } = startup;
+  // A scoped once round: `--role <id>` names the one loop that runs. Parsed here, where the
+  // live config is readable, and validated against the ENABLED ids — not the full catalog —
+  // so an unknown id and a disabled one fail fast with the same wording (a scoped round that
+  // booted a disabled role's runner would run nothing while claiming to serve the operator
+  // who just queued that loop a prompt). Custom loops are valid targets: knownRoleIds
+  // accepts them, and an enabled custom passes this check like any built-in. Daemon
+  // `run --role` stays an error: scoping is a once-round concept.
+  const roleFilter = parseRoleFlag(args, enabledRoleIds(config));
+  if (roleFilter !== null && !once) fail("--role is only valid with --once");
   if (orchestratorAlive(root)) fail("an orchestrator is already running for this repo");
   if (!process.env[SUPERVISED_ENV]) {
     // `args` are the flags after the command token — forward them so the child generation
@@ -82,6 +91,8 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   const enabled = enabledRoleIds(config);
+  // A scoped round's role list is exactly the filter; otherwise every enabled role runs.
+  const roles = roleFilter !== null ? [roleFilter] : enabled;
   // A once round never self-redeploys: it runs one round on the build it booted and exits,
   // so the hand-off machinery (and its build stamp) stays daemon-only.
   const redeploy = once
@@ -96,19 +107,19 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
       ? `tumwater once on branch ${mainBranch}${rootNote} — one round, then exit\n`
       : `tumwater running on branch ${mainBranch}${build}${rootNote} — Ctrl+C to stop\n`,
   );
-  process.stdout.write(`loops: ${enabled.join(", ")}\n`);
+  process.stdout.write(`loops: ${roles.join(", ")}\n`);
   process.stdout.write("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n\n");
   const unsubscribe = subscribeEvents((e) => process.stdout.write(formatEvent(e) + "\n"));
   // Snapshot each role's tick counter so the once summary can tell this round's ticks from
   // the persisted history (the state file accumulates across rounds).
-  const ticksBefore = new Map(enabled.map((role) => [role, loadLoopState(root, role).ticks] as const));
+  const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).ticks] as const));
   let exit;
   try {
-    exit = await runOrchestrator({ root, config, mainBranch, signal: controller.signal, redeploy, once });
+    exit = await runOrchestrator({ root, config, mainBranch, signal: controller.signal, redeploy, once, roleFilter: roleFilter ?? undefined });
   } finally {
     unsubscribe();
   }
-  if (once) process.stdout.write(onceSummary(root, enabled, ticksBefore, exit.settled) + "\n");
+  if (once) process.stdout.write(onceSummary(root, roles, ticksBefore, exit.settled) + "\n");
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);

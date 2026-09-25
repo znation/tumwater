@@ -25,7 +25,13 @@ function changedKeys(root: string): string[][] {
     .map((e) => (e as unknown as { keys: string[] }).keys);
 }
 
-function newReload(root: string, config: TumwaterConfig, runners: ReturnType<typeof makeLoopRunner>[], sem: Semaphore) {
+function newReload(
+  root: string,
+  config: TumwaterConfig,
+  runners: ReturnType<typeof makeLoopRunner>[],
+  sem: Semaphore,
+  roleFilter?: string,
+) {
   return newLiveConfigReload({
     root,
     config,
@@ -33,6 +39,7 @@ function newReload(root: string, config: TumwaterConfig, runners: ReturnType<typ
     signal: new AbortController().signal,
     runners,
     semaphore: sem,
+    roleFilter,
   });
 }
 
@@ -162,4 +169,35 @@ test("enabling a role mid-run appends a runner; disabling one warns that its tic
   live.poll();
   assert.ok(runners.some((r) => r.role === "improve") && runners.some((r) => r.role === "qa"));
   assert.equal(warnMessages(root).filter((m) => m.includes("role improve disabled")).length, 1);
+});
+
+test("a scoped round's filter skips runners for other roles, and still logs their enabling", () => {
+  const root = makeRepo();
+  // A scoped once round (`run --once --role improve`): only improve may ever gain a runner,
+  // even though the on-disk config enables qa too — the round must not silently widen past
+  // the role it was scoped to.
+  const config = cloneConfig(defaultConfig());
+  const qaRole = config.roles.qa ?? { enabled: true };
+  config.roles.qa = { ...qaRole, enabled: true };
+  writeConfig(root, config);
+  const runners = [makeLoopRunner(root, "improve", config)];
+  const live = newReload(root, config, runners, new Semaphore(1), "improve");
+  // The first poll's fleet sync honors the filter too: qa is enabled on disk but gets no
+  // runner, because the round was scoped before it booted.
+  live.poll();
+  assert.ok(!runners.some((r) => r.role === "qa"), "no runner for the filtered-out role");
+  assert.deepEqual(readEvents(root), []);
+
+  // A mid-round edit that (re-)enables another role does not widen the scope: the enabling
+  // warning still fires (the config really changed), but qa's runner waits for the next
+  // unscoped round.
+  config.roles.qa = { ...qaRole, enabled: false };
+  writeConfig(root, config);
+  live.poll(); // Edge-sync the transition baseline.
+  config.roles.qa = { ...qaRole, enabled: true };
+  writeConfig(root, config);
+  live.poll();
+  assert.ok(!runners.some((r) => r.role === "qa"), "a mid-round enable does not widen the scope");
+  assert.equal(warnMessages(root).filter((m) => m.includes("role qa enabled")).length, 1,
+    "the enabling is still logged");
 });

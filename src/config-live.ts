@@ -30,6 +30,11 @@ export function newLiveConfigReload(deps: {
   runners: LoopRunner[];
   /** The shared concurrency cap, live-resized when maxConcurrent changes. */
   semaphore: Semaphore;
+  /** A scoped once round's role filter (`run --once --role <id>`): a mid-round config edit
+   * that enables another role still logs its `role enabled` warning, but no runner is created
+   * for it — the round must not silently widen past the role it was scoped to. Undefined in
+   * daemon and unscoped-once runs, which create a runner for every newly enabled role. */
+  roleFilter?: string;
 }): LiveConfigReload {
   // The last config error already warned about (a broken file must warn once per distinct text,
   // not every poll), whether the file is currently missing (one warning per vanish, one line
@@ -85,7 +90,10 @@ export function newLiveConfigReload(deps: {
         }
         const nowEnabled = enabledRoleIds(reloaded.config);
         // Enabling a role mid-run starts it: create its runner (its persisted state survives).
+        // A scoped round skips every other role: the enabling is logged (the warn loop below),
+        // but its runner waits for the next unscoped round.
         for (const role of nowEnabled) {
+          if (deps.roleFilter !== undefined && role !== deps.roleFilter) continue;
           if (!deps.runners.some((r) => r.role === role))
             deps.runners.push(new LoopRunner(deps.root, role, reloaded.config, deps.mainBranch, deps.signal));
         }

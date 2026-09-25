@@ -35,7 +35,26 @@ loop's queue (verifiable with `tumwater prompt --list`). (c) The GUI's per-row p
 same error text as `/api/transcript`. (d) The director's own prompt box and inbox display are
 unchanged. (e) Full suite passes.
 
-### `tumwater run --once --role <id>` — one round scoped to a single role (planned 2026-09-25)
+## Done
+
+### `tumwater run --once --role <id>` — one round scoped to a single role (planned 2026-09-25, done 2026-09-25)
+
+**Landed as (2026-09-25).** As planned, with three refinements: (1) `cmdRun` validates `--role`
+against `enabledRoleIds(config)` rather than `knownRoleIds(config)` — reusing `parseRoleFlag`'s
+shared wording, this makes a DISABLED id fail fast with the same "unknown role: … (valid ids: …)"
+message as an unknown one, which is what acceptance criterion (b) actually requires (a scoped
+round that booted a disabled role's runner would run nothing while claiming to serve the
+operator who just queued it a prompt); enabled custom loops still pass. (2) Implementing
+criterion (c) end-to-end exposed a latent once-mode bug: the "at most one tick" contract lived
+only in the deferral/backoff paths of deferrable built-ins, so a custom loop (which never
+defers) re-qualified every poll once its 1s idle backoff expired under the real 2s poll cadence
+and the round never ended. Fixed by adding the explicit settle gate the OnceRound contract
+documents — `once.active && !runner.state.running && once.isSettled(runner)` now skips the role
+in the orchestrator's scheduling pass (src/orchestrator.ts) — which also hardens unscoped once
+rounds for work roles. (3) The run-flag tests landed in test/cli-args.test.ts (vocabulary) and
+test/orchestrator-once.e2e.test.ts (CLI behavior, where the run e2e suite lives) rather than
+test/cli.test.ts; test/cli-2.test.ts's existing unknown-argument regex still matches the
+widened valid-flags list. Full suite: 1808 gating tests pass; e2e tier 72/72.
 
 **Goal.** `tumwater run --once` (Done, 2026-09-25) always runs every enabled role, and an
 operator who just steered one loop (`tumwater prompt --role <id> ...`) must either wait out that
@@ -43,48 +62,6 @@ loop's interval or run a full round where every other role also spends tokens. A
 flag to `run --once` that scopes the round to exactly one role: it ticks at most once, its
 landing drains, everything else (including the director) does not run. Pairs with per-role
 prompts 1/2 for a deterministic "prompt one loop, watch it act now" loop.
-
-**Approach.** Reuse the once-round machinery unchanged — the only new concept is a runner-set
-filter.
-
-1. **src/cli-args.ts** — append the existing `ROLE_FLAG` spec (line 84, `--role <id>`) to
-   `RUN_FLAG_SPECS` so `run` accepts it. **src/cli-run.ts** `cmdRun` — parse the value after the
-   startup check (config is loaded there); fail when `--role` is given without `--once`
-   ("--role is only valid with --once"), and validate the id against `knownRoleIds(config)` with
-   the exact message `prompt`'s dispatcher uses (src/cli.ts, "unknown role: … (valid ids: …)") —
-   custom loops are valid targets. Build the round's role list once:
-   `const roles = roleFilter ? [roleFilter] : enabledRoleIds(config)` and use it for the
-   `loops:` banner, `ticksBefore`, and the `onceSummary` argument.
-2. **src/orchestrator.ts** — add `roleFilter?: string` to `OrchestratorOptions`; in
-   `runOrchestrator` derive `const enabled = opts.roleFilter ? [opts.roleFilter] :
-   enabledRoleIds(config)` (the existing "no roles enabled" guard stays — it is now unreachable
-   with a filter, since cmdRun validated first). Everything downstream (runners map at ~line
-   142, `info.roles`, OnceRound, the budget gate, `drainInFlightWork`) already works off
-   `runners`/`enabled` and needs no change. Pass `roleFilter` into `newLiveConfigReload`'s deps.
-3. **src/config-live.ts** — add `roleFilter?: string` to the deps; in the reload's
-   runner-creation loop (~line 88), skip pushing a runner whose role differs from
-   `roleFilter`, so a config edit mid-round that enables another role does not silently widen a
-   scoped round (its runner starts on the next unscoped round; the warn event for the enabling
-   still fires).
-4. Scope decisions (fixed here, not left open): the director never runs in a scoped round;
-   queued prompts for other roles stay queued on disk untouched; the land queue still drains
-   fully before exit (it is scoped by construction — only the one role can produce landings);
-   daemon `run --role` stays an error.
-
-**Files touched:** src/cli-args.ts, src/cli-run.ts, src/orchestrator.ts, src/config-live.ts;
-tests in test/orchestrator-once.e2e.test.ts (scoped round), test/config-live.test.ts (filter),
-test/cli-args.test.ts + test/cli.test.ts (flag acceptance, `--role` without `--once`).
-
-**Acceptance criteria.** (a) `tumwater run --once --role feature` ticks feature at most once,
-exits 0 on its own, and its summary line names only `feature`; the other roles' persisted tick
-counters are unchanged. (b) An unknown or disabled-role id fails fast with the shared
-"unknown role" wording before any runner starts, and `--role` without `--once` fails with its
-own message. (c) A custom loop id is a valid `--role` target. (d) A scoped round that lands a
-change merges it before exit (the once-round behavior, now for one role). (e) A config edit
-during a scoped round that enables another role does not start that role's runner in the same
-round. (f) Full suite passes.
-
-## Done
 
 ### Next-run visibility — show when each sleeping loop will tick again (`tumwater status`, TUI, GUI) (planned 2026-09-25, done 2026-09-25)
 
