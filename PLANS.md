@@ -5,7 +5,22 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None right now — everything planned so far has landed. See Done below._
+### `tumwater backlog` — read the project's planned features, open bugs, and open questions from the terminal (planned 2026-09-25)
+
+**Goal.** The backlog is visible only on the two dashboards: the GUI's /api/backlog endpoint and the TUI's project-status browse. An operator working in terminals — the same person `tumwater status`, `tumwater report`, and `tumwater logs` serve — has no way to see what the fleet plans to build, which bugs are open, or what questions await a human decision, short of opening PLANS.md/BUGS.md/QUESTIONS.md and reading them raw (and those files grow without bound; the dashboards' parsed views exist precisely so nobody has to). Add `tumwater backlog`: a read-only command that prints the three open sections — Planned (PLANS.md), Open bugs (BUGS.md), Open questions (QUESTIONS.md) — through the same parser the dashboards use, so the terminal view cannot drift from the dashboard view.
+
+**Approach.** The reading side already exists and is tested: `src/backlog.ts` exports `plannedPlanEntries`, `openBugEntries`, and `openQuestionEntries` (each `{title, body}`, stat-cached, degrading to `[]` on a missing file — `parseEntryDetails` already skips `_None yet._` placeholders and stops at the next `## ` heading, so Done/Fixed entries never leak in). The new work is only a renderer and CLI wiring:
+
+- src/backlog-report.ts — new small module exporting `renderBacklogMarkdown(root): string`. It renders three `## ` sections titled `Planned features`, `Open bugs`, `Open questions`, each listing its entries as the verbatim `### ` heading followed by the entry body indented two spaces (the body is kept verbatim — these are markdown the loops wrote, including their Goal/Approach/Acceptance-criteria structure). An empty section renders a single `_(none)_` line rather than disappearing, so an all-clear backlog reads as three explicit empties, not a suspiciously short document. No re-parsing: the renderer calls the three backlog.ts entry readers, so cache behavior and placeholder handling come for free.
+- src/cli.ts — a new `case "backlog"` in the dispatch switch, in the style of `case "report"`: `rejectUnknownArgs("backlog", args, [])` (no flags — one format, opinionated), **no** `requireReadyRepo` gate (the entry readers degrade to `[]` on a missing file, so the command prints three empty sections in any directory, matching report's rationale rather than config's), then `process.stdout.write(renderBacklogMarkdown(root) + "\n")`.
+- src/help.ts — one usage line after the `logs` lines: `tumwater backlog               Show planned features, open bugs, and open questions (the dashboards' backlog view)`.
+- test/backlog-report.test.ts — new test file: the renderer against an empty root (three sections, three `_(none)_` lines); against seeded PLANS.md/BUGS.md/QUESTIONS.md fixtures (titles verbatim with their `(planned …)`/`(found …)` suffixes, bodies indented, a `_None yet._` placeholder producing the empty rendering); and a CLI dispatch smoke test through the existing `cli()` harness in test/util.ts asserting the exit output contains a seeded bug title and that `--json` fails fast with `unknown argument`.
+
+**Acceptance criteria.**
+- `tumwater backlog` prints the three sections; every `### ` heading under `## Planned`/`## Open` in the three files appears with its body, byte-identical to what `plannedPlans(root)`/`openBugs(root)` return as titles (same parser, no drift).
+- An empty or missing backlog file renders `_(none)_` under its section; the command exits 0 and never throws on a missing file.
+- `tumwater backlog --anything` fails fast with the standard `unknown argument` message; the command works in a directory without an initialized project (no `requireReadyRepo` gate).
+- `tumwater help` lists the new command; `npm run test` passes with the new tests.
 
 ## Done
 
