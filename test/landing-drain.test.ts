@@ -19,7 +19,7 @@ import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/land-queu
 import { abortRequestPath, landQueueDir, landingRefName, landingStatePath, orchestratorStatePath } from "../src/paths.js";
 import { isMergedInto, refSha, setRef } from "../src/git.js";
 import { readEvents } from "../src/events.js";
-import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
+import { landingChanges, readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { Semaphore } from "../src/semaphore.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, loadLoopState } from "../src/state.js";
@@ -340,6 +340,48 @@ test("landBatchMax caps each merge's stack, read from the live config at each dr
       "one shared check for the stack of two, then gamma's own in-lock re-check on the main they moved",
     );
     assert.deepEqual(readEvents(root).filter((e) => e.type === "merged").map((e) => e.loop), roles);
+  } finally {
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
+test("a vetted change whose queue entry is gone is forgotten while its neighbor still lands", async () => {
+  const root = makeRepo();
+  await queueChanges(root, ["alpha", "beta"]);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const config = { ...defaultConfig(), check: { command: "true" } };
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
+  pipeline.merge = busySlot();
+  try {
+    await pumpUntil(ctx, pipeline, () => pipeline.vetted.size === 2, "both changes to be vetted");
+    // beta's queue entry vanishes while beta sits vetted — the only way an entry leaves the
+    // queue between its vet settling and the next merge: a hand outside the pipeline on the
+    // queue dir. drainMerge must forget beta without writing it an outcome or a merge.
+    fs.rmSync(queuedLandingFiles(root).find((q) => q.entry.role === "beta")!.file);
+    pipeline.merge = null; // the busy slot frees
+    await drainLandings(ctx, pipeline);
+    assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "only alpha is picked for the merge");
+    assert.deepEqual([...pipeline.vetted.keys()], [], "beta left the vetted map");
+    assert.deepEqual(
+      landingChanges(readLandingMarker(root)!).map((c) => c.role),
+      ["alpha"],
+      "beta's marker record dropped with its entry",
+    );
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "alpha to land");
+
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "1", "only alpha reached main");
+    assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"), "alpha's work is on main");
+    assert.equal(await refSha(root, landingRefName("alpha")), null, "alpha's pin was deleted after landing");
+    assert.ok(await refSha(root, landingRefName("beta")), "beta's pin survives: its approved work is still real");
+    assert.deepEqual(
+      readEvents(root).filter(
+        (e) => e.loop === "beta" && (e.type === "merged" || e.type === "landed" || e.type === "land_failed"),
+      ),
+      [],
+      "beta left no outcome — forgotten, not failed",
+    );
   } finally {
     await Promise.allSettled(allTasks(pipeline));
     restore();
