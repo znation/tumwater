@@ -12,6 +12,9 @@ import {
 
 export interface Role {
   id: string;
+  /** Human-readable role name used only in the tick prompt's self-description
+   * ("You are the "<id>" loop (<title>)"), where it glosses a custom loop's
+   * arbitrary id; the status surfaces render the id, not this. */
   title: string;
   /** Role-specific instructions for finding (and doing) one task. */
   find: string;
