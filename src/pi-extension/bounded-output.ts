@@ -109,7 +109,14 @@ export function boundReadResult(
     `...${omitted} chars of this read were omitted — re-read ${input?.path ?? "the file"} with offset/limit to see the missing middle...`;
 
   const markerLen = chars(marker(0)).length;
-  const half = Math.floor((limitChars - markerLen - SNAP_SLACK) / 2);
+  // The marker embeds the file path, so a very long path beside a small limit drives the
+  // per-side budget negative — and negative cut indices send the snap helpers past the
+  // text's ends: the "head" slice then keeps only the first few characters while the tail
+  // slice (start past the end) keeps nothing, the omitted count overcounts by the negative
+  // half, and the marker claims a missing middle that is really everything but the first
+  // line. Clamp to zero so the worst case is a sliver of head plus the marker alone — the
+  // same degenerate-but-honest bound the boundText clamp below accepts.
+  const half = Math.max(0, Math.floor((limitChars - markerLen - SNAP_SLACK) / 2));
   const headEnd = snapHeadForward(cps, half, 2_000);
   const tailStart = snapTailStartForward(cps, cps.length - half, 2_000);
   const omitted = tailStart - headEnd;

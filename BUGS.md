@@ -7,6 +7,46 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### boundReadResult drops the whole tail and overcounts the omitted chars when the path swells the marker past the per-side budget (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `boundReadResult`'s contract is head+tail around a marker naming the omitted
+amount, so the model can re-read the missing middle. When the marker embeds a long file
+path, the raw per-side budget `half = (limitChars - markerLen - SNAP_SLACK) / 2` went
+negative — the un-clamped sibling of the `boundText` bug fixed below. The negative half
+then fed the snap helpers indices past the text's ends: `snapHeadForward` walked from a
+negative cut to the first newline (a sliver of head), `tailStart = cps.length - half`
+landed past the end (an empty tail), and the result kept only the first line while the
+marker overcounted the omission by `|half|` and claimed the missing part was "the middle"
+when it was everything after the first line. No shipped caller passes a path that long
+(the adapter uses the 12k read limit, so the path would need ~11,700 chars), but the
+function is exported precisely so small-limit correctness is testable, and its own size
+guard cannot catch this — the degenerate result fits inside the limit.
+
+**Reproduce:** `boundReadResult("line\n".repeat(3000) + "TAIL", { path: "p".repeat(300)
++ "/big.ts" }, 500)` → 410 code points: a 5-char head (the first `line\n`), no tail, and
+a 405-code-point marker claiming 15,070 omitted when 14,999 were — an overcount of
+exactly `|half|` = 71. Figures machine-run on 2026-09-25 against the pre-fix module
+(this entry's first recording said 349 / 4-char head / 15,066 / 14,995; a review caught
+the error and these are the corrected, directly executed values). After the fix the same
+call returns the same 410 code points — the sliver of head plus the marker is all that
+fits — but with an exact omitted count of 14,999.
+
+**Cause:** `half` was fed unclamped into `snapHeadForward`/`snapTailStartForward`, whose
+contracts assume cut indices inside the text.
+
+**Fix:** src/pi-extension/bounded-output.ts clamps `half` at zero — the same
+degenerate-but-honest bound the `boundText` clamp accepts: worst case is a sliver of head
+plus the marker alone, with an exact omitted count and the re-read instruction intact.
+Pinned by test/bounded-output.test.ts "boundReadResult clamps a path-swollen marker to
+the marker-alone bound, not a dropped tail", which asserts the marker survives and the
+omitted count reconciles head + marker + tail exactly (the old output failed that
+equation by `|half|`).
+
+**Validation gap:** no-observability — the closest tag: the degenerate output looks like
+ordinary bounding (right length, plausible marker), so nothing failed loudly; only a
+scratch property check reconciling the marker's omitted count against the kept chars
+could confirm it, and no existing test exercised the path-vs-limit interaction for reads.
+
 ### boundText returns nearly the whole unbounded text when the marker itself exceeds the limit (found by coverage loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `boundText`'s contract says the result is always at most `limitChars` code

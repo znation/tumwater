@@ -122,6 +122,23 @@ test("boundReadResult of a 1000-line file stays under the read limit without inp
   assert.equal(cps(result) - cps(marker) + omitted, cps(text));
 });
 
+test("boundReadResult clamps a path-swollen marker to the marker-alone bound, not a dropped tail", () => {
+  // A path long enough that the marker alone eats most of a small limit: the raw per-side
+  // budget goes negative, which used to send the cut indices past the text's ends — the
+  // whole tail vanished and the marker overcounted what it omitted while calling it a
+  // missing middle.
+  const text = bigFileText(600);
+  const result = boundReadResult(text, { path: `${"p".repeat(300)}/big.ts` }, 500);
+  assert.ok(cps(result) <= 500, "result stays within the limit");
+  // The read marker survives, so the model keeps the re-read-with-offset/limit recovery.
+  assert.match(result, /chars of this read were omitted/);
+  const marker = result.match(/\.\.\..*?\.\.\./)![0];
+  const omitted = Number(result.match(MARKER_RE)![1]);
+  assert.ok(omitted > 0);
+  // The omitted count is exact — no phantom chars from a negative per-side budget.
+  assert.equal(cps(result) - cps(marker) + omitted, cps(text));
+});
+
 test("boundReadResult falls back to a plain cut when lines are too long to snap", () => {
   const text = "z".repeat(READ_LIMIT_CHARS + 3_000); // single line, no newlines
   const result = boundReadResult(text, undefined);
