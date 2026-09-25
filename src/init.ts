@@ -117,7 +117,9 @@ interface InitResult {
  * created. When the cwd is not a git repository yet, one is seeded first (`git init -b main`),
  * matching the README's "seeds a git repo" promise for brand-new projects. An existing repo
  * whose README.md carries no tumwater markers (or any repo without a brief, with `adopt`) is
- * adopted instead: the brief goes in TUMWATER.md and README.md is never touched. `dryRun` runs
+ * adopted instead: the brief goes in TUMWATER.md and README.md is never touched. `--branch` seeds a
+new repository only and is refused on an existing one, where its value would otherwise be silently
+ignored. `dryRun` runs
  * the same validation and computes the same lists, but writes, inits and commits nothing. */
 export async function initProject(
   root: string,
@@ -156,6 +158,15 @@ export async function initProject(
   if (prompt.length > INITIAL_PROMPT_MAX_CHARS) {
     throw new Error(
       `the initial prompt is ${prompt.length} chars — shorten it to at most ${INITIAL_PROMPT_MAX_CHARS}: it rides into every tick's prefill`,
+    );
+  }
+  // `--branch` seeds a NEW repository only: an existing repo's checked-out branch is the
+  // fleet's business (`tumwater run --branch` or baseBranch chooses it at runtime), so a
+  // --branch given here would otherwise be silently ignored — the exact failure mode
+  // rejectUnknownArgs exists to prevent. Fail before any side effect, dry-run included.
+  if (branch !== undefined && (await isGitRepo(root))) {
+    throw new Error(
+      `--branch only seeds a new repository: this directory is already a git repository and init leaves its checked-out branch alone — drop --branch, or point the fleet at a branch with \`tumwater run --branch ${branch}\` (or baseBranch in tumwater.json)`,
     );
   }
   // The loops read the project's reason to exist back out of the project brief on every

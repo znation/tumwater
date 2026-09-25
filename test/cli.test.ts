@@ -125,6 +125,17 @@ test("init --branch names the branch a new repo is seeded on", async () => {
   assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
 });
 
+test("init --branch in an existing repo fails instead of silently ignoring the flag", async () => {
+  const repo = makeRepo();
+  const r = await cli(repo, "init", "Build a thing.", "--branch", "trunk");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--branch only seeds a new repository/);
+  assert.match(r.stderr, /tumwater run --branch trunk/);
+  // The refusal precedes every side effect: no harness files, branch unchanged.
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")));
+  assert.equal(sh(repo, "git", "symbolic-ref", "--short", "HEAD"), "main");
+});
+
 test("init --dry-run prints the file lists and exits 0 without writing; --adopt then applies", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "README.md"), "# theirs\n");

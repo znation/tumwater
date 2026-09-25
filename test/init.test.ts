@@ -487,6 +487,23 @@ test("initProject rejects an over-long initial prompt before seeding", async () 
   assert.ok(!fs.existsSync(path.join(dir, ".git")));
 });
 
+test("initProject refuses --branch on an existing repo instead of silently ignoring it", async () => {
+  const repo = makeRepo();
+  // The refusal is pure validation: nothing is written and the branch is untouched.
+  await assert.rejects(
+    () => initProject(repo, "Build a thing.", "trunk"),
+    /--branch only seeds a new repository.*tumwater run --branch trunk/,
+  );
+  assert.ok(!fs.existsSync(path.join(repo, "README.md")));
+  assert.equal(sh(repo, "git", "symbolic-ref", "--short", "HEAD"), "main");
+  // A dry run runs the same validation, so it refuses too.
+  await assert.rejects(
+    () => initProject(repo, "Build a thing.", "trunk", { dryRun: true }),
+    /--branch only seeds a new repository/,
+  );
+  assert.ok(!fs.existsSync(path.join(repo, "PLANS.md")));
+});
+
 test("initProject leaves user's unrelated dirty files uncommitted", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "wip.txt"), "wip\n");

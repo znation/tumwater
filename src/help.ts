@@ -7,8 +7,9 @@
 export const HELP = `tumwater — autonomous development harness built on pi
 
 Usage:
-  tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --branch <name>,
-                                   --adopt: brief in TUMWATER.md, --dry-run: write nothing)
+  tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --adopt: brief in
+                                   TUMWATER.md, --branch <name> seeds a new repo only,
+                                   --dry-run: write nothing)
   tumwater run [--branch <name>]   Run all enabled loops (headless; Ctrl+C stops)
   tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
   tumwater gui [--port N] [--all-interfaces] [--token <secret>]
