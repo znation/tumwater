@@ -381,10 +381,13 @@ export function reviewRunConfig(config: TumwaterConfig): TumwaterConfig {
 export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null {
   const fb = config.fallbackModel;
   if (!fb) return null;
+  const provider = fb.provider ?? config.provider;
+  const model = fb.model ?? config.model;
+  const thinking = fb.thinking ?? config.thinking;
   return {
-    ...(fb.provider ?? config.provider ? { provider: fb.provider ?? config.provider } : {}),
-    ...(fb.model ?? config.model ? { model: fb.model ?? config.model } : {}),
-    ...(fb.thinking ?? config.thinking ? { thinking: fb.thinking ?? config.thinking } : {}),
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
+    ...(thinking ? { thinking } : {}),
   };
 }
 
