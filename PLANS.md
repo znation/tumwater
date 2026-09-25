@@ -88,6 +88,48 @@ loop's queue (verifiable with `tumwater prompt --list`). (c) The GUI's per-row p
 same error text as `/api/transcript`. (d) The director's own prompt box and inbox display are
 unchanged. (e) Full suite passes.
 
+### Next-run visibility — show when each sleeping loop will tick again (`tumwater status`, TUI, GUI) (planned 2026-09-25)
+
+**Goal.** An operator looking at a quiet fleet has no way to tell why: a loop may be backing off
+after repeated no-change ticks (minutes to hours), merely waiting out its min interval, or due
+right now. `LoopState` already carries both facts — `nextRunAt` (epoch ms before which the loop
+must not run, src/types.ts:59) and `backoffSeconds` — and they flow into `StatusSnapshot.loops`,
+but every consumer drops them: the `/api/status` payload (src/ui/status-payload.ts, the per-loop
+mapping at ~line 57) omits both fields, and neither the status table (src/ui/status-render.ts)
+nor the GUI row builder (src/ui/gui-client.ts) renders them. The `wake` row-action that clears a
+backoff is likewise blind: the operator cannot see whether waking is meaningful. Surface both.
+
+**Approach.** Rendering and payload only — no scheduler or state change.
+
+1. **src/ui/status-render.ts** — new exported helper `nextRunCell(s: LoopState, now: number):
+   string`: `-` when the loop is in flight (an active phase or `s.running`) or the fleet is not
+   running; `now` when `nextRunAt <= now`; otherwise the remaining time via the existing duration
+   formatting (`3m`, `1h12m`), prefixed `backoff ` when `s.backoffSeconds > 0`. Add it as a new
+   **last** column (`next run`, index 10) in `renderStatus`'s `cols` and row arrays — appended
+   after `last result` so `FLEXIBLE_COLUMNS`' positional indices (see the renumber comment at
+   ~line 64) stay untouched, and never flexible (a short fixed-width cell like `today`). The TUI
+   renders `renderStatus`'s output as-is, so it inherits the column with no change of its own.
+2. **src/ui/status-payload.ts** — add `nextRunAt: s.nextRunAt` and `backoffSeconds:
+   s.backoffSeconds` to the per-loop payload object (raw values, formatted client-side like
+   `lastTickEndedAt`/`costUsd`). `status --json` picks them up through the same payload.
+3. **src/ui/gui-page.ts** — add `<th>next run</th>` to the loop table header (after `last
+   result`, before `controls`). **src/ui/gui-client.ts** — in the `sortLoops(d.loops).map` row
+   builder (~line 337), a cell mirroring `nextRunCell`'s rules in browser JS (the page script
+   cannot import TS — same reason `fmtLastTick` is a client-side twin of `lastTickCell`).
+
+**Files touched:** src/ui/status-render.ts, src/ui/status-payload.ts, src/ui/gui-page.ts,
+src/ui/gui-client.ts; tests in test/status-render.test.ts (cell states: future/now/in-flight/
+backoff/not-running), test/status.test.ts (payload fields), test/gui-server.test.ts (payload
+via /api/status).
+
+**Acceptance criteria.** (a) `tumwater status` and the TUI show a `next run` cell per loop: an
+idle loop with a future `nextRunAt` reads its remaining time (`backoff ` prefix when
+`backoffSeconds > 0`), a due idle loop reads `now`, in-flight loops read `-`. (b) When the fleet
+is not running every cell reads `-`. (c) `status --json` and `/api/status` expose `nextRunAt`
+and `backoffSeconds` per loop matching the on-disk state. (d) The GUI table renders the column
+from those raw fields. (e) No existing column index or width test regresses (the new column is
+appended last and non-flexible); full suite passes.
+
 ## Done
 
 ### `tumwater run --once` — one full round of ticks (every enabled role once, landings drained), then exit (planned 2026-09-25, done 2026-09-25)
