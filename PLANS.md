@@ -5,7 +5,22 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater run --once` — one full round of ticks (every enabled role once, landings drained), then exit (planned 2026-09-25)
+(nothing right now)
+
+## Done
+
+### `tumwater run --once` — one full round of ticks (every enabled role once, landings drained), then exit (planned 2026-09-25, done 2026-09-25)
+
+**Landed as (2026-09-25).** All of the approach, with two corrections discovered in the code:
+(1) `run` already rejected unknown flags — cli.ts's dispatcher had a --branch-only spec, so
+the vocabulary became a shared exported `RUN_FLAG_SPECS` in cli-args.ts (extended with
+`--once`) that cli.ts validates with, instead of a second check inside cmdRun. (2) Once-mode
+settling also covers a fleet- or role-paused role (reported as skipped/paused, per the
+acceptance criteria) and the director with an empty inbox — otherwise a leftover pause marker
+or a quiet inbox would hold the round open forever. Files touched: src/scheduling.ts,
+src/orchestrator.ts, src/cli-args.ts, src/cli.ts, src/cli-run.ts, src/help.ts,
+docs/how-it-works.md, test/orchestrator-once.e2e.test.ts (new, 7 scenarios),
+test/cli-args.test.ts.
 
 **Goal.** `tumwater run` is daemon-only: it loops until Ctrl+C. That locks the harness out of supervised settings — a cron job, a CI job, a user who wants to try one round and inspect the diff before committing to a fleet — and it hides the natural unit the brief describes ("each run attempts to find something to do, do one thing, commit, merge to main") behind an always-on process. Add `tumwater run --once`: start the same orchestrator, give every enabled role at most one tick, wait for every landing that round produced to merge, then exit 0. The supervisor already ends cleanly when a child exits with anything but the restart code (src/supervisor.ts's respawn condition), so no supervisor change is needed — a once child that exits 0 ends the whole invocation.
 

@@ -68,7 +68,7 @@ export function parseBranchFlag(args: string[]): string | null {
 
 /** One flag in a command's fixed argument vocabulary: every spelling it accepts and whether
  * it takes one following token as its value (named for the error message). */
-interface FlagSpec {
+export interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
   names: string[];
   /** True when the flag consumes one following token as its value. */
@@ -82,6 +82,16 @@ interface FlagSpec {
  * accepted vocabulary and its rendering in rejectUnknownArgs' error messages cannot drift
  * apart. */
 export const ROLE_FLAG: FlagSpec = { names: ["--role"], value: true, valueName: "<id>" };
+
+/** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
+ * parseBranchFlag) and `--once` (one full round of ticks, then exit). Exported so the
+ * caller's rejectUnknownArgs check and its tests share one definition of what `run`
+ * accepts — before this vocabulary existed, run parsed --branch and silently ignored
+ * every other flag, so a typo'd option ran the daemon with default behavior. */
+export const RUN_FLAG_SPECS: FlagSpec[] = [
+  { names: ["--branch"], value: true, valueName: "<name>" },
+  { names: ["--once"] },
+];
 
 /** Fail when any argument was not consumed by this command's known flags — a misspelled flag
  * (e.g. `--rol` instead of `--role`) would otherwise be silently ignored and the command runs

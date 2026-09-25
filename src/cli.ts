@@ -7,6 +7,7 @@ import {
   parsePromptArgs,
   rejectUnknownArgs,
   ROLE_FLAG,
+  RUN_FLAG_SPECS,
 } from "./cli-args.js";
 import { cmdAbort, cmdConfig, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdLogs } from "./ui/log-commands.js";
@@ -80,7 +81,7 @@ async function main(): Promise<void> {
       await cmdInit(root, args);
       break;
     case "run":
-      rejectUnknownArgs("run", args, [{ names: ["--branch"], value: true, valueName: "<name>" }]);
+      rejectUnknownArgs("run", args, RUN_FLAG_SPECS);
       await cmdRun(root, args);
       break;
     case "tui":

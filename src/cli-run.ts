@@ -4,13 +4,14 @@
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
 import { enabledRoleIds } from "./config.js";
 import { fail, parseBranchFlag, parseInitArgs } from "./cli-args.js";
-import { orchestratorAlive } from "./fleet-state.js";
+import { isFleetPaused, orchestratorAlive, pausedRoles } from "./fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "./startup-gate.js";
 import { initProject } from "./init.js";
 import { logEvent, subscribeEvents } from "./events.js";
 import { formatEvent } from "./ui/event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
+import { loadLoopState } from "./state.js";
 import { fleetDownEvent, spawnRunChild, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { shortSha } from "./text.js";
 
@@ -44,10 +45,11 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
 }
 
 export async function cmdRun(root: string, args: string[]): Promise<void> {
-  // The whole startup gate (startup-gate.ts): repo, config, agent binary, target branch — the
-  // one function the self-redeploy asks before swapping onto a successor and the supervisor
+  // The one function the self-redeploy asks before swapping onto a successor and the supervisor
   // asks when a generation dies, so the three cannot disagree about what boots. The supervisor
-  // half runs it too, so a start that cannot boot fails before any child spawns.
+  // half runs it too, so a start that cannot boot fails before any child spawns. The flag
+  // vocabulary is validated by the dispatcher (cli.ts, from the same RUN_FLAG_SPECS).
+  const once = args.includes("--once");
   const branchArg = parseBranchFlag(args);
   const startup = await runStartupCheck(root, branchArg);
   if ("problem" in startup) fail(startup.problem);
@@ -70,30 +72,66 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   const enabled = enabledRoleIds(config);
-  // The redeploy asks its successor's startup gate with this invocation's flags — the ones
-  // the supervisor forwards to that successor.
-  const redeploy = await createRedeployer(
-    root,
-    (e) => logEvent(root, e),
-    () => runStartupProblem(root, branchArg),
-  );
+  // A once round never self-redeploys: it runs one round on the build it booted and exits,
+  // so the hand-off machinery (and its build stamp) stays daemon-only.
+  const redeploy = once
+    ? null
+    : await createRedeployer(root, (e) => logEvent(root, e), () => runStartupProblem(root, branchArg));
   const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
   // Name the resolved root when it differs from the cwd: an operator who started the fleet
   // from a subdirectory must see where .tumwater/ actually lives.
   const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
-  process.stdout.write(`tumwater running on branch ${mainBranch}${build}${rootNote} — Ctrl+C to stop\n`);
+  process.stdout.write(
+    once
+      ? `tumwater once on branch ${mainBranch}${rootNote} — one round, then exit\n`
+      : `tumwater running on branch ${mainBranch}${build}${rootNote} — Ctrl+C to stop\n`,
+  );
   process.stdout.write(`loops: ${enabled.join(", ")}\n`);
   process.stdout.write("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n\n");
   const unsubscribe = subscribeEvents((e) => process.stdout.write(formatEvent(e) + "\n"));
+  // Snapshot each role's tick counter so the once summary can tell this round's ticks from
+  // the persisted history (the state file accumulates across rounds).
+  const ticksBefore = new Map(enabled.map((role) => [role, loadLoopState(root, role).ticks] as const));
   let exit;
   try {
-    exit = await runOrchestrator({ root, config, mainBranch, signal: controller.signal, redeploy });
+    exit = await runOrchestrator({ root, config, mainBranch, signal: controller.signal, redeploy, once });
   } finally {
     unsubscribe();
   }
+  if (once) process.stdout.write(onceSummary(root, enabled, ticksBefore) + "\n");
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
+}
+
+/** The once round's one-line summary, read entirely from the runners' persisted loop state —
+ * a cron job's log shows what the round did without parsing events. Roles whose tick counter
+ * advanced bucket by their last completed result; the rest are skipped, with the reason the
+ * orchestrator settled them for (backoff when their nextRunAt is still in the future, a pause
+ * marker when one is held, otherwise idle — nothing was due). */
+function onceSummary(root: string, roles: string[], ticksBefore: Map<string, number>): string {
+  let ticks = 0;
+  const outcomes = new Map<string, number>();
+  const skipped: string[] = [];
+  for (const role of roles) {
+    const s = loadLoopState(root, role);
+    if (s.ticks > (ticksBefore.get(role) ?? 0)) {
+      ticks += s.ticks - (ticksBefore.get(role) ?? 0);
+      const key = s.lastResult ?? "no_change";
+      outcomes.set(key, (outcomes.get(key) ?? 0) + 1);
+    } else {
+      skipped.push(
+        isFleetPaused(root) || pausedRoles(root).includes(role)
+          ? "paused"
+          : s.nextRunAt > Date.now()
+            ? "backoff"
+            : "idle",
+      );
+    }
+  }
+  const counts = [...outcomes.entries()].sort().map(([k, n]) => `${n} ${k}`).join(", ");
+  const skipNote = skipped.length === 0 ? "" : `, ${skipped.length} skipped (${skipped.join(", ")})`;
+  return `once: ${ticks} tick${ticks === 1 ? "" : "s"} — ${counts || "nothing ran"}${skipNote}`;
 }
 
 /** The supervisor half of `tumwater run` (src/supervisor.ts): spawn the orchestrator as a child

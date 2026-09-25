@@ -13,12 +13,23 @@ import type { LoopState } from "./types.js";
 import { configForRole } from "./config-views.js";
 import { DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
 
+/** Options that vary isEligible's gates without changing their shape. */
+export interface EligibilityOptions {
+  /** Once mode (`tumwater run --once`): the min-tick-interval gap check is skipped — a
+   * one-shot is an explicit demand for a round now, and without this a round started
+   * shortly after a daemon run does nothing because every role's clock is still fresh.
+   * Every other gate is kept as-is: error backoff (`nextRunAt`), resume gating,
+   * `s.running`, and per-role enablement. */
+  once?: boolean;
+}
+
 /** Should this loop tick now? Exported for tests. */
 export function isEligible(
   runner: LoopRunner,
   now: number,
   mainHead: string,
   inboxCount: number,
+  opts: EligibilityOptions = {},
 ): { run: boolean; reason?: string } {
   const s = runner.state;
   // A role disabled in tumwater.json stops ticking immediately (live-reload); re-enabling
@@ -42,7 +53,9 @@ export function isEligible(
 
   // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates both scheduled
   // ticks and "main moved" early wakes — resolved here so a live-reloaded config applies.
-  const minGap = configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000;
+  const minGap = opts.once
+    ? 0
+    : configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000;
   const sinceLast = now - (s.lastTickEndedAt ?? 0);
   if (sinceLast < minGap) return { run: false };
   if (now >= s.nextRunAt) {

@@ -10,7 +10,10 @@ Usage:
   tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --adopt: brief in
                                    TUMWATER.md, --branch <name> seeds a new repo only,
                                    --dry-run: write nothing)
-  tumwater run [--branch <name>]   Run all enabled loops (headless; Ctrl+C stops)
+  tumwater run [--branch <name>] [--once]
+                                   Run all enabled loops (headless; Ctrl+C stops);
+                                   --once runs one full round of ticks, drains the
+                                   landings it produced, and exits (for cron/CI)
   tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
   tumwater gui [--port N] [--all-interfaces] [--token <secret>]
                                    Same dashboard in the browser (default port 7180,

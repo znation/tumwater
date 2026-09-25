@@ -14,7 +14,9 @@ leave alone, then exits without writing or committing anything. init never
 rewrites an existing brief: a prompt that differs from the one it carries is refused, naming the
 file to edit instead. The prompt is capped at 4096 characters because it rides into every tick.
 
-`tumwater run` then starts one loop per enabled role.
+`tumwater run` then starts one loop per enabled role. `tumwater run --once` runs one full
+round — every enabled role ticks at most once, every landing that round produced merges — and
+then exits, for cron and CI and for trying one round before committing to a fleet.
 
 ## A loop tick
 
