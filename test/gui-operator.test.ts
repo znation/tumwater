@@ -5,7 +5,7 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
-import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, wakeRequestPath } from "../src/paths.js";
+import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
 import { enqueueLanding } from "../src/land-queue.js";
@@ -582,6 +582,74 @@ test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 
   }
 });
 
+// POST /api/pause-role — the dashboard's per-row pause/resume toggle, backed by the same
+// marker functions (`tumwater pause --role` / `resume --role` use) so the two surfaces cannot
+// drift. The scheduler-side consumption is pinned in test/orchestrator.e2e.test.ts; here we
+// pin the HTTP layer: the marker it writes, its validation, its idempotence, and its codes.
+test("POST /api/pause-role writes the per-role marker, is idempotent, and rejects bad bodies", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui pause-role test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // Pause one named role: the marker records it, and a repeat is idempotent (changed false).
+    const post = (payload: unknown) =>
+      fetch(base + "/api/pause-role", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    let res = await post({ role: "feature", paused: true });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, changed: true, paused: true });
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")).roles,
+      ["feature"],
+    );
+    res = await post({ role: "feature", paused: true });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, changed: false, paused: true }, "re-pausing is idempotent");
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")).roles,
+      ["feature"],
+      "the idempotent repeat leaves one marker entry",
+    );
+
+    // Resume: the role leaves the marker, and a fully-resumed fleet leaves no file behind.
+    res = await post({ role: "feature", paused: false });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, changed: true, paused: false });
+    assert.equal(fs.existsSync(pausedRolesPath(repo)), false, "the last removal deletes the marker");
+    res = await post({ role: "feature", paused: false });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, changed: false, paused: false }, "resuming an unpaused role is idempotent");
+
+    // Unknown / missing / non-string roles get the shared rejectBadRole 400 wording, and a
+    // non-boolean paused gets the /api/pause wording — none of them writes a marker.
+    for (const body of [
+      { role: "bogus", paused: true },
+      { role: 7, paused: true },
+      { paused: true },
+      { role: "feature" },
+      { role: "feature", paused: "true" },
+    ]) {
+      const bad = await post(body);
+      assert.equal(bad.status, 400, JSON.stringify(body));
+      const err = ((await bad.json()) as { error: string }).error;
+      if ("role" in body && body.role !== "feature") assert.match(err, /valid ids: feature, bugfix/);
+      else if (!("role" in body)) assert.match(err, /role required/);
+      else assert.match(err, /paused must be a boolean/);
+    }
+    // Malformed / non-object bodies get readJsonObject's shared 400, an oversized body 413.
+    for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", paused: true, pad: "x".repeat(70000) })]) {
+      const bad = await fetch(base + "/api/pause-role", { method: "POST", body });
+      assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
+    }
+    assert.equal(fs.existsSync(pausedRolesPath(repo)), false, "rejected bodies leave the marker untouched");
+  } finally {
+    server.close();
+  }
+});
+
 // The loop rows' wake/abort controls run in the page's script scope; their marker-delimited
 // block is evaled against a minimal DOM stub, like the budget/pause badge tests above: a click
 // on a rowaction anchor POSTs the row's role to the matching endpoint and flashes the server's
@@ -602,6 +670,7 @@ test("the loop rows' controls post the row's role and flash the server's message
   const postJson = async (path: string, payload: unknown) => {
     posts.push({ path, payload });
     if (path === "/api/abort") throw new Error("/api/abort failed: HTTP 409 — no harness is running");
+    if (path === "/api/pause-role") return { ok: true, changed: true, paused: true };
     return { ok: true, message: "wake requested for feature — a running fleet applies it within ~2s" };
   };
   new Function("document", "postJson", "showFlash", block)(document, postJson, (msg: string) => flashes.push(msg));
@@ -620,7 +689,18 @@ test("the loop rows' controls post the row's role and flash the server's message
   assert.deepEqual(posts[1], { path: "/api/abort", payload: { role: "bugfix" } });
   assert.match(flashes[1]!, /^error: \/api\/abort failed: HTTP 409/);
 
+  // A pause anchor posts to /api/pause-role; the flash is composed from the endpoint's
+  // changed/paused flags, which carry no server message.
+  const pauseAnchor = { dataset: { action: "pause", role: "docs" } };
+  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? pauseAnchor : null) }, preventDefault: () => {} });
+  assert.deepEqual(posts[2], { path: "/api/pause-role", payload: { role: "docs" } });
+  assert.equal(flashes[2], "docs paused");
+  const resumeAnchor = { dataset: { action: "resume", role: "docs" } };
+  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? resumeAnchor : null) }, preventDefault: () => {} });
+  assert.deepEqual(posts[3], { path: "/api/pause-role", payload: { role: "docs" } });
+  assert.equal(flashes[3], "docs resumed");
+
   // A click on a plain loop link (the closest match fails) is left to the other listener.
   await handler({ target: { closest: () => null }, preventDefault: () => {} });
-  assert.equal(posts.length, 2, "a non-rowaction click posts nothing");
+  assert.equal(posts.length, 4, "a non-rowaction click posts nothing");
 });

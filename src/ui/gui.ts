@@ -14,6 +14,7 @@ import {
   handleBudget,
   handleFailures,
   handlePause,
+  handlePauseRole,
   handlePrompt,
   handleReport,
   handleTranscript,
@@ -124,7 +125,8 @@ export function startGui(
         await handleWake(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/abort") {
         await handleAbort(req, res, root);
-      } else {
+      } else if (req.method === "POST" && pathname === "/api/pause-role") {
+        await handlePauseRole(req, res, root);      } else {
         res.writeHead(404, { "content-type": "text/plain" });
         res.end("not found");
       }

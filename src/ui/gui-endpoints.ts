@@ -1,7 +1,7 @@
 /**
  * The dashboard's /api endpoint handlers (src/ui/gui.ts routes to them): the GET data
  * endpoints — transcript, backlog, report, failures — and the POST operator endpoints —
- * prompt, budget, pause, wake, abort — plus the plumbing they share (sendJson, role
+ * prompt, budget, pause, wake, abort, pause-role — plus the plumbing they share (sendJson, role
  * validation, request-body reading). Each handler answers its request and touches no socket
  * beyond its own `res`; server lifecycle, routing, the static page, and the token gate stay
  * in gui.ts. The domain work itself lives one layer down (transcript.ts, backlog.ts,
@@ -14,7 +14,7 @@ import { promptLengthProblem, submitPrompt } from "../inbox.js";
 import { isJsonObject } from "../json-object.js";
 import { knownRoleIds, loadConfigCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
-import { pauseFleet, resumeFleet } from "../fleet-state.js";
+import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
 import { requestAbort, requestWake } from "../operator-commands.js";
 import { allRoleIds } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "./report.js";
@@ -349,4 +349,31 @@ export async function handleAbort(req: http.IncomingMessage, res: http.ServerRes
     return;
   }
   sendJson(res, 200, { ok: true, message: result.message });
+}
+
+/** Handle POST /api/pause-role: the dashboard's per-row pause/resume control — the same
+ * marker-writing core `tumwater pause --role` / `resume --role` call (pauseRole/resumeRole),
+ * so the CLI and the GUI cannot drift on the marker's format or idempotence. The target state
+ * is explicit (`paused: true|false`) like /api/pause, so a retried request is idempotent; the
+ * fleet-wide pause composes freely — its gate is checked first at scheduling, and the role
+ * marker still records the operator's per-row intent. Same body discipline as /api/wake
+ * (readJsonObject → 400 malformed/non-object, 413 oversized; the role validates through the
+ * shared rejectBadRole wording). */
+export async function handlePauseRole(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, '{"role": "feature", "paused": true}');
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  if (rejectBadRole(root, res, body.role)) return;
+  const value = body.paused;
+  if (typeof value !== "boolean") {
+    sendJson(
+      res,
+      400,
+      { error: `paused must be a boolean${value === undefined ? "" : ` (got ${JSON.stringify(value)})`}` },
+    );
+    return;
+  }
+  const changed = value
+    ? pauseRole(root, body.role as string)
+    : resumeRole(root, body.role as string);
+  sendJson(res, 200, { ok: true, changed, paused: value });
 }

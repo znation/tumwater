@@ -314,9 +314,12 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
           "</td><td class='wide'>" + esc(last) +
           // The row's operator controls: wake always (it is safe on an idle loop — it just
           // clears any backoff), abort only while a tick is actually in flight (the payload's
-          // inFlight flag; there is nothing to abort otherwise).
+          // inFlight flag; there is nothing to abort otherwise), and a pause/resume toggle
+          // from the payload's pausedRoles list (the "tumwater pause --role" marker).
           "</td><td><a href='#' class='rowaction' data-action='wake' data-role='" + esc(l.role) + "'>wake</a>" +
           (l.inFlight ? " <a href='#' class='rowaction' data-action='abort' data-role='" + esc(l.role) + "'>abort</a>" : "") +
+          " <a href='#' class='rowaction' data-action='" + ((d.pausedRoles || []).includes(l.role) ? "resume" : "pause") +
+          "' data-role='" + esc(l.role) + "'>" + ((d.pausedRoles || []).includes(l.role) ? "resume" : "pause") + "</a>" +
           "</td></tr>";
       }).join("");
       // Project status: planned features, open bugs, and open questions — fresh from
@@ -351,20 +354,30 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
     refresh();
   });
   // row-actions:start
-  // The loop rows' wake/abort controls: one delegated listener beside the looplink one above.
-  // A click POSTs to the same marker-writing core the CLI commands use (/api/wake, /api/abort),
-  // no confirmation dialog — a wake is harmless and an abort matches the row's visible
-  // in-flight state. The server's confirmation message flashes in the header (the budget/pause
-  // error-flash mechanism), and the next 1 s poll re-renders the state (abort → the row's
-  // phase drops to idle once the marker is consumed); a failed POST flashes the error instead.
+  // The loop rows' wake/abort/pause controls: one delegated listener beside the looplink one
+  // above. A click POSTs to the same marker-writing core the CLI commands use (/api/wake,
+  // /api/abort, /api/pause-role), no confirmation dialog — a wake is harmless and an abort
+  // matches the row's visible in-flight state. The server's confirmation message flashes in
+  // the header (the budget/pause error-flash mechanism; pause/resume has no server message,
+  // so the flash is composed from the endpoint's changed/paused flags), and the next 1 s poll
+  // re-renders the state (abort → the row's phase drops to idle once the marker is consumed;
+  // pause/resume → the row's toggle and "paused" phase swap). A failed POST flashes the error.
   document.getElementById("loops").addEventListener("click", async (ev) => {
     const a = ev.target.closest("a.rowaction");
     if (!a) return;
     ev.preventDefault();
-    const path = a.dataset.action === "abort" ? "/api/abort" : "/api/wake";
+    const path = a.dataset.action === "abort" ? "/api/abort"
+      : (a.dataset.action === "pause" || a.dataset.action === "resume") ? "/api/pause-role"
+      : "/api/wake";
     try {
       const d = await postJson(path, { role: a.dataset.role });
-      showFlash(d && typeof d.message === "string" ? d.message : path + " accepted");
+      let msg = d && typeof d.message === "string" ? d.message : path + " accepted";
+      if (a.dataset.action === "pause" || a.dataset.action === "resume") {
+        msg = a.dataset.role + (d && d.changed
+          ? (a.dataset.action === "pause" ? " paused" : " resumed")
+          : (a.dataset.action === "pause" ? " was already paused" : " was not paused"));
+      }
+      showFlash(msg);
     } catch (e) {
       showFlash("error: " + e.message);
     }
