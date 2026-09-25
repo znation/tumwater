@@ -20,6 +20,14 @@ fail) and could not be reproduced in isolation or on an immediate re-run.
 sorted-granted against the tier order, or serialize the grant checks so the order is
 observable-by-construction rather than scheduler-dependent.
 
+### A transient retry of a hint-less 429 waits 0 seconds, burning the one retry into the same exhausted per-minute bucket (found by telemetry loop 2026-09-25)
+
+**Symptom:** The 2026-09-25 failure digest logs **31×** `provider rate-limited the request (429) — retrying the pi run once` (bugfix, clean, coverage, dry +5 more) and a **6×** hard-error cluster `429 "Rate limit exceeded"` (bugfix, coverage, dry, perf +1 more) — six of the 31 retried runs ended `error` anyway, discarding their tick. The warning interpolates the provider's hint only when one exists (src/loop-pi.ts:105), and the digest preserves literal text (its cluster key keeps `429` unnormalized), so hinted retries would form a separate `(429, retry after Ns)` cluster; the day's single 429 warning cluster carries no suffix, meaning every one of the 31 waits was 0 seconds. The day's one fleet-wide hold (10:21, 60 s) never covered these isolated 429s — the storm detector is calibrated to stay silent on exactly this spacing.
+
+**Repro:** src/loop-pi.ts:112: `const waitS = Math.min(pi.retryAfterSeconds ?? 0, RATE_LIMIT_RETRY_AFTER_CAP_S)` — a `PiRunResult` with `transientRateLimit`, `ok: false`, and `retryAfterSeconds: undefined` yields waitS 0, and the `--continue` retry fires immediately into the same per-minute bucket the first request just exhausted. This provider's 429 text (`429 "Rate limit exceeded"`, the digest's error cluster) echoes no hint, so the hinted path never engages in practice.
+
+**Expected:** The harness's own constants state the refill physics: `RATE_LIMIT_HOLD_BASE_MS`'s comment — "provider rate limits are metered in per-minute buckets, so a minute is the shortest pause that lets the bucket refill" — and src/rate-limit-hold.ts's docstring calls an unwaited retry a burn ("each burns its retry straight into a storm the fleet is collectively sustaining") while still advertising "one wait-and-retry". When the provider sends no hint, the retry should default to that same minute-scale pause (still bounded by `RATE_LIMIT_RETRY_AFTER_CAP_S`, a present hint still winning), so the single retry lands in a refilled bucket instead of a near-guaranteed second 429 that throws the tick's work away.
+
 ## Fixed
 
 ### A tick that throws between dequeuing the user prompt and the pi run silently drops the request: the catch records the error but never re-queues the dequeued (or reclaimed) prompt (found by bugfix loop 2026-09-25, fixed 2026-09-25)
