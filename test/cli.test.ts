@@ -72,13 +72,21 @@ test("init creates the harness files and is idempotent", async () => {
   const repo = makeRepo();
   let r = await cli(repo, "init", "Build a todo CLI.");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /created README\.md/);
+  // The full created line, in file order, with the commit marker: the harness documents plus
+  // the seeded .gitignore, and tumwater.json created but untracked (it stays out of the
+  // commit pathspec), so init leaves the tree clean and says so with "(committed)".
+  assert.equal(
+    r.stdout.match(/created .*/)?.[0],
+    "created README.md, PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, tumwater.json, .gitignore (committed)",
+  );
+  assert.match(r.stdout, /next: `tumwater run` in one terminal, `tumwater tui` in another/);
   for (const f of ["README.md", "PLANS.md", "BUGS.md", "tumwater.json"]) {
     assert.ok(fs.existsSync(path.join(repo, f)), `${f} exists`);
   }
   r = await cli(repo, "init", "Build a todo CLI.");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /already initialized; nothing to do/);
+  // The no-op run says exactly one line and nothing else — no stray created/next output.
+  assert.equal(r.stdout, "already initialized; nothing to do\n");
 });
 
 test("init seeds a git repo in an empty directory (BUGS.md 2026-09-08)", async () => {
@@ -87,6 +95,7 @@ test("init seeds a git repo in an empty directory (BUGS.md 2026-09-08)", async (
   assert.equal(r.code, 0);
   assert.match(r.stdout, /initialized a new git repository on branch main/);
   assert.match(r.stdout, /created README\.md/);
+  assert.match(r.stdout, /next: `tumwater run` in one terminal, `tumwater tui` in another/);
   assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "main");
 });
 
