@@ -1,83 +1,28 @@
+/** The rendered status table suite: renderStatus and lastTickCell (src/ui/status-render.ts).
+ * The status-model suite (loopPhase, workingDetail, the badges) lives beside it in
+ * status-model.test.ts; the fixtures both assemble snapshots from are in status-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { parseProgress, stalledToolLabel } from "../src/ui/progress.js";
 import { lastTickCell, renderStatus } from "../src/ui/status-render.js";
-import { budgetBadge, buildBadge, landingBadge, loopPhase, workingDetail } from "../src/ui/status-model.js";
+import { buildBadge, loopPhase } from "../src/ui/status-model.js";
 import type { StatusSnapshot } from "../src/ui/status.js";
 import { applyLandingOutcome, applyTickOutcome, freshLoopState } from "../src/state.js";
 import { defaultConfig } from "../src/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget.js";
-import { piLogPath, landWorktreePath } from "../src/paths.js";
 import { tmpdir } from "./util.js";
 import { assistantLine } from "./pi-events.js";
-
-const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
-
-/** A session event for a review-gate run: pi stamps the worktree it started in, and the
- * gate's runs start in the role's `_land-<role>` lander worktree — the discriminator the
- * live-progress reader keys on (BUGS.md 2026-09-22). */
-const GATE_SESSION = (root: string, role: string) =>
-  JSON.stringify({ type: "session", version: 3, id: "x", cwd: landWorktreePath(root, role) });
-
-/** Write a raw pi log for `role` under `root`; returns the file path. */
-function writePiLog(root: string, role: string, lines: string[]): string {
-  const file = piLogPath(root, role);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, lines.join("\n") + "\n");
-  return file;
-}
-
-// The default is the default config's enabled cap with no spend — the badge renders in
-// every render now (standing information + edit affordance), and 0 < 50 keeps budgetReached
-// false so phase assertions are unaffected by the default.
-const DEFAULT_BUDGET: StatusSnapshot["budget"] = { spentUsd: 0, capUsd: 50, free: false, fallback: null };
-
-function snapshotWith(
-  loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string; custom?: boolean }>,
-  budget: StatusSnapshot["budget"] = DEFAULT_BUDGET,
-  paused = false,
-  pausedRoles: string[] = [],
-): StatusSnapshot {
-  return {
-    running: false,
-    inbox: 0,
-    inboxPrompts: [],
-    questions: 0,
-    // `custom` is display-only metadata snapshot() computes per row; the fixture defaults it
-    // to false so existing all-built-in tables stay byte-identical.
-    loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial, custom: partial.custom ?? false })),
-    budget,
-    paused,
-    pausedRoles,
-    build: null,
-    // The fixture's queue is idle: depth 0 keeps every existing header line byte-identical
-    // (the 4/5 badge is empty at depth 0) and renders no in-flight label.
-    landQueue: { depth: 0 },
-  };
-}
-
-/** A rendered status table's geometry: the separator line (index 3) holds one dash run per
- * column at its exact width, so a column is named by position and read by slicing rows at
- * those offsets — padded header cells and two-space gaps make a text split unreliable.
- * `headers` holds the header line's labels in the same positions. Shared by every test that
- * reads a table cell by column name. */
-function tableCells(out: string): {
-  lines: string[];
-  widths: number[];
-  cellAt: (row: string, i: number) => string;
-  headers: string[];
-} {
-  const lines = out.split("\n");
-  const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length);
-  const cellAt = (row: string, i: number): string => {
-    let start = 0;
-    for (let j = 0; j < i; j++) start += (widths[j] ?? 0) + 2;
-    return row.slice(start, start + (widths[i] ?? 0)).trim();
-  };
-  return { lines, widths, cellAt, headers: widths.map((_, i) => cellAt(lines[2] ?? "", i)) };
-}
+import {
+  DEFAULT_BUDGET,
+  PENDING_SHA,
+  SESSION,
+  snapshotWith,
+  stampOf,
+  tableCells,
+  toolStart,
+  writePiLog,
+  rowOf,
+  pendingFeature,
+} from "./status-fixtures.js";
 
 test("status table ends with a totals row summing tokens and cost", () => {
   const snap = snapshotWith([
@@ -223,12 +168,6 @@ test("gen/peak ctx combine persisted totals with live in-tick progress for runni
 });
 
 // Last tick cell: absolute local time of the last tick end alongside the relative age.
-
-function stampOf(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
 
 test("lastTickCell shows the absolute local time plus relative age", () => {
   const ts = Date.now() - 180_000; // three minutes ago, same day: no date prefix
@@ -396,187 +335,6 @@ test("the today column keeps its natural width under overflow like cost", () => 
   assert.equal(w[cols.indexOf("cost")], natural[cols.indexOf("cost")], "cost likewise stays fixed");
 });
 
-// Working detail: the live per-loop state cell (workingDetail) and its use by loopPhase.
-
-function toolStart(toolName: string, args: unknown): string {
-  return JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName, args });
-}
-
-test("workingDetail without a pi log shows only the elapsed time", () => {
-  const root = tmpdir();
-  assert.equal(workingDetail(root, freshLoopState("clean")), "working");
-  const s = freshLoopState("clean");
-  s.lastTickStartedAt = Date.now() - 90_000;
-  // ±1s of drift between setting the timestamp and formatting it.
-  assert.match(workingDetail(root, s), /^working 1m(29|30|31)s$/);
-});
-
-test("workingDetail folds live progress into turn, context, and last tool", () => {
-  const root = tmpdir();
-  writePiLog(root, "clean", [
-    SESSION,
-    assistantLine("looking around", { tokens: 4015 }),
-    toolStart("read", { path: "/deep/dir/README.md" }),
-    assistantLine("now the tests", { tokens: 22_000 }),
-    toolStart("bash", { command: "npm test" }),
-  ]);
-  const s = freshLoopState("clean");
-  s.lastTickStartedAt = Date.now() - 5_000;
-  const detail = workingDetail(root, s);
-  assert.match(detail, /^working \ds · /, `unexpected shape: ${detail}`);
-  assert.ok(detail.includes("turn 3"), "two completed turns means the third is in flight");
-  assert.ok(detail.includes("ctx 22.0k"), "latest context size compact-formatted");
-  assert.ok(detail.endsWith("bash npm test"), "most recent tool call last");
-});
-
-test("workingDetail omits the ctx part when no tokens are known yet", () => {
-  const root = tmpdir();
-  writePiLog(root, "clean", [SESSION, assistantLine("starting")]); // no usage
-  assert.doesNotMatch(workingDetail(root, freshLoopState("clean")), /ctx/);
-});
-
-test("workingDetail flags a stalled run only after at least five minutes of silence", () => {
-  const root = tmpdir();
-  const file = writePiLog(root, "clean", [SESSION, assistantLine("hanging", { tokens: 100 })]);
-  assert.doesNotMatch(workingDetail(root, freshLoopState("clean")), /no pi output/);
-  // Four minutes of silence is still below the five-minute threshold.
-  const fourMinAgo = new Date(Date.now() - 4 * 60_000);
-  fs.utimesSync(file, fourMinAgo, fourMinAgo);
-  assert.doesNotMatch(workingDetail(root, freshLoopState("clean")), /no pi output/);
-  // Six minutes of silence crosses it.
-  const sixMinAgo = new Date(Date.now() - 6 * 60_000);
-  fs.utimesSync(file, sixMinAgo, sixMinAgo);
-  assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 6m/);
-});
-
-// The stall flag (BUGS.md 2026-09-13 sibling): a tool call open and silent past the threshold
-// names itself in the state cell — the same rule as runPi's warning event.
-
-test("workingDetail names a stalled tool call in the state cell", () => {
-  const root = tmpdir();
-  const s = freshLoopState("clean");
-  s.lastTickStartedAt = Date.now() - 5_000;
-  // A hand-built live tail (what readLiveProgress returns) with one open call backdated past
-  // the five-minute stall threshold.
-  const p = parseProgress([SESSION, toolStart("bash", { command: "find / -name x" })], 0);
-  assert.equal(p.stalledTool, undefined, "a freshly fed call is not stalled");
-  const call = p.openToolCalls?.[0];
-  assert.ok(call, "the open call is tracked");
-  call.lastActivityAt -= 301_000;
-  p.stalledTool = stalledToolLabel(p.openToolCalls); // what readLiveProgress recomputes per read
-  const detail = workingDetail(root, s, p);
-  assert.ok(detail.includes("tool call stalled: bash find / -name x"), `unexpected shape: ${detail}`);
-  assert.equal(
-    detail.split("find / -name x").length - 1,
-    1,
-    "the command appears once — the flag takes lastTool's slot, not alongside it",
-  );
-});
-
-test("workingDetail does not flag a fresh tool call as stalled", () => {
-  const root = tmpdir();
-  writePiLog(root, "clean", [SESSION, assistantLine("starting"), toolStart("bash", { command: "npm test" })]);
-  const s = freshLoopState("clean");
-  s.lastTickStartedAt = Date.now() - 5_000;
-  const detail = workingDetail(root, s);
-  assert.ok(detail.endsWith("bash npm test"), `unexpected shape: ${detail}`);
-  assert.doesNotMatch(detail, /tool call stalled/);
-});
-
-test("loopPhase surfaces the live detail only while a tick is in flight", () => {
-  const root = tmpdir();
-  writePiLog(root, "feature", [SESSION, assistantLine("working", { tokens: 3_000 })]);
-  const s = freshLoopState("feature");
-  assert.equal(loopPhase(s, true), "queued", "idle loop is not working");
-  s.running = true;
-  s.lastTickStartedAt = Date.now() - 5_000;
-  assert.match(loopPhase(s, true, root), /^working \ds · turn 2/);
-});
-
-test("loopPhase live detail degrades to plain working when the tick has no start time", () => {
-  const root = tmpdir();
-  writePiLog(root, "feature", [SESSION, assistantLine("working", { tokens: 3_000 })]);
-  const s = freshLoopState("feature");
-  s.running = true;
-  assert.equal(loopPhase(s, true, root), "working · turn 2 · ctx 3000");
-});
-
-test("loopPhase shows the review gate label without a log to read from", () => {
-  const s = freshLoopState("feature");
-  s.running = true;
-  s.phase = "review";
-  s.lastTickStartedAt = Date.now() - 90_000;
-  // ±1s of drift between setting the timestamp and formatting it.
-  assert.match(loopPhase(s, true), /^reviewing 1m(29|30|31)s$/);
-
-  const bare = freshLoopState("feature");
-  bare.running = true;
-  bare.phase = "review";
-  assert.equal(loopPhase(bare, true), "reviewing"); // no start time: nothing to show elapsed for
-});
-
-test("loopPhase shows the reviewer run's live detail while a tick is under review", () => {
-  const root = tmpdir();
-  // The reviewer writes to the same per-role raw log, starting a fresh session IN THE ROLE'S
-  // LANDER WORKTREE (its session event's cwd names it) — so the gate accumulator, not the
-  // author's, carries the reviewer's progress (BUGS.md 2026-09-22).
-  writePiLog(root, "feature", [
-    GATE_SESSION(root, "feature"),
-    assistantLine("reviewing the diff", { tokens: 22_000 }),
-    toolStart("bash", { command: "npm test" }),
-  ]);
-  const s = freshLoopState("feature");
-  s.running = true;
-  s.phase = "review";
-  s.lastTickStartedAt = Date.now() - 5_000;
-  const phase = loopPhase(s, true, root);
-  assert.match(phase, /^reviewing \ds · /, `unexpected shape: ${phase}`);
-  assert.ok(phase.includes("turn 2"), "one completed reviewer turn means the second is in flight");
-  assert.ok(phase.includes("ctx 22.0k"), "latest context size compact-formatted");
-  assert.ok(phase.endsWith("bash npm test"), "most recent tool call last");
-});
-
-test("loopPhase flags a stalled reviewer run after five minutes of silence", () => {
-  const root = tmpdir();
-  const file = writePiLog(root, "feature", [SESSION, assistantLine("reviewing", { tokens: 100 })]);
-  fs.utimesSync(file, new Date(Date.now() - 6 * 60_000), new Date(Date.now() - 6 * 60_000));
-  const s = freshLoopState("feature");
-  s.running = true;
-  s.phase = "review";
-  assert.match(loopPhase(s, true, root), /no pi output for 6m/);
-});
-
-// duration()'s hours bucket (>= 1h): every elapsed fixture above stays under an hour, so the
-// `XhYm` branch — what operators actually see for long ticks and long silences in the status
-// table, TUI, and GUI — was untested. The review-gate label is the purest read of it (no log
-// tail involved); the stall flag covers its second call site.
-
-test("elapsed labels bucket into hours once a tick passes an hour", () => {
-  const reviewing = (msAgo: number): string => {
-    const s = freshLoopState("feature");
-    s.running = true;
-    s.phase = "review";
-    s.lastTickStartedAt = Date.now() - msAgo;
-    return loopPhase(s, true);
-  };
-
-  // Two and a half hours in: floor to whole hours, minutes rounded — not 150m.
-  assert.match(reviewing((2 * 3600 + 30 * 60) * 1000), /^reviewing 2h30m$/);
-
-  // The bucket boundary: ten seconds under an hour stays in the minutes branch (59m5Xs),
-  // and at exactly an hour the label switches to hours with zero minutes.
-  assert.match(reviewing((3600 - 10) * 1000), /^reviewing 59m(49|50|51)s$/);
-  assert.match(reviewing(3600 * 1000), /^reviewing 1h0m$/);
-});
-
-test("workingDetail's stall flag uses the hours bucket for long silences", () => {
-  const root = tmpdir();
-  const file = writePiLog(root, "clean", [SESSION, assistantLine("hanging", { tokens: 100 })]);
-  // Ninety minutes without pi output: the stall part must read 1h30m, not 90m.
-  fs.utimesSync(file, new Date(Date.now() - 5400_000), new Date(Date.now() - 5400_000));
-  assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 1h30m/);
-});
-
 // Current work item in the table's state cell (renderStatus row level).
 
 test("renderStatus prepends the current work item to a working loop's state cell", () => {
@@ -670,56 +428,6 @@ test("the status header budget badge reads n/a for an all-free fleet", () => {
   assert.match(paid, /· budget: \$0\.00\/\$50 today$/);
 });
 
-test("loopPhase reads budget paused for idle role loops while the cap is reached", () => {
-  const s = freshLoopState("feature");
-  // Not paused: ordinary phase labels are untouched.
-  assert.equal(loopPhase(s, true, undefined, false), "queued");
-  // Paused: an idle role loop shows why it isn't ticking — ahead of its sleep/queue state.
-  assert.equal(loopPhase(s, true, undefined, true), "budget paused");
-
-  // A sleeping loop is paused too (the cap holds it past nextRunAt).
-  const sleeping = freshLoopState("clean");
-  sleeping.nextRunAt = Date.now() + 3_600_000;
-  assert.equal(loopPhase(sleeping, true, undefined, false), "sleeping (for 1h)");
-  assert.equal(loopPhase(sleeping, true, undefined, true), "budget paused");
-
-  // The director is exempt from the cap: its phase never changes.
-  const d = freshLoopState("director");
-  assert.equal(loopPhase(d, true, undefined, true), "waiting for prompts");
-
-  // In-flight ticks finish even while paused — only NEW ticks are blocked.
-  const running = freshLoopState("feature");
-  running.running = true;
-  assert.equal(loopPhase(running, true, undefined, true), "working");
-
-  // A stopped orchestrator still reads stopped (nothing is ticking at all).
-  assert.equal(loopPhase(s, false, undefined, true), "stopped");
-});
-
-test("loopPhase shows main red for idle loops whose last tick was blocked by a red main", () => {
-  // Blocked: the label explains why the loop keeps waking and landing nothing — ahead of its
-  // sleep/queue state, like budget paused.
-  const s = freshLoopState("feature");
-  s.lastResult = "main_red";
-  assert.equal(loopPhase(s, true), "main red", "queued loop shows the blockage");
-  s.nextRunAt = Date.now() + 3_600_000;
-  assert.equal(loopPhase(s, true), "main red", "sleeping loop shows the blockage too");
-
-  // Other results keep their ordinary labels; a green wake overwrites lastResult and self-corrects.
-  const other = freshLoopState("feature");
-  other.lastResult = "no_change";
-  assert.equal(loopPhase(other, true), "queued");
-
-  // In-flight ticks are untouched (the label describes the finished tick only).
-  const running = freshLoopState("feature");
-  running.running = true;
-  running.lastResult = "main_red";
-  assert.equal(loopPhase(running, true), "working");
-
-  // A stopped orchestrator still reads stopped.
-  assert.equal(loopPhase(s, false), "stopped");
-});
-
 test("loopPhase shows failing for idle loops stuck on an error streak, not sleeping", () => {
   // BUGS.md 2026-09-15: a fleet whose every loop is failing must read as failing, not as
   // an ordinary quiet/sleeping fleet.
@@ -766,24 +474,6 @@ test("loopPhase shows failing for idle loops stuck on an error streak, not sleep
   assert.match(out, /feature\s+failing/);
 });
 
-test("loopPhase shows failing for a quiet-kill streak at the give-up threshold", () => {
-  // BUGS.md 2026-09-18: a loop stuck retrying a session the backend will not schedule looked
-  // exactly like a sleeping loop while it burned an hour of slot time per tick.
-  const s = freshLoopState("feature");
-  s.lastResult = "quiet_killed";
-  s.quietKillStreak = 3;
-  s.nextRunAt = Date.now() + 1_800_000;
-  assert.equal(loopPhase(s, true), "failing", "the streak at the threshold outranks sleep");
-
-  // Below the threshold the loop keeps its ordinary label — a couple of transients are
-  // retryable, not a health state.
-  const shallow = freshLoopState("feature");
-  shallow.lastResult = "quiet_killed";
-  shallow.quietKillStreak = 2;
-  shallow.nextRunAt = Date.now() + 1_800_000;
-  assert.match(loopPhase(shallow, true), /^sleeping/);
-});
-
 test("renderStatus shows the main-red blockage in a blocked loop's state cell and last-result line", () => {
   const snap = snapshotWith([
     { role: "feature", lastResult: "main_red", lastSummary: "code merges blocked until main is green" },
@@ -802,22 +492,6 @@ test("renderStatus shows the main-red blockage in a blocked loop's state cell an
 // applyTickOutcome so the pin covers the state write, not a hand-built fixture.
 
 /** A queued tick's pinned commit — the sha its stashed summary and the land-queue entry share. */
-const PENDING_SHA = "b".repeat(40);
-
-/** The rendered row for `role`, trailing padding trimmed: its last cell is "last result". */
-function rowOf(out: string, role: string): string {
-  const row = out.split("\n").find((l) => l.startsWith(`${role} `));
-  assert.ok(row, `a row for ${role}`);
-  return row.trimEnd();
-}
-
-/** A feature loop whose prior completed tick was a refusal and whose latest tick queued a change. */
-function pendingFeature(): ReturnType<typeof freshLoopState> {
-  const s = freshLoopState("feature");
-  applyTickOutcome(s, defaultConfig(), "feature", { result: "refused", summary: "objected to the plan" });
-  applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
-  return s;
-}
 
 test("the last-result cell keeps the prior completed result and its summary while a change is pending", () => {
   const s = pendingFeature();
@@ -929,53 +603,6 @@ test("renderStatus never reads budget paused while the cap is disabled, even pas
   assert.match(out.split("\n")[0] ?? "", /· budget: \$999\.00 today · no cap$/);
 });
 
-// The operator pause (PLANS.md, fleet-pause plan): while the `tumwater pause` marker exists,
-// every idle role loop's state cell reads `paused` — after the director exemption and ahead
-// of budget paused / main red, because user intent is the most specific reason: it tells the
-// operator what to do (`resume`).
-
-test("loopPhase reads paused for idle role loops while the fleet is user-paused", () => {
-  const s = freshLoopState("feature");
-  // Not paused (the flag defaults off): ordinary phase labels are untouched.
-  assert.equal(loopPhase(s, true), "queued");
-  // Paused: an idle role loop shows why it isn't ticking — ahead of its sleep/queue state.
-  assert.equal(loopPhase(s, true, undefined, false, undefined, true), "paused");
-
-  // A sleeping loop is paused too (the marker holds it past nextRunAt).
-  const sleeping = freshLoopState("clean");
-  sleeping.nextRunAt = Date.now() + 3_600_000;
-  assert.equal(loopPhase(sleeping, true), "sleeping (for 1h)");
-  assert.equal(loopPhase(sleeping, true, undefined, false, undefined, true), "paused");
-
-  // The director is exempt from the operator pause: its phase never changes.
-  const d = freshLoopState("director");
-  assert.equal(loopPhase(d, true, undefined, false, undefined, true), "waiting for prompts");
-
-  // In-flight ticks finish even while paused — only NEW ticks are blocked, so a running loop
-  // keeps its live detail instead of reading `paused`.
-  const running = freshLoopState("feature");
-  running.running = true;
-  assert.equal(loopPhase(running, true, undefined, false, undefined, true), "working");
-
-  // A stopped orchestrator still reads stopped (nothing is ticking at all).
-  assert.equal(loopPhase(s, false, undefined, false, undefined, true), "stopped");
-});
-
-test("loopPhase prefers paused over budget paused and main red", () => {
-  const s = freshLoopState("feature");
-  // All three hold: the user pause wins — while both gates block, `paused` names the fix.
-  s.lastResult = "main_red";
-  assert.equal(loopPhase(s, true, undefined, true, undefined, true), "paused");
-
-  // User-paused + main-red without budget reads paused too.
-  const red = freshLoopState("feature");
-  red.lastResult = "main_red";
-  assert.equal(loopPhase(red, true, undefined, false, undefined, true), "paused");
-
-  // Without the user pause the other labels keep their own precedence (budget before main red).
-  assert.equal(loopPhase(s, true, undefined, true), "budget paused");
-});
-
 test("renderStatus shows paused in idle role loops' state cells ahead of budget paused and main red", () => {
   const root = tmpdir();
   // No pause: ordinary labels.
@@ -1025,45 +652,6 @@ test("the header names the running build and flags a stale one", () => {
   assert.equal(buildBadge(null), "");
 });
 
-test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
-  // One home for the badge string (renderStatus's header and the payload's preformatted
-  // budgetBadge field): n/a for an all-free fleet (checked first, in EVERY cap state — a
-  // disabled free fleet still cannot accumulate spend), $X/$Y while enabled with priced
-  // models, `· no cap` when disabled. Whole-dollar caps stay bare ($50); fractional ones
-  // keep their cents ($12.34).
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, free: true, fallback: null }), " · budget: n/a", "all-free fleet reads n/a");
-  assert.equal(budgetBadge({ spentUsd: 12.34, capUsd: 50, free: false, fallback: null }), " · budget: $12.34/$50 today", "whole-dollar cap stays bare");
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, free: false, fallback: null }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
-  assert.equal(budgetBadge({ spentUsd: 7.5, capUsd: 0, free: false, fallback: null }), " · budget: $7.50 today · no cap", "disabled: spend shown, gate off");
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, free: true, fallback: null }), " · budget: n/a", "free outranks disabled too");
-});
-
-// The cost n/a fallback model (plans/fallback-model.md): while it carries the fleet the badge
-// names it, and the loops keep their ordinary state cells — they are working, not stopped.
-test("budgetBadge names the fallback model only while it is carrying the fleet", () => {
-  const fallback = { provider: "omlx", model: "local-free" };
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, free: false, fallback }),
-    " · budget: $50.00/$50 today · fallback: local-free (cost n/a)",
-    "at the cap with a usable fallback: the badge says what the fleet is running on now",
-  );
-  assert.equal(
-    budgetBadge({ spentUsd: 10, capUsd: 50, free: false, fallback }),
-    " · budget: $10.00/$50 today",
-    "under the cap the fallback is not engaged, so the badge is byte-identical to before",
-  );
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, free: false, fallback: null }),
-    " · budget: $50.00/$50 today",
-    "at the cap with no usable fallback: the fleet is paused, nothing to name",
-  );
-  // A fallback naming only a provider still identifies itself.
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, free: false, fallback: { provider: "omlx" } }),
-    " · budget: $50.00/$50 today · fallback: omlx (cost n/a)",
-  );
-});
-
 test("renderStatus keeps role loops working under the fallback and pauses them without one", () => {
   const root = tmpdir();
   const loops = [{ role: "feature" }, { role: "director" }];
@@ -1083,111 +671,6 @@ test("renderStatus keeps role loops working under the fallback and pauses them w
     running: true,
   });
   assert.match(stopped, /feature\s+budget paused/);
-});
-
-// Merge queue 4/5 — the land queue's one payload field, three renderers: the header badge,
-// the marker-driven row label, and the payload's preformatted field.
-test("landingBadge shows the land queue depth and stays empty when idle", () => {
-  // Empty at depth 0 keeps every existing header byte identical; the count while anything
-  // is queued or landing (in-flight landings always count toward depth — their entry stays
-  // in the queue until its outcome).
-  assert.equal(landingBadge({ depth: 0 }), "", "idle queue adds nothing to the header");
-  assert.equal(landingBadge({ depth: 1 }), " · land queue: 1");
-  assert.equal(landingBadge({ depth: 3 }), " · land queue: 3");
-});
-
-// The landing cell (BUGS.md 2026-09-22, re-opened 2026-09-23): the marker's stage scopes the
-// cell to the phase the landing is in. This used to pin a bare `landing <elapsed>` as the
-// correct output for every landing — the featureless countdown the bug is about.
-test("loopPhase renders the landing cell ahead of every idle state, only when the record is passed", () => {
-  const s = freshLoopState("clean");
-  s.nextRunAt = Date.now() + 90_000; // would read "sleeping (for 2m)" without the record
-  const startedAt = Date.now() - 90_000; // 90s of landing → "1m30s"
-  // The record wins over the idle state…
-  assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "merging" }),
-    "landing 1m30s · merging",
-  );
-  // …and it is the caller's job to pass it only for the landing role: without it the loop
-  // keeps its ordinary state (the "other roles" case — the record is filtered upstream).
-  assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
-  // A stopped harness never shows it — a dead fleet's marker is stale by definition.
-  assert.equal(loopPhase(s, false, undefined, false, undefined, false, { status: "landing", startedAt, stage: "merging" }), "stopped");
-  // Only a record with no stage at all — an older writer's marker mid-upgrade — keeps the
-  // bare elapsed label: there is nothing more it can honestly say.
-  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt }), "landing 1m30s");
-  // A change the vetting stage approved waits for the merge slot: it reads that state instead —
-  // no elapsed and no stage, because nothing of its own is running (BUGS.md 2026-09-23).
-  assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { status: "vetted", startedAt, stage: "merging" }),
-    "vetted, awaiting merge",
-  );
-});
-
-test("the build-check and merging landing stages render their label and never read the log", () => {
-  const root = tmpdir();
-  // The log's newest run is a FINISHED reviewer (a previous landing's), silent for ten
-  // minutes: read during a stage with no live pi run, it would show stale turns/context and
-  // a false `no pi output` flag counted against a run that ended long ago.
-  const file = writePiLog(root, "clean", [
-    GATE_SESSION(root, "clean"),
-    assistantLine("an old review", { tokens: 40_000 }),
-    toolStart("bash", { command: "npm test" }),
-  ]);
-  fs.utimesSync(file, new Date(Date.now() - 10 * 60_000), new Date(Date.now() - 10 * 60_000));
-  const s = freshLoopState("clean");
-  const startedAt = Date.now() - 90_000;
-  for (const [stage, label] of [
-    ["build-check", "build check"],
-    ["merging", "merging"],
-  ] as const) {
-    const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt, stage });
-    assert.match(phase, new RegExp(`^landing 1m3[01]s · ${label}$`), `${stage}: ${phase}`);
-  }
-});
-
-test("the reviewing landing stage carries the reviewer run's live detail, timed from the landing", () => {
-  const root = tmpdir();
-  // The landing's reviewer writes the role's own raw log from its lander worktree — the gate
-  // accumulator, exactly what a reviewing tick's cell reads (BUGS.md 2026-09-22).
-  writePiLog(root, "clean", [
-    SESSION, // the authoring tick's finished run
-    assistantLine("the author's work", { tokens: 9_000 }),
-    JSON.stringify({ type: "tumwater_run", label: "review" }),
-    GATE_SESSION(root, "clean"),
-    assistantLine("reviewing the diff", { tokens: 22_000 }),
-    toolStart("bash", { command: "npm test" }),
-  ]);
-  const s = freshLoopState("clean");
-  // The authoring tick started an hour ago; the cell's elapsed is the LANDING's (90s), and
-  // the frame's `live` for a non-running loop is null — the branch reads the gate itself.
-  s.lastTickStartedAt = Date.now() - 3_600_000;
-  const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
-  assert.match(phase, /^landing 1m3[01]s · reviewing · turn 2 · ctx 22\.0k · bash npm test$/, `unexpected shape: ${phase}`);
-
-  // No log to read (or no root): the honest stage label alone.
-  const bare = loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
-  assert.equal(bare, "landing 1m30s · reviewing");
-});
-
-test("a new landing's reviewing cell starts at its run's label line, not at the previous review's counts", () => {
-  const root = tmpdir();
-  // A previous review ran to completion; the next landing's reviewer has only written its
-  // label line so far (runPi writes it before pi spawns). The stage already says reviewing.
-  writePiLog(root, "clean", [
-    JSON.stringify({ type: "tumwater_run", label: "review" }),
-    GATE_SESSION(root, "clean"),
-    assistantLine("the previous review", { tokens: 50_000 }),
-    assistantLine("VERDICT: approve", { tokens: 51_000 }),
-    toolStart("read", { path: "src/old.ts" }),
-    JSON.stringify({ type: "tumwater_run", label: "review" }),
-  ]);
-  const phase = loopPhase(freshLoopState("clean"), true, root, false, null, false, {
-    status: "landing",
-    startedAt: Date.now() - 5_000,
-    stage: "reviewing",
-  });
-  assert.match(phase, /^landing \ds · reviewing · turn 1$/, `the previous review bled through: ${phase}`);
 });
 
 test("renderStatus shows the land-queue badge in the header and the label in the landing role's row", () => {
