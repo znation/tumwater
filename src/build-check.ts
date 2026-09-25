@@ -26,13 +26,13 @@ import { truncate } from "./text.js";
  * in-lock re-check (merge.ts). The red-main baseline gate (main-red.ts) reuses this same
  * detection and execution from main-baseline.ts to verify main itself once per SHA before an
  * authoring run is spent on top of it. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
- * by clipBuildTail and parseVerdict in review.ts — so that helper has a single home. The build_check
+ * by clipBuildTail here and parseVerdict in review-verdict.ts — so that helper has a single home. The build_check
  * event's shape and the skip-warning wording are presentation, not execution, and live in
  * build-check-events.ts (type-only back-reference here — no runtime cycle). */
 
 /** Per-reason length cap with ellipsis — bounds one line of machine-generated or reviewer
  * text so it cannot bloat persisted state (shared by clipBuildTail here and parseVerdict in
- * review.ts). */
+ * review-verdict.ts). */
 const MAX_REASON_CHARS = 300;
 
 /** Cap one line of text to MAX_REASON_CHARS with an ellipsis (unchanged when it fits). */

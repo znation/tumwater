@@ -103,7 +103,7 @@ export interface VerdictMatch {
 }
 
 /** Every verdict line in `text`, in order (the prompt asks for exactly one, and the last
- * wins — review.ts's parseVerdict takes the final match and reads its reasons from after it). */
+ * wins — review-verdict.ts's parseVerdict takes the final match and reads its reasons from after it). */
 export function verdictLines(text: string): VerdictMatch[] {
   const out: VerdictMatch[] = [];
   for (const m of text.matchAll(VERDICT_LINES)) {

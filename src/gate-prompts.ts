@@ -35,7 +35,7 @@ Rules for this run:
 
 /** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees
  * only the diff and project context — never the author's session — and replies with exactly
- * one VERDICT line plus numbered reasons (see parseVerdict in src/review.ts). `verifiedByHarness`
+ * one VERDICT line plus numbered reasons (see parseVerdict in src/review-verdict.ts). `verifiedByHarness`
  * names the project's own check the gate's deterministic pre-check already ran green on this
  * exact tree (e.g. "`npm run test` passed"), so the reviewer spends its run on what a green suite
  * cannot show instead of re-running it. The no-re-run instruction is its own line in the rules

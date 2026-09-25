@@ -17,7 +17,7 @@ import {
   buildRejectedReviewNote,
   buildReviewPrompt,
 } from "../src/gate-prompts.js";
-import { parseVerdict } from "../src/review.js";
+import { parseVerdict } from "../src/review-verdict.js";
 import { todayStamp } from "../src/budget.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
