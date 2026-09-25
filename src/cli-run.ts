@@ -15,6 +15,9 @@ import { loadLoopState } from "./state.js";
 import { fleetDownEvent, spawnRunChild, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { shortSha } from "./text.js";
 
+/** `tumwater init`: seed a project directory from the operator's brief (src/init.ts does the
+ * work; this prints the report). --dry-run prints the would-be actions without writing
+ * anything; an already-initialized repo is reported as a no-op, never an error. */
 export async function cmdInit(root: string, args: string[]): Promise<void> {
   const { prompt, branch, adopt, dryRun } = parseInitArgs(args);
   const result = await initProject(root, prompt, branch ?? undefined, { adopt, dryRun });
@@ -44,6 +47,13 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
   process.stdout.write("next: `tumwater run` in one terminal, `tumwater tui` in another\n");
 }
 
+/** `tumwater run`: boot the fleet and stream its event feed to this terminal until it stops.
+ * Three layers cooperate here: without SUPERVISED_ENV this process becomes the supervisor
+ * (superviseRunCommand below), spawning the real orchestrator as a child generation; the child
+ * runs runOrchestrator to completion, handing the terminal back via RESTART_EXIT_CODE after a
+ * self-redeploy so the supervisor respawns on the new build; --once collapses the whole thing
+ * into one round of ticks and a summary line (onceSummary below), for cron-style invocations.
+ */
 export async function cmdRun(root: string, args: string[]): Promise<void> {
   // The one function the self-redeploy asks before swapping onto a successor and the supervisor
   // asks when a generation dies, so the three cannot disagree about what boots. The supervisor
