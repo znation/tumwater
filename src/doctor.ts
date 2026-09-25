@@ -41,7 +41,7 @@ import { checkOrphans } from "./doctor-orphans.js";
 import { errorMessage, formatTime, shortSha, truncate } from "./text.js";
 import type { FallbackDemotion } from "./budget.js";
 import { briefFile } from "./readme.js";
-import { bugEntryBody, fixSymbols, fixedHeadings, sourceHaystack, unbackedSymbols } from "./fix-claim.js";
+import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "./fix-claim.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -376,7 +376,7 @@ export function checkFixClaims(root: string): CheckOutcome {
     return { level: "ok", detail: `newest ${headings.length} Fixed record(s) name code that exists on this tree` };
   // falseFixReason's message shape: the heading, then up to 3 missing names.
   const { heading, missing } = first;
-  const names = missing.length <= 3 ? missing.join(", ") : `${missing.slice(0, 3).join(", ")}…`;
+  const names = missingSymbolNames(missing);
   // Every other suspect is still named, shortened: a doctor check is one line.
   const more =
     rest.length > 0

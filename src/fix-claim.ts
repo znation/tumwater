@@ -122,6 +122,12 @@ export function unbackedSymbols(root: string, symbols: string[], haystack: strin
   );
 }
 
+/** The unbacked names for a one-line message: all of them when 3 or fewer, otherwise the
+ * first 3 and an ellipsis — a doctor check or gate message has room for one line. */
+export function missingSymbolNames(missing: string[]): string {
+  return missing.length <= 3 ? missing.join(", ") : `${missing.slice(0, 3).join(", ")}…`;
+}
+
 /** The first false-fix claim in an md-only diff that touches BUGS.md, or undefined when the
  * diff backs its Fixed transitions (or makes none). `files` is the ahead-of-main path list
  * of the diff landing on `mainBranch`; the worktree `wt` holds the tree being landed. */
@@ -151,7 +157,7 @@ export async function falseFixReason(
     if (baseBodies.get(normalizeFixedHeading(heading)) === body) continue;
     const missing = unbackedSymbols(wt, fixSymbols(body), haystack);
     if (missing.length === 0) continue;
-    const names = missing.length <= 3 ? missing.join(", ") : `${missing.slice(0, 3).join(", ")}…`;
+    const names = missingSymbolNames(missing);
     return (
       `md-only BUGS.md edit moves "${heading}" to Fixed, but none of the symbols its ` +
       `Fix paragraph names exist on this tree: ${names} — land the fix in the same commit, ` +
