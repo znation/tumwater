@@ -1,37 +1,30 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
-import { customRole, DIRECTOR_ROLE, roleById } from "./roles.js";
+import { DIRECTOR_ROLE } from "./roles.js";
 import { branchHead, isDirty, setRef } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events.js";
 import { hasResumableSession } from "./pi.js";
 import { extractSummary } from "./commit-message.js";
-import {
-  buildCutOffNote,
-  buildDirectorPrompt,
-  buildResumePrompt,
-  buildTickPrompt,
-  readPrinciples,
-} from "./prompt.js";
-import { buildConflictDiscardNote, buildRejectedReviewNote } from "./gate-prompts.js";
+import { buildResumePrompt } from "./prompt.js";
+import { assembleTickPrompt } from "./tick-prompt.js";
+import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
-import { briefFile, readInitialPrompt } from "./readme.js";
-import { telemetryDigest } from "./failure-report.js";
+
 import { configForRole } from "./config.js";
 import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
-import { dequeuePrompt, enqueuePrompt } from "./inbox.js";
+import { enqueuePrompt } from "./inbox.js";
 import { stageTickLanding } from "./tick-stage.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
 import { recordDailyCost } from "./budget.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
-import { detectBuildCheck } from "./build-check-detect.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal, refusalContradiction } from "./refusal.js";
 import { extractFlow } from "./reply-contract.js";
-import { readQaCoverage, recordFlow, renderCoverageBlock } from "./qa-coverage.js";
+import { recordFlow } from "./qa-coverage.js";
 import { landingRefName, sessionDir } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
 
@@ -168,74 +161,15 @@ export class LoopRunner {
   }
 
   /** Decide the prompt for this tick, or null to skip (director with empty inbox). */
+  /** Assemble this tick's prompt via src/tick-prompt.ts (the prompt-content concern lives
+   * there); the dequeued director request rides back so the runner records it as pending —
+   * re-queued if the tick ends without fulfilling it. Null when the loop has nothing to run
+   * (an empty director inbox); a role loop's assembly never returns null. */
   private tickPrompt(): string | null {
-    const initialPrompt = readInitialPrompt(this.root);
-    // The brief's owning file (TUMWATER.md first, README.md as the compatibility path —
-    // plans/portability.md §7a/7), named in both prompt builders' rules instead of a hardcoded
-    // README.md. "README.md" is the fallback for a repo with no marked file yet — the fleet
-    // runs blind on prompts either way, so the name in the rules should still point somewhere.
-    const brief = briefFile(this.root) ?? "README.md";
-    // The project's design principles ride along in every prompt — tick and director alike — so
-    // all loops share one standard of taste. Empty when the repo has no PRINCIPLES.md.
-    const principles = readPrinciples(this.root);
-    // The project's resolved check (plans/portability.md §6/7): the prompt names the actual
-    // verify command instead of asserting npm. Detection is a handful of stat calls — a
-    // per-tick recompute keeps a config edit live on the next tick.
-    const check = detectBuildCheck(this.root, this.config) ?? undefined;
-    let prompt: string;
-    if (this.role === DIRECTOR_ROLE) {
-      const userPrompt = dequeuePrompt(this.root);
-      if (!userPrompt) return null;
-      this.pendingUserPrompt = userPrompt;
-      prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief);
-    } else {
-      // Catalog first, then user-defined loops (plans/user-defined-loops.md): a custom's task
-      // is its entire find-something-to-do text and the title identifies it in the prompt.
-      const custom = this.config.customLoops.find((c) => c.name === this.role);
-      const role = roleById(this.role) ?? (custom ? customRole(custom.name, custom.task) : undefined);
-      if (!role) throw new Error(`unknown role: ${this.role}`);
-      // The telemetry role's evidence is the harness's own event log, one level outside this
-      // worktree, so the report module renders it (telemetryDigest) and the tick injects it.
-      const digest = this.role === "telemetry" ? telemetryDigest(this.root) : undefined;
-      // The `qa` observer's flow rotation needs a memory of what it last exercised; every tick
-      // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
-      // runtime state, and a missing or unreadable one degrades to no block (plans/observer-roles.md 2/2).
-      let coverage: string | undefined;
-      if (this.role === "qa") {
-        try {
-          coverage = renderCoverageBlock(readQaCoverage(this.root));
-        } catch {
-          coverage = undefined;
-        }
-      }
-      prompt = buildTickPrompt({
-        role,
-        initialPrompt,
-        principles,
-        digest,
-        coverage,
-        extraInstructions: this.config.roles[this.role]?.instructions,
-        check,
-        briefFile: brief,
-      });
-    }
-    // A change rejected in review is the only cross-tick memory of what was built and why it
-    // failed — every tick starts a fresh session, so the full reasons ride along on the next
-    // prompt until the role's next reviewed change replaces them.
-    if (this.state.lastReview?.verdict === "reject") {
-      prompt += `\n\n${buildRejectedReviewNote(this.state.lastReview.reasons)}`;
-    }
-    // Likewise a change leftover recovery discarded as unmergeable: named until the role queues
-    // its next change (the discarding tick itself appends it after recovery — see runTick).
-    const discard = this.state.conflictDiscard;
-    if (discard) prompt += `\n\n${buildConflictDiscardNote(discard.summary, discard.attempts)}`;
-    // A fresh tick after the previous run(s) were cut off at the context ceiling (the loop
-    // stopped resuming, or never resumed — the director re-runs its prompt fresh): the only
-    // memory that the last attempt was too big for the window is this note.
-    if ((this.state.cutOffStreak ?? 0) > 0) {
-      prompt += `\n\n${buildCutOffNote(this.state.cutOffStreak ?? 0)}`;
-    }
-    return prompt;
+    const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state });
+    if (assembled === null) return null;
+    if (assembled.userPrompt !== null) this.pendingUserPrompt = assembled.userPrompt;
+    return assembled.prompt;
   }
 
   /** Put an unfulfilled director prompt back in the inbox so the next tick retries it — the
