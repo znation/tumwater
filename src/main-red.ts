@@ -45,10 +45,11 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
  * that paid for it, with its duration — the gate's build_check sibling, so both halves of the
- * fleet's deterministic verification are priced in the feed. Shared by the bugfix healer, the
- * gate, and the batch lander's red-check attribution (land-batch.ts) so the event's shape
- * cannot drift between them. */
-export function baselineCheckLogger(
+ * fleet's deterministic verification are priced in the feed. The one logger for every baseline
+ * check this module runs — the bugfix handoff, the authoring gate, and mainTipVerdict's
+ * tip check (which review.ts's gate and lander.ts's attributeRedCheck reach through it) —
+ * so the event's shape cannot drift between them. */
+function baselineCheckLogger(
   root: string,
   role: string,
 ): (run: { outcome: BuildCheckOutcome; durationMs: number }) => void {
@@ -113,7 +114,7 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
  * (mainTipVerdict): `green` — main passes, so the change broke the check; `red` — main fails
  * too, so the failure is not the change's and this module's gate and bugfix handoff own the
  * repair; `unavailable` — no verdict could be had, with `why` for the rejection's reasons. */
-export type MainTipVerdict =
+type MainTipVerdict =
   | { status: "green"; sha: string }
   | { status: "red"; sha: string }
   | { status: "unavailable"; why: string };
