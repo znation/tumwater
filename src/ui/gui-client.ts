@@ -235,6 +235,15 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   // when the frame is unchanged — rewriting identical HTML re-parses it (multi-KB backlog
   // bodies every second) and wipes the operator's text selection mid-read for nothing.
   let lastPanelHtml = null;
+  // The same skip for the three panels the 1s poll rewrites unconditionally: the loop table,
+  // the backlog lists, and the event feed. On an idle fleet every payload (and so every HTML
+  // string) is identical poll after poll, and assigning it anyway re-parses the whole subtree
+  // and churns layout for nothing; caching each panel's last-rendered string keeps a quiet
+  // poll from touching the DOM at all. Event handlers are delegated on the containers, so a
+  // skipped rebuild leaves them working.
+  let lastLoopsHtml = null;
+  let lastBacklogHtml = null;
+  let lastFeedHtml = null;
   function renderDetail(panel, html) {
     if (html !== lastPanelHtml) {
       panel.innerHTML = html;
@@ -313,7 +322,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
       // plain text, not a link): the editor swaps just this fragment.
       renderBudgetBadge(d);
       renderPauseBadge(d);
-      document.getElementById("loops").innerHTML = sortLoops(d.loops).map((l) => {
+      const loopsHtml = sortLoops(d.loops).map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";
         // User-defined loops carry an asterisk in the link text (the payload's custom flag);
@@ -337,6 +346,10 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
           "' data-role='" + esc(l.role) + "'>" + ((d.pausedRoles || []).includes(l.role) ? "resume" : "pause") + "</a>" +
           "</td></tr>";
       }).join("");
+      if (loopsHtml !== lastLoopsHtml) {
+        document.getElementById("loops").innerHTML = loopsHtml;
+        lastLoopsHtml = loopsHtml;
+      }
       // Project status: planned features, open bugs, and open questions — fresh from
       // /api/status each poll. Each entry line is a link into the detail panel (its full text,
       // fetched on demand from /api/backlog); queued prompts stay plain — they have no body.
@@ -345,16 +358,25 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
         "' data-index='" + i + "'>" + esc(t) + "</a>").join("\\n");
       const backlogList = (title, items, file) => "<span class='muted'>" + esc(title + " (" + items.length + ")") + "</span>\\n" +
         (items.length ? (file ? backlogLink(file, items) : items.map(esc).join("\\n")) : "(none)");
-      document.getElementById("backlog").innerHTML =
+      const backlogHtml =
         backlogList("planned features", d.plans || [], "plans") + "\\n\\n" + backlogList("open bugs", d.bugs || [], "bugs") +
         "\\n\\n" + backlogList("open questions", d.questions || [], "questions") +
         // Queued director prompts in execution order (previews, truncated server-side);
         // (none) while the inbox is empty, like the other sections.
         "\\n\\n" + backlogList("queued prompts", d.inboxPrompts || []);
-      const feed = document.getElementById("feed");
-      const stick = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 4;
-      feed.innerHTML = d.events.map(esc).join("<br>");
-      if (stick) feed.scrollTop = feed.scrollHeight;
+      if (backlogHtml !== lastBacklogHtml) {
+        document.getElementById("backlog").innerHTML = backlogHtml;
+        lastBacklogHtml = backlogHtml;
+      }
+      const feedHtml = d.events.map(esc).join("<br>");
+      if (feedHtml !== lastFeedHtml) {
+        const feed = document.getElementById("feed");
+        // Stickiness is judged on the pre-rebuild scroll state, as it always was.
+        const stick = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 4;
+        feed.innerHTML = feedHtml;
+        lastFeedHtml = feedHtml;
+        if (stick) feed.scrollTop = feed.scrollHeight;
+      }
     } catch {
       document.getElementById("header").textContent = "connection lost";
     }
