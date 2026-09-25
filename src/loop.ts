@@ -14,7 +14,7 @@ import { LoopPi } from "./loop-pi.js";
 import { configForRole } from "./config-views.js";
 import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
-import { enqueueRolePrompt } from "./inbox.js";
+import { enqueueRolePrompt, takeQueuedPromptFile } from "./inbox.js";
 import { stageTickLanding } from "./tick-stage.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
 import { TickUsage } from "./tick-usage.js";
@@ -174,6 +174,23 @@ export class LoopRunner {
     if (userPrompt) enqueueRolePrompt(this.root, this.role, userPrompt);
   }
 
+  /** Re-queue an unfulfilled prompt whose pi session the next tick will resume: the resumed
+   * session still owns the request in its (compacted) context, so the re-queued copy is only
+   * the durable store for a restart — the resume must reclaim exactly it as its own user
+   * prompt (the resume's fulfillment consumes it; only its failure paths re-queue it) instead
+   * of leaving it queued for a later fresh tick to run the same request twice. The queue file
+   * is recorded so the reclaim takes that exact prompt whatever else was enqueued meanwhile.
+   * Director ticks never resume — their re-queued prompt always reruns fresh — so they take
+   * the plain path. */
+  private requeuePromptForResume(userPrompt: string | null): void {
+    if (!userPrompt) return;
+    if (this.role === DIRECTOR_ROLE) {
+      this.requeueUnfulfilledPrompt(userPrompt);
+      return;
+    }
+    this.state.resumePromptFile = enqueueRolePrompt(this.root, this.role, userPrompt);
+  }
+
   /** Finish a tick whose pi run was killed mid-flight — shared by the author-run and review-
    * gate abort branches, which have identical semantics; only what the kill left behind
    * differs (half-done edits vs. the fully committed change under review), and
@@ -195,8 +212,10 @@ export class LoopRunner {
     }
     // Shutdown mid-run: fail closed — a director prompt goes back to the inbox like any other
     // unfulfilled abort (mid-review the commit stays on the branch for re-review; mid-author-
-    // run its half-done edits are discarded by the next tick's reset).
-    this.requeueUnfulfilledPrompt(userPrompt);
+    // run its half-done edits are discarded by the next tick's reset). A role's re-queued
+    // prompt rides the resume that follows (mid-review the fresh recovery dequeues it like any
+    // other tick instead — the flag is cleared and never reclaimed there).
+    this.requeuePromptForResume(userPrompt);
     return { result: "aborted" };
   }
 
@@ -429,6 +448,20 @@ export class LoopRunner {
     // work, and any uncommitted edits are the reviewer's stray output, discarded by the fresh
     // path's reset below.
     const resuming = resumableSession && s.phase !== "review";
+    // Reclaim the prompt the interrupted tick re-queued (requeuePromptForResume): the resumed
+    // session still owns that request in its context, so this tick's outcome bookkeeping —
+    // re-queue on unfulfilled, clear on fulfillment — must operate on the queue's copy, or a
+    // fulfilling resume leaves it queued for a later fresh tick to run the same request twice.
+    // The exact recorded file is taken, so an enqueue or cancel meanwhile cannot divert the
+    // reclaim; a vanished file (cancelled) reclaims nothing. The flag is consumed even when
+    // this tick does not resume: a fresh fallback re-derives its prompt from the queue like
+    // any other tick, and a stale record must never survive into a later resume.
+    const reclaimFile = s.resumePromptFile;
+    s.resumePromptFile = undefined;
+    if (resuming && reclaimFile) {
+      const reclaimed = takeQueuedPromptFile(reclaimFile);
+      if (reclaimed !== null) this.pendingUserPrompt = reclaimed;
+    }
 
     // Why the resume: a named quiet-kill means the last run died on a stalled tool call (the
     // bridge then warns against re-running it unchanged); a cut-off streak means the last run
@@ -529,7 +562,7 @@ export class LoopRunner {
       // leaving hours of work for the next tick's reset to discard. Director ticks never resume;
       // their prompt goes back to the inbox to run fresh, as on any other unfulfilled kill.
       s.lastError = pi.errorMessage ?? "killed as hung";
-      this.requeueUnfulfilledPrompt(userPrompt);
+      this.requeuePromptForResume(userPrompt);
       return { result: "quiet_killed" };
     }
     if (pi.timedOut) {
@@ -590,7 +623,7 @@ export class LoopRunner {
       // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
       // to the inbox to rerun fresh; a role loop resumes the just-compacted session
       // next tick (see the cutOff handling in tick()).
-      if (diagnosis.cutOff) this.requeueUnfulfilledPrompt(userPrompt);
+      if (diagnosis.cutOff) this.requeuePromptForResume(userPrompt);
       // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
       // line it left mid-stream is not a finished verdict, so recording it would advance the
       // rotation past a check that did not complete. Only a run that was not cut off records.

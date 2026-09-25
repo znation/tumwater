@@ -96,6 +96,12 @@ export interface LoopState {
    * warns against re-running the hung command unchanged). Cleared with resumePending at tick
    * start; absent for restart/cut-off resumes, whose causes are derived. */
   resumeCause?: "hung-tool";
+  /** Queue file holding the user prompt a resume-owning tick re-queued: the interrupted pi
+   * session still owns that request in its context, so the resume must reclaim exactly this
+   * file as its own user prompt — the resume's fulfillment consumes it, and only its failure
+   * paths re-queue it — instead of leaving the copy queued for a later fresh tick to run the
+   * same request twice. Cleared at every tick's start; reclaimed only by a tick that resumes. */
+  resumePromptFile?: string;
   /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
    * past the limit the loop abandons the runaway task and falls back to a fresh tick. */
   cutOffStreak?: number;

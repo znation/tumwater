@@ -99,6 +99,14 @@ function takeQueuedFile(file: string): string | null {
   return text;
 }
 
+/** Remove and return the prompt stored at one exact queue file, or null when it has vanished
+ * (a cancel or an earlier dequeue won the race) — the same race policy as takeQueuedFile. The
+ * resume reclaim uses this instead of the oldest-first pop so the prompt recorded at requeue
+ * time is the one reclaimed, whatever else was enqueued or cancelled meanwhile. */
+export function takeQueuedPromptFile(file: string): string | null {
+  return takeQueuedFile(file);
+}
+
 /** Remove the Nth prompt queued for one loop — 1-based, as shown by `tumwater prompt --list` —
  * and log one prompt_cancelled event under that loop (preview via promptPreview, exactly like
  * its prompt_enqueued sibling). Throws for out-of-range positions with no side effects; returns

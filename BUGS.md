@@ -9,6 +9,36 @@ _None yet._
 
 ## Fixed
 
+### A resume-owning tick's requeued role prompt is never reclaimed: the resume fulfills the request in its session while the queue copy survives, and a later fresh tick runs the same request a second time (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** A role tick running a queued per-role prompt (`tumwater prompt --role <id>`) that ends
+cut-off, quiet-killed, or shutdown-aborted both re-queues the prompt (the durable store) and sets
+`resumePending` — and the resumed session still owns that request in its compacted context. When
+the resume fulfills it, nothing consumed the requeued copy: the next fresh tick dequeued it and
+ran the same request again — duplicate model spend, a second review cycle, and for an
+implementation request a second change stacked on the first.
+
+**Reproduce:** confirmed 2026-09-25 by the regression test now in test/loop-2.test.ts ("a cut-off
+tick's requeued role prompt is reclaimed by the resume, not run twice"): enqueue a per-role prompt,
+cut tick 1 off contentless (resume pending, prompt requeued), let tick 2's resume fulfill with
+nothing-to-do — pre-fix the queue still held the prompt and tick 3's fresh prompt carried its text;
+post-fix the resume consumed it and tick 3 runs the standing rotation instead. The test fails on
+the pre-fix tree (verified by reverting loop.ts alone) and passes with the fix.
+
+**Fix:** `loop.ts` records the requeued copy's queue file in the new `resumePromptFile` state field
+whenever an outcome both re-queues the user prompt and leaves a resume pending
+(`requeuePromptForResume`, used by the shutdown-abort, quiet-kill, and cut-off paths; the director
+never resumes, so it keeps the plain requeue). The next tick consumes the record and, when it
+actually resumes, takes that exact file as its own user prompt — the resume's fulfillment then
+clears it and only its failure paths re-queue it (pinned by the companion "failed resume re-queues
+the reclaimed prompt" test). The reclaim takes the recorded file rather than the queue head, so a
+prompt enqueued or cancelled meanwhile cannot divert it, and a vanished file (cancelled) reclaims
+nothing.
+
+**Validation gap:** no-fake (fixture sense, closest tag) — the suite's resume tests never combined
+a queued per-role prompt with a fulfilling resume, so the double run had no pin; confirming the fix
+required a two-run shim scenario (a cut-off fresh run, then a resuming run) that did not exist.
+
 ### A Done/Fixed entry's body bullets that mention a completion date count as entries, inflating the usage report's featuresDone/bugsFixed tallies (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `entryDates` (src/report-data.ts, formerly ui/report.ts) treats every unfenced
