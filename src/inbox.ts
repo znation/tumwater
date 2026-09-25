@@ -150,22 +150,24 @@ export function dequeueRolePrompt(root: string, role: string): string | null {
   return takeQueuedFile(oldest);
 }
 
-/** Cap on a submitted director prompt's length: the same ceiling as the initial prompt
- * (readme.ts's INITIAL_PROMPT_MAX_CHARS), because both ride into a tick's prefill — a
- * megabyte pasted into the TUI, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)`
- * would otherwise ride into the director's next tick's context wholesale. submitPrompt
- * rejects over-long text before it is queued, so no surface can enqueue it. */
+/** Cap on a submitted prompt's length: the same ceiling for every loop's queue, director and
+ * role alike, because every prompt rides into its target tick's prefill — a megabyte pasted
+ * into the TUI, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)` would otherwise
+ * ride into the next tick's context wholesale. submitPrompt and submitRolePrompt reject
+ * over-long text before it is queued, so no surface can enqueue it. */
 export const DIRECTOR_PROMPT_MAX_CHARS = INITIAL_PROMPT_MAX_CHARS;
 
-/** The one length rule for a submitted director prompt: the error message when the trimmed
- * text exceeds DIRECTOR_PROMPT_MAX_CHARS, null when it fits. submitPrompt throws it before
- * anything is queued or logged; the GUI asks it first so an over-long prompt answers 400
- * (a user-input error) while an unexpected submit failure (a broken inbox's EACCES) stays
- * the 500 its gui-server test pins. */
-export function promptLengthProblem(text: string): string | null {
+/** The one length rule for a submitted prompt, scoped to the loop it targets: the error
+ * message when the trimmed text exceeds DIRECTOR_PROMPT_MAX_CHARS, null when it fits. The
+ * message names the target loop's tick — `--role qa` must not be told its text rides into
+ * the director's prefill. submitPrompt/submitRolePrompt throw it before anything is queued
+ * or logged; the GUI asks it first so an over-long prompt answers 400 (a user-input error)
+ * while an unexpected submit failure (a broken inbox's EACCES) stays the 500 its
+ * gui-server test pins. */
+export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE): string | null {
   const prompt = text.trim();
   if (prompt.length <= DIRECTOR_PROMPT_MAX_CHARS) return null;
-  return `the prompt is ${prompt.length} chars — shorten it to at most ${DIRECTOR_PROMPT_MAX_CHARS}: it rides into the director tick's prefill`;
+  return `the prompt is ${prompt.length} chars — shorten it to at most ${DIRECTOR_PROMPT_MAX_CHARS}: it rides into the ${role} tick's prefill`;
 }
 
 /** A user submits a new prompt for one loop (TUI, GUI, or CLI): enqueue it there and record it
@@ -176,7 +178,7 @@ export function promptLengthProblem(text: string): string | null {
  * DIRECTOR_PROMPT_MAX_CHARS (promptLengthProblem's message) — callers report it to their
  * operator. */
 export function submitRolePrompt(root: string, role: string, text: string): string {
-  const problem = promptLengthProblem(text);
+  const problem = promptLengthProblem(text, role);
   if (problem) throw new Error(problem);
   const prompt = text.trim();
   enqueueRolePrompt(root, role, prompt);

@@ -16,7 +16,7 @@ import { knownRoleIds, loadConfigCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
 import { requestAbort, requestWake } from "../operator-commands.js";
-import { allRoleIds } from "../roles.js";
+import { allRoleIds, DIRECTOR_ROLE } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "./report.js";
 import { collectReport } from "../report-data.js";
 import { collectFailureReport } from "../failure-data.js";
@@ -244,7 +244,11 @@ async function readJsonObject(
  * with the same 400 wording: both dashboards' prompt bars sit behind the same length rule
  * (inbox.ts's promptLengthProblem) and a retried request must get identical answers from
  * either surface. Returns the validated text, or null once the 400 is sent. */
-function requirePromptText(res: http.ServerResponse, body: Record<string, unknown>): string | null {
+function requirePromptText(
+  res: http.ServerResponse,
+  body: Record<string, unknown>,
+  role: string = DIRECTOR_ROLE,
+): string | null {
   const text = body.text;
   if (typeof text !== "string") {
     sendJson(
@@ -258,7 +262,7 @@ function requirePromptText(res: http.ServerResponse, body: Record<string, unknow
     sendJson(res, 400, { error: "text required" });
     return null;
   }
-  const tooLong = promptLengthProblem(text);
+  const tooLong = promptLengthProblem(text, role);
   if (tooLong) {
     sendJson(res, 400, { error: tooLong });
     return null;
@@ -290,9 +294,9 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const body = await readJsonObject(req, res, '{"role": "feature", "text": "..."}');
   if (!body) return; // 4xx already sent — oversized or not a JSON object
   if (rejectBadRole(root, res, body.role)) return;
-  const text = requirePromptText(res, body);
-  if (text === null) return;
   const role = body.role as string;
+  const text = requirePromptText(res, body, role);
+  if (text === null) return;
   submitRolePrompt(root, role, text);
   sendJson(res, 200, { ok: true, message: requestWake(root, [role]) });
 }

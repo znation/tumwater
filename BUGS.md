@@ -7,6 +7,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### A role prompt's over-cap rejection names the director's prefill whatever loop it targets: `tumwater prompt --role qa` past DIRECTOR_PROMPT_MAX_CHARS fails with "it rides into the director tick's prefill" (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** submit an over-long prompt to any role loop (`tumwater prompt --role qa`, or the GUI/TUI per-row prompt bar): the rejection correctly refuses to queue it, but the message tells the operator the text "rides into the director tick's prefill" — the wrong loop. The operator trimming the text is pointed at a queue that was never involved.
+
+**Reproduce:** `tumwater prompt --role qa "$(python3 -c 'print("x"*50000)')"` → the thrown message names the director.
+
+**Cause:** `promptLengthProblem` (src/inbox.ts) hardcoded "the director tick's prefill" when the cap was shared with the per-role queues (PLANS.md "Per-role prompts 1/2"); neither it nor the GUI's shared `requirePromptText` validator takes the target loop.
+
+**Fix:** `promptLengthProblem(text, role)` interpolates the target loop into the reason (`the ${role} tick's prefill`), defaulting to the director so every existing caller and the director-path wording are unchanged; `submitRolePrompt` passes its role and the GUI's `requirePromptText` takes the role its endpoint validated (`/api/prompt-role` after `rejectBadRole`, so the name is always a real loop).
+
+**Validation gap:** no-observability — closest fit: the failure leaves a trace (a wrong 400/throw message), but the suite's only over-cap assertion checked a `prefill` substring on the director path, so no check ever observed which loop the message names and the miswording passed every run; the regression test now pins the target loop's name and the director word's absence.
+
 ### A fresh operator wake does not exempt a due maintenance tick from need-based deferral: `tumwater wake --role clean` on an idle loop is silently deferred for up to DEFER_MAX_MS (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `tumwater wake --role clean` on a maintenance loop whose last tick found nothing: the wake clears backoff and pulls `nextRunAt` to now, `isEligible` returns due (reason `scheduled`, via the `wokenAt` min-gap exemption) — and then the orchestrator's need-based deferral block defers the tick anyway: `deferTick` sees `lastResult === "no_change"`, a `lastMainHead` set by the just-ended tick, and no work landed since it, so the tick waits until work lands or DEFER_MAX_MS (3 h) expires. The operator's explicit "try again now" is silently ignored, the same no-feedback failure the wake-vs-min-gap fix (2026-09-25) removed from the gap gate. Discovered while validating the mid-tick wake fix: the e2e's woken `clean` tick was due on every poll yet never ran.

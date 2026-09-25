@@ -278,6 +278,19 @@ test("queuedPrompts skips a file that vanishes between listing and reading", (t)
 
 // --- Per-role queues (PLANS.md "Per-role prompts 1/2") ---
 
+test("a role prompt's over-cap error names the target loop's tick, not the director's", () => {
+  const dir = tmpdir();
+  const over = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
+  assert.throws(() => submitRolePrompt(dir, "qa", over), (err: unknown) => {
+    const message = String((err as Error).message);
+    // The cap is shared, but the reason names the loop the prompt actually rides into:
+    // `tumwater prompt --role qa` that says "director" points the operator at the wrong queue.
+    return message.includes("the qa tick's prefill") && !message.includes("director");
+  });
+  assert.equal(inboxSize(dir, "qa"), 0); // rejected before the queue write
+  assert.equal(eventsOfType(dir, "prompt_enqueued").length, 0);
+});
+
 test("per-role queues are separate from the director's queue and from each other", () => {
   const dir = tmpdir();
   // The director keeps its historical queue at the inbox root; roles get subdirectories.
