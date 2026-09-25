@@ -7,6 +7,46 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `readEvents`' non-positive limit returns a wrong window instead of none: `slice(-0)` is `slice(0)` and a negative limit is a positive-start `slice(k)` (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `readEvents(root, limit)`'s contract is the last `limit` events. A `limit`
+of 0 returned the whole scanned window instead of an empty list — the closing
+`lines.slice(-limit)` with `limit === 0` is `slice(-0)`, which JavaScript treats as
+`slice(0)`, keeping everything collected. A negative limit −k read as the
+positive-start `slice(k)` and returned the window **minus its first k lines** — a
+window the arming condition (`newlines >= limit + 1`) had bounded to a single chunk,
+since `0 >= limit + 1` holds immediately for any negative limit and the scan stops
+after the first chunk. The breach never surfaced because every shipped caller passes a
+positive count (default 200, `logs --n`, the TUI's event budget), but the function is
+the feed source for every display surface and its doc pinned the "last `limit`
+events" contract its sibling `readTranscriptTail` had pinned the same day.
+
+**Reproduce:** a 10-event log (small-file path, whole file as one chunk):
+`readEvents(dir, 0)` → 10 events, `readEvents(dir, −3)` → 7 events. A >8 KiB log
+(windowed path): `readEvents(dir, 0)` → 70 events (every complete line in the last
+8 KiB chunk), `readEvents(dir, −3)` → 68. Machine-run 2026-09-25 against the
+pre-fix module; post-fix all four return `[]`.
+
+**Cause:** the unguarded `lines.slice(-limit)` in src/events.ts — the same
+`-0 === 0` pitfall readTranscriptTail fixed hours earlier — with no stated semantics
+for a non-positive count. The scan's arming condition compounded it: for a
+non-positive limit it fires on the first chunk, so the window the slice cut from was
+itself arbitrary rather than the whole log.
+
+**Fix:** src/events.ts returns `[]` for `limit <= 0` before the scan (which also skips
+the I/O) and the doc states the non-positive boundary explicitly instead of leaving it
+to the raw slice. Pinned by test/events.test.ts "readEvents honors non-positive
+limits: slice(-0) must not widen the window", which asserts `[]` at limit 0 and −3
+against a 10-event log; both assertions fail against the pre-fix module (10 and 7
+events, machine-run 2026-09-25).
+
+**Validation gap:** unclear-invariant — the doc pinned only "the last `limit` events",
+which does not define a non-positive limit, and the raw-slice oracle read the boundary
+as the whole window; `[]` had to be pinned as the intended semantics from
+readTranscriptTail's same-day zero-boundary precedent before the breach could be
+confirmed as a bug rather than the documented behavior, and no test exercised the
+boundary.
+
 ### `readTranscriptTail`'s limit==0 window returns the newest run's entries instead of none: `slice(-0)` is `slice(0)`, and the zero boundary had three disagreeing definitions (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `readTranscriptTail(file, limit)`'s contract is the last `limit` rendered

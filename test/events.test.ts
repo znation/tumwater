@@ -76,6 +76,17 @@ test("readEvents holds back a torn trailing line instead of letting it eat a lim
   );
 });
 
+// A non-positive limit is an empty window, not a raw slice(-limit): slice(-0) is slice(0)
+// (the whole scanned window comes back) and a negative limit is slice(k), a positive-start
+// cut that keeps the window minus its first k lines. With 10 events, the pre-fix module
+// returned 10 at limit 0 and 7 at limit -3 — both asserted empty here.
+test("readEvents honors non-positive limits: slice(-0) must not widen the window", () => {
+  const dir = tmpdir();
+  for (let i = 1; i <= 10; i++) logEvent(dir, { loop: "x", type: "warning", message: `event ${i}` });
+  assert.deepEqual(readEvents(dir, 0), []);
+  assert.deepEqual(readEvents(dir, -3), []);
+});
+
 // Reference implementation: read the whole file (what readEvents used to do).
 function referenceTail(root: string, limit: number) {
   const lines = fs.readFileSync(eventsLogPath(root), "utf8").split("\n").filter(Boolean);
