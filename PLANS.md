@@ -65,6 +65,62 @@ loop's queue (verifiable with `tumwater prompt --list`). (c) The GUI's per-row p
 same error text as `/api/transcript`. (d) The director's own prompt box and inbox display are
 unchanged. (e) Full suite passes.
 
+### Timed pause — `tumwater pause [--role <id>] --for <duration>` auto-resumes (planned 2026-09-25)
+
+**Goal.** Today's pause is indefinite: the marker (`.tumwater/state/paused.json`, `{ at }`) or a
+paused role (`.tumwater/state/paused-roles.json`, `{ roles, at }`) stands until a manual `resume`
+lifts it, so an operator quieting the fleet for a meeting or a manual repo session must remember
+to come back — forget, and the fleet idles forever with nothing on the dashboards saying why.
+Add a duration: `tumwater pause --for 30m` (fleet) or `tumwater pause --role cleanup --for 2h`
+pauses until the deadline, then the existing pause machinery releases it by itself.
+
+**Approach.** One shared deadline per marker — the marker already carries one `at`; it gains one
+optional `until` (ms epoch) covering the whole set. Per-role deadlines would need a map plus
+per-role transition logic for no observed need; pausing three roles at three times is three
+commands, the last write winning with its own deadline.
+
+1. **src/cli-args.ts** — `parseDurationFlag(flag, raw)`, shaped like `parseCountFlag`: accepts
+   `<n><s|m|h|d>` (e.g. `45s`, `90m`, `2h`, `1d`), rejects zero, negatives, a missing or unknown
+   unit, and a missing value via `fail()`; returns the duration in ms. No absolute `--at` form —
+   one way of saying it.
+2. **src/cli.ts** — the marker-command arg gate (`runRoleCommand`'s `rejectUnknownArgs(command,
+   args, [ROLE_FLAG])`) accepts `--for <duration>` for `pause` only; the other marker commands
+   keep rejecting it.
+3. **src/fleet-state.ts** — `pauseFleet(root, untilMs?)` writes `{ at, until? }`, `pauseRole`
+   writes `{ roles, at, until? }`; the read side (`isFleetPaused`, `pausedRoles`) treats a marker
+   whose `until` is in the past as not paused, and `pauseFleet`/`pauseRole` likewise treat an
+   expired marker as absent, so a `pause` after expiry reports a fresh pause, never the stale
+   "already paused". `resume`/`resumeRole` are unchanged — they lift early. Consequence: the
+   orchestrator's existing poll-diff (`src/orchestrator.ts` ~lines 374–391, `isFleetPaused`/
+   `pausedRoles` → `role_resumed` logging and the paused skip branches) sees the expiry as an
+   ordinary unpaused transition — auto-resume needs **no new scheduler code**.
+4. **src/operator-commands.ts** — `cmdPause` parses `--for` and passes the deadline through;
+   `rolePauseMessage` (and the fleet branch's confirmation, which phrases its own sentence)
+   names the auto-resume when a deadline stands: "… paused for 30m — resumes automatically at
+   14:05". A `--for` on an already-paused marker overwrites the deadline (extend or shorten)
+   and says so, rather than the idempotent no-op.
+5. **src/ui/status.ts** `snapshot` + **src/ui/status-payload.ts** — expose `pausedUntil`
+   (ms epoch, absent when no timed pause stands) so `status --json` and any later dashboard
+   countdown read one field. Rendering a live countdown in `status`/TUI/GUI is deliberately
+   out of scope: they already read the same markers and show the expired pause as unpaused,
+   which is correct; a countdown is a small follow-up if wanted.
+
+**Files touched:** src/cli-args.ts, src/cli.ts, src/fleet-state.ts, src/operator-commands.ts,
+src/ui/status.ts, src/ui/status-payload.ts; tests in test/cli-args.test.ts,
+test/fleet-state.test.ts, test/operator-commands.test.ts, test/status.test.ts.
+
+**Acceptance criteria.** (a) `pause --for 30m` and `pause --role <id> --for 2h` write the
+matching marker with `until = now + duration` and confirm with the auto-resume time. (b) With
+`until` in the past, `isFleetPaused`/`pausedRoles` read false, the orchestrator's transition
+logging fires as for a manual resume, the dashboards show unpaused, and a subsequent `pause`
+reports a fresh pause. (c) `resume` (fleet or `--role`) lifts a timed pause early with today's
+wording; pausing with `--for` over an existing marker overwrites the deadline and reports it.
+(d) `parseDurationFlag` rejects zero, negative, unit-less, unknown-unit, and missing values with
+the standard `fail()` shape, and `pause` alone (no `--for`) behaves exactly as today. (e)
+`status --json` carries `pausedUntil` only while a timed pause stands. (f) Full suite passes.
+
+## Done
+
 ### `tumwater run --once --role <id>` — one round scoped to a single role (planned 2026-09-25, done 2026-09-25)
 
 **Landed as (2026-09-25).** As planned, with three refinements: (1) `cmdRun` validates `--role`
