@@ -296,6 +296,24 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
   sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number });
 }
 
+/** Pull the required `paused` boolean out of a pause endpoint's body — the shared validator
+ * for /api/pause and /api/pause-role, which must reject a missing or non-boolean target state
+ * with the same 400 wording: the target state is explicit (`paused: true|false`), so a retried
+ * request is idempotent only if both surfaces agree on what counts as an explicit state.
+ * Returns null once the 400 is sent. */
+function requirePausedFlag(res: http.ServerResponse, body: Record<string, unknown>): boolean | null {
+  const value = body.paused;
+  if (typeof value !== "boolean") {
+    sendJson(
+      res,
+      400,
+      { error: `paused must be a boolean${value === undefined ? "" : ` (got ${JSON.stringify(value)})`}` },
+    );
+    return null;
+  }
+  return value;
+}
+
 /** Handle POST /api/pause: the dashboard header's pause/resume toggle — the same operator
  * gate `tumwater pause` and `resume` write, via fleet-state.ts's shared writers
  * (pauseFleet/resumeFleet) so the CLI and the GUI cannot drift on the marker's format or
@@ -305,15 +323,8 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
 export async function handlePause(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readJsonObject(req, res, '{"paused": true}');
   if (!body) return; // 4xx already sent — oversized or not a JSON object
-  const value = body.paused;
-  if (typeof value !== "boolean") {
-    sendJson(
-      res,
-      400,
-      { error: `paused must be a boolean${value === undefined ? "" : ` (got ${JSON.stringify(value)})`}` },
-    );
-    return;
-  }
+  const value = requirePausedFlag(res, body);
+  if (value === null) return;
   if (value) pauseFleet(root);
   else resumeFleet(root);
   sendJson(res, 200, { ok: true, paused: value });
@@ -363,15 +374,8 @@ export async function handlePauseRole(req: http.IncomingMessage, res: http.Serve
   const body = await readJsonObject(req, res, '{"role": "feature", "paused": true}');
   if (!body) return; // 4xx already sent — oversized or not a JSON object
   if (rejectBadRole(root, res, body.role)) return;
-  const value = body.paused;
-  if (typeof value !== "boolean") {
-    sendJson(
-      res,
-      400,
-      { error: `paused must be a boolean${value === undefined ? "" : ` (got ${JSON.stringify(value)})`}` },
-    );
-    return;
-  }
+  const value = requirePausedFlag(res, body);
+  if (value === null) return;
   const changed = value
     ? pauseRole(root, body.role as string)
     : resumeRole(root, body.role as string);
