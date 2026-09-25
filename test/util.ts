@@ -71,8 +71,9 @@ export function makeLoopRunner(
   config: TumwaterConfig = defaultConfig(),
   mainBranch = "main",
   signal?: AbortSignal,
+  sleep?: (ms: number) => Promise<void>,
 ): LoopRunner {
-  return new LoopRunner(repo, role, config, mainBranch, signal);
+  return new LoopRunner(repo, role, config, mainBranch, signal, sleep);
 }
 
 /** Scratch project for the build-check tests (build-check.test.ts and review.test.ts's gate

@@ -1,6 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { PiRunResult } from "./types.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
+import { RATE_LIMIT_HOLD_BASE_MS } from "./rate-limit-hold.js";
 import { configForRole } from "./config-views.js";
 import { buildSummaryRequestPrompt } from "./prompt.js";
 import { piLogPath, sessionDir } from "./paths.js";
@@ -11,6 +12,17 @@ import { piLogPath, sessionDir } from "./paths.js";
  * full fresh run budget, so a wait larger than the cap would spend the tick waiting, not
  * working). */
 const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
+
+/** What a hint-less 429 waits before its one retry. With no Retry-After from the provider, the
+ * fleet's own constants state the refill physics: rate-limit-hold.ts's base hold is one minute,
+ * "the shortest pause that lets the bucket refill". Retrying sooner re-enters the same exhausted
+ * per-minute bucket the first request just emptied and burns the tick's only retry on a
+ * near-certain second 429. A present hint always wins instead; the cap above still bounds
+ * whatever the wait ends up being. */
+const RATE_LIMIT_NO_HINT_RETRY_S = Math.round(RATE_LIMIT_HOLD_BASE_MS / 1000);
+
+/** The retry's pause on the real clock; tests inject host.sleep and never reach this. */
+const sleepFor = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** What the extracted pi-run plumbing needs from its owning loop. The loop supplies live
  * accessors, not copies: `config()` and `tickNumber()` are read at every call so the
@@ -27,6 +39,10 @@ interface LoopPiHost {
   warn(message: string): void;
   foldUsage(run: PiRunResult): void;
   tickNumber(): number;
+  /** The transient retry's pause before re-running, injectable so tests record the wait
+   * instead of living through it (a hint-less 429 waits a real minute). Unset means the
+   * real clock via sleepFor. */
+  sleep?(ms: number): Promise<void>;
 }
 
 /** The pi-invocation plumbing of one role loop, extracted from LoopRunner (src/loop.ts):
@@ -102,15 +118,22 @@ export class LoopPi {
         pi.transientPiCrash
           ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"}) — resuming the session once`
           : pi.transientRateLimit
-            ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : ""}) — retrying the pi run once`
+            ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : `, no hint — waiting ${RATE_LIMIT_NO_HINT_RETRY_S}s`}) — retrying the pi run once`
             : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
       );
       // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
       // fleet-wide rate-limit hold's input (LoopRunner.lastRateLimit, stamped at fold time), and
       // folding after a retry that ran on for an hour would report the storm an hour late.
       this.host.foldUsage(pi);
-      const waitS = Math.min(pi.retryAfterSeconds ?? 0, RATE_LIMIT_RETRY_AFTER_CAP_S);
-      if (waitS > 0) await new Promise((r) => setTimeout(r, waitS * 1000));
+      // The pause is the rate-limit branch's alone: a server timeout or pi crash is a failure
+      // of the local path, retried at once, while a 429 must wait its per-minute bucket out.
+      // A hint-less 429 defaults to that minute-scale refill pause instead of 0 — an immediate
+      // retry lands in the same exhausted bucket and burns the tick's only retry (BUGS.md
+      // 2026-09-25). A present hint wins; the cap bounds either.
+      const waitS = pi.transientRateLimit
+        ? Math.min(pi.retryAfterSeconds ?? RATE_LIMIT_NO_HINT_RETRY_S, RATE_LIMIT_RETRY_AFTER_CAP_S)
+        : 0;
+      if (waitS > 0) await (this.host.sleep?.(waitS * 1000) ?? sleepFor(waitS * 1000));
       // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });

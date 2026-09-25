@@ -22,6 +22,10 @@ interface Recording {
   usage: PiRunResult[];
   /** Wall-clock ms of each foldUsage call, parallel to `usage`. */
   foldTimes: number[];
+  /** ms passed to the retry's injected sleep, in call order. */
+  sleeps: number[];
+  /** Wall-clock ms of each injected sleep call, parallel to `sleeps`. */
+  sleepAts: number[];
   abortRunSignal(): void;
 }
 
@@ -32,6 +36,8 @@ function makeHost(
   const warns: string[] = [];
   const usage: PiRunResult[] = [];
   const foldTimes: number[] = [];
+  const sleeps: number[] = [];
+  const sleepAts: number[] = [];
   const ctl = new AbortController();
   const host = {
     root,
@@ -45,23 +51,26 @@ function makeHost(
       foldTimes.push(Date.now());
     },
     tickNumber: () => 1,
+    // The retry's wait, recorded instead of lived through: a hint-less 429 now defaults to
+    // a real minute (BUGS.md 2026-09-25), and no rate-limit test may spend wall clock on it.
+    sleep: async (ms: number) => {
+      sleeps.push(ms);
+      sleepAts.push(Date.now());
+    },
     abortRunSignal: () => ctl.abort(),
   };
   const loopPi = new LoopPi(host as unknown as ConstructorParameters<typeof LoopPi>[0]);
-  return { loopPi, warns, usage, foldTimes, abortRunSignal: ctl.abort.bind(ctl), config };
+  return { loopPi, warns, usage, foldTimes, sleeps, sleepAts, abortRunSignal: ctl.abort.bind(ctl), config };
 }
 
-/** A fake pi that records each invocation's argv (and wall-clock second when timesFile is
- * given). `firstRun` runs only on the first invocation (a transient failure of the world);
- * every later invocation prints the success line the retry should observe. */
+/** A fake pi that records each invocation's argv. `firstRun` runs only on the first
+ * invocation (a transient failure of the world); every later invocation prints the success
+ * line the retry should observe. */
 function recordingFakePi(
   argsFile: string,
-  opts: { timesFile?: string; firstRun?: string } = {},
+  opts: { firstRun?: string } = {},
 ): () => void {
-  const lines = [
-    `printf '%s\\n' "$*" >> "${argsFile}"`,
-    ...(opts.timesFile ? [`date +%s >> "${opts.timesFile}"`] : []),
-  ];
+  const lines = [`printf '%s\\n' "$*" >> "${argsFile}"`];
   if (opts.firstRun) {
     lines.push(
       `if [ ! -f "${argsFile}.ran-once" ]; then touch "${argsFile}.ran-once"; ${opts.firstRun}; exit 0; fi`,
@@ -73,10 +82,6 @@ function recordingFakePi(
 
 function runArgs(argsFile: string): string[] {
   return fs.readFileSync(argsFile, "utf8").trimEnd().split("\n");
-}
-
-function runTimes(timesFile: string): number[] {
-  return fs.readFileSync(timesFile, "utf8").trimEnd().split("\n").map(Number);
 }
 
 test("runRolePi runs a fresh named session and folds one usage into the tick", async () => {
@@ -117,14 +122,12 @@ test("runRolePi with resume passes --continue so a shutdown-interrupted tick res
 test("a rate-limited run earns exactly one retry that waits out the Retry-After hint and continues the session", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
-  const times = path.join(root, "times");
   const restore = recordingFakePi(args, {
-    timesFile: times,
     // The provider's 429 with its Retry-After hint, rendered as pi shows it.
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
   });
   try {
-    const { loopPi, warns, usage, foldTimes } = makeHost(root);
+    const { loopPi, warns, usage, foldTimes, sleeps, sleepAts } = makeHost(root);
     const result = await loopPi.runRolePi(root, "work", "tumwater-feature-3-author");
     assert.equal(result.ok, true, "the retry succeeds");
     assert.match(result.finalText, /^done/);
@@ -137,34 +140,48 @@ test("a rate-limited run earns exactly one retry that waits out the Retry-After 
     assert.match(retryArgs!, /--continue/, "the retry resumes the first attempt's session");
     assert.ok(!/-n /.test(retryArgs!), "the retry does not re-name the session");
 
-    const [t0, t1] = runTimes(times);
-    assert.ok(t1! - t0! >= 2, `the 3s hint is waited out before the retry (gap ${t1! - t0!})`);
+    assert.deepEqual(sleeps, [3000], "the 3s hint is waited out before the retry");
     // The failed attempt folds BEFORE the wait and the retry, so the 429 it ended on reaches
     // the orchestrator's fleet-wide hold (LoopRunner.lastRateLimit) while the retry waits — not
     // after a retry that may run for an hour (BUGS.md 2026-09-21 "A 429 storm still has no
-    // fleet-wide hold"). `t1` is the retry's start, floored to the second.
-    assert.ok(foldTimes[0]! < t1! * 1000, "the rate-limited attempt is folded before the retry starts");
+    // fleet-wide hold").
+    assert.ok(foldTimes[0]! <= sleepAts[0]!, "the rate-limited attempt is folded before the wait starts");
   } finally {
     restore();
   }
 });
 
-test("a rate-limited run with no Retry-After hint retries immediately", async () => {
+test("a rate-limited run with no Retry-After hint waits the minute-scale refill pause, not 0", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
-  const times = path.join(root, "times");
   const restore = recordingFakePi(args, {
-    timesFile: times,
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded"')}'`,
   });
   try {
-    const { loopPi, warns, usage } = makeHost(root);
+    const { loopPi, warns, usage, sleeps } = makeHost(root);
     const result = await loopPi.runRolePi(root, "work", "tumwater-feature-4-author");
     assert.equal(result.ok, true);
     assert.equal(usage.length, 2);
-    assert.match(warns[0]!, /rate-limited the request \(429\) — retrying/);
-    const [t0, t1] = runTimes(times);
-    assert.ok(t1! - t0! <= 1, `no hint means no wait (gap ${t1! - t0!})`);
+    // The provider sent no hint, so the wait defaults to the fleet's own refill physics — the
+    // minute-scale base hold (BUGS.md 2026-09-25: an immediate retry lands in the same
+    // exhausted per-minute bucket and burns the tick's only retry) — and the warning says so.
+    assert.deepEqual(sleeps, [60_000], "no hint means the minute-scale refill pause, not 0");
+    assert.match(warns[0]!, /\(429, no hint — waiting 60s\) — retrying/);
+  } finally {
+    restore();
+  }
+});
+
+test("a Retry-After hint larger than the cap is waited out only to the cap", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 300s')}'`,
+  });
+  try {
+    const { loopPi, sleeps } = makeHost(root);
+    await loopPi.runRolePi(root, "work", "tumwater-feature-5-author");
+    assert.deepEqual(sleeps, [120_000], "one generous hint cannot eat the tick's own run budget");
   } finally {
     restore();
   }

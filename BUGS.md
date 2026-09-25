@@ -5,15 +5,19 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A transient retry of a hint-less 429 waits 0 seconds, burning the one retry into the same exhausted per-minute bucket (found by telemetry loop 2026-09-25)
-
-**Symptom:** The 2026-09-25 failure digest logs **31×** `provider rate-limited the request (429) — retrying the pi run once` (bugfix, clean, coverage, dry +5 more) and a **6×** hard-error cluster `429 "Rate limit exceeded"` (bugfix, coverage, dry, perf +1 more) — six of the 31 retried runs ended `error` anyway, discarding their tick. The warning interpolates the provider's hint only when one exists (src/loop-pi.ts:105), and the digest preserves literal text (its cluster key keeps `429` unnormalized), so hinted retries would form a separate `(429, retry after Ns)` cluster; the day's single 429 warning cluster carries no suffix, meaning every one of the 31 waits was 0 seconds. The day's one fleet-wide hold (10:21, 60 s) never covered these isolated 429s — the storm detector is calibrated to stay silent on exactly this spacing.
-
-**Repro:** src/loop-pi.ts:112: `const waitS = Math.min(pi.retryAfterSeconds ?? 0, RATE_LIMIT_RETRY_AFTER_CAP_S)` — a `PiRunResult` with `transientRateLimit`, `ok: false`, and `retryAfterSeconds: undefined` yields waitS 0, and the `--continue` retry fires immediately into the same per-minute bucket the first request just exhausted. This provider's 429 text (`429 "Rate limit exceeded"`, the digest's error cluster) echoes no hint, so the hinted path never engages in practice.
-
-**Expected:** The harness's own constants state the refill physics: `RATE_LIMIT_HOLD_BASE_MS`'s comment — "provider rate limits are metered in per-minute buckets, so a minute is the shortest pause that lets the bucket refill" — and src/rate-limit-hold.ts's docstring calls an unwaited retry a burn ("each burns its retry straight into a storm the fleet is collectively sustaining") while still advertising "one wait-and-retry". When the provider sends no hint, the retry should default to that same minute-scale pause (still bounded by `RATE_LIMIT_RETRY_AFTER_CAP_S`, a present hint still winning), so the single retry lands in a refilled bucket instead of a near-guaranteed second 429 that throws the tick's work away.
+_None._
 
 ## Fixed
+
+### A transient retry of a hint-less 429 waits 0 seconds, burning the one retry into the same exhausted per-minute bucket (found by telemetry loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** The 2026-09-25 failure digest logs **31×** `provider rate-limited the request (429) — retrying the pi run once` (bugfix, clean, coverage, dry +5 more) and a **6×** hard-error cluster `429 "Rate limit exceeded"` (bugfix, coverage, dry, perf +1 more) — six of the 31 retried runs ended `error` anyway, discarding their tick. The warning interpolated the provider's hint only when one existed (src/loop-pi.ts), and the digest preserves literal text, so hinted retries would form a separate `(429, retry after Ns)` cluster; the day's single 429 warning cluster carried no suffix, meaning every one of the 31 waits was 0 seconds. The day's one fleet-wide hold (10:21, 60 s) never covered these isolated 429s — the storm detector is calibrated to stay silent on exactly this spacing.
+
+**Cause:** src/loop-pi.ts's transient retry computed its wait as `Math.min(pi.retryAfterSeconds ?? 0, RATE_LIMIT_RETRY_AFTER_CAP_S)` — a `PiRunResult` with `transientRateLimit`, `ok: false`, and `retryAfterSeconds: undefined` yielded waitS 0, and the `--continue` retry fired immediately into the same per-minute bucket the first request just exhausted. This provider's 429 text (`429 "Rate limit exceeded"`) echoes no hint, so the hinted path never engaged in practice. The bug was even pinned by a test asserting `no hint means no wait`.
+
+**Fix:** the wait now applies to the rate-limit branch alone (server timeouts and pi crashes are local-path failures, retried at once), and a hint-less 429 defaults to `RATE_LIMIT_NO_HINT_RETRY_S` — the minute-scale refill pause derived from rate-limit-hold.ts's `RATE_LIMIT_HOLD_BASE_MS` ("the shortest pause that lets the bucket refill"), still bounded by `RATE_LIMIT_RETRY_AFTER_CAP_S`, a present hint still winning. The warning now states the wait either way (`retry after Ns` vs `no hint — waiting 60s`), so the failure digest can tell them apart, and the retry's pause is an injectable `host.sleep` seam (wired through `LoopRunner`) so tests record the wait instead of living through a real minute. The old pin-no-wait test now asserts the 60 s default, a new test pins the cap on an oversized hint, and the end-to-end 429 regression test records the same wait.
+
+**Validation gap:** unclear-invariant — the existing suite reproduced the failure path but asserted the buggy behavior as expected (`no hint means no wait`), so what the retry was supposed to guarantee had to be reconstructed first from the fleet's own refill constants (RATE_LIMIT_HOLD_BASE_MS's comment, rate-limit-hold.ts's "burns its retry" docstring) before the fix could be confirmed.
 
 ### The check-permit test's granted-order assert is load-sensitive: concurrent waiters are resumed in scheduler order, not tier order, so a loaded run grants `other` before `merge` and fails (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 

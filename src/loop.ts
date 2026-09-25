@@ -74,6 +74,8 @@ export class LoopRunner {
     config: TumwaterConfig,
     readonly mainBranch: string,
     readonly signal?: AbortSignal,
+    /** Injectable pause for the transient retry's wait (tests record instead of waiting). */
+    readonly sleep?: (ms: number) => Promise<void>,
   ) {
     this.config = config;
     this.state = loadLoopState(root, role);
@@ -86,6 +88,7 @@ export class LoopRunner {
       warn: (message) => this.warn(message),
       foldUsage: (run) => this.foldUsage(run),
       tickNumber: () => this.state.ticks,
+      sleep: this.sleep,
     });
     // A persisted running flag means the previous process died mid-tick WITHOUT the
     // graceful-abort bookkeeping (crash, kill -9, power loss). The interruption looks the

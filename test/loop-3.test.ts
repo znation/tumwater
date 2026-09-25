@@ -1214,7 +1214,13 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     ].join("\n"),
   );
   try {
-    const runner = makeLoopRunner(repo, "clean");
+    // The hint-less 429 now defaults its retry wait to the minute-scale refill pause (BUGS.md
+    // 2026-09-25); this end-to-end test injects an instant sleep and asserts the recorded wait
+    // instead of living through the minute.
+    const sleeps: number[] = [];
+    const runner = makeLoopRunner(repo, "clean", defaultConfig(), "main", undefined, async (ms) => {
+      sleeps.push(ms);
+    });
     const before = Date.now();
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
@@ -1230,6 +1236,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     assert.ok(runner.lastRateLimit, "the 429 is recorded on the runner");
     assert.ok(runner.lastRateLimit.at >= before && runner.lastRateLimit.at <= Date.now());
     assert.equal(runner.lastRateLimit.retryAfterSeconds, undefined, "no hint in the fleet's error text");
+    assert.deepEqual(sleeps, [60_000], "a hint-less 429 waits the minute-scale refill pause before its retry");
   } finally {
     restore();
   }
