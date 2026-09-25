@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState } from "./types.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById } from "./roles.js";
-import { dequeuePrompt } from "./inbox.js";
+import { dequeuePrompt, dequeueRolePrompt } from "./inbox.js";
 import { briefFile, readInitialPrompt } from "./readme.js";
 import { buildCutOffNote, buildDirectorPrompt, buildTickPrompt, readPrinciples } from "./prompt.js";
 import { buildConflictDiscardNote, buildRejectedReviewNote } from "./gate-prompts.js";
@@ -21,8 +21,9 @@ export interface TickPromptInput {
 /** Assemble the prompt a loop's next tick runs on — the whole "what should this tick see"
  * concern, split out of loop.ts so the runner owns only lifecycle and the prompt owns only
  * content. Returns null when the loop has nothing to run this tick (a director with an empty
- * inbox); `userPrompt` carries the dequeued director request back so the runner can record it
- * as pending and re-queue it if the tick leaves it unfulfilled. */
+ * inbox); `userPrompt` carries the dequeued user request — the director's, or a per-role one
+ * queued by `tumwater prompt --role <id>` — back so the runner can record it as pending and
+ * re-queue it if the tick leaves it unfulfilled. */
 export function assembleTickPrompt(
   { root, config, role, state }: TickPromptInput,
 ): { prompt: string; userPrompt: string | null } | null {
@@ -59,6 +60,10 @@ export function assembleTickPrompt(
       const validIds = [...allRoleIds(), ...config.customLoops.map((c) => c.name)];
       throw new Error(`unknown role: ${role} (valid ids: ${validIds.join(", ")})`);
     }
+    // A queued per-role prompt is dequeued here, before the prompt is built, so its text rides
+    // in the tick's prompt; loop.ts's runner records it as pending and re-queues it on every
+    // unfulfilled outcome — including a red-main gate block, which returns before any run.
+    const dequeued = dequeueRolePrompt(root, role);
     // The telemetry role's evidence is the harness's own event log, one level outside this
     // worktree, so the report module renders it (telemetryDigest) and the tick injects it.
     const digest = role === "telemetry" ? telemetryDigest(root) : undefined;
@@ -82,7 +87,13 @@ export function assembleTickPrompt(
       extraInstructions: config.roles[role]?.instructions,
       check,
       briefFile: brief,
+      // A per-role prompt queued by `tumwater prompt --role <id>` rides as an explicit user
+      // request block (PLANS.md "Per-role prompts 1/2"); its text is also the tick's userPrompt,
+      // so the runner's pending-prompt machinery (re-queue on unfulfilled, clear on landing)
+      // treats it exactly like the director's dequeued request.
+      userRequest: dequeued ?? undefined,
     });
+    if (dequeued) userPrompt = dequeued;
   }
   // A change rejected in review is the only cross-tick memory of what was built and why it
   // failed — every tick starts a fresh session, so the full reasons ride along on the next

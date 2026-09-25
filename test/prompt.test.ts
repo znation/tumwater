@@ -1202,3 +1202,16 @@ test("customRole yields the pinned shape while built-in prompts keep their catal
   const p = oneLine(buildTickPrompt({ role: feature, initialPrompt: "" }));
   assert.match(p, /"feature" loop \(feature implementer\)/);
 });
+
+// PLANS.md "Per-role prompts 1/2": a queued per-role prompt renders as a clearly labeled block
+// near the top of the role's task text — steering, not a bypass of the role's own rules.
+test("buildTickPrompt renders a per-role user request as a labeled block", () => {
+  const role = roleById("qa");
+  assert.ok(role);
+  const withRequest = buildTickPrompt({ role, initialPrompt: "", userRequest: "check the flow\nend to end" });
+  assert.match(withRequest, /An explicit request from the user, aimed at this loop/);
+  assert.match(withRequest, /<user-request>\ncheck the flow\nend to end\n<\/user-request>/);
+  // With nothing queued the block is absent entirely — no empty scaffolding.
+  const without = buildTickPrompt({ role, initialPrompt: "" });
+  assert.ok(!without.includes("<user-request>"));
+});

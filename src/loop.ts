@@ -14,7 +14,7 @@ import { LoopPi } from "./loop-pi.js";
 import { configForRole } from "./config-views.js";
 import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
-import { enqueuePrompt } from "./inbox.js";
+import { enqueueRolePrompt } from "./inbox.js";
 import { stageTickLanding } from "./tick-stage.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
 import { TickUsage } from "./tick-usage.js";
@@ -153,9 +153,10 @@ export class LoopRunner {
 
   /** Decide the prompt for this tick, or null to skip (director with empty inbox). */
   /** Assemble this tick's prompt via src/tick-prompt.ts (the prompt-content concern lives
-   * there); the dequeued director request rides back so the runner records it as pending —
-   * re-queued if the tick ends without fulfilling it. Null when the loop has nothing to run
-   * (an empty director inbox); a role loop's assembly never returns null. */
+   * there); the dequeued user request — the director's, or a per-role one — rides back so the
+   * runner records it as pending — re-queued if the tick ends without fulfilling it. Null when
+   * the loop has nothing to run (an empty director inbox); a role loop's assembly never
+   * returns null. */
   private tickPrompt(): string | null {
     const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state });
     if (assembled === null) return null;
@@ -163,13 +164,14 @@ export class LoopRunner {
     return assembled.prompt;
   }
 
-  /** Put an unfulfilled director prompt back in the inbox so the next tick retries it — the
-   * one place that policy lives, shared by every outcome that leaves the request undone
-   * (abort, timeout, failure without changes, review abort, context-ceiling cut-off). No-op
-   * for role loops, which carry no pending user prompt. A fulfilled no_change never reaches
+  /** Put an unfulfilled user prompt back in the queue it came from so the next tick retries it
+   * — the one place that policy lives, shared by every outcome that leaves the request undone
+   * (abort, timeout, failure without changes, review abort, context-ceiling cut-off, red-main
+   * gate). The queue is the role's own (the director's historical inbox for the director), so a
+   * re-queued per-role request never leaks across loops. A fulfilled no_change never reaches
    * here: re-queueing it would loop the prompt forever. */
   private requeueUnfulfilledPrompt(userPrompt: string | null): void {
-    if (userPrompt) enqueuePrompt(this.root, userPrompt);
+    if (userPrompt) enqueueRolePrompt(this.root, this.role, userPrompt);
   }
 
   /** Finish a tick whose pi run was killed mid-flight — shared by the author-run and review-
@@ -240,7 +242,7 @@ export class LoopRunner {
 
   /** End a tick whose leftover recovery found work to salvage (src/leftover.ts) without an
    * authoring run — the leftover owns the role's one landing ref until its landing resolves. A
-   * director tick's dequeued prompt goes back to the inbox, since nothing ran it. A pin put on
+   * tick's dequeued user prompt goes back to its queue, since nothing ran it. A pin put on
    * the land queue ends the tick `queued` exactly like a fresh changed tick (the land-queue
    * interlock then holds the role until the slot lands it) and frees the worktree, the pin now
    * holding the commit. When the pin is left over from a landing that failed non-terminally
@@ -481,7 +483,15 @@ export class LoopRunner {
         if (note) prompt += `\n\n${note}`;
       } else {
         const blocked = await mainRedGate(this.root, this.role, wt);
-        if (blocked) return blocked;
+        if (blocked) {
+          // The dequeued prompt never ran: put it back in its queue before returning, so it is
+          // not lost to a restart (the pending field is memory-only) or dropped by the next
+          // tick's outcome handling — the queue is the durable store, and once main is green
+          // the next tick dequeues it again (PLANS.md "Per-role prompts 1/2" criterion b).
+          this.requeueUnfulfilledPrompt(userPrompt);
+          this.pendingUserPrompt = null;
+          return blocked;
+        }
       }
     }
 

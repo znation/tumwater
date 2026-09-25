@@ -1,4 +1,5 @@
 import path from "node:path";
+import { DIRECTOR_ROLE } from "./roles.js";
 
 /** All harness runtime state lives under <repo>/.tumwater (gitignored). */
 export const STATE_DIR = ".tumwater";
@@ -178,6 +179,14 @@ export function reviewSessionDir(root: string, role: string): string {
 /** Queued human prompts awaiting pickup by a loop (inbox.ts). */
 export function inboxDir(root: string): string {
   return path.join(tumwaterDir(root), "inbox");
+}
+
+/** The queue directory one loop's prompts wait in (inbox.ts): the director keeps its historical
+ * queue at the inbox root so existing inboxes stay readable, and every other loop gets a
+ * per-role subdirectory — `tumwater prompt --role <id>` writes where only that loop reads
+ * (PLANS.md "Per-role prompts 1/2"). */
+export function roleInboxDir(root: string, role: string): string {
+  return role === DIRECTOR_ROLE ? inboxDir(root) : path.join(inboxDir(root), role);
 }
 
 /** The durable land queue (src/land-queue.ts): a changed tick's pinned commit waits here as

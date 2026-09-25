@@ -6,7 +6,7 @@ import { assembleTickPrompt } from "../src/tick-prompt.js";
 import { defaultConfig } from "../src/config.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
-import { enqueuePrompt } from "../src/inbox.js";
+import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox.js";
 import { qaCoveragePath } from "../src/paths.js";
 import type { LoopState } from "../src/types.js";
 import { tmpdir } from "./util.js";
@@ -261,4 +261,38 @@ test("the brief's initial prompt survives an over-long hand edit via the truncat
   });
   assert.ok(result);
   assert.match(result.prompt, /\[initial prompt truncated at 4096 chars\]/);
+});
+
+// PLANS.md "Per-role prompts 1/2": `tumwater prompt --role <id>` queues a prompt only that
+// loop's next tick sees — dequeued here, riding as the tick's userPrompt and an explicit
+// <user-request> block in the prompt text.
+test("a queued per-role prompt is dequeued into that role's prompt only", () => {
+  const dir = root();
+  enqueueRolePrompt(dir, "coverage", "check the export flow");
+  const coverage = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "coverage",
+    state: state({ role: "coverage" }),
+  });
+  assert.ok(coverage);
+  assert.equal(coverage.userPrompt, "check the export flow");
+  assert.match(coverage.prompt, /<user-request>\ncheck the export flow\n<\/user-request>/);
+
+  // Another role's assembly dequeues nothing: no request block, no userPrompt.
+  const qa = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "qa", state: state({ role: "qa" }) });
+  assert.ok(qa);
+  assert.equal(qa.userPrompt, null);
+  assert.ok(!qa.prompt.includes("<user-request>"));
+
+  // The dequeue drained the queue: the next assembly finds nothing queued.
+  const again = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "coverage",
+    state: state({ role: "coverage" }),
+  });
+  assert.ok(again);
+  assert.equal(again.userPrompt, null);
+  assert.ok(!again.prompt.includes("<user-request>"));
 });

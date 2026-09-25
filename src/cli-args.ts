@@ -196,23 +196,25 @@ export function parseInitArgs(args: string[]): {
 }
 
 /** The three modes of `tumwater prompt`: enqueue free-form text (the default), list the
- * queue, or cancel one entry by its 1-based position. */
+ * queue, or cancel one entry by its 1-based position. `role` is the raw `--role <id>` value
+ * (null when absent) — cli.ts validates it against the live config, since this parser has no
+ * config to read. */
 type PromptArgs =
-  | { mode: "enqueue"; text: string }
-  | { mode: "list" }
-  | { mode: "cancel"; position: number };
+  | { mode: "enqueue"; role: string | null; text: string }
+  | { mode: "list"; role: string | null }
+  | { mode: "cancel"; role: string | null; position: number };
 
 /** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
  * positionals are free-form prompt content — but a double-dash token must be a real flag
- * (`--list`, `--cancel <n>`), or it would be baked into the queued prompt (the same class of
- * bug parseInitArgs fixed: today `tumwater prompt --foo text` enqueues "--foo text").
- * Single-dash positionals remain prompt content. `--list` and `--cancel` are mutually
- * exclusive and may not combine with positional text.
- */
+ * (`--role <id>`, `--list`, `--cancel <n>`), or it would be baked into the queued prompt (the
+ * same class of bug parseInitArgs fixed: today `tumwater prompt --foo text` enqueues
+ * "--foo text"). Single-dash positionals remain prompt content. `--list` and `--cancel` are
+ * mutually exclusive and may not combine with positional text; `--role` is accepted in every
+ * mode (PLANS.md "Per-role prompts 1/2") and is never prompt content. */
 export function parsePromptArgs(args: string[]): PromptArgs {
   for (const arg of args) {
-    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel") {
-      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --list, --cancel <n>)`);
+    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel" && arg !== "--role") {
+      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --cancel <n>)`);
     }
   }
   const listFlag = args.indexOf("--list");
@@ -221,9 +223,20 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   if (args.filter((a) => a === "--cancel").length > 1) fail("--cancel may only be given once");
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
 
+  const roleFlag = args.indexOf("--role");
+  if (args.filter((a) => a === "--role").length > 1) fail("--role may only be given once");
+  const roleRaw = roleFlag >= 0 ? args[roleFlag + 1] : undefined;
+  if (roleFlag >= 0 && (!roleRaw || roleRaw.startsWith("--"))) {
+    fail("--role needs a role id (e.g. `--role feature`)");
+  }
+  const role = roleRaw ?? null;
+  // The flag and its value are never prompt content: --role is a scope, not text. Only claimed
+  // when actually present — negative indexes would over-claim real tokens.
+  const roleClaim = roleFlag >= 0 ? [roleFlag, roleFlag + 1] : [];
+
   if (listFlag >= 0) {
-    failStrayArg(args, "with --list there is no prompt text", listFlag);
-    return { mode: "list" };
+    failStrayArg(args, "with --list there is no prompt text", listFlag, ...roleClaim);
+    return { mode: "list", role };
   }
 
   if (cancelFlag >= 0) {
@@ -233,11 +246,16 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     if (n === null) fail(`--cancel needs a positive integer (got ${JSON.stringify(raw)})`);
     // The position is the only token --cancel may carry; anything else alongside it would be
     // prompt text, and this mode has none.
-    failStrayArg(args, "with --cancel there is no prompt text", cancelFlag, cancelFlag + 1);
-    return { mode: "cancel", position: n };
+    failStrayArg(args, "with --cancel there is no prompt text", cancelFlag, cancelFlag + 1, ...roleClaim);
+    return { mode: "cancel", role, position: n };
   }
 
-  const text = args.join(" ").trim();
+  // Everything except the --role pair is prompt text; the join keeps multi-word requests as
+  // one string exactly like the pre-1/2 behavior.
+  const text = args
+    .filter((_, i) => !roleClaim.includes(i))
+    .join(" ")
+    .trim();
   if (!text) fail("prompt text required");
-  return { mode: "enqueue", text };
+  return { mode: "enqueue", role, text };
 }

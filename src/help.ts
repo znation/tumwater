@@ -34,7 +34,8 @@ Usage:
                                    (--prompt also shows each run's exact prompt text)
   tumwater backlog                 Show planned features, open bugs, and open questions (the dashboards' backlog view)
   tumwater prompt <text...>        Queue a prompt for the director loop
-  tumwater prompt --list           Show queued prompts, numbered in execution order
+  tumwater prompt --role <id> <text...>   Queue a prompt for that loop's next tick (wakes it)
+  tumwater prompt --list           Show queued prompts, numbered, grouped by loop
   tumwater prompt --cancel <n>     Remove the Nth queued prompt (as shown by --list)
   tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
   tumwater wake [--role <id>]             Wake a backed-off fleet — the named roles (or all) tick within one poll

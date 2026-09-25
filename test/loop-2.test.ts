@@ -15,6 +15,7 @@ import { readEvents } from "../src/events.js";
 import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/land-queue.js";
 import { landingRefName, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
+import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt } from "../src/inbox.js";
 import { eventsOfType, harnessWarnings, fakePi, initializedRepo, landHead, makeRepo, sh, tmpdir, waitForFile, waitForLogLines, watchdogClock, writeScript, makeLoopRunner } from "./util.js";
 import { APPROVE_PI, assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 
@@ -1307,5 +1308,31 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     assert.equal(String(merged[0]!.summary), "recovered leftover work from improve: add hello file");
   } finally {
     restore2();
+  }
+});
+
+// PLANS.md "Per-role prompts 1/2" criterion (b), red-gate arm: a per-role prompt is dequeued
+// before the red-main gate runs (the gate needs the assembled prompt), so a blocked tick MUST
+// put it back — the pending field is memory-only, and a prompt lost here never runs.
+test("a role prompt queued while main is red survives the blocked tick", async () => {
+  const repo = await initializedRepo();
+  const counter = path.join(tmpdir(), "npm-runs-role-prompt");
+  makeMainRed(repo, counter);
+  enqueueRolePrompt(repo, "feature", "check the flow");
+  const marker = path.join(tmpdir(), "pi-invoked-role-prompt");
+  const restore = fakePi(`touch '${marker}'`);
+  try {
+    const runner = makeLoopRunner(repo, "feature");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "main_red");
+    assert.ok(!fs.existsSync(marker), "no pi run starts while main is red");
+
+    // The dequeued prompt is back in the feature queue — not the director's — ready for the
+    // next tick once main is green.
+    assert.deepEqual(dequeueRolePrompt(repo, "feature"), "check the flow");
+    assert.equal(dequeueRolePrompt(repo, "feature"), null);
+    assert.equal(dequeuePrompt(repo), null);
+  } finally {
+    restore();
   }
 });

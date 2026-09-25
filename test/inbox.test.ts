@@ -3,12 +3,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   cancelPrompt,
+  cancelRolePrompt,
   dequeuePrompt,
+  dequeueRolePrompt,
   DIRECTOR_PROMPT_MAX_CHARS,
   enqueuePrompt,
   inboxSize,
   queuedPrompts,
+  queuedRolePrompts,
   submitPrompt,
+  submitRolePrompt,
 } from "../src/inbox.js";
 import { eventsOfType, tmpdir } from "./util.js";
 
@@ -269,4 +273,59 @@ test("queuedPrompts skips a file that vanishes between listing and reading", (t)
   } finally {
     t.mock.restoreAll();
   }
+});
+
+// --- Per-role queues (PLANS.md "Per-role prompts 1/2") ---
+
+test("per-role queues are separate from the director's queue and from each other", () => {
+  const dir = tmpdir();
+  // The director keeps its historical queue at the inbox root; roles get subdirectories.
+  submitPrompt(dir, "for the director");
+  submitRolePrompt(dir, "qa", "for qa");
+  submitRolePrompt(dir, "qa", "second for qa");
+  submitRolePrompt(dir, "docs", "for docs");
+  assert.equal(inboxSize(dir), 1, "the director's queue is untouched by role submissions");
+  assert.deepEqual(queuedRolePrompts(dir, "qa"), ["for qa", "second for qa"]);
+  assert.deepEqual(queuedRolePrompts(dir, "docs"), ["for docs"]);
+  assert.deepEqual(queuedRolePrompts(dir, "director"), ["for the director"]);
+
+  // Dequeue is FIFO per queue, and one role's queue never serves another.
+  assert.equal(dequeueRolePrompt(dir, "qa"), "for qa");
+  assert.equal(dequeueRolePrompt(dir, "qa"), "second for qa");
+  assert.equal(dequeueRolePrompt(dir, "qa"), null);
+  assert.deepEqual(queuedRolePrompts(dir, "docs"), ["for docs"]);
+  assert.equal(dequeueRolePrompt(dir, "docs"), "for docs");
+  assert.equal(dequeuePrompt(dir), "for the director");
+  assert.equal(dequeuePrompt(dir), null);
+  // An empty (or never-created) queue reads as empty, like the director's.
+  assert.deepEqual(queuedRolePrompts(dir, "telemetry"), []);
+  assert.equal(dequeueRolePrompt(dir, "telemetry"), null);
+});
+
+test("submitRolePrompt and cancelRolePrompt log their events under the named loop", () => {
+  const dir = tmpdir();
+  submitRolePrompt(dir, "qa", "check the flow");
+  submitRolePrompt(dir, "qa", "another");
+  let events = eventsOfType(dir, "prompt_enqueued");
+  assert.equal(events.length, 2);
+  assert.ok(events.every((e) => e.loop === "qa"));
+  assert.equal(String(events[0]?.preview), "check the flow");
+
+  // Cancel is per-queue: position 1 in qa's queue is qa's first prompt.
+  const outcome = cancelRolePrompt(dir, "qa", 1);
+  assert.deepEqual(outcome, { status: "cancelled", text: "check the flow" });
+  events = eventsOfType(dir, "prompt_cancelled");
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.loop, "qa");
+
+  // Out-of-range positions throw with no side effects, exactly like the director's cancel.
+  assert.throws(() => cancelRolePrompt(dir, "qa", 5), /no prompt at position 5/);
+  assert.throws(() => cancelRolePrompt(dir, "docs", 1), /no prompt at position 1/);
+});
+
+test("the director prompt length cap applies to role prompts too", () => {
+  const dir = tmpdir();
+  const long = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
+  assert.throws(() => submitRolePrompt(dir, "qa", long), /shorten it to at most/);
+  assert.deepEqual(queuedRolePrompts(dir, "qa"), [], "an over-long prompt is never queued");
 });

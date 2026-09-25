@@ -388,15 +388,15 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
 
 test("parsePromptArgs enqueues free-form text (trimmed; single-dash tokens are content)", () => {
   const r = expectOk(() => parsePromptArgs(["add", "dark mode"]));
-  assert.deepEqual(r, { mode: "enqueue", text: "add dark mode" });
+  assert.deepEqual(r, { mode: "enqueue", role: null, text: "add dark mode" });
 
   // Surrounding whitespace is trimmed so a queued prompt never starts/ends with padding.
   const padded = expectOk(() => parsePromptArgs(["  hello  "]));
-  assert.deepEqual(padded, { mode: "enqueue", text: "hello" });
+  assert.deepEqual(padded, { mode: "enqueue", role: null, text: "hello" });
 
   // Only double-dash tokens are flags; a leading single dash is free-form content.
   const dash = expectOk(() => parsePromptArgs(["-x"]));
-  assert.deepEqual(dash, { mode: "enqueue", text: "-x" });
+  assert.deepEqual(dash, { mode: "enqueue", role: null, text: "-x" });
 });
 
 test("parsePromptArgs rejects empty and whitespace-only text", () => {
@@ -415,11 +415,11 @@ test("parsePromptArgs rejects unknown double-dash flags instead of baking them i
   const r = expectFail(() => parsePromptArgs(["--foo", "text"]));
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --foo/);
-  assert.match(r.stderr, /valid flags for tumwater prompt: --list, --cancel <n>/);
+  assert.match(r.stderr, /valid flags for tumwater prompt: --role <id>, --list, --cancel <n>/);
 });
 
 test("parsePromptArgs --list: exact mode, no text allowed", () => {
-  assert.deepEqual(expectOk(() => parsePromptArgs(["--list"])), { mode: "list" });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--list"])), { mode: "list", role: null });
 
   // A stray positional — before or after the flag — would otherwise be silently ignored.
   for (const args of [["--list", "extra"], ["extra", "--list"]]) {
@@ -433,7 +433,7 @@ test("parsePromptArgs --list: exact mode, no text allowed", () => {
 });
 
 test("parsePromptArgs --cancel: position validation and exclusivity", () => {
-  assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2"])), { mode: "cancel", position: 2 });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2"])), { mode: "cancel", role: null, position: 2 });
 
   // A missing value is its own error (distinct from a bad number).
   const bare = expectFail(() => parsePromptArgs(["--cancel"]));
@@ -456,4 +456,36 @@ test("parsePromptArgs --cancel: position validation and exclusivity", () => {
   // The two modes are mutually exclusive.
   const both = expectFail(() => parsePromptArgs(["--list", "--cancel", "1"]));
   assert.match(both.stderr, /--list and --cancel are mutually exclusive/);
+});
+
+test("parsePromptArgs --role: accepted in every mode, never prompt content", () => {
+  // The raw value rides out unvalidated — cli.ts checks it against the live config, since
+  // this parser has no config to read.
+  assert.deepEqual(
+    expectOk(() => parsePromptArgs(["--role", "qa", "check", "the flow"])),
+    { mode: "enqueue", role: "qa", text: "check the flow" },
+  );
+  // The flag pair is never prompt content — before or after the text.
+  assert.deepEqual(
+    expectOk(() => parsePromptArgs(["hello", "--role", "qa", "world"])),
+    { mode: "enqueue", role: "qa", text: "hello world" },
+  );
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "qa", "--list"])), { mode: "list", role: "qa" });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2", "--role", "qa"])), {
+    mode: "cancel",
+    role: "qa",
+    position: 2,
+  });
+
+  // A missing or flag-like value is its own error, not prompt content.
+  const bare = expectFail(() => parsePromptArgs(["--role"]));
+  assert.match(bare.stderr, /--role needs a role id/);
+  const flaggish = expectFail(() => parsePromptArgs(["--role", "--list"]));
+  assert.match(flaggish.stderr, /--role needs a role id/);
+
+  // At most one --role, and it is still a stray alongside --list/--cancel.
+  const dup = expectFail(() => parsePromptArgs(["--role", "qa", "--role", "docs", "hi"]));
+  assert.match(dup.stderr, /--role may only be given once/);
+  const stray = expectFail(() => parsePromptArgs(["--list", "--role", "qa", "extra"]));
+  assert.match(stray.stderr, /unexpected argument "extra" — with --list there is no prompt text/);
 });

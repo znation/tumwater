@@ -6,7 +6,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig } from "../src/config.js";
-import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
+import { dequeuePrompt, inboxSize, queuedPrompts, submitPrompt, queuedRolePrompts, submitRolePrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { inboxDir } from "../src/paths.js";
 import { fakePi, makeRepo, sh, tmpdir, writeConfig } from "./util.js";
@@ -289,10 +289,10 @@ test("prompt --list shows queued prompts numbered in execution order", async () 
   const repo = makeRepo();
   await initProject(repo, "cli prompt list");
 
-  // An empty queue is a clean one-liner, not an error.
+  // An empty set of queues is a clean one-liner, not an error.
   let r = await cli(repo, "prompt", "--list");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /nothing queued for the director/);
+  assert.match(r.stdout, /nothing queued/);
 
   submitPrompt(repo, "first task");
   // Full text verbatim — including newlines: --list is the inspection command that shows
@@ -376,7 +376,7 @@ test("prompt --cancel reports a concurrently dequeued prompt as gone and exits c
   const r = await cli(repo, "prompt", "--cancel", "2");
   assert.equal(r.code, 0, `expected clean exit for a gone prompt:\n${r.stderr}`);
   assert.match(r.stdout, /prompt 2 is no longer queued/);
-  assert.match(r.stdout, /the director already took it/);
+  assert.match(r.stdout, /director already took it/);
 
   // Nothing was removed or logged: the prompt ran (or will), it was not cancelled.
   assert.ok(fs.lstatSync(raced).isSymbolicLink(), "the vanished file was left untouched");
@@ -513,3 +513,65 @@ test("status and init fail fast with a clear message when git is missing from PA
 
 /** A fresh ephemeral port for live-server spawns: grab one from the OS, hand it back, and
  * use it before anything else claims it. */
+
+// --- prompt --role: per-role queues from the CLI (PLANS.md "Per-role prompts 1/2") ---
+
+test("prompt --role queues for one loop only, wakes it, and validates the role", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli per-role prompt");
+
+  // Queued for qa only: qa's queue holds it verbatim, the director's inbox is untouched, and
+  // the targeted loop is woken so a sleeping fleet sees the prompt within one poll.
+  let r = await cli(repo, "prompt", "--role", "qa", "check", "the", "flow");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /queued for the qa loop/);
+  assert.match(r.stdout, /wake requested for qa/);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["check the flow"]);
+  assert.equal(inboxSize(repo), 0);
+  assert.deepEqual(queuedRolePrompts(repo, "director"), []);
+
+  // An unknown role fails naming the valid ids — the same message every other --role
+  // consumer prints — and queues nothing anywhere.
+  r = await cli(repo, "prompt", "--role", "nope", "hi");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: nope \(valid ids: .*\bqa\b/);
+  assert.deepEqual(queuedRolePrompts(repo, "nope"), []);
+
+  // `--role director` is the historical queue: same behavior as the flagless form.
+  r = await cli(repo, "prompt", "--role", "director", "route this");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /queued for the director loop/);
+  assert.equal(dequeuePrompt(repo), "route this");
+});
+
+test("prompt --list groups queues by loop and --cancel removes from the named loop's queue", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli per-role list");
+
+  submitPrompt(repo, "director task");
+  submitRolePrompt(repo, "qa", "qa task one");
+  submitRolePrompt(repo, "qa", "qa task two");
+  submitRolePrompt(repo, "readme", "docs task");
+
+  // Grouped: the director first (the shared historical queue), then each role with queued
+  // prompts, each section numbered from 1.
+  let r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /director:\n1\. director task/);
+  assert.match(r.stdout, /qa:\n1\. qa task one\n2\. qa task two/);
+  assert.match(r.stdout, /readme:\n1\. docs task/);
+
+  // Scoped by --role: only that loop's queue, numbered from 1.
+  r = await cli(repo, "prompt", "--list", "--role", "qa");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /qa:\n1\. qa task one\n2\. qa task two/);
+  assert.ok(!r.stdout.includes("director task"));
+
+  // Cancel is scoped too: qa's position 1 is qa's first prompt, and only qa's queue shrinks.
+  r = await cli(repo, "prompt", "--cancel", "1", "--role", "qa");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /cancelled: qa task one/);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task two"]);
+  assert.deepEqual(queuedRolePrompts(repo, "readme"), ["docs task"]);
+  assert.deepEqual(queuedPrompts(repo), ["director task"]);
+});
