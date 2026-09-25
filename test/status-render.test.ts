@@ -57,6 +57,27 @@ function snapshotWith(
   };
 }
 
+/** A rendered status table's geometry: the separator line (index 3) holds one dash run per
+ * column at its exact width, so a column is named by position and read by slicing rows at
+ * those offsets — padded header cells and two-space gaps make a text split unreliable.
+ * `headers` holds the header line's labels in the same positions. Shared by every test that
+ * reads a table cell by column name. */
+function tableCells(out: string): {
+  lines: string[];
+  widths: number[];
+  cellAt: (row: string, i: number) => string;
+  headers: string[];
+} {
+  const lines = out.split("\n");
+  const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length);
+  const cellAt = (row: string, i: number): string => {
+    let start = 0;
+    for (let j = 0; j < i; j++) start += (widths[j] ?? 0) + 2;
+    return row.slice(start, start + (widths[i] ?? 0)).trim();
+  };
+  return { lines, widths, cellAt, headers: widths.map((_, i) => cellAt(lines[2] ?? "", i)) };
+}
+
 test("status table ends with a totals row summing tokens and cost", () => {
   const snap = snapshotWith([
     { role: "clean", generatedTokens: 900_000, peakContextTokens: 120_000, totalCostUsd: 1.25 },
@@ -255,32 +276,27 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
     ]),
     running: true,
   };
-  // The separator line (index 3) holds one dash run per column at its exact width.
-  const widthsOf = (out: string): number[] => {
-    const sep = out.split("\n")[3] ?? "";
-    return sep.split("  ").map((seg) => seg.length);
-  };
   const col = (w: number[], i: number): number => w[i] ?? -1;
-  const natural = widthsOf(renderStatus(root, snap)); // unclipped render
+  const natural = tableCells(renderStatus(root, snap)).widths; // unclipped render
   assert.equal(col(natural, 8), 17, "fixture sanity: last tick column is HH:MM:SS · 3m ago");
   const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
 
   // Stage 1: only `last result` shrinks.
-  let w = widthsOf(renderStatus(root, snap, total - 5));
+  let w = tableCells(renderStatus(root, snap, total - 5)).widths;
   assert.equal(col(w, 9), col(natural, 9) - 5, "last result absorbs the first overflow");
   assert.equal(col(w, 1), col(natural, 1), "state untouched while last result has room");
   assert.equal(col(w, 8), col(natural, 8), "last tick untouched until the others are exhausted");
 
   // Stage 2: `last result` clamped at its minimum; `state` shrinks next.
-  w = widthsOf(renderStatus(root, snap, total - (col(natural, 9) - 12) - 5));
+  w = tableCells(renderStatus(root, snap, total - (col(natural, 9) - 12) - 5)).widths;
   assert.equal(col(w, 9), 12, "last result clamped at its minimum");
   assert.ok(col(w, 1) < col(natural, 1), "state shrinks after last result is exhausted");
   assert.equal(col(w, 8), col(natural, 8), "last tick still untouched");
 
   // Stage 3: both at their minimums; `last tick` shrinks last, down to a bare HH:MM:SS.
-  w = widthsOf(
+  w = tableCells(
     renderStatus(root, snap, total - (col(natural, 9) - 12) - (col(natural, 1) - 12) - (col(natural, 8) - 10)),
-  );
+  ).widths;
   assert.equal(col(w, 9), 12);
   assert.equal(col(w, 1), 12);
   assert.equal(col(w, 8), 10, "last tick shrinks last and only to its HH:MM:SS minimum");
@@ -299,14 +315,7 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
 // Header labels are padded to their column widths, so they cannot be split on the two-space
 // gap — derive each label by slicing at the separator line's offsets instead.
 test("the status table has a today column between cost and last tick", () => {
-  const lines = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n");
-  const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length); // separator line
-  const cellAt = (row: string, i: number): string => {
-    let start = 0;
-    for (let j = 0; j < i; j++) start += (widths[j] ?? 0) + 2;
-    return row.slice(start, start + (widths[i] ?? 0)).trim();
-  };
-  const cols = widths.map((_, i) => cellAt(lines[2] ?? "", i)); // header labels by position
+  const { headers: cols } = tableCells(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.ok(cols.includes("today"), "table has a today column");
   assert.equal(cols.indexOf("cost"), cols.indexOf("today") - 1, "today sits directly after cost");
   assert.equal(
@@ -326,14 +335,7 @@ test("the today cell shows the loop's daily window and zeros for stale or missin
   stale.dayCostUsd = 5.67;
   // Missing: a loop that never ticked (freshLoopState defaults) also reads zero, no save needed.
   const snap = snapshotWith([fresh, stale, freshLoopState("organize")]);
-  const lines = renderStatus(tmpdir(), snap).split("\n");
-  const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length); // separator line
-  const cellAt = (row: string, i: number): string => {
-    let start = 0;
-    for (let j = 0; j < i; j++) start += (widths[j] ?? 0) + 2;
-    return row.slice(start, start + (widths[i] ?? 0)).trim();
-  };
-  const cols = widths.map((_, i) => cellAt(lines[2] ?? "", i)); // header labels by position
+  const { lines, cellAt, headers: cols } = tableCells(renderStatus(tmpdir(), snap));
   const cleanRow = lines.find((l) => l.startsWith("clean")) ?? "";
   assert.equal(cellAt(cleanRow, cols.indexOf("today")), "$12.34", "fresh stamp renders its window");
   assert.equal(cellAt(cleanRow, cols.indexOf("cost")), "$0.00", "lifetime cost stays a separate column");
@@ -356,14 +358,7 @@ test("the totals row's today cell sums the loops' daily windows like the header 
   c.dayCostUsd = 9.99;
   // ...and the badge carries the same sum (status.ts derives both from the loops).
   const snap = snapshotWith([a, b, c], { spentUsd: fleetDailyCost([a, b, c]), capUsd: 50, free: false, fallback: null });
-  const lines = renderStatus(tmpdir(), snap).split("\n");
-  const widths = (lines[3] ?? "").split("  ").map((seg) => seg.length);
-  const cellAt = (row: string, i: number): string => {
-    let start = 0;
-    for (let j = 0; j < i; j++) start += (widths[j] ?? 0) + 2;
-    return row.slice(start, start + (widths[i] ?? 0)).trim();
-  };
-  const cols = widths.map((_, i) => cellAt(lines[2] ?? "", i)); // header labels by position
+  const { lines, cellAt, headers: cols } = tableCells(renderStatus(tmpdir(), snap));
   const totalsRow = lines[lines.length - 1] ?? "";
   assert.equal(cellAt(totalsRow, cols.indexOf("today")), "$13.00", "totals sum the fresh windows only (12.34 + 0.66)");
   // Equal to the badge spend on the same render — table and badge cannot drift.
@@ -385,20 +380,13 @@ test("the today column keeps its natural width under overflow like cost", () => 
   s.dayStamp = todayStamp();
   s.dayCostUsd = 12.34; // "$12.34" — one char wider than the $0.00 default
   const snap = { ...snapshotWith([s]), running: true };
-  const widthsOf = (out: string): number[] => (out.split("\n")[3] ?? "").split("  ").map((seg) => seg.length);
-  const natural = widthsOf(renderStatus(root, snap));
-  // Header labels by position — the separator's offsets, not a two-space split (padded cells
-  // would leave stray leading spaces in the segments).
-  const headerLine = renderStatus(root, snap).split("\n")[2] ?? "";
-  const cols = natural.map((_, i) => {
-    let start = 0;
-    for (let j = 0; j < i; j++) start += (natural[j] ?? 0) + 2;
-    return headerLine.slice(start, start + (natural[i] ?? 0)).trim();
-  });
+  const { widths: natural, headers: cols } = tableCells(renderStatus(root, snap));
   assert.equal(natural[cols.indexOf("today")], 6, "fixture sanity: $12.34 sets the column width");
   const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
   // Overflow past last result's minimum so at least one flexible column is shrinking...
-  const w = widthsOf(renderStatus(root, snap, total - (natural[cols.indexOf("last result")] ?? 0)));
+  const w = tableCells(
+    renderStatus(root, snap, total - (natural[cols.indexOf("last result")] ?? 0)),
+  ).widths;
   assert.ok(
     (w[cols.indexOf("last result")] ?? 0) < (natural[cols.indexOf("last result")] ?? 0),
     "last result shrinks under overflow",
