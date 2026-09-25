@@ -12,7 +12,7 @@ import type { Semaphore } from "./semaphore.js";
  * one event instead of once per poll: missing/reappeared, config_changed's changed keys, live
  * role enable/disable (creating a runner for each newly enabled role), and the semaphore's
  * live-resized concurrency cap. */
-export interface LiveConfigReload {
+interface LiveConfigReload {
   /** Poll the config file once, applying any reload and its side effects; returns the live
    * config — the last successful reload's (last-known-good while the file is broken or missing). */
   poll(): TumwaterConfig;
