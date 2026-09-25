@@ -38,7 +38,7 @@ Then, from another terminal:
 | Watch the fleet | `tumwater tui`, or `tumwater gui` for the browser dashboard at http://127.0.0.1:7180 |
 | Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --role <id>` |
 | Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director |
-| Control the loops | `tumwater pause` / `resume`, `tumwater wake` (skip backoff), `tumwater abort --role <id>` |
+| Control the loops | `tumwater pause` / `resume`, `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
 | Audit | `tumwater doctor` (pre-flight), `tumwater report` (usage and cost), `tumwater report --failures` |
 
 `tumwater help` lists every command and flag. `gui --all-interfaces` exposes the dashboard, and

@@ -10,7 +10,7 @@ import {
   parsePromptArgs,
   rejectUnknownArgs,
 } from "./cli-args.js";
-import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdWake } from "./operator-commands.js";
+import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdLogs } from "./ui/log-commands.js";
 import { orchestratorAlive } from "./fleet-state.js";
 import { repoToplevel } from "./git.js";
@@ -70,6 +70,7 @@ Usage:
   tumwater abort --role <id>              Abort that loop's in-flight tick (work discarded; the loop keeps running)
   tumwater pause                   Stop role loops starting new ticks (in-flight finish; the director keeps running)
   tumwater resume                  Lift a fleet pause
+  tumwater stop                    Stop a running fleet (drains in-flight ticks, like Ctrl+C)
   tumwater help | version
 
 The harness runs inside a git repo. Each role loop owns a persistent worktree and branch
@@ -387,6 +388,14 @@ async function main(): Promise<void> {
       rejectUnknownArgs("resume", args, []);
       await requireReadyRepo(root);
       await cmdResume(root);
+      break;
+    }
+    case "stop": {
+      // No flags: stop is a bare signal to the recorded orchestrator pid, so any argument is
+      // a mistake and fails before a signal is ever sent.
+      rejectUnknownArgs("stop", args, []);
+      await requireReadyRepo(root);
+      await cmdStop(root);
       break;
     }
     case "version":

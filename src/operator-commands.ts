@@ -3,7 +3,8 @@ import { fail, parseRoleFlag } from "./cli-args.js";
 import { errorMessage } from "./text.js";
 import { allRoleIds, DIRECTOR_ROLE } from "./roles.js";
 import { clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
-import { orchestratorAlive, pauseFleet, resumeFleet } from "./fleet-state.js";
+import { orchestratorAlive, pauseFleet, readOrchestratorInfo, resumeFleet } from "./fleet-state.js";
+import { pidAlive } from "./process.js";
 import { writeJsonFile } from "./json-files.js";
 import { abortRequestPath, resetRequestPath, wakeRequestPath } from "./paths.js";
 
@@ -155,6 +156,25 @@ export async function cmdPause(root: string): Promise<void> {
   process.stdout.write(
     `fleet paused — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${tail}\n`,
   );
+}
+
+/** `tumwater stop`: SIGTERM the running orchestrator, which drains its in-flight ticks and
+ * exits — exactly the shutdown the supervised child's own SIGINT/SIGTERM handler performs, so
+ * Ctrl+C and `stop` from another terminal are the same code path (the supervisor needs no
+ * signal of its own: a clean child exit already ends its loop). Unlike the marker commands
+ * above this reaches a real process, so a live harness is required. The pid-recycling risk
+ * that `orchestratorAlive` already accepts everywhere (status, abort, pause) applies here
+ * too: the info file is refreshed by the live orchestrator, so the window is small, and the
+ * signal is the same one a human `kill <pid>` would send. */
+export async function cmdStop(root: string): Promise<void> {
+  // Deliberately the same liveness gate and wording `requestAbort` uses: an unreadable info
+  // file (torn write) and a dead recorded pid both mean nothing is running to stop.
+  const info = readOrchestratorInfo(root);
+  if (!info || !pidAlive(info.pid)) {
+    fail("no harness is running — start it with `tumwater run` first");
+  }
+  process.kill(info.pid, "SIGTERM");
+  process.stdout.write("stop requested — the fleet drains its in-flight ticks and exits (the same path as Ctrl+C)\n");
 }
 
 /** `tumwater resume`: lift a fleet pause by removing its marker. Idempotent like pause: with

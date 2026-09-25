@@ -9,6 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/state.js";
@@ -428,4 +429,73 @@ test("wake --role targets one loop; unknown or missing role fails without side e
   r = await cli(repo, "wake", "--role");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--role needs a role id/);
+});
+
+// --- stop: SIGTERM the recorded orchestrator pid (the same path as Ctrl+C) ---
+// Unlike the marker commands above, stop reaches a real process: the pid in
+// .tumwater/state/orchestrator.json. The liveness gate and failure wording match abort's.
+
+test("stop refuses when no harness is running — missing or stale info file alike", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli stop no harness");
+
+  let r = await cli(repo, "stop");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no harness is running/);
+
+  // A stale info file (dead pid) reads the same way: nothing alive to signal.
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(
+    orchestratorStatePath(repo),
+    JSON.stringify({ pid: 2_000_000_000, startedAt: Date.now(), roles: [] }),
+  );
+  r = await cli(repo, "stop");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no harness is running/);
+});
+
+test("stop SIGTERMs the recorded pid and prints the drain confirmation", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli stop live");
+
+  // A real, killable child process standing in for the orchestrator: a node eval with no
+  // SIGTERM handler, so the default behaviour applies and it dies with signal SIGTERM —
+  // letting the test assert the actual signal it dies from.
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"]);
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(
+    orchestratorStatePath(repo),
+    JSON.stringify({ pid: child.pid, startedAt: Date.now(), roles: [] }),
+  );
+
+  const exited = new Promise<{ signal: NodeJS.Signals | null }>((resolve) => {
+    child.once("exit", (_code, signal) => resolve({ signal }));
+  });
+  const r = await cli(repo, "stop");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /stop requested — the fleet drains its in-flight ticks and exits/);
+
+  // The child died from the SIGTERM `stop` sent, not from anything the test tore down.
+  const { signal } = await Promise.race([
+    exited,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("stop did not signal the recorded pid within 5s")), 5_000),
+    ),
+  ]);
+  assert.equal(signal, "SIGTERM");
+
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
+test("stop takes no flags and appears in the help table", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli stop args");
+
+  const r = await cli(repo, "stop", "--anything");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /tumwater stop takes no arguments/);
+
+  const help = await cli(repo, "help");
+  assert.equal(help.code, 0);
+  assert.match(help.stdout, /tumwater stop\s+Stop a running fleet/);
 });
