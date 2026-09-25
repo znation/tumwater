@@ -17,7 +17,7 @@ import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
 import { enqueuePrompt } from "./inbox.js";
 import { stageTickLanding } from "./tick-stage.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
-import { recordDailyCost } from "./budget.js";
+import { TickUsage } from "./tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./merge.js";
@@ -36,28 +36,19 @@ export class LoopRunner {
    * goes through this, so one assignment steers provider/model/thinking/instructions,
    * tick intervals, backoff, and role enablement for subsequent ticks. */
   config: TumwaterConfig;
-  /** This loop's most recent pi run that ended on a provider 429 — author run, retry,
-   * reviewer or landing run alike, since every one folds through foldUsage — with
-   * the provider's Retry-After hint when it sent one. The orchestrator reads it every poll as
-   * this role's input to the fleet-wide 429 hold (src/rate-limit-hold.ts): the per-run retry
-   * has no cross-role view, and a field on a runner the orchestrator already holds carries the
-   * fact without a new cross-module channel. In memory only — a hold is minutes long, so a
-   * restart forgetting it costs nothing. Undefined until the first such run. */
-  lastRateLimit?: { at: number; retryAfterSeconds?: number };
+  /** The 429 observation from this loop's usage accounting (TickUsage.lastRateLimit,
+   * src/tick-usage.ts): the orchestrator's fleet-wide 429-hold wiring reads it through the
+   * runner (src/tick-timing.ts), so the field keeps its place on the runner's surface. */
+  get lastRateLimit(): { at: number; retryAfterSeconds?: number } | undefined {
+    return this.usage.lastRateLimit;
+  }
+  /** Per-tick and lifetime usage accounting (src/tick-usage.ts): the turns/cost windows the
+   * commit trailer and tick_end event read, the lifetime totals folded into state, and the
+   * 429 observation above. Grown through foldUsage — the once-per-run choke point. */
+  private readonly usage = new TickUsage();
   /** The raw user prompt a director tick is executing, so an unfulfilled tick (abort,
    * timeout, or failure without changes) can re-queue it instead of losing the request. */
   private pendingUserPrompt: string | null = null;
-  /** Assistant turns folded into THIS tick so far (non-persisted): reset at tick start,
-   * grown in foldUsage. Read at commit time for the trailer, where it holds exactly the
-   * pre-commit runs' total (main + transient retry) — conflict-resolution and review runs
-   * fold after the commit and never inflate it. Deliberately not on LoopState: its only
-   * consumer is the trailer stamped into the commit message itself, which is durable. */
-  private tickTurns = 0;
-  /** USD cost folded into THIS tick so far (non-persisted): reset at tick start alongside
-   * tickTurns, grown in foldUsage. Deliberately not on LoopState — unlike generatedTokens,
-   * no dashboard reads it mid-run; its only consumer is the tick_end event, which fires before
-   * the next tick resets it (plans: per-tick usage in the event feed). */
-  private tickCostUsd = 0;
   /** Per-tick abort controller, recreated at every tick start: `abortTick()` kills the
    * in-flight pi run without touching the harness shutdown signal (`this.signal`), which
    * would stop the whole fleet. */
@@ -285,28 +276,12 @@ export class LoopRunner {
     };
   }
 
-  /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost / turns). Every
-   * pi run of a tick — main attempt, transient-timeout retry, conflict resolution — lands here
-   * exactly once, so adding a usage field to PiRunResult touches this single place. Landing
-   * runs fold through the same place via foldLandingUsage, so the authoring role is charged
-   * for its reviewer and conflict-resolution spend too — and that same once-per-run property
-   * makes it where a run ending on a 429 is recorded for the orchestrator (lastRateLimit). */
+  /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
+   * accounting itself lives in TickUsage.fold (src/tick-usage.ts); this keeps the once-per-run
+   * choke point and the foldLandingUsage face on the runner, where LoopPi and the landing
+   * wiring (src/landing-slot.ts) reach them. */
   private foldUsage(run: PiRunResult): void {
-    const s = this.state;
-    s.generatedTokens += run.outputTokens;
-    s.peakContextTokens = Math.max(s.peakContextTokens, run.peakContextTokens);
-    s.totalCostUsd += run.costUsd;
-    this.tickCostUsd += run.costUsd;
-    // The daily cost budget window (plans/daily-cost-budget.md): every pi run of a tick folds
-    // here exactly once, so the fleet's spend for the local day is complete at each tick end.
-    recordDailyCost(s, run.costUsd);
-    this.tickTurns += run.turns;
-    // The fleet-wide 429 hold's input (lastRateLimit above), from the same once-per-run choke
-    // point. Only a run that ENDED on the 429 counts: pi exits on the error, so "now" is when
-    // the provider refused — a run that merely logged one inside pi's own auto-retry and then
-    // finished would stamp a 429 at its end, possibly hours late, and could trip a false storm.
-    if (run.transientRateLimit && !run.ok)
-      this.lastRateLimit = { at: Date.now(), retryAfterSeconds: run.retryAfterSeconds };
+    this.usage.fold(this.state, run);
   }
 
   /** Run pi for the orchestrator's landing slot (merge queue 3/5): the shared per-loop wiring
@@ -351,8 +326,7 @@ export class LoopRunner {
     // end-of-tick save persists the finished run's totals.
     s.generatedTokens = 0;
     s.peakContextTokens = 0;
-    this.tickTurns = 0;
-    this.tickCostUsd = 0;
+    this.usage.reset();
     this.recoveryFailure = undefined;
     // A fresh per-tick abort controller and a cleared user-abort flag: an abort request that
     // lands while the loop is idle must not leak into the next tick.
@@ -420,7 +394,7 @@ export class LoopRunner {
       summary: outcome.summary,
       error: s.lastError,
       ...(s.generatedTokens > 0 ? { tokens: s.generatedTokens } : {}),
-      ...(this.tickCostUsd > 0 ? { costUsd: this.tickCostUsd } : {}),
+      ...(this.usage.costUsd > 0 ? { costUsd: this.usage.costUsd } : {}),
     });
     return outcome;
   }
@@ -573,7 +547,7 @@ export class LoopRunner {
           {
             role: this.role,
             mainBranch: this.mainBranch,
-            turns: this.tickTurns,
+            turns: this.usage.turns,
             merge: (w, sum) => this.merge(w, sum),
           },
           this.state,
@@ -636,7 +610,7 @@ export class LoopRunner {
       role: this.role,
       state: s,
       config: this.config,
-      tickTurns: this.tickTurns,
+      tickTurns: this.usage.turns,
       userPrompt,
       wt,
       finalText: pi.finalText,
