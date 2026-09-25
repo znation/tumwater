@@ -120,6 +120,29 @@ test("runTui renders the fleet table and an empty recent-activity pane on start"
   }
 });
 
+// Repaint-on-change: a re-render whose composed frame is byte-identical to the last one
+// written must not touch the terminal again — the per-second timer re-renders an idle
+// fleet's identical screen ~59 times a minute otherwise, and every keypress handler
+// re-render follows the same rule (an inert keypress produces no frame). An inert key
+// (f1: no handler branch claims it, applyKey passes it through unchanged) proves the
+// skip without any state change; a following content-changing keypress still repaints.
+test("runTui skips the terminal write when a re-render composes an identical frame", async () => {
+  const repo = await makeTuiRepo();
+  const tui = startTui(repo);
+  try {
+    const initial = tui.lastFrame();
+    const writes = tui.frames.length;
+    tui.key(undefined, "f1"); // inert keypress: same state, same frame — no write
+    assert.equal(tui.frames.length, writes, "identical frame is not rewritten");
+    assert.equal(tui.lastFrame(), initial); // the screen still shows the original frame
+    tui.key("h", "h"); // typing changes the prompt line: a new frame is written
+    assert.equal(tui.frames.length, writes + 1, "changed frame is written");
+    assert.match(tui.lastFrame(), /> h$/m);
+  } finally {
+    await tui.quit();
+  }
+});
+
 // Merge queue 4/5 — the TUI header shows the land queue badge while anything is queued or
 // landing, and nothing when idle (the badge is empty at depth 0, so every existing
 // header byte stays intact). The frame carries renderStatus's full output, header line

@@ -107,6 +107,14 @@ export async function runTui(root: string): Promise<void> {
   // can page within it without re-deriving the height math.
   let eventBudget = 0;
   let roleIds: string[] = [];
+  // The last frame written to the terminal: the per-second re-render only rewrites the
+  // screen when the composed frame actually differs. An idle fleet's frame changes only
+  // once a minute (the "· 3m ago" age cells' granularity), so without this the TUI
+  // repaints an identical screen ~59 times a minute for nothing — the same redundant
+  // per-second repaint the GUI's detail panel skip removed (the dashboard's innerHTML
+  // guard). In-flight ticks keep repainting every second: their working cells carry
+  // second-granularity elapsed times, so the frame genuinely differs.
+  let lastFrame: string | null = null;
 
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
   // shared by render and the keypress handlers so stale-selection clamping cannot drift.
@@ -226,7 +234,10 @@ export async function runTui(root: string): Promise<void> {
     );
     // Window long prompts around the cursor so its position stays visible.
     parts.push(`> ${renderInputView(input, cursor, width)}`);
-    process.stdout.write(CLEAR + parts.join("\n"));
+    const frame = CLEAR + parts.join("\n");
+    if (frame === lastFrame) return; // Unchanged screen: rewriting it only costs terminal I/O.
+    lastFrame = frame;
+    process.stdout.write(frame);
   };
 
   // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
