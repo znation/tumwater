@@ -5,9 +5,47 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### The check-permit test's granted-order assert is load-sensitive: concurrent waiters are resumed in scheduler order, not tier order, so a loaded run grants `other` before `merge` and fails (found by bugfix loop 2026-09-25)
+
+**Symptom:** test/check-permit.test.ts's three-waiter case asserts `granted` equals
+`["holder", "merge", "other"]`; under full-suite load one run observed
+`["holder", "other", "merge"]` — the tier-priority invariant may hold, but the assert reads
+resume order, which the event loop does not guarantee. Passed in isolation and on the next full
+run; treat as flaky until pinned.
+
+**Reproduce:** not yet deterministic — it surfaced once in a full `npm run test` (1801 pass / 1
+fail) and could not be reproduced in isolation or on an immediate re-run.
+
+**Suspected cause:** the test ties waiter wakeup to `Promise.all` resolution order; either assert
+sorted-granted against the tier order, or serialize the grant checks so the order is
+observable-by-construction rather than scheduler-dependent.
 
 ## Fixed
+
+### A tick that throws between dequeuing the user prompt and the pi run silently drops the request: the catch records the error but never re-queues the dequeued (or reclaimed) prompt (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** A queued prompt (`tumwater prompt [--role <id>]`) is dequeued into the runner's
+memory-only `pendingUserPrompt` before the tick's environment work starts. Any exception in that
+window — e.g. `ensureWorktree` failing on a broken or hostile repo state — hits the catch-all in
+`LoopRunner.tick()`, which records only `{ result: "error" }` and the error message: the request
+vanished from the queue and nothing re-queued it. The operator sees an error tick; the request is
+simply gone.
+
+**Reproduce:** confirmed 2026-09-25 by the regression test now in test/loop-2.test.ts ("a tick
+that throws after dequeuing the prompt re-queues it instead of losing it"): enqueue a per-role
+prompt for a loop, delete the repo's `.git/HEAD` so `ensureWorktree` throws after the dequeue, run
+one tick — pre-fix the outcome is `error` and the queue is empty; post-fix the prompt is back in
+its queue for the next tick. The test fails on the pre-fix tree and passes with the fix.
+
+**Fix:** the catch in `tick()` now calls `requeueUnfulfilledPrompt(this.pendingUserPrompt)` before
+clearing the field. Safe by construction: every path that has processed a pi outcome (including
+`no_change` fulfillment, abort, and quiet-kill) has already cleared the pending field, so a
+non-null pending in the catch means the request never ran to an outcome — exactly the unfulfilled
+case every other path re-queues on.
+
+**Validation gap:** no-observability — the loss left no trace (the tick's error result named only
+the underlying git failure, and no test drove an exception between dequeue and pi run), so the
+suite could not see a silently dropped request until a scratch reproduction was written.
 
 ### A resume-owning tick's requeued role prompt is never reclaimed: the resume fulfills the request in its session while the queue copy survives, and a later fresh tick runs the same request a second time (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 

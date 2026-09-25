@@ -1416,3 +1416,31 @@ test("a failed resume re-queues the reclaimed prompt, so the request is not lost
     restore();
   }
 });
+
+// The prompt is dequeued (or reclaimed) into memory before the tick's environment work starts,
+// so an exception between the dequeue and the pi run leaves the request only in the pending
+// field — memory the failed tick drops. The queue is the durable store, so the catch must
+// re-queue whatever is still pending, like every unfulfilled outcome does.
+test("a tick that throws after dequeuing the prompt re-queues it instead of losing it", async () => {
+  const repo = await initializedRepo();
+  const marker = path.join(tmpdir(), "pi-invoked-crash");
+  const restore = fakePi(`touch '${marker}'`);
+  try {
+    enqueueRolePrompt(repo, "perf", "fix the flubbernator");
+    const runner = makeLoopRunner(repo, "perf");
+    // Corrupt the repo's HEAD so ensureWorktree throws after the dequeue — an environment
+    // failure, not a pi outcome the outcome handlers could re-queue from.
+    fs.rmSync(path.join(repo, ".git", "HEAD"));
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.ok(!fs.existsSync(marker), "no pi run starts before the crash");
+    // The dequeued prompt survived the crash in its queue, ready for the next tick.
+    assert.deepEqual(
+      queuedRolePrompts(repo, "perf"),
+      ["fix the flubbernator"],
+      "the dequeued prompt is back in the queue, not lost",
+    );
+  } finally {
+    restore();
+  }
+});

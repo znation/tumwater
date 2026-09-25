@@ -365,6 +365,13 @@ export class LoopRunner {
     } catch (err) {
       outcome = { result: "error" };
       s.lastError = errorMessage(err);
+      // An exception between the dequeue/reclaim and the pi run leaves the request only in
+      // the pending field — memory this failed tick is about to drop, with no outcome handler
+      // left to re-queue it (the handlers run inside runTick, after the pi run). The queue is
+      // the durable store, so the catch re-queues whatever is still pending, like every
+      // unfulfilled outcome does; it is always null once a pi run has been accounted for.
+      this.requeueUnfulfilledPrompt(this.pendingUserPrompt);
+      this.pendingUserPrompt = null;
     }
     // A re-queued leftover's landing failure is not the tick's own result, so it rides the
     // outcome separately: applyTickOutcome feeds it into the error streak, and the warning
