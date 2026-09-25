@@ -124,3 +124,31 @@ test("systemProcessProbe lists this process with its parent and reads its cwd pa
   assert.equal(cwds.has(2_000_000_000), false);
   assert.deepEqual(await systemProcessProbe.cwds([]), new Map());
 });
+
+test("systemProcessProbe.cwds on Linux reads /proc, strips ' (deleted)', and skips vanished pids", async (t) => {
+  // The Linux branch reads /proc/<pid>/cwd instead of shelling out to lsof, and this dev box
+  // never takes it — so pin the platform and fake the kernel's readlink surface. The contract
+  // under test: each readable symlink becomes that pid's cwd, the kernel's " (deleted)"
+  // suffix on a removed directory is stripped, and a pid whose read fails (exited meanwhile,
+  // or another user's process) is simply absent rather than failing the whole scan.
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  const readlink = t.mock.method(fs, "readlinkSync", (target: string) => {
+    if (target === "/proc/11/cwd") throw Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
+    if (target === "/proc/12/cwd") return "/gone/build-dir (deleted)";
+    return "/Users/z/repo/.tumwater/worktrees/coverage";
+  });
+  try {
+    const cwds = await systemProcessProbe.cwds([10, 11, 12]);
+    assert.deepEqual([...cwds], [
+      [10, "/Users/z/repo/.tumwater/worktrees/coverage"],
+      [12, "/gone/build-dir"],
+    ]);
+    assert.deepEqual(
+      readlink.mock.calls.map((c) => c.arguments[0]),
+      ["/proc/10/cwd", "/proc/11/cwd", "/proc/12/cwd"],
+    );
+  } finally {
+    if (original) Object.defineProperty(process, "platform", original);
+  }
+});
