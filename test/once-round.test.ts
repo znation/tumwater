@@ -49,6 +49,35 @@ test("settleSkipped classifies disabled, backoff, and idle roles", () => {
   );
 });
 
+test("settleSkipped reports a pending resume as pending work, not idle or backoff", () => {
+  const repo = makeRepo();
+  // A cut-off tick resumes deliberately one interval out: resumePending with a future
+  // nextRunAt and backoffSeconds left wherever the previous outcome put it — zero after a
+  // productive tick (the cutOff arm only schedules the interval, src/state.ts). The old
+  // classification read this state as "idle — nothing was due", which is false: the role's
+  // half-finished work is the reason it is not ticking.
+  const waiting = makeLoopRunner(repo, "improve");
+  waiting.state.resumePending = true;
+  waiting.state.nextRunAt = Date.now() + 30 * 60_000;
+  waiting.state.backoffSeconds = 0;
+  // Same wait after an error streak: the resume wait is still the role's truth, not the
+  // stale ladder it inherited.
+  const afterError = makeLoopRunner(repo, "clean");
+  afterError.state.resumePending = true;
+  afterError.state.nextRunAt = Date.now() + 30 * 60_000;
+  afterError.state.backoffSeconds = 120;
+  const round = new OnceRound([waiting, afterError], true);
+  round.settleSkipped(waiting);
+  round.settleSkipped(afterError);
+  assert.deepEqual(
+    [...round.reasons].sort(([a], [b]) => a.localeCompare(b)),
+    [
+      ["clean", "resume pending"],
+      ["improve", "resume pending"],
+    ],
+  );
+});
+
 test("exitReady fires only on the second consecutive quiet poll of an active round", () => {
   const repo = makeRepo();
   const runner = makeLoopRunner(repo, "improve");

@@ -9,6 +9,34 @@ _None yet._
 
 ## Fixed
 
+### `settleSkipped` reads a pending resume as "idle — nothing was due" in the once round's summary: a cut-off tick waits one interval with `backoffSeconds` 0, the same shape as a fresh scheduled clock (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** A role whose tick was cut off by the context ceiling resumes deliberately one interval
+out (state.ts's cutOff arm: `resumePending = true`, `nextRunAt = now + minTickInterval`,
+`backoffSeconds` left wherever the previous outcome put it — zero after a productive tick). In a
+once round that role is skipped, and `settleSkipped` classified it by `backoffSeconds` alone — so
+the state fell into `idle`, and `tumwater run --once`'s summary line reported the role as "idle —
+nothing was due" while its half-finished work sat pending. The same mislabel came out of
+`onceSummary`'s defensive fallback (`nextRunAt > now ? backoff : idle` has no resume branch either).
+The just-landed clock-vs-backoff distinction fixed the `nextRunAt` half of the classification but
+left resumePending unpinned: the doc comment already promised resume gating is kept as-is, yet the
+summary had no word for it.
+
+**Reproduce:** confirmed 2026-09-25 by the regression test now in test/once-round.test.ts: a runner
+with `resumePending: true`, `nextRunAt: now + 30 min`, `backoffSeconds: 0` settles as `idle` from
+`settleSkipped` pre-fix; the fixed entry above it ("once mode's clock override…") covers the
+clock-vs-backoff half this extends.
+
+**Fix:** `settleSkipped` checks `resumePending` before the backoff/idle fork and settles the reason
+`resume pending` — the resume wait outranks both, and a raised inherited `backoffSeconds` (a cut-off
+resume after an error streak) no longer masks it either. `onceSummary`'s fallback derivation gains
+the same branch, and both doc comments list the new reason. The resume itself is untouched:
+isEligible's resume branch still returns before the once override, so the one-interval wait stands.
+
+**Validation gap:** no-fake — the settleSkipped suite enumerated exactly disabled/backoff/idle and
+no test ever constructed a resumePending runner state, so the fourth classification had no pin;
+confirming the fix required a fixture for the cut-off-resume shape that did not exist.
+
 ### Once mode's clock override is nullified by the `nextRunAt` gate it shares with the min-interval clock, so `run --once` right after a daemon run does nothing (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `tumwater run --once` is an explicit demand for a round now, and `isEligible`'s once

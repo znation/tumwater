@@ -117,11 +117,12 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
 /** The once round's one-line summary, read from the runners' persisted loop state plus the
  * orchestrator's own settle reasons — a cron job's log shows what the round did without parsing
  * events. Roles whose tick counter advanced bucket by their last completed result; the rest are
- * skipped with the reason the orchestrator settled them for (`paused`, `backoff`, `deferred`,
- * `disabled`, `idle` — handed back on OrchestratorExit.settled, so a deferred role reads as set
- * aside, not as "nothing was due"); a role the map lacks (defensively — the round only exits
- * once every role is settled) falls back to deriving the reason from state: a pause marker when
- * one is held, backoff when nextRunAt is still in the future, otherwise idle. */
+ * skipped with the reason the orchestrator settled them for (`paused`, `resume pending`,
+ * `backoff`, `deferred`, `disabled`, `idle` — handed back on OrchestratorExit.settled, so a
+ * deferred role reads as set aside, not as "nothing was due"); a role the map lacks (defensively
+ * — the round only exits once every role is settled) falls back to deriving the reason from
+ * state: a pause marker when one is held, a pending resume when one is flagged, backoff when
+ * nextRunAt is still in the future, otherwise idle. */
 export function onceSummary(
   root: string,
   roles: string[],
@@ -142,9 +143,11 @@ export function onceSummary(
         settled?.get(role) ??
         (isFleetPaused(root) || pausedRoles(root).includes(role)
           ? "paused"
-          : s.nextRunAt > Date.now()
-            ? "backoff"
-            : "idle");
+          : s.resumePending
+            ? "resume pending"
+            : s.nextRunAt > Date.now()
+              ? "backoff"
+              : "idle");
       skipped.push(reason);
     }
   }
