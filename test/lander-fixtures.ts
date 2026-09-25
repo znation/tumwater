@@ -104,8 +104,9 @@ export const checkRunNumber = (base: string): string =>
 
 /** A repo where every listed role has a single-commit pin based on main — the queue shape
  * the pipeline reads. One separate file per role by default so cherry-picks apply
- * cleanly; `edit` overrides the per-role change (the conflict test rewrites one line). */
-export async function batchPinnedFixture(
+ * cleanly; `edit` overrides the per-role change (the conflict test rewrites one line).
+ * File-internal: only this module's batchFixture composes it into a test fixture. */
+async function batchPinnedFixture(
   roles: string[],
   edit?: (root: string, role: string) => void,
 ): Promise<{ root: string; shas: Record<string, string> }> {
