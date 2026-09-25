@@ -3,7 +3,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck, gateCommandOf } from "./build-check-detect.js";
 import { defaultConfig } from "./config.js";
-import { logEvent, warnEvent } from "./events.js";
+import { logEvent, warnEvent, type HarnessEventInput } from "./events.js";
 import { Semaphore } from "./semaphore.js";
 import { truncate } from "./text.js";
 import { signalTree } from "./pi.js";
@@ -588,11 +588,10 @@ export function buildCheckSkipWarning(
 
 /** The build_check event's record of when the check itself ran (BuildCheckRun): spawn and
  * settle times on every run, plus the armed bound and the deadline's lateness when it fired.
- * Spread into every build_check event — runScopedBuildCheck's here, and the baseline loggers in
- * main-red.ts and redeploy.ts — so the feed can separate the check's own wall-clock from the
- * probe around it, and a deadline that fired late from one that fired on time. Empty when
- * nothing was spawned. */
-export function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number> {
+ * Spread into every build_check event by buildCheckEvent below, so the feed can separate the
+ * check's own wall-clock from the probe around it, and a deadline that fired late from one
+ * that fired on time. Empty when nothing was spawned. */
+function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number> {
   const run = outcome.run;
   if (!run) return {};
   return {
@@ -601,6 +600,29 @@ export function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, 
     ...(run.deadlineLateMs === undefined
       ? {}
       : { timeoutMs: run.timeoutMs, deadlineLateMs: run.deadlineLateMs }),
+  };
+}
+
+/** The one home of the build_check event's shape — `{ loop, type: "build_check", scope,
+ * status, script, durationMs }` plus the run-timing fields (buildCheckRunFields above) —
+ * so the feed's most expensive event type cannot drift a field between its four surfaces:
+ * runScopedBuildCheck's two priced events here (the killed retry and the final verdict) and
+ * the red-main baseline loggers (main-red.ts's baselineCheckLogger, redeploy.ts's redeploy
+ * mirror), which all paid the run whose timings the event carries. */
+export function buildCheckEvent(
+  loop: string,
+  scope: BuildCheckScope | "baseline",
+  outcome: Pick<BuildCheckOutcome, "status" | "script" | "run">,
+  durationMs: number,
+): HarnessEventInput {
+  return {
+    loop,
+    type: "build_check",
+    scope,
+    status: outcome.status,
+    script: outcome.script,
+    durationMs,
+    ...buildCheckRunFields(outcome),
   };
 }
 
@@ -661,15 +683,7 @@ export async function runScopedBuildCheck(
       // another run's doing — so retry once; the second attempt's outcome stands. The killed
       // first attempt is priced as its own event (the feed must answer how long a check took),
       // then the final event below records the retry's classified outcome.
-      logEvent(root, {
-        loop: role,
-        type: "build_check",
-        scope,
-        status: first.status,
-        script: checkScriptName(check),
-        durationMs,
-        ...buildCheckRunFields(first),
-      });
+      logEvent(root, buildCheckEvent(role, scope, first, durationMs));
       const retryStart = Date.now();
       const retry = await runBuildCheck(wt, check, timeoutMs);
       durationMs = Date.now() - retryStart;
@@ -692,15 +706,7 @@ export async function runScopedBuildCheck(
   const outcome: BuildCheckOutcome = unverifiedSkip
     ? { status: "failed", script: checkScriptName(check), outputTail: [unverifiedReason], run: raw.run }
     : raw;
-  logEvent(root, {
-    loop: role,
-    type: "build_check",
-    scope,
-    status: outcome.status,
-    script: checkScriptName(check),
-    durationMs,
-    ...buildCheckRunFields(outcome),
-  });
+  logEvent(root, buildCheckEvent(role, scope, outcome, durationMs));
   if (outcome.status === "skipped") {
     // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
     // code tick into the 3-strike discard (gate) or a merge behind the merge lock.
