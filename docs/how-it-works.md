@@ -143,6 +143,9 @@ while the fleet runs, and each one logs a `config_changed` event.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
   token as `Authorization: Bearer <token>` or `?token=`.
 - The GUI's report and failures tabs match `tumwater report` and `tumwater report --failures`.
+- In the TUI, viewing a loop's transcript (`Ctrl+T` to cycle) puts that loop's controls in the
+  pane header: `Ctrl+P` toggles its pause, `Ctrl+A` aborts its in-flight tick, and `Ctrl+W` clears
+  its backoff. Each keypress flashes its outcome in the header for a few seconds.
 - Review runs show as `── review @ <timestamp> ──` in role transcripts.
 - Runtime state lives in `.tumwater/` (gitignored). Durable state lives in tracked markdown and
   `tumwater.json`.
