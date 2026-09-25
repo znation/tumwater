@@ -23,7 +23,7 @@ function captureStdout(): { out: () => string; restore: () => void } {
   return { out: () => out, restore: () => (stdout.write = real) };
 }
 
-test("logs -f creates a missing event log and follows appended events, skipping blank and malformed lines", async (t) => {
+test("logs -f follows a missing event log without creating it, then picks up appended events, skipping blank and malformed lines", async (t) => {
   const repo = makeRepo();
   const cap = captureStdout();
   t.mock.timers.enable({ apis: ["setInterval"] });
@@ -31,12 +31,17 @@ test("logs -f creates a missing event log and follows appended events, skipping 
   try {
     void cmdLogs(repo, ["-f"]).catch((e) => (followError = e));
 
-    // A fresh repo has no events.jsonl; following must create it rather than crash.
+    // A fresh repo has no events.jsonl; following must tolerate that without creating it —
+    // logs is read-only (writes to stdout only), so it never leaves harness state behind.
     const file = eventsLogPath(repo);
-    assert.ok(fs.existsSync(file), "logs -f creates the missing event log");
+    t.mock.timers.tick(500);
+    assert.ok(!fs.existsSync(file), "logs -f does not create the missing event log");
     assert.equal(cap.out(), "", "an empty log prints nothing");
 
     // Blank lines and unparseable JSON are dropped by the follow callback, not printed or thrown.
+    // The test plays the log writer here, so it makes the file appear the way logEvent does
+    // (parent dir included); cmdLogs itself still created nothing.
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, "\n");
     fs.appendFileSync(file, "not json\n");
     t.mock.timers.tick(500);

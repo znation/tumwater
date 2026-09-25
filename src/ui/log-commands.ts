@@ -1,10 +1,9 @@
-import fs from "node:fs";
 import { knownRoleIds, loadConfigCached } from "../config.js";
 import { allRoleIds } from "../roles.js";
 import { fail, parseCountFlag, parseRoleFlag } from "../cli-args.js";
 import { parseEventLine, readEvents } from "../events.js";
 import { formatEvent } from "./event-format.js";
-import { ensureParentDir } from "../files.js";
+import { statOrNull } from "../files.js";
 import { followFile } from "./tail.js";
 import { createTranscriptRenderer } from "./transcript.js";
 import { readTranscriptTail } from "./transcript-tail.js";
@@ -42,9 +41,10 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   for (const e of readEvents(root, limit)) process.stdout.write(formatEvent(e) + "\n");
   if (!follow) return;
   const file = eventsLogPath(root);
-  ensureParentDir(file);
-  if (!fs.existsSync(file)) fs.writeFileSync(file, "");
-  followFile(file, fs.statSync(file).size, (lines) => {
+  // Seed the offset from what is on disk without creating anything: followFile tolerates a
+  // missing file (its poll re-stats every interval), so a read-only command never leaves a
+  // harness state file behind — the module contract above promises writes to stdout only.
+  followFile(file, statOrNull(file)?.size ?? 0, (lines) => {
     for (const line of lines.filter(Boolean)) {
       const e = parseEventLine(line);
       if (e) process.stdout.write(formatEvent(e) + "\n");
