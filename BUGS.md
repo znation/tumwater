@@ -36,6 +36,11 @@ deferral e2e test exercised the exact path and checked only the `tick_deferred` 
 wrong line to print on every deferred round unchallenged, since the only trace is the summary text
 itself and nothing cross-checked it against the settle record.
 
+Narrowed 2026-09-25 by the coverage loop: the summary's own accounting is now pinned at unit level
+too (test/cli-run.test.ts, over an exported onceSummary seam) — tick counting, result bucketing,
+and settle reasons reported verbatim from the map, with the state-derived classification asserted
+only as its documented fallback for a role the map lacks.
+
 ### `fixedHeadings` and `bugEntryBody` in src/fix-claim.ts have no fenced-code state: a quoted `### ` line counts as a Fixed entry, and an entry body quoting a fence is cut at it, so a narrative rewrite after the fence compares equal and skips the false-fix symbol check (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** the false-fix guard read BUGS.md through two fence-blind scanners. `fixedHeadings` filtered `### ` lines out of `sectionLines`'s output without consulting `fenceTracker`, so an entry legitimately quoting a markdown template added a phantom Fixed entry; `bugEntryBody` broke at any `## `/`### ` line with no fence state, so an entry's body was cut at its own quoted fence. The guard hole was the worse half: `falseFixReason` skips an already-Fixed entry only when its body is unchanged, but base and head bodies were both truncated at the same fence, so an md-only rewrite confined to text after the fence compared equal and never faced the symbol check — the exact evasion the 2026-09-23 fix closed for prose bodies, reopened wherever an entry quotes one. `fixSymbols` inherited the truncation: a Fix paragraph placed after the entry's fence contributed no symbols, so the check passed vacuously.

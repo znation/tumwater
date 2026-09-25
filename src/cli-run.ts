@@ -122,7 +122,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
  * aside, not as "nothing was due"); a role the map lacks (defensively — the round only exits
  * once every role is settled) falls back to deriving the reason from state: a pause marker when
  * one is held, backoff when nextRunAt is still in the future, otherwise idle. */
-function onceSummary(
+export function onceSummary(
   root: string,
   roles: string[],
   ticksBefore: Map<string, number>,
