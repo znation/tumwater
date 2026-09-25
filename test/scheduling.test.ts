@@ -4,7 +4,7 @@ import { DEFER_MAX_MS, deferTick, fairOrder, isEligible, workLanded } from "../s
 import { OBSERVER_ROLES, ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig } from "../src/config.js";
-import { freshLoopState } from "../src/state.js";
+import { freshLoopState, clearBackoff } from "../src/state.js";
 import { makeLoopRunner } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 
@@ -48,6 +48,39 @@ test("a sleeping loop wakes when main moves, respecting the min gap", () => {
   // But not if it just finished a tick.
   r.state.lastTickEndedAt = now - 1000;
   assert.equal(isEligible(r, now, "new", 0).run, false);
+});
+
+test("an operator wake newer than the last tick overrides the min gap", () => {
+  // qa's default clock is two hours: a loop that ticked five minutes ago is inside its own
+  // gap window even with backoffSeconds 0 — exactly the state `tumwater wake --role qa`
+  // (and a queued per-role prompt's auto-wake) must be able to pull out of.
+  const r = runner("qa");
+  const now = Date.now();
+  r.state.ticks = 1;
+  r.state.lastTickEndedAt = now - 5 * 60 * 1000;
+  r.state.nextRunAt = now + 2 * 3600 * 1000;
+  r.state.backoffSeconds = 0;
+  r.state.lastMainHead = "abc";
+  assert.equal(isEligible(r, now, "abc", 0).run, false, "asleep inside its own gap");
+  // What requestWake and runner.wake() both do:
+  Object.assign(r.state, clearBackoff(r.state, now));
+  const woken = isEligible(r, now, "abc", 0);
+  assert.equal(woken.run, true, "the wake brings the loop in within one poll");
+  assert.equal(woken.reason, "scheduled");
+});
+
+test("a wake older than the last tick restores the ordinary min gap", () => {
+  // Self-clearing: the tick the wake caused re-stamps lastTickEndedAt past wokenAt, so a
+  // stale wake must not keep exempting every later gap window.
+  const r = runner("qa");
+  const now = Date.now();
+  r.state.ticks = 2;
+  r.state.wokenAt = now - 10 * 60 * 1000;
+  r.state.lastTickEndedAt = now - 5 * 60 * 1000;
+  r.state.nextRunAt = now + 2 * 3600 * 1000;
+  r.state.backoffSeconds = 0;
+  r.state.lastMainHead = "abc";
+  assert.equal(isEligible(r, now, "abc", 0).run, false);
 });
 
 test("isEligible gates on the role's own interval, not the global knob", () => {

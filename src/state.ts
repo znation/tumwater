@@ -57,9 +57,14 @@ export function zeroCounters(s: LoopState): LoopState {
  * observation-window reset is zeroCounters' job), wake tracking (lastMainHead), and the
  * last-result fields. Scheduling operation, not observation-window reset: it exists so an
  * operator who fixed what the loops were failing on can say "try again" (BUGS.md
- * 2026-09-15: the fleet had no wake lever). */
+ * 2026-09-15: the fleet had no wake lever). Also stamps wokenAt, which is what lets
+ * isEligible honor the demand over the role's min-tick interval (LoopState.wokenAt). */
 export function clearBackoff(s: LoopState, now: number): LoopState {
-  return { ...s, backoffSeconds: 0, nextRunAt: now };
+  // wokenAt marks the wake as newer than the current gap window's opening tick, which is
+  // what lets isEligible honor the demand over the min-tick interval (LoopState.wokenAt):
+  // without it a loop that ticked inside its own slow clock stays asleep for the rest of
+  // the interval and both `tumwater wake` and a queued per-role prompt silently do nothing.
+  return { ...s, backoffSeconds: 0, nextRunAt: now, wokenAt: now };
 }
 
 /** Next step of a backoff ladder: initial (capped) on the first step, then multiplied, capped. */

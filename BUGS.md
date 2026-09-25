@@ -5,9 +5,27 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None._
+### A wake consumed while the target's tick is in flight is clobbered by that tick's end-save, so a prompt enqueued mid-tick waits out a full fresh min-gap despite the `p:N` marker (found by bugfix loop 2026-09-25)
+
+**Symptom:** `tumwater prompt --role qa` lands while qa's tick is running: `requestWake` writes the state file and marker, `consumeWakeRequest` applies `r.wake()` to the in-memory state — but the in-flight tick holds the same state object and its end-save stays authoritative (loop.ts's wake() docstring says so itself): `applyTickOutcome` re-stamps `lastTickEndedAt` past `wokenAt` and schedules `nextRunAt` a full interval out, so the queued prompt waits out the whole fresh gap (qa: up to 2 h) even though the dashboards show `p:1`.
+
+**Reproduce:** Timing-shaped — needs the enqueue to land inside a tick's run window; not yet reproduced deterministically (the fixed 2026-09-25 wake-vs-min-gap entry covers the tick-idle case; this is the mid-tick race it left).
+
+**Suspected cause / fix shape:** wake-stamping cannot survive a concurrent tick's end-save by construction. The durable fix is due-ness from the queue itself: `isEligible` (or the orchestrator's pass) treating a non-empty per-role inbox the way the director's `inbox` reason already works — a queued user prompt makes that loop due, no min-gap, no backoff — so the prompt's own existence, not a marker racing a tick save, carries the demand.
 
 ## Fixed
+
+### An operator wake cannot pull a slow-clock loop in: `isEligible`'s min-gap check gates every reason, so `tumwater wake --role qa` and a queued per-role prompt's auto-wake silently do nothing for the rest of the interval the loop ticked inside (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `tumwater wake --role qa` (or `tumwater prompt --role qa "…"`, whose enqueue auto-wakes the role) right after qa ticked: the command reports "wake requested for qa — applies it", but the loop keeps sleeping for up to its whole `minTickIntervalSeconds` (qa 2 h, steward 6 h) — no tick, no feedback, the queued prompt sitting behind a `p:1` marker. `cmdWake`'s own contract says "the named roles tick within one poll instead of sleeping until their backoff expires".
+
+**Reproduce:** Unit-level: a qa runner with `lastTickEndedAt = now - 5 min`, `nextRunAt = now + 2 h`, `backoffSeconds = 0`; apply `clearBackoff(state, now)` (exactly what `requestWake`/`runner.wake()` do) and `isEligible` still returns `{ run: false }` — the `sinceLast < minGap` check fires before `nextRunAt` is ever consulted.
+
+**Cause:** `wake` was built as "skip backoff" and the min-gap check was never given an exception for it: after any tick, `lastTickEndedAt` is fresh, so the gap check rejects the woken loop regardless of the pulled-forward `nextRunAt`. The director's inbox is explicitly gap-exempt ("a queued prompt runs as soon as the previous one finishes"), and a per-role prompt is the same class of user request — the asymmetry was an oversight, not a throttle (a wake is one explicit demand, not a cadence change).
+
+**Fix:** `clearBackoff` stamps `wokenAt: now` (LoopState, persisted), and `isEligible` exempts the min gap when the wake is newer than the last tick's end. Self-clearing: the woken tick's own end re-stamps `lastTickEndedAt` past `wokenAt`, so the ordinary gap re-arms without a separate erase and a stale wake cannot exempt later windows.
+
+**Validation gap:** no-fake — confirming it needed a slow-clock wake fixture that did not exist: the existing e2e wake test seeded `lastTickEndedAt` an hour in the past precisely to dodge the min-gap gate (its own comment says so), and fastConfig zeroes the interval, so the suite never exercised wake against a live gap.
 
 ### A once round exits without running a role enabled mid-round: the live reload appends its runner to the array OnceRound watches, but the round's tick snapshot was fixed at construction, so the role's persisted history reads as already settled (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 

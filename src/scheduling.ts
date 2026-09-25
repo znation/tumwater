@@ -55,13 +55,19 @@ export function isEligible(
     return now >= s.nextRunAt ? { run: true, reason: "resume" } : { run: false };
   }
 
-  // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates both scheduled
-  // ticks and "main moved" early wakes — resolved here so a live-reloaded config applies.
+  // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates scheduled ticks and
+  // "main moved" early wakes — resolved here so a live-reloaded config applies. An operator
+  // wake overrides it (the woken check below): it is an explicit demand, the same class of
+  // request the director's inbox runs without any gap.
   const minGap = opts.once
     ? 0
     : configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000;
   const sinceLast = now - (s.lastTickEndedAt ?? 0);
-  if (sinceLast < minGap) return { run: false };
+  // An operator wake newer than the gap window's opening tick overrides the interval
+  // (LoopState.wokenAt): "try again now" — or the auto-wake a queued per-role prompt
+  // sends — must not silently wait out the remaining slow clock it ticked inside.
+  const woken = s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0);
+  if (sinceLast < minGap && !woken) return { run: false };
   // Once mode's clock override, second half: a raised backoffSeconds means nextRunAt is a
   // backoff deadline, not the scheduled clock, and is honored; at zero it is the clock a
   // productive tick scheduled, and the explicit round demand overrides it.

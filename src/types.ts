@@ -102,6 +102,15 @@ export interface LoopState {
    * paths re-queue it — instead of leaving the copy queued for a later fresh tick to run the
    * same request twice. Cleared at every tick's start; reclaimed only by a tick that resumes. */
   resumePromptFile?: string;
+  /** Epoch ms of the last operator wake (`tumwater wake`, or the auto-wake a queued
+   * per-role prompt sends) that cleared this loop's schedule. Scheduling input, not
+   * observation: isEligible exempts the role's min-tick interval when the wake is newer
+   * than the last tick's end, so an explicit "try again now" brings a slow-clock loop
+   * (qa, steward) in within one poll instead of waiting out the interval it ticked inside
+   * — the same exemption the director's inbox already grants user prompts. Self-clearing:
+   * the next tick's end re-stamps lastTickEndedAt past the wake, restoring the ordinary
+   * gap without a separate erase. */
+  wokenAt?: number;
   /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
    * past the limit the loop abandons the runaway task and falls back to a fresh tick. */
   cutOffStreak?: number;

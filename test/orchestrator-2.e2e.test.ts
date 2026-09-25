@@ -139,6 +139,49 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
   }
 });
 
+test("an operator wake brings a slow-clock loop in despite a fresh min-gap window", async () => {
+  // The other wake shape: not backoff but the loop's OWN interval. qa-style slow clocks
+  // used to defeat the wake in isEligible — lastTickEndedAt minutes old and nextRunAt
+  // hours out left the loop asleep for the rest of the interval no matter how many wake
+  // markers landed, so `tumwater wake --role qa` and a queued per-role prompt's auto-wake
+  // silently did nothing. The earlier wake test dodged this by seeding lastTickEndedAt an
+  // hour in the past; this one seeds the fresh-tick shape the operator actually hits.
+  const repo = await makeFastRepo("wake vs min gap test", ["clean"]);
+  const cfg = loadConfig(repo);
+  cfg.roles.clean = { enabled: true, minTickIntervalSeconds: 3600 };
+  saveConfig(repo, cfg);
+  // Ticked moments ago, productive clock hours out, not backing off, main unmoved.
+  const seeded = freshLoopState("clean");
+  seeded.ticks = 1;
+  seeded.lastTickEndedAt = Date.now() - 2000;
+  seeded.nextRunAt = Date.now() + 3600 * 1000;
+  seeded.lastMainHead = "";
+  saveLoopState(repo, seeded);
+  const restore = fakePiIdle();
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // The slow clock alone must keep the loop asleep.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "the fresh-gap loop stays asleep");
+
+    // What `tumwater wake --role clean` does from the CLI side (as in the test above).
+    saveLoopState(repo, clearBackoff(loadLoopState(repo, "clean"), Date.now()));
+    const markerFile = wakeRequestPath(repo);
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean"] }));
+
+    await waitFor(() => loadLoopState(repo, "clean").ticks >= 2, "the woken loop to tick");
+    await waitFor(() => !loadLoopState(repo, "clean").running, "the woken tick to finish");
+    // Self-clearing: the woken tick's own end re-opens the gap window, so the loop must
+    // not immediately tick again.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(loadLoopState(repo, "clean").ticks, 2, "the gap window re-arms after the woken tick");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
 test("a corrupt wake marker wakes every runner and is still consumed", async () => {
   const repo = await makeFastRepo("corrupt wake marker test", ["clean", "dry"]);
   for (const role of ["clean", "dry"]) {
