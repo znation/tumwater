@@ -16,6 +16,7 @@ import {
   handlePause,
   handlePauseRole,
   handlePrompt,
+  handlePromptRole,
   handleReport,
   handleTranscript,
   handleWake,
@@ -117,6 +118,8 @@ export function startGui(
         handleBacklog(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/prompt") {
         await handlePrompt(req, res, root);
+      } else if (req.method === "POST" && pathname === "/api/prompt-role") {
+        await handlePromptRole(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/budget") {
         await handleBudget(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/pause") {

@@ -5,7 +5,37 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Per-role prompts 2/2 — surface the per-role queue on the dashboards (planned 2026-09-25)
+_None yet._
+
+## Done
+
+### Per-role prompts 2/2 — surface the per-role queue on the dashboards (planned 2026-09-25, done 2026-09-25)
+
+**Landed as (2026-09-25).** As planned, with two refinements: (1) the TUI's per-loop prompt key
+is Ctrl+R rather than a `P` key — Ctrl+P is already the pause toggle in that same control row,
+so the mnemonic went to p**R**ompt and the header hint names it (`Ctrl+R prompt`); the mode is
+mutually exclusive with budget mode (each refuses to open while the other holds the shared
+prompt line) and keeps its own saved-draft pair, so neither mode can clobber the other's draft.
+(2) The snapshot shape is counts only (`roleInbox: Record<string, number>`, the director
+excluded because its queue IS the shared `inbox`), so the GUI's queued-prompts section lists
+role queues as `role: N queued` lines labeled with their role rather than full previews — full
+text stays in the queue files, readable with `tumwater prompt --list --role <id>`. Everything
+else as planned: `status --json` and `/api/status` carry `roleInbox` (src/ui/status.ts,
+src/ui/status-payload.ts; the count is a directory listing per role — src/inbox.ts's
+`queuedRolePromptCount`); the shared status table shows a `p:N` marker on a loop's state cell
+(src/ui/status-render.ts, mirrored in gui-client.ts); the TUI's transcript view submits through
+Ctrl+R → submitRolePrompt + single-role wake, the same path the CLI uses (src/ui/tui.ts, with
+the pure parser in src/ui/tui-input.ts); the GUI's loop rows gain a `prompt` control opening
+one shared addressed bar that POSTs `/api/prompt-role` — role validated exactly like
+`/api/transcript` (the shared rejectBadRole wording), body discipline of `/api/prompt`
+(readJsonObject → 400 malformed/non-object, 413 oversized, text a non-empty string within the
+shared length rule) — and the director's prompt box and inbox display are untouched
+(src/ui/gui-endpoints.ts, src/ui/gui.ts, src/ui/gui-page.ts, src/ui/gui-client.ts).
+Acceptance criteria: (a) pinned in test/status.test.ts (snapshot) and test/gui-operator.test.ts
+(statusPayload); (b) pinned in test/tui.test.ts (queue content + wake marker + draft restore);
+(c) pinned in test/gui-server.test.ts (413 + healthy) and test/gui-operator.test.ts (queue
+landing, transcript-error parity, bad bodies, and the row's prompt affordance driving the bar);
+(d) the pre-existing director tests pass unchanged; (e) full suite 1831/1831.
 
 **Goal.** Sub-plan 1/2 gives the CLI a per-role prompt queue (`tumwater prompt --role <id>`);
 this plan makes it visible and usable from the GUI and TUI, so steering one loop does not require
@@ -34,8 +64,6 @@ loop's queue (verifiable with `tumwater prompt --list`). (c) The GUI's per-row p
 `/api/prompt-role`, a malformed or oversized body reads 400/413, and an unknown role reads the
 same error text as `/api/transcript`. (d) The director's own prompt box and inbox display are
 unchanged. (e) Full suite passes.
-
-## Done
 
 ### `tumwater run --once --role <id>` — one round scoped to a single role (planned 2026-09-25, done 2026-09-25)
 

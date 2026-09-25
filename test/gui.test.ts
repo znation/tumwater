@@ -308,7 +308,7 @@ test("the prompt form checks its response before clearing the box and claiming q
   // failure. Asserted against the served page, where the handler actually lives.
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   assert.match(GUI_PAGE, /await postJson\("\/api\/prompt", \{ text \}\)/);
-  const handler = GUI_PAGE.match(/promptform"\)\.addEventListener\("submit"[\s\S]*?\n {2}\}\);/)?.[0] ?? "";
+  const handler = GUI_PAGE.match(/"promptform"\)\.addEventListener\("submit"[\s\S]*?\n {2}\}\);/)?.[0] ?? "";
   assert.ok(handler, "prompt submit handler found");
   assert.ok(handler.includes("showFlash(\"error: \" + e.message)"), "failure flashes the error");
   assert.ok(handler.includes('showFlash("queued")'), "success path flashes queued");
@@ -656,7 +656,7 @@ test("status payload carries queued prompt previews, fresh per poll", async () =
 test("the dashboard page lists queued prompts in its project status panel", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   // The #backlog panel gets a queued-prompts section alongside plans/bugs/questions.
-  assert.match(GUI_PAGE, /backlogList\("queued prompts", d\.inboxPrompts \|\| \[\]\)/);
+  assert.match(GUI_PAGE, /backlogList\("queued prompts", \(d\.inboxPrompts \|\| \[\]\)\.concat/);
 });
 
 // Full backlog entries (PLANS.md "Read backlog entries in full from the TUI/GUI dashboards"):

@@ -36,11 +36,15 @@ export function snapshotWith(
   budget: StatusSnapshot["budget"] = DEFAULT_BUDGET,
   paused = false,
   pausedRoles: string[] = [],
+  roleInbox: Record<string, number> = {},
 ): StatusSnapshot {
   return {
     running: false,
     inbox: 0,
     inboxPrompts: [],
+    // The fixture's queues are empty by default; a test passes per-role counts to exercise
+    // the `p:N` state marker (PLANS.md "Per-role prompts 2/2").
+    roleInbox,
     questions: 0,
     // `custom` is display-only metadata snapshot() computes per row; the fixture defaults it
     // to false so existing all-built-in tables stay byte-identical.

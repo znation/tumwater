@@ -93,6 +93,20 @@ export function parseBudgetInput(
   return { ok: true, value: n };
 }
 
+/** Parse the TUI's Ctrl+R role-prompt line: the trimmed text when non-empty, otherwise an
+ * error so the flash can show it and the editor stays open for a fix — whitespace-only input
+ * queues nothing, exactly like the director prompt line's Enter rule, and the error names Esc
+ * so an operator who opened the editor by accident learns the way out. Pure, like
+ * parseBudgetInput; the submit path itself (submitRolePrompt + single-role wake) lives in
+ * tui.ts with the other disk-writing handlers. */
+export function parseRolePromptInput(
+  text: string,
+): { ok: true; value: string } | { ok: false; error: string } {
+  const t = text.trim();
+  if (!t) return { ok: false, error: "prompt text is empty — type something, or Esc to cancel" };
+  return { ok: true, value: t };
+}
+
 /** The visible slice of the prompt line for a terminal `width` columns: the whole text
  * when it fits, otherwise a non-empty window that keeps the cursor inside it (at or near
  * the right edge) so mid-text edits stay visible. Both window edges fall on character

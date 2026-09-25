@@ -4,12 +4,23 @@ import {
   applyKey,
   inputViewWindow,
   parseBudgetInput,
+  parseRolePromptInput,
   renderInputView,
   tuiTerminalError,
 } from "../src/ui/tui-input.js";
 import { cutSplitsSurrogatePair } from "../src/text.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
+
+test("parseRolePromptInput trims and rejects an empty line with the way out", () => {
+  assert.deepEqual(parseRolePromptInput("  write more tests  "), { ok: true, value: "write more tests" });
+  assert.equal(parseRolePromptInput("").ok, false);
+  assert.equal(parseRolePromptInput("   ").ok, false);
+  // The error names Esc so an operator who opened the editor by accident learns the exit.
+  const empty = parseRolePromptInput("  ");
+  assert.equal(empty.ok, false);
+  assert.match(empty.ok ? "" : empty.error, /Esc to cancel/);
+});
 
 test("applyKey inserts printable characters at the cursor", () => {
   assert.deepEqual(applyKey("", 0, "h", key("h")), { text: "h", cursor: 1 });

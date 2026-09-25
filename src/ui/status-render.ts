@@ -133,6 +133,14 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // its own, up to three stats + reads per loop per second. The phase is computed here once
   // and carried on the row: the same label drives the state cell and the shared row order
   // (sortLoopsByState), so the two cannot diverge.
+  // Per-role prompts 2/2 — a loop with queued prompts carries a small `p:N` marker on its
+  // state cell (appended, so the work-item prefix survives clipping ahead of it), telling the
+  // operator steering one loop that something is waiting for it. The GUI renders the same
+  // marker from its own JS copy keyed on the payload's roleInbox (gui-client.ts).
+  const roleQueued = (role: string): string => {
+    const n = snap.roleInbox[role] ?? 0;
+    return n > 0 ? ` p:${n}` : "";
+  };
   const withMetrics = snap.loops.map((s) => {
     // The tail read names the run kind the loop's phase describes (progressKind) — a gate
     // run's session mid-tick must not reset the working cell's counts (BUGS.md 2026-09-22).
@@ -155,7 +163,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     s.custom ? `${s.role}*` : s.role,
     // Merge queue 4/5 — the landing role's phase label (the marker-driven record, filtered to
     // this role by loopPhase's `landing` argument above) rides this same phase string.
-    stateCell(root, s, phase, live),
+    stateCell(root, s, phase, live) + roleQueued(s.role),
     String(s.ticks),
     String(s.commits),
     compactTokens(m.generated),

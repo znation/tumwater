@@ -4,7 +4,7 @@ import readline from "node:readline";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { logEvent } from "../src/events.js";
-import { submitPrompt } from "../src/inbox.js";
+import { queuedRolePrompts, submitPrompt } from "../src/inbox.js";
 import { initProject } from "../src/init.js";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { enqueueLanding } from "../src/land-queue.js";
@@ -285,7 +285,7 @@ test("Ctrl+T cycles events → transcript → project status → usage report �
 
     tui.key(undefined, "t", { ctrl: true });
     let frame = tui.lastFrame();
-    assert.match(frame, /transcript: clean — Ctrl\+P pause · Ctrl\+A abort · Ctrl\+W wake · Ctrl\+T to cycle/);
+    assert.match(frame, /transcript: clean — Ctrl\+P pause · Ctrl\+A abort · Ctrl\+W wake · Ctrl\+R prompt · Ctrl\+T to cycle/);
     assert.match(frame, /tidied the imports/); // assistant text renders…
     assert.doesNotMatch(frame, /Build a thing/); // …but never the user's tick prompt
 
@@ -991,6 +991,79 @@ test("the per-loop keys are inert outside transcript views, in budget mode, and 
     fs.mkdirSync(pausedRolesPath(repo), { recursive: true });
     tui.key(undefined, "p", { ctrl: true });
     assert.match(tui.lastFrame(), /error: /);
+  } finally {
+    await tui.quit();
+  }
+});
+
+test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and wakes it", async () => {
+  const repo = await makeTuiRepo();
+  const tui = startTui(repo);
+  try {
+    tui.key(undefined, "t", { ctrl: true }); // events → transcript (the one enabled role: clean)
+    assert.match(tui.lastFrame(), /Ctrl\+W wake · Ctrl\+R prompt/); // the header hint names it
+
+    tui.key(undefined, "r", { ctrl: true });
+    assert.match(tui.lastFrame(), /prompt for clean: Enter to send, Esc to cancel/);
+    // The bottom hint names the addressed loop while the mode holds the line.
+    assert.match(tui.lastFrame(), /prompt for clean: Enter to send · Esc to cancel · Ctrl\+C to quit/);
+    for (const ch of "check the clean queue") tui.key(ch, ch);
+    tui.key(undefined, "return");
+
+    // The prompt landed in the viewed loop's own queue — verifiable with
+    // `tumwater prompt --list --role clean`'s core — and the wake marker names it.
+    assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")).roles, ["clean"]);
+    assert.match(tui.lastFrame(), /queued for the clean loop/);
+    assert.equal(tui.lines().at(-1), "> ");
+
+    // A whitespace-only Enter queues nothing and stays in edit mode with the way out.
+    tui.key(undefined, "r", { ctrl: true });
+    tui.key(" ", " ");
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /prompt text is empty/);
+    assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
+    assert.equal(tui.lines().at(-1), ">  "); // the space stayed: the editor is still open
+  } finally {
+    await tui.quit();
+  }
+});
+
+test("role-prompt mode keeps its own draft, refuses Ctrl+B, and Esc/Ctrl+R restore byte-for-byte", async () => {
+  const repo = await makeTuiRepo();
+  const tui = startTui(repo);
+  try {
+    for (const ch of "director draft") tui.key(ch, ch);
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "r", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "> ", "entering the mode blanks the line");
+
+    // Mutually exclusive: Ctrl+B while role-prompt mode holds the line flashes the way out
+    // instead of entering budget mode (which would clobber a saved draft pair).
+    tui.key(undefined, "b", { ctrl: true });
+    assert.match(tui.lastFrame(), /finish or cancel the prompt for clean first \(Esc cancels\)/);
+    assert.doesNotMatch(tui.lastFrame(), /edit daily cost budget/);
+    assert.equal(tui.lines().at(-1), "> ", "the refusal leaves the role editor open");
+
+    for (const ch of "role text") tui.key(ch, ch);
+    tui.key(undefined, "escape"); // Esc restores the saved director draft
+    assert.equal(tui.lines().at(-1), "> director draft");
+    assert.match(tui.lastFrame(), /type a prompt for the project/); // the ordinary hint is back
+
+    // Ctrl+R again toggles the mode off the same way.
+    tui.key(undefined, "r", { ctrl: true });
+    for (const ch of "queued text") tui.key(ch, ch);
+    tui.key(undefined, "r", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "> director draft");
+    assert.match(tui.lastFrame(), /role prompt cancelled/);
+    assert.deepEqual(queuedRolePrompts(repo, "clean"), [], "the toggle-off queued nothing");
+
+    // A successful send restores the saved draft too.
+    tui.key(undefined, "r", { ctrl: true });
+    for (const ch of "queued text") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.deepEqual(queuedRolePrompts(repo, "clean"), ["queued text"]);
+    assert.equal(tui.lines().at(-1), "> director draft");
   } finally {
     await tui.quit();
   }

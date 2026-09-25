@@ -8,7 +8,7 @@ import { initProject } from "../src/init.js";
 import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
-import { enqueueLanding } from "../src/land-queue.js";
+import { DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";import { enqueueLanding } from "../src/land-queue.js";
 import { startLocalGui } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 
@@ -662,8 +662,25 @@ test("the loop rows' controls post the row's role and flash the server's message
   const loopsEl = {
     addEventListener: (_: string, fn: (ev: unknown) => void) => listeners.push(fn),
   };
+  // The per-role prompt bar's elements (gui-page's #rolepromptwrap): the prompt rowaction
+  // opens the bar instead of posting, and the form's submit/cancel listeners are captured
+  // here like the loops listener above.
+  const barListeners: Record<string, Array<(ev: unknown) => Promise<void> | void>> = {};
+  const promptWrap = { hidden: true };
+  const promptLabel = { textContent: "" };
+  const promptInput = { value: "", focus: () => {} };
+  const barEl = (id: string) => ({
+    addEventListener: (_: string, fn: (ev: unknown) => void) => (barListeners[id] ??= []).push(fn),
+  });
   const document = {
-    getElementById: (id: string) => (id === "loops" ? loopsEl : null),
+    getElementById: (id: string) =>
+      id === "loops" ? loopsEl
+      : id === "rolepromptwrap" ? promptWrap
+      : id === "rolepromptlabel" ? promptLabel
+      : id === "roleprompt" ? promptInput
+      : id === "rolepromptform" ? barEl(id)
+      : id === "rolepromptcancel" ? barEl(id)
+      : null,
     addEventListener: () => {},
   };
   const flashes: string[] = [];
@@ -671,10 +688,12 @@ test("the loop rows' controls post the row's role and flash the server's message
   const postJson = async (path: string, payload: unknown) => {
     posts.push({ path, payload });
     if (path === "/api/abort") throw new Error("/api/abort failed: HTTP 409 — no harness is running");
+    if (path === "/api/prompt-role" && (payload as { text?: string }).text === "boom")
+      throw new Error("/api/prompt-role failed: HTTP 400");
     if (path === "/api/pause-role") return { ok: true, changed: true, paused: true };
     return { ok: true, message: "wake requested for feature — a running fleet applies it within ~2s" };
   };
-  new Function("document", "postJson", "showFlash", block)(document, postJson, (msg: string) => flashes.push(msg));
+  new Function("document", "postJson", "showFlash", "refresh", block)(document, postJson, (msg: string) => flashes.push(msg), () => {});
   assert.equal(listeners.length, 1, "the block registers its delegated listener");
   const handler = listeners[0]!;
 
@@ -704,4 +723,100 @@ test("the loop rows' controls post the row's role and flash the server's message
   // A click on a plain loop link (the closest match fails) is left to the other listener.
   await handler({ target: { closest: () => null }, preventDefault: () => {} });
   assert.equal(posts.length, 4, "a non-rowaction click posts nothing");
+
+  // A prompt anchor opens the shared bar addressed to the row's loop instead of posting;
+  // the form's send then POSTs /api/prompt-role with the trimmed text and closes the bar.
+  const promptAnchor = { dataset: { action: "prompt", role: "feature" } };
+  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? promptAnchor : null) }, preventDefault: () => {} });
+  assert.equal(posts.length, 4, "opening the bar posts nothing");
+  assert.equal(promptWrap.hidden, false, "the bar is visible while addressed");
+  assert.equal(promptLabel.textContent, "prompt for feature:");
+  promptInput.value = "  tighten the docs loop  ";
+  await barListeners["rolepromptform"]![0]!({ preventDefault: () => {} });
+  assert.deepEqual(posts[4], { path: "/api/prompt-role", payload: { role: "feature", text: "tighten the docs loop" } });
+  assert.match(flashes[4]!, /wake requested for feature/);
+  assert.equal(promptWrap.hidden, true, "a successful send closes the bar");
+  assert.equal(promptInput.value, "", "a successful send clears the input");
+
+  // An empty send queues nothing; a failed POST flashes the error and keeps both the bar and
+  // the text for resubmission; cancel closes the bar without posting.
+  promptInput.value = "   ";
+  await barListeners["rolepromptform"]![0]!({ preventDefault: () => {} });
+  assert.equal(posts.length, 5, "an empty send posts nothing");
+  promptInput.value = "boom";
+  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? promptAnchor : null) }, preventDefault: () => {} });
+  await barListeners["rolepromptform"]![0]!({ preventDefault: () => {} });
+  assert.match(flashes[5]!, /^error: \/api\/prompt-role failed/);
+  assert.equal(promptWrap.hidden, false, "a failed send keeps the bar open");
+  assert.equal(promptInput.value, "boom", "a failed send keeps the text");
+  await barListeners["rolepromptcancel"]![0]!({ preventDefault: () => {} });
+  assert.equal(promptWrap.hidden, true, "cancel closes the bar");
+  assert.equal(posts.length, 6, "cancel posts nothing");
+});
+
+// POST /api/prompt-role — the dashboard's per-row prompt control, backed by the same submit
+// path `tumwater prompt --role <id>` uses (submitRolePrompt + a single-role wake), so the
+// surfaces cannot drift on queue format or wording. Here: the queue landing, the role
+// validation shared with /api/transcript, and the body discipline shared with /api/prompt.
+test("POST /api/prompt-role queues for the named loop and rejects bad bodies like its peers", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui prompt-role test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const post = (payload: unknown) =>
+      fetch(base + "/api/prompt-role", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    const res = await post({ role: "feature", text: "  tighten the docs  " });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { ok: boolean; message: string };
+    assert.equal(body.ok, true);
+    assert.match(body.message, /wake requested for feature/);
+    // The queue holds the trimmed text — the same files `tumwater prompt --list --role` reads.
+    assert.deepEqual(queuedRolePrompts(repo, "feature"), ["tighten the docs"]);
+    // The wake marker names just that loop.
+    assert.deepEqual(JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")).roles, ["feature"]);
+
+    // An unknown role reads the same error text /api/transcript answers with (the shared
+    // rejectBadRole wording), and the text rules match /api/prompt's.
+    const transcriptRes = await fetch(base + "/api/transcript?role=bogus&n=5");
+    const transcriptErr = ((await transcriptRes.json()) as { error: string }).error;
+    const unknown = await post({ role: "bogus", text: "hi" });
+    assert.equal(unknown.status, 400);
+    assert.equal(((await unknown.json()) as { error: string }).error, transcriptErr);
+    for (const payload of [
+      { role: "feature" },
+      { role: "feature", text: 7 },
+      { role: "feature", text: "   " },
+      { role: "feature", text: "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1) },
+    ]) {
+      const bad = await post(payload);
+      assert.equal(bad.status, 400, JSON.stringify(payload).slice(0, 60));
+      assert.equal(queuedRolePrompts(repo, "feature").length, 1, "the rejected body queued nothing");
+    }
+    // Malformed / non-object bodies get readJsonObject's shared 400, an oversized body 413.
+    for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", text: "x", pad: "y".repeat(70000) })]) {
+      const bad = await fetch(base + "/api/prompt-role", { method: "POST", body });
+      assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
+    }
+  } finally {
+    server.close();
+  }
+});
+
+// The payload's roleInbox: per-role queue counts for every enabled loop except the director
+// (its queue IS the shared inbox), matching the on-disk queues the CLI's --list reads.
+test("the status payload carries per-role queue counts (roleInbox)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui roleInbox test");
+  enqueueRolePrompt(repo, "feature", "one");
+  enqueueRolePrompt(repo, "bugfix", "two");
+  enqueueRolePrompt(repo, "bugfix", "three");
+  const payload = statusPayload(repo) as { roleInbox: Record<string, number>; inbox: number };
+  assert.equal(payload.roleInbox.feature, 1);
+  assert.equal(payload.roleInbox.bugfix, 2);
+  assert.ok(!("director" in payload.roleInbox), "the director's queue is the shared inbox, not roleInbox");
+  assert.equal(payload.inbox, 0);
 });

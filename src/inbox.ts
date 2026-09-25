@@ -77,6 +77,14 @@ export function queuedRolePrompts(root: string, role: string): string[] {
   return out;
 }
 
+/** How many prompts are queued for one loop, without reading their contents — the snapshot's
+ * per-role counts (PLANS.md "Per-role prompts 2/2") poll every role every second, so the
+ * count stays a directory listing rather than a read per queued file. A missing queue
+ * directory reads as an empty queue, like queuedRolePrompts. */
+export function queuedRolePromptCount(root: string, role: string): number {
+  return queuedFiles(root, role).length;
+}
+
 /** Outcome of cancelPrompt: the cancelled prompt's text, or "gone" when the director dequeued
  * it between listing and removal (a concurrent pop is a normal race, not an error). */
 export type CancelOutcome = { status: "cancelled"; text: string } | { status: "gone" };

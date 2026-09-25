@@ -50,6 +50,13 @@ export const GUI_PAGE = `<!doctype html>
   <input id="prompt" placeholder="type a prompt for the project — it runs immediately via the director loop" autocomplete="off">
   <button>send</button><span id="flash"></span>
 </form>
+<!-- Per-row prompt bar (hidden until a loop row's "prompt" link opens it): one shared input,
+     addressed by the link's role, submitting to /api/prompt-role. -->
+<div id="rolepromptwrap" hidden><form id="rolepromptform">
+  <span id="rolepromptlabel" class="muted"></span>
+  <input id="roleprompt" placeholder="type a prompt for this loop — it runs at its next tick" autocomplete="off">
+  <button>send</button><button type="button" id="rolepromptcancel">cancel</button>
+</form></div>
 <div id="fleet-view">
 <table>
   <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>today</th><th>last tick</th><th>last result</th><th>next run</th><th>controls</th></tr></thead>

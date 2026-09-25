@@ -11,7 +11,7 @@ import { renderReportMarkdown, REPORT_DEFAULT_DAYS } from "./report.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
 import { formatEvent } from "./event-format.js";
-import { submitPrompt } from "../inbox.js";
+import { submitPrompt, submitRolePrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config-write.js";
 import { pausedRoles, pauseRole, resumeRole } from "../fleet-state.js";
 import {
@@ -28,6 +28,7 @@ import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reloa
 import {
   applyKey,
   parseBudgetInput,
+  parseRolePromptInput,
   renderInputView,
   tuiTerminalError,
 } from "./tui-input.js";
@@ -76,6 +77,14 @@ export async function runTui(root: string): Promise<void> {
   let budgetMode = false;
   let savedInput = "";
   let savedCursor = 0;
+  // Ctrl+R role-prompt mode on the prompt line: while set (to the viewed loop's role id), the
+  // line edits a prompt for that one loop instead of a director prompt. It keeps its OWN saved
+  // pair, separate from budget mode's: the two modes are mutually exclusive (each refuses to
+  // open while the other holds the line), and with separate pairs neither can clobber the
+  // other's saved draft even if a guard is ever loosened.
+  let rolePromptFor: string | null = null;
+  let roleSavedInput = "";
+  let roleSavedCursor = 0;
   // The last snapshot's cap, captured by render so the Ctrl+B handler can pre-fill without
   // re-reading config itself (render already polls snapshot every second).
   let currentCapUsd = 0;
@@ -155,7 +164,7 @@ export async function runTui(root: string): Promise<void> {
     const role = view > 0 && view <= roleIds.length ? roleIds[view - 1] : undefined; // defined: view is clamped above
     if (role) {
       header = `${BOLD}${clipToWidth(
-        `transcript: ${role} — Ctrl+P pause · Ctrl+A abort · Ctrl+W wake · Ctrl+T to cycle`,
+        `transcript: ${role} — Ctrl+P pause · Ctrl+A abort · Ctrl+W wake · Ctrl+R prompt · Ctrl+T to cycle`,
         width,
       )}${RESET}`;
       body = readTranscript(root, role, eventBudget)
@@ -231,7 +240,9 @@ export async function runTui(root: string): Promise<void> {
     parts.push("");
     if (flash && Date.now() < flashUntil) parts.push(`${BOLD}${clipToWidth(flash, width)}${RESET}`);
     parts.push(
-      `${DIM}${clipToWidth("type a prompt for the project, Enter to send · Ctrl+B edit budget · Ctrl+C to quit", width)}${RESET}`,
+      rolePromptFor
+        ? `${DIM}${clipToWidth(`prompt for ${rolePromptFor}: Enter to send · Esc to cancel · Ctrl+C to quit`, width)}${RESET}`
+        : `${DIM}${clipToWidth("type a prompt for the project, Enter to send · Ctrl+B edit budget · Ctrl+C to quit", width)}${RESET}`,
     );
     // Window long prompts around the cursor so its position stays visible.
     parts.push(`> ${renderInputView(input, cursor, width)}`);
@@ -247,6 +258,14 @@ export async function runTui(root: string): Promise<void> {
     budgetMode = false;
     input = savedInput;
     cursor = savedCursor;
+  };
+
+  // Leave role-prompt mode (Esc, Ctrl+R again, or Ctrl+T): restore the saved prompt text.
+  const exitRolePromptMode = (): void => {
+    if (!rolePromptFor) return;
+    rolePromptFor = null;
+    input = roleSavedInput;
+    cursor = roleSavedCursor;
   };
 
   readline.emitKeypressEvents(process.stdin);
@@ -270,6 +289,15 @@ export async function runTui(root: string): Promise<void> {
         // Ctrl+B toggles budget-edit mode on the prompt line (mnemonic for *b*udget): entering
         // pre-fills the current cap (empty when disabled — empty means "no cap" on save) and
         // saves the prompt text; leaving restores it. Esc cancels the same way.
+        if (rolePromptFor) {
+          // Mutually exclusive with role-prompt mode: the two editors share one prompt line,
+          // so a mode may not enter while the other holds it. Flash the way out instead of
+          // silently dropping either mode's saved draft.
+          flash = `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`;
+          flashUntil = Date.now() + 3000;
+          render();
+          return;
+        }
         if (budgetMode) {
           exitBudgetMode();
         } else if (currentBudgetFree) {
@@ -291,23 +319,41 @@ export async function runTui(root: string): Promise<void> {
         return;
       }
       // Per-loop controls on the transcript pane (PLANS.md "TUI per-loop controls"): Ctrl+P
-      // toggles the viewed loop's pause, Ctrl+A aborts its in-flight tick, Ctrl+W wakes it.
-      // They call the same marker-writing cores the CLI's --role flags do, so the surfaces
-      // cannot drift on marker format, idempotence, or wording. Guarded to the transcript
-      // views and out of budget-edit mode; everywhere else the keys fall through (applyKey
-      // drops ctrl-key presses, so they stay inert and never edit the prompt line). Every
-      // branch is a disk write that can fail (a lock timeout, a torn fs), and an unguarded
-      // throw would escape this keypress handler and kill the TUI — flash the reason
-      // instead, the same contract the prompt-submit path below honors.
+      // toggles the viewed loop's pause, Ctrl+A aborts its in-flight tick, Ctrl+W wakes it,
+      // and Ctrl+R opens the role-prompt editor for it (PLANS.md "Per-role prompts 2/2").
+      // They call the same marker-writing/submit cores the CLI's --role flags do, so the
+      // surfaces cannot drift on marker format, idempotence, or wording. Guarded to the
+      // transcript views and out of budget-edit mode; everywhere else the keys fall through
+      // (applyKey drops ctrl-key presses, so they stay inert and never edit the prompt line).
+      // Every branch is a disk write that can fail (a lock timeout, a torn fs), and an
+      // unguarded throw would escape this keypress handler and kill the TUI — flash the
+      // reason instead, the same contract the prompt-submit path below honors.
       if (
         !budgetMode &&
         roleIds.length > 0 &&
         view >= 1 && view <= roleIds.length &&
-        key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w")
+        key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w" || key.name === "r")
       ) {
         const role = roleIds[view - 1]!; // defined: view is clamped inside the transcript range
         try {
-          if (key.name === "p") {
+          if (key.name === "r") {
+            // Ctrl+R toggles role-prompt mode for the viewed loop (mnemonic: p**R**ompt —
+            // Ctrl+P is taken by pause): entering saves the director draft in this mode's own
+            // pair and blanks the line; entering again (or Esc) restores it. Mutually
+            // exclusive with budget mode by the outer guard and the mirrored refusal in the
+            // Ctrl+B branch.
+            if (rolePromptFor) {
+              exitRolePromptMode();
+              flash = "role prompt cancelled";
+            } else {
+              roleSavedInput = input;
+              roleSavedCursor = cursor;
+              rolePromptFor = role;
+              input = "";
+              cursor = 0;
+              flash = `prompt for ${role}: Enter to send, Esc to cancel`;
+            }
+          } else if (key.name === "p") {
             // Toggle by the marker's current state, read fresh: pauseRole/resumeRole's false
             // return means another window raced us to the same state, and the wording
             // helpers render that honestly — the changed-state contract the CLI prints.
@@ -331,8 +377,10 @@ export async function runTui(root: string): Promise<void> {
       }
       if (key.ctrl && key.name === "t") {
         // Ctrl+T exits budget-edit mode too — view cycling is orthogonal to it, so a cycle
-        // never strands the editor with its pre-filled cap in the prompt line.
+        // never strands the editor with its pre-filled cap in the prompt line. Role-prompt
+        // mode composes the same way: cycling away restores the saved director draft.
         exitBudgetMode();
+        exitRolePromptMode();
         view = (view + 1) % (roleIds.length + 4); // events → each loop's transcript → project status → usage report → failures → events
         selectedEntry = null; // leaving a view drops any entry selection…
         entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
@@ -395,6 +443,12 @@ export async function runTui(root: string): Promise<void> {
         render();
         return;
       }
+      if (key.name === "escape" && rolePromptFor) {
+        // Esc cancels role-prompt mode the same way, restoring the previous prompt text.
+        exitRolePromptMode();
+        render();
+        return;
+      }
       if (key.name === "return") {
         if (budgetMode) {
           // Enter in budget mode parses + saves the cap through the shared setter (which
@@ -415,6 +469,29 @@ export async function runTui(root: string): Promise<void> {
                   : `budget set to ${usdCap(parsed.value)}`;
             } else {
               flash = result.error; // broken config or write failure — stay in edit mode
+            }
+          }
+          flashUntil = Date.now() + 3000;
+        } else if (rolePromptFor) {
+          // Enter in role-prompt mode submits for the viewed loop through the same path
+          // `tumwater prompt --role` uses: submitRolePrompt enqueues into that loop's own
+          // queue (length-capped by the shared rule) and logs under the loop, then a
+          // single-role wake brings a live fleet's loop in within one poll. An invalid
+          // (whitespace-only) line flashes and STAYS in edit mode; a failed queue write
+          // flashes the reason and keeps the text, the same contract the director path
+          // below honors; success restores the saved draft.
+          const parsed = parseRolePromptInput(input);
+          if (!parsed.ok) {
+            flash = parsed.error;
+          } else {
+            const role = rolePromptFor;
+            try {
+              submitRolePrompt(root, role, parsed.value);
+              requestWake(root, [role]);
+              exitRolePromptMode();
+              flash = `queued for the ${role} loop`;
+            } catch (err) {
+              flash = `error: ${errorMessage(err)}`;
             }
           }
           flashUntil = Date.now() + 3000;

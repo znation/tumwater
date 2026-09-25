@@ -5,7 +5,7 @@ import net from "node:net";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
-import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize } from "../src/inbox.js";
+import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize, queuedRolePrompts } from "../src/inbox.js";
 import { startLocalGui } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 
@@ -319,6 +319,34 @@ test("/api/status exposes each loop's nextRunAt and backoffSeconds", async () =>
     assert.ok(clean, "the loop has a payload row");
     assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms — the GUI formats it client-side");
     assert.equal(clean.backoffSeconds, 90);
+  } finally {
+    server.close();
+  }
+});
+
+// The per-role prompt endpoint sits behind the same body cap as /api/prompt: an oversized
+// body is the client's 413, and the server stays healthy and accepts normal prompts after.
+test("gui rejects oversized prompt-role bodies with 413 and stays healthy", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui prompt-role body limit test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const huge = JSON.stringify({ role: "clean", text: "x".repeat(70 * 1024) });
+    const res = await fetch(base + "/api/prompt-role", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: huge,
+    });
+    assert.equal(res.status, 413);
+    assert.match(await res.text(), /body too large/);
+
+    const ok = await fetch(base + "/api/prompt-role", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: "clean", text: "still alive" }),
+    });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(queuedRolePrompts(repo, "clean"), ["still alive"]);
   } finally {
     server.close();
   }

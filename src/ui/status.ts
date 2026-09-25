@@ -6,8 +6,9 @@ import { defaultConfig, enabledRoleIds, isCustomRole, loadConfigCached } from ".
 import { fallbackPair } from "../config-views.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../pi-models.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
-import { promptPreview, queuedPrompts } from "../inbox.js";
+import { promptPreview, queuedPrompts, queuedRolePromptCount } from "../inbox.js";
 import { statePath } from "../paths.js";
+import { DIRECTOR_ROLE } from "../roles.js";
 import { freshLoopState, loadLoopState } from "../state.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles, readOrchestratorInfo } from "../fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing-slot.js";
@@ -63,6 +64,15 @@ export interface StatusSnapshot {
    * dist carries no stamp. Both dashboards render it in the header — a stale build is the one
    * fact about the fleet that nothing inside the fleet can otherwise see. */
   build: BuildStatus | null;
+  /** Prompts queued per loop (`tumwater prompt --role <id>`, PLANS.md "Per-role prompts 2/2"),
+   * keyed by role id for every enabled loop except the director — the director's queue IS the
+   * shared `inbox` above, so counting it here too would double-report the same prompts. Every
+   * enabled loop appears (0 included) so `status --json` consumers see one stable shape, like
+   * `landQueue`; the dashboards render a `p:N` marker and the GUI's per-row prompt affordance
+   * from it. Counts only — full previews stay in each queue file, readable via
+   * `tumwater prompt --list --role <id>`. Fresh per poll (a directory listing per role, no
+   * content reads — see queuedRolePromptCount), like `inbox`/`inboxPrompts`. */
+  roleInbox: Record<string, number>;
   /** The durable land queue (plans/merge-queue.md 4/5), unconditionally (depth 0 when
    * empty) so `status --json` consumers see one stable shape: the number of committed-but-
    * unlanded changes in the landing pipeline, and — only while a landing is actually
@@ -145,6 +155,12 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
   // each file once): the count is the prompts' length, so a prompt enqueued or dequeued
   // mid-snapshot can never make the header badge disagree with its numbered previews.
   const inboxPrompts = queuedPrompts(root).map(promptPreview);
+  // One directory listing per role per poll (no content reads — queuedRolePromptCount) fills
+  // the per-role counts; the director is excluded because its queue is the shared inbox above.
+  const roleInbox: Record<string, number> = {};
+  for (const r of roles) {
+    if (r !== DIRECTOR_ROLE) roleInbox[r] = queuedRolePromptCount(root, r);
+  }
   const running = orchestratorAlive(root, info);
   // One land-queue pass per poll (land-queue.ts's stat cache keeps an unchanged queue at one
   // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator
@@ -163,6 +179,7 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     build: running && info?.build ? info.build : null,
     inbox: inboxPrompts.length,
     inboxPrompts,
+    roleInbox,
     questions: openQuestions(root).length,
     loops,
     // Unconditional (never null): a disabled fleet still shows its spend and the badge is

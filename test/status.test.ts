@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { dequeuePrompt, submitPrompt } from "../src/inbox.js";
+import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts, submitPrompt } from "../src/inbox.js";
 import { allRoleIds } from "../src/roles.js";
 import { snapshot } from "../src/ui/status.js";
 import { statusPayload } from "../src/ui/status-payload.js";
@@ -525,4 +525,19 @@ test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () 
   assert.ok(clean, "the loop has a payload row");
   assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms, formatted client-side");
   assert.equal(clean.backoffSeconds, 90);
+});
+
+test("snapshot counts each role's own prompt queue and leaves the director to inbox", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "roleInbox snapshot test");
+  enqueueRolePrompt(repo, "clean", "one");
+  enqueueRolePrompt(repo, "dry", "two");
+  enqueueRolePrompt(repo, "dry", "three");
+  const snap = snapshot(repo);
+  assert.equal(snap.roleInbox.clean, 1);
+  assert.equal(snap.roleInbox.dry, 2);
+  assert.ok(!("director" in snap.roleInbox), "the director's queue is the shared inbox, not roleInbox");
+  assert.equal(snap.inbox, 0);
+  // And it agrees with the queue files the CLI's --list reads.
+  assert.deepEqual(queuedRolePrompts(repo, "dry"), ["two", "three"]);
 });

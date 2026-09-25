@@ -1,7 +1,7 @@
 /** The browser-side dashboard app inlined as the GUI page's only <script>: it polls
  * /api/status every second, renders the loop table, event feed, backlog, and report, and
- * drives the write endpoints (/api/prompt, /api/budget, /api/pause, /api/wake, /api/abort,
- * /api/pause-role). Split out of gui-page.ts — which keeps the page's markup
+ * drives the write endpoints (/api/prompt, /api/prompt-role, /api/budget, /api/pause,
+ * /api/wake, /api/abort, /api/pause-role). Split out of gui-page.ts — which keeps the page's markup
  * and CSS shell — because this runs in the browser as a separate runtime that cannot import
  * the harness modules; it keeps its own copies of the small display formatters (see
  * text.ts). The report tab's chart builders live in gui-client-report.ts, interpolated
@@ -358,11 +358,16 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
       const loopsHtml = sortLoops(d.loops).map((l) => {
         const cls = l.phase.startsWith("working") ? "working" : (l.lastResult || "");
         const last = l.lastResult ? l.lastResult + (l.lastSummary ? " — " + l.lastSummary : "") : "-";
+        // Per-role prompts 2/2 — a loop with queued prompts carries the same "p:N" marker on
+        // its state cell the TUI's table renders (status-render.ts's roleQueued), driven by
+        // the payload's roleInbox counts.
+        const queuedN = (d.roleInbox || {})[l.role] || 0;
+        const queuedMarker = queuedN > 0 ? " p:" + queuedN : "";
         // User-defined loops carry an asterisk in the link text (the payload's custom flag);
         // data-role stays the bare id so the transcript fetch keeps working.
         return "<tr><td><a href='#' class='looplink" + (transcriptRole === l.role ? " active" : "") +
           "' data-role='" + esc(l.role) + "'>" + esc(l.role) + (l.custom ? "*" : "") + "</a></td>"
-          + "<td class='wide " + cls + "'>" + esc(l.phase)
+          + "<td class='wide " + cls + "'>" + esc(l.phase + queuedMarker)
           + "</td><td class='wide'>" + esc(l.currentWork ?? "-") + "</td><td>" + l.ticks + "</td><td>" + l.commits + "</td><td>" + fmtTokens(l.generated) +
           "</td><td>" + fmtTokens(l.peakCtx) +
           // today: the loop's spend for the local day (0 while its stamp is stale), same
@@ -378,6 +383,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
           (l.inFlight ? " <a href='#' class='rowaction' data-action='abort' data-role='" + esc(l.role) + "'>abort</a>" : "") +
           " <a href='#' class='rowaction' data-action='" + ((d.pausedRoles || []).includes(l.role) ? "resume" : "pause") +
           "' data-role='" + esc(l.role) + "'>" + ((d.pausedRoles || []).includes(l.role) ? "resume" : "pause") + "</a>" +
+          " <a href='#' class='rowaction' data-action='prompt' data-role='" + esc(l.role) + "'>prompt</a>" +
           "</td></tr>";
       }).join("");
       paintPanel("loops", loopsHtml);
@@ -393,8 +399,13 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
         backlogList("planned features", d.plans || [], "plans") + "\\n\\n" + backlogList("open bugs", d.bugs || [], "bugs") +
         "\\n\\n" + backlogList("open questions", d.questions || [], "questions") +
         // Queued director prompts in execution order (previews, truncated server-side);
-        // (none) while the inbox is empty, like the other sections.
-        "\\n\\n" + backlogList("queued prompts", d.inboxPrompts || []);
+        // (none) while the inbox is empty, like the other sections. Per-role prompts 2/2 —
+        // role queues ride the same section, labeled with their role (full text stays in the
+        // queue files: "tumwater prompt --list --role" reads it).
+        "\\n\\n" + backlogList("queued prompts", (d.inboxPrompts || []).concat(
+          Object.keys(d.roleInbox || {}).filter((r) => d.roleInbox[r] > 0)
+            .map((r) => r + ": " + d.roleInbox[r] + " queued"),
+        ));
       paintPanel("backlog", backlogHtml);
       const feedHtml = d.events.map(esc).join("<br>");
       const feed = document.getElementById("feed");
@@ -415,7 +426,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
     refresh();
   });
   // row-actions:start
-  // The loop rows' wake/abort/pause controls: one delegated listener beside the looplink one
+  // The loop rows' wake/abort/pause/prompt controls: one delegated listener beside the looplink one
   // above. A click POSTs to the same marker-writing core the CLI commands use (/api/wake,
   // /api/abort, /api/pause-role), no confirmation dialog — a wake is harmless and an abort
   // matches the row's visible in-flight state. The server's confirmation message flashes in
@@ -427,6 +438,15 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
     const a = ev.target.closest("a.rowaction");
     if (!a) return;
     ev.preventDefault();
+    if (a.dataset.action === "prompt") {
+      // Open the shared per-role prompt bar addressed to this row's loop. No POST on open —
+      // sending is the bar form's job below.
+      rolePromptRole = a.dataset.role;
+      promptLabel.textContent = "prompt for " + rolePromptRole + ":";
+      promptWrap.hidden = false;
+      promptInput.focus();
+      return;
+    }
     const path = a.dataset.action === "abort" ? "/api/abort"
       : (a.dataset.action === "pause" || a.dataset.action === "resume") ? "/api/pause-role"
       : "/api/wake";
@@ -443,6 +463,34 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
       showFlash("error: " + e.message);
     }
   });
+  // The shared per-role prompt bar (gui-page's #rolepromptwrap): the rows' prompt link opens
+  // it addressed to that loop; send POSTs /api/prompt-role — the same submit path
+  // "tumwater prompt --role" uses — and the flash reports the single-role wake. A failed POST
+  // keeps the text and flashes the error, the same contract the director prompt form honors.
+  const promptWrap = document.getElementById("rolepromptwrap");
+  const promptLabel = document.getElementById("rolepromptlabel");
+  const promptInput = document.getElementById("roleprompt");
+  let rolePromptRole = null;
+  const closePromptBar = () => {
+    rolePromptRole = null;
+    promptWrap.hidden = true;
+    promptInput.value = "";
+  };
+  document.getElementById("rolepromptform").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const text = promptInput.value.trim();
+    if (!text || !rolePromptRole) return;
+    const role = rolePromptRole;
+    try {
+      const d = await postJson("/api/prompt-role", { role, text });
+      showFlash(d && typeof d.message === "string" ? d.message : "queued for the " + role + " loop");
+      closePromptBar();
+      refresh();
+    } catch (e) {
+      showFlash("error: " + e.message);
+    }
+  });
+  document.getElementById("rolepromptcancel").addEventListener("click", closePromptBar);
   // row-actions:end
   document.getElementById("backlog").addEventListener("click", (ev) => {
     const a = ev.target.closest("a.backloglink");

@@ -788,3 +788,13 @@ test("status table appends the next run column after last result", () => {
   const row = lines.find((l) => l.startsWith("clean ")) ?? "";
   assert.equal(cellAt(row, headers.indexOf("next run")), "now");
 });
+
+test("a loop with queued prompts carries a p:N marker on its state cell", () => {
+  const snap = snapshotWith([{ role: "clean" }, { role: "dry" }], DEFAULT_BUDGET, false, [], { clean: 2 });
+  const lines = renderStatus(tmpdir(), snap).split("\n");
+  const cleanRow = lines.find((l) => l.startsWith("clean")) ?? "";
+  assert.match(cleanRow, /p:2/, "the queued count rides the state cell");
+  const dryRow = lines.find((l) => l.startsWith("dry")) ?? "";
+  assert.doesNotMatch(dryRow, /p:/, "an empty queue renders no marker");
+  assert.doesNotMatch(lines[lines.length - 1] ?? "", /p:/, "the totals row stays marker-free");
+});

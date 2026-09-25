@@ -10,7 +10,7 @@
  */
 import type { BacklogEntry } from "../backlog.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
-import { promptLengthProblem, submitPrompt } from "../inbox.js";
+import { promptLengthProblem, submitPrompt, submitRolePrompt } from "../inbox.js";
 import { isJsonObject } from "../json-object.js";
 import { knownRoleIds, loadConfigCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
@@ -266,6 +266,40 @@ export async function handlePrompt(req: http.IncomingMessage, res: http.ServerRe
   }
   submitPrompt(root, text);
   sendJson(res, 200, { ok: true });
+}
+
+/** Handle POST /api/prompt-role: queue a prompt for one loop — the dashboard's per-row
+ * prompt affordance submits here, calling the same path `tumwater prompt --role <id>` uses
+ * (submitRolePrompt enqueues into that loop's own queue and logs under it, then a single-role
+ * wake brings the live loop in within one poll; the wake message rides back for the flash).
+ * The role validates exactly like /api/transcript (the shared rejectBadRole wording), and the
+ * body discipline is /api/prompt's: readJsonObject → 400 malformed/non-object, 413 oversized,
+ * text a non-empty string within the shared length rule → 400 otherwise. */
+export async function handlePromptRole(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, '{"role": "feature", "text": "..."}');
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  if (rejectBadRole(root, res, body.role)) return;
+  const text = body.text;
+  if (typeof text !== "string") {
+    sendJson(
+      res,
+      400,
+      { error: `text must be a string${text === undefined ? "" : ` (got ${JSON.stringify(text)})`}` },
+    );
+    return;
+  }
+  if (!text.trim()) {
+    sendJson(res, 400, { error: "text required" });
+    return;
+  }
+  const tooLong = promptLengthProblem(text);
+  if (tooLong) {
+    sendJson(res, 400, { error: tooLong });
+    return;
+  }
+  const role = body.role as string;
+  submitRolePrompt(root, role, text);
+  sendJson(res, 200, { ok: true, message: requestWake(root, [role]) });
 }
 
 /** Handle POST /api/budget: the dashboard's budget-badge editor saves the daily cost cap —
