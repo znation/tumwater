@@ -23,6 +23,24 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `tumwater stop --anything` fails via `rejectUnknownArgs`; the help table lists `stop`.
 - The existing cli-operators and fleet-state suites pass unmodified; the full `npm run test` is green.
 
+### `tumwater config` — print the effective merged config as JSON (planned 2026-09-25)
+
+**Goal.** Every setting edits apply live, but an operator debugging "why is `qa` not ticking?" or "what interval does my custom loop actually run at?" has no way to see what the fleet would actually use: tumwater.json holds only the overrides, and the defaults live in `defaultConfig()` (src/config.ts:29), merged in by `loadConfig` (src/config.ts:182) together with the customLoops-into-roles merge (src/config.ts:117–120). Mental overlaying is error-prone, and `tumwater doctor` reduces the whole config to one "N roles enabled" line. Add `tumwater config`: print the effective config — exactly what `loadConfig(root)` returns, defaults filled in and custom loops merged — as pretty JSON.
+
+**Approach.** The resolved object already exists; the command is a read, not a writer.
+
+- src/operator-commands.ts — add `cmdConfig(root)`: `let config; try { config = loadConfig(root); } catch (err) { fail(errorMessage(err)); }` — a malformed or invalid tumwater.json fails with `validateConfig`'s actionable message (exit non-zero, no JSON printed), the same surfacing doctor's config check produces. Then `process.stdout.write(JSON.stringify(config, null, 2) + "\n")`. No redaction (the config holds no secrets — provider keys belong to pi's own env) and no transformation: print what the fleet loads, including the merged per-role entries custom loops become.
+- src/cli.ts — a `case "config"` beside `status`: `await requireReadyRepo(root)` (an initialized repo always has tumwater.json — src/startup-gate.ts:42 — so the command never runs outside a project), then `cmdConfig(root)`. One format, no flags: `rejectUnknownArgs("config", args, [])`. Add the help-table line `tumwater config                 Show the effective config (defaults + tumwater.json) as JSON`. Note for the implementer: print the resolved config only — an operator who wants to see what they wrote reads tumwater.json; do not add a defaults-vs-file diff mode (one sensible way).
+
+**Files touched.** src/operator-commands.ts, src/cli.ts, test/cli-operators.test.ts.
+
+**Acceptance criteria.**
+- `tumwater config` in an initialized repo prints pretty JSON that deep-equals `loadConfig(root)` for the same root (test: parse the command's stdout and `assert.deepStrictEqual` against a direct `loadConfig` call), including role defaults the file never mentions.
+- With a custom loop defined in tumwater.json, the output's `roles` section contains the merged entry (same shape the orchestrator's runners see).
+- A tumwater.json with an invalid value (e.g. a negative `minTickIntervalSeconds`) makes the command exit non-zero with validateConfig's message and print no JSON.
+- `tumwater config --anything` fails via `rejectUnknownArgs`; `tumwater config` outside an initialized repo fails with the not-initialized message (the `requireReadyRepo` gate); the help table lists `config`.
+- The existing cli-operators suite passes unmodified; the full `npm run test` is green.
+
 ## Done
 
 ### Land-queue speed 2c — Split landing into a parallel vetting stage and a serial merge stage (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26, done 2026-09-24)
