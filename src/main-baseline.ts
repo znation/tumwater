@@ -2,10 +2,9 @@ import {
   type BuildCheckOutcome,
   type BuildCheckRun,
   type BuildSkipReason,
-  CHECK_TIER,
   runBuildCheck,
-  withCheckPermit,
 } from "./build-check.js";
+import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { gitTry } from "./git.js";
 

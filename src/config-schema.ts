@@ -144,7 +144,7 @@ export interface TumwaterConfig {
   landBatchMax: number;
   /** Max runs of the project's declared check (the full suite) in flight at once across the
    * whole harness process — every gate, landing, batch, and main-baseline check takes one
-   * permit (src/build-check.ts's withCheckPermit), so a burst of landings cannot stack suites
+   * permit (src/check-permit.ts's withCheckPermit), so a burst of landings cannot stack suites
    * on the host. Read at each check's start, so an edit applies live. */
   maxConcurrentChecks: number;
   /** Minimum seconds between two ticks of the same loop, even when woken early. */

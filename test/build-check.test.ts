@@ -3,13 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  CHECK_TIER,
   clipBuildTail,
   failureHeadline,
   runBuildCheck,
   runScopedBuildCheck,
-  withCheckPermit,
 } from "../src/build-check.js";
+import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
 import { buildCheckSkipWarning } from "../src/build-check-events.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";

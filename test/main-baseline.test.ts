@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { CHECK_TIER, withCheckPermit } from "../src/build-check.js";
+import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
 import { checkMainBaseline, noteGreenBaseline } from "../src/main-baseline.js";
 import { defaultConfig } from "../src/config.js";
 import { baselineFixture, makeRepo, runsOf, sh, tmpdir, worktreeAt } from "./util.js";
