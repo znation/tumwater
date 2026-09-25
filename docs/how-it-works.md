@@ -99,7 +99,9 @@ discards a role's in-flight landing.
 ## Interruptions
 
 Stopping the fleet mid-tick loses nothing: on the next `tumwater run`, the loop resumes its pi
-session and uncommitted edits. Crashes recover the same way, and so do runs the watchdog kills for
+session and uncommitted edits. `tumwater stop` is the graceful path — it signals the orchestrator,
+lets in-flight ticks finish and land, then exits. Crashes recover the same way, and so do runs the
+watchdog kills for
 going quiet, up to three in a row. An interrupted landing re-lands through the gate, and an
 interrupted director prompt goes back to its inbox. A commit left unlanded (a landing error that
 kept it, or a crash before it was queued) goes back on the land queue at the role's next tick,
