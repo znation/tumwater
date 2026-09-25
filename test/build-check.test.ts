@@ -517,6 +517,23 @@ test("detectBuildCheck walks up from a worktree without node_modules to the inst
   assert.deepEqual(detectBuildCheck(wt), { kind: "npm", rootDir: root, script: "build" });
 });
 
+test("detectBuildCheck returns the NEAREST qualifying ancestor when several qualify", () => {
+  const base = tmpdir("buildcheck-nearest-");
+  const outer = path.join(base, "outer");
+  const inner = path.join(outer, "inner");
+  for (const [dir, script] of [
+    [outer, "echo outer"],
+    [inner, "echo inner"],
+  ] as const) {
+    fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { build: script } }));
+  }
+  // Start from a worktree-shaped path below the inner root — inner is closer and must win.
+  const start = path.join(inner, ".tumwater", "worktrees", ROLE);
+  fs.mkdirSync(start, { recursive: true });
+  assert.deepEqual(detectBuildCheck(start), { kind: "npm", rootDir: inner, script: "build" });
+});
+
 // --- detectBuildCheck semantics: preference, first-qualifying-directory-wins, and failure modes.
 // These are documented in src/build-check.ts but were untested; the first-qualifier rule is the
 // load-bearing one — skipping past a scriptless installed project to an unrelated ancestor would
@@ -642,6 +659,11 @@ test("clipBuildTail clips each surviving line to the reason cap with an ellipsis
   assert.equal(clipped.length, 300, "clipped to MAX_REASON_CHARS");
   assert.ok(clipped.endsWith("…"), "marked with the ellipsis");
   assert.equal(tail[2], "short", "lines that fit are unchanged");
+});
+
+test("clipBuildTail yields no lines for empty or whitespace-only output", () => {
+  assert.deepEqual(clipBuildTail(""), []);
+  assert.deepEqual(clipBuildTail("\n   \n\t\n"), []);
 });
 
 test("clipBuildTail keeps the error message when the ten-line window cuts it off above a long stack", () => {

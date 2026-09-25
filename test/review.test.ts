@@ -5,8 +5,6 @@ import path from "node:path";
 import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review.js";
 import { parseVerdict } from "../src/review-verdict.js";
 import { buildRejectedReviewNote } from "../src/gate-prompts.js";
-import { clipBuildTail, runBuildCheck } from "../src/build-check.js";
-import { detectBuildCheck } from "../src/build-check-detect.js";
 import { aheadOfMain, headOf } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config.js";
@@ -15,7 +13,7 @@ import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import { shortSha } from "../src/text.js";
 import { piLogPath } from "../src/paths.js";
-import { eventsOfType, buildCheckFixture, fakePi, makeRepo, sh, tmpdir, waitForLogLines, watchdogClock, writeScript } from "./util.js";
+import { eventsOfType, fakePi, makeRepo, sh, tmpdir, waitForLogLines, watchdogClock, writeScript } from "./util.js";
 import { assistantLine } from "./pi-events.js";
 
 // Regression coverage for the 2026-08-27 build break (BUGS.md): src/review.ts shipped with a
@@ -605,117 +603,6 @@ test("gate pre-check compiles the worktree against the root install — a health
     assert.ok(verdict && Number.isFinite(Number(verdict.durationMs)), "the approval carries the reviewer's duration");
   } finally {
     restore();
-  }
-});
-
-// ── Build pre-check: detection edge cases, tail clipping, no-npm skip ───────────────
-
-test("detectBuildCheck prefers test over typecheck and build when all three scripts are declared", () => {
-  const base = tmpdir("buildcheck-");
-  const dir = path.join(base, "proj");
-  fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
-
-  // All three declared: test wins — npm convention makes `npm test` the canonical verify command.
-  fs.writeFileSync(
-    path.join(dir, "package.json"),
-    JSON.stringify({ scripts: { build: "tsc", typecheck: "tsc --noEmit", test: "node --test" } }),
-  );
-  assert.deepEqual(detectBuildCheck(dir), { kind: "npm", rootDir: dir, script: "test" });
-
-  // Without a test script the old preference stands: typecheck over build.
-  fs.writeFileSync(
-    path.join(dir, "package.json"),
-    JSON.stringify({ scripts: { build: "tsc", typecheck: "tsc --noEmit" } }),
-  );
-  assert.deepEqual(detectBuildCheck(dir), { kind: "npm", rootDir: dir, script: "typecheck" });
-});
-
-test("detectBuildCheck returns the NEAREST qualifying ancestor when several qualify", () => {
-  const base = tmpdir("buildcheck-");
-  const outer = path.join(base, "outer");
-  const inner = path.join(outer, "inner");
-  for (const [dir, script] of [
-    [outer, "echo outer"],
-    [inner, "echo inner"],
-  ] as const) {
-    fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
-    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { build: script } }));
-  }
-  // Start from a worktree-shaped path below the inner root — inner is closer and must win.
-  const start = path.join(inner, ".tumwater", "worktrees", ROLE);
-  fs.mkdirSync(start, { recursive: true });
-  assert.deepEqual(detectBuildCheck(start), { kind: "npm", rootDir: inner, script: "build" });
-});
-
-test("detectBuildCheck stops at the first qualifying ancestor even when it has no check script", () => {
-  // The first directory with package.json + node_modules IS the project. An unrelated
-  // install further up must never be used for its scripts — malformed JSON and a
-  // script-less manifest are both dead ends, and detection never throws.
-  const base = tmpdir("buildcheck-");
-  const outer = path.join(base, "outer");
-  fs.mkdirSync(path.join(outer, "node_modules"), { recursive: true });
-  fs.writeFileSync(path.join(outer, "package.json"), JSON.stringify({ scripts: { build: "echo x" } }));
-
-  const malformed = path.join(outer, "malformed");
-  fs.mkdirSync(path.join(malformed, "node_modules"), { recursive: true });
-  fs.writeFileSync(path.join(malformed, "package.json"), "{ not json");
-  assert.equal(detectBuildCheck(malformed), null);
-
-  const scriptless = path.join(outer, "scriptless");
-  fs.mkdirSync(path.join(scriptless, "node_modules"), { recursive: true });
-  fs.writeFileSync(path.join(scriptless, "package.json"), JSON.stringify({ name: "no-scripts-here" }));
-  assert.equal(detectBuildCheck(scriptless), null);
-});
-
-test("detectBuildCheck gives up past maxLevels ancestors", () => {
-  const base = tmpdir("buildcheck-");
-  const root = path.join(base, "proj");
-  fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
-  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ scripts: { build: "echo x" } }));
-  // The start dir sits four levels below the install — beyond a cap of two.
-  const start = path.join(root, "a", "b", "c", "d");
-  fs.mkdirSync(start, { recursive: true });
-  assert.equal(detectBuildCheck(start, undefined, 2), null);
-  // …and the same walk with the default cap still finds it.
-  assert.deepEqual(detectBuildCheck(start), { kind: "npm", rootDir: root, script: "build" });
-});
-
-test("clipBuildTail keeps the last ten non-empty lines", () => {
-  const many = Array.from({ length: 15 }, (_, i) => `line ${i + 1}`).join("\n");
-  assert.deepEqual(clipBuildTail(many), [
-    "line 6",
-    "line 7",
-    "line 8",
-    "line 9",
-    "line 10",
-    "line 11",
-    "line 12",
-    "line 13",
-    "line 14",
-    "line 15",
-  ]);
-});
-
-test("clipBuildTail drops blank lines and npm's script banner, and clips long ones with an ellipsis", () => {
-  const out = clipBuildTail(`> proj@1.0.0 build\n> tsc --noEmit\na\n${"x".repeat(400)}\n\nb\n`);
-  assert.deepEqual(out, ["a", "x".repeat(299) + "…", "b"]);
-});
-
-test("clipBuildTail yields no lines for empty or whitespace-only output", () => {
-  assert.deepEqual(clipBuildTail(""), []);
-  assert.deepEqual(clipBuildTail("\n   \n\t\n"), []);
-});
-
-test("runBuildCheck skips (not fails closed) when npm is missing from PATH", async () => {
-  const { root, wt } = buildCheckFixture();
-  const oldPath = process.env.PATH;
-  process.env.PATH = tmpdir("empty-path-"); // a directory with no executables
-  try {
-    const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
-    assert.equal(outcome.status, "skipped");
-    assert.equal(outcome.skipReason, "no-npm");
-  } finally {
-    process.env.PATH = oldPath;
   }
 });
 
