@@ -39,7 +39,9 @@ function isEntryCandidate(line: string, includePrompts: boolean): boolean {
 
 interface TranscriptWindow {
   /** The last `limit` rendered entries, oldest first — identical to
-   * formatTranscript(whole file).slice(-limit). */
+   * formatTranscript(whole file).slice(-limit), except at the zero boundary: a `limit` of
+   * 0 (or less) yields [], not slice(-0)'s whole file — the same contract readTranscript's
+   * take guard pins. */
   entries: TranscriptEntry[];
   /** Offset just past the last complete newline in the file (a followFile start point), or 0
    * when the file holds no newline at all. */
@@ -187,5 +189,10 @@ export function readTranscriptTail(
     // promised — re-read the whole file (the pre-optimization behavior) so slice(-limit) is exact.
     entries = formatTranscript(readCompleteLines(file, 0, size).lines, opts);
   }
-  return { entries: entries.slice(-limit), end };
+  // limit can be 0 (or negative — nonsense a caller should never pass): entries.slice(-0) is
+  // entries.slice(0) — the whole window — because -0 === 0, so a bare slice(-limit) would
+  // return everything instead of nothing; guard it, the same contract readTranscript's take
+  // guard pins (the last `limit` entries of a zero-sized window is the empty list).
+  const kept = limit > 0 ? entries.slice(-limit) : [];
+  return { entries: kept, end };
 }

@@ -7,6 +7,43 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `readTranscriptTail`'s limit==0 window returns the newest run's entries instead of none: `slice(-0)` is `slice(0)`, and the zero boundary had three disagreeing definitions (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `readTranscriptTail(file, limit)`'s contract is the last `limit` rendered
+entries, oldest first — the same contract its sibling `readTranscript` pins. A `limit`
+of 0 returned the newest run's rendered entries instead of an empty list: the backward
+scan's arming condition (`candidates >= limit`) is trivially true at limit 0, so it
+bounded the window to the newest run, and the closing `entries.slice(-limit)` with
+`limit === 0` is `slice(-0)`, which JavaScript treats as `slice(0)` — keep everything
+the scan collected. A negative limit read as `slice(positive)` and returned a head cut
+of the window. The breach never surfaced because every shipped caller validates the
+count positive (the CLI's `parseCountFlag`, the GUI's `parsePositiveInt`, the TUI's
+`Math.max(3, …)` budget), but the function is one of the two definitions of "the last
+`limit` entries" and its own doc pinned that contract.
+
+**Reproduce:** a log with 3 completed turns, then `readTranscriptTail(file, 0)` → 1
+entry (the newest run) instead of `[]`; `readTranscriptTail(file, -2)` → 0 entries with
+no error. Machine-run 2026-09-25 against the pre-fix module; post-fix both return an
+empty window with the follow-start offset unchanged (just past the last complete
+newline, so a follow seeded from a limit-0 window re-delivers nothing old).
+
+**Cause:** the unguarded `entries.slice(-limit)` in src/ui/transcript-tail.ts — the same
+`-0 === 0` pitfall readTranscript's take guard fixed hours earlier — compounded by the
+doc's own oracle phrasing ("identical to `formatTranscript(whole file).slice(-limit)`"),
+which at limit 0 literally demands the whole file, contradicting the sibling's fresh
+zero-boundary semantics and the scan's own arming behavior (a third definition).
+
+**Fix:** src/ui/transcript-tail.ts guards the non-positive case — `const kept = limit >
+0 ? entries.slice(-limit) : []` — and the doc now states the zero boundary explicitly
+instead of the raw-slice oracle. Pinned by test/transcript-tail.test.ts
+"readTranscriptTail honors limit=0: slice(-0) must not widen the window", which asserts
+the empty window at limit 0 and −2 and that the follow-start offset still points at EOF.
+
+**Validation gap:** unclear-invariant — the module's doc pinned the raw-`slice` oracle,
+which at limit 0 demands the whole file, so what "the last 0 entries" had to mean (the
+oracle's whole file, the sibling's [], or the arming scan's newest-run window) had to be
+reconstructed from readTranscript's same-day precedent before the breach could be
+confirmed as a bug rather than the documented behavior; no test exercised the boundary.
 ### `readTranscript`'s take==0 window returns the whole ring: `slice(-0)` is `slice(0)`, so a limit-1 poll during a live pending separator gets every kept entry (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `readTranscript(root, role, limit)`'s contract is the last `limit` rendered

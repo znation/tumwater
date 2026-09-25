@@ -45,6 +45,31 @@ test("readTranscriptTail matches a full re-read on a small log", () => {
   }
 });
 
+test("readTranscriptTail honors limit=0: slice(-0) must not widen the window", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const lines: string[] = [];
+  for (let i = 1; i <= 3; i++) {
+    lines.push(agentStart());
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  // A zero-sized window is the empty list — not slice(-0)'s whole window (the arming scan
+  // already bounds a limit-0 walk to the newest run, so the breach shows as that run's
+  // entries, and the same contract readTranscript's take guard pins covers both surfaces).
+  const tail = readTranscriptTail(file, 0);
+  assert.ok(tail);
+  assert.deepEqual(tail.entries, []);
+  // The follow start is unchanged: just past the last complete newline, so a followFile
+  // seeded from a limit-0 window re-delivers nothing old.
+  assert.equal(tail.end, readCompleteLines(file, 0, fs.statSync(file).size).end);
+  // A negative limit is the same nonsense input — empty, not slice(negative)'s head cut.
+  assert.deepEqual(readTranscriptTail(file, -2)?.entries, []);
+});
+
 test("readTranscriptTail matches a full re-read with prompts included, newest entry a prompt", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
