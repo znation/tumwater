@@ -10,7 +10,7 @@
 
 import type { LoopRunner } from "./loop.js";
 import type { LoopState } from "./types.js";
-import { configForRole } from "./config.js";
+import { configForRole } from "./config-views.js";
 import { DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
 
 /** Should this loop tick now? Exported for tests. */

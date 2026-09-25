@@ -3,25 +3,27 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  applyFallbackModel,
   changedConfigKeys,
-  configForRole,
   customLoopNames,
   exampleConfigProblem,
   exampleDrift,
-  fallbackPair,
   defaultConfig,
   isCustomRole,
   knownRoleIds,
   loadConfig,
   loadConfigCached,
   loadConfigSafe,
-  reviewConfig,
-  reviewRunConfig,
-  REVIEW_TIMEOUT_S,
   seedConfig,
   saveConfig,
 } from "../src/config.js";
+import {
+  applyFallbackModel,
+  configForRole,
+  fallbackPair,
+  reviewConfig,
+  reviewRunConfig,
+  REVIEW_TIMEOUT_S,
+} from "../src/config-views.js";
 import { exampleConfigPath } from "../src/paths.js";
 import { show, validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";

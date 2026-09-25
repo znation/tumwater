@@ -2,7 +2,8 @@
  * Ctrl+B editor, the GUI's /api/budget endpoint) and the director's config requests. Each
  * one loads fresh (bypassing config.ts's stat cache), validates before writing, and writes
  * atomically, because readers poll tumwater.json every ~2 s. The read side — defaults,
- * loading, saving, and the role/model derivations — lives in config.ts. */
+ * loading, saving, and the role-selection helpers — lives in config.ts, and the per-run
+ * model derivations in config-views.ts. */
 import fs from "node:fs";
 import type { TumwaterConfig } from "./config-schema.js";
 import { configPath, configRequestPath } from "./paths.js";

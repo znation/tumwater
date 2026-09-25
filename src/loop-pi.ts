@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { PiRunResult } from "./types.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
-import { configForRole } from "./config.js";
+import { configForRole } from "./config-views.js";
 import { buildSummaryRequestPrompt } from "./prompt.js";
 import { piLogPath, sessionDir } from "./paths.js";
 

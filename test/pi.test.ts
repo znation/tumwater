@@ -11,7 +11,8 @@ import { PiStreamParser } from "../src/pi-stream.js";
 import { toolUpdateHasContent } from "../src/pi-event-line.js";
 import type { PiRunResult } from "../src/types.js";
 import { REFUSED_SENTINEL } from "../src/reply-contract.js";
-import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
+import { defaultConfig, loadConfig } from "../src/config.js";
+import { configForRole } from "../src/config-views.js";
 import { initProject } from "../src/init.js";
 import { pidAlive } from "../src/process.js";
 import {

@@ -1,6 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { OrchestratorInfo } from "./fleet-state.js";
-import { applyFallbackModel, enabledRoleIds, fallbackPair } from "./config.js";
+import { enabledRoleIds } from "./config.js";
+import { applyFallbackModel, fallbackPair } from "./config-views.js";
 import { newLiveConfigReload } from "./config-live.js";
 import {
   deferTick,

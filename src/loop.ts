@@ -11,7 +11,7 @@ import { assembleTickPrompt } from "./tick-prompt.js";
 import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
-import { configForRole } from "./config.js";
+import { configForRole } from "./config-views.js";
 import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
 import { enqueuePrompt } from "./inbox.js";
