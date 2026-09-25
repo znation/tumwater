@@ -5,7 +5,21 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None — the backlog is empty._
+### TUI per-loop controls — pause/resume, abort, and wake the loop whose transcript you are viewing (planned 2026-09-25)
+
+**Goal.** The GUI's loop rows carry wake, abort, and pause/resume controls (the `/api/wake`, `/api/abort`, and `/api/pause-role` endpoints; per-role pause 2/2), but the TUI — the other dashboard — offers only the director prompt line and budget editing: an operator watching `tumwater tui` must switch to another terminal to quiet one noisy loop or kill one in-flight tick. Add per-loop control keys in the TUI: while a loop's transcript pane is on screen, Ctrl+P pauses/resumes that loop, Ctrl+A aborts its in-flight tick, and Ctrl+W wakes it.
+
+**Approach.** The TUI is a direct observer of on-disk state that already writes state itself (`submitPrompt` from src/inbox.ts, `setDailyBudgetUsd` from src/config-write.ts), and every one of these controls is a file-marker operation callable from any process — pause/resume are persistent markers (`pauseRole`/`resumeRole`, src/fleet-state.ts:81/93), while `requestAbort` (src/operator-commands.ts:146) and `requestWake` (src/operator-commands.ts:109) are the same marker-writing cores the CLI and GUI share, both returning structurally shaped messages ready to flash.
+
+- src/ui/tui.ts — in the keypress handler, guarded to the transcript views (the `role` derived at :139 from `view`) and skipped while `budgetMode` is set: Ctrl+P calls `pauseRole(root, role)` and flashes `role <id> paused — it stops starting new ticks at its next eligibility check (in-flight ticks finish; the rest of the fleet is unaffected)` on true, the resume wording (`resumeRole`'s changed-state contract) on a role that was paused; Ctrl+A calls `requestAbort(root, role)` and flashes its `message`, or its `error` (no live harness) as the failure flash; Ctrl+W calls `requestWake(root, [role])` and flashes the returned string. Every flash uses the existing `flash`/`flashUntil` mechanism (:78) and a `render()` call, exactly like the budget notices. The transcript header (`transcript: <role> — Ctrl+T to cycle`, :140) gains the key hints so the affordance is discoverable. applyKey (src/ui/tui-input.ts:65) already drops ctrl-key presses, so these bindings cannot leak into the prompt line and no input-editing behavior changes.
+- No new endpoints, markers, or state: pause state is already rendered in the status table (per-role pause 1/2 renders `paused` from `pausedRoles`), so the operator sees the effect on the same screen within one poll.
+
+**Acceptance criteria.**
+- Viewing a loop's transcript and pressing Ctrl+P writes the paused-roles marker (verifiable via `pausedRoles(root)`) and flashes the pause wording; pressing it again flashes the resume wording and removes the marker; the status table's cell for that role reads `paused` while the marker stands.
+- Ctrl+A with a live harness writes the per-role abort marker and flashes the confirmation; with no live harness it flashes the liveness error and writes no marker.
+- Ctrl+W flashes `wake requested for <role> — …` and clears that role's backoff state.
+- In budget-edit mode and in the non-transcript views (events, project status, usage report, failures), all three keys are inert; plain letters still edit the prompt line in every view.
+- Tests in test/tui.test.ts (the fake-TTY keypress harness): each key writes the expected state and flash text, the pause toggle round-trips, the no-harness abort error flashes, and budget-mode/inert-view guards hold.
 
 ## Done
 
