@@ -23,7 +23,8 @@ import {
 } from "./inbox.js";
 import { renderDoctor, runDoctor } from "./doctor.js";
 import { renderBacklogMarkdown } from "./backlog-report.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport, renderReportMarkdown } from "./ui/report.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, renderReportMarkdown } from "./ui/report.js";
+import { collectReport } from "./report-data.js";
 import { collectFailureReport } from "./failure-data.js";
 import { renderFailureMarkdown } from "./failure-report.js";
 import { snapshot } from "./ui/status.js";

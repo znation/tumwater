@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectReport, type ReportData, type ReportDay } from "../src/ui/report.js";
+import { collectReport, type ReportData, type ReportDay } from "../src/report-data.js";
 import { collectFailureReport } from "../src/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure-report.js";
 import { eventsLogPath } from "../src/paths.js";

@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectReport, renderReportMarkdown, type ReportData } from "../src/ui/report.js";
+import { collectReport, type ReportData } from "../src/report-data.js";
+import { renderReportMarkdown } from "../src/ui/report.js";
 import { atLocalTs as at, dayKey, makeRepo, tmpdir, writeEvents } from "./util.js";
 import { cli } from "./cli-harness.js";
 
