@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck, gateCommandOf } from "./build-check-detect.js";
 import { logEvent, warnEvent } from "./events.js";
 import {
@@ -10,7 +9,7 @@ import {
   type BuildCheckScope,
 } from "./build-check-events.js";
 import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
-import { EXEC_MAX_BUFFER, execFileAsync, signalTree } from "./process.js";
+import { EXEC_MAX_BUFFER, execFileAsync, KILL_GRACE_MS, runScriptGroup } from "./process.js";
 import { truncate } from "./text.js";
 
 /** The deterministic build pre-check the review gate runs before any model reviewer: detect
@@ -25,7 +24,10 @@ import { truncate } from "./text.js";
  * event → skip-warning sequence of the gate's pre-check (review.ts) and the landing path's
  * in-lock re-check (merge.ts). The red-main baseline gate (main-red.ts) reuses this same
  * detection and execution from main-baseline.ts to verify main itself once per SHA before an
- * authoring run is spent on top of it. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
+ * authoring run is spent on top of it. The detached process-group runner runBuildCheck uses
+ * (runScriptGroup) is generic subprocess machinery, not check logic, and lives in process.ts
+ * beside signalTree — its run record (BuildCheckRun, below) stays here beside the outcome it
+ * rides on. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
  * by clipBuildTail here and parseVerdict in review-verdict.ts — so that helper has a single home. The build_check
  * event's shape and the skip-warning wording are presentation, not execution, and live in
  * build-check-events.ts (type-only back-reference here — no runtime cycle). */
@@ -53,16 +55,6 @@ export function clipReason(r: string): string {
  * shorten it. Defined in build-check-detect.ts (the configured command's timeoutSeconds
  * resolves against it there) and re-exported here, where every consumer imports it. */
 export { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
-
-/** SIGTERM → SIGKILL escalation window once a build check's timeout has FIRED: the whole
- * process group gets SIGTERM, and anything still alive this much later (a SIGTERM-trapping
- * runner, a wedged worker) is SIGKILLed — and the check settles then, whether or not the tree
- * ever closed its pipes, so a timed-out check is bounded at its deadline plus this grace. The
- * default of runBuildCheck's killGraceMs parameter, which tests shrink — pinning that the
- * escalation is armed on timeout (never at spawn: a healthy check that merely outlasts the
- * grace period must run to completion), that a surviving grandchild is taken down before the
- * check settles, and that a tree the SIGTERM already took down does not wait out the grace. */
-const KILL_GRACE_MS = 10_000;
 
 /** Why a declared check reached no verdict: the script never finished (timeout), the script
  * died on a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md
@@ -207,147 +199,6 @@ const FRAMING_LINE = /^(?:at\s|ℹ\s|✖ failing tests:|test at \S+:\d+:\d+)/;
 export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
   if (!tail?.length) return undefined;
   return tail.find((line) => !FRAMING_LINE.test(line)) ?? tail[0];
-}
-
-/** What one runScriptGroup attempt observed — enough for runBuildCheck to classify the
- * outcome exactly as execFile's rejection used to: how the process ended (exit code or
- * signal), whether the check's timeout fired, what the script printed, whether it never
- * spawned at all, and when it ran. */
-interface ScriptGroupResult {
-  code?: number;
-  signal?: NodeJS.Signals;
-  timedOut: boolean;
-  spawnError?: NodeJS.ErrnoException;
-  stdout: string;
-  stderr: string;
-  run: BuildCheckRun;
-}
-
-/** True while any process in the group led by `pid` still exists: a signal-0 probe of the
- * group, where EPERM still means a member exists. Local to the build check, whose timed-out
- * run settles on the whole group being gone, never on the leader's close alone. */
-function groupAlive(pid: number | undefined): boolean {
-  if (pid == null) return false;
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
-/** How often a timed-out run re-probes its process group between the deadline's SIGTERM and
- * the grace's SIGKILL. Nothing else wakes the check when the last member goes: a grandchild
- * that finishes a SIGTERM handler after the leader closed, or one launchd has not yet reaped,
- * has no event of its own. */
-const GROUP_POLL_MS = 50;
-
-/** Run `cmd args` detached — its own process group, exactly like pi — and settle exactly once.
- * The timeout is enforced GROUP-WIDE, never against the direct child alone: execFileAsync's
- * `timeout` option signalled npm and nothing else, so everything below it (`node --test` → one
- * worker per file) survived and reparented to PID 1 for as long as twelve days (BUGS.md
- * 2026-09-21). Before the deadline the run settles on the process's close. When the deadline
- * fires the whole group gets SIGTERM, and the run settles as soon as nothing in the group is
- * left (probed on the leader's close and every GROUP_POLL_MS) — or at killGraceMs after the
- * deadline, after SIGKILLing whatever survived (a SIGTERM-trapping runner, a wedged worker, a
- * grandchild still holding the pipes, so the close never comes), whichever is first. A
- * timed-out check is therefore bounded at timeoutMs + killGraceMs of the harness's own clock
- * whatever its tree does, and its tree is gone when the caller sees the outcome: no teardown
- * overlaps the caller's retry or the next check. At settle the pipes are destroyed and the
- * child unref'd, so a descendant that escaped the group cannot keep the harness's handles open.
- * The escalation is armed when the deadline fires, never at spawn: a healthy check that merely
- * outlasts the grace period must run to completion (the 2026-09-22 review-gate catch — a timer
- * armed at spawn SIGKILLed every healthy check longer than KILL_GRACE_MS and misclassified it
- * as a timeout, freezing all merge-scope checks). The run's spawn and settle times, and how
- * late the deadline timer actually fired, come back as `run`: the harness's own clock is not
- * the wall clock whenever the host sleeps or the event loop stalls (see BuildCheckRun), and the
- * discrepancy must be visible rather than hidden behind the configured bound. Captured output
- * is capped at maxBuffer per stream (further chunks are dropped — classification reads the
- * tail), so a chatty script can neither wedge the check nor balloon memory. Never throws; a
- * spawn failure (npm missing from PATH) is reported as spawnError. */
-function runScriptGroup(
-  cmd: string,
-  args: string[],
-  opts: { cwd: string; timeoutMs: number; killGraceMs: number; maxBuffer: number },
-): Promise<ScriptGroupResult> {
-  return new Promise((resolve) => {
-    const spawnedAt = Date.now();
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let settled = false;
-    // Set when the deadline fires — its presence IS "timed out".
-    let deadlineLateMs: number | undefined;
-    let killTimer: NodeJS.Timeout | undefined;
-    let groupPoll: NodeJS.Timeout | undefined;
-    let stdout = "";
-    let stderr = "";
-    let stdoutSize = 0;
-    let stderrSize = 0;
-    child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdoutSize < opts.maxBuffer) {
-        stdoutSize += chunk.length;
-        stdout += chunk;
-      }
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      if (stderrSize < opts.maxBuffer) {
-        stderrSize += chunk.length;
-        stderr += chunk;
-      }
-    });
-    const finish = (result: Pick<ScriptGroupResult, "code" | "signal" | "spawnError">) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(deadlineTimer);
-      clearTimeout(killTimer);
-      clearInterval(groupPoll);
-      const timedOut = deadlineLateMs !== undefined;
-      if (timedOut) {
-        // Nothing more is read once the deadline has fired: a pipe holder that escaped the
-        // group (a setsid'd daemon) must not keep the harness's handles, or the harness
-        // itself, alive.
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        child.unref();
-      }
-      const run: BuildCheckRun = { spawnedAt, settledAt: Date.now(), timeoutMs: opts.timeoutMs };
-      if (timedOut) run.deadlineLateMs = deadlineLateMs;
-      resolve({ ...result, timedOut, stdout, stderr, run });
-    };
-    const deadlineTimer = setTimeout(() => {
-      // Wall-clock lateness, the same clock the callers' durationMs is measured on: a deadline
-      // the host slept through, or an event loop too busy to run it, fires late by exactly this.
-      deadlineLateMs = Math.max(0, Date.now() - spawnedAt - opts.timeoutMs);
-      signalTree(child, "SIGTERM");
-      // The SIGTERM took the whole tree down: settle as soon as the group is gone instead of
-      // waiting out the grace.
-      groupPoll = setInterval(() => {
-        if (!groupAlive(child.pid)) finish({ signal: "SIGTERM" });
-      }, GROUP_POLL_MS);
-      killTimer = setTimeout(() => {
-        signalTree(child, "SIGKILL");
-        finish({ signal: "SIGTERM" });
-      }, opts.killGraceMs);
-    }, opts.timeoutMs);
-    child.on("error", (err: NodeJS.ErrnoException) => {
-      // Before the deadline this is the spawn failing (npm missing from PATH). After it, it can
-      // only be a teardown signal that could not be delivered: the run is a timeout either way,
-      // settled by the group probe or the grace timer.
-      if (deadlineLateMs === undefined) finish({ spawnError: err });
-    });
-    child.on("close", (code, signal) => {
-      if (deadlineLateMs === undefined) {
-        finish({ code: code ?? undefined, signal: signal ?? undefined });
-      } else if (!groupAlive(child.pid)) {
-        finish({ signal: "SIGTERM" });
-      }
-      // Otherwise something in the group outlived the leader: the poll settles the run when it
-      // goes, or the grace timer SIGKILLs it and settles the run then.
-    });
-  });
 }
 
 /** The human/prompt-facing name of a check (plans/portability.md §6/7): the tick prompt and
