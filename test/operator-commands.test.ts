@@ -314,6 +314,38 @@ test("cmdResume --role lifts one role and reports the was-not-paused wording whe
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "the last removal deletes the marker");
 });
 
+test("cmdResume --role while the fleet pause holds names the stronger gate instead of promising ticks", async () => {
+  const root = tmpdir();
+  await expectOk(() => cmdPause(root)); // fleet pause: the stronger gate
+  await expectOk(() => cmdPause(root, ["--role", "clean"]));
+  await expectOk(() => cmdPause(root, ["--role", "dry"]));
+  const { stdout } = await expectOk(() => cmdResume(root, ["--role", "clean"]));
+  assert.match(stdout, /role clean resumed/);
+  assert.match(stdout, /fleet pause is still active/);
+  // The marker really was lifted; only the wording acknowledges the fleet gate.
+  assert.deepEqual(JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")).roles, ["dry"]);
+});
+
+test("cmdResume (fleet) while roles are individually paused names the still-paused roles", async () => {
+  const root = tmpdir();
+  await expectOk(() => cmdPause(root)); // the fleet pause the resume lifts
+  await expectOk(() => cmdPause(root, ["--role", "clean"]));
+  await expectOk(() => cmdPause(root, ["--role", "dry"]));
+  const { stdout } = await expectOk(() => cmdResume(root));
+  assert.match(stdout, /fleet resumed/);
+  assert.match(stdout, /clean, dry are still individually paused/);
+  // The per-role marker outlives the fleet resume.
+  assert.deepEqual(JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")).roles, ["clean", "dry"]);
+  // A fleet resume with no per-role marker does not carry the note.
+  await expectOk(() => cmdResume(root, ["--role", "clean"]));
+  await expectOk(() => cmdResume(root, ["--role", "dry"]));
+  const bare = await expectOk(() => cmdPause(root));
+  assert.doesNotMatch(bare.stdout, /individually paused/);
+  const quiet = await expectOk(() => cmdResume(root));
+  assert.match(quiet.stdout, /fleet resumed/);
+  assert.doesNotMatch(quiet.stdout, /individually paused/);
+});
+
 test("per-role pause and resume reject unknown role ids like abort does", async () => {
   const root = tmpdir();
   const { code, stderr } = await expectFail(() => cmdPause(root, ["--role", "ghost"]));

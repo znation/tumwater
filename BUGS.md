@@ -7,6 +7,41 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `tumwater resume` confirms a resumption the sibling pause still gates: `resume --role X` promises ticks under an active fleet pause, and a fleet resume promises ticks for roles still individually paused (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** two false promises in the resume confirmations. With the fleet paused
+(`tumwater pause`), `tumwater resume --role clean` prints "role clean resumed — it starts
+ticking again at its next eligibility check within ~2s", but the scheduler's fleet-pause gate
+(src/orchestrator.ts, `userPaused … continue`) keeps the role gated — it will not tick, and the
+operator was told it would. The mirror case: with `clean` and `dry` individually paused
+(`pause --role`), `tumwater resume` prints "fleet resumed — role loops tick again", but the
+per-role markers outlive the fleet marker by design, so those two loops stay gated while the
+confirmation claims otherwise. An operator relying on either line believes a loop is working
+that is silently stopped — the exact class of dishonest confirmation `markerApplyNote`'s tail
+clause exists to prevent.
+
+**Reproduce:** `tumwater pause && tumwater pause --role clean && tumwater resume --role clean`
+→ the confirmation promises ticking; `isFleetPaused(root)` is still true, so no tick starts.
+Second case: `tumwater pause --role clean && tumwater pause --role dry && tumwater resume` →
+"role loops tick again" while both markers remain.
+
+**Cause:** the per-role pause and the fleet pause landed as independent features (PLANS.md
+"Per-role pause 1/2") with each confirmation worded against its own gate only; neither resume
+branch checks the sibling marker before promising the effect. The pause-side confirmations are
+unaffected — "paused" and "stops starting new ticks" stay true under either gate.
+
+**Fix:** `cmdResume` (src/operator-commands.ts) now reads the sibling gate before writing its
+confirmation: the per-role branch appends " (the fleet pause is still active — `tumwater resume`
+lifts it)" when `isFleetPaused` holds (the director is exempt from that gate, so its resumption
+is real and gets no note), and the fleet branch appends " (<roles> still individually paused —
+`tumwater resume --role <id>` lifts each)" when `pausedRoles(root)` is non-empty. Two regression
+tests in test/operator-commands.test.ts pin both confirmations and the unchanged markers, plus
+the note-free baseline when no sibling pause holds.
+
+**Validation gap:** no-observability — the false promise was ordinary successful stdout: no
+crash, no failed check, no event, and the existing pause/resume tests pinned only each
+command's own gate, so the wording could drift silently until someone read the scheduler gate
+beside the message and reconstructed what a resume confirmation may promise.
 ### boundReadResult drops the whole tail and overcounts the omitted chars when the path swells the marker past the per-side budget (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `boundReadResult`'s contract is head+tail around a marker naming the omitted

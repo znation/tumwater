@@ -3,7 +3,16 @@ import { fail, parseRoleFlag } from "./cli-args.js";
 import { errorMessage } from "./text.js";
 import { allRoleIds, DIRECTOR_ROLE } from "./roles.js";
 import { clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
-import { orchestratorAlive, pauseFleet, pauseRole, readOrchestratorInfo, resumeFleet, resumeRole } from "./fleet-state.js";
+import {
+  isFleetPaused,
+  orchestratorAlive,
+  pauseFleet,
+  pauseRole,
+  pausedRoles,
+  readOrchestratorInfo,
+  resumeFleet,
+  resumeRole,
+} from "./fleet-state.js";
 import { pidAlive } from "./process.js";
 import { writeJsonFile } from "./json-files.js";
 import { abortRequestPath, resetRequestPath, wakeRequestPath } from "./paths.js";
@@ -237,7 +246,16 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
       return;
     }
     const { when, tail } = markerApplyNote(root);
-    process.stdout.write(`role ${role} resumed — it starts ticking again at its next eligibility check${when}${tail}\n`);
+    // The fleet pause is the stronger gate: with its marker present, the freshly resumed role
+    // still starts no ticks (the director is exempt from that gate, so its resumption is
+    // real). Saying nothing would promise ticking the scheduler then denies — the same
+    // honest-confirmation contract markerApplyNote's tail serves.
+    const fleetNote = isFleetPaused(root) && role !== DIRECTOR_ROLE
+      ? " (the fleet pause is still active — `tumwater resume` lifts it)"
+      : "";
+    process.stdout.write(
+      `role ${role} resumed — it starts ticking again at its next eligibility check${when}${fleetNote}${tail}\n`,
+    );
     return;
   }
   // resumeFleet (src/fleet-state.ts) is the single remover, shared with the GUI toggle; a false
@@ -247,5 +265,13 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
     return;
   }
   const { when, tail } = markerApplyNote(root);
-  process.stdout.write(`fleet resumed — role loops tick again${when}${tail}\n`);
+  // The per-role pause outlives a fleet resume (the markers are independent), so the resumed
+  // fleet's confirmation must name the roles still individually paused instead of claiming
+  // "role loops tick again" for loops the scheduler keeps gated.
+  const still = pausedRoles(root);
+  const roleNote = still.length > 0
+    ? ` (${still.join(", ")} ${still.length === 1 ? "is" : "are"} still individually paused — \`tumwater resume --role <id>\` lifts each)`
+    : "";
+  process.stdout.write(`fleet resumed — role loops tick again${when}${roleNote}${tail}\n`
+  );
 }
