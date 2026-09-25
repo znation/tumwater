@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { awaitLandingForHandoff, pollRateLimitHold, runTimedRoleTick, sleepInterruptible } from "../src/orchestrator.js";
+import { awaitLandingForHandoff, pollRateLimitHold, runTimedRoleTick, sleepInterruptible } from "../src/tick-timing.js";
 import { Semaphore } from "../src/semaphore.js";
 import { readEvents } from "../src/events.js";
 import { RATE_LIMIT_HOLD_BASE_MS, RATE_LIMIT_OPEN } from "../src/rate-limit-hold.js";

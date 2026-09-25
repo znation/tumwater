@@ -89,7 +89,7 @@ export interface LandingPipelineContext {
   roleConfig: TumwaterConfig;
   /** The scheduler's start gate for new work (a pending restart, a 429 hold), re-checked the
    * moment a parked vet is granted its permit — the one moment it actually starts, exactly as a
-   * parked role tick re-checks it (orchestrator.ts's runTimedRoleTick): a vet queued before the
+   * parked role tick re-checks it (tick-timing.ts's runTimedRoleTick): a vet queued before the
    * hold must not start a reviewer mid-drain or into the storm. A held vet hands its permit
    * back and starts nothing; its entry stays queued for the next drain. */
   startHeld(): boolean;
