@@ -7,6 +7,36 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `parseEntryDetails` and the report's date scan treat a `### `/`- ` line inside a fenced code block as entry structure: a quoted heading splits the entry on the dashboards and phantom `(fixed DATE)` lines inflate the usage report's fixed count (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** an entry quoting a markdown template (or BUGS.md itself) in a fenced code block
+was mis-parsed by the two `### `/`- `-level readers. `parseEntryDetails` split the entry at
+the quoted `### ` heading: the dashboards showed a phantom backlog entry whose body bled into
+the following prose, and the real entry's body was cut at the fence. `entryDates` (the usage
+report's Done/Fixed scan) counted each fenced `### … (fixed DATE)` heading and `- … (fixed
+DATE)` bullet as a completion of its own: a single real Fixed entry quoting one produced three
+`bugsFixed` on three different days.
+
+**Reproduce:** on the pre-fix dist, `collectReport` over a BUGS.md whose single Fixed entry
+contains a fenced block quoting `### Quoted entry (fixed D1)` and `- Quoted epitaph (fixed
+D2; commit abc)` reported `totals.bugsFixed: 3` (D0, D1, D2) instead of 1; `parseEntryDetails`
+on an Open entry quoting a `### ` heading returned two entries with the body cut at the fence.
+Confirmed 2026-09-25; both fixtures are now regression tests (report/backlog suites).
+
+**Cause:** the CommonMark fence state lived only inside `sectionLines`' `## ` scan — the
+`### `/`- ` classification in `parseEntryDetails` and `entryDates` ran on the section's raw
+lines with no fence state, so quoted headings and epitaphs read as real entry structure.
+
+**Fix:** the fence state machine moved to a shared `fenceTracker()` in src/backlog.ts;
+`sectionLines` uses it unchanged, and `parseEntryDetails` and `entryDates` now treat every
+fence-syntax or fenced line as body content — quoted headings and epitaphs are never entry
+starts, never metadata, and never boundaries.
+
+**Validation gap:** no-repro — the entry fixtures in the suite held only prose bodies, so
+nothing reproduced the phantom count or the split, and the honest failure mode (an inflated
+totals row, not an error) left nothing but a scratch repro against dist to confirm the
+pre-fix behavior before the fix.
+
 ### `sectionLines` treats a `## ` heading inside a fenced code block as a section boundary, silently truncating entries and dropping every later one (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** a backlog entry whose body quotes a markdown template or shell trace in a

@@ -168,6 +168,38 @@ test("collectReport counts features done and bugs fixed from backlog history", (
   assert.equal(data.totals.bugsFixed, 3);
 });
 
+test("a ### heading quoted in a fenced block inside a Fixed entry adds no phantom completion", () => {
+  // An entry quoting a markdown template (or BUGS.md itself) must not count as completions of
+  // its own: before the fix each fenced `### `/`- ` date line inflated the report's fixed count.
+  const root = tmpdir();
+  const d1 = dayKey(at(2));
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    [
+      "# Bugs",
+      "",
+      "## Fixed",
+      "",
+      `### Real bug (found 2026-08-01, fixed ${d1})`,
+      "",
+      "Body prose.",
+      "",
+      "```md",
+      "## Fixed",
+      "",
+      `### Quoted entry (fixed ${dayKey(at(1))})`,
+      "",
+      `- Quoted epitaph (fixed ${dayKey(at(0))}; commit abc)`,
+      "```",
+      "",
+    ].join("\n"),
+  );
+
+  const data = collectReport(root, 5);
+  assert.equal(data.totals.bugsFixed, 1);
+  assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 1);
+});
+
 test("collectReport degrades to zeros when every source is missing", () => {
   const root = tmpdir(); // no .tumwater/, no PLANS.md, no BUGS.md
   const data = collectReport(root, 3);

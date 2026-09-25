@@ -25,28 +25,45 @@ export interface BacklogEntry {
   body: string;
 }
 
+/** A per-line CommonMark fenced-code state machine, shared by every line-level parser of
+ * backlog markdown. `inside(line)` feeds one line and returns whether it is fence syntax or
+ * fenced content — never markdown structure: a fence opens at a ```` ``` ````/`~~~` line (an
+ * info string is allowed), closes only at a bare fence line of the same character at least as
+ * long, and an unclosed fence runs to EOF. Every reader that classifies backlog lines as
+ * markdown structure (section boundaries, entry headings, bullets) must consult this, so two
+ * readers can never disagree about what is body content. */
+export function fenceTracker(): { inside(line: string): boolean } {
+  // The open fence's marker (null = none): only a matching bare fence line closes it.
+  let fence: { char: string; length: number } | null = null;
+  return {
+    inside(line: string): boolean {
+      const fenceLine = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+      if (fenceLine) {
+        const marker = fenceLine[1] ?? ""; // The group always participates; "" keeps types honest.
+        if (fence === null) fence = { char: marker.charAt(0), length: marker.length };
+        else if (marker.charAt(0) === fence.char && marker.length >= fence.length && line.trim() === marker)
+          fence = null;
+        return true; // The fence line itself is fence syntax, never structure.
+      }
+      return fence !== null;
+    },
+  };
+}
+
 /** The body lines of the `## <sectionTitle>` section of a markdown document: everything
  * between that heading line and the next `## ` line (or EOF), neither boundary included. A
  * `## ` line inside a fenced code block (entries quote markdown templates and shell traces) is
- * body content, never a boundary: fences follow CommonMark — a ```` ``` ````/`~~~` line opens,
- * only the same character at least as long and bare (no info string) closes, and an unclosed
- * fence runs to EOF, hiding every later section the way a real markdown renderer would. The
- * single home of "where a section starts and ends" — every reader of a `## ` section (backlog
- * entry parsing here, the usage report's Done/Fixed date scan in src/ui/report.ts) walks its
- * section through this, so two independent readers can never disagree about the boundary. */
+ * body content, never a boundary. The single home of "where a section starts and ends" — every
+ * reader of a `## ` section (backlog entry parsing here, the usage report's Done/Fixed date
+ * scan in src/ui/report.ts) walks its section through this, so two independent readers can
+ * never disagree about the boundary. */
 export function sectionLines(md: string, sectionTitle: string): string[] {
   const lines: string[] = [];
   let inSection = false;
-  // The open fence's marker (null = none): only a matching bare fence line closes it.
-  let fence: { char: string; length: number } | null = null;
+  const fenced = fenceTracker();
   for (const line of md.split("\n")) {
-    const fenceLine = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (fenceLine) {
-      const marker = fenceLine[1] ?? ""; // The group always participates; "" keeps types honest.
-      if (fence === null) fence = { char: marker.charAt(0), length: marker.length };
-      else if (marker.charAt(0) === fence.char && marker.length >= fence.length && line.trim() === marker)
-        fence = null;
-    } else if (fence === null && line.startsWith("## ")) {
+    const inFence = fenced.inside(line);
+    if (!inFence && line.startsWith("## ")) {
       inSection = line.slice(3).trim() === sectionTitle;
       continue;
     }
@@ -69,13 +86,18 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
     title = null;
     bodyLines = []; // Prose before the first heading never becomes a body.
   };
+  // A `### ` line inside a fenced code block is quoted content, never an entry boundary: an
+  // entry quoting a markdown template keeps its whole body instead of splitting into a phantom
+  // entry at the quoted heading.
+  const fenced = fenceTracker();
   for (const line of sectionLines(md, sectionTitle)) {
-    if (line.startsWith("### ")) {
+    if (fenced.inside(line)) bodyLines.push(line);
+    else if (line.startsWith("### ")) {
       close();
       title = line.slice(4).trim();
-      continue;
+    } else {
+      bodyLines.push(line);
     }
-    bodyLines.push(line);
   }
   close(); // An entry at the end of file ends with EOF, not a heading.
   return entries;

@@ -2,7 +2,7 @@ import path from "node:path";
 import { readTextOrNull } from "../files.js";
 import { readWindowEvents } from "../event-window.js";
 import { eventDayKey, eventRole } from "../events.js";
-import { sectionLines } from "../backlog.js";
+import { fenceTracker, sectionLines } from "../backlog.js";
 import { compactTokens, dayAt, formatDate, reportWindow, usd } from "../text.js";
 
 // The windowed tail read (and the REPORT_*_DAYS bounds it serves) moved to core
@@ -51,15 +51,20 @@ function readMarkdown(file: string): string {
 /** The completion dates ("YYYY-MM-DD") of the entries inside one `## <sectionTitle>` section.
  * An entry starts at a `### ` heading or `- ` bullet line and ends at the next such line; only
  * its METADATA is matched for dates — never its body, so a body's "**Done 2026-…**" recap line
- * (or a prose cross-reference like "(done 2026-…)") cannot double-count. Metadata = the start
- * line plus, for `### ` headings only, continuation lines up to and including the first line
- * ending in `)` (capped at 3 lines) — wrapped headings carry their date on the second line,
- * while `- ` epitaphs are single-line by construction, so a bullet's own line is its whole
- * metadata (a following prose paragraph is body, never matched). Joining with a space keeps
- * "done\n2026-…" matchable. Entries without a parseable date are skipped. */
+ * (or a prose cross-reference like "(done 2026-…)") cannot double-count. Fenced lines are
+ * body content, never entry starts — an entry quoting a markdown template with a
+ * `### … (fixed DATE)` heading inside must not count as a completion of its own. Metadata =
+ * the start line plus, for `### ` headings only, continuation lines up to and including the
+ * first line ending in `)` (capped at 3 lines) — wrapped headings carry their date on the
+ * second line, while `- ` epitaphs are single-line by construction, so a bullet's own line is
+ * its whole metadata (a following prose paragraph is body, never matched). Joining with a
+ * space keeps "done\n2026-…" matchable. Entries without a parseable date are skipped. */
 function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] {
   const dates: string[] = [];
-  const lines = sectionLines(md, sectionTitle);
+  // A section always starts at its non-fenced `## ` heading, so a fresh tracker is in sync
+  // with the document's fence state here and for the whole section.
+  const fenced = fenceTracker();
+  const lines = sectionLines(md, sectionTitle).filter((line) => !fenced.inside(line));
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
     if (!line.startsWith("### ") && !line.startsWith("- ")) continue;

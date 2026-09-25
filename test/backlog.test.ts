@@ -244,6 +244,37 @@ test("fence tracking follows CommonMark: marker character and bare close matter"
   ]);
 });
 
+test("a ### heading inside a fenced code block is body content, not an entry boundary", () => {
+  // An entry quoting a markdown template (or BUGS.md itself) must not split into a phantom
+  // entry at the quoted heading — the real entry's body keeps the whole fence verbatim.
+  const md = [
+    "# Bugs",
+    "",
+    "## Open",
+    "",
+    "### Real bug (found 2026-09-25)",
+    "",
+    "Body prose before the quote.",
+    "",
+    "```md",
+    "## Fixed",
+    "",
+    "### Quoted entry (fixed 2026-09-24)",
+    "",
+    "Quoted body.",
+    "```",
+    "",
+    "Tail prose after the quote.",
+  ].join("\n");
+  assert.deepEqual(parseEntryDetails(md, "Open"), [
+    {
+      title: "Real bug (found 2026-09-25)",
+      body:
+        "Body prose before the quote.\n\n```md\n## Fixed\n\n### Quoted entry (fixed 2026-09-24)\n\nQuoted body.\n```\n\nTail prose after the quote.",
+    },
+  ]);
+});
+
 test("parseEntryDetails skips placeholders and prose before the first heading", () => {
   // The exact template init.ts seeds: both sections hold only the _None yet._ placeholder.
   const seeded = `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n_None yet._\n`;
