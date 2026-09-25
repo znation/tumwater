@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { bugfixMainRedNote, mainRedGate } from "../src/main-red.js";
+import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/main-red.js";
+import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
 import { baselineFixture, makeRepo, runsOf, sh, tmpdir, worktreeAt, writeScript } from "./util.js";
@@ -290,4 +291,19 @@ test("mainRedGate proceeds silently when no build check is declared", async () =
   // environmental skip.
   assert.equal(await mainRedGate(root, ROLE, wt), null);
   assert.deepEqual(readEvents(root), [], "no events when there is no declared check");
+});
+
+// The gate's never-throws contract (src/main-red.ts): an unreadable main must read as
+// `unavailable` with a why, never reject the vet pipeline with an exception — a corrupt or
+// dangling ref is a broken repo, and the failure belongs in the rejection's reasons.
+test("mainTipVerdict reports unavailable, without throwing, when main's ref dangles", async () => {
+  const root = makeRepo();
+  // Point main at a well-formed sha whose object does not exist: `git rev-parse` still
+  // resolves it (a ref read needs no object database), but the gate's worktree add cannot
+  // check it out and throws.
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".git", "refs", "heads", "main"), `${"deadbeef".repeat(5)}\n`);
+  const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
+  assert.equal(verdict.status, "unavailable");
+  assert.ok(verdict.status === "unavailable" && /invalid reference/.test(verdict.why), verdict.status === "unavailable" ? verdict.why : "");
 });
