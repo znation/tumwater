@@ -44,6 +44,7 @@ import { logEvent, warnEvent } from "./events.js";
 import { pruneOldFiles, removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { inboxSize } from "./inbox.js";
+import { OnceRound } from "./once-round.js";
 import {
   consumeAbortRequests,
   consumeResetRequest,
@@ -193,23 +194,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // changes they vetted, and the merge slot.
   const landings = newLandingPipeline();
 
-  // Once-mode bookkeeping (tumwater run --once). At start, each runner's tick count is
-  // snapshotted; a role is SETTLED when its ticks have advanced past the snapshot (it ran its
-  // one tick), when this round's poll deferred it (a deferred maintenance tick decided not to
-  // run — its once-round answer), or when it was skipped with a persistent reason (backoff,
-  // paused, disabled mid-round, or the director's empty inbox — nothing a poll can change).
-  // The value is the skip reason, for the caller's summary. A role whose tick is merely in
-  // flight is NOT settled — the poll loop below only fires the stop once every role is settled
-  // AND no tick is in flight AND the land queue has been empty with no landing in flight for
-  // one full poll cycle (the guard against dropping a queued-but-not-yet-started landing: a
-  // stop that lands during the shutdown drain drops the queue entry, so the slot gets one
-  // poll to pick the entry up before the stop is trusted).
-  const once = opts.once === true;
-  const onceTickSnapshot = new Map(runners.map((r) => [r.role, r.state.ticks] as const));
-  const onceSettled = new Map<string, string>();
-  let onceIdlePolls = 0;
-  const onceRoleSettled = (r: LoopRunner): boolean =>
-    r.state.ticks > (onceTickSnapshot.get(r.role) ?? 0) || onceSettled.has(r.role);
+  // Once-mode bookkeeping (`tumwater run --once`) — the tick-count snapshot, the per-role
+  // settle reasons, and the quiet-poll exit rule — lives in src/once-round.ts.
+  const once = new OnceRound(runners, opts.once === true);
 
   // The previous poll's budget gate, for one-shot transition events. Three-valued since
   // plans/fallback-model.md: open → fallback → paused are distinct states, and every crossing
@@ -529,13 +516,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // once round has to end even when a pause marker is left over; a later resume within
         // the same round cannot un-settle it, which is the at-most-one-tick contract).
         if (
-          once &&
-          !onceRoleSettled(runner) &&
+          once.active &&
+          !once.isSettled(runner) &&
           !runner.state.running &&
           (pausedRolesSet.has(runner.role) ||
             ((userPaused || (gate === "paused" && !probeDue)) && runner.role !== DIRECTOR_ROLE))
         ) {
-          onceSettled.set(runner.role, "paused");
+          once.settle(runner.role, "paused");
         }
         if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
         // The per-role pause gates BEFORE the fleet check and exempts nothing — the director
@@ -544,24 +531,16 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         if ((userPaused || (gate === "paused" && !probeDue)) && runner.role !== DIRECTOR_ROLE)
           continue; // no new role ticks while either gate holds
         if (rateHeld && runner.role !== DIRECTOR_ROLE) continue; // nor while a 429 storm holds
-        const { run, reason } = isEligible(runner, now, mainHead, inboxCount, { once });
+        const { run, reason } = isEligible(runner, now, mainHead, inboxCount, {
+          once: once.active,
+        });
         if (!run) {
           // Not due this poll: any deferral episode has ended (or never started). No event —
           // the tick's own events cover it.
           if (deferredDue.get(runner.role)) deferredDue.set(runner.role, false);
-          // Once mode: idle and not due — disabled mid-round, error backoff, or the
-          // director's empty inbox. No poll of this round changes any of these, so the role
-          // is settled with its skip reason (the caller's summary reports it).
-          if (once && !runner.state.running) {
-            onceSettled.set(
-              runner.role,
-              !runner.config.roles[runner.role]?.enabled
-                ? "disabled"
-                : runner.state.nextRunAt > now
-                  ? "backoff"
-                  : "idle",
-            );
-          }
+          // Once mode: idle and not due — settleSkipped records the skip reason (the caller's
+          // summary reports it).
+          if (once.active && !runner.state.running) once.settleSkipped(runner, now);
           continue;
         }
         // Merge queue 3/5 interlock (invariant 3): a role with a QUEUED or IN-FLIGHT landing
@@ -599,7 +578,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           if (deferredNow) {
             // Once mode: a deferred maintenance tick decided not to run — its once-round
             // answer, so it settles instead of holding the round open for DEFER_MAX_MS.
-            if (once) onceSettled.set(runner.role, "deferred");
+            if (once.active) once.settle(runner.role, "deferred");
             continue;
           }
         } else if (deferredDue.get(runner.role)) {
@@ -706,22 +685,16 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // against dropping a queued-but-not-yet-started landing: a stop that lands during the
       // shutdown drain drops the queue entry, so the slot gets its poll to pick the entry up
       // before the stop is trusted.
-      if (once) {
-        if (
-          runners.every(onceRoleSettled) &&
-          roleInFlight.size === 0 &&
-          directorInFlight.size === 0 &&
-          landingTasks(landings).length === 0 &&
-          queuedLandingFiles(root).length === 0
-        ) {
-          if (onceIdlePolls > 0) {
-            internalStop.abort();
-            break;
-          }
-          onceIdlePolls++;
-        } else {
-          onceIdlePolls = 0;
-        }
+      if (
+        once.exitReady({
+          roleTicks: roleInFlight.size,
+          directorTicks: directorInFlight.size,
+          landings: landingTasks(landings).length,
+          queuedLandings: queuedLandingFiles(root).length,
+        })
+      ) {
+        internalStop.abort();
+        break;
       }
 
       await sleepInterruptible(pollMs, signal);
@@ -773,5 +746,5 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   }
   // Only once mode carries the settle reasons: the daemon return keeps its exact shape (an
   // e2e test deep-equals it), and a daemon caller has no summary to feed.
-  return once ? { restart, settled: onceSettled } : { restart };
+  return once.active ? { restart, settled: once.reasons } : { restart };
 }
