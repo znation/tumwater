@@ -108,9 +108,15 @@ test("readInitialPrompt returns empty string when the opening marker is absent",
   assert.equal(readInitialPrompt(root), "");
 });
 
+// The README is edited live (readme loop, users) and read on every tick: a torn or
+// hand-edited file that keeps only one marker must degrade to no prompt, not leak the
+// rest of the file into every tick's prompt.
+
 test("readInitialPrompt returns empty string when only the closing marker exists", () => {
   const root = tmpdir();
-  writeReadme(root, `# myproj\n\n${PROMPT_END}\n`);
+  // Padding before the end marker keeps this observable — a dropped start-marker guard
+  // would slice out the body text instead of returning empty.
+  writeReadme(root, `# myproj\n\n${"LEAKED ".repeat(5)}${PROMPT_END}\n`);
   assert.equal(readInitialPrompt(root), "");
 });
 
@@ -120,6 +126,9 @@ test("readInitialPrompt returns empty string when the opening marker has no clos
   assert.equal(readInitialPrompt(root), "");
 });
 
+// An end marker mentioned in prose BEFORE the managed block (e.g. README docs explaining how
+// to edit the prompt) must not shadow the real section: pre-fix, indexOf(PROMPT_END) found the
+// prose mention first, `end < start` bailed out, and every loop ran without its project prompt.
 test("an end marker in prose before the real block does not hide the prompt", () => {
   const root = tmpdir();
   writeReadme(

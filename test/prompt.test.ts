@@ -20,60 +20,9 @@ import {
 import { parseVerdict } from "../src/review-verdict.js";
 import { todayStamp } from "../src/budget.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
-import { PROMPT_END, PROMPT_START, readInitialPrompt, readmeTemplate } from "../src/readme.js";
 import { customRole, ROLES, roleById } from "../src/roles.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, searchGuidance, VALIDATION_GAP_GUIDANCE, VALIDATION_GAP_TAGS } from "../src/role-guidance.js";
 import { sh, tmpdir } from "./util.js";
-
-test("readInitialPrompt extracts the managed block", () => {
-  const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "README.md"), readmeTemplate("proj", "Build a thing.\nWith care."));
-  assert.equal(readInitialPrompt(dir), "Build a thing.\nWith care.");
-});
-
-test("readInitialPrompt is empty without README or markers", () => {
-  const dir = tmpdir();
-  assert.equal(readInitialPrompt(dir), "");
-  fs.writeFileSync(path.join(dir, "README.md"), "# hi\n");
-  assert.equal(readInitialPrompt(dir), "");
-});
-
-// The README is edited live (readme loop, users) and read on every tick: a torn or
-// hand-edited file that keeps only one marker must degrade to no prompt, not leak the
-// rest of the file into every tick's prompt.
-
-test("readInitialPrompt returns empty when only one marker survives", () => {
-  const dir = tmpdir();
-  // Only the start marker: without the end-marker guard, slice would return everything
-  // after it (indexOf(PROMPT_END) is -1).
-  fs.writeFileSync(
-    path.join(dir, "README.md"),
-    `# hi\n${PROMPT_START}\nthe rest of the readme must not be treated as the prompt\n`,
-  );
-  assert.equal(readInitialPrompt(dir), "");
-  // Only the end marker: padding past index 34 keeps this observable — a dropped
-  // start-marker guard would slice out the body text instead of returning empty.
-  fs.writeFileSync(path.join(dir, "README.md"), `# hi\n${"LEAKED ".repeat(5)}${PROMPT_END}\n`);
-  assert.equal(readInitialPrompt(dir), "");
-});
-
-test("readInitialPrompt returns empty when the markers are reversed", () => {
-  const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "README.md"), `# hi\n${PROMPT_END}\nsome text\n${PROMPT_START}\n`);
-  assert.equal(readInitialPrompt(dir), "");
-});
-
-// An end marker mentioned in prose BEFORE the managed block (e.g. README docs explaining how
-// to edit the prompt) must not shadow the real section: pre-fix, indexOf(PROMPT_END) found the
-// prose mention first, `end < start` bailed out, and every loop ran without its project prompt.
-test("readInitialPrompt ignores an end marker that appears before the managed block", () => {
-  const dir = tmpdir();
-  fs.writeFileSync(
-    path.join(dir, "README.md"),
-    `# proj\n\nThe managed section is closed by ${PROMPT_END} — edit only between the markers.\n\n## Initial prompt\n${PROMPT_START}\nThe real prompt.\n${PROMPT_END}\n`,
-  );
-  assert.equal(readInitialPrompt(dir), "The real prompt.");
-});
 
 test("buildTickPrompt includes role, project prompt, rules, and extras", () => {
   const role = roleById("coverage");
