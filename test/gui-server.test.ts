@@ -4,7 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { dequeuePrompt, inboxSize } from "../src/inbox.js";
+import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize } from "../src/inbox.js";
 import { makeRepo, startLocalGui } from "./util.js";
 
 // The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,
@@ -35,6 +35,28 @@ test("gui rejects oversized prompt bodies with 413 instead of buffering them unb
     });
     assert.equal(ok.status, 200);
     assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui answers 400 for an over-long prompt and queues nothing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui long prompt test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // An over-long prompt is a user-input error: the shared length rule (inbox.ts's
+    // promptLengthProblem) answers 400 naming the length and the ceiling — not the outer
+    // catch's 500, which is reserved for unexpected submit failures (see the EACCES test).
+    const res = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1) }),
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: string };
+    assert.match(body.error, new RegExp(`${DIRECTOR_PROMPT_MAX_CHARS + 1} chars`));
+    assert.equal(inboxSize(repo), 0, "the rejected prompt queued nothing");
   } finally {
     server.close();
   }

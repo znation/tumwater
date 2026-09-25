@@ -7,7 +7,7 @@ import {
   openQuestionEntries,
   plannedPlanEntries,
 } from "../backlog.js";
-import { submitPrompt } from "../inbox.js";
+import { promptLengthProblem, submitPrompt } from "../inbox.js";
 import { isJsonObject } from "../json-object.js";
 import { knownRoleIds, loadConfigCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
@@ -344,6 +344,14 @@ export function startGui(
         }
         if (!text.trim()) {
           sendJson(res, 400, { error: "text required" });
+          return;
+        }
+        // An over-long prompt (DIRECTOR_PROMPT_MAX_CHARS) is a user-input error, not a server
+        // fault: the shared length rule answers 400 — an unexpected submit failure (EACCES)
+        // still reaches the outer catch as the 500 its gui-server test pins.
+        const tooLong = promptLengthProblem(text);
+        if (tooLong) {
+          sendJson(res, 400, { error: tooLong });
           return;
         }
         submitPrompt(root, text);

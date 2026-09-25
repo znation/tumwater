@@ -6,6 +6,7 @@ import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { logEvent } from "./events.js";
 import { inboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
+import { INITIAL_PROMPT_MAX_CHARS } from "./readme.js";
 import { truncate } from "./text.js";
 
 /** File-based queue of user prompts for the director loop. Any process can enqueue;
@@ -129,11 +130,34 @@ export function dequeuePrompt(root: string): string | null {
   return takeQueuedFile(oldest);
 }
 
+/** Cap on a submitted director prompt's length: the same ceiling as the initial prompt
+ * (readme.ts's INITIAL_PROMPT_MAX_CHARS), because both ride into a tick's prefill — a
+ * megabyte pasted into the TUI, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)`
+ * would otherwise ride into the director's next tick's context wholesale. submitPrompt
+ * rejects over-long text before it is queued, so no surface can enqueue it. */
+export const DIRECTOR_PROMPT_MAX_CHARS = INITIAL_PROMPT_MAX_CHARS;
+
+/** The one length rule for a submitted director prompt: the error message when the trimmed
+ * text exceeds DIRECTOR_PROMPT_MAX_CHARS, null when it fits. submitPrompt throws it before
+ * anything is queued or logged; the GUI asks it first so an over-long prompt answers 400
+ * (a user-input error) while an unexpected submit failure (a broken inbox's EACCES) stays
+ * the 500 its gui-server test pins. */
+export function promptLengthProblem(text: string): string | null {
+  const prompt = text.trim();
+  if (prompt.length <= DIRECTOR_PROMPT_MAX_CHARS) return null;
+  return `the prompt is ${prompt.length} chars — shorten it to at most ${DIRECTOR_PROMPT_MAX_CHARS}: it rides into the director tick's prefill`;
+}
+
 /** A user submits a new prompt (TUI, GUI, or CLI): enqueue it for the director and
  * record it in the event log. Returns the trimmed prompt that was queued. The logged preview
  * goes through promptPreview — not a raw slice — so an over-long prompt is marked with an
- * ellipsis like every other label and never carries a lone surrogate at the cut point. */
+ * ellipsis like every other label and never carries a lone surrogate at the cut point.
+ * Throws (before anything is queued or logged) when the trimmed prompt exceeds
+ * DIRECTOR_PROMPT_MAX_CHARS (promptLengthProblem's message) — callers report it to their
+ * operator. */
 export function submitPrompt(root: string, text: string): string {
+  const problem = promptLengthProblem(text);
+  if (problem) throw new Error(problem);
   const prompt = text.trim();
   enqueuePrompt(root, prompt);
   logEvent(root, { loop: DIRECTOR_ROLE, type: "prompt_enqueued", preview: promptPreview(prompt) });

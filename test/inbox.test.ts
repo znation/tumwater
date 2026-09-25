@@ -5,6 +5,7 @@ import { readEvents } from "../src/events.js";
 import {
   cancelPrompt,
   dequeuePrompt,
+  DIRECTOR_PROMPT_MAX_CHARS,
   enqueuePrompt,
   inboxSize,
   queuedPrompts,
@@ -38,6 +39,29 @@ test("submitPrompt trims, enqueues, and logs a prompt_enqueued event", () => {
     String(events[0]?.preview),
     `${"x".repeat(79)}…`, // preview capped at 80 chars, ellipsis included (truncate)
   );
+});
+
+test("submitPrompt rejects an over-long prompt before anything is queued or logged", () => {
+  const dir = tmpdir();
+  const over = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
+  assert.throws(() => submitPrompt(dir, over), (err: unknown) => {
+    const message = String((err as Error).message);
+    // Name the fix: the offending length, the ceiling, and why it exists.
+    return (
+      message.includes(`${over.length} chars`) &&
+      message.includes(String(DIRECTOR_PROMPT_MAX_CHARS)) &&
+      message.includes("prefill")
+    );
+  });
+  assert.equal(inboxSize(dir), 0); // rejected before the queue write
+  assert.equal(
+    readEvents(dir).filter((e) => e.type === "prompt_enqueued").length,
+    0, // and before the event log too
+  );
+  // Exactly at the cap is fine — the check is a ceiling, not a floor off by one.
+  const queued = submitPrompt(dir, "x".repeat(DIRECTOR_PROMPT_MAX_CHARS));
+  assert.equal(queued.length, DIRECTOR_PROMPT_MAX_CHARS);
+  assert.equal(inboxSize(dir), 1);
 });
 
 test("submitPrompt's event preview never carries a lone surrogate", () => {
