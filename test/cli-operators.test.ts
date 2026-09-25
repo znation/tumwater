@@ -14,6 +14,7 @@ import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/state.js";
 import { abortRequestPath, orchestratorStatePath, pausedPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
+import { signalOrchestrator } from "../src/operator-commands.js";
 import { cli, makeRepo, seedCounters, writeConfig } from "./util.js";
 
 // --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---
@@ -520,6 +521,21 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
   assert.equal(signal, "SIGTERM");
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
+test("signalOrchestrator reports ESRCH as gone and EPERM as an actionable error", async () => {
+  // A pid that died between stop's liveness check and its signal: a real child spawned and
+  // reaped first, so its (now-free) pid raises ESRCH deterministically — unlike the live
+  // liveness-check race, this needs no timing to hit.
+  const dead = spawn(process.execPath, ["-e", "process.exit(0)"]);
+  await new Promise<void>((resolve) => dead.once("exit", () => resolve()));
+  assert.equal(signalOrchestrator(dead.pid as number), "gone");
+
+  // The delivered case: a live child takes the SIGTERM and dies from it.
+  const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"]);
+  const exited = new Promise((resolve) => live.once("exit", (_c, signal) => resolve(signal)));
+  assert.equal(signalOrchestrator(live.pid as number), "signalled");
+  assert.equal(await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 5_000))]), "SIGTERM");
 });
 
 test("stop takes no flags and appears in the help table", async () => {

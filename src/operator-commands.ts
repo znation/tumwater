@@ -216,6 +216,27 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
   );
 }
 
+/** Deliver the stop signal to the recorded orchestrator pid: "signalled" when SIGTERM was
+ * delivered, "gone" when the process died between the caller's liveness check and the
+ * signal (ESRCH) — stop's goal is already met in that case, so the caller reports it as
+ * done instead of failing with a raw `kill ESRCH`. Any other delivery error is rethrown
+ * with the pid named: an operator seeing Node's bare "kill EPERM" cannot tell it means a
+ * process they cannot signal (recycled pid owned by another user), not a broken harness. */
+export function signalOrchestrator(pid: number): "signalled" | "gone" {
+  try {
+    process.kill(pid, "SIGTERM");
+    return "signalled";
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return "gone";
+    if (code === "EPERM")
+      throw new Error(
+        `stop could not signal pid ${pid} (EPERM) — it is owned by another user or the pid was recycled; kill it directly with \`kill ${pid}\``,
+      );
+    throw err;
+  }
+}
+
 /** `tumwater stop`: SIGTERM the running orchestrator, which drains its in-flight ticks and
  * exits — exactly the shutdown the supervised child's own SIGINT/SIGTERM handler performs, so
  * Ctrl+C and `stop` from another terminal are the same code path (the supervisor needs no
@@ -231,8 +252,13 @@ export async function cmdStop(root: string): Promise<void> {
   if (!info || !pidAlive(info.pid)) {
     fail(NO_HARNESS_ERROR);
   }
-  process.kill(info.pid, "SIGTERM");
-  process.stdout.write("stop requested — the fleet drains its in-flight ticks and exits (the same path as Ctrl+C)\n");
+  // A pid that dies between the liveness check and the signal (ESRCH) means the fleet is
+  // already stopped — say so and exit clean rather than surfacing Node's raw kill error;
+  // anything else (EPERM on a recycled pid, …) comes back as signalOrchestrator's message.
+  if (signalOrchestrator(info.pid) === "signalled")
+    process.stdout.write("stop requested — the fleet drains its in-flight ticks and exits (the same path as Ctrl+C)\n");
+  else
+    process.stdout.write("the orchestrator exited before the stop signal landed — nothing is running\n");
 }
 
 /** `tumwater config`: print the effective merged config — exactly what `loadConfig(root)`
