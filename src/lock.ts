@@ -97,36 +97,55 @@ function releaseOwnedLock(dir: string): void {
   rmLockDir(dir);
 }
 
+type AcquireStep =
+  /** The verdict of one mkdir attempt against the lock: "acquired" means the dir is ours and
+   * its pid file written; "retry" means a live holder kept it — sleep the caller's backoff and
+   * try again. acquireStep is the one definition of the acquire protocol, shared by withLock
+   * and withSyncLock so the async and sync mutexes cannot drift on when a held lock may be
+   * broken or how failure is reported. It throws (identically for both callers) for anything
+   * waiting cannot fix: a non-EEXIST mkdir failure, or the wait budget running out. */
+  "acquired" | "retry";
+
+function acquireStep(dir: string, timeoutMs: number, waitedMs: number): AcquireStep {
+  try {
+    fs.mkdirSync(dir, { recursive: false });
+  } catch (err) {
+    // Only a held lock (EEXIST) is worth waiting for — a concurrent holder releases it. Any
+    // other errno (a read-only or missing parent, a file in the way, ENOSPC) cannot be fixed
+    // by waiting; retrying to the deadline would replace the real cause with a misleading
+    // "timed out … waiting for lock" two minutes later. Name it and fail now.
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw new Error(`cannot acquire lock ${dir}: ${errorMessage(err)}`);
+    }
+    tryBreakStale(dir);
+    // Report the wait budget and the holder: this surfaces as a tick's lastError, and
+    // "gave up after 120s waiting on pid 999" is what distinguishes a slow holder from a
+    // wedged one (and names which process to look at).
+    if (waitedMs > timeoutMs)
+      throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}${lockHolderNote(dir)}`);
+    return "retry";
+  }
+  markLockHolder(dir);
+  return "acquired";
+}
+
+/** Write the holder pid into a freshly acquired lock dir; roll the dir back when the write
+ * fails so the acquirer never leaves behind an orphan it owns but has not marked. */
+function markLockHolder(dir: string): void {
+  try {
+    fs.writeFileSync(path.join(dir, "pid"), String(process.pid));
+  } catch (err) {
+    rmLockDir(dir); // We took the dir; a failed pid write must not leave an orphan we own.
+    throw err;
+  }
+}
+
 /** mkdir-based mutex shared by all loops (and processes) of one project. */
 export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs = 120_000): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now();
   for (;;) {
-    try {
-      fs.mkdirSync(dir, { recursive: false });
-    } catch (err) {
-      // Only a held lock (EEXIST) is worth waiting for — a concurrent holder releases it. Any
-      // other errno (a read-only or missing parent, a file in the way, ENOSPC) cannot be fixed
-      // by waiting; retrying to the deadline would replace the real cause with a misleading
-      // "timed out … waiting for lock" two minutes later. Name it and fail now.
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
-        throw new Error(`cannot acquire lock ${dir}: ${errorMessage(err)}`);
-      }
-      tryBreakStale(dir);
-      // Report the wait budget and the holder: this surfaces as a tick's lastError, and
-      // "gave up after 120s waiting on pid 999" is what distinguishes a slow holder from a
-      // wedged one (and names which process to look at).
-      if (Date.now() > deadline)
-        throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}${lockHolderNote(dir)}`);
-      await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
-      continue;
-    }
-    try {
-      fs.writeFileSync(path.join(dir, "pid"), String(process.pid));
-    } catch (err) {
-      rmLockDir(dir); // We took the dir; a failed pid write must not leave an orphan we own.
-      throw err;
-    }
-    break;
+    if (acquireStep(dir, timeoutMs, Date.now() - startedAt) === "acquired") break;
+    await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
   }
   try {
     return await fn();
@@ -136,38 +155,19 @@ export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs =
 }
 
 /** The synchronous twin of withLock, for short critical sections reached from code that cannot
- * await — pauseRole/resumeRole are called from sync writers and from sync tests. Same protocol
- * and same classification as withLock (mkdir admits exactly one writer; the pid file marks the
- * holder; classifyLock decides live vs stale; releaseOwnedLock keeps a robbed holder from
- * deleting its successor's lock), so the two mutexes cannot drift on when a held lock may be
- * broken. Waits on a millisecond busy-sleep instead of an async timer: the sections it guards
- * are single-file read-modify-writes, microseconds long. The default timeout out-waits the
- * NO_PID_GRACE_MS recovery of a crashed creator yet still degrades a wedged holder to a clear
- * error rather than a silent unlocked write. */
+ * await — pauseRole/resumeRole are called from sync writers and from sync tests. The protocol
+ * itself is literally shared (acquireStep carries mkdir-admits-one-writer, the pid-file holder
+ * mark, classifyLock's live-vs-stale rule, and the timeout error; releaseOwnedLock keeps a
+ * robbed holder from deleting its successor's lock), so the two mutexes cannot drift on when a
+ * held lock may be broken. Waits on a millisecond busy-sleep instead of an async timer — the
+ * sections it guards are single-file read-modify-writes, microseconds long, so the finer
+ * backoff. The default timeout out-waits the NO_PID_GRACE_MS recovery of a crashed creator yet
+ * still degrades a wedged holder to a clear error rather than a silent unlocked write. */
 export function withSyncLock<T>(dir: string, fn: () => T, timeoutMs = 10_000): T {
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now();
   for (;;) {
-    try {
-      fs.mkdirSync(dir, { recursive: false });
-    } catch (err) {
-      // Only a held lock (EEXIST) is worth waiting for — withLock's rule, unchanged.
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
-        throw new Error(`cannot acquire lock ${dir}: ${errorMessage(err)}`);
-      }
-      tryBreakStale(dir);
-      if (Date.now() > deadline) {
-        throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}${lockHolderNote(dir)}`);
-      }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5 + Math.floor(Math.random() * 10));
-      continue;
-    }
-    try {
-      fs.writeFileSync(path.join(dir, "pid"), String(process.pid));
-    } catch (err) {
-      rmLockDir(dir); // We took the dir; a failed pid write must not leave an orphan we own.
-      throw err;
-    }
-    break;
+    if (acquireStep(dir, timeoutMs, Date.now() - startedAt) === "acquired") break;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5 + Math.floor(Math.random() * 10));
   }
   try {
     return fn();
