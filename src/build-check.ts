@@ -10,9 +10,8 @@ import {
   type BuildCheckScope,
 } from "./build-check-events.js";
 import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
-import { EXEC_MAX_BUFFER, execFileAsync } from "./process.js";
+import { EXEC_MAX_BUFFER, execFileAsync, signalTree } from "./process.js";
 import { truncate } from "./text.js";
-import { signalTree } from "./pi.js";
 
 /** The deterministic build pre-check the review gate runs before any model reviewer: detect
  * the project's declared check (an npm script — `test` preferred per npm convention, then

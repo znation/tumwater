@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import type { TumwaterConfig } from "./config-schema.js";
 import type { PiRunResult } from "./types.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { agentBinSourceLabel, type ResolvedAgentBin } from "./readiness.js";
+import { terminateChild } from "./process.js";
 import { PiStreamParser } from "./pi-stream.js";
 
 /** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in
@@ -88,47 +89,6 @@ export function hasResumableSession(sessionDir: string): boolean {
     return fs.readdirSync(sessionDir).some((f) => f.endsWith(".jsonl"));
   } catch {
     return false; // Missing directory — nothing to resume.
-  }
-}
-
-/** Terminate a pi child and everything it started: SIGTERM to the process group now,
- * escalating to SIGKILL after 10 s if any of it is still alive. pi is spawned detached (its
- * own process group leader), so a negative PID reaches every tool-call grandchild — which a
- * single-PID kill leaves orphaned to launchd — while the harness's own group is never in the
- * blast radius. Shared by the tick-timeout, quiet-watchdog, and harness-shutdown kills, and by
- * the sweep every run gets once pi exits (runPi's 'exit' handler), when the group holds only
- * what pi's tool calls backgrounded.
- *
- * The escalation is armed only when the SIGTERM reached a live process: a group that died with
- * its leader — every clean run — gets no second signal, so nothing is sent 10 s later to a pgid
- * no process holds any more (the one state in which a recycled pid could make it another
- * group; the kernel never reissues the number while a member lives). The timer is unref'd and
- * never awaited: the run resolves as soon as pi's output is in, and only a SIGTERM-trapping
- * straggler waits on the escalation — holding every run up to 10 s for it would slow the fleet
- * to cover what the SIGTERM already covers, and a finished harness process is not kept alive
- * by it. */
-function terminateChild(child: ChildProcess): void {
-  if (signalTree(child, "SIGTERM")) setTimeout(() => signalTree(child, "SIGKILL"), 10_000).unref();
-}
-
-/** Signal the child's whole process group, falling back to the child alone when the group is
- * already gone or the platform has no negative-PID kill (Windows). Returns whether the signal
- * reached a live process: false when nothing was left to receive it — ESRCH from a group that
- * died with its leader, the normal case once pi has exited. Never throws: a process that died
- * between the caller's decision and this call is the normal case. Shared with the build
- * check's process-group timeout (runScriptGroup in build-check.ts) — the same "signal the
- * tree, not just the direct child" guarantee in one home. */
-export function signalTree(child: ChildProcess, signal: NodeJS.Signals): boolean {
-  if (child.pid == null) return false;
-  try {
-    process.kill(-child.pid, signal);
-    return true;
-  } catch {
-    try {
-      return child.kill(signal);
-    } catch {
-      return false; // Already gone.
-    }
   }
 }
 
