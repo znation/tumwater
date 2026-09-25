@@ -10,7 +10,7 @@ import { clipReason } from "./build-check.js";
 
 /** A parsed reviewer verdict with its reasons (numbered lines after the VERDICT line; any
  * other non-empty prose as a fallback). */
-export interface ReviewVerdict {
+interface ReviewVerdict {
   verdict: "approve" | "reject";
   reasons: string[];
 }
