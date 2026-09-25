@@ -18,7 +18,7 @@
  * 6 s apart at 19:06, bugfix + perf 18 s apart on 09-22 05:50) had two roles in the window as
  * often as three, while the six isolated 429s logged since the retry landed sit 4–20 minutes
  * apart and trip nothing. A false trip costs one base hold; a missed storm costs the day. */
-export const RATE_LIMIT_STORM_ROLES = 2;
+const RATE_LIMIT_STORM_ROLES = 2;
 
 /** How recent a 429 must be to count toward a storm. Two minutes: wide enough that roles whose
  * requests are staggered by a turn's generation time still read as one storm (the observed
