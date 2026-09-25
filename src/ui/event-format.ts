@@ -1,4 +1,4 @@
-import { budgetPhrase, compactTokens, rateLimitHoldPhrase, shortSha, usd } from "../text.js";
+import { budgetPhrase, compactTokens, rateLimitHoldPhrase, shortSha, shortSpanPhrase, usd } from "../text.js";
 import type { HarnessEvent } from "../types.js";
 
 /** The ` · <N> tok` / ` · $<spent>` usage fragment every event that records a run's cost
@@ -23,7 +23,7 @@ function usagePhrase(e: HarnessEvent): string {
 function elapsed(ms: unknown): string {
   const n = Number(ms);
   if (!Number.isFinite(n) || n < 0 || ms === null) return "";
-  return n < 120_000 ? ` (in ${Math.round(n / 1000)}s)` : ` (in ${Math.round(n / 60_000)}m)`;
+  return ` (in ${shortSpanPhrase(n)})`;
 }
 
 /** Human one-liner for an event, shared by `logs`, `run` output, the TUI activity pane, and the

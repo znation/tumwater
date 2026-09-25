@@ -152,15 +152,22 @@ export function budgetPhrase(spentUsd: unknown, capUsd: unknown): string {
   return `${usd(Number(spentUsd ?? 0))} of ${usd(Number(capUsd ?? 0))}`;
 }
 
+/** A short duration as `Ns` under two minutes, else whole `Nm` — the one home of that cutoff
+ * and rounding, shared by rateLimitHoldPhrase ("for 60s") and the event feed's countdowns
+ * ("(in 90s)"), so the threshold or the units cannot drift between the two renderings. */
+export function shortSpanPhrase(ms: number): string {
+  return ms < 120_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
+}
+
 /** The `for <duration>[ (relapse N)]` fragment the rate_limit_hold event renders — the one
  * home of that phrasing, shared by the event feed (event-format.ts) and the failure digest's
- * Fleet state changes lines (failure-data.ts), like budgetPhrase. Seconds under two minutes
- * (the one-minute base hold reads `60s`), whole minutes above; the relapse count is named only
- * when the storm resumed right after an earlier hold, the one fact that says the hold doubled.
- * Both fields arrive loosely typed on HarnessEvent, so each is coerced here. */
+ * Fleet state changes lines (failure-data.ts), like budgetPhrase. The duration is shortSpanPhrase
+ * (seconds under two minutes, so the one-minute base hold reads `60s`); the relapse count is
+ * named only when the storm resumed right after an earlier hold, the one fact that says the
+ * hold doubled. Both fields arrive loosely typed on HarnessEvent, so each is coerced here. */
 export function rateLimitHoldPhrase(holdMs: unknown, escalation: unknown): string {
   const ms = Math.max(0, Number(holdMs ?? 0)) || 0;
-  const span = ms < 120_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
+  const span = shortSpanPhrase(ms);
   const relapse = Number(escalation ?? 0);
   return `for ${span}${relapse > 0 ? ` (relapse ${relapse})` : ""}`;
 }
