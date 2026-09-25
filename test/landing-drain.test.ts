@@ -940,3 +940,58 @@ for (const headVerdict of ["reject", "approve"] as const) {
     }
   });
 }
+
+// ── A plumbing throw in the merge slot ────────────────────────────────────────────────────
+// landVetted's first assembly attempt propagates an unexpected throw (nothing has landed), and
+// startMerge's catch is what keeps the fleet alive: every entry stays queued, un-vetted, the
+// head author's state records the error, and the next poll re-vets from the surviving pins.
+
+test("a plumbing throw in the merge keeps every entry queued and un-vetted, records the error, and recovers on the next poll", async () => {
+  const root = makeRepo();
+  await queueChanges(root, ["alpha", "beta"]);
+  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const config = { ...defaultConfig(), check: { command: "true" } };
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
+  pipeline.merge = busySlot();
+  // The sabotage target, repaired in the finally even when an assert throws first.
+  const worktreesHome = path.join(root, ".git", "worktrees");
+  try {
+    await pumpUntil(ctx, pipeline, () => pipeline.vetted.size === 2, "both changes to be vetted");
+
+    // Break the merge's plumbing: the registered-worktrees home becomes a plain file, so the
+    // stack's worktree setup (its vet already ran from this very path) fails hard in git —
+    // not a verdict, a throw, out of landVetted's first attempt.
+    fs.rmSync(worktreesHome, { recursive: true, force: true });
+    fs.writeFileSync(worktreesHome, "not a directory");
+
+    pipeline.merge = null; // the busy slot frees
+    await drainLandings(ctx, pipeline);
+    const merge = pipeline.merge as InFlightLanding | null;
+    assert.ok(merge, "the merge started");
+    await merge.promise; // resolves, never rejects — the drain caught the throw
+
+    assert.equal(pipeline.merge, null, "the merge slot freed for the next attempt");
+    assert.equal(queueDepth(root), 2, "every entry stays queued");
+    assert.equal(pipeline.vetted.size, 0, "nothing stays vetted: each change is vetted afresh from its pin");
+    assert.ok(loadLoopState(root, "alpha").lastError, "the head author's persisted state names the failure");
+    assert.equal(readLandingMarker(root), null, "the merge's marker records were removed with its task");
+    assert.equal(eventsOfType(root, "merged").length, 0, "nothing was reported landed");
+    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+
+    // Repair the plumbing and let the next poll re-vet from the surviving pins: the queue
+    // still drains, which is the recovery the catch exists to preserve. Git may have
+    // recreated the directory during the failed attempt, so remove whatever stands there.
+    fs.rmSync(worktreesHome, { recursive: true, force: true });
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain after the repair");
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes landed after the retry");
+    for (const role of ["alpha", "beta"]) {
+      assert.ok(sh(root, "git", "show", `main:${role}.txt`).includes(`work by ${role}`), `${role}'s work is on main`);
+      assert.equal(await refSha(root, landingRefName(role)), null, `${role}'s ref was deleted once landed`);
+    }
+  } finally {
+    fs.rmSync(worktreesHome, { recursive: true, force: true });
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
