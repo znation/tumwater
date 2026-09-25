@@ -302,3 +302,84 @@ test("a queued landing's record walks build-check → reviewing → merging whil
     restore();
   }
 });
+
+// The marker is cross-process display state: observers poll it every second while a pipeline
+// that can crash, redeploy, or fail its writes advances it. Reads see it missing, torn, or in
+// an older generation's shape, and its writes can fail under them — these pin the no-op and
+// degrade paths the module promises ("never throws").
+test("setLandingChangeStatus and removeLandingChange no-op when the marker is absent or shapeless", () => {
+  const root = makeRepo();
+  // No marker file: neither call may invent one.
+  setLandingChangeStatus(root, "improve", "vetted");
+  removeLandingChange(root, "improve");
+  assert.equal(readLandingMarker(root), null, "no marker was invented");
+  // A marker an older generation wrote carries no per-change records: there is no record to
+  // advance, and the file is left exactly as it was.
+  const legacy = { role: "improve", sha: "b", summary: "s", startedAt: 2, stage: "merging" } as const;
+  writeLandingMarker(root, legacy);
+  setLandingChangeStatus(root, "improve", "vetted");
+  assert.deepEqual(readLandingMarker(root), legacy, "a shapeless marker is untouched");
+});
+
+test("a kept legacy record without startedAt or stage never leaves the top level undefined", () => {
+  const root = makeRepo();
+  addLandingChange(root, { role: "beta", sha: "b".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  // Overwrite with a marker an older generation wrote: a landing record with no startedAt and
+  // no stage of its own (the documented old shape).
+  fs.writeFileSync(
+    landingStatePath(root),
+    JSON.stringify({
+      role: "beta",
+      sha: "b".repeat(40),
+      summary: "s",
+      startedAt: 7,
+      changes: [{ role: "beta", sha: "b".repeat(40), summary: "s", status: "landing" }],
+    }),
+  );
+  // The next change's vet starts while beta still holds a record: the legacy record is kept
+  // (its role is live) and becomes the headline — its missing fields must not write `undefined`
+  // over the top level the observers read.
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 2, summary: "s2", enqueuedAt: 1 }, new Set(["beta"]));
+  const marker = readLandingMarker(root)!;
+  assert.equal(marker.stage, "merging", "a stageless headline reads at the default stage");
+  assert.equal(typeof marker.startedAt, "number", "a startless headline did not erase the marker's start");
+  assert.deepEqual(marker.changes!.map((c) => c.role), ["beta", "alpha"], "the legacy record is kept");
+});
+
+test("a marker whose top level lost its stage falls back to merging on the next rewrite", () => {
+  const root = makeRepo();
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  // A marker an older generation wrote: per-change records, but no top-level stage (the bare
+  // elapsed label). The next status move rewrites it — the write must name a stage, not
+  // propagate the missing one.
+  fs.writeFileSync(
+    landingStatePath(root),
+    JSON.stringify({
+      role: "alpha",
+      sha: "a".repeat(40),
+      summary: "s",
+      startedAt: 5,
+      changes: [{ role: "alpha", sha: "a".repeat(40), summary: "s", status: "vetted" }],
+    }),
+  );
+  setLandingChangeStatus(root, "alpha", "done");
+  const marker = readLandingMarker(root)!;
+  assert.equal(marker.stage, "merging", "the rewritten marker names a stage again");
+  assert.equal(marker.changes![0]!.status, "done");
+});
+
+test("a failing marker write never throws — the landing proceeds and the old frame stays", () => {
+  const root = makeRepo();
+  addLandingChange(root, { role: "improve", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  const before = readLandingMarker(root)!;
+  // The state directory gone read-only: the atomic write cannot create its tmp file. The
+  // marker is display-only, so the call must swallow the failure rather than fail a landing.
+  const dir = path.dirname(landingStatePath(root));
+  fs.chmodSync(dir, 0o555);
+  try {
+    assert.doesNotThrow(() => setLandingStage(root, "improve", "reviewing"));
+  } finally {
+    fs.chmodSync(dir, 0o755);
+  }
+  assert.deepEqual(readLandingMarker(root), before, "the observers keep the previous frame");
+});
