@@ -25,7 +25,7 @@ import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { makeRepo, sh, tmpdir, writeConfig } from "./util.js";
 
 // Unit coverage for the pre-flight environment check (src/doctor.ts): every check's ok/fail/warn
 // branches plus report composition and rendering. The binary checks take an explicit PATH so the
@@ -41,10 +41,6 @@ function fakeBins(...names: string[]): string {
     fs.chmodSync(path.join(dir, name), 0o755);
   }
   return dir;
-}
-
-function writeConfig(root: string, json: unknown): void {
-  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify(json));
 }
 
 /** A ready repo: one commit on main plus a valid tumwater.json (the empty object — all

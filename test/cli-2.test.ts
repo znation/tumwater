@@ -22,6 +22,7 @@ import {
   sh,
   spawnCli,
   tmpdir,
+  writeConfig,
   writeScript,
 } from "./util.js";
 
@@ -452,7 +453,7 @@ test("a generation that dies unasked leaves a supervisor_exit event: the fleet i
   await initProject(repo, "cli run fleet down");
   const cfg = defaultConfig();
   for (const role of Object.values(cfg.roles)) role.enabled = false;
-  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+  writeConfig(repo, cfg);
   const restore = fakePi("exit 0");
   try {
     const r = await cli(repo, "run");
@@ -476,7 +477,7 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
   // no_change so nothing is committed while we observe the harness itself.
   const cfg = defaultConfig();
   for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
-  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+  writeConfig(repo, cfg);
 
   const restore = fakePi("exit 0");
   const s = spawnCli(repo, ["run"]);
@@ -529,7 +530,7 @@ test("run starts and ticks with agentBin when pi is absent from PATH", async () 
   const stub = path.join(binDir, "agent-stub");
   writeScript(stub, "exit 0");
   cfg.agentBin = stub;
-  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+  writeConfig(repo, cfg);
 
   const oldPath = process.env.PATH;
   process.env.PATH = binDir; // spawnCli copies process.env, so the child sees this PATH
@@ -560,7 +561,7 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
   // One enabled role keeps the startup burst small; a no-op pi ends every tick as no_change.
   const cfg = defaultConfig();
   for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
-  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+  writeConfig(repo, cfg);
 
   const restore = fakePi("exit 0");
   const s = spawnCli(repo, ["run"]);

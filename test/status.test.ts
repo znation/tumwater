@@ -15,7 +15,7 @@ import { recordDailyCost } from "../src/budget.js";
 import { initProject } from "../src/init.js";
 import { landingStatePath, landQueueDir, orchestratorStatePath } from "../src/paths.js";
 import { writeJsonFile } from "../src/json-files.js";
-import { makeRepo, tmpdir } from "./util.js";
+import { makeRepo, tmpdir, writeConfig } from "./util.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();
@@ -58,7 +58,7 @@ test("snapshot survives a broken tumwater.json and recovers when it is fixed", a
   assert.ok(!snap.loops.some((l) => l.role === "dry"));
 
   // A validation error (valid JSON, invalid value) is equally survivable.
-  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify({ maxConcurrent: "six" }));
+  writeConfig(repo, { maxConcurrent: "six" });
   assert.ok(snapshot(repo).loops.length > 0);
 
   // Repair with a different valid config: the fresh load takes effect again.

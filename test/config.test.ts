@@ -26,7 +26,7 @@ import { exampleConfigPath } from "../src/paths.js";
 import { show, validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
-import { tmpdir } from "./util.js";
+import { tmpdir, writeConfig } from "./util.js";
 
 test("defaultConfig enables every role including director", () => {
   const config = defaultConfig();
@@ -127,7 +127,7 @@ test("defaultConfig carries the daily cost budget cap and validation guards it",
 
   // loadConfig over an existing file lacking the key picks up the default without editing.
   const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  writeConfig(dir, { model: "sonnet" });
   const loaded = loadConfig(dir);
   assert.equal(loaded.model, "sonnet");
   assert.equal(loaded.maxDailyCostUsd, 50);
@@ -527,7 +527,7 @@ test("validateConfig guards the review section like its sibling sections", () =>
   // The live-reload path (the orchestrator's config poll) surfaces the same message without
   // stopping the fleet.
   const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ review: "on" }));
+  writeConfig(dir, { review: "on" });
   assert.match(loadConfigSafe(dir).error ?? "", /review must be an object/);
 });
 
@@ -554,7 +554,7 @@ test("validateConfig rejects unknown role ids (a typo would spawn a phantom erro
 
   // loadConfig and the live-reload path surface the same actionable message.
   const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ roles: { featuer: {} } }));
+  writeConfig(dir, { roles: { featuer: {} } });
   assert.throws(() => loadConfig(dir), /roles\.featuer is not a known role/);
   assert.match(loadConfigSafe(dir).error ?? "", /roles\.featuer is not a known role/);
 });
@@ -564,7 +564,7 @@ test("loadConfig rejects malformed JSON and invalid values with actionable messa
   fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
   assert.throws(() => loadConfig(dir), /tumwater\.json is not valid JSON/);
 
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ maxConcurrent: 0 }));
+  writeConfig(dir, { maxConcurrent: 0 });
   assert.throws(() => loadConfig(dir), /maxConcurrent must be an integer of at least 1 \(got 0\)/);
 });
 
@@ -573,7 +573,7 @@ test("loadConfigSafe returns the config when valid and the error message otherwi
   // No file: defaults, no error.
   assert.deepEqual(loadConfigSafe(dir), { config: defaultConfig() });
 
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  writeConfig(dir, { model: "sonnet" });
   const ok = loadConfigSafe(dir);
   assert.equal(ok.error, undefined);
   assert.equal(ok.config?.model, "sonnet");
@@ -584,7 +584,7 @@ test("loadConfigSafe returns the config when valid and the error message otherwi
   assert.equal(broken.config, undefined);
   assert.match(broken.error ?? "", /not valid JSON/);
 
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ maxConcurrent: 0 }));
+  writeConfig(dir, { maxConcurrent: 0 });
   assert.match(loadConfigSafe(dir).error ?? "", /maxConcurrent must be an integer of at least 1/);
 });
 
@@ -600,7 +600,7 @@ test("saveConfig refuses to persist invalid configs", () => {
 
 test("an unchanged tumwater.json is served from the stat-keyed cache without re-reading", () => {
   const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  writeConfig(dir, { model: "sonnet" });
   assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // populates the cache
   let reads = 0;
   const originalReadFileSync = fs.readFileSync.bind(fs);
@@ -625,7 +625,7 @@ test("an unchanged tumwater.json is served from the stat-keyed cache without re-
 
 test("a same-size tumwater.json edit is picked up via mtime, not just size", () => {
   const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  writeConfig(dir, { model: "sonnet" });
   assert.equal(loadConfigCached(dir).config?.model, "sonnet");
   // Replace the model value with different text of the EXACT same length: size alone cannot
   // detect the change, so mtime must be part of the cache key. utimes forces a distinct mtime
@@ -640,7 +640,7 @@ test("a same-size tumwater.json edit is picked up via mtime, not just size", () 
 
 test("a broken tumwater.json is not cached: every poll retries and a repair recovers", () => {
   const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  writeConfig(dir, { model: "sonnet" });
   assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // healthy baseline is cached
   fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
   let reads = 0;
@@ -660,7 +660,7 @@ test("a broken tumwater.json is not cached: every poll retries and a repair reco
   } finally {
     (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
   }
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "haiku" }));
+  writeConfig(dir, { model: "haiku" });
   assert.equal(loadConfigCached(dir).config?.model, "haiku"); // repaired — fresh load
 });
 
@@ -670,7 +670,7 @@ test("a vanished tumwater.json is reported missing, never as defaults, and its r
   // error — so the orchestrator can keep its last-known-good exactly as for a broken file.
   const dir = tmpdir();
   assert.deepEqual(loadConfigCached(dir), { missing: true }, "never present: missing too");
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet", maxConcurrent: 3 }));
+  writeConfig(dir, { model: "sonnet", maxConcurrent: 3 });
   assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // healthy baseline is cached
   fs.rmSync(path.join(dir, "tumwater.json"));
   assert.deepEqual(loadConfigCached(dir), { missing: true });
@@ -678,7 +678,7 @@ test("a vanished tumwater.json is reported missing, never as defaults, and its r
   // loadConfig keeps its first-run contract: an absent file is the bare defaults.
   assert.deepEqual(loadConfig(dir), defaultConfig());
   // The file returning is a fresh load (the stale cache entry was dropped with the vanish).
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet", maxConcurrent: 3 }));
+  writeConfig(dir, { model: "sonnet", maxConcurrent: 3 });
   assert.equal(loadConfigCached(dir).config?.maxConcurrent, 3);
 });
 
@@ -757,7 +757,7 @@ test("loadConfig merges customLoops into roles after the built-ins in array orde
 
 test("loadConfig defaults customLoops to [] when the key is absent", () => {
   const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify({ model: "sonnet" }));
+  writeConfig(dir, { model: "sonnet" });
   assert.deepEqual(loadConfig(dir).customLoops, []);
   // Built-in behavior byte-identical when customLoops is absent.
   const ids = Object.keys(loadConfig(dir).roles);
@@ -1126,7 +1126,7 @@ test("exampleDrift names template keys the local config lacks, and nothing else"
   // No local file yet: nothing to compare, so no drift.
   assert.deepEqual(exampleDrift(root), []);
 
-  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ landBatchMax: 3 }));
+  writeConfig(root, { landBatchMax: 3 });
   // Whole-key comparison: a key present in both files is the local file's business even when
   // the values differ; only keys the template sets and the file lacks are drift.
   assert.deepEqual(exampleDrift(root), ["minTickIntervalSeconds"]);

@@ -121,6 +121,13 @@ export async function initializedRepo(): Promise<string> {
  * integration): `root` has package.json + a fake toolchain in node_modules/.bin; `wt` sits
  * INSIDE it at the real worktree location (`.tumwater/worktrees/improve`) with its own tracked
  * package.json and no install — so root is an ancestor, as detectBuildCheck requires. */
+/** Seed a fixture's tumwater.json with the given (partial) config: the project config file's
+ * name and write convention live here, so a test states only the keys under test. Fixtures
+ * that deliberately write torn or invalid JSON keep their own raw writeFileSync. */
+export function writeConfig(dir: string, value: unknown): void {
+  fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify(value));
+}
+
 export function buildCheckFixture(): { root: string; wt: string } {
   const base = tmpdir("buildcheck-");
   const root = path.join(base, "project");

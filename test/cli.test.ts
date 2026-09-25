@@ -9,7 +9,7 @@ import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
 import { inboxDir } from "../src/paths.js";
-import { cli, cliWithEnv, fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import { cli, cliWithEnv, fakePi, makeRepo, sh, tmpdir, writeConfig } from "./util.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
 // tested as a child process — the spawn helpers (CLI, cli, cliWithEnv, spawnCli,
@@ -62,7 +62,7 @@ test("status refuses repos that are not ready", async () => {
   // tumwater.json present but no commits yet.
   const uncommitted = tmpdir();
   sh(uncommitted, "git", "init", "-b", "main");
-  fs.writeFileSync(path.join(uncommitted, "tumwater.json"), JSON.stringify(defaultConfig()));
+  writeConfig(uncommitted, defaultConfig());
   r = await cli(uncommitted, "status");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /no commits yet/);
@@ -467,7 +467,7 @@ test("run fails fast naming the resolved agentBin and its source when it is not 
   // A configured agentBin fails with the same shape, naming tumwater.json's key.
   const cfg = defaultConfig();
   cfg.agentBin = "/also/missing/pi";
-  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+  writeConfig(repo, cfg);
   const r2 = await cliWithEnv(repo, { PATH: binDir }, ["run"]);
   assert.equal(r2.code, 1);
   assert.match(r2.stderr, /\/also\/missing\/pi/);

@@ -14,7 +14,7 @@ import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/state.js";
 import { abortRequestPath, orchestratorStatePath, pausedPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
-import { cli, makeRepo, seedCounters } from "./util.js";
+import { cli, makeRepo, seedCounters, writeConfig } from "./util.js";
 
 // --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---
 // The CLI cannot reach into the orchestrator process, so the request rides on disk: a
@@ -279,7 +279,7 @@ test("logs, reset-counters, and abort accept user-defined loop names from tumwat
   await initProject(repo, "custom role cli test");
   const cfg = loadConfig(repo);
   cfg.customLoops.push({ name: "docs-sync", task: "keep the README examples current" });
-  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+  writeConfig(repo, cfg);
 
   // logs --role <custom>: valid id, no transcript yet.
   let r = await cli(repo, "logs", "--role", "docs-sync");
@@ -549,7 +549,7 @@ test("config prints the effective merged config as JSON, deep-equal to loadConfi
   const cfg = loadConfig(repo);
   cfg.minTickIntervalSeconds = 25;
   cfg.customLoops.push({ name: "docs-sync", task: "keep the README examples current" });
-  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(cfg));
+  writeConfig(repo, cfg);
 
   const r = await cli(repo, "config");
   assert.equal(r.code, 0);
@@ -567,7 +567,7 @@ test("config fails with validateConfig's message and prints no JSON for an inval
   const repo = makeRepo();
   await initProject(repo, "cli config invalid");
 
-  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify({ minTickIntervalSeconds: -1 }));
+  writeConfig(repo, { minTickIntervalSeconds: -1 });
   const r = await cli(repo, "config");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /invalid tumwater.json/);

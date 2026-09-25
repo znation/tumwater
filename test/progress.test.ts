@@ -10,7 +10,7 @@ import {
   toolCallStallMs,
 } from "../src/ui/progress.js";
 import { landWorktreePath, piLogPath, worktreePath } from "../src/paths.js";
-import { assistantLine, tmpdir } from "./util.js";
+import { assistantLine, tmpdir, writeConfig } from "./util.js";
 
 function toolStart(toolName: string, args: unknown): string {
   return JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName, args });
@@ -495,7 +495,7 @@ test("stalledToolLabel names the first call silent past the threshold", () => {
 test("toolCallStallMs resolves the configured threshold, defaulting to five minutes", () => {
   assert.equal(toolCallStallMs(tmpdir()), 300_000, "no tumwater.json — the documented default");
   const root = tmpdir();
-  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ toolCallStallSeconds: 5 }));
+  writeConfig(root, { toolCallStallSeconds: 5 });
   assert.equal(toolCallStallMs(root), 5_000);
 });
 
