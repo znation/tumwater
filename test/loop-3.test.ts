@@ -1,3 +1,44 @@
+// The pin write can fail too: a stale lock file (a crash between lock and rename) blocks
+// update-ref, so adoption cannot pin the tip. Recovery must fail the tick naming the commit,
+// leave the work on the branch for the next tick, and run no model — a bookkeeping failure is
+// no evidence about the backend.
+test("a leftover whose pin cannot be written ends the tick in error and stays on the branch", async () => {
+  const repo = await initializedRepo();
+  // Same crash shape as above: a commit on the role branch, no landing ref written.
+  const wt = await ensureWorktree(repo, "improve", "main");
+  fs.writeFileSync(path.join(wt, "unpinned.txt"), "committed but unpinned\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "the pin write fails");
+  const sha = sh(wt, "git", "rev-parse", "HEAD").trim();
+
+  // Block the adoption: a leftover lock file makes update-ref fail without touching the ref.
+  const lockDir = path.join(repo, ".git", "refs", "tumwater", "landing");
+  fs.mkdirSync(lockDir, { recursive: true });
+  fs.writeFileSync(path.join(lockDir, "improve.lock"), "");
+
+  const ran = path.join(tmpdir(), "ran-pin");
+  const restore = fakePi(`touch "${ran}"`);
+  try {
+    const runner = makeLoopRunner(repo, "improve");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error", "a failed pin adoption fails the tick");
+    assert.match(
+      String(outcome.summary),
+      new RegExp(`failed to pin leftover ${sha.slice(0, 8)}`),
+      "the error names the commit it could not pin",
+    );
+    assert.equal(outcome.recoveredLeftover, true, "the error is recovery bookkeeping, not the model's");
+    assert.ok(!fs.existsSync(ran), "no pi run: the tick ended before any authoring run");
+    // The commit stays on the branch (invariant 1: nothing lost) and nothing was queued —
+    // the pin never took, so no landing entry can hold it.
+    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
+    assert.equal(await refSha(repo, landingRefName("improve")), null, "no pin was written");
+    assert.equal(queueDepth(repo), 0, "nothing was queued without a pin");
+  } finally {
+    restore();
+  }
+});
+
 /** Third slice of the loop e2e suite (after loop.test.ts and loop-2.test.ts) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
  * sequentially, while each test FILE gets its own process (and its own PATH, which fakePi's
@@ -11,7 +52,7 @@ import { MERGE_CONFLICT_LIMIT } from "../src/leftover.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
-import { setRef } from "../src/git.js";
+import { refSha, setRef } from "../src/git.js";
 import { freshLoopState, loadLoopState, saveLoopState, ERROR_STREAK_WARN } from "../src/state.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
