@@ -239,13 +239,12 @@ async function readJsonObject(
   return parsed;
 }
 
-/** Handle POST /api/prompt: queue a director prompt. An over-long prompt
- * (DIRECTOR_PROMPT_MAX_CHARS) is a user-input error, not a server fault: the shared length
- * rule answers 400 — an unexpected submit failure (EACCES) still reaches the server's outer
- * catch as the 500 its gui-server test pins. */
-export async function handlePrompt(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"text": "..."}');
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+/** Pull the prompt text out of a prompt endpoint's body — the shared validator for
+ * /api/prompt and /api/prompt-role, which must reject a non-string, blank, or over-long text
+ * with the same 400 wording: both dashboards' prompt bars sit behind the same length rule
+ * (inbox.ts's promptLengthProblem) and a retried request must get identical answers from
+ * either surface. Returns the validated text, or null once the 400 is sent. */
+function requirePromptText(res: http.ServerResponse, body: Record<string, unknown>): string | null {
   const text = body.text;
   if (typeof text !== "string") {
     sendJson(
@@ -253,17 +252,29 @@ export async function handlePrompt(req: http.IncomingMessage, res: http.ServerRe
       400,
       { error: `text must be a string${text === undefined ? "" : ` (got ${JSON.stringify(text)})`}` },
     );
-    return;
+    return null;
   }
   if (!text.trim()) {
     sendJson(res, 400, { error: "text required" });
-    return;
+    return null;
   }
   const tooLong = promptLengthProblem(text);
   if (tooLong) {
     sendJson(res, 400, { error: tooLong });
-    return;
+    return null;
   }
+  return text;
+}
+
+/** Handle POST /api/prompt: queue a director prompt. An over-long prompt
+ * (DIRECTOR_PROMPT_MAX_CHARS) is a user-input error, not a server fault: the shared length
+ * rule answers 400 — an unexpected submit failure (EACCES) still reaches the server's outer
+ * catch as the 500 its gui-server test pins. */
+export async function handlePrompt(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, '{"text": "..."}');
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const text = requirePromptText(res, body);
+  if (text === null) return;
   submitPrompt(root, text);
   sendJson(res, 200, { ok: true });
 }
@@ -279,24 +290,8 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const body = await readJsonObject(req, res, '{"role": "feature", "text": "..."}');
   if (!body) return; // 4xx already sent — oversized or not a JSON object
   if (rejectBadRole(root, res, body.role)) return;
-  const text = body.text;
-  if (typeof text !== "string") {
-    sendJson(
-      res,
-      400,
-      { error: `text must be a string${text === undefined ? "" : ` (got ${JSON.stringify(text)})`}` },
-    );
-    return;
-  }
-  if (!text.trim()) {
-    sendJson(res, 400, { error: "text required" });
-    return;
-  }
-  const tooLong = promptLengthProblem(text);
-  if (tooLong) {
-    sendJson(res, 400, { error: tooLong });
-    return;
-  }
+  const text = requirePromptText(res, body);
+  if (text === null) return;
   const role = body.role as string;
   submitRolePrompt(root, role, text);
   sendJson(res, 200, { ok: true, message: requestWake(root, [role]) });
