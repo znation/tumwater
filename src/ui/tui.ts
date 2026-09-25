@@ -12,6 +12,13 @@ import { renderFailureMarkdown } from "../failure-report.js";
 import { formatEvent } from "./event-format.js";
 import { submitPrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config-write.js";
+import { pausedRoles, pauseRole, resumeRole } from "../fleet-state.js";
+import {
+  requestAbort,
+  requestWake,
+  rolePauseMessage,
+  roleResumeMessage,
+} from "../operator-commands.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { clipToWidth, errorMessage, usdCap } from "../text.js";
@@ -138,7 +145,10 @@ export async function runTui(root: string): Promise<void> {
     let emptyNote = "(no events yet)";
     const role = view > 0 && view <= roleIds.length ? roleIds[view - 1] : undefined; // defined: view is clamped above
     if (role) {
-      header = `${BOLD}${clipToWidth(`transcript: ${role} — Ctrl+T to cycle`, width)}${RESET}`;
+      header = `${BOLD}${clipToWidth(
+        `transcript: ${role} — Ctrl+P pause · Ctrl+A abort · Ctrl+W wake · Ctrl+T to cycle`,
+        width,
+      )}${RESET}`;
       body = readTranscript(root, role, eventBudget)
         .map((l) => clipToWidth(l, width))
         .slice(-eventBudget);
@@ -265,6 +275,45 @@ export async function runTui(root: string): Promise<void> {
           flash = "edit daily cost budget (USD): Enter to save, Esc to cancel";
           flashUntil = Date.now() + 3000;
         }
+        render();
+        return;
+      }
+      // Per-loop controls on the transcript pane (PLANS.md "TUI per-loop controls"): Ctrl+P
+      // toggles the viewed loop's pause, Ctrl+A aborts its in-flight tick, Ctrl+W wakes it.
+      // They call the same marker-writing cores the CLI's --role flags do, so the surfaces
+      // cannot drift on marker format, idempotence, or wording. Guarded to the transcript
+      // views and out of budget-edit mode; everywhere else the keys fall through (applyKey
+      // drops ctrl-key presses, so they stay inert and never edit the prompt line). Every
+      // branch is a disk write that can fail (a lock timeout, a torn fs), and an unguarded
+      // throw would escape this keypress handler and kill the TUI — flash the reason
+      // instead, the same contract the prompt-submit path below honors.
+      if (
+        !budgetMode &&
+        roleIds.length > 0 &&
+        view >= 1 && view <= roleIds.length &&
+        key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w")
+      ) {
+        const role = roleIds[view - 1]!; // defined: view is clamped inside the transcript range
+        try {
+          if (key.name === "p") {
+            // Toggle by the marker's current state, read fresh: pauseRole/resumeRole's false
+            // return means another window raced us to the same state, and the wording
+            // helpers render that honestly — the changed-state contract the CLI prints.
+            const paused = pausedRoles(root).includes(role);
+            const changed = paused ? resumeRole(root, role) : pauseRole(root, role);
+            flash = paused
+              ? roleResumeMessage(root, role, changed)
+              : rolePauseMessage(root, role, changed);
+          } else if (key.name === "a") {
+            const result = requestAbort(root, role);
+            flash = result.ok ? result.message : `error: ${result.error}`;
+          } else {
+            flash = requestWake(root, [role]);
+          }
+        } catch (err) {
+          flash = `error: ${errorMessage(err)}`;
+        }
+        flashUntil = Date.now() + 3000;
         render();
         return;
       }

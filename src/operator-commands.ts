@@ -158,6 +158,31 @@ export function requestAbort(root: string, role: string): { ok: true; message: s
   return { ok: true, message: confirmation };
 }
 
+/** The per-role pause confirmation `tumwater pause --role` prints and the TUI's Ctrl+P
+ * flashes — one literal so the two surfaces cannot drift (the same single-writer discipline
+ * requestWake's wording already follows). `changed` is pauseRole's return: false reports the
+ * idempotent no-op in the CLI's own words instead of a fresh confirmation. */
+export function rolePauseMessage(root: string, role: string, changed: boolean): string {
+  if (!changed) return `role ${role} is already paused`;
+  const { when, tail } = markerApplyNote(root);
+  return `role ${role} paused — it stops starting new ticks at its next eligibility check${when} (in-flight ticks finish; the rest of the fleet is unaffected)${tail}`;
+}
+
+/** The per-role resume confirmation, shared between `tumwater resume --role` and the TUI's
+ * Ctrl+P for the same no-drift reason. Carries the fleet-pause interplay note cmdResume
+ * phrases: the fleet pause is the stronger gate, so with its marker present a freshly
+ * resumed role still starts no ticks (the director is exempt from that gate, so its
+ * resumption is real) — saying nothing would promise ticking the scheduler then deny, the
+ * same honest-confirmation contract markerApplyNote's tail serves. */
+export function roleResumeMessage(root: string, role: string, changed: boolean): string {
+  if (!changed) return `role ${role} was not paused`;
+  const { when, tail } = markerApplyNote(root);
+  const fleetNote = isFleetPaused(root) && role !== DIRECTOR_ROLE
+    ? " (the fleet pause is still active — `tumwater resume` lifts it)"
+    : "";
+  return `role ${role} resumed — it starts ticking again at its next eligibility check${when}${fleetNote}${tail}`;
+}
+
 /** `tumwater pause [--role <id>]`: with a role, stop THAT loop from starting new ticks —
  * in-flight ones finish, every other role (the director included) keeps running; without one,
  * stop every role loop from starting NEW ticks while in-flight ones finish and the director
@@ -172,14 +197,10 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
   // format or idempotence; a false return means the role was already in the set.
   const role = namedRole(root, args);
   if (role) {
-    if (!pauseRole(root, role)) {
-      process.stdout.write(`role ${role} is already paused\n`);
-      return;
-    }
-    const { when, tail } = markerApplyNote(root);
-    process.stdout.write(
-      `role ${role} paused — it stops starting new ticks at its next eligibility check${when} (in-flight ticks finish; the rest of the fleet is unaffected)${tail}\n`,
-    );
+    // pauseRole in src/fleet-state.ts is the single writer of the role marker (the TUI's
+    // Ctrl+P calls it too), so CLI and TUI cannot drift on format or idempotence; a false
+    // return means the role was already in the set, which rolePauseMessage words.
+    process.stdout.write(rolePauseMessage(root, role, pauseRole(root, role)) + "\n");
     return;
   }
   // pauseFleet in src/fleet-state.ts is the single writer of the pause marker — the GUI's
@@ -239,23 +260,9 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
   const role = namedRole(root, args);
   if (role) {
     // resumeRole (src/fleet-state.ts) is the single remover of the per-role marker; a false
-    // return means the role was never paused — the changed-state contract pause's wording
-    // mirrors ("is already paused" vs "was not paused").
-    if (!resumeRole(root, role)) {
-      process.stdout.write(`role ${role} was not paused\n`);
-      return;
-    }
-    const { when, tail } = markerApplyNote(root);
-    // The fleet pause is the stronger gate: with its marker present, the freshly resumed role
-    // still starts no ticks (the director is exempt from that gate, so its resumption is
-    // real). Saying nothing would promise ticking the scheduler then denies — the same
-    // honest-confirmation contract markerApplyNote's tail serves.
-    const fleetNote = isFleetPaused(root) && role !== DIRECTOR_ROLE
-      ? " (the fleet pause is still active — `tumwater resume` lifts it)"
-      : "";
-    process.stdout.write(
-      `role ${role} resumed — it starts ticking again at its next eligibility check${when}${fleetNote}${tail}\n`,
-    );
+    // return means the role was never paused — the changed-state contract roleResumeMessage
+    // words ("is already paused" vs "was not paused").
+    process.stdout.write(roleResumeMessage(root, role, resumeRole(root, role)) + "\n");
     return;
   }
   // resumeFleet (src/fleet-state.ts) is the single remover, shared with the GUI toggle; a false
