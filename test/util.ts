@@ -245,6 +245,15 @@ export function fakePi(script: string): () => void {
   };
 }
 
+/** A fake pi whose only action is emitting one compliant TUMWATER_NOTHING_TO_DO assistant
+ * line — the standard fixture for a tick that finds nothing to do. The single home of the
+ * printf + assistantLine idiom the orchestrator and loop tests repeated verbatim, so the
+ * sentinel's spelling cannot drift per fixture. `opts` passes through to assistantLine when
+ * a test pins tokens or cost. */
+export function fakePiIdle(opts: { cost?: number } = {}): () => void {
+  return fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", opts)}'`);
+}
+
 /** Wrap fs.openSync so the first open of `file` unlinks it instead — simulating a log
  * rotation rename landing between a reader's stat and its open (the race tail readers must
  * survive as "no data", not an ENOENT throw). Returns an undo function. */

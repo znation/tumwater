@@ -24,6 +24,7 @@ import {
   assistantLine,
   fastConfig,
   fakePi,
+  fakePiIdle,
   landWork,
   makeRepo,
   recordingFakePi,
@@ -49,7 +50,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
   await initProject(repo, "multi role reset test");
   saveConfig(repo, fastConfig(["clean", "dry"]));
   seedCounters(repo, "clean", "dry");
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // What `tumwater reset-counters` without --role writes: a marker naming every role.
@@ -82,7 +83,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
   await initProject(repo, "corrupt reset marker test");
   saveConfig(repo, fastConfig(["clean", "dry"]));
   seedCounters(repo, "clean", "dry");
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Garbage where the marker should be: JSON.parse throws → requested stays null → every
@@ -121,7 +122,7 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
   seeded.nextRunAt = Date.now() + 2 * 3600 * 1000;
   seeded.lastTickEndedAt = Date.now() - 3600 * 1000;
   saveLoopState(repo, seeded);
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // The backed-off loop must stay asleep on its own (nextRunAt two hours out).
@@ -163,7 +164,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
     s.lastTickEndedAt = Date.now() - 3600 * 1000;
     saveLoopState(repo, s);
   }
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // What the CLI side of `tumwater wake` already did: both state files cleared. Then
@@ -252,7 +253,7 @@ test("a live config edit logs one config_changed naming the keys, and an identic
   const repo = makeRepo();
   await initProject(repo, "config change event test");
   saveConfig(repo, fastConfig(["clean"]));
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     const changeds = () => readEvents(repo).filter((e) => e.type === "config_changed");
@@ -361,7 +362,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
   const repo = makeRepo();
   await initProject(repo, "custom loop e2e test");
   saveConfig(repo, fastConfig(["clean"]));
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     const finished = (role: string) => {
@@ -459,7 +460,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
   const config = fastConfig(["clean", "director"]);
   config.maxDailyCostUsd = 0.5;
   saveConfig(repo, config);
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
+  const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // clean's startup tick lands the first spend; the transition is logged exactly once,
@@ -536,7 +537,7 @@ test("startup with spend already at the cap starts no role ticks", async () => {
   s.dayStamp = todayStamp();
   s.dayCostUsd = 1;
   saveLoopState(repo, s);
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
+  const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // The loop is schedule-eligible (fresh state, nextRunAt 0) — an ungated fleet would have
@@ -562,7 +563,7 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
   const config = fastConfig(["clean"]);
   config.maxDailyCostUsd = 0.5;
   saveConfig(repo, config);
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
+  const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
@@ -706,7 +707,7 @@ test("a fallback pi cannot price at zero is refused and the fleet pauses as befo
   // fallback that can spend would defeat the cap it exists to survive.
   config.fallbackModel = { provider: "local", model: "typo-free" };
   saveConfig(repo, config);
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`);
+  const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
   try {
     await waitFor(
@@ -833,7 +834,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
   const repo = makeRepo();
   await initProject(repo, "operator pause e2e test");
   saveConfig(repo, fastConfig(["clean", "director"]));
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Baseline: clean's startup tick lands while unpaused.
@@ -897,7 +898,7 @@ test("starting already paused keeps role ticks blocked until resume — no resta
   const repo = makeRepo();
   await initProject(repo, "operator pause at startup test");
   saveConfig(repo, fastConfig(["clean", "director"]));
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
 
   // The operator paused before starting the fleet (the marker is persistent state): startup
   // itself must not start any role tick.
@@ -999,7 +1000,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
   saveConfig(repo, fastConfig(["clean", "dry"]));
   // Pause clean before startup: the marker survives into the run.
   pauseRole(repo, "clean");
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // The unpaused role ticks normally while the paused one never starts.

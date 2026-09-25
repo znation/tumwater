@@ -29,6 +29,7 @@ import { resetRequestPath } from "../src/paths.js";
 import {
   assistantLine,
   fakePi,
+  fakePiIdle,
   FAST_POLL_MS,
   fastConfig,
   landWork,
@@ -155,7 +156,7 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
   for (const id of Object.keys(config.roles)) {
     if (!["clean", "dry"].includes(id)) config.roles[id]!.enabled = false;
   }
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const controller = new AbortController();
   try {
     const done = runOrchestrator({
@@ -242,7 +243,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
   const config = fastConfig(["clean", "director"]);
   config.idleBackoff = { initialSeconds: 60, factor: 1, maxSeconds: 60 };
   saveConfig(repo, config);
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Wait for clean's startup tick to finish (its state save records the current main
@@ -472,7 +473,7 @@ test("sessionRetentionDays 0 disables pruning: old sessions survive orchestrator
   config.sessionRetentionDays = 0;
   saveConfig(repo, config);
   const session = seedOldSession(repo, "clean", 30); // older than any positive retention
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Pruning (or its skip) runs synchronously at startup; wait for the orchestrator to be up
@@ -495,7 +496,7 @@ test("a positive sessionRetentionDays still prunes old sessions at startup", asy
   saveConfig(repo, config);
   const session = seedOldSession(repo, "clean", 30);
   const toolOutput = seedOldToolOutput(repo, 30);
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => !fs.existsSync(session), "the old session to be pruned");
@@ -517,7 +518,7 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
   base.sessionRetentionDays = 30;
   saveConfig(repo, base);
   const recent = seedOldSession(repo, "clean", 2); // older than the new window of 1, younger than 30
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
@@ -640,7 +641,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
   const repo = makeRepo();
   await initProject(repo, "reset counters e2e test");
   saveConfig(repo, fastConfig(["clean"]));
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Let a couple of ticks accumulate counters in the runner's memory. clean is deferrable
@@ -747,7 +748,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
   const repo = makeRepo();
   await initProject(repo, "branch divergence test");
   saveConfig(repo, fastConfig(["clean"]));
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Let one poll pass so the divergence watch is seeded against the startup branch.

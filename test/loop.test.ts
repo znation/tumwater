@@ -18,6 +18,7 @@ import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
 import {
   assistantLine,
   fakePi,
+  fakePiIdle,
   initializedRepo,
   landHead,
   makeRepo,
@@ -168,7 +169,7 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
 
 test("a nothing-to-do tick backs off without committing", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   try {
     const config = defaultConfig();
     const runner = new LoopRunner(repo, "clean", config, "main");
@@ -213,7 +214,7 @@ test("a qa no_change tick records the FLOW line it emitted", async () => {
 
 test("a qa tick with no FLOW line records nothing and still completes", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   try {
     const runner = new LoopRunner(repo, "qa", defaultConfig(), "main");
     assert.equal((await runner.tick()).result, "no_change");

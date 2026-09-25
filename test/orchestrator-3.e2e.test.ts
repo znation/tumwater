@@ -33,6 +33,7 @@ import {
   assistantLine,
   fastConfig,
   fakePi,
+  fakePiIdle,
   landHead,
   landWork,
   makeRepo,
@@ -505,7 +506,7 @@ test("a stale self-hosted build drains the fleet, swaps, and returns restart", a
   const repo = makeRepo();
   await initProject(repo, "self-redeploy test");
   saveConfig(repo, fastConfig(["clean"]));
-  const restore = fakePi(`printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const { redeployer, swaps } = scriptedRedeployer(repo);
   // A prompt for the director sits in the inbox: while a restart is pending nothing new starts
   // — director included — so it must still be queued when the process hands over.
@@ -543,7 +544,7 @@ test("the orchestrator publishes the build's staleness in orchestrator.json whil
   const cfg = loadConfig(repo);
   cfg.autoRestart = false; // observe only: no drain, no restart
   saveConfig(repo, cfg);
-  const restore = fakePi(`printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const { redeployer } = scriptedRedeployer(repo);
   const controller = new AbortController();
   const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal, pollMs: FAST_POLL_MS, redeploy: redeployer });
@@ -750,7 +751,7 @@ test("a failed compile leaves the fleet running the old build", async () => {
   const repo = makeRepo();
   await initProject(repo, "compile failure test");
   saveConfig(repo, fastConfig(["clean"]));
-  const restore = fakePi(`printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const restore = fakePiIdle();
   const { redeployer, swaps } = scriptedRedeployer(repo, { compileOk: false });
   const controller = new AbortController();
   const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal, pollMs: FAST_POLL_MS, redeploy: redeployer });
