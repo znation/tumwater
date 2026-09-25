@@ -33,7 +33,7 @@ function validationGapTag(body: string): string | null {
 
 /** The Fixed entries fixed on/after GAP_ENFORCED_SINCE whose bodies lack a well-formed trace —
  * a missing line and an invented tag are both failures. */
-export function entriesMissingValidationGap(md: string): BacklogEntry[] {
+function entriesMissingValidationGap(md: string): BacklogEntry[] {
   return parseEntryDetails(md, "Fixed").filter((entry) => {
     const date = fixedDate(entry.title);
     if (date === null || date < GAP_ENFORCED_SINCE) return false;
