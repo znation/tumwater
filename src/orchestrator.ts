@@ -542,9 +542,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // tick did nothing stays deferred while the feature/bugfix backlog is open or no new
         // work has landed to react to — nextRunAt is left untouched, so it re-checks every poll
         // until the backlog drains and qualifying work lands. Resume wakes precede this check in
-        // isEligible, the director's "inbox" reason skips it, and work roles are not in
-        // DEFERRABLE_ROLES. Sitting before reasons.set also keeps a deferred role out of the
-        // wake-event pass below.
+        // isEligible, the director's "inbox" reason skips it, work roles are not in
+        // DEFERRABLE_ROLES, and a fresh operator wake overrides it (deferTick's woken check —
+        // an explicit "try again now" is a demand, not idle maintenance). Sitting before
+        // reasons.set also keeps a deferred role out of the wake-event pass below.
         if (reason === "scheduled" || reason === "main moved") {
           const s = runner.state;
           // The git range is only consulted when the other conditions already hold — a

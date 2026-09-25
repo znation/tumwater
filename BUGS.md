@@ -5,15 +5,17 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A fresh operator wake does not exempt a due maintenance tick from need-based deferral: `tumwater wake --role clean` on an idle loop is silently deferred for up to DEFER_MAX_MS (found by bugfix loop 2026-09-25)
+## Fixed
+
+### A fresh operator wake does not exempt a due maintenance tick from need-based deferral: `tumwater wake --role clean` on an idle loop is silently deferred for up to DEFER_MAX_MS (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `tumwater wake --role clean` on a maintenance loop whose last tick found nothing: the wake clears backoff and pulls `nextRunAt` to now, `isEligible` returns due (reason `scheduled`, via the `wokenAt` min-gap exemption) — and then the orchestrator's need-based deferral block defers the tick anyway: `deferTick` sees `lastResult === "no_change"`, a `lastMainHead` set by the just-ended tick, and no work landed since it, so the tick waits until work lands or DEFER_MAX_MS (3 h) expires. The operator's explicit "try again now" is silently ignored, the same no-feedback failure the wake-vs-min-gap fix (2026-09-25) removed from the gap gate. Discovered while validating the mid-tick wake fix: the e2e's woken `clean` tick was due on every poll yet never ran.
 
-**Reproduce:** Unit-level: `deferTick` with `s.lastResult = "no_change"`, `s.lastMainHead = "abc"`, `s.nextRunAt = now - 1000`, a FRESH wake (`s.wokenAt = now - 500`, `s.lastTickEndedAt = now - 2000` — the exact state a consumed wake leaves) returns `true` — the demand defers like idle maintenance. E2E-shaped: a quiet repo (no landed work, empty backlog), a `clean` state seeded `no_change`, then `tumwater wake --role clean` — the loop stays asleep past the wake; no `tick_deferred` reason names the wake.
+**Cause:** `deferTick` predates the wake lever and keys only on need (backlog, landed work, `lastResult`); a fresh `wokenAt` is exactly the explicit-demand signal `isEligible` already uses for the min-gap exemption, but the deferral predicate never consults it.
 
-**Suspected cause:** `deferTick` predates the wake lever and keys only on need (backlog, landed work, `lastResult`); a fresh `wokenAt` is exactly the explicit-demand signal `isEligible` already uses for the min-gap exemption, but the deferral predicate never consults it. Suspected fix: `deferTick` returns false when `s.wokenAt` is newer than `s.lastTickEndedAt` — an operator wake is a demand, not idle maintenance, and should skip deferral the way the director's `inbox` reason already does.
+**Fix:** `deferTick` (src/scheduling.ts) returns false when `s.wokenAt` is newer than `s.lastTickEndedAt` — the same predicate isEligible's min-gap exemption keys on, so the two gates now agree on what an operator wake means. An operator wake is a demand, not idle maintenance: it runs even with the backlog open, the way the director's `inbox` reason already skips deferral. A wake older than the last tick's end was already consumed by the tick that ran after it, so that state keeps deferring as idle maintenance; `restoreMidTickWake`'s floored stamp keeps the demand armed across the end-save, so the post-tick wake tick runs too.
 
-## Fixed
+**Validation gap:** no-fake — closest fit: no shim was missing, but no existing test seeded the fresh-wake state (`wokenAt` newer than `lastTickEndedAt`) `deferTick` had never seen; the suite's wake tests stop at isEligible's min-gap exemption and its deferTick tests seed only idle states, so the interaction had no fixture until this run's regression test built it with the real `clearBackoff`.
 
 ### A plain `tumwater wake --role` consumed while the target's tick is in flight is still clobbered by that tick's end-save, so the "try again now" demand silently waits out the whole interval (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 

@@ -158,6 +158,10 @@ function deferralExpired(s: LoopState, now: number): boolean {
  * recorded review-rejection reasons, recover a merge failure) that must not stall until
  * unrelated work lands. A blocked backlog keeps maintenance deferred until the cap, then a
  * forced tick resets the episode; clearing or revising the entry lifts it on the next poll.
+ * A fresh operator wake overrides all of it: `wokenAt` newer than the gap window's opening
+ * tick (the same demand predicate isEligible's min-gap exemption keys on) is an explicit "try
+ * again now", not idle maintenance — the demand runs even with the backlog open, and a wake
+ * older than the last tick's end was already consumed by the tick that ran after it.
  */
 export function deferTick(
   s: LoopState,
@@ -167,6 +171,7 @@ export function deferTick(
   now: number,
 ): boolean {
   return (
+    !(s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0)) &&
     DEFERRABLE_ROLES.has(role) &&
     s.lastResult === "no_change" &&
     s.lastMainHead !== "" &&

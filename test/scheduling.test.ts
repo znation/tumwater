@@ -344,6 +344,28 @@ test("deferTick: a deferral that outlasts DEFER_MAX_MS stops deferring (the latc
   assert.equal(deferTick({ ...base, nextRunAt: 0 }, "organize", false, true, 1_000_000 + DEFER_MAX_MS), true);
 });
 
+test("deferTick: a fresh operator wake overrides the need-based deferral (an explicit demand runs)", () => {
+  const NOW = Date.now();
+  const base = freshLoopState("clean");
+  base.lastResult = "no_change";
+  base.lastMainHead = "abc123";
+  // A completed idle tick: the gap window opened 2 s ago.
+  base.lastTickEndedAt = NOW - 2000;
+  // The operator's wake, stamped 0.5 s ago by requestWake's clearBackoff — newer than the gap
+  // window's opening tick, the same predicate isEligible's min-gap exemption keys on. This is
+  // the exact state a consumed `tumwater wake --role clean` leaves (BUGS.md 2026-09-25):
+  // without the wake honored here, the explicit "try again now" defers for up to DEFER_MAX_MS.
+  const woken = clearBackoff(base, NOW - 500);
+  woken.nextRunAt = NOW - 1000; // due on the clock too (the wake pulled it to now)
+  assert.equal(deferTick(woken, "clean", false, false, NOW), false);
+  // An open backlog does not keep the demanded tick parked either.
+  assert.equal(deferTick(woken, "clean", false, true, NOW), false);
+  // A wake older than the last tick's end was already consumed by the tick that ran after it:
+  // that state is idle maintenance again, and still defers.
+  const stale = clearBackoff(base, NOW - 5000);
+  assert.equal(deferTick(stale, "clean", false, false, NOW), true);
+});
+
 test("once mode overrides the scheduled clock, not just the min gap", () => {
   const r = runner("clean");
   const now = Date.now();
