@@ -208,13 +208,17 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc test.
   // The page's own esc is injected so role names escape exactly like every other dynamic value;
-  // the page's own fmtTokens is extracted the same way (the esc test's single-line-const seam)
-  // and injected so the chart labels rule cannot drift from the stat blocks above them.
+  // the page's own fmtTokens and fmtUsd are extracted the same way (the esc test's
+  // single-line-const seam) and injected so the chart labels and money rule cannot drift from
+  // the stat blocks above them.
   const m = GUI_PAGE.match(/\/\/ report-chart:start\n([\s\S]*?)\n  \/\/ report-chart:end/);
   assert.ok(m, "report-chart region found in the page");
   const fm = GUI_PAGE.match(/const fmtTokens = \((\w+)\) => (.+);$/m);
   assert.ok(fm, "fmtTokens definition found in the page");
   const fmtTokens = new Function(fm[1]!, `return (${fm[2]});`) as (n: number) => string;
+  const fum = GUI_PAGE.match(/const fmtUsd = \((\w+)\) => (.+);$/m);
+  assert.ok(fum, "fmtUsd definition found in the page");
+  const fmtUsd = new Function(fum[1]!, `return (${fum[2]});`) as (n: number) => string;
   type ChartBuilders = {
     chartTokens(d: ReportData): string;
     chartTicksByRole(d: ReportData): string;
@@ -222,11 +226,12 @@ test("the report tab's SVG chart builders render bars, stacks, and thinned label
     chartCostByRole(d: ReportData): string;
   };
   const escImpl = (s: string) => String(s).replace(/[&<>]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c] as string));
-  const builders = new Function("esc", "fmtTokens", `${m[1]}\nreturn { chartTokens, chartTicksByRole, chartCommits, chartCostByRole };`) as unknown as (
+  const builders = new Function("esc", "fmtTokens", "fmtUsd", `${m[1]}\nreturn { chartTokens, chartTicksByRole, chartCommits, chartCostByRole };`) as unknown as (
     esc: (s: string) => string,
     fmtTokens: (n: number) => string,
+    fmtUsd: (n: number) => string,
   ) => ChartBuilders;
-  const { chartTokens, chartTicksByRole, chartCommits, chartCostByRole } = builders(escImpl, fmtTokens);
+  const { chartTokens, chartTicksByRole, chartCommits, chartCostByRole } = builders(escImpl, fmtTokens, fmtUsd);
 
   // Fixture: 14 days — tokens rising to a max on the last day, two roles with distinct window
   // totals (feature > bugfix), one zero day in the middle.

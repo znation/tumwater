@@ -57,6 +57,10 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
                            body: JSON.stringify(payload) });
   }
   const fmtTokens = (n) => (n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
+  // Money for the page: $ + two decimals — the client-side copy of src/text.ts's usd() rule
+  // (the page cannot import TS, per the fmtTokens precedent). One home shared by the status
+  // table's cost/today cells and the report tab's stat blocks and cost-chart tooltips.
+  const fmtUsd = (n) => "$" + n.toFixed(2);
   // last-tick-fmt:start
   // Last tick cell — mirrors the TUI's lastTickCell in status-render.ts: the absolute local
   // time of the last tick end alongside its relative age ("14:32:05 · 3m ago"). Zero-padded
@@ -342,7 +346,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
           "</td><td>" + fmtTokens(l.peakCtx) +
           // today: the loop's spend for the local day (0 while its stamp is stale), same
           // two-decimal rule as cost — formatted client-side from the payload, like cost.
-          "</td><td>$" + l.costUsd.toFixed(2) + "</td><td>$" + l.todayUsd.toFixed(2) + "</td><td>" + fmtLastTick(l.lastTickEndedAt) +
+          "</td><td>" + fmtUsd(l.costUsd) + "</td><td>" + fmtUsd(l.todayUsd) + "</td><td>" + fmtLastTick(l.lastTickEndedAt) +
           "</td><td class='wide'>" + esc(last) +
           // The row's operator controls: wake always (it is safe on an idle loop — it just
           // clears any backoff), abort only while a tick is actually in flight (the payload's

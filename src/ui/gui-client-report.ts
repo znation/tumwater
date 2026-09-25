@@ -78,7 +78,6 @@ export const GUI_CLIENT_REPORT_JS = `// report-chart:start
   // The ticks and cost charts are the same shape over different fields, so one builder takes
   // the field name and the tooltip formatter — the two charts share reportRoleOrder's order,
   // the palette, and the legend byte-for-byte.
-  const fmtUsd = (n) => "$" + n.toFixed(2); // the stat block's cost rule (gui report 2/3)
   function roleStackChart(data, field, fmt) {
     const roles = reportRoleOrder(data);
     const colorOf = (i) => REPORT_PALETTE[i % REPORT_PALETTE.length];
@@ -152,7 +151,7 @@ export const GUI_CLIENT_REPORT_JS = `// report-chart:start
   // report-tip:end
 
   // The six stat blocks above the charts, from data.totals — tokens through fmtTokens and
-  // cost as $ + toFixed(2), the same two rules the Markdown Totals line uses.
+  // cost through the shared fmtUsd (the page's one money rule, hoisted in gui-client.ts).
   function reportSummary(data) {
     const t = data.totals;
     const block = (label, value) => "<div class='stat'><span class='muted'>" + esc(label) + "</span><b>" + value + "</b></div>";
@@ -160,7 +159,7 @@ export const GUI_CLIENT_REPORT_JS = `// report-chart:start
       block("output tokens", fmtTokens(t.tokensOut)),
       block("ticks", String(t.ticks)),
       block("commits", String(t.commits)),
-      block("cost", "$" + t.costUsd.toFixed(2)),
+      block("cost", fmtUsd(t.costUsd)),
       block("features done", String(t.featuresDone)),
       block("bugs fixed", String(t.bugsFixed)),
     ].join("");

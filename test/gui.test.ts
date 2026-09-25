@@ -526,9 +526,10 @@ test("the dashboard page renders the today cell from the payload's todayUsd", as
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   // The header cell sits between cost and last tick (pinned by the regex above)...
   assert.match(GUI_PAGE, /<th>cost<\/th><th>today<\/th><th>last tick<\/th>/);
-  // ...and the cell renders client-side from todayUsd, beside its existing cost formatting.
-  assert.match(GUI_PAGE, /l\.costUsd\.toFixed\(2\)/);
-  assert.match(GUI_PAGE, /l\.todayUsd\.toFixed\(2\)/);
+  // ...and the cell renders client-side from todayUsd, beside its existing cost formatting
+  // (both through the page's shared fmtUsd money rule).
+  assert.match(GUI_PAGE, /fmtUsd\(l\.costUsd\)/);
+  assert.match(GUI_PAGE, /fmtUsd\(l\.todayUsd\)/);
 });
 
 // Project status: planned features and open bugs from PLANS.md/BUGS.md.
