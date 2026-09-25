@@ -9,7 +9,7 @@ import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, 
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
 import { DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";import { enqueueLanding } from "../src/land-queue.js";
-import { startLocalGui } from "./util.js";
+import { startLocalGui, writeMarker } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 // The GUI's operator controls, split out of gui.test.ts: the daily budget cap
@@ -84,8 +84,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
   // landing role's row phase reads `landing <elapsed> · <stage>` while every other row is
   // untouched.
   const infoFile = orchestratorStatePath(repo);
-  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
-  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }));
+  writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["clean"] });
   const startedAt = Date.now();
   fs.writeFileSync(
     landingStatePath(repo),
@@ -115,8 +114,7 @@ test("a disabled cap never pauses the fleet in the phase payload", async () => {
   await initProject(repo, "gui no-cap test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
   const infoFile = orchestratorStatePath(repo);
-  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
-  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }));
+  writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["clean"] });
   // …cap disabled with today's spend far above zero.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
@@ -248,8 +246,7 @@ test("a paused fleet's idle role loops read budget paused in the phase payload",
   await initProject(repo, "gui budget pause test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
   const infoFile = orchestratorStatePath(repo);
-  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
-  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }));
+  writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["clean"] });
   // …and spend at the cap so the fleet-wide pause flag is set.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 10;
@@ -549,8 +546,7 @@ test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 
     // Record this test process as the running orchestrator (it is alive): now the request
     // drops the marker and reports the CLI's confirmation text verbatim.
     const infoFile = orchestratorStatePath(repo);
-    fs.mkdirSync(path.dirname(infoFile), { recursive: true });
-    fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["feature"] }));
+    writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["feature"] });
     res = await fetch(base + "/api/abort", {
       method: "POST",
       body: JSON.stringify({ role: "feature" }),

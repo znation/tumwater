@@ -11,7 +11,7 @@ import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
-import { startLocalGui } from "./util.js";
+import { startLocalGui, writeMarker } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -940,8 +940,7 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
     checkedHead: "b".repeat(40), restartBlocked: "main cccccccc is red",
   };
   const infoFile = orchestratorStatePath(repo);
-  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
-  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"], build: stamp }));
+  writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["clean"], build: stamp });
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.buildBadge, buildBadge(stamp), "one home for the badge text");
   assert.match(payload.buildBadge, /build aaaaaaaa — STALE: main \+7 commit\(s\) since; restart BLOCKED: main cccccccc is red$/);
@@ -977,8 +976,7 @@ test("the status payload carries the operator pause flag; its phase outranks bud
   await initProject(repo, "gui fleet pause test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
   const infoFile = orchestratorStatePath(repo);
-  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
-  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }));
+  writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["clean"] });
 
   // No marker: not paused.
   let payload = statusPayload(repo) as {
@@ -998,8 +996,7 @@ test("the status payload carries the operator pause flag; its phase outranks bud
   s.dayCostUsd = 12.5; // >= cap → budget paused too
   saveLoopState(repo, s);
   const marker = pausedPath(repo);
-  fs.mkdirSync(path.dirname(marker), { recursive: true });
-  fs.writeFileSync(marker, JSON.stringify({ at: Date.now() }));
+  writeMarker(marker, { at: Date.now() });
 
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.paused, true, "the flag rides the payload top level");

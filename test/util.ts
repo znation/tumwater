@@ -41,6 +41,15 @@ export function dayKey(ms: number): string {
 
 /** Write events.jsonl under a fixture root's .tumwater/log/ (strings pass through verbatim —
  * for malformed lines; objects are JSON-encoded like logEvent writes them). */
+/** Stamp a marker/request file the way tests simulate CLI/operator side effects: create the
+ * parent directories, then write `value` as compact JSON directly to `file` with a plain
+ * writeFileSync (not the CLI's tmp+rename pretty-printed writeJsonFile path). The only
+ * contract that matters is that the orchestrator's readers can parse the bytes. */
+export function writeMarker(file: string, value: unknown): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(value));
+}
+
 export function writeEvents(root: string, lines: unknown[]): void {
   const file = path.join(root, ".tumwater", "log", "events.jsonl");
   fs.mkdirSync(path.dirname(file), { recursive: true });

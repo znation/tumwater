@@ -20,7 +20,7 @@ import { DIRECTOR_ROLE } from "../src/roles.js";
 import { todayStamp } from "../src/budget.js";
 import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { eventsOfType } from "./util.js";
+import { eventsOfType, writeMarker } from "./util.js";
 import { fastConfig, makeFastRepo, startLiveOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
@@ -46,8 +46,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
   try {
     // What `tumwater reset-counters` without --role writes: a marker naming every role.
     const markerFile = resetRequestPath(repo);
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
-    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean", "dry"] }));
+    writeMarker(markerFile, { at: Date.now(), roles: ["clean", "dry"] });
 
     await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
     for (const role of ["clean", "dry"]) {
@@ -120,8 +119,7 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
     // file and drop the marker. (The CLI path itself is covered in test/cli.test.ts.)
     saveLoopState(repo, clearBackoff(loadLoopState(repo, "clean"), Date.now()));
     const markerFile = wakeRequestPath(repo);
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
-    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean"] }));
+    writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
     // The fleet consumes the marker within a poll cycle and the loop ticks — its
     // in-memory schedule was the gate, so the file zeroing alone cannot explain the tick.
@@ -167,8 +165,7 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
     // What `tumwater wake --role clean` does from the CLI side (as in the test above).
     saveLoopState(repo, clearBackoff(loadLoopState(repo, "clean"), Date.now()));
     const markerFile = wakeRequestPath(repo);
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
-    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean"] }));
+    writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
     await waitFor(() => loadLoopState(repo, "clean").ticks >= 2, "the woken loop to tick");
     await waitFor(() => !loadLoopState(repo, "clean").running, "the woken tick to finish");
@@ -865,8 +862,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
 
     // The operator pauses the running fleet (what `tumwater pause` does: drop the marker).
     const marker = pausedPath(repo);
-    fs.mkdirSync(path.dirname(marker), { recursive: true });
-    fs.writeFileSync(marker, JSON.stringify({ at: Date.now() }));
+    writeMarker(marker, { at: Date.now() });
     await waitFor(() => readEvents(repo).some((e) => e.type === "fleet_paused"), "a fleet_paused event");
 
     // The world changed under a paused fleet: advance main. An ungated loop would wake early…
@@ -921,8 +917,7 @@ test("starting already paused keeps role ticks blocked until resume — no resta
   // The operator paused before starting the fleet (the marker is persistent state): startup
   // itself must not start any role tick.
   const marker = pausedPath(repo);
-  fs.mkdirSync(path.dirname(marker), { recursive: true });
-  fs.writeFileSync(marker, JSON.stringify({ at: Date.now() }));
+  writeMarker(marker, { at: Date.now() });
 
   // A queued director prompt runs even on an already-paused fleet — the exemption holds from
   // the first poll, not just mid-run.
@@ -981,8 +976,7 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
 
     // …and pause mid-run. The gate blocks only NEW ticks — it never kills an in-flight one.
     const marker = pausedPath(repo);
-    fs.mkdirSync(path.dirname(marker), { recursive: true });
-    fs.writeFileSync(marker, JSON.stringify({ at: Date.now() }));
+    writeMarker(marker, { at: Date.now() });
 
     // The in-flight tick finishes (commit + pin + enqueue) and the landing slot drains the
     // entry to main — both despite the pause: a queued landing is committed work awaiting

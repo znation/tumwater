@@ -16,7 +16,7 @@ import {
   STATE_DIR,
 } from "../src/paths.js";
 import type { LoopRunner } from "../src/loop.js";
-import { eventsOfType } from "./util.js";
+import { eventsOfType, writeMarker } from "./util.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** A recording stand-in for LoopRunner covering exactly the surface operator-requests.ts
@@ -58,11 +58,6 @@ function asRunners(...rs: FakeRunner[]): LoopRunner[] {
 
 function stateDir(root: string): string {
   return path.join(root, STATE_DIR);
-}
-
-function writeMarker(file: string, value: unknown): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(value));
 }
 
 test("consumeResetRequest is a no-op without a marker", () => {

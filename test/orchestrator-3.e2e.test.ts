@@ -34,7 +34,7 @@ import {
   makeFastRepo,
   startLiveOrchestrator,
 } from "./orchestrator-fixtures.js";
-import { makeLoopRunner, eventsOfType } from "./util.js";
+import { makeLoopRunner, eventsOfType, writeMarker } from "./util.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
@@ -91,8 +91,7 @@ test("a user abort during a landing kills it and discards the pinned ref", async
 
     // What `tumwater abort --role clean` does from the CLI side: drop the per-role marker.
     const markerFile = abortRequestPath(repo, "clean");
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
-    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
+    writeMarker(markerFile, { at: Date.now() });
 
     // The fleet consumes the request, aborts the in-flight landing, and the drain discards
     // the pinned ref: a deliberate stop kills the work under review, the landing's
@@ -151,8 +150,7 @@ test("a role with a queued or in-flight landing never starts a new tick (interlo
 
     // Settle the test: a deliberate stop kills the hung landing and drops its entry.
     const markerFile = abortRequestPath(repo, "clean");
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
-    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
+    writeMarker(markerFile, { at: Date.now() });
     await waitFor(
       () => loadLoopState(repo, "clean").lastResult === "aborted",
       "the aborted landing to settle",
@@ -412,8 +410,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
     // Reproduce what `tumwater abort --role clean` does from the CLI side: drop the per-role
     // marker. (The CLI path itself is covered in test/cli.test.ts.)
     const markerFile = abortRequestPath(repo, "clean");
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
-    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
+    writeMarker(markerFile, { at: Date.now() });
 
     // The fleet consumes the request within a poll cycle: kills the run and removes the marker.
     await waitFor(() => !fs.existsSync(markerFile), "the abort marker to be consumed");
@@ -443,8 +440,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
     // … and the same holds for a disabled role, which has no runner at all (the no-runner shape).
     for (const role of ["feature", "bugfix"]) {
       const m = abortRequestPath(repo, role);
-      fs.mkdirSync(path.dirname(m), { recursive: true });
-      fs.writeFileSync(m, JSON.stringify({ at: Date.now() }));
+      writeMarker(m, { at: Date.now() });
     }
     await waitFor(
       () => !fs.existsSync(abortRequestPath(repo, "feature")) && !fs.existsSync(abortRequestPath(repo, "bugfix")),
@@ -841,8 +837,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
     );
     // What `tumwater abort --role dry` does from the CLI side.
     const markerFile = abortRequestPath(repo, "dry");
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
-    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
+    writeMarker(markerFile, { at: Date.now() });
 
     await waitFor(
       () => loadLoopState(repo, "dry").lastResult === "aborted" && !landingRefExists(repo, "dry"),

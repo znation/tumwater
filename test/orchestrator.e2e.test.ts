@@ -28,6 +28,7 @@ import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
 import {
   eventsOfType,
+  writeMarker,
 } from "./util.js";
 import {
   FAST_POLL_MS,
@@ -649,8 +650,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     // and drop the marker. (The CLI path itself is covered in test/cli.test.ts.)
     saveLoopState(repo, zeroCounters(loadLoopState(repo, "clean")));
     const markerFile = resetRequestPath(repo);
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
-    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean"] }));
+    writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
     // The fleet consumes the marker within a poll cycle and re-saves zeroed counters. A
     // post-reset tick may have started in the same poll (its +1 belongs to the new window),
@@ -694,8 +694,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
     // Drop the marker while the tick is running (CLI-side file zeroing included).
     saveLoopState(repo, zeroCounters(loadLoopState(repo, "clean")));
     const markerFile = resetRequestPath(repo);
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
-    fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now(), roles: ["clean"] }));
+    writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
     await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
 
