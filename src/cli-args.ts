@@ -68,7 +68,7 @@ export function parseBranchFlag(args: string[]): string | null {
 
 /** One flag in a command's fixed argument vocabulary: every spelling it accepts and whether
  * it takes one following token as its value (named for the error message). */
-export interface FlagSpec {
+interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
   names: string[];
   /** True when the flag consumes one following token as its value. */
