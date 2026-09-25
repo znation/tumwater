@@ -13,12 +13,12 @@ import {
   checkMergeLock,
   checkNodeVersion,
   checkAgentBinary,
-  checkOrphans,
   checkRepo,
   checkStateDir,
   renderDoctor,
   runDoctor,
 } from "../src/doctor.js";
+import { checkOrphans } from "../src/doctor-orphans.js";
 import { GIT_MISSING_MESSAGE } from "../src/git.js";
 import type { ProcessProbe, ProcessRow } from "../src/process.js";
 import { initProject } from "../src/init.js";
