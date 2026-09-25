@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState } from "./types.js";
-import { customRole, DIRECTOR_ROLE, roleById } from "./roles.js";
+import { allRoleIds, customRole, DIRECTOR_ROLE, roleById } from "./roles.js";
 import { dequeuePrompt } from "./inbox.js";
 import { briefFile, readInitialPrompt } from "./readme.js";
 import { buildCutOffNote, buildDirectorPrompt, buildTickPrompt, readPrinciples } from "./prompt.js";
@@ -51,7 +51,14 @@ export function assembleTickPrompt(
     // is its entire find-something-to-do text and the title identifies it in the prompt.
     const custom = config.customLoops.find((c) => c.name === role);
     const resolved = roleById(role) ?? (custom ? customRole(custom.name, custom.task) : undefined);
-    if (!resolved) throw new Error(`unknown role: ${role}`);
+    if (!resolved) {
+      // Every other unknown-role message in the harness (parseRoleFlag, the GUI endpoints, the
+      // operator commands) names the valid ids; this defensive path — a runner asked to tick a
+      // role no catalog entry or customLoops task can answer — says the same, so if it ever
+      // fires it reads as the harness bug it is instead of a bare dead end.
+      const validIds = [...allRoleIds(), ...config.customLoops.map((c) => c.name)];
+      throw new Error(`unknown role: ${role} (valid ids: ${validIds.join(", ")})`);
+    }
     // The telemetry role's evidence is the harness's own event log, one level outside this
     // worktree, so the report module renders it (telemetryDigest) and the tick injects it.
     const digest = role === "telemetry" ? telemetryDigest(root) : undefined;

@@ -122,7 +122,7 @@ test("an unknown role throws — the fleet cannot run a prompt with no task", ()
         role: "nonexistent",
         state: state(),
       }),
-    /unknown role: nonexistent/,
+    /unknown role: nonexistent \(valid ids: .+\)/,
   );
 });
 
