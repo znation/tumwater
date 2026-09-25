@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
+import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { formatDate } from "./text.js";
 import { isJsonObject } from "./json-object.js";
 import {
@@ -119,13 +120,36 @@ export function eventRole(ev: HarnessEvent): string {
  * Observers poll this every second and only ever need the tail, so for logs past the small-file
  * threshold we read just enough bytes from the end of the file to cover `limit` lines instead of
  * rescanning the whole log: per-poll I/O is bounded by what `limit` lines occupy, not by how far
- * the log has grown (the backwards chunk scan lives in files.readTailText). */
+ * the log has grown (the backwards chunk scan lives in files.readTailText). The parsed tail is
+ * also stat-keyed cached (stat-cache.cachedByStat, like the other per-poll readers): the log is
+ * append-only, so an unchanged stat means unchanged tail bytes, and a steady-state poll costs
+ * one stat instead of open + read + `limit` JSON.parse calls. Rotation swaps the inode and every
+ * append changes size, so both invalidate through the same freshness check. */
 export function readEvents(root: string, limit = 200): HarnessEvent[] {
   // A non-positive guard (`limit <= 0`) passes NaN — every comparison with NaN is false —
   // and slice(-NaN) is slice(0), the whole scanned window; the sibling readTranscriptTail
   // and readTranscript guards are `limit > 0` positives-checks for exactly this reason.
   if (!(limit > 0)) return []; // NaN, 0, negatives: none — and the guard must precede the scan and the slice.
   const file = eventsLogPath(root);
+  return (
+    cachedByStat(
+      tailCache,
+      `${file}\u0000${limit}`, // Per (file, limit): observers ask for different tail sizes.
+      file,
+      () => scanEventTail(file, limit), // A missing/unreadable log scans to [] — cached like an empty one.
+      (events) => events.map((e) => ({ ...e })), // A copy: callers may treat the result as their own.
+    ) ?? []
+  );
+}
+
+/** Parsed tails keyed by file + limit (a future reader of a second window size from the same
+ * log must not collide with the first). Bounded inside cachedByStat so many short-lived roots
+ * in tests cannot grow it unbounded. */
+const tailCache = new Map<string, StatKeyedValue<HarnessEvent[]>>();
+
+/** The backwards tail scan readEvents caches: read just enough bytes from the end to cover
+ * `limit` lines, parse them, keep the newest `limit` complete ones. */
+function scanEventTail(file: string, limit: number): HarnessEvent[] {
   let newlines = 0;
   const text = readTailText(file, (chunk) => {
     for (let i = 0; i < chunk.length; i++) if (chunk[i] === 10) newlines++;
