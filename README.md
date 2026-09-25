@@ -18,7 +18,7 @@ local git repo, and no remote is ever touched.
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
 
-Current main (`b374a86`): build clean, suite 1739/1739.
+Current main (`2d72b1f`): build clean, suite 1743/1743.
 <!-- tumwater:status:end -->
 
 ## Usage
@@ -36,7 +36,7 @@ Then, from another terminal:
 | To | Run |
 | --- | --- |
 | Watch the fleet | `tumwater tui`, or `tumwater gui` for the browser dashboard at http://127.0.0.1:7180 |
-| Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --role <id>` |
+| Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --role <id>`, `tumwater backlog` (planned features, open bugs, open questions as Markdown) |
 | Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director |
 | Control the loops | `tumwater pause` / `resume [--role <id>]` (fleet or one loop), `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
 | Audit | `tumwater doctor` (pre-flight), `tumwater report` (usage and cost), `tumwater report --failures` |
