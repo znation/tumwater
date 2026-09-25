@@ -39,6 +39,6 @@ and starts files longest-first by the durations it records in `dist/test/.durati
 - `src/worktree.ts`: the persistent worktree lifecycle.
 - `src/merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow.
 - `src/pi-extension/`: the bundled bounded-output pi extension.
-- `src/ui/`: TUI, GUI, status table, transcript, and report rendering. Imported only by each other
-  and `cli.ts`.
+- `src/ui/`: TUI, GUI, status table, backlog report, transcript, and report rendering. Imported
+  only by each other and `cli.ts`.
 - `test/`: unit tests.
