@@ -81,7 +81,7 @@ export function workingDetail(root: string, s: LoopState, live?: LiveProgress | 
 /** The part of a change's in-flight landing record the landing cell renders: where the
  * pipeline is with it (its status), the change's own start (its elapsed), and the stage it is
  * in (absent from an older writer's marker). */
-export type LandingCell = Pick<LandingChange, "status" | "startedAt" | "stage">;
+type LandingCell = Pick<LandingChange, "status" | "startedAt" | "stage">;
 
 /** The snapshot's in-flight landing record (merge queue 4/5) filtered to one role: this
  * role's change record while the pipeline holds it — vetting or merging it (`landing`), or
