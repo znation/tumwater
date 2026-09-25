@@ -7,7 +7,7 @@ import {
   fairOrder,
   isEligible,
 } from "./scheduling.js";
-import { isFleetPaused } from "./fleet-state.js";
+import { isFleetPaused, pausedRoles } from "./fleet-state.js";
 import {
   budgetGate,
   budgetPaused,
@@ -207,6 +207,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // Same bookkeeping for the operator pause (the marker file), so each pause/resume logs
   // exactly one event instead of once per ~2s poll.
   let prevUserPaused = false;
+  // The same bookkeeping for the per-role pause (`tumwater pause --role <id>`): the previous
+  // poll's paused set, so each pause/resume crossing logs exactly one event per role instead
+  // of once per ~2s poll. In memory only: a restart mid-pause logs one event on the first
+  // poll after it, and the marker keeps gating regardless.
+  let prevPausedRoles = new Set<string>();
   // The fleet-wide 429 hold's state across polls (src/rate-limit-hold.ts) — unlike the
   // budget gate's prevGate it is the gate's own memory (deadline, relapse count), not just the
   // last value for edge-triggered events. In memory only: a restart starts open.
@@ -443,6 +448,20 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         prevUserPaused = userPaused;
       }
 
+      // Per-role pause (`tumwater pause --role <id>`): the operator pause's narrower sibling —
+      // the same persistent marker read fresh per cycle, but one named loop instead of the
+      // fleet. Unlike the fleet pause the director is NOT exempt: the operator named the role
+      // deliberately, and its queued prompts simply wait in the inbox (the same effect the
+      // fleet pause has on the director). In-flight ticks finish; only NEW ticks are blocked
+      // (the gate sits before isEligible, exactly where userPaused skips roles below).
+      const pausedRolesNow = pausedRoles(root);
+      const pausedRolesSet = new Set(pausedRolesNow);
+      for (const r of pausedRolesNow)
+        if (!prevPausedRoles.has(r)) logEvent(root, { loop: "harness", type: "role_paused", role: r });
+      for (const r of prevPausedRoles)
+        if (!pausedRolesSet.has(r)) logEvent(root, { loop: "harness", type: "role_resumed", role: r });
+      prevPausedRoles = pausedRolesSet;
+
       // Fleet-wide 429 hold (src/rate-limit-hold.ts): once several roles' runs have ended on a
       // provider 429 within a short window, role loops start no new ticks — and the land queue
       // starts no new vet (the director's included), whose reviewer run has no retry
@@ -540,6 +559,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const probeDue = fallbackProbeDue(fallbackBreaker, now);
       for (const runner of runners) {
         if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
+        // The per-role pause gates BEFORE the fleet check and exempts nothing — the director
+        // included (the operator named that one loop deliberately).
+        if (pausedRolesSet.has(runner.role)) continue;
         if ((userPaused || (gate === "paused" && !probeDue)) && runner.role !== DIRECTOR_ROLE)
           continue; // no new role ticks while either gate holds
         if (rateHeld && runner.role !== DIRECTOR_ROLE) continue; // nor while a 429 storm holds

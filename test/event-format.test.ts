@@ -440,6 +440,23 @@ test("formatEvent renders the fleet pause and resume events plainly", () => {
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 });
 
+// Per-role pause (`tumwater pause --role <id>`): the fleet pause's narrower sibling. Both lines
+// name the role, and the paused line states what stays running — every other role, the
+// director included.
+test("formatEvent renders the per-role pause and resume events with the role named", () => {
+  const paused = formatEvent({ ts: 0, loop: "harness", type: "role_paused", role: "docs" } as never);
+  assert.match(
+    paused,
+    /harness\s+role docs paused — it stops starting new ticks \(the rest of the fleet keeps running\)$/,
+    `the pause must name the role and what keeps running: ${paused}`,
+  );
+  assert.ok(!paused.includes("warning"), `a deliberate pause is routine, not a warning: ${paused}`);
+
+  const resumed = formatEvent({ ts: 0, loop: "harness", type: "role_resumed", role: "docs" } as never);
+  assert.match(resumed, /harness\s+role docs resumed — it ticks again$/, `resume line: ${resumed}`);
+  assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
+});
+
 // Fleet-wide 429 hold (src/rate-limit-hold.ts; BUGS.md 2026-09-21 "A 429 storm still has no
 // fleet-wide hold"): the hold is the harness handling a storm, so both lines are routine. The
 // hold line names who saw the 429s, how long nothing new starts, a relapse when the storm came

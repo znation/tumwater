@@ -21,6 +21,7 @@ import {
   abortRequestPath,
   orchestratorStatePath,
   pausedPath,
+  pausedRolesPath,
   resetRequestPath,
   wakeRequestPath,
 } from "../src/paths.js";
@@ -276,4 +277,50 @@ test("cmdResume with a live harness promises pickup within ~2s", async () => {
   assert.match(stdout, /fleet resumed/);
   assert.match(stdout, /within ~2s/);
   assert.doesNotMatch(stdout, /no harness is running/);
+});
+
+// --- per-role pause (`pause --role <id>` / `resume --role <id>`) ---
+
+test("cmdPause --role pauses one role, is idempotent, and leaves the fleet marker alone", async () => {
+  const root = tmpdir();
+  const first = await expectOk(() => cmdPause(root, ["--role", "clean"]));
+  assert.match(first.stdout, /role clean paused/);
+  assert.match(first.stdout, /in-flight ticks finish; the rest of the fleet is unaffected/);
+  assert.ok(fs.existsSync(pausedRolesPath(root)));
+  assert.ok(!fs.existsSync(pausedPath(root)), "a per-role pause never writes the fleet marker");
+  const second = await expectOk(() => cmdPause(root, ["--role", "clean"]));
+  assert.match(second.stdout, /role clean is already paused/);
+  // Both roles land in the one marker set.
+  await expectOk(() => cmdPause(root, ["--role", "dry"]));
+  assert.deepEqual(JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")).roles, ["clean", "dry"]);
+  // A custom-loop id resolves through the config-backed check like abort's does.
+  const config = defaultConfig();
+  config.customLoops.push({ name: "myloop", task: "keep the examples current" });
+  writeJsonFile(configPath(root), config);
+  const custom = await expectOk(() => cmdPause(root, ["--role", "myloop"]));
+  assert.match(custom.stdout, /role myloop paused/);
+});
+
+test("cmdResume --role lifts one role and reports the was-not-paused wording when absent", async () => {
+  const root = tmpdir();
+  const idle = await expectOk(() => cmdResume(root, ["--role", "clean"]));
+  assert.match(idle.stdout, /role clean was not paused/);
+  await expectOk(() => cmdPause(root, ["--role", "clean"]));
+  await expectOk(() => cmdPause(root, ["--role", "dry"]));
+  const { stdout } = await expectOk(() => cmdResume(root, ["--role", "clean"]));
+  assert.match(stdout, /role clean resumed/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")).roles, ["dry"], "only the named role resumes");
+  await expectOk(() => cmdResume(root, ["--role", "dry"]));
+  assert.ok(!fs.existsSync(pausedRolesPath(root)), "the last removal deletes the marker");
+});
+
+test("per-role pause and resume reject unknown role ids like abort does", async () => {
+  const root = tmpdir();
+  const { code, stderr } = await expectFail(() => cmdPause(root, ["--role", "ghost"]));
+  assert.equal(code, 1);
+  assert.match(stderr, /unknown role: ghost/);
+  const r = await expectFail(() => cmdResume(root, ["--role", "ghost"]));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: ghost/);
+  assert.ok(!fs.existsSync(pausedRolesPath(root)), "no marker on failure");
 });

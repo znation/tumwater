@@ -196,13 +196,14 @@ test("pause and resume reject stray arguments without touching the marker", asyn
   const repo = makeRepo();
   await initProject(repo, "cli pause args");
 
-  // Like every other no-flag command, both reject any argument instead of ignoring it.
+  // Both reject any argument they do not understand instead of ignoring it; since --role
+  // became valid, the rejection names the flag list rather than a no-arguments rule.
   let r = await cli(repo, "pause", "--x");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /takes no arguments/);
+  assert.match(r.stderr, /unknown argument: --x \(valid flags for tumwater pause: --role <id>\)/);
   r = await cli(repo, "resume", "extra");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /takes no arguments/);
+  assert.match(r.stderr, /unknown argument: extra \(valid flags for tumwater resume: --role <id>\)/);
 
   // The rejections happened before any marker work.
   assert.ok(!fs.existsSync(pausedPath(repo)), "no marker on failure");
@@ -232,6 +233,40 @@ test("pause and resume name the live effect when a harness is running", async ()
   assert.doesNotMatch(r.stdout, /no harness is running/);
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
+test("pause and resume accept --role to gate one loop, with per-role wording and markers", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli pause role");
+  const marker = path.join(repo, ".tumwater", "state", "paused-roles.json");
+
+  // Pausing a role is meaningful with no harness running, like the fleet-wide form.
+  let r = await cli(repo, "pause", "--role", "clean");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /role clean paused/);
+  assert.match(r.stdout, /the rest of the fleet is unaffected/);
+  assert.ok(fs.existsSync(marker), "the per-role marker is written");
+  assert.ok(!fs.existsSync(pausedPath(repo)), "the fleet marker is untouched");
+
+  // Idempotent with distinct wording, like the fleet-wide form.
+  r = await cli(repo, "pause", "--role", "clean");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "role clean is already paused");
+
+  // Resume lifts just the named role; a second resume reports it was not paused.
+  r = await cli(repo, "resume", "--role", "clean");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /role clean resumed/);
+  r = await cli(repo, "resume", "--role", "clean");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "role clean was not paused");
+  assert.ok(!fs.existsSync(marker), "the last removal deletes the marker");
+
+  // An unknown id fails with the shared unknown-role wording, before any marker work.
+  r = await cli(repo, "pause", "--role", "ghost");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: ghost/);
+  assert.ok(!fs.existsSync(marker));
 });
 
 // --- logs/reset-counters/abort --role: user-defined loop targets ---

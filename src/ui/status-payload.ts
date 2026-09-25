@@ -53,6 +53,7 @@ export function statusPayload(root: string): object {
     // Operator pause (`tumwater pause` marker present): every idle role loop's phase reads
     // `paused` ahead of budget/main-red — one flag covers both dashboards through loopPhase.
     paused: snap.paused,
+    pausedRoles: snap.pausedRoles,
     loops: snap.loops.map((s) => {
       // One live tail read per running loop per poll (was up to three — see renderStatus).
       // The kind follows the phase (progressKind) — see renderStatus / BUGS.md 2026-09-22.
@@ -64,7 +65,9 @@ export function statusPayload(root: string): object {
         root,
         budgetPausedNow,
         live,
-        snap.paused,
+        // The per-role pause reads the same `paused` cell as the fleet pause: one flag to
+        // loopPhase covers both gates (status-model has no per-role branch of its own).
+        snap.paused || snap.pausedRoles.includes(s.role),
         // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed> ·
         // <stage>` (the marker-driven record, filtered to this role); every other row is
         // untouched.

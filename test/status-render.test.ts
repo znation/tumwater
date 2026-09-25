@@ -37,6 +37,7 @@ function snapshotWith(
   loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string; custom?: boolean }>,
   budget: StatusSnapshot["budget"] = DEFAULT_BUDGET,
   paused = false,
+  pausedRoles: string[] = [],
 ): StatusSnapshot {
   return {
     running: false,
@@ -48,6 +49,7 @@ function snapshotWith(
     loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial, custom: partial.custom ?? false })),
     budget,
     paused,
+    pausedRoles,
     build: null,
     // The fixture's queue is idle: depth 0 keeps every existing header line byte-identical
     // (the 4/5 badge is empty at depth 0) and renders no in-flight label.
@@ -893,6 +895,32 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
 
   // The header badge shows the reached budget on the same render.
   assert.match(reached.split("\n")[0] ?? "", /· budget: \$50\.00\/\$50 today$/);
+});
+
+// Per-role pause (`tumwater pause --role <id>`): the snapshot's pausedRoles set gates the same
+// `paused` cell as the fleet flag, but only for the named role — every other idle row keeps
+// its ordinary label, and the director keeps its own phase (its cell branch precedes the
+// pause checks, like under the fleet pause).
+test("renderStatus shows paused only for the individually paused idle role", () => {
+  const root = tmpdir();
+  const out = renderStatus(
+    root,
+    {
+      ...snapshotWith([{ role: "docs" }, { role: "feature" }, { role: "director" }], DEFAULT_BUDGET, false, ["docs"]),
+      running: true,
+    },
+  );
+  assert.match(out, /docs\s+paused/);
+  assert.match(out, /feature\s+queued/);
+  assert.doesNotMatch(out, /feature\s+paused/);
+  assert.match(out, /director\s+waiting for prompts/);
+
+  // An empty set changes nothing — the fleet-wide flag alone drives the cell, as before.
+  const none = renderStatus(
+    root,
+    { ...snapshotWith([{ role: "docs" }], DEFAULT_BUDGET, false, []), running: true },
+  );
+  assert.doesNotMatch(none, /\bpaused\b/);
 });
 
 // Regression (review of the editable-budget feature): the snapshot's budget object is now

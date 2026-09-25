@@ -116,7 +116,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
       s,
       m: displayTokenMetrics(root, s, live),
       live,
-      phase: loopPhase(s, snap.running, root, budgetPausedNow, live, userPausedNow, landingForRole(snap.landQueue, s.role)),
+      phase: loopPhase(s, snap.running, root, budgetPausedNow, live, userPausedNow || snap.pausedRoles.includes(s.role), landingForRole(snap.landQueue, s.role)),
       role: s.role,
       lastTickEndedAt: s.lastTickEndedAt,
     };

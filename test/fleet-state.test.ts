@@ -5,6 +5,9 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   isFleetPaused,
+  pauseRole,
+  pausedRoles,
+  resumeRole,
   pauseFleet,
   resumeFleet,
   readOrchestratorInfo,
@@ -86,4 +89,51 @@ test("orchestratorAlive is false with no info and reflects pid liveness otherwis
   assert.equal(orchestratorAlive(root), false, "disk-loaded dead pid reads dead");
   fs.writeFileSync(file, JSON.stringify(live));
   assert.equal(orchestratorAlive(root), true, "disk-loaded live pid reads alive");
+});
+
+// --- Per-role pause (`tumwater pause --role <id>` / `resume --role <id>`) ---
+
+test("pausedRoles reads [] with no .tumwater dir and tolerates garbage", () => {
+  const root = tmpdir();
+  assert.equal(pausedRoles(root).join(), "", "a missing .tumwater/ reads as no paused roles, not throw");
+  fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
+  assert.equal(pausedRoles(root).join(), "", "no marker file reads as no paused roles");
+
+  const file = path.join(root, ".tumwater", "state", "paused-roles.json");
+  fs.writeFileSync(file, "{not json"); // torn write
+  assert.equal(pausedRoles(root).join(), "", "torn JSON reads as no paused roles, never throws");
+  fs.writeFileSync(file, "null"); // not an object
+  assert.equal(pausedRoles(root).join(), "", "a null body reads as no paused roles");
+  fs.writeFileSync(file, JSON.stringify({ roles: "docs", at: 1 })); // roles is not an array
+  assert.equal(pausedRoles(root).join(), "", "a non-array roles field reads as no paused roles");
+  fs.writeFileSync(file, JSON.stringify({ roles: ["docs", 3, null, "dry"], at: 1 }));
+  assert.deepEqual(pausedRoles(root), ["docs", "dry"], "non-string entries are dropped, not thrown on");
+});
+
+test("pauseRole and resumeRole maintain the marker set idempotently", () => {
+  const root = tmpdir();
+  assert.equal(resumeRole(root, "docs"), false, "resume without a pause is a no-op");
+  assert.equal(pauseRole(root, "docs"), true, "first pause changes state");
+  const marker = JSON.parse(fs.readFileSync(path.join(root, ".tumwater", "state", "paused-roles.json"), "utf8")) as {
+    roles: string[];
+    at: number;
+  };
+  assert.deepEqual(marker.roles, ["docs"], "the marker carries the role set");
+  assert.ok(Number.isFinite(marker.at) && marker.at > 0, "the marker carries the pause timestamp");
+  assert.equal(pauseRole(root, "docs"), false, "a second pause of the same role is a no-op");
+  assert.equal(pauseRole(root, "dry"), true, "a second role joins the set");
+  assert.deepEqual(pausedRoles(root), ["docs", "dry"]);
+
+  assert.equal(resumeRole(root, "dry"), true, "resume of a paused role changes state");
+  assert.deepEqual(pausedRoles(root), ["docs"], "only the resumed role leaves the set");
+  assert.equal(resumeRole(root, "dry"), false, "a second resume is a no-op");
+  assert.equal(resumeRole(root, "docs"), true);
+  assert.equal(
+    fs.existsSync(path.join(root, ".tumwater", "state", "paused-roles.json")),
+    false,
+    "the last removal deletes the marker outright",
+  );
+  // Custom-loop ids are stored verbatim — the marker must survive config edits.
+  assert.equal(pauseRole(root, "my-custom-loop"), true);
+  assert.deepEqual(pausedRoles(root), ["my-custom-loop"]);
 });

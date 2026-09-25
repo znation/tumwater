@@ -94,7 +94,9 @@ discards a role's in-flight landing.
   role ticks failing on it) is demoted to the same pause, then retried with one probe tick after
   a cool-down of 5 minutes doubling to at most 30.
 - `tumwater pause` / `resume`, or the GUI's pause badge, block new role ticks until lifted.
-  Queued landings still drain.
+  Queued landings still drain. Both accept `--role <id>` to gate a single loop instead of the
+  fleet: in-flight ticks finish, every other role keeps ticking, and the director is not
+  exempt — its queued prompts simply wait in the inbox.
 
 ## Interruptions
 

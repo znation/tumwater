@@ -5,7 +5,22 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Per-role pause 1/2 — `tumwater pause --role <id>` / `resume --role <id>`: quiet one loop while the fleet keeps working (planned 2026-09-25)
+### Per-role pause 2/2 — dashboard per-row pause toggle (planned 2026-09-25; 1/2 landed 2026-09-25, so this is unblocked)
+
+**Goal.** Plan 1/2 gives the CLI per-role pause, but the dashboard's loop rows already carry wake and abort controls while pausing a single loop still means leaving the browser. Add a per-row `pause`/`resume` toggle reusing 1/2's marker functions.
+
+**Approach.**
+- src/ui/gui.ts — a `POST /api/pause-role` endpoint beside the existing `/api/wake` and `/api/abort` handlers: validates the posted role the same way those do, then calls `pauseRole`/`resumeRole` (src/fleet-state.ts, from 1/2) and returns `{ changed, paused }`; behind the token gate like its siblings. If the fleet-wide pause stands, the endpoint still records the role marker (they compose: the fleet gate is checked first at scheduling).
+- src/ui/gui-client.ts — each loop row's controls cell (the row-actions block the wake/abort plan added) gains `pause` for a running non-paused role and `resume` for a paused one — the state is already in the payload once 1/2 adds `pausedRoles`. Same delegated click listener and `postJson` flash pattern as wake/abort; no confirmation dialog.
+
+**Acceptance criteria.**
+- Clicking pause on a loop row stops that role's new ticks within one scheduler cycle and the row renders `paused`; resume restores it; the returned message flashes in the header like the other controls.
+- The endpoint is token-gated and rejects unknown roles with the shared 400 wording.
+- Tests: test/gui-operator.test.ts (marker effect, 400 on unknown role, idempotence) and the evaled client block pin, extending the existing row-actions test pattern.
+
+## Done
+
+### Per-role pause 1/2 — `tumwater pause --role <id>` / `resume --role <id>`: quiet one loop while the fleet keeps working (planned 2026-09-25, done 2026-09-25)
 
 **Goal.** Pause and resume are fleet-wide only (`pauseFleet`, src/fleet-state.ts:23; the scheduler gate at src/orchestrator.ts:440 blocks every role). `abort --role` kills a tick but the role immediately starts the next one, so an operator who wants a single noisy role out of the way (a docs loop churning, a qa loop waiting on something) has no tool. Add per-role pause: `tumwater pause --role docs` stops that role from starting NEW ticks — in-flight ones finish, every other role keeps ticking, the fleet stays up.
 
@@ -24,20 +39,17 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `role_paused`/`role_resumed` events appear in the event feed and the digest's Fleet state changes; the status cell of a paused idle role reads `paused` in status, TUI, and GUI.
 - Tests: test/fleet-state.test.ts (marker shape, idempotence, missing-file tolerance), test/orchestrator-seams.test.ts or an e2e file (gate before isEligible, one event per crossing, director honored when named), test/operator-commands.test.ts + test/cli-operators.test.ts (CLI wording, `--role` resolution), test/status-render.test.ts (the `paused` cell), test/event-format.test.ts + test/failure-report.test.ts (render/digest phrases).
 
-### Per-role pause 2/2 — dashboard per-row pause toggle (planned 2026-09-25, needs 1/2 landed first)
-
-**Goal.** Plan 1/2 gives the CLI per-role pause, but the dashboard's loop rows already carry wake and abort controls while pausing a single loop still means leaving the browser. Add a per-row `pause`/`resume` toggle reusing 1/2's marker functions.
-
-**Approach.**
-- src/ui/gui.ts — a `POST /api/pause-role` endpoint beside the existing `/api/wake` and `/api/abort` handlers: validates the posted role the same way those do, then calls `pauseRole`/`resumeRole` (src/fleet-state.ts, from 1/2) and returns `{ changed, paused }`; behind the token gate like its siblings. If the fleet-wide pause stands, the endpoint still records the role marker (they compose: the fleet gate is checked first at scheduling).
-- src/ui/gui-client.ts — each loop row's controls cell (the row-actions block the wake/abort plan added) gains `pause` for a running non-paused role and `resume` for a paused one — the state is already in the payload once 1/2 adds `pausedRoles`. Same delegated click listener and `postJson` flash pattern as wake/abort; no confirmation dialog.
-
-**Acceptance criteria.**
-- Clicking pause on a loop row stops that role's new ticks within one scheduler cycle and the row renders `paused`; resume restores it; the returned message flashes in the header like the other controls.
-- The endpoint is token-gated and rejects unknown roles with the shared 400 wording.
-- Tests: test/gui-operator.test.ts (marker effect, 400 on unknown role, idempotence) and the evaled client block pin, extending the existing row-actions test pattern.
-
-## Done
+Implemented as planned, with three deviations: tests use the built-in role id `clean` where the
+entry's wording examples said `docs` (there is no `docs` role in the catalog — the wording
+itself is unchanged); the paused-cell threading lives at the two loopPhase call sites
+(status-payload.ts, status-render.ts) as `snap.paused || snap.pausedRoles.includes(role)` rather
+than a new branch inside status-model.ts, so the one shared precedence ladder is untouched; and
+pause/resume's `rejectUnknownArgs` now admits `--role <id>`, so the pre-existing stray-argument
+test asserts the unknown-argument message instead of `takes no arguments`. Also added: the help
+table's pause/resume lines show `[--role <id>]`. Tests landed in fleet-state, operator-commands,
+cli-operators, status-render, event-format, failure-report, and a live orchestrator e2e
+(orchestrator-2: pre-startup pause gates only that role, the named director is not exempt, one
+event per crossing, resume re-enables within one poll). Full suite 1666/1666 green.
 
 ### `tumwater config` — print the effective merged config as JSON (planned 2026-09-25, done 2026-09-25)
 

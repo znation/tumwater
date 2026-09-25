@@ -20,6 +20,8 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "budget_resumed",
   "fleet_paused",
   "fleet_resumed",
+  "role_paused",
+  "role_resumed",
   "rate_limit_hold",
   "rate_limit_resumed",
   "max_concurrent_changed",
@@ -80,6 +82,12 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "fleet_resumed":
       text = "fleet resumed — role loops tick again";
+      break;
+    case "role_paused":
+      text = `role ${field(ev.role ?? "?")} paused — it stops starting new ticks`;
+      break;
+    case "role_resumed":
+      text = `role ${field(ev.role ?? "?")} resumed — it ticks again`;
       break;
     case "rate_limit_hold":
       text = `429 hold ${rateLimitHoldPhrase(ev.holdMs, ev.escalation)} — ${Array.isArray(ev.roles) ? (ev.roles as unknown[]).slice(0, 4).map(field).join(", ") : "?"}`;

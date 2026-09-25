@@ -15,7 +15,8 @@ import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import { freshLoopState, loadLoopState, saveLoopState, clearBackoff } from "../src/state.js";
-import { readOrchestratorInfo } from "../src/fleet-state.js";
+import { readOrchestratorInfo, pauseRole, resumeRole } from "../src/fleet-state.js";
+import { DIRECTOR_ROLE } from "../src/roles.js";
 import { todayStamp } from "../src/budget.js";
 import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
@@ -981,6 +982,63 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
     // …and no new tick starts while the marker holds.
     await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while paused");
+  } finally {
+    restore();
+    await orch.stop();
+  }
+});
+
+// --- Per-role pause (`tumwater pause --role <id>`): the operator pause's narrower sibling.
+// The marker is persistent state, so pausing BEFORE startup starts the fleet with that one
+// role already gated; the director is NOT exempt (unlike the fleet pause); resume re-enables
+// within one poll. Each crossing logs exactly one harness-level event naming the role. ---
+
+test("a per-role pause gates only that role, holds a named director, and resumes", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "per-role pause test");
+  saveConfig(repo, fastConfig(["clean", "dry"]));
+  // Pause clean before startup: the marker survives into the run.
+  pauseRole(repo, "clean");
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // The unpaused role ticks normally while the paused one never starts.
+    await waitFor(
+      () => loadLoopState(repo, "dry").ticks >= 1 && !loadLoopState(repo, "dry").running,
+      "the unpaused role to tick",
+    );
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal(loadLoopState(repo, "clean").ticks, 0, "a paused role starts no new ticks");
+
+    // One harness-level event per crossing, naming the role — not one per poll.
+    const paused = readEvents(repo).filter((e) => e.type === "role_paused");
+    assert.equal(paused.length, 1);
+    assert.equal(paused[0]?.loop, "harness");
+    assert.equal(paused[0]?.role, "clean");
+
+    // The director is NOT exempt from a per-role pause: its queued prompt waits in the inbox.
+    pauseRole(repo, DIRECTOR_ROLE);
+    enqueuePrompt(repo, "steer me while the director is paused");
+    await new Promise((r) => setTimeout(r, 600));
+    assert.ok(
+      !readEvents(repo).some((e) => e.type === "tick_start" && e.loop === DIRECTOR_ROLE),
+      "a paused director starts no ticks",
+    );
+    assert.ok(
+      readEvents(repo).some((e) => e.type === "role_paused" && e.role === DIRECTOR_ROLE),
+      "the director's own crossing is logged",
+    );
+
+    // Resume re-enables the role within one poll, with its one resumed event.
+    resumeRole(repo, "clean");
+    await waitFor(
+      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      "the resumed role to tick",
+    );
+    const resumed = readEvents(repo).filter((e) => e.type === "role_resumed");
+    assert.equal(resumed.length, 1);
+    assert.equal(resumed[0]?.loop, "harness");
+    assert.equal(resumed[0]?.role, "clean");
   } finally {
     restore();
     await orch.stop();

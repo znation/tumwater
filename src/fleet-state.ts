@@ -4,7 +4,7 @@ import type { FallbackDemotion } from "./budget.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { removeQuiet } from "./files.js";
 import { pidAlive } from "./process.js";
-import { orchestratorStatePath, pausedPath } from "./paths.js";
+import { orchestratorStatePath, pausedPath, pausedRolesPath } from "./paths.js";
 
 /** True while the operator has paused the fleet (`tumwater pause` wrote its marker). The
  * marker is persistent state, not a one-shot request: presence means paused until `resume`
@@ -36,6 +36,43 @@ export function resumeFleet(root: string): boolean {
   const marker = pausedPath(root);
   if (!fs.existsSync(marker)) return false;
   removeQuiet(marker);
+  return true;
+}
+
+/** The roles the operator has individually paused (`tumwater pause --role <id>`): a role in
+ * this set starts no new ticks — in-flight ones finish, every other role keeps ticking, the
+ * director included (the operator named it deliberately). Never throws, like isFleetPaused:
+ * a missing or unreadable file reads as no paused roles, so observers (scheduler, dashboards)
+ * can poll it every cycle without a guard. Lives here beside pauseFleet for the same
+ * single-definition reason: producer (CLI, GUI) and every consumer read one module. */
+export function pausedRoles(root: string): string[] {
+  const state = readJsonFile<{ roles: unknown; at: number }>(pausedRolesPath(root));
+  return Array.isArray(state?.roles)
+    ? state.roles.filter((r): r is string => typeof r === "string")
+    : [];
+}
+
+/** Pause one role by adding it to the paused-roles marker; returns whether this call changed
+ * state (false when the role was already paused — idempotent like pauseFleet, so the CLI and
+ * a dashboard toggle can report "already paused"). Custom-loop ids are stored verbatim: the
+ * marker must survive config edits, which is why callers resolve built-in ids without
+ * touching tumwater.json (namedRole in src/operator-commands.ts). */
+export function pauseRole(root: string, role: string): boolean {
+  const current = pausedRoles(root);
+  if (current.includes(role)) return false;
+  writeJsonAtomic(pausedRolesPath(root), { roles: [...current, role], at: Date.now() });
+  return true;
+}
+
+/** Resume one role by removing it from the paused-roles marker; returns whether it was there
+ * to lift (resume's changed-state contract, mirroring resumeFleet). The last removal deletes
+ * the file outright, so a fully-resumed fleet leaves no marker behind for observers to read. */
+export function resumeRole(root: string, role: string): boolean {
+  const current = pausedRoles(root);
+  if (!current.includes(role)) return false;
+  const remaining = current.filter((r) => r !== role);
+  if (remaining.length === 0) removeQuiet(pausedRolesPath(root));
+  else writeJsonAtomic(pausedRolesPath(root), { roles: remaining, at: Date.now() });
   return true;
 }
 

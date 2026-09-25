@@ -8,7 +8,7 @@ import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { promptPreview, queuedPrompts } from "../inbox.js";
 import { statePath } from "../paths.js";
 import { freshLoopState, loadLoopState } from "../state.js";
-import { isFleetPaused, orchestratorAlive, readOrchestratorInfo } from "../fleet-state.js";
+import { isFleetPaused, orchestratorAlive, pausedRoles, readOrchestratorInfo } from "../fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing-slot.js";
 import { fleetDailyCost } from "../budget.js";
 import { queuedLandings } from "../land-queue.js";
@@ -53,6 +53,10 @@ export interface StatusSnapshot {
    * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
    * because a 2-second-stale pause flag would mislead an operator mid-resume. */
   paused: boolean;
+  /** The roles the operator has individually paused (`tumwater pause --role <id>` marker
+   * set): an idle loop in this set also reads `paused`, the same cell as under the fleet
+   * pause. Fresh per poll like `paused` — no cache, for the same mid-resume reason. */
+  pausedRoles: string[];
   /** The running harness's build (src/build-info.ts) as the orchestrator published it: the stamp
    * plus whether main's build inputs have moved past it. Null when no harness is running or its
    * dist carries no stamp. Both dashboards render it in the header — a stale build is the one
@@ -178,6 +182,7 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
           : null,
     },
     paused: isFleetPaused(root),
+    pausedRoles: pausedRoles(root),
     landQueue,
   };
 }

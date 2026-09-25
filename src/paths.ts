@@ -118,6 +118,16 @@ export function pausedPath(root: string): string {
   return path.join(tumwaterDir(root), "paused.json");
 }
 
+/** Persistent operator-intent marker for `tumwater pause --role <id>` / `resume --role <id>`:
+ * the set of individually paused roles, `{ roles: string[], at: number }` — the same
+ * presence-means-paused persistence as the fleet marker above, so pausing a role before
+ * startup starts it paused. Under state/ beside the orchestrator info file: unlike the
+ * fleet marker it is structured state several writers rewrite (the orchestrator never does,
+ * but the shape is atomic-json state, not a presence flag). */
+export function pausedRolesPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "paused-roles.json");
+}
+
 /** The append-only harness event log (events.ts); the CLI, TUI, and status payload read it. */
 export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", "events.jsonl");

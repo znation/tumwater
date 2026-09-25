@@ -3,7 +3,7 @@ import { fail, parseRoleFlag } from "./cli-args.js";
 import { errorMessage } from "./text.js";
 import { allRoleIds, DIRECTOR_ROLE } from "./roles.js";
 import { clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
-import { orchestratorAlive, pauseFleet, readOrchestratorInfo, resumeFleet } from "./fleet-state.js";
+import { orchestratorAlive, pauseFleet, pauseRole, readOrchestratorInfo, resumeFleet, resumeRole } from "./fleet-state.js";
 import { pidAlive } from "./process.js";
 import { writeJsonFile } from "./json-files.js";
 import { abortRequestPath, resetRequestPath, wakeRequestPath } from "./paths.js";
@@ -149,13 +149,30 @@ export function requestAbort(root: string, role: string): { ok: true; message: s
   return { ok: true, message: confirmation };
 }
 
-/** `tumwater pause`: stop every role loop from starting NEW ticks while in-flight ones finish
- * and the director keeps running (its prompts outrank operator gates, like under the budget
- * cap). The marker is persistent state, not a one-shot request: its presence means paused
- * until `resume` removes it — so pausing before startup starts an already-paused fleet.
- * Unlike abort, no live harness is required; when none runs, say where the pause takes effect
- * instead of failing. Idempotent: a second pause reports the existing marker as-is. */
-export async function cmdPause(root: string): Promise<void> {
+/** `tumwater pause [--role <id>]`: with a role, stop THAT loop from starting new ticks —
+ * in-flight ones finish, every other role (the director included) keeps running; without one,
+ * stop every role loop from starting NEW ticks while in-flight ones finish and the director
+ * keeps running (its prompts outrank operator gates, like under the budget cap). The markers
+ * are persistent state, not one-shot requests: presence means paused until `resume` removes
+ * it — so pausing before startup starts an already-paused fleet. Unlike abort, no live
+ * harness is required; when none runs, say where the pause takes effect instead of failing.
+ * Idempotent: a second pause reports the existing marker as-is. */
+export async function cmdPause(root: string, args: string[] = []): Promise<void> {
+  // Per-role branch: pauseRole in src/fleet-state.ts is the single writer of the role marker
+  // (the plan 2/2 dashboard endpoint will call it too), so CLI and dashboard cannot drift on
+  // format or idempotence; a false return means the role was already in the set.
+  const role = namedRole(root, args);
+  if (role) {
+    if (!pauseRole(root, role)) {
+      process.stdout.write(`role ${role} is already paused\n`);
+      return;
+    }
+    const { when, tail } = markerApplyNote(root);
+    process.stdout.write(
+      `role ${role} paused — it stops starting new ticks at its next eligibility check${when} (in-flight ticks finish; the rest of the fleet is unaffected)${tail}\n`,
+    );
+    return;
+  }
   // pauseFleet in src/fleet-state.ts is the single writer of the pause marker — the GUI's
   // /api/pause toggle calls it too, so the CLI and the dashboard cannot drift on format
   // or idempotence; a false return means the marker was already there.
@@ -205,10 +222,24 @@ export async function cmdConfig(root: string): Promise<void> {
   process.stdout.write(JSON.stringify(config, null, 2) + "\n");
 }
 
-/** `tumwater resume`: lift a fleet pause by removing its marker. Idempotent like pause: with
- * no marker there is nothing to do. No live harness required — resuming before startup just
- * means the next `tumwater run` starts unpaused. */
-export async function cmdResume(root: string): Promise<void> {
+/** `tumwater resume [--role <id>]`: with a role, lift that one role's pause (removed from the
+ * per-role marker set); without one, lift a fleet pause by removing its marker. Idempotent
+ * like pause: with no marker there is nothing to do. No live harness required — resuming
+ * before startup just means the next `tumwater run` starts unpaused. */
+export async function cmdResume(root: string, args: string[] = []): Promise<void> {
+  const role = namedRole(root, args);
+  if (role) {
+    // resumeRole (src/fleet-state.ts) is the single remover of the per-role marker; a false
+    // return means the role was never paused — the changed-state contract pause's wording
+    // mirrors ("is already paused" vs "was not paused").
+    if (!resumeRole(root, role)) {
+      process.stdout.write(`role ${role} was not paused\n`);
+      return;
+    }
+    const { when, tail } = markerApplyNote(root);
+    process.stdout.write(`role ${role} resumed — it starts ticking again at its next eligibility check${when}${tail}\n`);
+    return;
+  }
   // resumeFleet (src/fleet-state.ts) is the single remover, shared with the GUI toggle; a false
   // return means there was no marker to lift.
   if (!resumeFleet(root)) {

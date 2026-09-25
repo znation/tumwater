@@ -136,6 +136,11 @@ export function formatEvent(e: HarnessEvent): string {
       return `${time} ${loop} fleet paused — role loops stop starting new ticks (director keeps running)`;
     case "fleet_resumed":
       return `${time} ${loop} fleet resumed — role loops tick again`;
+    case "role_paused":
+      // Routine state change, like fleet_paused — no warning prefix.
+      return `${time} ${loop} role ${e.role ?? "?"} paused — it stops starting new ticks (the rest of the fleet keeps running)`;
+    case "role_resumed":
+      return `${time} ${loop} role ${e.role ?? "?"} resumed — it ticks again`;
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the storm. Names who saw the 429s and when the fleet re-opens on its own.
