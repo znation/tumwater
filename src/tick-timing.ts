@@ -200,3 +200,55 @@ export async function awaitLandingForHandoff(
   );
   return "abandoned";
 }
+
+/**
+ * Drain the orchestrator's in-flight work at shutdown: wait out the reserved role and director
+ * ticks, and await the landing pipeline's tasks beside them — and how depends on what comes
+ * next. On an operator stop the harness signal has already aborted the landing — its pi runs die
+ * and it stops at its next step boundary, ending "aborted" with its ref kept and its entry
+ * dropped for next-start recovery — and it is waited out: returning early would remove
+ * orchestrator.json while the process still lands, letting a second `tumwater run` start a
+ * concurrent lander (a second Ctrl+C still forces the exit). On a restart the caller exits for
+ * the next generation the moment this returns, and a landing is not bounded by one reviewer run
+ * — a merge's check follows the vets' — so the wait is a bounded hand-off that announces itself
+ * (awaitLandingForHandoff; BUGS.md 2026-09-23). "The landing" is every landing task at once —
+ * each vet holding a permit, and the merge — waited on (and, past the hand-off's window,
+ * aborted) together under the roles of them all. The vetted changes waiting for the merge have
+ * no task, and a vet still parked for its permit has started nothing (a shutdown settles it at
+ * once; a restart's closed start gate at its grant): all of them keep their entries and pins
+ * for the next start.
+ */
+export async function drainInFlightWork(
+  root: string,
+  roleInFlight: ReadonlySet<Promise<void>>,
+  directorInFlight: ReadonlySet<Promise<void>>,
+  inFlight: readonly InFlightLanding[],
+  restart: boolean,
+  handoffWindowMs: number,
+  abort: () => void,
+): Promise<void> {
+  const ticks = Promise.allSettled([...roleInFlight, ...directorInFlight]);
+  const landing =
+    inFlight.length === 0
+      ? null
+      : {
+          promise: Promise.allSettled(inFlight.map((t) => t.promise)).then(() => {}),
+          roles: inFlight.flatMap((t) => t.roles),
+        };
+  if (landing && restart) {
+    // The abort is the caller's internal stop, not just the landing's own controller: each task
+    // wires the harness signal to its controller, and a conflict-resolution run watches the
+    // harness signal alone (runLandingPi). Nothing else it reaches can start work here — the
+    // director has finished, permit holders were aborted at the restart, and a parked waiter
+    // meets the closed start gate (tickStartHeld) whenever it is granted a permit.
+    const outcome = await awaitLandingForHandoff(root, landing, handoffWindowMs, abort);
+    // An abandoned landing still holds its permit, so a waiter parked behind it would never be
+    // granted one and never settle. The ticks have had both windows beside the hand-off, so
+    // whatever is still reserved then started nothing (or is wedged like the landing): the
+    // hand-off goes ahead without it too.
+    if (outcome !== "abandoned") await ticks;
+  } else {
+    if (landing) warnEvent(root, "harness", `shutdown waiting on the in-flight landing of ${landing.roles.join(", ")}`);
+    await Promise.allSettled([ticks, landing?.promise]);
+  }
+}

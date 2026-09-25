@@ -60,7 +60,7 @@ import {
 import { type Redeployer } from "./redeploy.js";
 import { WorkLandedCache } from "./work-landed-cache.js";
 import {
-  awaitLandingForHandoff,
+  drainInFlightWork,
   HANDOFF_LANDING_WINDOW_MS,
   p75TickDurationMs,
   pollRateLimitHold,
@@ -93,7 +93,7 @@ interface RunOptions {
   handoffLandingWindowMs?: number;
   /** Once mode (`tumwater run --once`): give every enabled role at most one tick, wait for
    * every landing that round produced to merge, then fire the internal stop — the same
-   * graceful-shutdown path an operator's Ctrl+C takes, so the `finally` below drains exactly
+   * graceful-shutdown path an operator's Ctrl+C takes, so drainInFlightWork drains exactly
    * as it always does. Never self-redeploys: the hand-off machinery stays daemon-only. */
   once?: boolean;
 }
@@ -174,7 +174,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // self-redeploy (BUGS.md 2026-09-08). The landing tasks are deliberately OUTSIDE this split:
   // in-process tasks (the vets and the one merge, since 2026-09-18 under the same maxConcurrent
   // permits as role ticks) that shutdown still awaits — to the end on an operator stop, and for a
-  // bounded hand-off on a restart (the `finally` below) — an aborted landing keeps its ref and
+  // bounded hand-off on a restart (drainInFlightWork) — an aborted landing keeps its ref and
   // drops its entry, recovering on next start. roleInFlight holds every RESERVED role tick
   // (permit holders and waiters parked in the semaphore queue alike), since shutdown awaits
   // both; what the restart drain waits on, aborts, and reports as abortedTicks is only
@@ -701,47 +701,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       await sleepInterruptible(pollMs, signal);
     }
   } finally {
-    // The in-flight landing is awaited beside the ticks, and how depends on what comes next.
-    // On an operator stop the harness signal has already aborted it — its pi runs die and it
-    // stops at its next step boundary, ending "aborted" with its ref kept and its entry dropped
-    // for next-start recovery — and it is waited out: returning early would remove
-    // orchestrator.json while this process still lands, letting a second `tumwater run` start
-    // a concurrent lander (a second Ctrl+C still forces the exit). On a restart the caller exits
-    // for the next generation the moment this returns, and a landing is not bounded by one
-    // reviewer run — a merge's check follows the vets' — so the wait is a bounded hand-off that
-    // announces itself (awaitLandingForHandoff; BUGS.md 2026-09-23). "The landing" is every
-    // landing task at once — each vet holding a permit, and the merge — waited on (and, past
-    // the hand-off's window, aborted) together under the roles of them all. The vetted changes
-    // waiting for the merge have no task, and a vet still parked for its permit has started
-    // nothing (a shutdown settles it at once; a restart's closed start gate at its grant): all
-    // of them keep their entries and pins for the next start.
-    const ticks = Promise.allSettled([...roleInFlight, ...directorInFlight]);
-    const tasks = landingTasks(landings);
-    const landing =
-      tasks.length === 0
-        ? null
-        : { promise: Promise.allSettled(tasks.map((t) => t.promise)).then(() => {}), roles: tasks.flatMap((t) => t.roles) };
-    if (landing && restart) {
-      // The abort is the internal stop, not just the landing's own controller: each task wires
-      // the harness signal to its controller, and a conflict-resolution run watches the
-      // harness signal alone (runLandingPi). Nothing else it reaches can start work here — the
-      // director has finished, permit holders were aborted at the restart, and a parked waiter
-      // meets the closed start gate (tickStartHeld) whenever it is granted a permit.
-      const outcome = await awaitLandingForHandoff(
-        root,
-        landing,
-        opts.handoffLandingWindowMs ?? HANDOFF_LANDING_WINDOW_MS,
-        () => internalStop.abort(),
-      );
-      // An abandoned landing still holds its permit, so a waiter parked behind it would never be
-      // granted one and never settle. The ticks have had both windows beside the hand-off, so
-      // whatever is still reserved then started nothing (or is wedged like the landing): the
-      // hand-off goes ahead without it too.
-      if (outcome !== "abandoned") await ticks;
-    } else {
-      if (landing) warnEvent(root, "harness", `shutdown waiting on the in-flight landing of ${landing.roles.join(", ")}`);
-      await Promise.allSettled([ticks, landing?.promise]);
-    }
+    await drainInFlightWork(
+      root,
+      roleInFlight,
+      directorInFlight,
+      landingTasks(landings),
+      restart,
+      opts.handoffLandingWindowMs ?? HANDOFF_LANDING_WINDOW_MS,
+      () => internalStop.abort(),
+    );
     logEvent(root, { loop: "harness", type: "orchestrator_stop" });
     removeQuiet(infoFile);
   }
