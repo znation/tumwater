@@ -172,6 +172,25 @@ test("a rate-limited run with no Retry-After hint waits the minute-scale refill 
   }
 });
 
+test("a Retry-After hint of 0 counts as no hint and waits the minute-scale refill pause", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    // A provider can legitimately echo "Retry-After: 0" — which is no usable hint at all.
+    firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 0s')}'`,
+  });
+  try {
+    const { loopPi, warns, sleeps } = makeHost(root);
+    await loopPi.runRolePi(root, "work", "tumwater-feature-6-author");
+    // A zero-second hint must not sneak the fixed 2026-09-25 bug back in through the side
+    // door: a hint that asks for no wait is treated as no hint, so the refill pause applies.
+    assert.deepEqual(sleeps, [60_000], "a 0-second hint waits the refill pause, not 0");
+    assert.match(warns[0]!, /\(429, no hint — waiting 60s\) — retrying/);
+  } finally {
+    restore();
+  }
+});
+
 test("a Retry-After hint larger than the cap is waited out only to the cap", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");

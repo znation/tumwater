@@ -9,6 +9,16 @@ _None._
 
 ## Fixed
 
+### A `Retry-After: 0` hint sneaks the zero-wait 429 bug back in: a hint that asks for no wait is kept as a hint, so the retry fires instantly into the exhausted bucket (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** A provider that echoes `Retry-After: 0` into its 429 text produces `retryAfterSeconds = 0` (src/pi-stream.ts parses only digits, so no NaN). In src/loop-pi.ts the wait then computed `Math.min(pi.retryAfterSeconds ?? RATE_LIMIT_NO_HINT_RETRY_S, cap)` — and since `0` is not nullish, the `??` keeps the 0, the wait is 0, and the retry burns itself on the same exhausted per-minute bucket: the exact bug fixed earlier today, through a side door. The warning message even said `no hint — waiting 60s` while the code waited 0, so the digest would have shown a refill pause that never happened.
+
+**Cause:** The hint-less fix keyed on "is a hint present" instead of "is the hint usable." A zero-second hint is no hint at all.
+
+**Fix:** src/loop-pi.ts now treats any non-positive hint as no hint (`hintS = retryAfterSeconds > 0 ? retryAfterSeconds : RATE_LIMIT_NO_HINT_RETRY_S`), so the wait and the warning text agree, and `Retry-After: 0` gets the same minute-scale refill pause as a missing hint. Regression test added in test/loop-pi.test.ts pinning the 60 s wait and the warning for a `retry after 0s` error line.
+
+**Validation gap:** unclear-invariant — the existing suite pinned present hints and missing hints but never asked what the retry was supposed to guarantee when a hint *names* a useless wait, so the invariant (a 429 retry must always wait a refill-scale pause) had to be reconstructed from today's fixed entry before the hole was visible.
+
 ### A transient retry of a hint-less 429 waits 0 seconds, burning the one retry into the same exhausted per-minute bucket (found by telemetry loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** The 2026-09-25 failure digest logs **31×** `provider rate-limited the request (429) — retrying the pi run once` (bugfix, clean, coverage, dry +5 more) and a **6×** hard-error cluster `429 "Rate limit exceeded"` (bugfix, coverage, dry, perf +1 more) — six of the 31 retried runs ended `error` anyway, discarding their tick. The warning interpolated the provider's hint only when one existed (src/loop-pi.ts), and the digest preserves literal text, so hinted retries would form a separate `(429, retry after Ns)` cluster; the day's single 429 warning cluster carried no suffix, meaning every one of the 31 waits was 0 seconds. The day's one fleet-wide hold (10:21, 60 s) never covered these isolated 429s — the storm detector is calibrated to stay silent on exactly this spacing.

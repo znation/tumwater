@@ -130,9 +130,12 @@ export class LoopPi {
       // A hint-less 429 defaults to that minute-scale refill pause instead of 0 — an immediate
       // retry lands in the same exhausted bucket and burns the tick's only retry (BUGS.md
       // 2026-09-25). A present hint wins; the cap bounds either.
-      const waitS = pi.transientRateLimit
-        ? Math.min(pi.retryAfterSeconds ?? RATE_LIMIT_NO_HINT_RETRY_S, RATE_LIMIT_RETRY_AFTER_CAP_S)
-        : 0;
+      // A hint of 0 (or any non-positive value) is no usable hint — "retry now" is exactly
+      // the burned-retry bug a hint-less 429 causes — so it falls back to the refill pause
+      // just like a missing hint, keeping the warning text and the actual wait in agreement.
+      const hintS =
+        pi.retryAfterSeconds && pi.retryAfterSeconds > 0 ? pi.retryAfterSeconds : RATE_LIMIT_NO_HINT_RETRY_S;
+      const waitS = pi.transientRateLimit ? Math.min(hintS, RATE_LIMIT_RETRY_AFTER_CAP_S) : 0;
       if (waitS > 0) await (this.host.sleep?.(waitS * 1000) ?? sleepFor(waitS * 1000));
       // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
