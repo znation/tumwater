@@ -285,6 +285,19 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
  * event log for `telemetry`) is not a function of whether main moved. */
 export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "telemetry"]);
 
+/** The built-in maintenance roles that author code on their own cadence — the six members
+ * DEFERRABLE_ROLES and BASELINE_BLOCKED_ROLES share. Both sets list them because both charter
+ * the same roles (defer-until-needed scheduling, red-main blocking), so the list lives once
+ * here and a new maintenance role cannot be added to one set and missed in the other. */
+const CODE_MAINTENANCE_ROLES: readonly string[] = [
+  "organize",
+  "coverage",
+  "clean",
+  "dry",
+  "perf",
+  "improve",
+];
+
 /** Maintenance-tier roles (need-based prioritization): exactly the eight built-ins whose due
  * ticks are deferrable while no feature/bugfix/director/human commit has landed on main since
  * their last tick and that tick did nothing. Unknown/custom roles are deliberately NOT in this
@@ -293,12 +306,7 @@ export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "telemetry"]);
  * says nothing about whether the product or the event log has something new to report. */
 export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
   "readme",
-  "organize",
-  "coverage",
-  "clean",
-  "dry",
-  "perf",
-  "improve",
+  ...CODE_MAINTENANCE_ROLES,
   "steward",
 ]);
 
@@ -320,12 +328,7 @@ export function roleTier(role: string): number {
  * pre-check via review.exemptPaths, so a red main does not block them). */
 export const BASELINE_BLOCKED_ROLES: ReadonlySet<string> = new Set([
   "feature",
-  "organize",
-  "coverage",
-  "clean",
-  "dry",
-  "perf",
-  "improve",
+  ...CODE_MAINTENANCE_ROLES,
 ]);
 
 /** Every role id, including the director (which is driven by user prompts, not a find prompt). */
