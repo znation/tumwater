@@ -2,9 +2,10 @@ import fs from "node:fs";
 import type { BuildStatus } from "./build-info.js";
 import type { FallbackDemotion } from "./budget.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
-import { removeQuiet } from "./files.js";
+import { ensureParentDir, removeQuiet } from "./files.js";
 import { pidAlive } from "./process.js";
-import { orchestratorStatePath, pausedPath, pausedRolesPath } from "./paths.js";
+import { withSyncLock } from "./lock.js";
+import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "./paths.js";
 
 /** True while the operator has paused the fleet (`tumwater pause` wrote its marker). The
  * marker is persistent state, not a one-shot request: presence means paused until `resume`
@@ -52,28 +53,52 @@ export function pausedRoles(root: string): string[] {
     : [];
 }
 
+/** The paused-roles marker is structured state several processes rewrite read-modify-write
+ * (the CLI's pause/resume --role and the dashboard's per-row toggle are separate processes),
+ * and writeJsonAtomic's last-writer-wins policy — correct for overwrite-style state — silently
+ * drops one caller's pause when two whole-set writes race. These writers therefore serialize
+ * through withSyncLock (src/lock.ts), the same mkdir-and-pid mutex the merge path uses, so the
+ * crash-recovery rules (dead pid, no-pid grace, age) and the ownership-checked release are the
+ * tested ones rather than a second hand-rolled lockfile protocol. A lock that cannot be
+ * acquired within PAUSED_ROLES_LOCK_TIMEOUT_MS throws rather than writing unlocked — a pause
+ * that silently fails to hold is worse than a pause that reports an error. The bound is long
+ * enough to out-wait the no-pid grace that recovers a creator crashed mid-acquire, short
+ * enough that a wedged holder costs an operator command seconds, not minutes. */
+const PAUSED_ROLES_LOCK_TIMEOUT_MS = 10_000;
+
+/** Run `fn` while holding the exclusive cross-process lock on the paused-roles marker. */
+function withPausedRolesLock<T>(root: string, fn: () => T): T {
+  const lock = pausedRolesLockPath(root);
+  ensureParentDir(lock); // pause/resume may run before any marker write has made the state dir.
+  return withSyncLock(lock, fn, PAUSED_ROLES_LOCK_TIMEOUT_MS);
+}
+
 /** Pause one role by adding it to the paused-roles marker; returns whether this call changed
  * state (false when the role was already paused — idempotent like pauseFleet, so the CLI and
  * a dashboard toggle can report "already paused"). Custom-loop ids are stored verbatim: the
  * marker must survive config edits, which is why callers resolve built-in ids without
  * touching tumwater.json (namedRole in src/operator-commands.ts). */
 export function pauseRole(root: string, role: string): boolean {
-  const current = pausedRoles(root);
-  if (current.includes(role)) return false;
-  writeJsonAtomic(pausedRolesPath(root), { roles: [...current, role], at: Date.now() });
-  return true;
+  return withPausedRolesLock(root, () => {
+    const current = pausedRoles(root);
+    if (current.includes(role)) return false;
+    writeJsonAtomic(pausedRolesPath(root), { roles: [...current, role], at: Date.now() });
+    return true;
+  });
 }
 
 /** Resume one role by removing it from the paused-roles marker; returns whether it was there
  * to lift (resume's changed-state contract, mirroring resumeFleet). The last removal deletes
  * the file outright, so a fully-resumed fleet leaves no marker behind for observers to read. */
 export function resumeRole(root: string, role: string): boolean {
-  const current = pausedRoles(root);
-  if (!current.includes(role)) return false;
-  const remaining = current.filter((r) => r !== role);
-  if (remaining.length === 0) removeQuiet(pausedRolesPath(root));
-  else writeJsonAtomic(pausedRolesPath(root), { roles: remaining, at: Date.now() });
-  return true;
+  return withPausedRolesLock(root, () => {
+    const current = pausedRoles(root);
+    if (!current.includes(role)) return false;
+    const remaining = current.filter((r) => r !== role);
+    if (remaining.length === 0) removeQuiet(pausedRolesPath(root));
+    else writeJsonAtomic(pausedRolesPath(root), { roles: remaining, at: Date.now() });
+    return true;
+  });
 }
 
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving

@@ -37,7 +37,9 @@ type LockState = "absent" | "live" | "stale";
  * name an unrelated live process and latch a dead holder as live — the same latch pidAlive's
  * own guards close on the probe side. Surrounding whitespace is trimmed (a foreign writer may
  * add a newline), but embedded non-digits make the file unreadable, so classifyLock falls back
- * to the no-pid grace and eventually breaks it. */
+ * to the no-pid grace and eventually breaks it. Read by classifyLock and releaseOwnedLock
+ * here and by doctor's merge-lock check — one definition of what counts as a readable pid.
+ */
 export function readLockPid(dir: string): number | null {
   try {
     return parsePositiveInt(fs.readFileSync(path.join(dir, "pid"), "utf8").trim());
@@ -83,6 +85,18 @@ function tryBreakStale(dir: string): void {
   if (classifyLock(dir) === "stale") rmLockDir(dir);
 }
 
+/** Release a lock dir only while it is still ours — the pid file naming our process is the
+ * proof. A holder whose lock was stolen from under it (the age rule can break a live-but-
+ * stalled holder's lock) must not delete whatever sits at the lock path when it lets go: by
+ * then that is the successor's lock, and deleting it would let a third writer in while the
+ * successor is mid-section — the exact lost-update the lock exists to prevent. Leaving the
+ * dir in every other case is safe: it is either already gone, a successor's, or an orphan the
+ * classify rules (dead pid, no-pid grace, age) clean up on a later acquire. */
+function releaseOwnedLock(dir: string): void {
+  if (readLockPid(dir) !== process.pid) return;
+  rmLockDir(dir);
+}
+
 /** mkdir-based mutex shared by all loops (and processes) of one project. */
 export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs = 120_000): Promise<T> {
   const deadline = Date.now() + timeoutMs;
@@ -117,6 +131,47 @@ export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs =
   try {
     return await fn();
   } finally {
-    removeTree(dir);
+    releaseOwnedLock(dir);
+  }
+}
+
+/** The synchronous twin of withLock, for short critical sections reached from code that cannot
+ * await — pauseRole/resumeRole are called from sync writers and from sync tests. Same protocol
+ * and same classification as withLock (mkdir admits exactly one writer; the pid file marks the
+ * holder; classifyLock decides live vs stale; releaseOwnedLock keeps a robbed holder from
+ * deleting its successor's lock), so the two mutexes cannot drift on when a held lock may be
+ * broken. Waits on a millisecond busy-sleep instead of an async timer: the sections it guards
+ * are single-file read-modify-writes, microseconds long. The default timeout out-waits the
+ * NO_PID_GRACE_MS recovery of a crashed creator yet still degrades a wedged holder to a clear
+ * error rather than a silent unlocked write. */
+export function withSyncLock<T>(dir: string, fn: () => T, timeoutMs = 10_000): T {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      fs.mkdirSync(dir, { recursive: false });
+    } catch (err) {
+      // Only a held lock (EEXIST) is worth waiting for — withLock's rule, unchanged.
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw new Error(`cannot acquire lock ${dir}: ${errorMessage(err)}`);
+      }
+      tryBreakStale(dir);
+      if (Date.now() > deadline) {
+        throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}${lockHolderNote(dir)}`);
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5 + Math.floor(Math.random() * 10));
+      continue;
+    }
+    try {
+      fs.writeFileSync(path.join(dir, "pid"), String(process.pid));
+    } catch (err) {
+      rmLockDir(dir); // We took the dir; a failed pid write must not leave an orphan we own.
+      throw err;
+    }
+    break;
+  }
+  try {
+    return fn();
+  } finally {
+    releaseOwnedLock(dir);
   }
 }

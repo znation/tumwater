@@ -128,6 +128,16 @@ export function pausedRolesPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "paused-roles.json");
 }
 
+/** The cross-process lock serializing read-modify-write updates of the paused-roles marker
+ * (pauseRole/resumeRole in fleet-state.ts): the CLI and the GUI server are separate processes
+ * that can toggle different roles in the same instant, and without serialization the last
+ * writer's whole-set overwrite silently drops the other's pause. A lock directory owned by the
+ * shared mkdir-and-pid mutex (withSyncLock, src/lock.ts), which creates and removes it; lives
+ * beside the marker path it guards, same single-definition rule. */
+export function pausedRolesLockPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "paused-roles.lock");
+}
+
 /** The append-only harness event log (events.ts); the CLI, TUI, and status payload read it. */
 export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", "events.jsonl");

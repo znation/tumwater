@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import {
   isFleetPaused,
   pauseRole,
@@ -14,6 +15,7 @@ import {
   orchestratorAlive,
   type OrchestratorInfo,
 } from "../src/fleet-state.js";
+import { pausedRolesLockPath } from "../src/paths.js";
 import { tmpdir } from "./util.js";
 
 test("isFleetPaused reads false with no .tumwater dir and no marker", () => {
@@ -136,4 +138,112 @@ test("pauseRole and resumeRole maintain the marker set idempotently", () => {
   // Custom-loop ids are stored verbatim — the marker must survive config edits.
   assert.equal(pauseRole(root, "my-custom-loop"), true);
   assert.deepEqual(pausedRoles(root), ["my-custom-loop"]);
+});
+
+/** Spawn a child node process that spins on a start file, then pauses one role once — the way
+ * two real writers (the CLI and the GUI server) each run in their own process. The barrier
+ * aligns every child's read-modify-write window, which is exactly the instant the race fires.
+ * Resolves with the child's exit status; the exit listener attaches at spawn time, so a child
+ * that fails fast rejects this promise instead of leaving it pending forever. */
+function pauseOnceProcess(root: string, role: string, startFile: string): Promise<void> {
+  const module = fileURLToPath(new URL("../src/fleet-state.js", import.meta.url));
+  const script = `const fs = require("node:fs");
+    import(${JSON.stringify(module)}).then((m) => {
+      while (!fs.existsSync(${JSON.stringify(startFile)})) {}
+      return m.pauseRole(${JSON.stringify(root)}, ${JSON.stringify(role)});
+    })`;
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["-e", script]);
+    const exited = new Promise<number | null>((resolve) => child.on("exit", resolve));
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => (stderr += chunk));
+    exited.then((code) =>
+      code === 0 ? resolve() : reject(new Error(`the ${role} pause process failed: ${stderr}`)),
+    );
+  });
+}
+
+test("simultaneous cross-process pauseRole calls all survive in the marker", async () => {
+  // Regression: the marker's whole-set overwrite was written unlocked, so concurrent
+  // read-modify-write writers (CLI `pause --role` vs the dashboard's per-row toggle) raced and
+  // the last writer's set silently dropped every other pause recorded since its read — the
+  // operator believes those loops are stopped while they keep ticking. The marker is
+  // pre-seeded with a large role set so every writer's read-serialize-write window spans
+  // milliseconds: with the windows that wide, eight aligned writers lose pauses on the
+  // unlocked build essentially every run, while the serialized build ends with exactly the
+  // seeded roles plus all eight new ones.
+  const root = tmpdir();
+  const seeded = Array.from({ length: 2000 }, (_, i) => `base${i}`);
+  fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".tumwater", "state", "paused-roles.json"),
+    JSON.stringify({ roles: seeded, at: 1 }),
+  );
+  const roles = Array.from({ length: 8 }, (_, i) => `r${i + 1}`);
+  const startFile = path.join(root, "start-when-aligned");
+  const children = roles.map((role) => pauseOnceProcess(root, role, startFile));
+  fs.writeFileSync(startFile, "go"); // release all eight writers at once
+  await Promise.all(children);
+  assert.deepEqual(
+    [...pausedRoles(root)].sort(),
+    [...seeded, ...roles].sort(),
+    "every simultaneous pause survives (order is whichever writer landed first)",
+  );
+});
+
+test("a paused-roles lock held by another process is waited for, not stolen", async () => {
+  const root = tmpdir();
+  const lock = pausedRolesLockPath(root);
+  // A live holder via the real protocol (withSyncLock in the compiled build), releasing after
+  // 300ms — well inside pauseRole's 10s wait bound.
+  const module = fileURLToPath(new URL("../src/lock.js", import.meta.url));
+  const holder = spawn(
+    process.execPath,
+    [
+      "-e",
+      `import(${JSON.stringify(module)}).then(({ withSyncLock }) => {
+        const fs = require("node:fs"), path = require("node:path");
+        fs.mkdirSync(path.dirname(${JSON.stringify(lock)}), { recursive: true });
+        return withSyncLock(${JSON.stringify(lock)}, () =>
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300));
+      });`,
+    ],
+  );
+  const holderExit = new Promise((resolve) => holder.on("exit", resolve));
+  holder.stderr?.resume();
+  try {
+    for (let i = 0; !fs.existsSync(lock); i++) {
+      if (i > 200) throw new Error("the holder child never took the lock");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.equal(pauseRole(root, "docs"), true, "the caller waits out the live holder and proceeds");
+    assert.deepEqual(pausedRoles(root), ["docs"]);
+  } finally {
+    await holderExit;
+  }
+  assert.equal(fs.existsSync(lock), false, "the lock is released after the section");
+});
+
+test("a crashed pause writer's lock is stolen, not waited on forever", () => {
+  // Two crash shapes the serializer must recover from on its own, or every later pause/resume
+  // times out until a human deletes the lock by hand:
+  // - a crash between mkdir and the pid write leaves an empty (or missing) pid file — stolen
+  //   once past the no-pid grace, here simulated by backdating the dir six seconds;
+  // - a crash after the pid write leaves a dead pid — stolen at once.
+  const root = tmpdir();
+  fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
+  const empty = pausedRolesLockPath(root);
+  fs.mkdirSync(empty);
+  fs.writeFileSync(path.join(empty, "pid"), "");
+  const sixSecondsAgo = new Date(Date.now() - 6 * 1000);
+  fs.utimesSync(empty, sixSecondsAgo, sixSecondsAgo);
+  assert.equal(pauseRole(root, "docs"), true, "an empty-pid orphan past the grace is stolen");
+  assert.deepEqual(pausedRoles(root), ["docs"]);
+  assert.equal(fs.existsSync(empty), false, "the stolen orphan leaves no remnant after release");
+
+  const dead = pausedRolesLockPath(root);
+  fs.mkdirSync(dead);
+  fs.writeFileSync(path.join(dead, "pid"), "999999999");
+  assert.equal(pauseRole(root, "dry"), true, "a dead-pid lock is stolen at once");
+  assert.deepEqual(pausedRoles(root), ["docs", "dry"]);
 });

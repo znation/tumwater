@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { readLockPid, withLock } from "../src/lock.js";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { readLockPid, withLock, withSyncLock } from "../src/lock.js";
 import { tmpdir } from "./util.js";
 
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
@@ -265,4 +267,96 @@ test("the lock timeout names the holder: its pid, or that no pid was readable", 
     withLock(orphan, async () => {}, 700),
     /waiting for lock .*orphan\.lock \(no readable pid file\)$/,
   );
+});
+
+test("withSyncLock excludes a second writer and releases on the way out", () => {
+  const lock = path.join(tmpdir(), "x.lock");
+  assert.equal(
+    withSyncLock(lock, () => {
+      assert.ok(fs.existsSync(lock), "the lock dir exists while held");
+      // A second acquire while held must time out, not enter: the exclusion is the point.
+      assert.throws(() => withSyncLock(lock, () => {}, 200), /timed out after 0\.2s waiting for lock/);
+      return "inside";
+    }),
+    "inside",
+  );
+  assert.ok(!fs.existsSync(lock), "the lock is released after the section");
+  assert.equal(withSyncLock(lock, () => "again"), "again", "a released lock is acquirable again");
+});
+
+test("withSyncLock waits out a live holder in another process and then proceeds", async () => {
+  const lock = path.join(tmpdir(), "held.lock");
+  const module = fileURLToPath(new URL("../src/lock.js", import.meta.url));
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      `import(${JSON.stringify(module)}).then(({ withSyncLock }) =>
+        withSyncLock(${JSON.stringify(lock)}, () =>
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300)));`,
+    ],
+  );
+  const childExit = new Promise((resolve) => child.on("exit", resolve));
+  child.stderr?.resume();
+  try {
+    // The child needs a moment to take the lock; once its pid file reads back, the parent
+    // must wait out the remaining hold (300ms, far inside the 5s budget) rather than steal.
+    for (let i = 0; readLockPid(lock) === null; i++) {
+      if (i > 200) throw new Error("the holder child never took the lock");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.equal(readLockPid(lock), child.pid!, "the child process holds the lock");
+    assert.equal(withSyncLock(lock, () => "after", 5000), "after", "a live holder is waited for");
+  } finally {
+    await childExit;
+  }
+});
+
+test("withSyncLock steals a crashed writer's lock: a dead pid, or an empty pid past the grace", () => {
+  const root = tmpdir();
+  // Crash after mkdir but before the pid write: unreadable pid falls back to the no-pid
+  // grace, and a dir backdated past it is stolen at once — the exact case the replaced
+  // wx-lockfile protocol left unstealable (an empty body parsed as live forever).
+  const empty = path.join(root, "empty.lock");
+  fs.mkdirSync(empty);
+  fs.writeFileSync(path.join(empty, "pid"), "");
+  const sixSecondsAgo = new Date(Date.now() - 6 * 1000);
+  fs.utimesSync(empty, sixSecondsAgo, sixSecondsAgo);
+  assert.equal(withSyncLock(empty, () => "empty", 5000), "empty", "an empty-pid orphan is stolen");
+
+  // Crash after the pid write: the recorded pid is dead, so the lock is stale immediately.
+  const dead = path.join(root, "dead.lock");
+  fs.mkdirSync(dead);
+  fs.writeFileSync(path.join(dead, "pid"), "999999999");
+  assert.equal(withSyncLock(dead, () => "dead", 5000), "dead", "a dead-pid lock is stolen at once");
+});
+
+/** A pid that is alive but not ours — a real spawned sleeper, because pidAlive treats a
+ * permission error as dead and no fixed pid (init's included) is reliably "alive" here. */
+function sleeperPid(): Promise<number> {
+  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 500)"]);
+  child.unref();
+  return new Promise((resolve) => child.on("spawn", () => resolve(child.pid!)));
+}
+
+test("a holder robbed mid-section does not delete its successor's lock on release", async () => {
+  // The age rule can break a live-but-stalled holder's lock; the successor then takes a lock
+  // of its own. The robbed holder's release must leave that lock alone — deleting it would
+  // let a third writer in while the successor is mid-section, the lost-update the lock
+  // exists to prevent. Simulated here by a section that swaps the pid file for another live
+  // process's, exactly what a thief-and-successor pair leaves behind.
+  const pid = await sleeperPid();
+  const syncLock = path.join(tmpdir(), "robbed-sync.lock");
+  withSyncLock(syncLock, () => {
+    fs.writeFileSync(path.join(syncLock, "pid"), String(pid)); // the successor now "holds" it
+  });
+  assert.ok(fs.existsSync(syncLock), "the robbed sync holder left the successor's lock in place");
+  assert.equal(readLockPid(syncLock), pid, "the successor's pid file is untouched");
+
+  const asyncLock = path.join(tmpdir(), "robbed-async.lock");
+  await withLock(asyncLock, async () => {
+    fs.writeFileSync(path.join(asyncLock, "pid"), String(pid)); // still alive: 500ms sleeper
+  });
+  assert.ok(fs.existsSync(asyncLock), "the robbed async holder left the successor's lock in place");
+  assert.equal(readLockPid(asyncLock), pid, "the successor's pid file is untouched");
 });

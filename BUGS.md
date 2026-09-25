@@ -7,6 +7,48 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### Concurrent `pause --role` / dashboard-toggle writers erase each other's pauses: the paused-roles marker's whole-set overwrite was written unlocked (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** an operator pauses one role from the CLI while toggling another in the GUI
+dashboard within the same few milliseconds, and one of the two pauses silently vanishes —
+`pauseRole`/`resumeRole` each read the whole role set, modify it in memory, and write it back
+with `writeJsonAtomic`, whose last-writer-wins policy is correct for overwrite-style state but
+drops every writer's change recorded between another writer's read and write. A lost pause is
+severe: the scheduler keeps ticking a loop the operator believes stopped, and no event or log
+line records the loss.
+
+**Reproduce:** the regression test (`simultaneous cross-process pauseRole calls all survive
+in the marker` in test/fleet-state.test.ts) spawns eight single-call `pauseRole` processes —
+a stand-in for the CLI and the GUI server — released together by a shared start file, against
+a marker pre-seeded with 2000 roles so every writer's read-serialize-write window spans
+milliseconds. On the pre-fix sources it fails 3/3 runs (`node --test --test-name-pattern
+simultaneous dist/test/fleet-state.test.js`); with the fix it passes, ending with exactly the
+seeded roles plus all eight new ones.
+
+**Cause:** the marker's read-modify-write was written with no serialization at all; the two
+writers are separate processes (CLI, GUI server), so no in-process mutex can help.
+
+**Fix:** serialize the marker's read-modify-write through the merge path's proven mkdir-and-pid
+mutex (`withSyncLock`, new in src/lock.ts — the synchronous twin of `withLock`, sharing
+classifyLock's stale rules and rmLockDir): `withPausedRolesLock` in src/fleet-state.ts wraps
+both `pauseRole` and `resumeRole`, the lock dir lives beside the marker (`pausedRolesLockPath`,
+src/paths.ts), and a lock that cannot be acquired within 10s throws rather than writing
+unlocked — a pause that silently fails to hold is worse than a pause that reports an error.
+Deliberately reusing lock.ts rather than a bespoke lockfile, because the bespoke protocol (an
+earlier attempt at this fix) leaked three ways the shared machinery already handles: an empty
+or unparseable pid (a crash between mkdir and the pid write) was never stolen — it is now
+stolen once past lock.ts's 5s no-pid grace, inside the 10s wait; a dead pid is stolen at once;
+and the release is ownership-checked (`releaseOwnedLock` removes the dir only when its pid file
+still names us), so a holder robbed by the age rule can no longer delete its successor's lock
+and let a third writer into the read-modify-write concurrently — the same check now guards the
+merge lock's release. The 10s bound out-waits the 5s no-pid grace, so a crashed creator is
+recovered within one wait instead of stranding every later pause/resume.
+
+**Validation gap:** no-repro — the suite contained nothing that could reproduce it, and honest
+attempts (single-process, two-process hammer) genuinely could not either because each writer's
+race window is only its first write; a deterministic-enough repro required a purpose-built
+eight-process barrier experiment over a widened (pre-seeded) marker that did not exist.
+
 ### `tumwater resume` confirms a resumption the sibling pause still gates: `resume --role X` promises ticks under an active fleet pause, and a fleet resume promises ticks for roles still individually paused (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** two false promises in the resume confirmations. With the fleet paused
