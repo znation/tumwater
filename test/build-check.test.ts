@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -14,7 +14,7 @@ import {
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
-import { buildCheckFixture, sh, tmpdir } from "./util.js";
+import { buildCheckFixture, sh, tmpdir, writeScript } from "./util.js";
 
 /** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
 function groupAlive(pgid: number): boolean {
@@ -26,11 +26,29 @@ function groupAlive(pgid: number): boolean {
   }
 }
 
-/** Poll `cond` every 10 ms for at most `ms` (performance.now, so a test that mocks Date can
- * still bound its wait). */
+/** The real setTimeout, captured when this file loads — before any test installs mock timers —
+ * so `until` keeps polling in real time under checkClock, which mocks setTimeout itself. */
+const realSetTimeout = globalThis.setTimeout;
+
+/** Poll `cond` every 10 ms for at most `ms` (performance.now and the captured real timer, so a
+ * test that mocks Date or the timers can still bound its wait). */
 async function until(cond: () => boolean, ms: number): Promise<void> {
   const deadline = performance.now() + ms;
-  while (!cond() && performance.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+  while (!cond() && performance.now() < deadline) await new Promise((r) => realSetTimeout(r, 10));
+}
+
+/** Put a check's deadline, SIGKILL grace and group poll (runScriptGroup in src/build-check.ts)
+ * on logical time for the rest of `t`: Date, setTimeout and setInterval become node:test mock
+ * timers, while the check's processes, pipes and exits stay real. The returned `advance(ms)`
+ * fires what falls due in 50 ms steps (the group poll's period), so each timer reads its own
+ * Date.now() — a single tick(ms) would stamp every callback with the span's end. A deadline
+ * on logical time fires when the test says, never mid-startup: on the wall clock a budget had
+ * to outlast npm, node and shell boot under load, and every such margin became a flake. */
+function checkClock(t: TestContext): (ms: number) => void {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout", "setInterval"], now: Date.now() });
+  return (ms) => {
+    for (let left = ms; left > 0; left -= 50) t.mock.timers.tick(Math.min(50, left));
+  };
 }
 
 /** A pid/pgid a fixture command wrote to `file` (0 when it never did). */
@@ -59,10 +77,9 @@ test("runBuildCheck still classifies a genuinely failing build as failed with th
     path.join(wt, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --fail" } }),
   );
-  const tool = path.join(root, "node_modules", ".bin", "buildcheck-tool");
-  fs.writeFileSync(
-    tool,
-    "#!/bin/sh\n[ \"$1\" = \"--ok\" ] && echo ok || { echo type error TS9999: boom; exit 1; }\n",
+  writeScript(
+    path.join(root, "node_modules", ".bin", "buildcheck-tool"),
+    "[ \"$1\" = \"--ok\" ] && echo ok || { echo type error TS9999: boom; exit 1; }",
   );
   const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
   assert.equal(outcome.status, "failed");
@@ -104,7 +121,7 @@ test("a check killed by an external signal is skipped as killed, naming the sign
 // backgrounds a grandchild that TRAPS SIGTERM — only the SIGKILL escalation can stop it — so
 // the test pins both the group signal and the escalation armed on timeout. Mirrors
 // test/pi.test.ts's "a killed run leaves no grandchild behind".
-test("a timed-out build check takes its process tree with it (regression)", async () => {
+test("a timed-out build check takes its process tree with it (regression)", async (t) => {
   const { root, wt } = buildCheckFixture();
   const pidFile = path.join(wt, "grandchild.pid");
   fs.writeFileSync(
@@ -129,32 +146,26 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
   );
   let pid = 0;
   try {
-    // 4s budget, 700ms SIGKILL grace: the grandchild traps SIGTERM, so it must be gone
-    // shortly after the grace expires — and only via the escalation. The budget must cover
-    // the whole startup chain (npm boot → runner boot → the grandchild's own node boot)
-    // BEFORE the group SIGTERM fires: at 600ms a load-sensitive run (the suite's per-file
-    // node --test workers, the orchestrator itself) let SIGTERM land mid-grandchild-startup,
-    // which died by default action before trapping or writing its pid — the test then died
-    // reading a pid file that never existed and falsely reddened main at 03edeba6 (BUGS.md
-    // 2026-09-24). test/pi.test.ts hit and fixed this same startup race once already.
-    const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 4_000, 700);
+    // 4s budget, 700ms SIGKILL grace: the grandchild traps SIGTERM, so it must be gone once the
+    // grace expires — and only via the escalation. Both run on logical time (checkClock), and
+    // the deadline fires only once the grandchild has trapped SIGTERM and written its pid. On
+    // the wall clock the budget had to cover the whole startup chain (npm boot → runner boot →
+    // the grandchild's own node boot) BEFORE the group SIGTERM fired: at 600ms a load-sensitive
+    // run let SIGTERM land mid-grandchild-startup, which died by default action before trapping
+    // or writing its pid — the test then died reading a pid file that never existed and falsely
+    // reddened main at 03edeba6 (BUGS.md 2026-09-24), and 4s stayed a load flake after it.
+    const advance = checkClock(t);
+    const check = runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 4_000, 700);
+    await until(() => readPid(pidFile) > 0, 30_000);
+    pid = readPid(pidFile);
+    assert.ok(pid > 0, "the grandchild recorded its pid before the timeout");
+    advance(4_000 + 700); // the deadline's group SIGTERM, then the grace's SIGKILL
+    const outcome = await check;
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "timeout");
-    // The check settles only once its tree is gone, so a pid the grandchild wrote is already on
-    // disk; the bounded wait just keeps a slow filesystem from failing the read.
-    const pidDeadline = Date.now() + 5_000;
-    while (!fs.existsSync(pidFile) && Date.now() < pidDeadline) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    assert.ok(fs.existsSync(pidFile), "the grandchild recorded its pid before the timeout");
-    pid = Number(fs.readFileSync(pidFile, "utf8").trim());
-    assert.ok(pid > 0, "the grandchild recorded its pid before the timeout");
     // The SIGKILL lands before the check settles, but launchd reaps the orphan asynchronously:
     // poll until it is gone (or the assertion below fails on the leak this test pins).
-    const deadline = Date.now() + 5_000;
-    while (pidAlive(pid) && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    await until(() => !pidAlive(pid), 5_000);
     assert.equal(pidAlive(pid), false, "the timed-out check's grandchild is gone after the SIGKILL grace");
   } finally {
     // A failure above must not leave the SIGTERM-trapping process behind.
@@ -172,13 +183,26 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
 // spawn SIGKILLed every healthy check still running at killGraceMs and misclassified it as a
 // timeout — which, at a merge scope (landing/batch), is a deterministic reject of a green
 // tree (the 2026-09-22 review-gate catch on this fix's first draft).
-test("a healthy check that outlasts the SIGKILL grace is not mistaken for a timeout", async () => {
+test("a healthy check that outlasts the SIGKILL grace is not mistaken for a timeout", async (t) => {
   const { root, wt } = buildCheckFixture();
+  const started = path.join(wt, "started");
+  const go = path.join(wt, "go");
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "sleep 2" } }),
+    JSON.stringify({
+      name: "proj",
+      version: "1.0.0",
+      scripts: { test: `touch '${started}'; while [ ! -f '${go}' ]; do sleep 0.02; done` },
+    }),
   );
-  const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 30_000, 500);
+  // On logical time (checkClock): the run lasts four graces, far short of its 30 s deadline,
+  // and finishes on its own once the test says go.
+  const advance = checkClock(t);
+  const check = runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 30_000, 500);
+  await until(() => fs.existsSync(started), 30_000);
+  advance(2_000);
+  fs.writeFileSync(go, "");
+  const outcome = await check;
   assert.equal(outcome.status, "passed");
 });
 
@@ -189,14 +213,19 @@ test("a healthy check that outlasts the SIGKILL grace is not mistaken for a time
 // `trap '' TERM` in the group-leading shell is inherited as ignored by the backgrounded sleep,
 // which also holds the check's stdout/stderr: neither the SIGTERM nor a close can end this
 // run, only the SIGKILL at the grace.
-test("a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)", async () => {
+test("a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)", async (t) => {
   const wt = tmpdir();
   const command = "trap '' TERM; echo $$ > pgid; sleep 30 & echo $! > sleep.pid; wait";
   let pgid = 0;
   try {
-    const started = performance.now();
-    const outcome = await runBuildCheck(wt, { kind: "command", command, cwd: wt, timeoutMs: 1_000 }, 30_000, 800);
-    const elapsed = performance.now() - started;
+    // On logical time (checkClock), with the deadline fired only once the tree is up — the trap
+    // set and the pipe-holding sleep started — so the run's length is exactly what the check's
+    // timers made it.
+    const advance = checkClock(t);
+    const check = runBuildCheck(wt, { kind: "command", command, cwd: wt, timeoutMs: 1_000 }, 30_000, 800);
+    await until(() => readPid(path.join(wt, "sleep.pid")) > 0, 30_000);
+    advance(1_000 + 800); // the deadline's SIGTERM (ignored), then the grace's SIGKILL
+    const outcome = await check;
     pgid = readPid(path.join(wt, "pgid"));
     const sleepPid = readPid(path.join(wt, "sleep.pid"));
     assert.equal(outcome.status, "skipped");
@@ -204,7 +233,7 @@ test("a timed-out check whose tree ignores SIGTERM and holds its pipes settles a
     assert.ok(pgid > 0 && sleepPid > 0, "the fixture's tree started before the deadline");
     const ran = outcome.run!.settledAt - outcome.run!.spawnedAt;
     assert.ok(ran >= 1_700, `the tree outlived the SIGTERM, so the check waited for the SIGKILL (ran ${ran}ms)`);
-    assert.ok(elapsed < 1_800 + 2_500, `bounded at deadline + grace (settled after ${Math.round(elapsed)}ms)`);
+    assert.ok(ran <= 1_800 + 250, `bounded at deadline + grace (settled ${ran}ms after the spawn)`);
     // SIGKILLed before the check settled; launchd reaps the orphan a moment later. Pre-fix
     // the SIGKILL was still ~800 ms away here, so this window cannot hide the leak.
     await until(() => !groupAlive(pgid), 300);
@@ -418,9 +447,10 @@ test("runBuildCheck skips (not fails closed) when npm is missing from PATH", asy
  * the xcrun shim of an invalidated Xcode license, exit 69 with the license message. */
 function brokenGitBin(): string {
   const bin = tmpdir("broken-git-");
-  const git = path.join(bin, "git");
-  fs.writeFileSync(git, "#!/bin/sh\necho \"xcrun: error: SDK root does not exist\" >&2\necho \"You have not agreed to the Xcode license agreements.\" >&2\nexit 69\n");
-  fs.chmodSync(git, 0o755);
+  writeScript(
+    path.join(bin, "git"),
+    "echo \"xcrun: error: SDK root does not exist\" >&2\necho \"You have not agreed to the Xcode license agreements.\" >&2\nexit 69",
+  );
   return bin;
 }
 

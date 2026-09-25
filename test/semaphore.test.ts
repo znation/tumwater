@@ -35,6 +35,7 @@ test("release wakes waiters in FIFO order", async () => {
   }
   await flush(); // all three are now queued, in this order
   assert.deepEqual(order, [], "nothing runs while the slot is held");
+  assert.equal(sem.waiting, 3, "every queued acquirer is counted as waiting");
 
   sem.release();
   await flush();
@@ -47,6 +48,7 @@ test("release wakes waiters in FIFO order", async () => {
   sem.release();
   await flush();
   assert.deepEqual(order, ["a", "b", "c"], "waiters run in queue order");
+  assert.equal(sem.waiting, 0, "a woken waiter no longer counts as waiting");
 });
 
 test("capacity fully restores after a burst: no slot leak", async () => {

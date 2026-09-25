@@ -13,7 +13,18 @@ import { freshLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import { shortSha } from "../src/text.js";
-import { assistantLine, buildCheckFixture, fakePi, makeRepo, sh, tmpdir } from "./util.js";
+import { piLogPath } from "../src/paths.js";
+import {
+  assistantLine,
+  buildCheckFixture,
+  fakePi,
+  makeRepo,
+  sh,
+  tmpdir,
+  waitForLogLines,
+  watchdogClock,
+  writeScript,
+} from "./util.js";
 
 // Regression coverage for the 2026-08-27 build break (BUGS.md): src/review.ts shipped with a
 // syntax error and latent type errors and had zero tests, so nothing caught it. The pure
@@ -437,7 +448,7 @@ test("a reviewer that outruns review.timeoutSeconds fails in its own budget: com
   }
 });
 
-test("a stalled tool call during review warns in the event feed while the watchdog counts down", async () => {
+test("a stalled tool call during review warns in the event feed while the watchdog counts down", async (t) => {
   // The reviewer hangs on an interactive tool call; the gate must surface the stall in the
   // feed — the same guarantee as the author-side warning (test/loop-2.test.ts) — rather than
   // stay silent until the quiet watchdog kills the run minutes later.
@@ -453,7 +464,13 @@ test("a stalled tool call during review warns in the event feed while the watchd
     config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
     config.toolCallStallSeconds = 2; // ...but the warning lands first
     const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+    // On logical time (watchdogClock, test/util.ts): once the reviewer has named its call,
+    // move the watchdog past the stall threshold and then the quiet window.
+    const clock = watchdogClock(t);
+    const review = reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+    await waitForLogLines(piLogPath(root, ROLE), "tool_execution_start");
+    clock.advance(30_000);
+    const result = await review;
     assert.equal(result.decision, "failed");
     const warnings = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
     assert.ok(
@@ -565,9 +582,7 @@ test("gate pre-check compiles the worktree against the root install — a health
     path.join(root, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
   );
-  const tool = path.join(binDir, "buildcheck-tool");
-  fs.writeFileSync(tool, "#!/bin/sh\necho ok\n");
-  fs.chmodSync(tool, 0o755);
+  writeScript(path.join(binDir, "buildcheck-tool"), "echo ok");
 
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.writeFileSync(
@@ -727,9 +742,7 @@ async function gateBuildFixture(
   const root = makeRepo();
   fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
   if (toolBody) {
-    const tool = path.join(root, "node_modules", ".bin", "buildcheck-tool");
-    fs.writeFileSync(tool, toolBody);
-    fs.chmodSync(tool, 0o755);
+    writeScript(path.join(root, "node_modules", ".bin", "buildcheck-tool"), toolBody);
   }
   fs.writeFileSync(
     path.join(root, "package.json"),

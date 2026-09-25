@@ -14,7 +14,16 @@ import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
 import { pidAlive } from "../src/process.js";
-import { assistantLine, errorLine, fakePi, makeRepo, thinkingOnlyLine, tmpdir } from "./util.js";
+import {
+  assistantLine,
+  errorLine,
+  fakePi,
+  makeRepo,
+  thinkingOnlyLine,
+  tmpdir,
+  waitForLogLines,
+  watchdogClock,
+} from "./util.js";
 
 // plans/portability.md §5/7: the agent binary is TUMWATER_PI_BIN → agentBin → "pi". The
 // resolver is precedence only (no filesystem calls — resolvability is the preflight sites'
@@ -353,11 +362,18 @@ test("message updates are skipped before parsing even in the old cumulative shap
 // The quiet watchdog's kill is reported as quietKilled, not timedOut: a hung tool call leaves
 // its session and worktree edits intact, so the loop resumes them instead of discarding hours
 // of work for the next tick's reset (BUGS.md 2026-09-12).
+//
+// The watchdog tests below run it on logical time (watchdogClock): each waits until the raw
+// log shows the fake pi's output — so the parser has counted it — then advances the clock
+// past the window it pins. Their windows used to be real seconds, widened after every
+// loaded-machine flake (BUGS.md 2026-09-18, 2026-09-21); on logical time the ordering they
+// assert is exact, and crossing a window costs nothing.
 
-test("a stalled run is reported as quiet-killed, not timed out", async () => {
+test("a stalled run is reported as quiet-killed, not timed out", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
   config.quietTimeoutSeconds = 2; // the watchdog checks every second and kills after ~2 s of silence
+  const clock = watchdogClock(t);
   const restore = fakePi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolName: "bash" })}'`,
@@ -365,7 +381,11 @@ test("a stalled run is reported as quiet-killed, not timed out", async () => {
     ].join("\n"),
   );
   try {
-    const result = await runPi(runPiFixture(dir, { config }));
+    const opts = runPiFixture(dir, { config });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+    clock.advance(10_000); // silence well past the 2 s window
+    const result = await run;
     assert.equal(result.ok, false);
     assert.equal(result.quietKilled, true, "the watchdog kill is reported as quiet-killed");
     assert.equal(result.timedOut, false, "a hung tool call is not a tick timeout");
@@ -386,18 +406,25 @@ test("a stalled run is reported as quiet-killed, not timed out", async () => {
 // progress keep the doubled window (zombie streams). This pins that a slow-to-speak run
 // completes where the old single window killed it — and where the doubled window would
 // kill it too, so reverting to any finite startup window re-reddens this test.
-test("a run that is slow to speak is not quiet-killed during startup", async () => {
+test("a run that is slow to speak is not quiet-killed during startup", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
   config.quietTimeoutSeconds = 5; // old single window killed a silent run at the ~7.5 s check
+  const go = path.join(dir, "go");
+  const clock = watchdogClock(t);
   const restore = fakePi(
     [
-      `sleep 12`, // speaks past even the doubled startup window (10 s) — byte-silent until then
+      `while [ ! -f '${go}' ]; do sleep 0.02; done`, // byte-silent until the test says go
       `printf '%s\n' '${assistantLine("done\nSUMMARY: spoke late")}'`,
     ].join("\n"),
   );
   try {
-    const result = await runPi(runPiFixture(dir, { config }));
+    const run = runPi(runPiFixture(dir, { config }));
+    // A minute of silence before the first byte: past the old single window (5 s) and the
+    // doubled startup window (10 s) alike — any finite startup window has fired by now.
+    clock.advance(60_000);
+    fs.writeFileSync(go, "");
+    const result = await run;
     assert.equal(result.quietKilled, false, "startup latency is not a hung tool call");
     assert.equal(result.ok, true, "the run completes once pi finally speaks");
   } finally {
@@ -511,14 +538,15 @@ test("a start without toolName still names the command (or 'tool') in the open-c
   assert.deepEqual(parser.openToolCalls.map((c) => c.label), ["sleep 999", "tool"]);
 });
 
-test("a stalled call without toolName warns with the bare command named", async () => {
+test("a stalled call without toolName warns with the bare command named", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
-  // 5s/2s: the warning must land before the kill, and a 1s gap loses that ordering to jitter
-  // under concurrent suites (BUGS.md 2026-09-18).
+  // The warning (2 s) lands before the kill (5 s of silence): exact on logical time, where a
+  // real-time 1s gap lost that ordering to jitter under concurrent suites (BUGS.md 2026-09-18).
   config.quietTimeoutSeconds = 5;
   config.toolCallStallSeconds = 2;
   const warnings: string[] = [];
+  const clock = watchdogClock(t);
   const restore = fakePi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", args: { command: "sleep 999" } })}'`,
@@ -526,9 +554,11 @@ test("a stalled call without toolName warns with the bare command named", async 
     ].join("\n"),
   );
   try {
-    const result = await runPi(
-      runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
-    );
+    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+    clock.advance(30_000); // past the stall threshold, then past the quiet window
+    const result = await run;
     assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
     assert.match(
       warnings[0] ?? "",
@@ -552,14 +582,15 @@ test("toolUpdateHasContent sees real text, not empty or content-less updates", (
 // The stall warning itself: one event per stalled call, naming the command, while the quiet
 // watchdog still owns the kill.
 
-test("a stalled tool call warns once with the command named", async () => {
+test("a stalled tool call warns once with the command named", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
-  // 5s/2s: see the sibling above — the one-warning-per-call invariant needs the warning to fire
-  // while the run is still alive, which a 1s margin cannot guarantee under load.
+  // 5s/2s: see the sibling above — the warning fires while the run is still alive, and every
+  // later check before the kill must stay quiet about the same call.
   config.quietTimeoutSeconds = 5;
   config.toolCallStallSeconds = 2;
   const warnings: string[] = [];
+  const clock = watchdogClock(t);
   const restore = fakePi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
@@ -567,9 +598,11 @@ test("a stalled tool call warns once with the command named", async () => {
     ].join("\n"),
   );
   try {
-    const result = await runPi(
-      runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
-    );
+    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+    clock.advance(30_000); // several checks past the stall threshold, then the kill
+    const result = await run;
     assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
     assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
     assert.match(warnings[0] ?? "", /^tool call stalled: bash sleep 999 — no output for \d+[sm]/);
@@ -605,12 +638,13 @@ test("no stall warning when the tool call ends before the threshold", async () =
   }
 });
 
-test("toolCallStallSeconds 0 disables the stall warning", async () => {
+test("toolCallStallSeconds 0 disables the stall warning", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
   config.quietTimeoutSeconds = 2; // the kill still happens...
   config.toolCallStallSeconds = 0; // ...but no warning accompanies it
   const warnings: string[] = [];
+  const clock = watchdogClock(t);
   const restore = fakePi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
@@ -618,9 +652,11 @@ test("toolCallStallSeconds 0 disables the stall warning", async () => {
     ].join("\n"),
   );
   try {
-    const result = await runPi(
-      runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
-    );
+    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+    clock.advance(10_000);
+    const result = await run;
     assert.equal(result.quietKilled, true);
     assert.deepEqual(warnings, []);
   } finally {

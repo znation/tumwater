@@ -17,6 +17,11 @@ export class Semaphore {
     return this.capacity;
   }
 
+  /** How many acquirers are parked for a permit right now. */
+  get waiting(): number {
+    return this.waiters.length;
+  }
+
   /** Acquire a permit, parking in the wait queue when none is free. `tier` orders WAITING
    * requests only: on arrival a waiter inserts ahead of every parked waiter with a strictly
    * greater tier (the orchestrator passes roleTier so work roles beat maintenance across

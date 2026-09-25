@@ -15,8 +15,22 @@ import { validateConfig } from "../src/config-validation.js";
 import { readEvents } from "../src/events.js";
 import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/land-queue.js";
-import { landingRefName, sessionDir, worktreePath } from "../src/paths.js";
-import { assistantLine, errorLine, fakePi, initializedRepo, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir, waitForFile } from "./util.js";
+import { landingRefName, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
+import {
+  assistantLine,
+  errorLine,
+  fakePi,
+  initializedRepo,
+  landHead,
+  makeRepo,
+  sh,
+  thinkingOnlyLine,
+  tmpdir,
+  waitForFile,
+  waitForLogLines,
+  watchdogClock,
+  writeScript,
+} from "./util.js";
 
 const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
 test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {
@@ -48,7 +62,7 @@ test("a run that recovers from a predict-stream timeout internally is not re-run
   }
 });
 
-test("a transient timeout that also hits the harness timeout is not retried", async () => {
+test("a transient timeout that also hits the harness timeout is not retried", async (t) => {
   const repo = await initializedRepo();
   const counter = path.join(tmpdir(), "runs");
   // The machine sleeps long enough that pi reports the idle-stream timeout AND the
@@ -62,12 +76,19 @@ test("a transient timeout that also hits the harness timeout is not retried", as
   );
   try {
     const config = defaultConfig();
-    // 3s, not 1s: the shim sleeps 30s, so anything well under that still fires the harness
-    // timeout while pi is mid-run — but a 1s budget could expire during process spawn under
-    // load, before the shim printed its error line at all (BUGS.md 2026-09-18).
     config.tickTimeoutSeconds = 3;
+    // The tick timeout on logical time (watchdogClock with timeouts): it fires once the shim
+    // has printed its error line — on the wall clock a 1s budget could expire during process
+    // spawn under load, before the shim printed anything at all (BUGS.md 2026-09-18). A retry
+    // (the regression) prints a second line and is timed out in turn, so the run count below
+    // names it rather than the test hanging on a clock nobody advances.
+    const clock = watchdogClock(t, { timeouts: true });
     const runner = new LoopRunner(repo, "clean", config, "main");
-    const outcome = await runner.tick();
+    let settled = false;
+    const tick = runner.tick().finally(() => (settled = true));
+    const log = piLogPath(repo, "clean");
+    for (let k = 1; await waitForLogLines(log, "predict stream timed out", k, () => settled); k++) clock.advance(3_000);
+    const outcome = await tick;
     assert.equal(outcome.result, "error");
     assert.match(runner.state.lastError ?? "", /timed out/);
     // Exactly one pi invocation: the harness timeout suppresses the transient retry.
@@ -95,8 +116,12 @@ test("a transient timeout on both attempts errors with the real cause (regressio
 
 // Quiet watchdog: the run is killed when pi stops making *progress* (message/turn/tool
 // boundary events — streaming deltas never count), not merely when it stops running fast.
+// These tests run it on logical time (watchdogClock, test/util.ts): each waits for the fake
+// pi's output to reach the raw log, then advances the watchdog's clock past the window it
+// pins — exact where real-time windows were widened after every loaded-machine flake
+// (BUGS.md 2026-09-18, 2026-09-21), and free where they cost seconds.
 
-test("a pi run that goes silent is killed as hung and never commits partial work", async () => {
+test("a pi run that goes silent is killed as hung and never commits partial work", async (t) => {
   const repo = await initializedRepo();
   // Emits one line (so it is not silent from birth), writes a partial edit, then hangs
   // like an interactive tool waiting for stdin. `exec` so the signal reaches sleep.
@@ -105,16 +130,18 @@ test("a pi run that goes silent is killed as hung and never commits partial work
   );
   try {
     const config = defaultConfig();
-    // 3s, not 1s: the kill still comes from the watchdog (the shim sleeps 60), but the shim
-    // needs to reach `echo partial` first — at 1s the watchdog could fire during shell startup
-    // under load and the "partial edit survives" assertion measured scheduling (BUGS.md).
     config.quietTimeoutSeconds = 3;
     config.tickTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
+    const clock = watchdogClock(t);
     const runner = new LoopRunner(repo, "improve", config, "main");
     const before = sh(repo, "git", "rev-parse", "main");
-    const started = Date.now();
-    const outcome = await runner.tick();
-    assert.ok(Date.now() - started < 30_000, "killed by the watchdog, not the tick timeout");
+    const tick = runner.tick();
+    // The kill must come only once the shim has spoken and reached `echo partial` — the
+    // "partial edit survives" assertion below is about the kill, not about shell startup.
+    await waitForFile(path.join(worktreePath(repo, "improve"), "partial.txt"));
+    await waitForLogLines(piLogPath(repo, "improve"), "starting work");
+    clock.advance(15_000); // silence well past the 3 s window
+    const outcome = await tick;
     assert.equal(outcome.result, "quiet_killed");
     assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
     assert.equal(sh(repo, "git", "rev-parse", "main"), before, "nothing landed on main");
@@ -135,7 +162,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
 // threshold names itself in the event feed while the run is still alive — before this, a hung
 // command was invisible until the quiet watchdog's kill.
 
-test("a stalled tool call warns in the event feed with the command named", async () => {
+test("a stalled tool call warns in the event feed with the command named", async (t) => {
   const repo = await initializedRepo();
   // Names a hung bash command, then hangs like an interactive tool waiting for stdin.
   const restore = fakePi(
@@ -146,12 +173,16 @@ test("a stalled tool call warns in the event feed with the command named", async
   );
   try {
     const config = defaultConfig();
-    // 5s/2s rather than 2s/1s: the ORDER is what this pins — warning first, kill second — and a
-    // 1s gap is thinner than the jitter on a machine running two suites at once (BUGS.md).
+    // The ORDER is what this pins — warning first, kill second — exact on logical time, where a
+    // real-time 1s gap was thinner than the jitter of two suites at once (BUGS.md).
     config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
     config.toolCallStallSeconds = 2; // ...but the warning lands first, 3s ahead of it
+    const clock = watchdogClock(t);
     const runner = new LoopRunner(repo, "improve", config, "main");
-    const outcome = await runner.tick();
+    const tick = runner.tick();
+    await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
+    clock.advance(30_000); // past the stall threshold, then past the quiet window
+    const outcome = await tick;
     assert.equal(outcome.result, "quiet_killed");
     const warnings = readEvents(repo).filter((e) => e.type === "warning").map((e) => String(e.message));
     assert.ok(
@@ -163,43 +194,64 @@ test("a stalled tool call warns in the event feed with the command named", async
   }
 });
 
-test("a slow but talkative pi run is not killed by the quiet watchdog", async () => {
+test("a slow but talkative pi run is not killed by the quiet watchdog", async (t) => {
   const repo = await initializedRepo();
-  // Streams a line immediately, then one every ~3s for ~12s — always slower than the 10s quiet
+  // Streams a line immediately, then one per 3 s gap for 18 s — far longer than the 10 s quiet
   // window would allow if it were measuring total runtime, but never silent longer than the
-  // window. The ratio is what this pins; the ABSOLUTE numbers buy the per-gap margin on purpose
-  // (BUGS.md 2026-09-18): the watchdog reads the real wall clock on a real interval (src/pi.ts)
-  // so a test clock cannot fake it out, and the fleet runs this suite on a machine it
-  // deliberately saturates. At the old 1s-sleep/3s-window sizing the ~2s of slack was thinner
-  // than a loaded machine's process-spawn jitter (one gap crossed 3s during a landing gate and
-  // the run died quiet_killed, BUGS.md 2026-09-21), and the leading sleep put node spawn + sh
-  // startup inside the FIRST gap, the least controllable one — so the first line is emitted
-  // before any sleep and the sleeps are 3s against a 10s window: ~7s of drift headroom per gap.
-  const chatter = Array.from({ length: 4 }, () => `sleep 3\nprintf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`);
-  const restore = fakePi(
-    [`printf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`, ...chatter, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
-  );
+  // window. The ratio is what this pins. The gaps are logical time (watchdogClock): the shim
+  // prints its next line only when the test says so, after the clock has moved 3 s — so no
+  // machine load can stretch a gap, which is how the real-time version of this test flaked
+  // even at 3 s gaps against a 10 s window (BUGS.md 2026-09-18, 2026-09-21). 18 s, not 12 s:
+  // the watchdog checks every 5 s and kills on silence strictly over the window, so a
+  // runtime-measuring regression is first visible at the 15 s check.
+  const dir = tmpdir();
+  const gaps = 6;
+  const go = (k: number) => path.join(dir, `go-${k}`);
+  const turnStart = `printf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`;
+  const chatter = Array.from({ length: gaps }, (_, k) => `while [ ! -f '${go(k)}' ]; do sleep 0.02; done\n${turnStart}`);
+  const restore = fakePi([turnStart, ...chatter, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"));
   try {
     const config = defaultConfig();
     config.quietTimeoutSeconds = 10;
+    const clock = watchdogClock(t);
     const runner = new LoopRunner(repo, "improve", config, "main");
-    const outcome = await runner.tick();
+    let settled = false;
+    const tick = runner.tick().finally(() => (settled = true));
+    const log = piLogPath(repo, "improve");
+    // A killed run prints nothing more: stop feeding it and let the assertion name the result.
+    for (let k = 0; k < gaps && (await waitForLogLines(log, "turn_start", k + 1, () => settled)); k++) {
+      clock.advance(3_000);
+      fs.writeFileSync(go(k), "");
+    }
+    const outcome = await tick;
     assert.equal(outcome.result, "no_change", "run completed despite taking longer than the quiet window");
   } finally {
     restore();
   }
 });
 
-test("quietTimeoutSeconds 0 disables the watchdog", async () => {
+test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
   const repo = await initializedRepo();
+  // Speaks first — a byte-silent run is never quiet-killed anyway, so silence only tests the
+  // switch once progress has flowed — then stays silent until the test says go.
+  const go = path.join(tmpdir(), "go");
   const restore = fakePi(
-    [`sleep 1`, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`,
+      `while [ ! -f '${go}' ]; do sleep 0.02; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
   );
   try {
     const config = defaultConfig();
     config.quietTimeoutSeconds = 0;
+    const clock = watchdogClock(t);
     const runner = new LoopRunner(repo, "improve", config, "main");
-    const outcome = await runner.tick();
+    const tick = runner.tick();
+    await waitForLogLines(piLogPath(repo, "improve"), "turn_start");
+    clock.advance(120_000); // two minutes of silence: any window at all would have fired
+    fs.writeFileSync(go, "");
+    const outcome = await tick;
     assert.equal(outcome.result, "no_change");
   } finally {
     restore();
@@ -213,7 +265,7 @@ test("config validation accepts 0 and rejects negatives for quietTimeoutSeconds"
   assert.throws(() => validateConfig({ quietTimeoutSeconds: "long" }), /quietTimeoutSeconds/);
 });
 
-test("a zombie stream dripping content-free keepalive updates is killed as hung", async () => {
+test("a zombie stream dripping content-free keepalive updates is killed as hung", async (t) => {
   const repo = makeRepo();
   await initProject(repo, "zombie stream test");
   // Emits an identical empty message_update every 200ms forever — bytes without progress,
@@ -229,10 +281,20 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
     const config = defaultConfig();
     config.quietTimeoutSeconds = 1;
     config.tickTimeoutSeconds = 3600;
-    const runner = new LoopRunner(repo, "improve", config, "main");
-    const started = Date.now();
-    const outcome = await runner.tick();
-    assert.ok(Date.now() - started < 30_000, "killed by the progress watchdog");
+    const clock = watchdogClock(t);
+    const controller = new AbortController();
+    const runner = new LoopRunner(repo, "improve", config, "main", controller.signal);
+    let settled = false;
+    const tick = runner.tick().finally(() => (settled = true));
+    // Half a second of watchdog time per fresh keepalive, so bytes keep landing as the clock
+    // runs — a watchdog that let raw bytes (or deltas) count as progress would never fire.
+    // Ten windows' worth bounds it: the abort then ends a run the watchdog failed to kill.
+    const log = piLogPath(repo, "improve");
+    for (let k = 1; k <= 40 && (await waitForLogLines(log, "message_update", k, () => settled)); k++) {
+      clock.advance(500);
+    }
+    controller.abort(); // a no-op once the watchdog has killed the run
+    const outcome = await tick;
     assert.equal(outcome.result, "quiet_killed", "a zombie stream is a hung run, not an unfulfilled timeout");
     assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
   } finally {
@@ -248,11 +310,10 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
   // gate (which runs before authoring) does not block the tick this test is about.
   fs.mkdirSync(path.join(repo, "node_modules", ".bin"), { recursive: true });
   const tool = path.join(repo, "node_modules", ".bin", "buildcheck-tool");
-  fs.writeFileSync(
+  writeScript(
     tool,
-    "#!/bin/sh\nif [ -f broken.ts ]; then echo 'src/bad.ts(3,5): error TS2345: not assignable'; exit 1; fi\nexit 0\n",
+    "if [ -f broken.ts ]; then echo 'src/bad.ts(3,5): error TS2345: not assignable'; exit 1; fi\nexit 0",
   );
-  fs.chmodSync(tool, 0o755);
   fs.writeFileSync(
     path.join(repo, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --fail" } }),
@@ -500,11 +561,13 @@ test("a tick that changes other files emits no question_posted event", async () 
 test("the landing slot is the only merge-lock holder: another loop ticks and queues behind it", async () => {
   const repo = await initializedRepo();
   // A's LANDING (drained right after its tick) touches the marker in its reviewer run, then
-  // sleeps — A holds the merge lock (the lander's merge) for ~3s. B waits for that marker,
-  // then does its whole tick (author + commit + pin + enqueue). Since merge queue 3/5 a tick
-  // never merges, so it never needs the lock: B must finish while A's landing is still
-  // mid-flight. The landing slot serializes merges, not authoring.
+  // holds — A holds the merge lock (the lander's merge) until B's tick is done, bounded at
+  // ~30s. B waits for that marker, then does its whole tick (author + commit + pin + enqueue).
+  // Since merge queue 3/5 a tick never merges, so it never needs the lock: B must finish while
+  // A's landing is still mid-flight. The landing slot serializes merges, not authoring. A tick
+  // that did need the lock would wait out A's bound and finish after A's landing.
   const marker = path.join(tmpdir(), "a-landing");
+  const bDone = path.join(tmpdir(), "b-done");
   const approveLine = assistantLine("VERDICT: approve");
   const restore = fakePi(
     [
@@ -512,7 +575,8 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
       // The lander worktrees come first: their paths also end in the role name.
       // A's landing's reviewer run (_land-improve): hold the lock while reviewing.
       `*_land-improve)`,
-      `  touch '${marker}'; sleep 3; printf '%s\n' '${approveLine}'; exit 0;;`,
+      `  touch '${marker}'; i=0; while [ ! -f '${bDone}' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done`,
+      `  printf '%s\n' '${approveLine}'; exit 0;;`,
       // B's landing's reviewer run (_land-organize): plain approve.
       `*_land-organize)`,
       `  printf '%s\n' '${approveLine}'; exit 0;;`,
@@ -544,6 +608,7 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
     const pb = (async () => {
       const outcome = await b.tick();
       bEndAt = Date.now();
+      fs.writeFileSync(bDone, "");
       return outcome;
     })();
     const [aLanded, bOutcome] = await Promise.all([pa, pb]);
@@ -1018,18 +1083,17 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
   // it and git — but nothing else: execFile/spawn resolve bare commands via PATH, so npm is
   // unresolvable no matter where this machine keeps it.
   const piDir = tmpdir("fake-pi-");
-  fs.writeFileSync(
+  writeScript(
     path.join(piDir, "pi"),
-    `#!/bin/sh\n${[
+    [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
       `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
       // Redirection, not touch: the restricted PATH below has no /usr/bin, so this script
       // may rely on shell builtins only.
       `printf ok > '${marker}'`,
-    ].join("\n")}\n`,
+    ].join("\n"),
   );
-  fs.chmodSync(path.join(piDir, "pi"), 0o755);
 
   const gitBin = tmpdir();
   const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();

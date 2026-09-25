@@ -13,9 +13,21 @@ import { defaultConfig, customLoopNames, loadConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import { loadLoopState } from "../src/state.js";
-import { configRequestPath, sessionDir, worktreePath } from "../src/paths.js";
+import { configRequestPath, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
-import { assistantLine, fakePi, initializedRepo, landHead, makeRepo, sh, thinkingOnlyLine, tmpdir, waitForFile } from "./util.js";
+import {
+  assistantLine,
+  fakePi,
+  initializedRepo,
+  landHead,
+  makeRepo,
+  sh,
+  thinkingOnlyLine,
+  tmpdir,
+  waitForFile,
+  waitForLogLines,
+  watchdogClock,
+} from "./util.js";
 
 
 test("a tick that changes files commits and merges to main", async () => {
@@ -432,7 +444,7 @@ test("consecutive error ticks raise one warning per episode, not one per tick", 
   }
 });
 
-test("consecutive quiet kills raise one warning per episode, then drop the starved session", async () => {
+test("consecutive quiet kills raise one warning per episode, then drop the starved session", async (t) => {
   // BUGS.md 2026-09-18: quiet_killed was the only outcome with no cap, no backoff and no
   // alarm. The streak crossing warns once; the kill past the limit abandons the session
   // (fresh tick) and backs off instead of retrying the starved session immediately forever.
@@ -445,18 +457,26 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
     const config = defaultConfig();
     config.quietTimeoutSeconds = 1;
     config.tickTimeoutSeconds = 3600;
+    const clock = watchdogClock(t);
     const runner = new LoopRunner(repo, "improve", config, "main");
     const warnings = () => readEvents(repo).filter((e) => e.type === "warning");
+    // Each tick's run speaks once and then hangs; the kill is the watchdog's, on logical time.
+    const quietKilledTick = async (n: number) => {
+      const tick = runner.tick();
+      await waitForLogLines(piLogPath(repo, "improve"), "starting work", n);
+      clock.advance(10_000);
+      return (await tick).result;
+    };
     // Two prior kills: this one crosses the threshold.
     runner.state.quietKillStreak = 2;
-    assert.equal((await runner.tick()).result, "quiet_killed");
+    assert.equal(await quietKilledTick(1), "quiet_killed");
     assert.equal(runner.state.quietKillStreak, 3);
     assert.equal(warnings().length, 1, "one warning at the threshold");
     assert.match(String(warnings()[0]?.message), /3 consecutive quiet kills \(no progress\)/);
     // Past the limit: no resume, and the loop climbs the idle ladder rather than retrying now.
     runner.state.quietKillStreak = 3;
     runner.state.resumePending = false;
-    assert.equal((await runner.tick()).result, "quiet_killed");
+    assert.equal(await quietKilledTick(2), "quiet_killed");
     assert.equal(runner.state.quietKillStreak, 4);
     assert.equal(runner.state.resumePending, false, "the starved session is abandoned");
     assert.ok(runner.state.backoffSeconds > 0, "the give-up backs off on the idle ladder");
@@ -727,13 +747,15 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
 // whose next-tick reset discarded the run's work. The kill must now preserve session + edits,
 // resume them promptly, and name the real cause in the bridge so the session does not re-run
 // the hung command unchanged.
-test("a quiet-killed tick keeps its edits and resumes promptly instead of discarding", async () => {
+test("a quiet-killed tick keeps its edits and resumes promptly instead of discarding", async (t) => {
   const repo = await initializedRepo();
   const config = defaultConfig();
-  // 5s, not 2s: the shim sleeps 30 so the watchdog still owns the kill, but it must not fire
-  // before the shell writes kept.txt — at 2s waitForFile timed out under concurrent suites and
-  // the test measured scheduling rather than the kill's non-destructiveness (BUGS.md).
+  // The shim sleeps 30 so the watchdog owns the kill, and the kill waits (on logical time,
+  // watchdogClock) until the shell has written kept.txt and spoken — at a real-time 2s window
+  // it could fire first under concurrent suites, and the test measured scheduling rather
+  // than the kill's non-destructiveness (BUGS.md).
   config.quietTimeoutSeconds = 5;
+  const clock = watchdogClock(t);
   const argsFile = path.join(tmpdir(), "argv.log");
   let restore = fakePi(
     [
@@ -748,6 +770,8 @@ test("a quiet-killed tick keeps its edits and resumes promptly instead of discar
     // Wait for the half-done edit to land: a fixed timer can fire before the fake pi even
     // starts under parallel load. The watchdog kills the run itself — no abort controller.
     await waitForFile(path.join(worktreePath(repo, "improve"), "kept.txt"));
+    await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
+    clock.advance(20_000);
     assert.equal((await tick).result, "quiet_killed");
     assert.ok(
       fs.existsSync(path.join(worktreePath(repo, "improve"), "kept.txt")),
@@ -755,6 +779,9 @@ test("a quiet-killed tick keeps its edits and resumes promptly instead of discar
     );
     assert.equal(runner.state.resumePending, true, "the next tick resumes this one");
     assert.ok(runner.state.nextRunAt <= Date.now(), "the resume is scheduled promptly, not backed off");
+    // Real time again for the resume: if its bridge regressed, the fake pi below stalls and the
+    // watchdog's real 5 s window ends the run, instead of a hang on a clock nobody advances.
+    clock.release();
 
     // The killed run's pi session is on disk (the fake pi writes none, so seed one).
     fs.mkdirSync(sessionDir(repo, "improve"), { recursive: true });

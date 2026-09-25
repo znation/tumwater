@@ -27,6 +27,7 @@ import {
 } from "../src/git.js";
 import {
   abortSync,
+  ensureDetachedWorktree,
   ensureWorktree,
   resetWorktreeToMain,
 } from "../src/worktree.js";
@@ -41,7 +42,7 @@ import {
   rebaseOntoMainLeaveConflicts,
 } from "../src/merge.js";
 import { branchName } from "../src/paths.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { makeRepo, sh, tmpdir, writeScript } from "./util.js";
 
 test("isGitRepo and hasCommits", async () => {
   const repo = makeRepo();
@@ -117,6 +118,26 @@ test("ensureWorktree recovers when the worktree's .git pointer file is lost", as
   const again = await ensureWorktree(repo, "clean", "main");
   assert.equal(again, wt);
   assert.ok(fs.existsSync(path.join(again, "seed.txt")));
+});
+
+// Concurrent setups in one repository: `git worktree add` creates its registration directory
+// a moment before it writes the `locked` file that shields it from prune, so another setup's
+// `worktree prune` landing in between deleted it and the add died — the landing pipeline's
+// concurrent vets hit exactly that ("could not open '.git/worktrees/_land-alpha/locked' for
+// writing") and dropped a queued change as an error. The harness serializes its own setups
+// per repository; a burst like this one must register every worktree.
+test("concurrent worktree setups in one repository all succeed (prune/add race)", async () => {
+  const repo = makeRepo();
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  for (let round = 0; round < 2; round++) {
+    await Promise.all([
+      ...[0, 1, 2, 3, 4, 5].map((i) =>
+        ensureDetachedWorktree(repo, path.join(repo, ".tumwater", "worktrees", `_land-${round}-${i}`), head),
+      ),
+      ...[0, 1, 2].map((i) => ensureWorktree(repo, `role-${round}-${i}`, "main")),
+    ]);
+  }
+  assert.equal(sh(repo, "git", "worktree", "list").split("\n").length, 1 + 2 * 9, "every setup registered its worktree");
 });
 
 test("commitAll stages everything and ffMainTo lands it while root is on main", async () => {
@@ -687,10 +708,8 @@ test("aheadOfMainDiff over the cap spawns only two git calls, not one per file",
  * PATH technique fakePi uses for pi. */
 function loggingGit(logFile: string): () => void {
   const dir = tmpdir("fake-git-");
-  const bin = path.join(dir, "git");
   const real = execFileSync("which", ["git"], { encoding: "utf8" }).trim().split("\n")[0];
-  fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> ${logFile}\nexec "${real}" "$@"\n`);
-  fs.chmodSync(bin, 0o755);
+  writeScript(path.join(dir, "git"), `echo "$@" >> ${logFile}\nexec "${real}" "$@"`);
   const oldPath = process.env.PATH;
   process.env.PATH = `${dir}:${oldPath}`;
   return () => {
@@ -959,11 +978,10 @@ test("patchId is null, never a throw, when there is nothing to identify or git f
   // passes everything through to the real one except patch-id, which dies.
   const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
   const bin = tmpdir();
-  fs.writeFileSync(
+  writeScript(
     path.join(bin, "git"),
-    `#!/bin/sh\nif [ "$1" = patch-id ]; then echo 'unknown option' >&2; exit 129; fi\nexec '${realGit}' "$@"\n`,
+    `if [ "$1" = patch-id ]; then echo 'unknown option' >&2; exit 129; fi\nexec '${realGit}' "$@"`,
   );
-  fs.chmodSync(path.join(bin, "git"), 0o755);
   const oldPath = process.env.PATH;
   process.env.PATH = `${bin}${path.delimiter}${oldPath ?? ""}`;
   try {

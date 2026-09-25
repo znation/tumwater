@@ -7,6 +7,19 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### Concurrent vets race `git worktree prune` against each other's `git worktree add`: the loser's vet ends `error` and its queued change is dropped (found 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** Under load, landing-drain.test.ts's three-vet tests ("a shutdown reaches every vet…", "abort --role stops that role's vet…") timed out waiting for alpha's review. Alpha's vet had already ended `land_failed` with result `error` after ~70 ms, and its role state carried `git worktree add --detach …/_land-alpha <sha> failed (128): … fatal: could not open '.git/worktrees/_land-alpha/locked' for writing: No such file or directory` (or `Invalid argument`). Beta's and gamma's vets went on normally. In the fleet, the same race turns a queued change into a terminal error that drops its entry.
+
+**Reproduce:** Probabilistic. Run those two tests in parallel with the full suite running alongside: 8 of 48 runs failed. Each of three vets' first checkouts in a fresh repo runs clearStaleWorktree (`git worktree prune`) and then `git worktree add`, all at once.
+
+**Cause:** `git worktree add` creates `.git/worktrees/<name>/` a moment before it writes the `locked` file that shields an incomplete registration from prune. A `git worktree prune` from another vet that lands in between sees a registration with neither `gitdir` nor `locked` and deletes it. The add then dies writing `locked`.
+
+**Fix:** src/worktree.ts serializes the harness's own clear-and-add steps per repository (`serializeSetup`). ensureWorktree and ensureDetachedWorktree queue their prune and add behind any other setup of the same repo, and re-check usability inside the queue. The usable-worktree fast path never waits. The two landing-drain tests passed 48 of 48 under the same load after the fix. Pinned by test/git.test.ts "concurrent worktree setups in one repository all succeed (prune/add race)" (18 concurrent setups). With the fix reverted it failed about 1 run in 6. Found while speeding up the suite, where git spawns got 3x cheaper and the prune/add pairs landed closer together. The same investigation fixed two test-side issues in landing-drain.test.ts. First, busySlot stand-ins never settle, so a test that failed before freeing its slot hung in its finally forever; allTasks now skips them. Second, "abort --role" asserted the discarded pin before the aborted vet had finished discarding it; it now awaits the vet.
+
+**Validation gap:** no-repro — the race needs two git processes inside a microsecond window, so it reproduced only statistically under load, and the regression test catches a revert only some of the time.
+
+
 ### The digest's `## Landed in the window` list caps at 10 with no remainder marker: a busy window reads as a 10-merge day (found by telemetry loop 2026-09-23, fixed 2026-09-24)
 
 **Symptom:** The 2026-09-23 digest reports 155 ticks with 107 changes queued for landing and

@@ -1,7 +1,11 @@
-/** The orchestrator e2e tier (orchestrator-2/3.e2e.test.ts are the other slices): these tests
+/** The orchestrator e2e tier (orchestrator-2…5.e2e.test.ts are the other slices): these tests
  * start a live orchestrator and wait on real timers, so their fixed wall-clock budgets are
  * not reliable on a loaded machine — they run via `npm run test:e2e` (and CI), not in the
- * unfiltered `npm test` run the harness's landing gate executes (BUGS.md 2026-09-21). */
+ * unfiltered `npm test` run the harness's landing gate executes (BUGS.md 2026-09-21). The
+ * slices run in parallel processes; this one holds scheduling basics, deferral, session
+ * pruning, live config edits, reset requests and the branch watch, orchestrator-4 the live
+ * maxConcurrent resize (the tier's single longest test), orchestrator-5 the shared-permit and
+ * tier-ordering cases. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -23,8 +27,9 @@ import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
 import {
   assistantLine,
-  fastConfig,
   fakePi,
+  FAST_POLL_MS,
+  fastConfig,
   landWork,
   makeRepo,
   recordingFakePi,
@@ -33,14 +38,6 @@ import {
   tmpdir,
   waitFor,
 } from "./util.js";
-
-/** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
- * 2s cadence: multi-cycle behavior (config reloads, marker consumption, wake events) resolves
- * in ~100ms instead of seconds. Tests that verify timing margins against the real cadence —
- * shutdown latency vs POLL_MS, and maxConcurrent's hold < poll boundary — keep the default.
- * Safe because idle ticks back off 1s (fastConfig), so no assertion relies on a >=2s gap
- * between polls to prevent back-to-back ticks. */
-const FAST_POLL_MS = 100;
 
 test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {
   // BUGS.md 2026-09-18: the restart drain's p75 sample spans `tick_start`..`tick_end`, so the
@@ -637,218 +634,6 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
     await orch.stop();
   }
 });
-
-/** A fake pi that records how many runs were in flight when it started (one sample line per
- * run), holds its slot for ~1.5s so overlapping runs are observable, and declares
- * nothing-to-do (so no commit happens). */
-function concurrencyRecordingFakePi(runDir: string): () => void {
-  const script = [
-    `d="${runDir}/runs"`,
-    `mkdir -p "$d"`,
-    `f=$(mktemp "$d/run.XXXXXX")`,
-    `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
-    `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
-    `sleep 1.5`,
-    `rm -f "$f"`,
-    `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-  ].join("\n");
-  return fakePi(script);
-}
-
-function readSamples(runDir: string): number[] {
-  try {
-    return fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
-  } catch {
-    return [];
-  }
-}
-
-/** Role names in the order their pi runs STARTED (the shim's cwd is the role's worktree). */
-function readOrder(runDir: string): string[] {
-  try {
-    return fs.readFileSync(path.join(runDir, "order.log"), "utf8").trim().split("\n");
-  } catch {
-    return [];
-  }
-}
-
-test("a live maxConcurrent edit resizes the cap without a restart", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "live maxConcurrent test");
-  // THREE fast-ticking roles and ONE slot: with three loops competing for one permit, steady
-  // state always has at least one tick queued on the semaphore (a two-role fleet settles into
-  // a strict alternation where every poll schedules exactly one loop, so there would be no
-  // queued tick for the grow to wake). The shim's ~1.5s hold makes overlapping runs visible.
-  const base = fastConfig(["clean", "dry", "bugfix"]);
-  base.maxConcurrent = 1;
-  saveConfig(repo, base);
-  const runDir = tmpdir();
-  const restore = concurrencyRecordingFakePi(runDir);
-  // Keeps the DEFAULT poll interval on purpose: phase 3's "no overlap after shrink" assertion
-  // relies on the shim's ~1.5s hold being shorter than one poll, so every cap-2-era run file is
-  // gone by the time the shrink event is observed. A fast poll would let an in-flight file cross
-  // the boundary and false-fail the test.
-  const orch = startLiveOrchestrator(repo);
-  try {
-    // Phase 1 (cap 1): all three loops tick — but never overlap. Wait until each has run at
-    // least once (three samples), then confirm no sample ever exceeded one concurrent run.
-    await waitFor(() => readSamples(runDir).length >= 3, "all three roles to have run");
-    assert.ok(
-      readSamples(runDir).every((n) => n <= 1),
-      `peak stays 1 while the second loop waits on its slot (samples: ${readSamples(runDir)})`,
-    );
-
-    // Phase 2 (cap 2): a live edit admits the queued work — runs overlap without a restart.
-    const grow = fastConfig(["clean", "dry", "bugfix"]);
-    grow.maxConcurrent = 2;
-    saveConfig(repo, grow);
-    await waitFor(
-      () => readEvents(repo).some((e) => e.type === "max_concurrent_changed" && e.to === 2),
-      "the max_concurrent_changed event",
-    );
-    // Need-based deferral (landed after this test was written) leaves only bugfix ticking:
-    // clean and dry defer after their nothing-to-do startup ticks, so without a landing there
-    // is no queued work for the grow to admit and no overlap can ever form — phase 2 would
-    // then pass only by racing the startup burst's tail. Land work to wake the deferred roles:
-    // with cap 2 at least two of them tick concurrently, making the overlap deterministic.
-    landWork(repo);
-    // 60s, not the 20s default: this is the one assertion in the suite that waits on the
-    // orchestrator's real poll loop scheduling two live pi shims at once, and under the load the
-    // fleet runs it at, 20s expired before the grow was observable (BUGS.md 2026-09-18).
-    await waitFor(() => readSamples(runDir).some((n) => n >= 2), "overlapping runs after the grow", 150_000);
-
-    // Phase 3 (cap 1 again): shrinking admits no NEW concurrent run until in-flight work
-    // finishes. Every sample recorded from the change onward must be <= 1 — a cap that was
-    // not applied would let the fast roles overlap again within a few polls.
-    const shrink = fastConfig(["clean", "dry", "bugfix"]);
-    shrink.maxConcurrent = 1;
-    saveConfig(repo, shrink);
-    await waitFor(
-      () => readEvents(repo).some((e) => e.type === "max_concurrent_changed" && e.to === 1),
-      "the shrink event",
-    );
-    // Samples before this point may overlap (the cap was still 2 when those runs were
-    // admitted); every sample from here on must be sequential.
-    const fromShrink = readSamples(runDir).length;
-    await waitFor(() => readSamples(runDir).length >= fromShrink + 3, "several post-shrink runs");
-    assert.ok(
-      readSamples(runDir).slice(fromShrink).every((n) => n <= 1),
-      `no new concurrent run after the shrink until in-flight work finishes (samples: ${readSamples(runDir)})`,
-    );
-
-    // Exactly one change event per distinct value — unchanged polls log nothing.
-    const changes = readEvents(repo).filter((e) => e.type === "max_concurrent_changed");
-    assert.equal(changes.length, 2);
-    assert.deepEqual(
-      changes.map((c) => [c.loop, c.from, c.to]),
-      [
-        ["harness", 1, 2],
-        ["harness", 2, 1],
-      ],
-    );
-  } finally {
-    restore();
-    await orch.stop();
-  }
-});
-
-test("a landing's reviewer run takes the same maxConcurrent permit as a role tick", async () => {
-  // BUGS.md 2026-09-18: the landing drain ran its reviewer outside the author semaphore, so
-  // maxConcurrent + 1 landing + 1 director was the real ceiling and a single-GPU backend saw
-  // four streams. With one permit, a landing in flight and a role tick must never overlap.
-  const repo = makeRepo();
-  await initProject(repo, "landing shares the maxConcurrent cap");
-  const cfg = fastConfig(["clean", "bugfix"]);
-  cfg.maxConcurrent = 1;
-  saveConfig(repo, cfg);
-  const runDir = tmpdir();
-  // Each run records how many pi processes were already in flight when it started. clean's
-  // author makes a change (so its landing's reviewer actually runs and holds the slot ~3s);
-  // bugfix keeps ticking every ~1s and declares nothing-to-do. Without the permit the reviewer
-  // and a bugfix tick overlap; the 3s reviewer sleep makes that window unmissable.
-  const restore = fakePi(
-    [
-      `d="${runDir}/runs"; mkdir -p "$d"`,
-      `f=$(mktemp "$d/run.XXXXXX")`,
-      `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
-      `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
-      `case "$PWD" in`,
-      `*_land-clean*)`,
-      `  sleep 3`,
-      `  printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
-      `  ;;`,
-      `*clean*)`,
-      `  echo change >> clean-change.txt`,
-      `  sleep 1`,
-      `  printf '%s\\n' '${assistantLine("clean work\nSUMMARY: add clean change")}'`,
-      `  ;;`,
-      `*)`,
-      `  sleep 1.5`,
-      `  printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-      `  ;;`,
-      `esac`,
-      `rm -f "$f"`,
-    ].join("\n"),
-  );
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
-  try {
-    // The contention was real: clean's change landed through its reviewer while bugfix ticked.
-    // Wait for the landing too, not only the runs: the vet frees its permit when its review
-    // ends, and the merge after it (which runs no pi) can log `landed` just after bugfix's next
-    // tick has started.
-    await waitFor(
-      () => readSamples(runDir).length >= 5 && readEvents(repo).some((e) => e.type === "landed" && e.loop === "clean"),
-      "several pi runs across the landing and role ticks, and clean's change landed",
-    );
-    const samples = readSamples(runDir);
-    assert.ok(
-      samples.every((n) => n <= 1),
-      `a landing and a role tick never share the backend at maxConcurrent 1 (samples: ${samples})`,
-    );
-  } finally {
-    restore();
-    await orch.stop();
-  }
-});
-
-test("a work-role tick that becomes due later jumps ahead of maintenance waiters parked in an earlier poll", async () => {
-  // Cross-poll slot inversion (BUGS.md 2026-09-12): with one slot, the startup poll admits
-  // bugfix first and parks clean + dry behind it. When bugfix becomes due again (~1s idle
-  // backoff) while clean is still in flight, its acquire must jump ahead of the maintenance
-  // waiters that parked in an EARLIER poll — plain FIFO would hand clean's freed slot to dry.
-  const repo = makeRepo();
-  await initProject(repo, "cross-poll tier test");
-  const base = fastConfig(["clean", "dry", "bugfix"]);
-  base.maxConcurrent = 1;
-  saveConfig(repo, base);
-  const runDir = tmpdir();
-  // Records each role's START (cwd is the role's worktree) so the wake order after clean's
-  // first release is observable; ~2s holds keep bugfix due while clean is still in flight.
-  const restore = fakePi(
-    [
-      `printf '%s\\n' "$(basename "$PWD")" >> "${runDir}/order.log"`,
-      `sleep 2`,
-      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-    ].join("\n"),
-  );
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
-  try {
-    await waitFor(() => readOrder(runDir).length >= 3, "three role starts");
-    const order = readOrder(runDir);
-    assert.equal(order[0], "bugfix", "the work tier leads the startup poll (fairOrder)");
-    assert.equal(order[1], "clean", "the first-parked maintenance waiter runs next");
-    assert.equal(
-      order[2],
-      "bugfix",
-      `bugfix became due while clean was in flight and must jump ahead of parked dry (${order})`,
-    );
-  } finally {
-    restore();
-    await orch.stop();
-  }
-});
-
-// --- Reset counters while running (tumwater reset-counters marker) ---
 
 test("a reset request zeroes in-memory counters, survives tick boundaries, and logs an event", async () => {
   const repo = makeRepo();

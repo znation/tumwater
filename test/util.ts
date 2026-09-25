@@ -1,6 +1,7 @@
 import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { Server } from "node:http";
+import type { TestContext } from "node:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -87,13 +88,20 @@ export function sh(cwd: string, cmd: string, ...args: string[]): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8" }).trimEnd();
 }
 
+/** `git init -b main` in `dir` with the fixtures' commit identity. The identity is appended to
+ * .git/config directly — byte for byte what `git config user.name test` and `git config
+ * user.email …` write — because fixture repos are made ~600 times a suite and each spawn
+ * costs more than the whole append. */
+function gitInit(dir: string): void {
+  sh(dir, "git", "init", "-b", "main");
+  fs.appendFileSync(path.join(dir, ".git", "config"), "[user]\n\tname = test\n\temail = test@example.com\n");
+}
+
 /** Create a git repo on branch `main` with one commit — in a fresh temp dir by default, or at
  * `dir` when the test needs a particular location (e.g. nested under an installed root). */
 export function makeRepo(dir = tmpdir()): string {
   fs.mkdirSync(dir, { recursive: true });
-  sh(dir, "git", "init", "-b", "main");
-  sh(dir, "git", "config", "user.name", "test");
-  sh(dir, "git", "config", "user.email", "test@example.com");
+  gitInit(dir);
   fs.writeFileSync(path.join(dir, "seed.txt"), "seed\n");
   sh(dir, "git", "add", "-A");
   sh(dir, "git", "commit", "-m", "seed");
@@ -122,9 +130,7 @@ export function buildCheckFixture(): { root: string; wt: string } {
     path.join(root, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
   );
-  const tool = path.join(binDir, "buildcheck-tool");
-  fs.writeFileSync(tool, "#!/bin/sh\necho buildcheck-ok\n");
-  fs.chmodSync(tool, 0o755);
+  writeScript(path.join(binDir, "buildcheck-tool"), "echo buildcheck-ok");
 
   const wt = path.join(root, ".tumwater", "worktrees", "improve");
   fs.mkdirSync(wt, { recursive: true });
@@ -145,9 +151,7 @@ export function buildCheckFixture(): { root: string; wt: string } {
 export function baselineFixture(role: string, testScript: string): { root: string; wt: string } {
   const root = path.join(tmpdir("baseline-"), "project");
   fs.mkdirSync(root, { recursive: true });
-  sh(root, "git", "init", "-b", "main");
-  sh(root, "git", "config", "user.name", "test");
-  sh(root, "git", "config", "user.email", "test@example.com");
+  gitInit(root);
   fs.writeFileSync(
     path.join(root, "package.json"),
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: testScript } }),
@@ -185,13 +189,38 @@ export function runsOf(counter: string): number {
   }
 }
 
+/** The suite's one committed executable (test/fixtures/script-shim): every fake command a
+ * test installs through writeScript is a symlink to it. Resolved from the source tree, which
+ * sits beside dist/ whenever the compiled tests run. */
+const SCRIPT_SHIM = fileURLToPath(new URL("../../test/fixtures/script-shim", import.meta.url));
+// Read-only, so a test that writes to a fake's path (instead of calling writeScript again)
+// fails on EACCES right there, rather than writing through the symlink and silently turning
+// every other fake in the run into its body. Git records only the executable bit, so this
+// never shows up as a change.
+try {
+  fs.chmodSync(SCRIPT_SHIM, 0o555);
+} catch {
+  // A read-only checkout already is; the fakes still run.
+}
+
+/** Install a fake command at `file` that runs `body` under /bin/sh exactly as a `#!/bin/sh`
+ * script holding it would — same process, $0 and arguments — without creating a new
+ * executable: macOS scans each newly created executable on its first exec (~150 ms apiece,
+ * far more under load), which hundreds of per-test fakes turned into minutes of suite time.
+ * `file` becomes a symlink to the committed script-shim, which sources `<file>.sh`. To change
+ * a fake, call this again: writing to `file` itself would write through the link into the
+ * shim. */
+export function writeScript(file: string, body: string): void {
+  fs.writeFileSync(`${file}.sh`, `${body}\n`);
+  fs.rmSync(file, { force: true });
+  fs.symlinkSync(SCRIPT_SHIM, file);
+}
+
 /** Install a fake `pi` executable at the front of PATH for the duration of a test.
  * The script runs with the worktree as cwd. Returns a restore function. */
 export function fakePi(script: string): () => void {
   const dir = tmpdir("fake-pi-");
-  const bin = path.join(dir, "pi");
-  fs.writeFileSync(bin, `#!/bin/sh\n${script}\n`);
-  fs.chmodSync(bin, 0o755);
+  writeScript(path.join(dir, "pi"), script);
   const oldPath = process.env.PATH;
   process.env.PATH = `${dir}:${oldPath}`;
   return () => {
@@ -315,7 +344,13 @@ export function assistantBlocks(content: unknown[]): string {
   return JSON.stringify({ type: "message_end", message: { role: "assistant", content, stopReason: "stop" } });
 }
 
-// --- Live-orchestrator test helpers (shared by the orchestrator e2e tier (orchestrator.e2e.test.ts, orchestrator-2.e2e.test.ts)) ---
+// --- Live-orchestrator test helpers (shared by the orchestrator e2e tier, orchestrator*.e2e.test.ts) ---
+
+/** The real setTimeout, captured when this module loads — before any test installs node:test
+ * mock timers — so the wait helpers below keep polling in real time under a test that mocks
+ * setTimeout itself (watchdogClock with `timeouts`). */
+const realSetTimeout = globalThis.setTimeout;
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => realSetTimeout(resolve, ms));
 
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the
  * condition is true, so a generous budget costs nothing on the success path and buys only
@@ -323,10 +358,12 @@ export function assistantBlocks(content: unknown[]): string {
  * proximate cause of landing rejections: the fleet runs this suite concurrently with its own
  * ticks, and waits that complete in ~2s idle took past 20s loaded (BUGS.md). */
 export async function waitFor(fn: () => boolean, what: string, ms = 60_000): Promise<void> {
-  const deadline = Date.now() + ms;
+  // performance.now(), not Date.now(): a test on watchdogClock has Date frozen between its
+  // advances, and a deadline read off it would never expire.
+  const deadline = performance.now() + ms;
   while (!fn()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 100));
+    if (performance.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await sleep(100);
   }
 }
 
@@ -335,10 +372,91 @@ export async function waitFor(fn: () => boolean, what: string, ms = 60_000): Pro
  * 30s: the landing gate runs the whole suite concurrently on a saturated machine, where
  * worktree setup plus fake-pi startup can blow a 10s budget (BUGS.md load-sensitive tests). */
 export async function waitForFile(file: string, timeoutMs = 30_000): Promise<void> {
-  const start = Date.now();
+  const start = performance.now(); // monotonic, and live under watchdogClock (see waitFor)
   while (!fs.existsSync(file)) {
-    if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${file}`);
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    if (performance.now() - start > timeoutMs) throw new Error(`timed out waiting for ${file}`);
+    await sleep(25);
+  }
+}
+
+/** Put runPi's watchdog (src/pi.ts: the quiet kill and the stall warning) on logical time for
+ * the rest of test `t`. The watchdog is a setInterval that reads Date.now(), and open tool
+ * calls are stamped with Date.now() (pi-event-line.ts); both become node:test mock timers,
+ * started at the real current time. setTimeout stays real, so everything else a run or tick
+ * does — spawns, git, locks, the tick timeout — keeps the wall clock. `timeouts: true` puts
+ * setTimeout on the same clock, for a test of the tick timeout itself; it is safe only on a
+ * path with no other timer to wait out (no contended lock, no rate-limit wait, no build
+ * check). The wait helpers here poll on a real timer captured at load, so they work either way.
+ *
+ * The test moves the watchdog's time with `advance(ms)` at the points it chooses — once the
+ * run's raw log shows what it is waiting on (waitForLogLines) — and every check due in that
+ * span runs, in order, before advance returns. A real-time watchdog test can only pick
+ * margins, which a loaded machine eats (BUGS.md 2026-09-18, 2026-09-21); logical time has no
+ * jitter to eat, and a ten-second window costs nothing to cross. `release()` hands the clock
+ * back early, for a later phase whose regression should end in a real-time kill rather than
+ * hang on a clock nobody advances. */
+export function watchdogClock(
+  t: TestContext,
+  opts: { timeouts?: boolean } = {},
+): { advance(ms: number): void; release(): void } {
+  t.mock.timers.enable({
+    apis: opts.timeouts ? ["Date", "setInterval", "setTimeout"] : ["Date", "setInterval"],
+    now: Date.now(),
+  });
+  return {
+    // In steps of the watchdog's shortest check interval (250 ms): one tick(ms) sets the clock
+    // to the END of the span before running what fell due, so every check in it would read the
+    // same Date.now() and never see silence grow.
+    advance: (ms) => {
+      for (let left = ms; left > 0; left -= 250) t.mock.timers.tick(Math.min(250, left));
+    },
+    release: () => t.mock.timers.reset(),
+  };
+}
+
+/** Wait, in real time, until `file` holds at least `count` lines containing `needle` — how a
+ * watchdogClock test knows runPi has parsed the fake pi's output before it advances the
+ * clock: runPi writes each stdout line to its raw log in the same synchronous step that feeds
+ * the parser, so a line on disk is a line the watchdog has already seen. Resolves true once
+ * the lines are there — or false as soon as `stop()` holds, for a test that interleaves
+ * advances with fresh output until the run it drives has ended and will print nothing more. */
+export async function waitForLogLines(
+  file: string,
+  needle: string,
+  count = 1,
+  stop?: () => boolean,
+): Promise<boolean> {
+  const start = performance.now();
+  for (;;) {
+    let n = 0;
+    try {
+      for (const line of fs.readFileSync(file, "utf8").split("\n")) if (line.includes(needle)) n++;
+    } catch {
+      // Not written yet.
+    }
+    if (n >= count) return true;
+    if (stop?.()) return false;
+    if (performance.now() - start > 30_000)
+      throw new Error(`timed out waiting for ${count} line(s) containing ${JSON.stringify(needle)} in ${file}`);
+    await sleep(10);
+  }
+}
+
+/** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
+ * 2s cadence: multi-cycle behavior (config reloads, marker consumption, wake events) resolves
+ * in ~100ms instead of seconds. Tests that verify timing margins against the real cadence —
+ * shutdown latency vs POLL_MS, and maxConcurrent's hold < poll boundary — keep the default.
+ * Safe because idle ticks back off 1s (fastConfig), so no assertion relies on a >=2s gap
+ * between polls to prevent back-to-back ticks. */
+export const FAST_POLL_MS = 100;
+
+/** The in-flight counts a concurrency-recording fake pi wrote, one per run start (empty before
+ * any run). */
+export function readSamples(runDir: string): number[] {
+  try {
+    return fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
+  } catch {
+    return [];
   }
 }
 

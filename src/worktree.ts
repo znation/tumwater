@@ -22,12 +22,37 @@ async function isUsableWorktree(dir: string): Promise<boolean> {
  * whose directory was deleted still blocks the add), then remove a leftover unusable directory
  * and prune again so no registration points at it. The removed content is harness scratch only
  * — role worktrees are reset to main on every fresh tick, and branch commits survive in
- * refs/heads either way. */
+ * refs/heads either way. Call only inside serializeSetup: a prune deletes any registration
+ * another `worktree add` is still creating. */
 async function clearStaleWorktree(root: string, dir: string): Promise<void> {
   await gitTry(root, "worktree", "prune");
   if (fs.existsSync(dir)) {
     removeTree(dir);
     await gitTry(root, "worktree", "prune"); // drop any registration left pointing at it
+  }
+}
+
+/** The tail of each repository's queue of worktree setups (serializeSetup). */
+const setupQueues = new Map<string, Promise<unknown>>();
+
+/** Run `setup` — a clear-and-add of one worktree — after every earlier setup for the same
+ * repository has finished. `git worktree add` creates the new registration's directory under
+ * .git/worktrees a moment before it writes the `locked` file that shields it from prune, and a
+ * `git worktree prune` landing in between deletes the registration: the add then dies with
+ * "could not open '.git/worktrees/<name>/locked' for writing". The landing pipeline vets its
+ * changes concurrently, each vet ensuring its own lander worktree, so two vets' clear-and-add
+ * steps did interleave — and the loser's vet ended in a terminal "error" that dropped its queue
+ * entry. Serializing the harness's own setups per repository closes that; the usable-worktree
+ * fast path never takes the queue. */
+async function serializeSetup<T>(root: string, setup: () => Promise<T>): Promise<T> {
+  const key = path.resolve(root);
+  const run = (setupQueues.get(key) ?? Promise.resolve()).then(setup);
+  const tail = run.catch(() => undefined);
+  setupQueues.set(key, tail);
+  try {
+    return await run;
+  } finally {
+    if (setupQueues.get(key) === tail) setupQueues.delete(key);
   }
 }
 
@@ -38,14 +63,17 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   const wt = worktreePath(root, role);
   const branch = branchName(role);
   if (await isUsableWorktree(wt)) return wt;
-  await clearStaleWorktree(root, wt);
-  const branchExists = (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
-  if (branchExists) {
-    await git(root, "worktree", "add", wt, branch);
-  } else {
-    await git(root, "worktree", "add", "-b", branch, wt, mainBranch);
-  }
-  return wt;
+  return serializeSetup(root, async () => {
+    if (await isUsableWorktree(wt)) return wt; // a setup queued ahead of this one made it
+    await clearStaleWorktree(root, wt);
+    const branchExists = (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
+    if (branchExists) {
+      await git(root, "worktree", "add", wt, branch);
+    } else {
+      await git(root, "worktree", "add", "-b", branch, wt, mainBranch);
+    }
+    return wt;
+  });
 }
 
 /** Ensure a detached worktree at `dir` checked out at `ref` (a branch name or sha), creating or
@@ -54,15 +82,19 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
  * compiles — the primary checkout may be dirty or on another branch, a role worktree is never
  * pristine while its loop works. */
 export async function ensureDetachedWorktree(root: string, dir: string, ref: string): Promise<string> {
-  if (await isUsableWorktree(dir)) {
-    await abortSync(dir);
-    await git(dir, "checkout", "--detach", ref);
-    await git(dir, "reset", "--hard", ref);
-    await git(dir, "clean", "-fd");
-    return dir;
+  if (!(await isUsableWorktree(dir))) {
+    const created = await serializeSetup(root, async () => {
+      if (await isUsableWorktree(dir)) return false; // a setup queued ahead of this one made it
+      await clearStaleWorktree(root, dir);
+      await git(root, "worktree", "add", "--detach", dir, ref);
+      return true;
+    });
+    if (created) return dir;
   }
-  await clearStaleWorktree(root, dir);
-  await git(root, "worktree", "add", "--detach", dir, ref);
+  await abortSync(dir);
+  await git(dir, "checkout", "--detach", ref);
+  await git(dir, "reset", "--hard", ref);
+  await git(dir, "clean", "-fd");
   return dir;
 }
 

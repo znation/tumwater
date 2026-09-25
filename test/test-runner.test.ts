@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { test } from "node:test";
 import path from "node:path";
-import { selectTestFiles } from "../src/test-runner.js";
+import { orderByDuration, selectTestFiles, suiteGitEnv } from "../src/test-runner.js";
 import { tmpdir } from "./util.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
@@ -69,4 +69,45 @@ test("a missing or empty dist/test dir is an actionable build error", () => {
   assert.match(missing.error ?? "", /run `npm run build` first/);
   const empty = selectTestFiles([], tmpdir());
   assert.match(empty.error ?? "", /no \*\.test\.js files/);
+});
+
+test("files run longest-first by recorded duration; unrecorded files lead, ties keep name order", () => {
+  const files = ["/d/a.test.js", "/d/b.test.js", "/d/c.test.js", "/d/new.test.js", "/d/z.test.js"];
+  // Keyed by compiled basename, as the durations reporter records them; `new` has no entry.
+  const durations = { "a.test.js": 100, "b.test.js": 900, "c.test.js": 100, "z.test.js": 5_000 };
+  assert.deepEqual(orderByDuration(files, durations), [
+    "/d/new.test.js", // unknown cost runs first — early is the safe guess
+    "/d/z.test.js",
+    "/d/b.test.js",
+    "/d/a.test.js", // a tie with c keeps the given (name) order
+    "/d/c.test.js",
+  ]);
+  // No record at all (a fresh build) is exactly the name order.
+  assert.deepEqual(orderByDuration(files, {}), files);
+  // A torn or foreign entry is no record, not a sort key.
+  const torn = { "a.test.js": "slow" as unknown as number, "b.test.js": 1 };
+  assert.deepEqual(orderByDuration(["/d/a.test.js", "/d/b.test.js"], torn), ["/d/a.test.js", "/d/b.test.js"]);
+});
+
+test("suiteGitEnv appends maintenance.auto=false after any env-injected git config it inherits", () => {
+  const fresh = suiteGitEnv({ PATH: "/bin" });
+  assert.equal(fresh.GIT_CONFIG_COUNT, "1");
+  assert.equal(fresh.GIT_CONFIG_KEY_0, "maintenance.auto");
+  assert.equal(fresh.GIT_CONFIG_VALUE_0, "false");
+  assert.equal(fresh.PATH, "/bin", "everything else passes through");
+
+  // A caller's own injected entries keep their slots; the suite's goes after them.
+  const inherited = suiteGitEnv({
+    GIT_CONFIG_COUNT: "2",
+    GIT_CONFIG_KEY_0: "a.b",
+    GIT_CONFIG_VALUE_0: "1",
+    GIT_CONFIG_KEY_1: "c.d",
+    GIT_CONFIG_VALUE_1: "2",
+  });
+  assert.equal(inherited.GIT_CONFIG_COUNT, "3");
+  assert.equal(inherited.GIT_CONFIG_KEY_1, "c.d");
+  assert.equal(inherited.GIT_CONFIG_KEY_2, "maintenance.auto");
+
+  // An unparsable count is treated as none rather than propagated.
+  assert.equal(suiteGitEnv({ GIT_CONFIG_COUNT: "junk" }).GIT_CONFIG_COUNT, "1");
 });

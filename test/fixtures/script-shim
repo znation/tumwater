@@ -1,0 +1,9 @@
+#!/bin/sh
+# The one committed executable behind every fake command the suite installs (writeScript in
+# test/util.ts). Each fake is a symlink to this file, and its body is the plain file beside
+# the symlink named "<fake>.sh", sourced here with the fake's own $0 and arguments — so it
+# runs exactly as a `#!/bin/sh` script holding that body would. macOS scans every newly
+# created executable on its first exec (~150 ms each, far more under load); a symlink to
+# this already-scanned file is not a new executable, so a test gets a fresh fake without
+# paying for a fresh scan.
+. "$0.sh"

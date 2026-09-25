@@ -5,7 +5,7 @@ import path from "node:path";
 import { bugfixMainRedNote, mainRedGate } from "../src/main-red.js";
 import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
-import { baselineFixture, runsOf, sh, tmpdir } from "./util.js";
+import { baselineFixture, runsOf, sh, tmpdir, writeScript } from "./util.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
@@ -19,9 +19,7 @@ const ROLE = "coverage"; // a BASELINE_BLOCKED_ROLES member (code-producing)
  * npm must never run in unit tests). Returns a restore function. */
 function fakeNpm(script: string): () => void {
   const dir = tmpdir("fake-npm-");
-  const bin = path.join(dir, "npm");
-  fs.writeFileSync(bin, `#!/bin/sh\n${script}\n`);
-  fs.chmodSync(bin, 0o755);
+  writeScript(path.join(dir, "npm"), script);
   const oldPath = process.env.PATH;
   process.env.PATH = `${dir}:${oldPath}`;
   return () => {

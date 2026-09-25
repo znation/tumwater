@@ -19,7 +19,7 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/types.js";
-import { makeRepo, sh, tmpdir } from "./util.js";
+import { makeRepo, sh, tmpdir, writeScript } from "./util.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
 function piResult(over: Partial<PiRunResult> = {}): PiRunResult {
@@ -460,9 +460,7 @@ function declareBuildCheck(root: string, wt: string, toolBody = "exit 0", commit
     sh(root, "git", "add", "package.json"); // targeted — never sweeps in node_modules
     sh(root, "git", "commit", "-m", "declare build check");
   }
-  const tool = path.join(binDir, "buildcheck-tool");
-  fs.writeFileSync(tool, `#!/bin/sh\n${toolBody}\n`);
-  fs.chmodSync(tool, 0o755);
+  writeScript(path.join(binDir, "buildcheck-tool"), toolBody);
   fs.writeFileSync(path.join(wt, "package.json"), manifest);
 }
 

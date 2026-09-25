@@ -124,8 +124,11 @@ function pump(ctx: LandingPipelineContext, p: LandingPipeline): { stop: () => Pr
 /** The queue is empty and no vet or merge is running. */
 const drained = (root: string, p: LandingPipeline) => () => queueDepth(root) === 0 && landingTasks(p).length === 0;
 
-/** Every task still settling — parked vets included — for a test's cleanup. */
-const allTasks = (p: LandingPipeline) => [...p.vetting.values(), ...(p.merge ? [p.merge] : [])].map((t) => t.promise);
+/** Every task still settling — parked vets included — for a test's cleanup. A busySlot
+ * stand-in never settles, so it is skipped: a test that fails before freeing its slot then
+ * reports the failure instead of hanging in its finally. */
+const allTasks = (p: LandingPipeline) =>
+  [...p.vetting.values(), ...(p.merge && !standIns.has(p.merge) ? [p.merge] : [])].map((t) => t.promise);
 
 /** Pin and enqueue one change per role, every pin before any enqueue (a pin's `git add -A`
  * would sweep an already-written queue file into the next pin). */
@@ -156,9 +159,14 @@ function reviewers(flags: string, roles: string[], verdicts: Record<string, stri
   ].join("\n");
 }
 
+/** The busySlot stand-ins handed out so far (allTasks skips them). */
+const standIns = new WeakSet<InFlightLanding>();
+
 /** A stand-in for a merge already holding the slot, so an approved change has to wait for it. */
 function busySlot(): InFlightLanding {
-  return { promise: new Promise<void>(() => {}), controller: new AbortController(), roles: [], userAborted: false };
+  const slot = { promise: new Promise<void>(() => {}), controller: new AbortController(), roles: [], userAborted: false };
+  standIns.add(slot);
+  return slot;
 }
 
 /** A role's row as the observers render it (snapshot → landingForRole → loopPhase). The
@@ -378,7 +386,9 @@ test("the merge's conflict resolver takes a shared permit, ahead of a vet parked
     pipeline.merge = null;
     await drainLandings(ctx, pipeline);
     assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "alpha's merge is running");
-    await new Promise((r) => setTimeout(r, 1500));
+    // The merge reaches its resolver, which parks for the permit beside beta's vet — or, without
+    // one, runs at once and leaves its mark.
+    await waitFor(() => ctx.semaphore.waiting === 2 || fs.existsSync(order), "alpha's resolver to reach the permit");
     assert.equal(fs.existsSync(order), false, "the resolver waits for a permit like any pi run");
 
     ctx.semaphore.release(); // the tick ends: the merge's resolver is first in line
@@ -457,7 +467,10 @@ test("every vet holds a shared permit: with one free, one reviews while the othe
   // once; with two role ticks holding permits, one is free, so the second vet parks for it — no
   // marker record, its row plainly queued, out of reach of abort --role and of the shutdown
   // wait — until the first vet frees it. Each review records how many reviews were in flight as
-  // it started.
+  // it started. With both free, beta's review also holds (bounded) until alpha's has begun: two
+  // vets that may overlap can still happen not to — beta's review can finish before alpha's
+  // starts — so the overlap a working pipeline allows is made certain rather than left to
+  // timing; a pipeline that serializes them leaves beta waiting out its bound alone.
   const cap = 3;
   for (const ticks of [0, 2]) {
     const free = cap - ticks;
@@ -466,11 +479,15 @@ test("every vet holds a shared permit: with one free, one reviews while the othe
     await queueChanges(root, roles);
     const rowOf = rowReader(root, roles);
     const flags = tmpdir("vet-permits-");
+    const awaitAlpha =
+      ticks === 0
+        ? `*_land-beta) i=0; while [ ! -f '${flags}/alpha-reviewing' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done;;`
+        : "";
     const restore = fakePi(
       [
         `d='${flags}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
         `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${flags}/samples.log'`,
-        `case "$PWD" in *_land-alpha) touch '${flags}/alpha-reviewing'; i=0; while [ ! -f '${flags}/alpha-release' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done;; esac`,
+        `case "$PWD" in *_land-alpha) touch '${flags}/alpha-reviewing'; i=0; while [ ! -f '${flags}/alpha-release' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done;; ${awaitAlpha} esac`,
         `rm -f "$f"`,
         APPROVE(),
       ].join("\n"),
@@ -569,12 +586,14 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
 });
 
 test("three T-long reviews run at once at cap 4, so all three merge in about T, not 3T", async () => {
-  // Acceptance for land-queue speed 2c. Each review holds T and records how many reviews were in
-  // flight as it started. As in lander.test.ts's timing tests, the span is read off the
-  // harness's own timeline — first review_start to last `merged` — and held against the reviews'
-  // own summed durations (the floor of any one-after-another schedule), so a loaded host's git
-  // plumbing cannot swamp the bound.
-  const T = 4;
+  // Acceptance for land-queue speed 2c. Each review records how many reviews were in flight as
+  // it started, holds (bounded) until all three are in flight — three vets that may overlap can
+  // still happen not to, and the overlap a working pipeline allows is made certain rather than
+  // left to a long hold — and then holds T. As in lander.test.ts's timing tests, the span is
+  // read off the harness's own timeline — first review_start to last `merged` — and held against
+  // the reviews' own summed durations (the floor of any one-after-another schedule), so a loaded
+  // host's git plumbing cannot swamp the bound.
+  const T = 2;
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
   const mainBefore = sh(root, "git", "rev-parse", "main");
@@ -584,6 +603,7 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
     [
       `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
       `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
+      `i=0; while [ $(ls "$d" | wc -l) -lt 3 ] && [ $i -lt 300 ]; do sleep 0.05; i=$((i+1)); done`,
       `sleep ${T}; rm -f "$f"`,
       APPROVE(),
     ].join("\n"),
@@ -778,9 +798,13 @@ test("abort --role stops that role's vet, or discards its vetted change, pin and
     await waitForFile(path.join(flags, "beta-reviewing"));
     await waitFor(() => pipeline.vetted.has("gamma"), "gamma to be vetted", 30_000);
 
+    const alphaVet = pipeline.vetting.get("alpha")?.promise;
     for (const role of ["alpha", "gamma"]) writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
     consumeAbortRequests(root, [], abortableLandings(pipeline));
     await settleAbortedVetted(root, pipeline); // the scheduler settles right after, every poll
+    // The aborted vet drops its entry before it discards its pin and leaves the pipeline, so
+    // wait for the task itself: its outcome, pin discard and exit are all done once it settles.
+    await alphaVet;
     await waitFor(() => queuedLandingFiles(root).length === 1, "both aborted entries to drop", 30_000);
 
     for (const role of ["alpha", "gamma"]) {
