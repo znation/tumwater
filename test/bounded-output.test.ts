@@ -61,6 +61,23 @@ test("boundText never splits multi-byte UTF-8 mid-character", () => {
   assert.ok(!/^[\uDC00-\uDFFF]/.test(parts[2]!), "tail starts on a whole character");
 });
 
+test("boundText keeps its limit when the full-output path alone swallows the budget", () => {
+  // A path longer than the limit makes the marker bigger than the whole budget. Before the
+  // clamp this drove headLen/tailLen negative, and negative slice bounds kept nearly the
+  // ENTIRE text — the flood the extension exists to prevent.
+  const text = "x".repeat(5_000);
+  const result = boundText(text, 300, `/tmp/${"d".repeat(500)}/full.log`);
+  assert.ok(cps(result) <= 300, `result is ${cps(result)} code points`);
+  assert.match(result, /chars truncated/);
+  assert.match(result, /complete output in \/tmp\//);
+});
+
+test("boundText with a tiny limit and no path still stays within the limit", () => {
+  const result = boundText("y".repeat(1_000), 30);
+  assert.ok(cps(result) <= 30, `result is ${cps(result)} code points`);
+  assert.match(result, /1000 chars truncated/);
+});
+
 // ---- boundReadResult -------------------------------------------------------
 
 const bigFileText = (lines: number): string =>

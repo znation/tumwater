@@ -7,6 +7,36 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### boundText returns nearly the whole unbounded text when the marker itself exceeds the limit (found by coverage loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `boundText`'s contract says the result is always at most `limitChars` code
+points long, but when the marker is longer than the whole limit — a very long
+full-output path beside a small budget — the marker budget goes negative. `headLen` and
+`tailLen` then go negative too, and negative `slice` bounds keep nearly the ENTIRE text
+(a 5,000-char text with a 200-char path at limit 40 returned 5,147 code points). The exact
+flood the bounded-output extension exists to prevent. No shipped caller passes a path that
+long (limits are 12k/16k), but `boundBashResult` forwards pi's `fullOutputPath` undefended
+and the function's stated contract was violated.
+
+**Reproduce:** `boundText("x".repeat(5000), 40, "/" + "d".repeat(200))` → over 5,000 code
+points instead of at most 40.
+
+**Cause:** `budget = limitChars - markerLen - 12` went negative and was fed straight into
+`Math.floor(budget / 2)` and slice bounds; the old safety-valve loop only ran while
+`tailLen > 0`, so it never fired in the case that needed it.
+
+**Fix:** src/pi-extension/bounded-output.ts clamps `headLen`/`tailLen` at zero (worst case
+is the marker alone) and adds a final hard cut to `limitChars` when even the marker alone
+exceeds the limit. The old tail-trimming safety valve was unreachable dead code — its digit
+slack covers only texts of over a trillion code points — and the hard cut subsumes it, so it
+was removed. Pinned by test/bounded-output.test.ts "boundText keeps its limit when the
+full-output path alone swallows the budget" and "boundText with a tiny limit and no path
+still stays within the limit"; the module now shows 100% line coverage for `boundText`.
+
+**Validation gap:** unclear-invariant — the at-most-`limitChars` guarantee lived only in a
+doc comment with no test pinning it, so the negative-budget path sat uncovered until a
+coverage pass probed the marker-vs-limit interaction directly.
+
 ### Concurrent vets race `git worktree prune` against each other's `git worktree add`: the loser's vet ends `error` and its queued change is dropped (found 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** Under load, landing-drain.test.ts's three-vet tests ("a shutdown reaches every vet…", "abort --role stops that role's vet…") timed out waiting for alpha's review. Alpha's vet had already ended `land_failed` with result `error` after ~70 ms, and its role state carried `git worktree add --detach …/_land-alpha <sha> failed (128): … fatal: could not open '.git/worktrees/_land-alpha/locked' for writing: No such file or directory` (or `Invalid argument`). Beta's and gamma's vets went on normally. In the fleet, the same race turns a queued change into a terminal error that drops its entry.

@@ -54,22 +54,23 @@ export function boundText(
     `...${omitted} chars truncated${fullPath ? `; complete output in ${fullPath}` : ""}...`;
 
   // Reserve a little slack so the final marker (whose digit count grows with the real
-  // omitted total) never pushes the result past the limit.
+  // omitted total) never pushes the result past the limit — 12 digits covers any text
+  // short of a trillion code points.
   const markerLen = chars(marker(0)).length;
   const budget = limitChars - markerLen - 12;
-  let headLen = Math.floor(budget / 2);
-  let tailLen = budget - headLen;
+  // A marker longer than the whole limit — a very long full-output path beside a small
+  // budget — drives the budget negative, and negative slice bounds would then keep nearly
+  // the entire text: the exact flood bounding exists to prevent. Clamp to zero so the
+  // worst case is the marker alone.
+  let headLen = Math.max(0, Math.floor(budget / 2));
+  let tailLen = Math.max(0, budget - headLen);
 
   let result = cps.slice(0, headLen).join("") +
     marker(cps.length - headLen - tailLen) +
     cps.slice(cps.length - tailLen).join("");
-  // Safety valve for pathological marker growth — trim the tail until it fits.
-  while (chars(result).length > limitChars && tailLen > 0) {
-    tailLen -= 1;
-    result = cps.slice(0, headLen).join("") +
-      marker(cps.length - headLen - tailLen) +
-      cps.slice(cps.length - tailLen).join("");
-  }
+  // Last resort when even the marker alone exceeds the limit (a path longer than the
+  // budget): a hard cut keeps the at-most-limit contract instead of returning it all.
+  if (chars(result).length > limitChars) result = chars(result).slice(0, limitChars).join("");
   return result;
 }
 
