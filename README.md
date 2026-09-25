@@ -8,7 +8,7 @@ of always-on specialists do the rest: each loop owns one concern, lands one chan
 sleeps when it has nothing to do, and wakes when main moves. All project state lives in the
 local git repo, and no remote is ever touched.
 
-![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, the shared backlog of planned features and open bugs, the event feed, and the director prompt box](docs/gui.png)
+![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, per-loop pause/resume toggles, the shared backlog of planned features and open bugs, the event feed, and the director prompt box](docs/gui.png)
 
 ## Status
 
@@ -18,7 +18,7 @@ local git repo, and no remote is ever touched.
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
 
-Current main (`2b682d7`): build clean, suite 1644/1644.
+Current main (`c59d0e0`): build clean, suite 1671/1671.
 <!-- tumwater:status:end -->
 
 ## Usage
@@ -38,7 +38,7 @@ Then, from another terminal:
 | Watch the fleet | `tumwater tui`, or `tumwater gui` for the browser dashboard at http://127.0.0.1:7180 |
 | Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --role <id>` |
 | Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director |
-| Control the loops | `tumwater pause` / `resume`, `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
+| Control the loops | `tumwater pause` / `resume [--role <id>]` (fleet or one loop), `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
 | Audit | `tumwater doctor` (pre-flight), `tumwater report` (usage and cost), `tumwater report --failures` |
 
 `tumwater help` lists every command and flag. `gui --all-interfaces` exposes the dashboard, and
