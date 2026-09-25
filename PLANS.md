@@ -294,8 +294,6 @@ test/cli-args.test.ts.
 - The supervisor exits with the child's 0 and records no fleet-down event for a clean once exit (existing behavior, pinned by test).
 - `tumwater help run` documents `--once`; `npm run test` passes with the new tests.
 
-## Done
-
 ### `tumwater backlog` — read the project's planned features, open bugs, and open questions from the terminal (planned 2026-09-25, done 2026-09-25)
 
 **Goal.** The backlog is visible only on the two dashboards: the GUI's /api/backlog endpoint and the TUI's project-status browse. An operator working in terminals — the same person `tumwater status`, `tumwater report`, and `tumwater logs` serve — has no way to see what the fleet plans to build, which bugs are open, or what questions await a human decision, short of opening PLANS.md/BUGS.md/QUESTIONS.md and reading them raw (and those files grow without bound; the dashboards' parsed views exist precisely so nobody has to). Add `tumwater backlog`: a read-only command that prints the three open sections — Planned (PLANS.md), Open bugs (BUGS.md), Open questions (QUESTIONS.md) — through the same parser the dashboards use, so the terminal view cannot drift from the dashboard view.
