@@ -25,7 +25,7 @@ interface TickFlow {
  * authoring-run counters as a snapshot, plus the callbacks that touch the loop — warnings,
  * the summary follow-up run, the landing-ref pin, and the abort finalizer. Mirrors the
  * context-object shapes of leftover.ts, refusal.ts, and lander.ts. */
-export interface TickStageContext {
+interface TickStageContext {
   root: string;
   role: string;
   state: LoopState;
