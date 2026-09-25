@@ -315,6 +315,31 @@ test("readTranscript polls incrementally: appends only, live separator, no dupli
   assert.ok(readTranscript(root, "feature", 50).includes("── run ──")); // unstamped: no user message yet
 });
 
+test("readTranscript honors limit=1 while a pending separator is live: slice(-0) must not widen the window", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const lines: string[] = [];
+  for (let i = 1; i <= 3; i++) {
+    lines.push(agentStart(), userLine(`prompt ${i}`, FIXED_TS + i * 60_000), assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  // A just-started run: its separator is pending and no turn has landed yet.
+  lines.push(agentStart(), userLine("prompt 4", FIXED_TS + 4 * 60_000));
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+
+  // The pending separator consumes the whole limit-1 budget: exactly the separator, never
+  // the whole ring — take==0 hit entries.slice(-0), which is slice(0) because -0 === 0.
+  assert.deepEqual(readTranscript(root, "feature", 1), [
+    `── run @ ${expectedTimestamp(FIXED_TS + 4 * 60_000)} ──`,
+  ]);
+  // One slot short of the boundary still behaves: the newest entry plus the separator.
+  assert.deepEqual(readTranscript(root, "feature", 2), [
+    `── run @ ${expectedTimestamp(FIXED_TS + 3 * 60_000)} ──`,
+    "  turn 3",
+    `── run @ ${expectedTimestamp(FIXED_TS + 4 * 60_000)} ──`,
+  ]);
+});
+
 test("readTranscript reseeds when rotation replaces the file", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");

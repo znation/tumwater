@@ -7,6 +7,42 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `readTranscript`'s take==0 window returns the whole ring: `slice(-0)` is `slice(0)`, so a limit-1 poll during a live pending separator gets every kept entry (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `readTranscript(root, role, limit)`'s contract is the last `limit` rendered
+entries, oldest first. When a run has started but produced no renderable turn yet, its
+pending separator is reserved one slot of the budget (`take = want - 1`); at `limit=1`
+that drives `take` to 0 — and `entries.slice(-take)` with `take === 0` is `slice(-0)`,
+which JavaScript treats as `slice(0)`: the entire ring buffer (up to MAX_ENTRIES = 200
+entries) came back instead of nothing. The result ignored the caller's limit exactly in
+the window every run passes through (between `agent_start` and its first turn), the
+window the incremental reader exists to render cheaply.
+
+**Reproduce:** a log with 3 completed turns plus a trailing `agent_start` + user line
+(pending separator, no turn yet), then `readTranscript(root, "feature", 1)` → 7 lines:
+all three entries plus the separator, instead of the separator alone. Machine-run
+2026-09-25 against the pre-fix module; post-fix the same call returns exactly
+`── run @ <ts> ──`.
+
+**Cause:** `value.entries.slice(-take)` in src/ui/transcript.ts with an unguarded `take`:
+`-0 === 0`, so a negative-from-zero slice anchors at index 0 and keeps everything. No
+shipped caller passes `limit=1` (the GUI polls n=50, the TUI its line budget), which is
+why the contract breach never surfaced — but the function is the one definition of "the
+last `limit` entries" and its own doc pins that contract.
+
+**Fix:** src/ui/transcript.ts guards the zero case — `const kept = take > 0 ?
+value.entries.slice(-take).flat() : []` — so a fully-consumed budget keeps only the
+pending separator. Pinned by test/transcript.test.ts "readTranscript honors limit=1
+while a pending separator is live: slice(-0) must not widen the window", which asserts
+both the take==0 boundary (separator alone at limit=1) and one slot short of it (newest
+entry plus separator at limit=2).
+
+**Validation gap:** unclear-invariant — the closest tag: the suite pinned the limit
+contract only at n=50, where the pending separator can never consume the whole budget,
+so what `limit` promised for the take==0 boundary (does the separator count against the
+limit?) had to be reconstructed from the doc comment and sibling expectations before
+the `slice(-0)` pitfall could be confirmed; no test exercised that boundary.
+
 ### Concurrent `pause --role` / dashboard-toggle writers erase each other's pauses: the paused-roles marker's whole-set overwrite was written unlocked (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** an operator pauses one role from the CLI while toggling another in the GUI

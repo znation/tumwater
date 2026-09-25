@@ -254,5 +254,9 @@ export function readTranscript(root: string, role: string, limit = 50): string[]
   // exactly as a full re-read would produce (and keeps gaining its timestamp until then).
   const pending = value.renderer.pendingSeparator();
   const take = Math.max(0, want - (pending.length > 0 ? 1 : 0));
-  return [...value.entries.slice(-take).flat(), ...pending];
+  // take can be 0: a limit-1 request whose whole budget the pending separator consumes (or
+  // any want of 0). entries.slice(-0) is entries.slice(0) — the whole ring — because -0 ===
+  // 0, so a bare slice(-take) would return every kept entry instead of none; guard it.
+  const kept = take > 0 ? value.entries.slice(-take).flat() : [];
+  return [...kept, ...pending];
 }
