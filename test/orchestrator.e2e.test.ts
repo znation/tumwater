@@ -38,9 +38,9 @@ import {
   sh,
   startLiveOrchestrator,
   tmpdir,
-  waitFor,
   eventsOfType,
 } from "./util.js";
+import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
 test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {

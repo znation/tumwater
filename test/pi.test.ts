@@ -15,7 +15,8 @@ import { defaultConfig, loadConfig } from "../src/config.js";
 import { configForRole } from "../src/config-views.js";
 import { initProject } from "../src/init.js";
 import { pidAlive } from "../src/process.js";
-import { fakePi, makeRepo, tmpdir, waitForLogLines, watchdogClock, makeLoopRunner } from "./util.js";
+import { fakePi, makeLoopRunner, makeRepo, tmpdir } from "./util.js";
+import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 
 // plans/portability.md §5/7: the agent binary is TUMWATER_PI_BIN → agentBin → "pi". The

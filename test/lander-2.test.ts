@@ -6,7 +6,8 @@ import { BATCH_RESTACK_ATTEMPTS } from "../src/land-batch.js";
 import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
 import { freshLoopState } from "../src/state.js";
-import { eventsOfType, fakePi, sh, waitForFile } from "./util.js";
+import { eventsOfType, fakePi, sh } from "./util.js";
+import { waitForFile } from "./wait.js";
 import {
   makeCtx,
   request,

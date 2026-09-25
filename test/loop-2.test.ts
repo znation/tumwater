@@ -16,7 +16,8 @@ import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/land-queue.js";
 import { landingRefName, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
 import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt } from "../src/inbox.js";
-import { eventsOfType, harnessWarnings, fakePi, initializedRepo, landHead, makeRepo, sh, tmpdir, waitForFile, waitForLogLines, watchdogClock, writeScript, makeLoopRunner } from "./util.js";
+import { eventsOfType, harnessWarnings, fakePi, initializedRepo, landHead, makeLoopRunner, makeRepo, sh, tmpdir, writeScript } from "./util.js";
+import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 
 const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;

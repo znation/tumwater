@@ -31,9 +31,9 @@ import {
   sh,
   startLiveOrchestrator,
   tmpdir,
-  waitFor,
   eventsOfType,
 } from "./util.js";
+import { waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;
