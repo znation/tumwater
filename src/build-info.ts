@@ -28,6 +28,10 @@ export interface BuildInfo {
  * harness, so a test-only commit does not stale the build; docs and markdown never do. */
 export const BUILD_INPUTS = ["src", "package.json", "tsconfig.json"] as const;
 
+/** The comma-joined BUILD_INPUTS list, for operator-facing text (doctor's stale-build detail and
+ * the dashboards' stale warning) so every message names the inputs from one definition. */
+export const STALE_INPUTS_LABEL = BUILD_INPUTS.join(", ");
+
 /** The dist directory this module was loaded from (…/dist), derived from import.meta.url so it
  * is correct wherever the compiled harness lives (a global install, a worktree's own dist). */
 export function distDir(): string {

@@ -3,7 +3,6 @@ import {
   type BuildInfo,
   type BuildStaleness,
   type BuildStatus,
-  BUILD_INPUTS,
   buildStaleness,
   distDir,
   isSelfHosted,
@@ -510,7 +509,3 @@ export async function createRedeployer(
   };
   return new Redeployer(build, selfHosted, deps, log, RESTART_DRAIN_MAX_MS, autoRestartRecord(root));
 }
-
-/** The inputs whose change stales a build — re-exported so operator-facing text (doctor, the
- * stale warning) names them from one definition. */
-export const STALE_INPUTS_LABEL = BUILD_INPUTS.join(", ");

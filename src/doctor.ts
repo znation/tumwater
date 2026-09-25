@@ -11,8 +11,7 @@ import {
 import { detectBuildCheck } from "./build-check-detect.js";
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo } from "./build-info.js";
-import { STALE_INPUTS_LABEL } from "./redeploy.js";
+import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "./build-info.js";
 import { findOnPath } from "./files.js";
 import {
   GIT_MISSING_MESSAGE,
