@@ -108,10 +108,19 @@ test("a nested withCheckPermit runs under the permit already held", async () => 
 test("a merge-tier waiter is granted ahead of an earlier other-tier waiter", async () => {
   // A merge-scope check runs inside the merge lock, so every check it waits behind is
   // lock-hold time for every other landing — the merge tier must jump the queue.
+  // The holder parks on a test-controlled gate, not a timer: a timer can expire under
+  // load before both waiters are queued, and the release then hands the permit to the
+  // only waiter present (the other-tier one) — the queue-jump the test asserts on never
+  // gets a chance to happen. With the gate, the holder cannot release until both
+  // waiters are parked, so the grant order is observable by construction.
   const cfg = { maxConcurrentChecks: 1 };
   const granted: string[] = [];
+  let releaseHolder: () => void = () => {};
+  const holderGate = new Promise<void>((r) => {
+    releaseHolder = r;
+  });
   const holder = withCheckPermit(cfg, CHECK_TIER.other, async () => {
-    await delay(30);
+    await holderGate;
     granted.push("holder");
   });
   await flush(); // holder now holds the only permit
@@ -123,6 +132,7 @@ test("a merge-tier waiter is granted ahead of an earlier other-tier waiter", asy
     granted.push("merge");
   });
   await flush(); // merge is parked behind it, at the better tier
+  releaseHolder(); // only now can the permit change hands — both waiters are queued
   await Promise.all([holder, other, merge]);
   assert.deepEqual(granted, ["holder", "merge", "other"]);
 });

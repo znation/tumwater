@@ -5,21 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The check-permit test's granted-order assert is load-sensitive: concurrent waiters are resumed in scheduler order, not tier order, so a loaded run grants `other` before `merge` and fails (found by bugfix loop 2026-09-25)
-
-**Symptom:** test/check-permit.test.ts's three-waiter case asserts `granted` equals
-`["holder", "merge", "other"]`; under full-suite load one run observed
-`["holder", "other", "merge"]` — the tier-priority invariant may hold, but the assert reads
-resume order, which the event loop does not guarantee. Passed in isolation and on the next full
-run; treat as flaky until pinned.
-
-**Reproduce:** not yet deterministic — it surfaced once in a full `npm run test` (1801 pass / 1
-fail) and could not be reproduced in isolation or on an immediate re-run.
-
-**Suspected cause:** the test ties waiter wakeup to `Promise.all` resolution order; either assert
-sorted-granted against the tier order, or serialize the grant checks so the order is
-observable-by-construction rather than scheduler-dependent.
-
 ### A transient retry of a hint-less 429 waits 0 seconds, burning the one retry into the same exhausted per-minute bucket (found by telemetry loop 2026-09-25)
 
 **Symptom:** The 2026-09-25 failure digest logs **31×** `provider rate-limited the request (429) — retrying the pi run once` (bugfix, clean, coverage, dry +5 more) and a **6×** hard-error cluster `429 "Rate limit exceeded"` (bugfix, coverage, dry, perf +1 more) — six of the 31 retried runs ended `error` anyway, discarding their tick. The warning interpolates the provider's hint only when one exists (src/loop-pi.ts:105), and the digest preserves literal text (its cluster key keeps `429` unnormalized), so hinted retries would form a separate `(429, retry after Ns)` cluster; the day's single 429 warning cluster carries no suffix, meaning every one of the 31 waits was 0 seconds. The day's one fleet-wide hold (10:21, 60 s) never covered these isolated 429s — the storm detector is calibrated to stay silent on exactly this spacing.
@@ -29,6 +14,28 @@ observable-by-construction rather than scheduler-dependent.
 **Expected:** The harness's own constants state the refill physics: `RATE_LIMIT_HOLD_BASE_MS`'s comment — "provider rate limits are metered in per-minute buckets, so a minute is the shortest pause that lets the bucket refill" — and src/rate-limit-hold.ts's docstring calls an unwaited retry a burn ("each burns its retry straight into a storm the fleet is collectively sustaining") while still advertising "one wait-and-retry". When the provider sends no hint, the retry should default to that same minute-scale pause (still bounded by `RATE_LIMIT_RETRY_AFTER_CAP_S`, a present hint still winning), so the single retry lands in a refilled bucket instead of a near-guaranteed second 429 that throws the tick's work away.
 
 ## Fixed
+
+### The check-permit test's granted-order assert is load-sensitive: concurrent waiters are resumed in scheduler order, not tier order, so a loaded run grants `other` before `merge` and fails (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** test/check-permit.test.ts's three-waiter case asserted `granted` equals
+`["holder", "merge", "other"]`; under full-suite load one run observed
+`["holder", "other", "merge"]` — the tier-priority invariant held, but the assert read
+resume order, which the event loop does not guarantee.
+
+**Cause:** the holder released on a fixed 30 ms timer, so the test's correctness depended on the
+whole queueing sequence (holder → flush → other → flush → merge → flush) completing within that
+30 ms. Under load the event loop can stall longer than that: the timer fires while only the
+other-tier waiter is queued, the release grants it, and merge — queued afterwards — is granted
+next, producing `["holder", "other", "merge"]`. Reproduced deterministically by inserting a 40 ms
+stall between the queueing steps in a scratch harness against src/semaphore.ts.
+
+**Fix:** the holder now parks on a test-controlled gate instead of a timer, released only after
+both waiters are confirmed parked — the holder cannot hand the permit to a partially-filled
+queue, so the granted order is observable by construction rather than scheduler-dependent.
+
+**Validation gap:** no-repro — the failure surfaced once under full-suite load and never
+reproduced on demand, so the fix is confirmed by construction (a stall cannot affect a
+gate-controlled release) plus a green suite, not by a failing run the old test also produced.
 
 ### A tick that throws between dequeuing the user prompt and the pi run silently drops the request: the catch records the error but never re-queues the dequeued (or reclaimed) prompt (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
