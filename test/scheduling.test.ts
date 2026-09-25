@@ -288,3 +288,39 @@ test("dueForPrune: the once-per-day gate with fake timestamps", () => {
   // Never pruned (null) → immediately due when retention is positive.
   assert.equal(dueForPrune(null, 1_000, 7), true);
 });
+
+test("once mode overrides the scheduled clock, not just the min gap", () => {
+  const r = runner("clean");
+  const now = Date.now();
+  // State left by a productive daemon tick seconds ago: the min-interval clock is fresh —
+  // scheduleAtMinInterval wrote nextRunAt a full interval away and left backoffSeconds 0.
+  // Once mode exists for exactly this (`run --once` right after a daemon run), so the clock
+  // must not gate the round: overriding only the gap check would leave the same interval
+  // enforced through nextRunAt and the round would do nothing.
+  Object.assign(r.state, {
+    ticks: 1,
+    lastResult: "changed",
+    lastTickEndedAt: now - 5_000,
+    lastMainHead: "abc",
+    nextRunAt: now + 30 * 60 * 1000,
+    backoffSeconds: 0,
+  });
+  assert.equal(isEligible(r, now, "abc", 0, { once: true }).run, true);
+  // Without once the clock still gates: the daemon's own cadence is untouched.
+  assert.equal(isEligible(r, now, "abc", 0).run, false);
+});
+
+test("once mode still honors a raised backoff, which shares nextRunAt with the clock", () => {
+  const r = runner("clean");
+  const now = Date.now();
+  // A backed-off role (error or idle ladder): nextRunAt in the future AND backoffSeconds
+  // raised — the only way to tell a backoff deadline from the scheduled clock.
+  Object.assign(r.state, {
+    ticks: 3,
+    lastResult: "error",
+    lastTickEndedAt: now - 5_000,
+    nextRunAt: now + 60_000,
+    backoffSeconds: 60,
+  });
+  assert.equal(isEligible(r, now, "abc", 0, { once: true }).run, false);
+});

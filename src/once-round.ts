@@ -43,13 +43,15 @@ export class OnceRound {
 
   /** An idle, not-due role's settle reason: disabled mid-round, error backoff, or (for the
    * director) an empty inbox. No poll of this round changes any of these, so the role is
-   * settled with its skip reason (the caller's summary reports it). */
-  settleSkipped(runner: LoopRunner, now: number): void {
+   * settled with its skip reason (the caller's summary reports it). backoffSeconds is the
+   * backoff signal, not nextRunAt: the scheduled clock also writes nextRunAt (with
+   * backoffSeconds 0), so a future nextRunAt alone does not mean backoff. */
+  settleSkipped(runner: LoopRunner): void {
     this.settle(
       runner.role,
       !runner.config.roles[runner.role]?.enabled
         ? "disabled"
-        : runner.state.nextRunAt > now
+        : runner.state.backoffSeconds > 0
           ? "backoff"
           : "idle",
     );

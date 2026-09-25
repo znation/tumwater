@@ -540,7 +540,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           if (deferredDue.get(runner.role)) deferredDue.set(runner.role, false);
           // Once mode: idle and not due — settleSkipped records the skip reason (the caller's
           // summary reports it).
-          if (once.active && !runner.state.running) once.settleSkipped(runner, now);
+          if (once.active && !runner.state.running) once.settleSkipped(runner);
           continue;
         }
         // Merge queue 3/5 interlock (invariant 3): a role with a QUEUED or IN-FLIGHT landing

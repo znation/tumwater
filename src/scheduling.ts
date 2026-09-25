@@ -15,11 +15,15 @@ import { DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
 interface EligibilityOptions {
-  /** Once mode (`tumwater run --once`): the min-tick-interval gap check is skipped — a
+  /** Once mode (`tumwater run --once`): the min-tick-interval clock is overridden — a
    * one-shot is an explicit demand for a round now, and without this a round started
    * shortly after a daemon run does nothing because every role's clock is still fresh.
-   * Every other gate is kept as-is: error backoff (`nextRunAt`), resume gating,
-   * `s.running`, and per-role enablement. */
+   * The clock lives in two fields that must be overridden together: the gap check
+   * (`lastTickEndedAt`) and `nextRunAt`, which scheduleAtMinInterval also writes after a
+   * productive tick. Error and idle backoff share `nextRunAt` with the clock, so the
+   * override keys on `backoffSeconds === 0` — only scheduleAtMinInterval leaves it at
+   * zero; every backoff ladder leaves it raised. Resume gating, `s.running`, and
+   * per-role enablement are kept as-is. */
   once?: boolean;
 }
 
@@ -58,7 +62,10 @@ export function isEligible(
     : configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000;
   const sinceLast = now - (s.lastTickEndedAt ?? 0);
   if (sinceLast < minGap) return { run: false };
-  if (now >= s.nextRunAt) {
+  // Once mode's clock override, second half: a raised backoffSeconds means nextRunAt is a
+  // backoff deadline, not the scheduled clock, and is honored; at zero it is the clock a
+  // productive tick scheduled, and the explicit round demand overrides it.
+  if (now >= s.nextRunAt || (opts.once && s.backoffSeconds === 0)) {
     return { run: true, reason: s.ticks === 0 ? "startup" : "scheduled" };
   }
   // The world changed under a sleeping loop: main moved since its last tick.

@@ -84,14 +84,16 @@ test("once: a round that produces a change merges it before exiting", async () =
 
 test("once: a role in error backoff is skipped and does not run, and the round still ends", async () => {
   const repo = await makeFastRepo("once backoff test", ["clean"]);
-  // Persisted backoff: nextRunAt in the future — once mode honors it (it overrides only the
-  // min-tick-interval gap, never error backoff).
+  // Persisted backoff: nextRunAt in the future with backoffSeconds raised — once mode
+  // honors a backoff deadline (it overrides only the min-tick-interval clock, and the
+  // clock is told from backoff by backoffSeconds, which only a backoff ladder leaves set).
   saveLoopState(repo, {
     ...freshLoopState("clean"),
     ticks: 3,
-    lastResult: "no_change",
+    lastResult: "error",
     lastTickEndedAt: Date.now(),
     nextRunAt: Date.now() + 60_000,
+    backoffSeconds: 60,
   });
   const restore = fakePiIdle();
   try {
@@ -102,6 +104,32 @@ test("once: a role in error backoff is skipped and does not run, and the round s
       !readEvents(repo).some((e) => e.type === "tick_start" && e.loop === "clean"),
       "no tick started for the backed-off role",
     );
+  } finally {
+    restore();
+  }
+});
+
+test("once: a round started right after a productive daemon tick still ticks the role", async () => {
+  const repo = await makeFastRepo("once fresh clock test", ["clean"]);
+  // State exactly as a just-finished productive daemon tick leaves it: the min-interval
+  // clock is a full interval away (scheduleAtMinInterval) and backoffSeconds is 0. The
+  // round is an explicit demand for a round now, so the role must tick despite the fresh
+  // clock — this is the scenario the once-mode clock override exists for (a real config's
+  // minTickIntervalSeconds made the old gap-only override a no-op here).
+  saveLoopState(repo, {
+    ...freshLoopState("clean"),
+    ticks: 1,
+    lastResult: "changed",
+    lastTickEndedAt: Date.now(),
+    lastMainHead: "seed",
+    nextRunAt: Date.now() + 30 * 60 * 1000,
+    backoffSeconds: 0,
+  });
+  const restore = fakePiIdle();
+  try {
+    const exit = await onceRound(repo);
+    assert.equal(exit.restart, false);
+    assert.equal(loadLoopState(repo, "clean").ticks, 2, "the role ticked despite its fresh clock");
   } finally {
     restore();
   }

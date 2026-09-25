@@ -9,6 +9,38 @@ _None yet._
 
 ## Fixed
 
+### Once mode's clock override is nullified by the `nextRunAt` gate it shares with the min-interval clock, so `run --once` right after a daemon run does nothing (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `tumwater run --once` is an explicit demand for a round now, and `isEligible`'s once
+option skips the min-tick-interval gap check precisely so a round started shortly after a daemon
+run still ticks every role. But the same interval is enforced twice: after every productive,
+rejected, or skipped tick, `scheduleAtMinInterval` writes `nextRunAt = now + minTickIntervalSeconds`
+— and the once option kept the `now >= s.nextRunAt` gate, on the stated theory that `nextRunAt`
+encodes error backoff. With a real config's intervals (steward 6 h, readme 30 min, …), a role whose
+daemon tick finished minutes ago has a future `nextRunAt` and `backoffSeconds 0`, so the round
+classifies it as backoff, settles it without a tick, and exits having done nothing — the exact
+scenario the override exists for, defeated by the second copy of the same clock.
+
+**Reproduce:** confirmed 2026-09-25 by the regression test now in test/scheduling.test.ts: a runner
+with a productive tick 5 s old (`lastTickEndedAt: now - 5_000`, `nextRunAt: now + 30 min`,
+`backoffSeconds: 0`) returns `{ run: false }` from `isEligible(..., { once: true })` pre-fix, where
+the override's own comment promises a round now. The e2e twin (orchestrator-once.e2e.test.ts) runs
+the whole round and asserts the role ticks anyway.
+
+**Fix:** the once override now covers both halves of the clock — `now >= s.nextRunAt ||
+(opts.once && s.backoffSeconds === 0)` — because `backoffSeconds` is the one signal that tells the
+scheduled clock from a backoff deadline: only `scheduleAtMinInterval` leaves it at zero, every
+backoff ladder raises it. Error and idle backoff stay honored; `resumePending`'s deliberate one-
+interval wait is untouched (its branch returns before the clock checks). `OnceRound.settleSkipped`
+now keys its `backoff`/`idle` summary reason on `backoffSeconds` too — the director's empty inbox
+leaves a future `nextRunAt` with `backoffSeconds 0`, which the old `nextRunAt`-only check misread
+as backoff.
+
+**Validation gap:** no-fake — the existing once e2e fixture encoded error backoff as a bare future
+`nextRunAt` (the same state a fresh scheduled clock produces), so the suite could not even express
+the clock-vs-backoff distinction whose conflation was the bug, and the e2e tier sits outside the
+gating suite besides; confirming the fix required a fixture that sets both fields distinctly.
+
 ### `onceSummary` re-derives the skip reasons the orchestrator already settled on, so a deferred role reads as "idle — nothing was due" in the once round's summary (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** `tumwater run --once`'s summary line is the round's only cron-visible output, and for a
