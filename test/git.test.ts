@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { aheadOfMainDiff, changedFiles, unquotePorcelainPath } from "../src/git-diff.js";
+import { aheadOfMainDiff, aheadOfMainFiles, changedFiles, unquotePorcelainPath } from "../src/git-diff.js";
 import {
   aheadOfMain,
   commitAll,
+  commitMessage,
   commitPathsAndDiscardRest,
   currentBranch,
   deleteRef,
@@ -1014,4 +1015,37 @@ test("branchExists and listBranches answer from the refs, not the checkout", asy
   const empty = tmpdir();
   sh(empty, "git", "init", "-b", "main");
   assert.deepEqual(await listBranches(empty), []);
+});
+
+// --- aheadOfMainFiles: the file list the review gate and merge path see, and commitMessage:
+// the full-message read leftover recovery uses. Neither had any direct test before 2026-09-25.
+
+test("aheadOfMainFiles lists the files the branch's commits change", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "improve", "main");
+  fs.writeFileSync(path.join(wt, "new.txt"), "added\n");
+  fs.appendFileSync(path.join(wt, "seed.txt"), "more\n");
+  await commitAll(wt, "branch change");
+  assert.deepEqual((await aheadOfMainFiles(wt, "main")).sort(), ["new.txt", "seed.txt"]);
+});
+
+test("aheadOfMainFiles omits files only main gained after the branch forked (three-dot range)", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "improve", "main");
+  // Main moves after the worktree's branch was cut (what a long tick spans).
+  fs.writeFileSync(path.join(repo, "main-only.txt"), "on main\n");
+  await commitAll(repo, "main moves on");
+  fs.writeFileSync(path.join(wt, "branch-only.txt"), "on branch\n");
+  await commitAll(wt, "branch change");
+  assert.deepEqual(await aheadOfMainFiles(wt, "main"), ["branch-only.txt"]);
+});
+
+test("commitMessage returns the full message and null for an unknown sha", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "improve", "main");
+  fs.writeFileSync(path.join(wt, "x.txt"), "x\n");
+  const sha = await commitAll(wt, "subject line\n\nWHY: it matters\n");
+  // git's %B drops the commit message's trailing newline when it prints it.
+  assert.equal(await commitMessage(wt, sha), "subject line\n\nWHY: it matters");
+  assert.equal(await commitMessage(wt, "0123456789abcdef0123456789abcdef01234567"), null);
 });
