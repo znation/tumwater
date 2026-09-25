@@ -58,7 +58,7 @@ export function isNegatedRefusal(reason: string | null | undefined): boolean {
 }
 
 /** The result of one `qa` flow check: which flow, and how it went. */
-interface FlowResult {
+export interface FlowResult {
   flow: string;
   result: "passed" | "bug";
 }

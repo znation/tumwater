@@ -23,7 +23,7 @@ import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal, refusalContradiction } from "./refusal.js";
-import { extractFlow } from "./reply-contract.js";
+import { extractFlow, type FlowResult } from "./reply-contract.js";
 import { recordFlow } from "./qa-coverage.js";
 import { landingRefName, sessionDir } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
@@ -551,6 +551,23 @@ export class LoopRunner {
     // failed tick must not advance the rotation. The harness records it, never pi.
     const flow = this.role === "qa" ? extractFlow(pi.finalText) : null;
 
+    return this.handlePiResult(pi, userPrompt, wt, flow, piStartedAt);
+  }
+
+  /** Turn a finished pi run into its TickOutcome: the post-run half of runTick, split off so
+   * each half reads on its own screen — the setup above ends at the pi return, and everything
+   * that classifies what the run left behind (abort, config request, quiet kill, timeout,
+   * refusal, failure, no-change, or the staging handoff) lives here. `userPrompt` is the raw
+   * director prompt this tick is executing (null for role loops) so unfulfilled outcomes can
+   * re-queue it; `flow` is the qa observer's FLOW line (null for every other role). */
+  private async handlePiResult(
+    pi: PiRunResult,
+    userPrompt: string | null,
+    wt: string,
+    flow: FlowResult | null,
+    piStartedAt: number,
+  ): Promise<TickOutcome> {
+    const s = this.state;
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.
     if (pi.aborted) return this.finishAbortedTick(userPrompt, wt);
