@@ -14,7 +14,7 @@ import { configForRole } from "./config-views.js";
 import { DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
-export interface EligibilityOptions {
+interface EligibilityOptions {
   /** Once mode (`tumwater run --once`): the min-tick-interval gap check is skipped — a
    * one-shot is an explicit demand for a round now, and without this a round started
    * shortly after a daemon run does nothing because every role's clock is still fresh.
