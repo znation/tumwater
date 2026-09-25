@@ -13,13 +13,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 points long, but when the marker is longer than the whole limit — a very long
 full-output path beside a small budget — the marker budget goes negative. `headLen` and
 `tailLen` then go negative too, and negative `slice` bounds keep nearly the ENTIRE text
-(a 5,000-char text with a 200-char path at limit 40 returned 5,147 code points). The exact
-flood the bounded-output extension exists to prevent. No shipped caller passes a path that
+(a 5,000-char text with a 201-char path at limit 40 returned 5,139 code points: a
+4,891-char head plus a marker claiming 5,217 omitted when only 109 were). The exact flood
+the bounded-output extension exists to prevent. No shipped caller passes a path that
 long (limits are 12k/16k), but `boundBashResult` forwards pi's `fullOutputPath` undefended
 and the function's stated contract was violated.
 
-**Reproduce:** `boundText("x".repeat(5000), 40, "/" + "d".repeat(200))` → over 5,000 code
-points instead of at most 40.
+**Reproduce:** `boundText("x".repeat(5000), 40, "/" + "d".repeat(200))` → 5,139 code
+points instead of at most 40 (after the fix: the marker alone, cut to exactly 40).
 
 **Cause:** `budget = limitChars - markerLen - 12` went negative and was fed straight into
 `Math.floor(budget / 2)` and slice bounds; the old safety-valve loop only ran while
