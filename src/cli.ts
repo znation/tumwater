@@ -43,6 +43,30 @@ async function requireReadyRepo(root: string): Promise<void> {
   if (notReady !== null) fail(notReady);
 }
 
+/** The marker commands that share runRoleCommand's guard+dispatch shape below. */
+type MarkerCommand = "reset-counters" | "wake" | "abort" | "pause" | "resume";
+
+/** The marker-writing core of each marker command, keyed by its CLI name (the consumer half
+ * lives in operator-commands.ts). One map so a new marker command registers its core beside
+ * its case label instead of growing another copy of the guard sequence. */
+const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) => Promise<void>> = {
+  "reset-counters": cmdResetCounters,
+  wake: cmdWake,
+  abort: cmdAbort,
+  pause: cmdPause,
+  resume: cmdResume,
+};
+
+/** The shared shape of the five marker commands (reset-counters, wake, abort, pause, resume):
+ * reject unknown args (each takes only the optional --role flag), gate on a ready repo, then
+ * dispatch to its operator-commands core. One copy of the guard sequence so the five cannot
+ * drift on validation order or gating. */
+async function runRoleCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
+  rejectUnknownArgs(command, args, [ROLE_FLAG]);
+  await requireReadyRepo(root);
+  await markerCommandCores[command](root, args);
+}
+
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   // The repo root, not the cwd: every command must behave identically from any subdirectory
@@ -216,34 +240,17 @@ async function main(): Promise<void> {
       process.stdout.write("queued for the director loop\n");
       break;
     }
-    case "reset-counters": {
-      rejectUnknownArgs("reset-counters", args, [ROLE_FLAG]);
-      await requireReadyRepo(root);
-      await cmdResetCounters(root, args);
-      break;
-    }
-    case "wake": {
-      rejectUnknownArgs("wake", args, [ROLE_FLAG]);
-      await requireReadyRepo(root);
-      await cmdWake(root, args);
-      break;
-    }
-    case "abort": {
-      rejectUnknownArgs("abort", args, [ROLE_FLAG]);
-      await requireReadyRepo(root);
-      await cmdAbort(root, args);
-      break;
-    }
-    case "pause": {
-      rejectUnknownArgs("pause", args, [ROLE_FLAG]);
-      await requireReadyRepo(root);
-      await cmdPause(root, args);
-      break;
-    }
+    case "reset-counters":
+    // Fall through: the five marker commands share one guard+dispatch shape — unknown-args
+    // rejection against the optional --role flag, the ready-repo gate, then the
+    // operator-commands core — so runRoleCommand holds it once instead of five copies
+    // drifting. The case labels above are exactly MarkerCommand's members, which is what
+    // makes the cast below exhaustive.
+    case "wake":
+    case "abort":
+    case "pause":
     case "resume": {
-      rejectUnknownArgs("resume", args, [ROLE_FLAG]);
-      await requireReadyRepo(root);
-      await cmdResume(root, args);
+      await runRoleCommand(root, command as MarkerCommand, args);
       break;
     }
     case "stop": {
