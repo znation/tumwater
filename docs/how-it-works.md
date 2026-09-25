@@ -81,6 +81,9 @@ discards a role's in-flight landing.
   human work lands on main, and stays deferred while PLANS.md or BUGS.md has open work. `qa` is
   never deferred.
 - The director runs your prompts immediately, outside `maxConcurrent` and ahead of every role.
+- `tumwater prompt --role <id>` queues a prompt for one loop's next tick instead of the
+  director's inbox, and wakes it. `--list` shows the queues grouped by loop; per-role prompts
+  wait behind a paused loop like the director's wait behind a fleet pause.
 - While main's build is red, code-producing roles pause authoring (`main red`) until it is green
   again. Bugfix, the director, and markdown-only roles keep going.
 - Failed ticks retry on a shorter ladder, capped at ten minutes. Three failures in a row mark a
