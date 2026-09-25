@@ -241,3 +241,47 @@ test("deleteRef is idempotent (terminal-outcome cleanup can run twice)", async (
 
   assert.equal(await refSha(root, landingRefName(ROLE)), null);
 });
+
+// The metadata recovery presents to the review gate comes from the pinned commit's own
+// message; when that message is unreadable — commitMessage trims %B to "" for an empty-message
+// commit, so recoveredMetadata returns {} — recovery must still work and fall back to the bare
+// provenance label instead of leaking "undefined" into the queue entry or the failure digest.
+
+async function pinnedEmptyMessageFixture(): Promise<{ root: string; sha: string }> {
+  const root = makeRepo();
+  sh(root, "git", "checkout", "-b", "stray");
+  fs.appendFileSync(path.join(root, "seed.txt"), "leftover change\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "--allow-empty-message", "-m", "");
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+  await setRef(root, landingRefName(ROLE), sha);
+  return { root, sha };
+}
+
+test("a pinned commit with no readable subject is queued under the bare provenance label", async () => {
+  const { root, sha } = await pinnedEmptyMessageFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+
+  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
+  const [entry] = queuedLandings(root);
+  assert.equal(entry?.sha, sha);
+  assert.equal(entry?.summary, "recovered leftover work from improve", "no subject: the bare label");
+  assert.equal(entry?.body, undefined, "no body without a message");
+  assert.equal(entry?.highFriction, undefined, "no flag without a message");
+});
+
+test("a discarded commit with no readable subject falls back to the bare sha label", async () => {
+  const { root, sha } = await pinnedEmptyMessageFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+
+  const atCap = { ...makeCtx(root, wt), mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT } };
+  assert.deepEqual(await recoverLeftover(atCap), {
+    kind: "discarded",
+    sha,
+    summary: `leftover ${shortSha(sha)}`,
+    attempts: MERGE_CONFLICT_LIMIT,
+  });
+  assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin is deleted");
+  assert.deepEqual(queuedLandings(root), [], "nothing is queued");
+});
