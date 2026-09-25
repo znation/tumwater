@@ -305,6 +305,18 @@ test("prompt --list shows queued prompts numbered in execution order", async () 
   assert.match(r.stdout, /^2\. second\nwith a newline$/m);
 });
 
+// The empty side of --role scoping: a role with nothing queued gets its own one-liner, the
+// same clean answer the unscoped empty list gives — the grouped-listing test below covers the
+// populated side.
+test("prompt --list --role with an empty queue names the role, not an error", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list role empty");
+
+  const r = await cli(repo, "prompt", "--list", "--role", "qa");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^nothing queued for qa$/m);
+});
+
 test("prompt --cancel removes the Nth queued prompt and reports its text", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt cancel");
