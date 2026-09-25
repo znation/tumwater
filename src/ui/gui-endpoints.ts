@@ -1,0 +1,352 @@
+/**
+ * The dashboard's /api endpoint handlers (src/ui/gui.ts routes to them): the GET data
+ * endpoints — transcript, backlog, report, failures — and the POST operator endpoints —
+ * prompt, budget, pause, wake, abort — plus the plumbing they share (sendJson, role
+ * validation, request-body reading). Each handler answers its request and touches no socket
+ * beyond its own `res`; server lifecycle, routing, the static page, and the token gate stay
+ * in gui.ts. The domain work itself lives one layer down (transcript.ts, backlog.ts,
+ * report.ts, failure-data.ts, inbox.ts, config-write.ts, fleet-state.ts,
+ * operator-commands.ts) — this module only adapts HTTP onto it.
+ */
+import type { BacklogEntry } from "../backlog.js";
+import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
+import { promptLengthProblem, submitPrompt } from "../inbox.js";
+import { isJsonObject } from "../json-object.js";
+import { knownRoleIds, loadConfigCached } from "../config.js";
+import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
+import { pauseFleet, resumeFleet } from "../fleet-state.js";
+import { requestAbort, requestWake } from "../operator-commands.js";
+import { allRoleIds } from "../roles.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, collectReport } from "./report.js";
+import { collectFailureReport } from "../failure-data.js";
+import { renderFailureMarkdown } from "../failure-report.js";
+import { readTranscript } from "./transcript.js";
+import { errorMessage, parseNonNegativeInt, parsePositiveInt } from "../text.js";
+import type http from "node:http";
+
+/** Send a JSON response with the given status code and body. Every /api endpoint answers
+ * this way (errors included), so the content-type header lives in exactly one place. */
+export function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+/** The role ids a loop-targeting endpoint accepts: when tumwater.json parses, catalog +
+ * customLoops (knownRoleIds); a transiently broken file falls back to the built-in catalog
+ * rather than refusing every id. Shared by /api/transcript and the two operator endpoints so
+ * their validation and 400 wording cannot drift. */
+function validRoleIds(root: string): string[] {
+  const { config } = loadConfigCached(root);
+  return config ? knownRoleIds(config) : allRoleIds();
+}
+
+/** Validate one request's loop-targeting role against validRoleIds, sending the shared 400 on
+ * a miss and reporting whether the request should stop: an absent id reads "role required
+ * (valid ids: …)" — unless `allowMissing`, the wake endpoint's `{}` → all-roles default, which
+ * only a truly absent `undefined` may ride; an explicit null is always rejected — and a
+ * present-but-unknown one reads "unknown role X (valid ids: …)". /api/transcript and the
+ * wake/abort operator endpoints share it so their validation and 400 wording cannot drift. */
+function rejectBadRole(root: string, res: http.ServerResponse, role: unknown, allowMissing = false): boolean {
+  // The all-roles default rides only a truly absent id — check it first, so the wake path
+  // (allowMissing with `{}`) never computes the id list it will not validate against.
+  if (role === undefined && allowMissing) return false;
+  const validIds = validRoleIds(root);
+  if (role === undefined || role === null) {
+    sendJson(res, 400, { error: `role required (valid ids: ${validIds.join(", ")})` });
+    return true;
+  }
+  if (typeof role !== "string" || !validIds.includes(role)) {
+    sendJson(res, 400, { error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})` });
+    return true;
+  }
+  return false;
+}
+
+/** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
+ * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
+ * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
+ * one must open its transcript: ids validate through rejectBadRole. The 400 message lists
+ * exactly the ids accepted. */
+export function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+  const q = new URL(req.url ?? "", "http://localhost").searchParams;
+  const role = q.get("role");
+  if (rejectBadRole(root, res, role)) return;
+  let n = 50;
+  const nRaw = q.get("n");
+  if (nRaw !== null) {
+    const parsed = parsePositiveInt(nRaw);
+    if (parsed === null) {
+      sendJson(res, 400, { error: `n must be a positive integer (got ${JSON.stringify(nRaw)})` });
+      return;
+    }
+    n = parsed;
+  }
+  sendJson(res, 200, { lines: readTranscript(root, role as string, n) });
+}
+
+/** Handle GET /api/backlog?file=<plans|bugs|questions>&index=N: one backlog entry's full
+ * text ({title, body}), fetched on demand so multi-KB bodies (long repros, whole plans) never
+ * ride the 1-second /api/status poll. index addresses the Nth entry of that file's open
+ * section in the same order statusPayload lists its titles — PLANS.md ## Planned,
+ * BUGS.md ## Open, QUESTIONS.md ## Open — zero-based. Unknown/missing file, missing or bad
+ * index, and out-of-range index → 400 JSON error via sendJson. */
+export function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+  const q = new URL(req.url ?? "", "http://localhost").searchParams;
+  const file = q.get("file");
+  if (file === null) {
+    sendJson(res, 400, { error: `file required (valid values: plans, bugs, questions)` });
+    return;
+  }
+  let entries: BacklogEntry[] | null = null;
+  if (file === "plans") entries = plannedPlanEntries(root);
+  else if (file === "bugs") entries = openBugEntries(root);
+  else if (file === "questions") entries = openQuestionEntries(root);
+  if (!entries) {
+    sendJson(res, 400, { error: `unknown file ${JSON.stringify(file)} (valid values: plans, bugs, questions)` });
+    return;
+  }
+  const indexRaw = q.get("index");
+  if (indexRaw === null) {
+    sendJson(res, 400, { error: "index required" });
+    return;
+  }
+  const index = parseNonNegativeInt(indexRaw);
+  if (index === null) {
+    sendJson(res, 400, { error: `index must be a non-negative integer (got ${JSON.stringify(indexRaw)})` });
+    return;
+  }
+  const entry = entries[index];
+  if (!entry) {
+    sendJson(res, 400, { error: `index ${index} out of range (${file} has ${entries.length} open entries)` });
+    return;
+  }
+  sendJson(res, 200, { title: entry.title, body: entry.body });
+}
+
+/** The window both report endpoints serve, from ?days=N on the request. One exact rule,
+ * shared so /api/report and /api/failures cannot drift: missing or non-decimal →
+ * REPORT_DEFAULT_DAYS, out-of-range clamped to 1..REPORT_MAX_DAYS (the same bounds the CLI's
+ * --days enforces, shared in report.ts) — never an error (a URL typo must degrade to the
+ * default window, deliberately unlike handleTranscript's parsePositiveInt→400 idiom).
+ * "Non-decimal" is the shared plain-digit rule (text.parseNonNegativeInt):
+ * hex/scientific/signed/padded spellings are not counts and get the default instead of a
+ * coerced value — raw Number.parseInt would read "1e3" as 1, "0x10" as 0, and "-5" as -5. */
+function windowDays(req: http.IncomingMessage): number {
+  const q = new URL(req.url ?? "", "http://localhost").searchParams;
+  const n = parseNonNegativeInt(q.get("days") ?? "");
+  return n === null ? REPORT_DEFAULT_DAYS : Math.min(REPORT_MAX_DAYS, Math.max(1, n));
+}
+
+/** Handle GET /api/report?days=N: the usage report data (collectReport's ReportData) as
+ * JSON — the dashboard's report tab renders it. The days window follows windowDays. Reads
+ * files directly, so it works whether or not the fleet is running. */
+export function handleReport(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+  sendJson(res, 200, collectReport(root, windowDays(req)));
+}
+
+/** Handle GET /api/failures?days=N: the same bounded Markdown failure digest the telemetry
+ * loop feeds on and `tumwater report --failures` prints, as JSON ({ markdown }) — the
+ * dashboard's failures tab renders it. The days window follows windowDays (so it can never
+ * drift from /api/report's). Reads files directly, so it works with no fleet running. */
+export function handleFailures(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
+  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(req))) });
+}
+
+/** Max request body for /api/prompt, in wire bytes. Over it the promise rejects
+ * ("body too large") and buffering STOPS — later chunks are drained and discarded, so a client
+ * that keeps uploading after the cap cannot grow the buffer past ~one chunk over the limit.
+ * Without the stop, every late chunk was still appended to the body long after the rejection:
+ * an unbounded allocation on a network-facing endpoint. */
+const MAX_BODY_BYTES = 64 * 1024;
+
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // Accumulate raw bytes and decode ONCE at the end. Chunk boundaries are arbitrary TCP
+    // framing, so a multi-byte UTF-8 character can straddle two chunks — decoding each chunk
+    // independently would replace every split byte with U+FFFD, silently corrupting the prompt
+    // (one 3-byte character split in two becomes three replacement characters).
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let settled = false;
+    const cleanup = () => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+    };
+    function onData(chunk: Buffer): void {
+      if (settled) return; // over the cap: discard — only memory would grow
+      bytes += chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        settled = true;
+        chunks.length = 0; // release what we kept before rejecting
+        cleanup();
+        req.resume(); // keep draining so the upload can finish and the socket closes cleanly
+        reject(new Error("body too large"));
+        return;
+      }
+      chunks.push(chunk);
+    }
+    function onEnd(): void {
+      if (settled) return;
+      settled = true;
+      const body = Buffer.concat(chunks).toString("utf8");
+      cleanup();
+      resolve(body);
+    }
+    function onError(err: Error): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    }
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
+  });
+}
+
+/** Read a POST body as a JSON object — the shared front half of every /api POST handler:
+ * oversized bodies get 413, malformed or non-object bodies get 400 with `example` showing
+ * the expected shape (client-side failures get an actionable message, not a 500 carrying
+ * Node's raw SyntaxError/TypeError, which misreports the fault and hides the fix), and the
+ * parsed object is returned — null once any 4xx was sent. */
+async function readJsonObject(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  example: string,
+): Promise<Record<string, unknown> | null> {
+  let body: string;
+  try {
+    body = await readBody(req);
+  } catch (err) {
+    sendJson(res, 413, { error: errorMessage(err) }); // body too large
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    sendJson(res, 400, { error: `body must be a JSON object like ${example}` });
+    return null;
+  }
+  // Valid JSON that is not an object ("just a string", [1], null) gets the same fix as
+  // malformed JSON — pointing at a field of a body that has none would mislead.
+  if (!isJsonObject(parsed)) {
+    sendJson(res, 400, { error: `body must be a JSON object like ${example}` });
+    return null;
+  }
+  return parsed;
+}
+
+/** Handle POST /api/prompt: queue a director prompt. An over-long prompt
+ * (DIRECTOR_PROMPT_MAX_CHARS) is a user-input error, not a server fault: the shared length
+ * rule answers 400 — an unexpected submit failure (EACCES) still reaches the server's outer
+ * catch as the 500 its gui-server test pins. */
+export async function handlePrompt(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, '{"text": "..."}');
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const text = body.text;
+  if (typeof text !== "string") {
+    sendJson(
+      res,
+      400,
+      { error: `text must be a string${text === undefined ? "" : ` (got ${JSON.stringify(text)})`}` },
+    );
+    return;
+  }
+  if (!text.trim()) {
+    sendJson(res, 400, { error: "text required" });
+    return;
+  }
+  const tooLong = promptLengthProblem(text);
+  if (tooLong) {
+    sendJson(res, 400, { error: tooLong });
+    return;
+  }
+  submitPrompt(root, text);
+  sendJson(res, 200, { ok: true });
+}
+
+/** Handle POST /api/budget: the dashboard's budget-badge editor saves the daily cost cap —
+ * same body discipline as /api/prompt (readJsonObject), and the same shared validation rule +
+ * atomic setter the TUI's Ctrl+B uses, so both surfaces write tumwater.json identically and
+ * the running orchestrator picks the change up on its next ~2 s poll. */
+export async function handleBudget(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, '{"maxDailyCostUsd": 25}');
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const value = body.maxDailyCostUsd;
+  if (value === undefined) {
+    sendJson(res, 400, { error: "maxDailyCostUsd required" });
+    return;
+  }
+  // The shared rule (finite ≥ 0; 0 disables): missing/non-finite/negative → 400 with
+  // the offending value named.
+  const problem = checkDailyBudgetUsd(value);
+  if (problem) {
+    sendJson(res, 400, { error: problem });
+    return;
+  }
+  const result = setDailyBudgetUsd(root, value as number);
+  if (!result.ok) {
+    // The value was valid — this is a server-side failure (broken tumwater.json or
+    // disk), not the client's fault.
+    sendJson(res, 500, { error: result.error });
+    return;
+  }
+  sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number });
+}
+
+/** Handle POST /api/pause: the dashboard header's pause/resume toggle — the same operator
+ * gate `tumwater pause` and `resume` write, via fleet-state.ts's shared writers
+ * (pauseFleet/resumeFleet) so the CLI and the GUI cannot drift on the marker's format or
+ * idempotence. Same body discipline as /api/prompt and /api/budget (readJsonObject → 400
+ * malformed/non-object, 413 oversized); the target state is explicit (`paused: true|false`)
+ * rather than a toggle, so a retried request is idempotent. */
+export async function handlePause(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, '{"paused": true}');
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const value = body.paused;
+  if (typeof value !== "boolean") {
+    sendJson(
+      res,
+      400,
+      { error: `paused must be a boolean${value === undefined ? "" : ` (got ${JSON.stringify(value)})`}` },
+    );
+    return;
+  }
+  if (value) pauseFleet(root);
+  else resumeFleet(root);
+  sendJson(res, 200, { ok: true, paused: value });
+}
+
+/** Handle POST /api/wake: the dashboard's per-row wake control — the same marker-writing
+ * core `tumwater wake` calls (requestWake), so the CLI and the GUI cannot drift on the
+ * state-file edits or the marker. `{}`/a missing role targets every configured role (the
+ * CLI's all-roles default); a given role validates exactly like /api/transcript. Same body
+ * discipline as /api/pause (readJsonObject → 400 malformed/non-object, 413 oversized). */
+export async function handleWake(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, '{"role": "feature"}');
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  if (rejectBadRole(root, res, body.role, true)) return;
+  sendJson(res, 200, {
+    ok: true,
+    message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string]),
+  });
+}
+
+/** Handle POST /api/abort: the dashboard's per-row abort control — the same marker-writing
+ * core `tumwater abort` calls (requestAbort). The role is required and validated like
+ * /api/transcript; requestAbort's not-live error comes back 409 — the marker is valid but
+ * nothing can consume it, a conflict rather than a client 400. The director variant's
+ * message (the discarded-prompt note) rides through verbatim. */
+export async function handleAbort(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, '{"role": "feature"}');
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  if (rejectBadRole(root, res, body.role)) return;
+  const result = requestAbort(root, body.role as string);
+  if (!result.ok) {
+    sendJson(res, 409, { error: result.error });
+    return;
+  }
+  sendJson(res, 200, { ok: true, message: result.message });
+}
