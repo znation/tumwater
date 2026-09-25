@@ -21,13 +21,19 @@ and the function's stated contract was violated.
 
 **Reproduce:** `boundText("x".repeat(5000), 40, "/" + "d".repeat(200))` → 5,139 code
 points instead of at most 40 (after the fix: the marker alone, cut to exactly 40).
-Figures machine-verified (re-checked 2026-09-25) by extracting the pre-fix function from
-`git show fa9ee0a^:src/pi-extension/bounded-output.ts` and running exactly the expression
-above: result 5,139 code points = 4,891-char head + a 248-code-point marker claiming 5,217
-omitted (5000 − (−109) − (−108), where −109/−108 are the negative slice bounds) when only
-109 were actually omitted; the same expression on the fixed module returns exactly 40 code
-points (`...5000 chars truncated; complete output`). The figures belong to this exact
-expression — other text/limit/path inputs overflow by different amounts.
+Figures machine-verified twice on 2026-09-25 by two independent methods run on exactly the
+expression above: (1) the pre-fix function extracted from
+`git show fa9ee0a^:src/pi-extension/bounded-output.ts`, and (2) a clean-room JS
+transcription of that source — both yield 5,139 code points = 4,891-char head + a
+248-code-point marker claiming 5,217 omitted (5000 − (−109) − (−108), where −109/−108 are
+the negative slice bounds) when only 109 were actually omitted; the fixed module returns
+exactly 40 (`...5000 chars truncated; complete output`). The figures belong to this exact
+expression — other text/limit/path inputs overflow by different amounts. Adjudication note
+(2026-09-25): a review disputed these figures claiming 410 code points with a 5-char head,
+but an exhaustive enumeration of every reachable state of the module's four fix lines
+(head/tail clamp, hard cut, safety valve — each kept or reverted, 16 combinations) produces
+only 5,139, 248, or 40 for this expression, and no committed version of this entry ever
+contained the disputed numbers.
 
 **Cause:** `budget = limitChars - markerLen - 12` went negative and was fed straight into
 `Math.floor(budget / 2)` and slice bounds; the old safety-valve loop only ran while
