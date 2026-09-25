@@ -47,6 +47,10 @@ export function boundText(
   fullPath?: string | null,
 ): string {
   if (!text) return text;
+  // UTF-16 fast path: a string's code-point count never exceeds its UTF-16 length, so
+  // a length within the limit proves the text is under the limit without allocating
+  // the code-point array — the common case for every short-enough result.
+  if (text.length <= limitChars) return text;
   const cps = chars(text);
   if (cps.length <= limitChars) return text;
 
@@ -102,6 +106,8 @@ export function boundReadResult(
 ): string {
   if (!text) return text;
   if (input && (input.offset !== undefined || input.limit !== undefined)) return text;
+  // UTF-16 fast path, as in boundText: length within the limit proves under-limit.
+  if (text.length <= limitChars) return text;
   const cps = chars(text);
   if (cps.length <= limitChars) return text;
 
@@ -141,6 +147,11 @@ export function boundBashResult(
   limitChars: number = BASH_LIMIT_CHARS,
 ): string {
   if (!text) return text;
+  // UTF-16 fast path: length within the limit proves under-limit without allocating.
+  if (text.length <= limitChars) return text;
+  // Astral-heavy text can have a UTF-16 length past the limit while its code-point
+  // count stays within it — still under-limit, so it must pass through here, before
+  // writeFullOutput: an output that will not be truncated never earns a disk write.
   if (chars(text).length <= limitChars) return text;
   const fullPath = details?.fullOutputPath ?? writeFullOutput?.(text) ?? null;
   return boundText(text, limitChars, fullPath);

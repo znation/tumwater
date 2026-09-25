@@ -188,6 +188,35 @@ test("boundBashResult passes short results through untouched", () => {
   assert.equal(boundBashResult(short, null, () => null), short);
 });
 
+test("boundBashResult returns astral-heavy under-limit text unchanged and never writes it", () => {
+  // The seam: UTF-16 length (30000) is past the limit, but the code-point count
+  // (15000 — each emoji is one code point, two UTF-16 units) is within it. Under-limit
+  // means pass-through, and the full-output disk write must never fire for it.
+  const text = "\u{1f600}".repeat(15_000);
+  assert.ok(text.length > BASH_LIMIT_CHARS, "test must sit in the length>limit window");
+  assert.ok(cps(text) <= BASH_LIMIT_CHARS, "test must sit in the cps<=limit window");
+  let wrote = false;
+  const result = boundBashResult(text, null, () => {
+    wrote = true;
+    return "/repo/.tumwater/log/tool-output/never.log";
+  });
+  assert.equal(result, text);
+  assert.ok(!wrote, "no full-output write for an under-limit result");
+});
+
+test("boundBashResult truncates astral-heavy text just past the code-point limit", () => {
+  const text = "\u{1f600}".repeat(BASH_LIMIT_CHARS + 1);
+  const result = boundBashResult(text, null, () => null);
+  assert.ok(cps(result) <= BASH_LIMIT_CHARS, `result is ${cps(result)} code points`);
+  assert.match(result, /chars truncated/);
+});
+
+test("boundText returns astral-heavy text with cps within the limit unchanged", () => {
+  const text = "\u{1f600}".repeat(READ_LIMIT_CHARS); // 24000 UTF-16 units, 12000 code points
+  assert.ok(text.length > READ_LIMIT_CHARS && cps(text) <= READ_LIMIT_CHARS);
+  assert.equal(boundText(text, READ_LIMIT_CHARS), text);
+});
+
 // ---- findTumwaterRoot / writeFullOutput ------------------------------------
 
 test("writeFullOutput writes into .tumwater/log/tool-output named by toolCallId", () => {
