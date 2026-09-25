@@ -40,6 +40,14 @@ function testRunRoot(): string {
   return runRoot;
 }
 
+/** Collapse all whitespace runs to single spaces: prompts are hard-wrapped and formatting
+ * ticks reflow them, so assertions match content with whitespace collapsed — a phrase wrapped
+ * across lines must not break a contract check (the first landing of these tests did exactly
+ * that: four red unit tests on main). */
+export function oneLine(s: string): string {
+  return s.replace(/\s+/g, " ");
+}
+
 export function tmpdir(prefix = "tumwater-test-"): string {
   return fs.mkdtempSync(path.join(testRunRoot(), prefix));
 }
