@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { LANDING_CHECK_FAILURE_LIMIT, landApprovedChange } from "../src/lander.js";
+import { LANDING_CHECK_FAILURE_LIMIT, landApprovedChange, reviewPinnedChange } from "../src/lander.js";
 import type { BatchRoleWiring } from "../src/land-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
@@ -650,6 +650,39 @@ test("an abandoned stack reports one change landing at a time, the rest back to 
       "beta:landing",
       "beta:done",
     ]);
+  } finally {
+    restore();
+  }
+});
+
+test("the gate re-pins the landing ref to the head its verdict judged", async () => {
+  // reviewPinnedChange's last act: track the pin to the head the verdict judged, so a merge
+  // that cannot finish leaves recovery re-landing that tree, not a stale pin. When the
+  // lander worktree sits past the queued sha (work moved after queueing) and no green
+  // pre-check names a head, the worktree's HEAD is the judged tree — the ref must follow it,
+  // or a later blocked merge re-lands the wrong tree.
+  const rec = path.join(tmpdir("lander-rec-"), "seen");
+  const restore = fakePi(
+    `git rev-parse HEAD >> ${rec}\n` +
+      reviewerPi("VERDICT: approve"),
+  );
+  try {
+    const { root, sha, wt } = await pinnedFixture();
+    fs.appendFileSync(path.join(wt, "extra.txt"), "work after queueing\n");
+    sh(wt, "git", "add", "-A");
+    sh(wt, "git", "commit", "-m", "later work");
+    const judged = sh(wt, "git", "rev-parse", "HEAD").trim();
+    const state = freshLoopState(ROLE);
+    const { ctx } = makeCtx(root, state);
+
+    const outcome = await reviewPinnedChange(ctx, request(sha), wt, state, ctx.foldUsage);
+
+    assert.equal(outcome.kind, "gate");
+    if (outcome.kind !== "gate") return;
+    assert.equal(outcome.sha, judged, "the outcome names the judged head, not the queued sha");
+    assert.equal(await refSha(root, REF), judged, "the pin moved to the judged head");
+    const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
+    assert.equal(seen[0], judged, "the reviewer ran on the head the pin moved to");
   } finally {
     restore();
   }
