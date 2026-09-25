@@ -28,6 +28,21 @@ function markerApplyNote(root: string): { live: boolean; when: string; tail: str
   };
 }
 
+/** The trailing liveness clause of a one-shot marker command's confirmation (reset-counters
+ * and wake): with a live fleet, "a running fleet <verb><when>"; without one, where the marker
+ * lands instead. The two request* cores share this so their wording cannot drift — pause and
+ * resume phrase their own confirmations around markerApplyNote's when/tail because their
+ * sentences differ. */
+function applyClause(live: boolean, when: string, verb: string): string {
+  return live
+    ? `a running fleet ${verb}${when}`
+    : "takes effect on the next `tumwater run` (no harness is running)";
+}
+
+/** The error every live-harness-only command reports (abort, stop): one literal so the two
+ * surfaces cannot drift on the message an operator sees when nothing is running. */
+const NO_HARNESS_ERROR = "no harness is running — start it with `tumwater run` first";
+
 /** The `--role <id>` value when given, resolved WITHOUT tumwater.json when it names a
  * built-in catalog role: the fleet itself tolerates a broken config (the live reload keeps
  * the last-known-good one), so an operator marker aimed at a built-in loop must not depend
@@ -67,9 +82,7 @@ function requestResetCounters(root: string, roles: string[]): string {
   // the next `tumwater run` is when the in-memory copies catch up. Name which case this is
   // rather than promising a ~2s pickup that no process will make.
   const { live, when } = markerApplyNote(root);
-  return `counters reset for ${roles.join(", ")} — ${
-    live ? `a running fleet picks this up${when}` : "takes effect on the next `tumwater run` (no harness is running)"
-  }`;
+  return `counters reset for ${roles.join(", ")} — ${applyClause(live, when, "picks this up")}`;
 }
 
 /** `tumwater reset-counters [--role <id>]`: zero the per-loop counters shown in the
@@ -91,9 +104,7 @@ export function requestWake(root: string, roles: string[]): string {
   // Same liveness contract as reset-counters and pause/resume: only a live fleet consumes the
   // marker, so say so instead of promising a poll that will not happen.
   const { live, when } = markerApplyNote(root);
-  return `wake requested for ${roles.join(", ")} — ${
-    live ? `a running fleet applies it${when}` : "takes effect on the next `tumwater run` (no harness is running)"
-  }`;
+  return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
 }
 
 /** `tumwater wake [--role <id>]`: tell the fleet "whatever the loops were failing on is
@@ -125,7 +136,7 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
  * fail() and the GUI can shape its 409/200 — neither re-derives the wording. */
 export function requestAbort(root: string, role: string): { ok: true; message: string } | { ok: false; error: string } {
   if (!orchestratorAlive(root)) {
-    return { ok: false, error: "no harness is running — start it with `tumwater run` first" };
+    return { ok: false, error: NO_HARNESS_ERROR };
   }
   writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
   let confirmation = `abort requested for ${role} — a running fleet applies it within ~2s`;
@@ -171,7 +182,7 @@ export async function cmdStop(root: string): Promise<void> {
   // file (torn write) and a dead recorded pid both mean nothing is running to stop.
   const info = readOrchestratorInfo(root);
   if (!info || !pidAlive(info.pid)) {
-    fail("no harness is running — start it with `tumwater run` first");
+    fail(NO_HARNESS_ERROR);
   }
   process.kill(info.pid, "SIGTERM");
   process.stdout.write("stop requested — the fleet drains its in-flight ticks and exits (the same path as Ctrl+C)\n");
