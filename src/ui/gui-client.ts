@@ -241,9 +241,17 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
   // and churns layout for nothing; caching each panel's last-rendered string keeps a quiet
   // poll from touching the DOM at all. Event handlers are delegated on the containers, so a
   // skipped rebuild leaves them working.
-  let lastLoopsHtml = null;
-  let lastBacklogHtml = null;
-  let lastFeedHtml = null;
+  const lastPaint = {}; // panel id -> last HTML string paintPanel painted there
+  // One skip-rebuild helper for the three panels the 1s poll rewrites (the loop table, the
+  // backlog lists, and the event feed): paint id with html only when the string differs from
+  // what the panel already holds. Returns true when it repainted, so a panel with extra
+  // after-work (the feed's scroll stickiness) can run it only on a real rebuild.
+  function paintPanel(id, html) {
+    if (html === lastPaint[id]) return false;
+    document.getElementById(id).innerHTML = html;
+    lastPaint[id] = html;
+    return true;
+  }
   function renderDetail(panel, html) {
     if (html !== lastPanelHtml) {
       panel.innerHTML = html;
@@ -346,10 +354,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
           "' data-role='" + esc(l.role) + "'>" + ((d.pausedRoles || []).includes(l.role) ? "resume" : "pause") + "</a>" +
           "</td></tr>";
       }).join("");
-      if (loopsHtml !== lastLoopsHtml) {
-        document.getElementById("loops").innerHTML = loopsHtml;
-        lastLoopsHtml = loopsHtml;
-      }
+      paintPanel("loops", loopsHtml);
       // Project status: planned features, open bugs, and open questions — fresh from
       // /api/status each poll. Each entry line is a link into the detail panel (its full text,
       // fetched on demand from /api/backlog); queued prompts stay plain — they have no body.
@@ -364,19 +369,12 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>]/g, (
         // Queued director prompts in execution order (previews, truncated server-side);
         // (none) while the inbox is empty, like the other sections.
         "\\n\\n" + backlogList("queued prompts", d.inboxPrompts || []);
-      if (backlogHtml !== lastBacklogHtml) {
-        document.getElementById("backlog").innerHTML = backlogHtml;
-        lastBacklogHtml = backlogHtml;
-      }
+      paintPanel("backlog", backlogHtml);
       const feedHtml = d.events.map(esc).join("<br>");
-      if (feedHtml !== lastFeedHtml) {
-        const feed = document.getElementById("feed");
-        // Stickiness is judged on the pre-rebuild scroll state, as it always was.
-        const stick = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 4;
-        feed.innerHTML = feedHtml;
-        lastFeedHtml = feedHtml;
-        if (stick) feed.scrollTop = feed.scrollHeight;
-      }
+      const feed = document.getElementById("feed");
+      // Stickiness is judged on the pre-rebuild scroll state, as it always was.
+      const stick = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 4;
+      if (paintPanel("feed", feedHtml) && stick) feed.scrollTop = feed.scrollHeight;
     } catch {
       document.getElementById("header").textContent = "connection lost";
     }
