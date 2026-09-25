@@ -9,6 +9,18 @@ _None._
 
 ## Fixed
 
+### A once round exits without running a role enabled mid-round: the live reload appends its runner to the array OnceRound watches, but the round's tick snapshot was fixed at construction, so the role's persisted history reads as already settled (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `tumwater run --once` while a role is re-enabled by a mid-round edit of tumwater.json: the live config reload creates the role's runner and pushes it onto the orchestrator's runners array (config-live.ts), but the round ends without the role ever ticking — its persisted state survives, and the summary reports nothing about it.
+
+**Reproduce:** Unit-level: share one runners array between `new OnceRound(runners, true)` and a later `runners.push(lateRunner)` with `lateRunner.state.ticks = 5`; `round.isSettled(lateRunner)` returned true before any tick ran.
+
+**Cause:** OnceRound snapshotted tick counts once at construction, keyed by role with a `?? 0` fallback in isSettled. A runner appended later has no entry, so its persisted ticks (5 > 0) counted as "already ran this round" and the new once-settle gate skipped it every poll. Two halves: the role never runs, and the exit summary cannot account for it either (it is in neither the startup `roles` list nor the caller's ticksBefore map — counting it from state would report its whole history as this round's work).
+
+**Fix:** OnceRound snapshots a runner at FIRST SIGHT (snapshotOf): the first isSettled call happens in the same poll's runner pass, before the appended runner can start a tick, so the baseline is pre-round. OrchestratorExit now also carries the per-role ticks-run deltas OnceRound computes, and onceSummary unions the ticks-run keys into its role list so the late role is counted by its exact delta (one tick, not its history) or skipped with the settle reason it actually got.
+
+**Validation gap:** no-fake — confirming it needed a fixture for the live-reload runner append (a shared array gaining a runner with tick history mid-round) that no existing once-mode test built; the e2e suite only ever enables roles before the round starts.
+
 ### The GUI's next-run cell counts down for a loop parked awaiting a slot: the `fmtNextRun` mirror of the TUI's `nextRunCell` lacks the parked-waiter case, so the two dashboards disagree (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** The next-run column landed as a TUI cell plus a GUI client-JS twin kept in lockstep by test (test/gui.test.ts). The TUI's `nextRunCell` returns `-` when `s.running` — which covers a parked waiter (reserved against double-scheduling but holding no permit, rendered `awaiting slot …`). The GUI's `fmtNextRun` decides `-` from phase prefixes only (working/reviewing/landing), and `awaiting slot` is deliberately NOT an active prefix (the maxConcurrent-counting rule, BUGS.md 2026-09-24), so a parked loop fell through to the countdown: in daemon mode it read `now` (nextRunAt is past once the tick went due), and in a once round with the clock override it read a future time (`1h`, `backoff 15m`) while the loop was actually queued behind a slot and could start at any moment — telling the operator waking it is meaningful when the tick is already admitted.

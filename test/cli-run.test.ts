@@ -106,6 +106,27 @@ test("a role the settle map lacks falls back to state, via the pause marker", ()
   assert.equal(line, "once: 0 ticks — nothing ran, 1 skipped (paused)");
 });
 
+test("a role enabled mid-round counts by the round's ticks-run map, not its whole history", () => {
+  const root = makeRepo();
+  // The role joined the runners array after the round's start (live config reload), so it is
+  // in neither `roles` nor ticksBefore: its persisted ticks (5) are not this round's, and
+  // only the orchestrator's ticks-run map knows it ran exactly one (BUGS.md 2026-09-25).
+  saveLoopState(root, state("improve", { ticks: 6, lastResult: "changed" }));
+
+  const line = onceSummary(
+    root,
+    ["clean"],
+    new Map([["clean", 0]]),
+    new Map([["clean", "idle"]]),
+    new Map([
+      ["clean", 0],
+      ["improve", 1],
+    ]),
+  );
+
+  assert.equal(line, "once: 1 tick — 1 changed, 1 skipped (idle)");
+});
+
 test("the fallback reads a scheduled-clock wait as idle, not backoff", () => {
   const root = makeRepo();
   // The shape a productive tick leaves behind: backoffSeconds 0 with a future nextRunAt —

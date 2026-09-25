@@ -109,6 +109,10 @@ interface RunOptions {
 interface OrchestratorExit {
   restart: boolean;
   settled?: ReadonlyMap<string, string>;
+  /** Per-role ticks this round ran (OnceRound's own snapshot deltas): a role enabled
+   * mid-round is in no caller-side snapshot, so the summary counts it from here instead of
+   * mistaking its whole persisted history for this round's work. Once mode only. */
+  ticksRun?: ReadonlyMap<string, number>;
 }
 
 /** Run all enabled loops until the signal aborts — or until a pending self-redeploy has drained
@@ -691,7 +695,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     logEvent(root, { loop: "harness", type: "orchestrator_stop" });
     removeQuiet(infoFile);
   }
-  // Only once mode carries the settle reasons: the daemon return keeps its exact shape (an
-  // e2e test deep-equals it), and a daemon caller has no summary to feed.
-  return once.active ? { restart, settled: once.reasons } : { restart };
+  // Only once mode carries the settle reasons and the per-role ticks-run: the daemon return
+  // keeps its exact shape (an e2e test deep-equals it), and a daemon caller has no summary to
+  // feed.
+  return once.active
+    ? {
+        restart,
+        settled: once.reasons,
+        ticksRun: new Map(runners.map((r) => [r.role, once.ticksRun(r)] as const)),
+      }
+    : { restart };
 }

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { OnceRound } from "../src/once-round.js";
+import type { LoopRunner } from "../src/loop.js";
 import { makeLoopRunner } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 
@@ -77,6 +78,29 @@ test("settleSkipped reports a pending resume as pending work, not idle or backof
       ["improve", "resume pending"],
     ],
   );
+});
+
+test("a runner appended mid-round is snapshotted at first sight, not settled by its history", () => {
+  const repo = makeRepo();
+  const first = makeLoopRunner(repo, "improve");
+  // The orchestrator's runners array is shared with the live config reload: a role enabled
+  // mid-round joins it here, carrying persisted ticks from earlier rounds (BUGS.md 2026-09-25:
+  // before first-sight snapshotting the missing entry read as 0, so 5 > 0 counted the role as
+  // already settled and the round exited without ever running it).
+  const runners: LoopRunner[] = [first];
+  const round = new OnceRound(runners, true);
+  const late = makeLoopRunner(repo, "clean");
+  late.state.ticks = 5; // history, not this round
+  runners.push(late);
+  assert.equal(round.isSettled(late), false);
+  const quiet = { roleTicks: 0, directorTicks: 0, landings: 0, queuedLandings: 0 };
+  assert.equal(round.exitReady(quiet), false); // the late role holds the round open
+  late.state.ticks++; // its one tick this round
+  assert.equal(round.isSettled(late), true);
+  assert.equal(round.ticksRun(late), 1); // exactly the round's tick, not the history
+  first.state.ticks++;
+  assert.equal(round.exitReady(quiet), false); // first quiet poll
+  assert.equal(round.exitReady(quiet), true);
 });
 
 test("exitReady fires only on the second consecutive quiet poll of an active round", () => {

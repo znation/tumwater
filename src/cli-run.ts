@@ -119,7 +119,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   } finally {
     unsubscribe();
   }
-  if (once) process.stdout.write(onceSummary(root, roles, ticksBefore, exit.settled) + "\n");
+  if (once) process.stdout.write(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun) + "\n");
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
@@ -137,20 +137,29 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
  * and keyed on the same signal: backoffSeconds is the backoff indicator, while nextRunAt is
  * shared with the scheduled clock a productive tick also writes (with backoffSeconds 0), so a
  * future nextRunAt alone reads as a not-yet-due role, not as backoff (BUGS.md 2026-09-25,
- * the same conflation settleSkipped itself carried). */
+ * the same conflation settleSkipped itself carried).
+ *
+ * `ticksRun`, when the caller hands it back (the orchestrator's OnceRound snapshot deltas),
+ * is the tick count's source of truth and also names roles the pre-round list never had —
+ * a role enabled mid-round joins the runners array after `ticksBefore` was taken, so its
+ * whole persisted history must not be counted as this round's work. Without it the old
+ * `ticksBefore` delta path runs, for callers (and tests) without a round object. */
 export function onceSummary(
   root: string,
   roles: string[],
   ticksBefore: Map<string, number>,
   settled: ReadonlyMap<string, string> | undefined,
+  ticksRun?: ReadonlyMap<string, number>,
 ): string {
   let ticks = 0;
   const outcomes = new Map<string, number>();
   const skipped: string[] = [];
-  for (const role of roles) {
+  const extra = ticksRun ? [...ticksRun.keys()].filter((r) => !roles.includes(r)) : [];
+  for (const role of [...roles, ...extra]) {
     const s = loadLoopState(root, role);
-    if (s.ticks > (ticksBefore.get(role) ?? 0)) {
-      ticks += s.ticks - (ticksBefore.get(role) ?? 0);
+    const ran = ticksRun ? (ticksRun.get(role) ?? 0) : s.ticks - (ticksBefore.get(role) ?? 0);
+    if (ran > 0) {
+      ticks += ran;
       const key = s.lastResult ?? "no_change";
       outcomes.set(key, (outcomes.get(key) ?? 0) + 1);
     } else {

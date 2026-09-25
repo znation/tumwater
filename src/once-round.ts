@@ -18,22 +18,41 @@ export class OnceRound {
   /** Whether a once round is running at all; false makes every method inert. */
   readonly active: boolean;
   private readonly runners: readonly LoopRunner[];
-  private readonly tickSnapshot: ReadonlyMap<string, number>;
+  private readonly tickSnapshots = new Map<string, number>();
   private readonly settled = new Map<string, string>();
   private idlePolls = 0;
 
   constructor(runners: readonly LoopRunner[], active: boolean) {
     this.runners = runners;
     this.active = active;
-    this.tickSnapshot = new Map(runners.map((r) => [r.role, r.state.ticks] as const));
+    for (const r of runners) this.tickSnapshots.set(r.role, r.state.ticks);
+  }
+
+  /** The runner's pre-round tick baseline. Snapshotted at construction for the startup
+   * runners — and at FIRST SIGHT for a runner appended later: the live config reload
+   * (src/config-live.ts) creates a runner for a role enabled mid-round and pushes it onto
+   * the same array this round watches, carrying persisted ticks from earlier rounds. The
+   * first isSettled call happens in that same poll's runner pass, before the runner can
+   * start a tick, so first sight is a pre-round baseline. Without it the missing entry read
+   * as 0, so a role with history counted as already settled and the round exited without
+   * ever running it (BUGS.md 2026-09-25). Roles are unique across the array — the reload
+   * only appends an id no runner has — so the map is keyed by role safely. */
+  private snapshotOf(runner: LoopRunner): number {
+    const known = this.tickSnapshots.get(runner.role);
+    if (known !== undefined) return known;
+    this.tickSnapshots.set(runner.role, runner.state.ticks);
+    return runner.state.ticks;
   }
 
   /** A role is settled once it ran its tick or a settle reason was recorded for it. */
   isSettled(runner: LoopRunner): boolean {
-    return (
-      runner.state.ticks > (this.tickSnapshot.get(runner.role) ?? 0) ||
-      this.settled.has(runner.role)
-    );
+    return runner.state.ticks > this.snapshotOf(runner) || this.settled.has(runner.role);
+  }
+
+  /** Ticks this round advanced the runner past its snapshot — the exit summary's per-role
+   * count, exact even for a role the caller's own pre-round snapshot never named. */
+  ticksRun(runner: LoopRunner): number {
+    return runner.state.ticks - this.snapshotOf(runner);
   }
 
   /** Record the role's once-round answer (why it ran no tick, or that it deferred). */
