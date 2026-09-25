@@ -12,7 +12,6 @@ import { toolUpdateHasContent } from "../src/pi-event-line.js";
 import type { PiRunResult } from "../src/types.js";
 import { REFUSED_SENTINEL } from "../src/reply-contract.js";
 import { configForRole, defaultConfig, loadConfig } from "../src/config.js";
-import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
 import { pidAlive } from "../src/process.js";
 import {
@@ -24,6 +23,7 @@ import {
   tmpdir,
   waitForLogLines,
   watchdogClock,
+  makeLoopRunner,
 } from "./util.js";
 
 // plans/portability.md §5/7: the agent binary is TUMWATER_PI_BIN → agentBin → "pi". The
@@ -1003,7 +1003,7 @@ test("every tick starts a fresh pi session", async () => {
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "clean");
     await runner.tick();
     await runner.tick();
     const runs = fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
@@ -1043,7 +1043,7 @@ test("a context-exceeded error fails the tick with the real cause", async () => 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "error");
     assert.ok(runner.state.lastError, "the error is surfaced on the loop state");
   } finally {
@@ -1180,7 +1180,7 @@ test("a missing pi binary fails the tick with an error", async () => {
   const oldPath = process.env.PATH;
   process.env.PATH = binDir;
   try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.match(String(runner.state.lastError), /failed to spawn pi/);

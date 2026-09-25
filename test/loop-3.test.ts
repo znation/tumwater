@@ -7,7 +7,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { LoopRunner } from "../src/loop.js";
 import { MERGE_CONFLICT_LIMIT } from "../src/leftover.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
@@ -18,7 +17,8 @@ import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { APPROVE_PI, assistantLine, errorLine, fakePi, initializedRepo, landHead, reviewerPi, sh, tmpdir, waitForFile } from "./util.js";
+import { APPROVE_PI, assistantLine, errorLine, fakePi, initializedRepo, landHead, reviewerPi, sh, tmpdir, waitForFile, makeLoopRunner,
+} from "./util.js";
 
 test("resume falls back to a fresh tick when there is no session to continue", async () => {
   const repo = await initializedRepo();
@@ -32,7 +32,7 @@ test("resume falls back to a fresh tick when there is no session to continue", a
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     runner.state.resumePending = true; // e.g. the sessions were pruned since the abort
     assert.equal((await runner.tick()).result, "no_change");
     const run = fs.readFileSync(argsFile, "utf8").trim();
@@ -50,7 +50,7 @@ test("a crashed process (stale running flag) resumes like a graceful abort", asy
   const s = freshLoopState("improve");
   s.running = true; // Persisted at tick start; a crash never cleared it.
   saveLoopState(repo, s);
-  const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+  const runner = makeLoopRunner(repo, "improve");
   assert.equal(runner.state.resumePending, true, "a crash mid-tick is resumed too");
   assert.equal(runner.state.running, false);
 
@@ -58,7 +58,7 @@ test("a crashed process (stale running flag) resumes like a graceful abort", asy
   const d = freshLoopState("director");
   d.running = true;
   saveLoopState(repo, d);
-  const director = new LoopRunner(repo, "director", defaultConfig(), "main");
+  const director = makeLoopRunner(repo, "director");
   assert.ok(!director.state.resumePending);
 });
 
@@ -69,7 +69,7 @@ test("an aborted director tick re-queues the user prompt", async () => {
     enqueuePrompt(repo, "important request");
     assert.equal(inboxSize(repo), 1);
     const controller = new AbortController();
-    const runner = new LoopRunner(repo, "director", defaultConfig(), "main", controller.signal);
+    const runner = makeLoopRunner(repo, "director", defaultConfig(), "main", controller.signal);
     setTimeout(() => controller.abort(), 300);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "aborted");
@@ -92,7 +92,7 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
   const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
   try {
     const config = defaultConfig();
-    const runner = new LoopRunner(repo, "improve", config, "main");
+    const runner = makeLoopRunner(repo, "improve", config);
     const before = sh(repo, "git", "rev-parse", "main");
     const tick = runner.tick();
     // Abort only once the half-done edit has landed: a fixed timer can fire before the
@@ -138,7 +138,7 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
   try {
     enqueuePrompt(repo, "important request");
     assert.equal(inboxSize(repo), 1);
-    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "director");
     const tick = runner.tick();
     try {
       await waitForFile(path.join(worktreePath(repo, "director"), "partial.txt"));
@@ -187,7 +187,7 @@ test("a user-abort mid-review discards the committed work too", async () => {
   const controller = new AbortController();
   try {
     enqueuePrompt(repo, "ship the hello file");
-    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "director");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the landing's");
     const head = headLanding(repo);
@@ -227,7 +227,7 @@ test("a failing director tick re-queues the user prompt (regression)", async () 
   const restore = fakePi(`echo 'pi exploded' >&2\nexit 1`);
   try {
     enqueuePrompt(repo, "please do the thing");
-    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "director");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
@@ -244,7 +244,7 @@ test("a timed-out director tick re-queues the user prompt (regression)", async (
     enqueuePrompt(repo, "important request");
     const config = defaultConfig();
     config.tickTimeoutSeconds = 1;
-    const runner = new LoopRunner(repo, "director", config, "main");
+    const runner = makeLoopRunner(repo, "director", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.match(runner.state.lastError ?? "", /timed out/);
@@ -261,7 +261,7 @@ test("a director tick that handles a prompt with no file changes does not re-que
   const restore = fakePi(`printf '%s\n' '${assistantLine("The answer is 42.")}'`);
   try {
     enqueuePrompt(repo, "what is the answer?");
-    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "director");
     assert.equal((await runner.tick()).result, "no_change");
     assert.equal(inboxSize(repo), 0, "a handled prompt must not loop back into the inbox");
   } finally {
@@ -275,7 +275,7 @@ test("a timed-out tick reports an error and never commits partial work", async (
   try {
     const config = defaultConfig();
     config.tickTimeoutSeconds = 1;
-    const runner = new LoopRunner(repo, "improve", config, "main");
+    const runner = makeLoopRunner(repo, "improve", config);
     const before = sh(repo, "git", "rev-parse", "main");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
@@ -313,7 +313,7 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     // The tick commits and enqueues; the LANDING is where the conflict is resolved now —
     // phase 2 (the resolution run) runs inside landHead.
@@ -357,7 +357,7 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
@@ -407,7 +407,7 @@ test("a stray pi commit makes rebase --continue stop a second time: aborted, mer
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the tick commits and enqueues; the conflict is the landing's");
     assert.equal(
@@ -449,7 +449,7 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
   );
   try {
     fs.writeFileSync(path.join(repo, "seed.txt"), "user's uncommitted edit\n");
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "merge_blocked");
@@ -500,7 +500,7 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     // Tick 1 commits and enqueues; its landing hits the conflict and fails (the m2 phase
     // leaves the markers): that conflict state is what tick 2's recovery must salvage.
     assert.equal((await runner.tick()).result, "queued");
@@ -557,7 +557,7 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
 
     // Land-queue speed 3c — main has one writer: the tick QUEUES the leftover like a fresh
@@ -624,7 +624,7 @@ test("a pin at the merge-conflict cap is discarded and the tick authors, told wh
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
     const outcome = await runner.tick();
 
@@ -683,7 +683,7 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "recovery queued the pin");
     assert.equal(outcome.highFriction, true, "the queued outcome keeps the recovered flag");
@@ -716,7 +716,7 @@ test("a director tick that ends on leftover recovery puts its user prompt back",
   const restore = fakePi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   try {
     enqueuePrompt(repo, "important request");
-    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "director");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the director's leftover went on the land queue");
     assert.equal(headLanding(repo)?.entry.sha, sha);
@@ -749,7 +749,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued", "recovery adopted and queued the tip");
     // The role worktree is freed as soon as the adopted pin holds the commit.
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
@@ -797,7 +797,7 @@ test("an unmergeable leftover is retried on the next tick and keeps its landing 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
 
@@ -845,7 +845,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "review_error");
     // The landing's commit is pinned for recovery; the role worktree is clean at main.
@@ -906,7 +906,7 @@ test("a persistent recovery review failure feeds the error streak and reads fail
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "review_error");
 
@@ -959,7 +959,7 @@ test("a shutdown mid-landing fails closed: the pinned commit survives for next-s
   const controller = new AbortController();
   try {
     enqueuePrompt(repo, "ship the hello file");
-    const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "director");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the tick ends at the pin; the landing runs after");
     const head = headLanding(repo);
@@ -1017,7 +1017,7 @@ test("a rejected change rides along on the role's next tick prompt with its reas
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     // Tick 1: the change is committed and enqueued, then the LANDING rejects it — nothing
     // lands on main.
     assert.equal((await runner.tick()).result, "queued");
@@ -1063,7 +1063,7 @@ test("concurrent-main-advance still lands (rebase path, linear history)", async 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "organize", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "organize");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "organize"), "changed");
@@ -1099,7 +1099,7 @@ test("a clean resolution of a conflicted file with setext underlines lands (regr
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(
@@ -1134,7 +1134,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError);
@@ -1169,7 +1169,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "clean");
     const before = Date.now();
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
@@ -1218,7 +1218,7 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the retry's work is committed and enqueued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");

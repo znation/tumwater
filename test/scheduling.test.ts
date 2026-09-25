@@ -5,7 +5,8 @@ import { OBSERVER_ROLES, ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/state.js";
-import { makeRepo } from "./util.js";
+import { makeRepo, makeLoopRunner,
+} from "./util.js";
 
 /** Unit tests for the pure tick-scheduling policy in src/scheduling.ts — eligibility, fair
  * order, work-landed/deferral, and the once-per-day prune gate. Moved out of
@@ -14,7 +15,7 @@ import { makeRepo } from "./util.js";
  * parallel process. */
 
 function runner(role: string): LoopRunner {
-  return new LoopRunner(makeRepo(), role, defaultConfig(), "main");
+  return makeLoopRunner(makeRepo(), role);
 }
 
 test("a fresh loop is eligible at startup", () => {
@@ -59,7 +60,7 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   const slow = defaultConfig();
   slow.minTickIntervalSeconds = 20;
   slow.roles.steward!.minTickIntervalSeconds = 3600;
-  const r1 = new LoopRunner(makeRepo(), "steward", slow, "main");
+  const r1 = makeLoopRunner(makeRepo(), "steward", slow);
   r1.state.ticks = 1;
   r1.state.lastTickEndedAt = now - 21_000; // past the global gap, deep inside the role's own
   r1.state.nextRunAt = now - 1000; // its schedule has passed too
@@ -76,7 +77,7 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   const fast = defaultConfig();
   fast.minTickIntervalSeconds = 3600;
   fast.roles.qa!.minTickIntervalSeconds = 20;
-  const r2 = new LoopRunner(makeRepo(), "qa", fast, "main");
+  const r2 = makeLoopRunner(makeRepo(), "qa", fast);
   r2.state.ticks = 1;
   r2.state.lastTickEndedAt = now - 21_000; // past the role's own gap, deep inside the global
   r2.state.nextRunAt = now + 60_000; // schedule NOT passed — only a main-moved wake can run it

@@ -11,7 +11,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
-import { LoopRunner } from "../src/loop.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
@@ -42,6 +41,7 @@ import {
   startLiveOrchestrator,
   tmpdir,
   waitFor,
+  makeLoopRunner,
 } from "./util.js";
 
 const FAST_POLL_MS = 100;
@@ -377,7 +377,7 @@ test("a landing whose pinned sha no longer exists degrades to an error outcome, 
   const sha = "0".repeat(40); // a commit git cannot check out
   enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "lost pin", enqueuedAt: Date.now() });
   const config = fastConfig(["clean"]);
-  const author = new LoopRunner(repo, "clean", config, "main");
+  const author = makeLoopRunner(repo, "clean", config);
 
   const result = await landHead(repo, author, config, "clean");
 

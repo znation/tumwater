@@ -117,6 +117,20 @@ export async function initializedRepo(): Promise<string> {
   return repo;
 }
 
+/** A real LoopRunner for one role — the constructor call every loop test repeats with the
+ * same `defaultConfig()` and `"main"` trailing arguments, so those stay implied here and a
+ * test states only what differs (config, base branch, abort signal). Cheap by design: the
+ * constructor only loads loop state from disk and starts no processes. */
+export function makeLoopRunner(
+  repo: string,
+  role: string,
+  config: TumwaterConfig = defaultConfig(),
+  mainBranch = "main",
+  signal?: AbortSignal,
+): LoopRunner {
+  return new LoopRunner(repo, role, config, mainBranch, signal);
+}
+
 /** Scratch project for the build-check tests (build-check.test.ts and review.test.ts's gate
  * integration): `root` has package.json + a fake toolchain in node_modules/.bin; `wt` sits
  * INSIDE it at the real worktree location (`.tumwater/worktrees/improve`) with its own tracked

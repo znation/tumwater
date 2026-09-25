@@ -29,7 +29,8 @@ import { enqueueLanding, headLanding, queueDepth } from "../src/land-queue.js";
 import { readEvents } from "../src/events.js";
 import { LoopRunner } from "../src/loop.js";
 import type { LandingEntry, PiRunResult } from "../src/types.js";
-import { assistantLine, fakePi, landHead, makeRepo, sh, tmpdir } from "./util.js";
+import { assistantLine, fakePi, landHead, makeRepo, sh, tmpdir, makeLoopRunner,
+} from "./util.js";
 
 /** A minimal successful pi run carrying the given usage — only the fields the fold reads matter,
  * but PiRunResult is fully required, so the rest are neutral defaults. */
@@ -125,7 +126,7 @@ test("an unexpected throw inside the landing degrades to an error outcome — th
   // queue file), so the vet's ensureDetachedWorktree throws before any ref work — exactly the
   // "unexpected throw" the vet degrades (the pipeline's contract: a landing never rejects;
   // every outcome drops the entry; the change's marker record always goes).
-  const author = new LoopRunner(root, "improve", defaultConfig(), "main");
+  const author = makeLoopRunner(root, "improve");
   const { state } = author;
   state.phase = "review"; // the tick lifecycle's in-flight landing marker on the author's state
   assert.ok(await refSha(root, landingRefName("improve")) === null, "fixture sanity: no pin exists");
@@ -301,7 +302,7 @@ test("a queued landing's record walks build-check → reviewing → merging whil
     ].join("\n"),
   );
   try {
-    const author = new LoopRunner(root, "improve", config, "main");
+    const author = makeLoopRunner(root, "improve", config);
 
     const result = await landHead(root, author, config, "improve");
 

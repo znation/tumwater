@@ -26,7 +26,8 @@ import { freshLoopState, loadLoopState } from "../src/state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { snapshot } from "../src/ui/status.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
-import { assistantLine, fakePi, makeRepo, reviewerPi, sh, tmpdir, waitFor, waitForFile } from "./util.js";
+import { assistantLine, fakePi, makeRepo, reviewerPi, sh, tmpdir, waitFor, waitForFile, makeLoopRunner,
+} from "./util.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LandingEntry } from "../src/types.js";
 
@@ -59,7 +60,7 @@ function entry(role: string, sha: string, enqueuedAt = Date.now()): LandingEntry
 /** A runner per role — a real LoopRunner (cheap constructor: state loaded from disk, no
  * subprocess) so the drain resolves its author wiring the way orchestrator.ts supplies it. */
 function runnersFor(root: string, roles: string[], signal?: AbortSignal, config = defaultConfig()): LoopRunner[] {
-  return roles.map((role) => new LoopRunner(root, role, config, "main", signal));
+  return roles.map((role) => makeLoopRunner(root, role, config, "main", signal));
 }
 
 /** A pipeline context over a fresh repo — `cap` shared permits (the maxConcurrent semaphore

@@ -10,14 +10,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
-import { defaultConfig } from "../src/config.js";
 import { loadLoopState, saveLoopState } from "../src/state.js";
-import { makeRepo } from "./util.js";
+import { makeRepo, makeLoopRunner,
+} from "./util.js";
 
 async function runnerInRepo(role = "clean"): Promise<LoopRunner> {
   const repo = makeRepo();
   await initProject(repo, "A test project.");
-  return new LoopRunner(repo, role, defaultConfig(), "main");
+  return makeLoopRunner(repo, role);
 }
 
 test("resetCounters zeroes the observation counters, preserves scheduling and wake fields, and persists both", async () => {

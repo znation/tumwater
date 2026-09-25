@@ -8,7 +8,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { validateConfig } from "../src/config-validation.js";
@@ -31,6 +30,7 @@ import {
   waitForLogLines,
   watchdogClock,
   writeScript,
+  makeLoopRunner,
 } from "./util.js";
 
 const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
@@ -47,7 +47,7 @@ test("a run that recovers from a predict-stream timeout internally is not re-run
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the recovered run's verdict stands");
     assert.ok(!runner.state.lastError);
@@ -84,7 +84,7 @@ test("a transient timeout that also hits the harness timeout is not retried", as
     // (the regression) prints a second line and is timed out in turn, so the run count below
     // names it rather than the test hanging on a clock nobody advances.
     const clock = watchdogClock(t, { timeouts: true });
-    const runner = new LoopRunner(repo, "clean", config, "main");
+    const runner = makeLoopRunner(repo, "clean", config);
     let settled = false;
     const tick = runner.tick().finally(() => (settled = true));
     const log = piLogPath(repo, "clean");
@@ -106,7 +106,7 @@ test("a transient timeout on both attempts errors with the real cause (regressio
     `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'\nexit 1`,
   );
   try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.match(runner.state.lastError ?? "", /predict stream timed out/);
@@ -134,7 +134,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
     config.quietTimeoutSeconds = 3;
     config.tickTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
     const clock = watchdogClock(t);
-    const runner = new LoopRunner(repo, "improve", config, "main");
+    const runner = makeLoopRunner(repo, "improve", config);
     const before = sh(repo, "git", "rev-parse", "main");
     const tick = runner.tick();
     // The kill must come only once the shim has spoken and reached `echo partial` — the
@@ -179,7 +179,7 @@ test("a stalled tool call warns in the event feed with the command named", async
     config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
     config.toolCallStallSeconds = 2; // ...but the warning lands first, 3s ahead of it
     const clock = watchdogClock(t);
-    const runner = new LoopRunner(repo, "improve", config, "main");
+    const runner = makeLoopRunner(repo, "improve", config);
     const tick = runner.tick();
     await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
     clock.advance(30_000); // past the stall threshold, then past the quiet window
@@ -215,7 +215,7 @@ test("a slow but talkative pi run is not killed by the quiet watchdog", async (t
     const config = defaultConfig();
     config.quietTimeoutSeconds = 10;
     const clock = watchdogClock(t);
-    const runner = new LoopRunner(repo, "improve", config, "main");
+    const runner = makeLoopRunner(repo, "improve", config);
     let settled = false;
     const tick = runner.tick().finally(() => (settled = true));
     const log = piLogPath(repo, "improve");
@@ -247,7 +247,7 @@ test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
     const config = defaultConfig();
     config.quietTimeoutSeconds = 0;
     const clock = watchdogClock(t);
-    const runner = new LoopRunner(repo, "improve", config, "main");
+    const runner = makeLoopRunner(repo, "improve", config);
     const tick = runner.tick();
     await waitForLogLines(piLogPath(repo, "improve"), "turn_start");
     clock.advance(120_000); // two minutes of silence: any window at all would have fired
@@ -284,7 +284,7 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
     config.tickTimeoutSeconds = 3600;
     const clock = watchdogClock(t);
     const controller = new AbortController();
-    const runner = new LoopRunner(repo, "improve", config, "main", controller.signal);
+    const runner = makeLoopRunner(repo, "improve", config, "main", controller.signal);
     let settled = false;
     const tick = runner.tick().finally(() => (settled = true));
     // Half a second of watchdog time per fresh keepalive, so bytes keep landing as the clock
@@ -344,7 +344,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     // Tick 1: the change is committed and enqueued; the LANDING's build pre-check rejects it
     // (red twice, on a main that is green) — no pi run at all, reviewer or otherwise.
     assert.equal((await runner.tick()).result, "queued");
@@ -393,7 +393,7 @@ test("a refused tick lands only its markdown note, discards code changes, and sk
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "refused");
     assert.equal(outcome.summary, "it would delete user data");
@@ -426,7 +426,7 @@ test("a bare sentinel over work is not a refusal: the tick runs the normal flow 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the work is not discarded as a refusal");
     // The edit survived — committed on the branch, headed for the normal gate, no refusal note.
@@ -448,7 +448,7 @@ test("a reply ending TUMWATER_REFUSED: none lands its work instead of refusing (
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "a negated refusal never discards the work");
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
@@ -469,7 +469,7 @@ test("a refusal contradicted by its own SUMMARY beside work keeps the work behin
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "contradicted work runs the normal flow");
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
@@ -505,7 +505,7 @@ test("a tick that posts a question merges it and emits question_posted with the 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -547,7 +547,7 @@ test("a tick that changes other files emits no question_posted event", async () 
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     // The seeded QUESTIONS.md has no Open entries before or after: nothing to emit.
@@ -595,8 +595,8 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
     ].join("\n"),
   );
   try {
-    const a = new LoopRunner(repo, "improve", defaultConfig(), "main");
-    const b = new LoopRunner(repo, "organize", defaultConfig(), "main");
+    const a = makeLoopRunner(repo, "improve");
+    const b = makeLoopRunner(repo, "organize");
     let bEndAt = 0;
     let aLandEndAt = 0;
     const pa = (async () => {
@@ -657,7 +657,7 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
     const config = defaultConfig();
     config.thrashTurns = 1;
     config.thrashMinutes = 0;
-    const runner = new LoopRunner(repo, "improve", config, "main");
+    const runner = makeLoopRunner(repo, "improve", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(runner.state.lastResult, undefined, "a queued tick records no completed result");
@@ -708,7 +708,7 @@ test("a changed tick past only thrashTurns is not flagged high-friction", async 
   try {
     const config = defaultConfig();
     config.thrashTurns = 1;
-    const runner = new LoopRunner(repo, "improve", config, "main");
+    const runner = makeLoopRunner(repo, "improve", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, config, "improve"), "changed");
@@ -740,7 +740,7 @@ test("an ordinary changed tick under both thresholds is not flagged high-frictio
   );
   try {
     // Default thresholds (40 turns / 30 min): one fast turn is far under both.
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -791,7 +791,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
       `[ "$n" -eq 1 ] && { printf '%s\\n' '${compliant}'; echo hello > hello.txt; } || { printf '%s\\n' '${summaryOnly}'; echo world > world.txt; }`,
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
 
     // Tick 1: compliant reply → the commit on main carries subject, body (all three fields,
     // in contract order), and the harness-stamped trailer as separate paragraphs. One author
@@ -833,7 +833,7 @@ test("a changed tick's tick_end event carries its per-tick tokens and cost", asy
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
 
     const ends = readEvents(repo).filter((e) => e.type === "tick_end");
@@ -859,7 +859,7 @@ test("a skipped tick's tick_end event carries no usage fields", async () => {
   // A director with an empty inbox skips without running pi: its tick_end must carry neither
   // tokens nor costUsd, so it renders byte-identical to a pre-feature line.
   const repo = await initializedRepo();
-  const runner = new LoopRunner(repo, "director", defaultConfig(), "main");
+  const runner = makeLoopRunner(repo, "director");
   assert.equal((await runner.tick()).result, "skipped");
 
   const ends = readEvents(repo).filter((e) => e.type === "tick_end");
@@ -904,7 +904,7 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
   const marker = path.join(tmpdir(), "pi-invoked");
   const restore = fakePi(`touch '${marker}'`);
   try {
-    const runner = new LoopRunner(repo, "feature", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "feature");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "main_red");
     assert.equal(outcome.summary, "code merges blocked until main is green");
@@ -958,7 +958,7 @@ test("a green main passes the baseline check and authoring proceeds normally", a
   const marker = path.join(tmpdir(), "pi-invoked");
   const restore = approvingPi(marker);
   try {
-    const runner = new LoopRunner(repo, "feature", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "feature");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "feature"), "changed");
@@ -984,7 +984,7 @@ test("an exempt role ticks normally while main is red — its markdown-only diff
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "readme", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "readme");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(
@@ -1014,7 +1014,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "bugfix", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "bugfix");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the healer authors on a red main (never blocked)");
     assert.ok(fs.existsSync(marker), "its pi run started");
@@ -1043,7 +1043,7 @@ test("after a fix lands on main, the next tick re-checks the new SHA and authori
   const marker = path.join(tmpdir(), "pi-invoked");
   const restore = approvingPi(marker);
   try {
-    const runner = new LoopRunner(repo, "feature", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "feature");
     assert.equal((await runner.tick()).result, "main_red");
 
     // The bugfix role (exempt) lands a fix on main — the suite is green at the new SHA.
@@ -1103,7 +1103,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
   const oldPath = process.env.PATH;
   process.env.PATH = `${piDir}:${gitBin}`; // pi + git only — no npm anywhere
   try {
-    const runner = new LoopRunner(repo, "feature", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "feature");
     const outcome = await runner.tick();
 
     // Authoring proceeded and landed: the skip is environmental (warn-and-proceed), not a block.
@@ -1144,7 +1144,7 @@ test("a cut-off resume is bridged as a cut-off, and the fresh tick after the lim
   try {
     fs.mkdirSync(sessionDir(repo, "perf"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
-    const runner = new LoopRunner(repo, "perf", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "perf");
     // Tick 1 fresh; ticks 2–4 resume (CUT_OFF_RESUME_LIMIT resumes); tick 5 is fresh again.
     for (let i = 1; i <= 5; i++) assert.equal((await runner.tick()).result, "no_change");
     const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
@@ -1176,7 +1176,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
   let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
   const controller = new AbortController();
   try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main", controller.signal);
+    const runner = makeLoopRunner(repo, "clean", defaultConfig(), "main", controller.signal);
     const first = runner.tick();
     await waitForFile(path.join(repo, ".tumwater/worktrees/clean/partial.txt"));
     controller.abort();
@@ -1194,7 +1194,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
         `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
       ].join("\n"),
     );
-    const resumed = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const resumed = makeLoopRunner(repo, "clean");
     assert.equal((await resumed.tick()).result, "no_change");
     const run = fs.readFileSync(promptsFile, "utf8");
     assert.match(run, /The harness was restarted while you/);
@@ -1227,7 +1227,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "clean", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError, `no error recorded: ${runner.state.lastError}`);
@@ -1264,7 +1264,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
   fs.mkdirSync(blockedRef, { recursive: true });
   fs.writeFileSync(path.join(blockedRef, "blocker"), "keep the directory non-empty\n");
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.equal(outcome.summary, "failed to pin the landing ref; left for next-tick recovery");
@@ -1302,7 +1302,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     ].join("\n"),
   );
   try {
-    const runner = new LoopRunner(repo, "improve", defaultConfig(), "main");
+    const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "recovery queued the unpinned commit; no authoring run");
     assert.equal(fs.existsSync(path.join(repo, "hello.txt")), false, "nothing lands inside the tick");
