@@ -97,9 +97,14 @@ interface RunOptions {
 }
 
 /** How runOrchestrator ended: `restart` means dist/ now holds a newer build and the caller should
- * exit RESTART_EXIT_CODE so the supervisor respawns onto it; otherwise the stop signal fired. */
+ * exit RESTART_EXIT_CODE so the supervisor respawns onto it; otherwise the stop signal fired.
+ * Once mode (`run --once`) also hands back the per-role settle reasons it recorded — the skip
+ * half of the round's answer, which the caller's summary reports verbatim instead of re-deriving
+ * a lookalike from persisted state (a deferred role's nextRunAt is untouched, so state says
+ * "idle" exactly when the truth is "due and set aside"). Undefined outside once mode. */
 interface OrchestratorExit {
   restart: boolean;
+  settled?: ReadonlyMap<string, string>;
 }
 
 /** Run all enabled loops until the signal aborts — or until a pending self-redeploy has drained
@@ -766,5 +771,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     logEvent(root, { loop: "harness", type: "orchestrator_stop" });
     removeQuiet(infoFile);
   }
-  return { restart };
+  // Only once mode carries the settle reasons: the daemon return keeps its exact shape (an
+  // e2e test deep-equals it), and a daemon caller has no summary to feed.
+  return once ? { restart, settled: onceSettled } : { restart };
 }

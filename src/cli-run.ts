@@ -108,18 +108,26 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   } finally {
     unsubscribe();
   }
-  if (once) process.stdout.write(onceSummary(root, enabled, ticksBefore) + "\n");
+  if (once) process.stdout.write(onceSummary(root, enabled, ticksBefore, exit.settled) + "\n");
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
 }
 
-/** The once round's one-line summary, read entirely from the runners' persisted loop state —
- * a cron job's log shows what the round did without parsing events. Roles whose tick counter
- * advanced bucket by their last completed result; the rest are skipped, with the reason the
- * orchestrator settled them for (backoff when their nextRunAt is still in the future, a pause
- * marker when one is held, otherwise idle — nothing was due). */
-function onceSummary(root: string, roles: string[], ticksBefore: Map<string, number>): string {
+/** The once round's one-line summary, read from the runners' persisted loop state plus the
+ * orchestrator's own settle reasons — a cron job's log shows what the round did without parsing
+ * events. Roles whose tick counter advanced bucket by their last completed result; the rest are
+ * skipped with the reason the orchestrator settled them for (`paused`, `backoff`, `deferred`,
+ * `disabled`, `idle` — handed back on OrchestratorExit.settled, so a deferred role reads as set
+ * aside, not as "nothing was due"); a role the map lacks (defensively — the round only exits
+ * once every role is settled) falls back to deriving the reason from state: a pause marker when
+ * one is held, backoff when nextRunAt is still in the future, otherwise idle. */
+function onceSummary(
+  root: string,
+  roles: string[],
+  ticksBefore: Map<string, number>,
+  settled: ReadonlyMap<string, string> | undefined,
+): string {
   let ticks = 0;
   const outcomes = new Map<string, number>();
   const skipped: string[] = [];
@@ -130,13 +138,14 @@ function onceSummary(root: string, roles: string[], ticksBefore: Map<string, num
       const key = s.lastResult ?? "no_change";
       outcomes.set(key, (outcomes.get(key) ?? 0) + 1);
     } else {
-      skipped.push(
-        isFleetPaused(root) || pausedRoles(root).includes(role)
+      const reason =
+        settled?.get(role) ??
+        (isFleetPaused(root) || pausedRoles(root).includes(role)
           ? "paused"
           : s.nextRunAt > Date.now()
             ? "backoff"
-            : "idle",
-      );
+            : "idle");
+      skipped.push(reason);
     }
   }
   const counts = [...outcomes.entries()].sort().map(([k, n]) => `${n} ${k}`).join(", ");

@@ -9,6 +9,33 @@ _None yet._
 
 ## Fixed
 
+### `onceSummary` re-derives the skip reasons the orchestrator already settled on, so a deferred role reads as "idle — nothing was due" in the once round's summary (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** `tumwater run --once`'s summary line is the round's only cron-visible output, and for a
+skipped role it claimed to report "the reason the orchestrator settled them for" — but it re-derived
+the reason from persisted state instead of using the orchestrator's record. `runOrchestrator` settles
+skipped roles into `onceSettled` with five reasons (`paused`, `backoff`, `deferred`, `disabled`,
+`idle`) and then discarded the map at return; the summary's state-derived classification only knows
+three (paused marker, future `nextRunAt`, otherwise idle), so a role settled `deferred` — a due
+maintenance tick the backlog-aware deferral set aside, whose untouched `nextRunAt` sits in the past —
+printed as `idle`, with the summary's own comment asserting "nothing was due" about a tick that was
+due. A `disabled`-mid-round settle mislabeled the same way. The event feed had the truth (`clean deferred — no work landed since last tick`) but the one line a cron log keeps contradicted it.
+
+**Reproduce:** confirmed 2026-09-25 by the regression test now in test/orchestrator-once.e2e.test.ts:
+a CLI once round over a repo whose only role (clean) has a no_change history, a past `nextRunAt`, and
+an open PLANS.md backlog printed `once: 0 ticks — nothing ran, 1 skipped (idle)` while the same run's
+feed carried `clean deferred` — the pre-fix output the test asserts against.
+
+**Fix:** `runOrchestrator` hands the settle map back on its exit (`OrchestratorExit.settled`, only in
+once mode, so the daemon return keeps the exact shape an e2e test deep-equals), and `onceSummary`
+reports the orchestrator's own reason verbatim, falling back to the state-derived classification only
+for a role the map lacks.
+
+**Validation gap:** no-observability — the mislabel raised no error and failed no assertion: the
+deferral e2e test exercised the exact path and checked only the `tick_deferred` event, leaving the
+wrong line to print on every deferred round unchallenged, since the only trace is the summary text
+itself and nothing cross-checked it against the settle record.
+
 ### `fixedHeadings` and `bugEntryBody` in src/fix-claim.ts have no fenced-code state: a quoted `### ` line counts as a Fixed entry, and an entry body quoting a fence is cut at it, so a narrative rewrite after the fence compares equal and skips the false-fix symbol check (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** the false-fix guard read BUGS.md through two fence-blind scanners. `fixedHeadings` filtered `### ` lines out of `sectionLines`'s output without consulting `fenceTracker`, so an entry legitimately quoting a markdown template added a phantom Fixed entry; `bugEntryBody` broke at any `## `/`### ` line with no fence state, so an entry's body was cut at its own quoted fence. The guard hole was the worse half: `falseFixReason` skips an already-Fixed entry only when its body is unchanged, but base and head bodies were both truncated at the same fence, so an md-only rewrite confined to text after the fence compared equal and never faced the symbol check — the exact evasion the 2026-09-23 fix closed for prose bodies, reopened wherever an entry quotes one. `fixSymbols` inherited the truncation: a Fix paragraph placed after the entry's fence contributed no symbols, so the check passed vacuously.

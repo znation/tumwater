@@ -155,6 +155,34 @@ test("once: the CLI prints a per-role summary line and exits 0", async () => {
   }
 });
 
+test("once: the summary reports a deferred role as deferred, not idle", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "once summary deferral test");
+  saveConfig(repo, fastConfig(["clean"]));
+  // Same deferral setup as the in-process test above: an open backlog plus a no_change
+  // history defers clean's due tick. The summary is the round's only cron-visible output, so
+  // it must carry the orchestrator's own settle reason — "deferred" (the tick WAS due and was
+  // set aside) — not the re-derived "idle" (nothing was due), which misreads the round.
+  fs.writeFileSync(path.join(repo, "PLANS.md"), "# Plans\n\n## Planned\n\n### a queued feature (planned 2026-09-25)\n");
+  const head = sh(repo, "git", "rev-parse", "main").trim();
+  saveLoopState(repo, {
+    ...freshLoopState("clean"),
+    ticks: 1,
+    lastResult: "no_change",
+    lastMainHead: head,
+    nextRunAt: Date.now() - 1000, // due: the deferral, not the clock, keeps it from running
+  });
+  const restore = fakePiIdle();
+  try {
+    const r = await cli(repo, "run", "--once");
+    assert.equal(r.code, 0, `exit 0 (stderr: ${r.stderr})`);
+    assert.match(r.stdout, /once: 0 ticks — nothing ran, 1 skipped \(deferred\)/,
+      `summary names the deferral: ${r.stdout}`);
+  } finally {
+    restore();
+  }
+});
+
 test("once: a once round refuses to start while a daemon holds the orchestrator", async () => {
   const repo = makeRepo();
   await initProject(repo, "once daemon guard");
