@@ -21,10 +21,13 @@ and the function's stated contract was violated.
 
 **Reproduce:** `boundText("x".repeat(5000), 40, "/" + "d".repeat(200))` → 5,139 code
 points instead of at most 40 (after the fix: the marker alone, cut to exactly 40).
-Figures machine-verified against the pre-fix function extracted from
-`git show fa9ee0a^:src/pi-extension/bounded-output.ts`: total 5,139 = 4,891-char head +
-marker claiming 5,217 omitted (5000 − (−109) − (−108), where −109/−108 are the negative
-slice bounds) when only 109 were actually omitted; post-fix the total is exactly 40.
+Figures machine-verified (re-checked 2026-09-25) by extracting the pre-fix function from
+`git show fa9ee0a^:src/pi-extension/bounded-output.ts` and running exactly the expression
+above: result 5,139 code points = 4,891-char head + a 248-code-point marker claiming 5,217
+omitted (5000 − (−109) − (−108), where −109/−108 are the negative slice bounds) when only
+109 were actually omitted; the same expression on the fixed module returns exactly 40 code
+points (`...5000 chars truncated; complete output`). The figures belong to this exact
+expression — other text/limit/path inputs overflow by different amounts.
 
 **Cause:** `budget = limitChars - markerLen - 12` went negative and was fed straight into
 `Math.floor(budget / 2)` and slice bounds; the old safety-valve loop only ran while
