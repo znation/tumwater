@@ -183,6 +183,67 @@ test("parseEntryDetails ends the last entry's body at the next ## section and at
   ]);
 });
 
+test("a ## heading inside a fenced code block is body content, not a section boundary", () => {
+  // A quoted markdown template whose `## ` headings used to truncate the section: the entry's
+  // body was cut at the fence line and every later entry vanished from the backlog views.
+  const md = [
+    "# Plans",
+    "",
+    "## Planned",
+    "",
+    "### Plan with a quoted template (planned 2026-09-25)",
+    "",
+    "**Approach.** Restructure the file to:",
+    "",
+    "```md",
+    "## Planned",
+    "## Done",
+    "```",
+    "",
+    "### The next plan (planned 2026-09-24)",
+    "",
+    "Its goal.",
+  ].join("\n");
+  assert.deepEqual(parseEntryDetails(md, "Planned"), [
+    {
+      title: "Plan with a quoted template (planned 2026-09-25)",
+      body: "**Approach.** Restructure the file to:\n\n```md\n## Planned\n## Done\n```",
+    },
+    { title: "The next plan (planned 2026-09-24)", body: "Its goal." },
+  ]);
+});
+
+test("fence tracking follows CommonMark: marker character and bare close matter", () => {
+  // ~~~ does not close a ``` fence; an info-string line (```ts) opens rather than closes, and
+  // only a bare fence line closes — a quoted `## ` heading in each block stays body content.
+  const md = [
+    "# Bugs",
+    "",
+    "## Open",
+    "",
+    "### One (reported 2026-09-25)",
+    "",
+    "~~~",
+    "## Fixed",
+    "~~~",
+    "",
+    "### Two (reported 2026-09-24)",
+    "",
+    "```ts",
+    "const heading = \"## Fixed\";",
+    "```",
+    "",
+    "### Three (reported 2026-09-23)",
+    "",
+    "Tail.",
+  ].join("\n");
+  assert.deepEqual(parseEntryDetails(md, "Open"), [
+    { title: "One (reported 2026-09-25)", body: "~~~\n## Fixed\n~~~" },
+    { title: "Two (reported 2026-09-24)", body: "```ts\nconst heading = \"## Fixed\";\n```" },
+    { title: "Three (reported 2026-09-23)", body: "Tail." },
+  ]);
+});
+
 test("parseEntryDetails skips placeholders and prose before the first heading", () => {
   // The exact template init.ts seeds: both sections hold only the _None yet._ placeholder.
   const seeded = `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n_None yet._\n`;

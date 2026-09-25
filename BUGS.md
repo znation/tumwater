@@ -7,6 +7,34 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `sectionLines` treats a `## ` heading inside a fenced code block as a section boundary, silently truncating entries and dropping every later one (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+
+**Symptom:** a backlog entry whose body quotes a markdown template or shell trace in a
+fenced code block lost everything after the fence's first `## ` line. A `## <same-section>`
+line inside the fence was silently dropped from the body; a `## <other-section>` line (e.g.
+a plan quoting a `## Done` heading) terminated the entry mid-body and every later entry in
+the section vanished — from the GUI's backlog panel, the TUI's browse, and
+`tumwater backlog` alike, with no error anywhere. A scratch repro: an entry quoting
+````md / ## Planned / ## Done / ````` made the next planned entry disappear entirely.
+
+**Reproduce:** `parseEntryDetails(md, "Planned")` on a two-entry document whose first body
+contains a fenced block with `## Done` returned only the first entry, its body cut at
+` ```md ` — confirmed against dist before the fix (2026-09-25).
+
+**Cause:** `sectionLines` (the single home of "where a section starts and ends", also used
+by the usage report's Done/Fixed scan and fix-claim's Fixed scan) tested every line for the
+`## ` prefix with no fenced-code state, so fence-internal headings read as boundaries.
+
+**Fix:** src/backlog.ts's `sectionLines` now tracks fenced code per CommonMark: a
+`​``` `/`~~~` line opens a fence, only the same character at least as long and bare (no
+info string) closes it, an unclosed fence runs to EOF, and `## ` lines inside a fence are
+body content. All three readers inherit the correction from the one boundary home.
+
+**Validation gap:** unclear-invariant — the existing suite's entry fixtures held only prose
+bodies, so nothing surfaced the truncation, and confirming it as a bug rather than
+by-design behavior required reconstructing the section-boundary invariant from markdown's
+fence rules first.
+
 ### `readEvents`' NaN limit passes the `limit <= 0` guard and returns the whole log instead of none: every comparison with NaN is false (found by bugfix loop 2026-09-25, fixed 2026-09-25)
 
 **Symptom:** today's earlier fix guarded `readEvents(root, limit)` with

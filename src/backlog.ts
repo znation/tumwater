@@ -26,15 +26,27 @@ export interface BacklogEntry {
 }
 
 /** The body lines of the `## <sectionTitle>` section of a markdown document: everything
- * between that heading line and the next `## ` line (or EOF), neither boundary included. The
+ * between that heading line and the next `## ` line (or EOF), neither boundary included. A
+ * `## ` line inside a fenced code block (entries quote markdown templates and shell traces) is
+ * body content, never a boundary: fences follow CommonMark — a ```` ``` ````/`~~~` line opens,
+ * only the same character at least as long and bare (no info string) closes, and an unclosed
+ * fence runs to EOF, hiding every later section the way a real markdown renderer would. The
  * single home of "where a section starts and ends" — every reader of a `## ` section (backlog
  * entry parsing here, the usage report's Done/Fixed date scan in src/ui/report.ts) walks its
  * section through this, so two independent readers can never disagree about the boundary. */
 export function sectionLines(md: string, sectionTitle: string): string[] {
   const lines: string[] = [];
   let inSection = false;
+  // The open fence's marker (null = none): only a matching bare fence line closes it.
+  let fence: { char: string; length: number } | null = null;
   for (const line of md.split("\n")) {
-    if (line.startsWith("## ")) {
+    const fenceLine = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fenceLine) {
+      const marker = fenceLine[1] ?? ""; // The group always participates; "" keeps types honest.
+      if (fence === null) fence = { char: marker.charAt(0), length: marker.length };
+      else if (marker.charAt(0) === fence.char && marker.length >= fence.length && line.trim() === marker)
+        fence = null;
+    } else if (fence === null && line.startsWith("## ")) {
       inSection = line.slice(3).trim() === sectionTitle;
       continue;
     }
