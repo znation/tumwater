@@ -165,6 +165,16 @@ export function baselineFixture(role: string, testScript: string): { root: strin
   return { root, wt };
 }
 
+/** A makeRepo'd repo (no package.json — nothing declares a build check) plus a linked
+ * worktree for `role` at the real location, checked out to pristine main: the shape the
+ * no-check-declared baseline tests need. `dir` is the repo path, created if missing. */
+export function worktreeAt(root: string, role: string): string {
+  const wt = path.join(root, ".tumwater", "worktrees", role);
+  fs.mkdirSync(path.dirname(wt), { recursive: true });
+  sh(root, "git", "worktree", "add", "-b", `tumwater/${role}`, wt, "main");
+  return wt;
+}
+
 /** How many times a fixture's test script actually ran (its appends to `counter`). Zero when
  * the counter was never written — an environmental skip ran nothing. */
 /** Seed a role's state file with non-zero counters plus scheduling fields. */

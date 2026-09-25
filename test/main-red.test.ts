@@ -5,7 +5,7 @@ import path from "node:path";
 import { bugfixMainRedNote, mainRedGate } from "../src/main-red.js";
 import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
-import { baselineFixture, runsOf, sh, tmpdir, writeScript } from "./util.js";
+import { baselineFixture, makeRepo, runsOf, sh, tmpdir, worktreeAt, writeScript } from "./util.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
@@ -257,17 +257,8 @@ test("bugfixMainRedNote yields no note on a green main", async () => {
 
 test("bugfixMainRedNote yields no note when no check is declared", async () => {
   const base = tmpdir("mainred-bugfix-none-");
-  const root = path.join(base, "project");
-  fs.mkdirSync(root, { recursive: true });
-  sh(root, "git", "init", "-b", "main");
-  sh(root, "git", "config", "user.name", "test");
-  sh(root, "git", "config", "user.email", "test@example.com");
-  fs.writeFileSync(path.join(root, "seed.txt"), "x\n");
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "seed");
-  const wt = path.join(root, ".tumwater", "worktrees", "bugfix");
-  fs.mkdirSync(path.dirname(wt), { recursive: true });
-  sh(root, "git", "worktree", "add", "-b", "tumwater/bugfix", wt, "main");
+  const root = makeRepo(path.join(base, "project"));
+  const wt = worktreeAt(root, "bugfix");
   assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
   assert.deepEqual(readEvents(root), [], "nothing to verify, nothing to say");
 });
@@ -292,17 +283,8 @@ test("bugfixMainRedNote yields no note on an environmental skip (no npm)", async
 
 test("mainRedGate proceeds silently when no build check is declared", async () => {
   const base = tmpdir("mainred-none-");
-  const root = path.join(base, "project");
-  fs.mkdirSync(root, { recursive: true });
-  sh(root, "git", "init", "-b", "main");
-  sh(root, "git", "config", "user.name", "test");
-  sh(root, "git", "config", "user.email", "test@example.com");
-  fs.writeFileSync(path.join(root, "seed.txt"), "x\n");
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "seed");
-  const wt = path.join(root, ".tumwater", "worktrees", ROLE);
-  fs.mkdirSync(path.dirname(wt), { recursive: true });
-  sh(root, "git", "worktree", "add", "-b", `tumwater/${ROLE}`, wt, "main");
+  const root = makeRepo(path.join(base, "project"));
+  const wt = worktreeAt(root, ROLE);
 
   // Nothing to verify → nothing to block on, and no warning: a missing check is not an
   // environmental skip.

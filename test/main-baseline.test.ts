@@ -5,7 +5,7 @@ import path from "node:path";
 import { CHECK_TIER, withCheckPermit } from "../src/build-check.js";
 import { checkMainBaseline, noteGreenBaseline } from "../src/main-baseline.js";
 import { defaultConfig } from "../src/config.js";
-import { baselineFixture, makeRepo, runsOf, sh, tmpdir } from "./util.js";
+import { baselineFixture, makeRepo, runsOf, sh, tmpdir, worktreeAt } from "./util.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
@@ -24,13 +24,6 @@ const CFG = defaultConfig();
 // at the real location (.tumwater/worktrees/<role>): the helper keys its verdict by the
 // worktree's HEAD, which must be pristine main.
 
-/** A second linked worktree on the same repo at main: same immutable tree, different
- * environment — the case a provisional red has to distinguish. */
-function addWorktree(root: string, role: string): string {
-  const wt = path.join(root, ".tumwater", "worktrees", role);
-  sh(root, "git", "worktree", "add", "-b", `tumwater/${role}`, wt, "main");
-  return wt;
-}
 
 test("a red in one worktree is re-verified by the next, and a green there promotes the SHA", async () => {
   const counter = path.join(tmpdir(), "runs");
@@ -39,7 +32,7 @@ test("a red in one worktree is re-verified by the next, and a green there promot
     `echo run >> ${counter}; if [ -f ./RED_MARKER ]; then echo env-failure; exit 1; fi; echo ok`,
   );
   fs.writeFileSync(path.join(wt, "RED_MARKER"), "");
-  const other = addWorktree(root, "dry");
+  const other = worktreeAt(root, "dry");
 
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "red", "the first worktree sees red");
   assert.equal(
@@ -57,8 +50,8 @@ test("a red in one worktree is re-verified by the next, and a green there promot
 test("a red confirmed by a second worktree is authoritative: a third trusts the cache", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo real-failure; exit 1`);
-  const second = addWorktree(root, "dry");
-  const third = addWorktree(root, "clean");
+  const second = worktreeAt(root, "dry");
+  const third = worktreeAt(root, "clean");
 
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "red");
   assert.equal((await checkMainBaseline(second, CFG)).baseline?.status, "red");
@@ -120,17 +113,8 @@ test("checkMainBaseline reports a green main without failure details", async () 
 
 test("checkMainBaseline returns null (no block) when no build check is declared", async () => {
   const base = tmpdir("baseline-none-");
-  const root = path.join(base, "project");
-  fs.mkdirSync(root, { recursive: true });
-  sh(root, "git", "init", "-b", "main");
-  sh(root, "git", "config", "user.name", "test");
-  sh(root, "git", "config", "user.email", "test@example.com");
-  fs.writeFileSync(path.join(root, "seed.txt"), "x\n");
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "seed");
-  const wt = path.join(root, ".tumwater", "worktrees", ROLE);
-  fs.mkdirSync(path.dirname(wt), { recursive: true });
-  sh(root, "git", "worktree", "add", "-b", `tumwater/${ROLE}`, wt, "main");
+  const root = makeRepo(path.join(base, "project"));
+  const wt = worktreeAt(root, ROLE);
 
   const result = await checkMainBaseline(wt, CFG);
   assert.equal(result.baseline, null, "nothing to verify → nothing to block on");
@@ -254,7 +238,7 @@ test("a configured check.command verifies main on a repo with no npm install any
   fs.chmodSync(checkScript, 0o755);
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "check");
-  const wt = addWorktree(root, ROLE);
+  const wt = worktreeAt(root, ROLE);
 
   const cfg = { ...defaultConfig(), check: { command: `${checkScript} -q` } };
   const runs: { outcome: { status?: string; script?: string }; durationMs: number }[] = [];
