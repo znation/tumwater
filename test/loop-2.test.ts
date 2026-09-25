@@ -17,6 +17,7 @@ import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/land-queue.js";
 import { landingRefName, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
 import {
+  APPROVE_PI,
   assistantLine,
   errorLine,
   fakePi,
@@ -331,7 +332,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
   const marker = path.join(tmpdir(), "changed-once");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
@@ -540,7 +541,7 @@ test("a tick that changes other files emits no question_posted event", async () 
     [
       // Non-md diff goes through the review gate: approve the reviewer run (identified by its
       // VERDICT prompt) so the tick lands like "a tick that changes files commits and merges".
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -785,7 +786,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
   );
   const summaryOnly = assistantLine("done\nSUMMARY: add world file", { tokens: 7, output: 7, cost: 0.01 });
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done\n` +
+    APPROVE_PI + "\n" +
       `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
       `[ "$n" -eq 1 ] && { printf '%s\\n' '${compliant}'; echo hello > hello.txt; } || { printf '%s\\n' '${summaryOnly}'; echo world > world.txt; }`,
   );
@@ -826,7 +827,7 @@ test("a changed tick's tick_end event carries its per-tick tokens and cost", asy
     [
       // The reviewer run reports zero usage, so the tick's totals are exactly the author
       // run's — the same numbers the status table's gen column shows for this tick.
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 18400, output: 18400, cost: 0.37 })}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -888,7 +889,7 @@ function makeMainRed(repo: string, counter: string): void {
 function approvingPi(marker: string): () => void {
   return fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
       `touch '${marker}'`,
@@ -976,7 +977,7 @@ test("an exempt role ticks normally while main is red — its markdown-only diff
   const marker = path.join(tmpdir(), "pi-invoked");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: note", { tokens: 7, output: 7, cost: 0.01 })}'`,
       `echo more >> PLANS.md`,
       `touch '${marker}'`,
@@ -1006,7 +1007,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
   const restore = fakePi(
     [
       `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: fix main", { tokens: 10, output: 10, cost: 0.01 })}'`,
       `echo hello > hello.txt`,
       `touch '${marker}'`,
@@ -1086,7 +1087,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
   writeScript(
     path.join(piDir, "pi"),
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
       // Redirection, not touch: the restricted PATH below has no /usr/bin, so this script
@@ -1254,7 +1255,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
   // VERDICT branch below only guards against the review prompt ever reaching this script.
   const restore1 = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -1296,7 +1297,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
   // it through the same gate, with the approve.
   const restore2 = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );

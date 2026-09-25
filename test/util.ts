@@ -323,6 +323,16 @@ export function assistantLine(
   return JSON.stringify({ type: "message_end", message });
 }
 
+/** The reviewer's fake-pi shim: match the review run (the only run whose args carry a
+ * VERDICT-bearing prompt), print `reply` as its one assistant turn, exit 0 — the gate reads
+ * the verdict out of `reply`. Used inside larger scripts too: when the invocation is not the
+ * review run, the case falls through and the surrounding lines answer the author run. */
+export const reviewerPi = (reply: string): string =>
+  `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine(reply)}'; exit 0;; esac; done`;
+
+/** The common approver: a reviewer stub that approves. */
+export const APPROVE_PI = reviewerPi("VERDICT: approve");
+
 /** A pi JSON line for an assistant message_end whose content is thinking-only — the
  * signature of a generation cut off mid-stream (e.g. output clamped to the sliver left
  * under the declared context window); a compliant finish always ends with a text block. */

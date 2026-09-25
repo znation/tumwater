@@ -18,7 +18,7 @@ import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/land-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { assistantLine, errorLine, fakePi, initializedRepo, landHead, sh, tmpdir, waitForFile } from "./util.js";
+import { APPROVE_PI, assistantLine, errorLine, fakePi, initializedRepo, landHead, reviewerPi, sh, tmpdir, waitForFile } from "./util.js";
 
 test("resume falls back to a fresh tick when there is no session to continue", async () => {
   const repo = await initializedRepo();
@@ -295,7 +295,7 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
   const restore = fakePi(
     [
       // The tick's commit goes through the review gate before the (conflicting) merge.
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
       `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
@@ -346,7 +346,7 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
   const restore = fakePi(
     [
       // The tick's commit goes through the review gate before the (conflicting) merge.
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
       `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
@@ -385,7 +385,7 @@ test("a stray pi commit makes rebase --continue stop a second time: aborted, mer
   const restore = fakePi(
     [
       // The tick's commit goes through the review gate before the (conflicting) merge.
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       // Phase 2 (the resolution run): seed.txt carries conflict markers — resolve them, then
       // commit anyway. That stray commit is what `rebase --continue` replays the remaining
       // authoring commit onto.
@@ -442,7 +442,7 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
     [
       // The review gate (any run whose prompt asks for a VERDICT) approves, so the tick reaches
       // the merge and can be blocked there.
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
       `echo branch change > seed.txt`,
     ].join("\n"),
@@ -484,7 +484,7 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
   // this time.
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve\n1. checked the diff; it holds")}'; exit 0;; esac; done`,
+      reviewerPi(`VERDICT: approve\n1. checked the diff; it holds`),
       `if [ ! -f "${m1}" ]; then`,
       `  touch "${m1}"`,
       `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
@@ -550,7 +550,7 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
   const authored = path.join(tmpdir(), "authored");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `touch "${authored}"`,
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: new work")}'`,
       `echo new > new.txt`,
@@ -744,7 +744,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
   // The next tick's recovery finds no ref but a branch ahead of main: it re-lands the tip.
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );
@@ -782,7 +782,7 @@ test("an unmergeable leftover is retried on the next tick and keeps its landing 
   // (detected by markers in seed.txt) leaves the markers: unresolvable, both ticks.
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve\n1. checked the diff; it holds")}'; exit 0;; esac; done`,
+      reviewerPi(`VERDICT: approve\n1. checked the diff; it holds`),
       `if [ ! -f "${m1}" ]; then`,
       `  touch "${m1}"`,
       `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
@@ -1056,7 +1056,7 @@ test("concurrent-main-advance still lands (rebase path, linear history)", async 
   const restore = fakePi(
     [
       // The tick's commit goes through the review gate before the (rebased) merge.
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: slow work")}'`,
       `echo slow > slow.txt`,
       `git -C "${repo}" -c user.name=t -c user.email=t@t commit --allow-empty -m "someone else"`,
@@ -1204,7 +1204,7 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
   // 2 (the harness retry, detected by the phase file): one more turn that finishes the work.
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
       `  printf '%s\\n' '${assistantLine("first turn of work")}'`,

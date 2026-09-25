@@ -16,6 +16,7 @@ import { loadLoopState } from "../src/state.js";
 import { configRequestPath, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
 import {
+  APPROVE_PI,
   assistantLine,
   fakePi,
   fakePiIdle,
@@ -37,7 +38,7 @@ test("a tick that changes files commits and merges to main", async () => {
     [
       // The review gate (enabled by default) runs after the commit: approve with zero usage so
       // the tick's token assertions below see only the author run.
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -71,7 +72,7 @@ test("a full tick → review → merge cycle lands on a repo whose only branch i
   await initProject(repo, "A trunk-based project.");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 10, output: 10, cost: 0 })}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -103,7 +104,7 @@ test("a changed tick schedules its next run at the role's own interval, not the 
   const repo = await initializedRepo();
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -137,7 +138,7 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
   const line1 = assistantLine("first tick\nSUMMARY: first", { tokens: 42, output: 42, cost: 0.05 });
   const line2 = assistantLine("second tick\nSUMMARY: second", { tokens: 7, output: 7, cost: 0.01 });
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done\n` +
+    APPROVE_PI + "\n" +
       `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
       `[ "$n" -eq 1 ] && { printf '%s\n' '${line1}'; echo one > t.txt; } || { printf '%s\n' '${line2}'; echo two >> t.txt; }`,
   );
@@ -533,7 +534,7 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
   const repo = await initializedRepo();
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: honor user request")}'`,
       `echo req > request.txt`,
     ].join("\n"),
@@ -617,7 +618,7 @@ test("worktree changes commit even when pi forgets the summary line: the subject
   const restore = fakePi(
     [
       TOUCH_SESSION,
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("did it, no summary")}'`,
       `echo x > x.txt`,
     ].join("\n"),
@@ -645,7 +646,7 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
     [
       TOUCH_SESSION,
       `flags=""; for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done; echo "run:$flags" >> "${argsFile}"`,
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `for a in "$@"; do case "$a" in *"did not include the required closing block"*)`,
       `  printf '%s\n' '${assistantLine("SUMMARY: Add the x marker file\nWHY: the harness needed a fixture\nRISK: none\nVERIFIED: none")}'`,
       `  exit 0;; esac; done`,
@@ -721,7 +722,7 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
     restore = fakePi(
       [
         // The resumed tick's commit goes through the review gate before merging.
-        `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+        APPROVE_PI,
         `flags=""`,
         `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
         `echo "run:$flags" >> "${argsFile}"`,
@@ -792,7 +793,7 @@ test("a quiet-killed tick keeps its edits and resumes promptly instead of discar
     // watchdog. If it did not (regression), the fake pi stalls again and the assertions fail.
     restore = fakePi(
       [
-        `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+        APPROVE_PI,
         `flags=""`,
         `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
         `echo "run:$flags" >> "${argsFile}"`,

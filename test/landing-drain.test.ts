@@ -26,7 +26,7 @@ import { freshLoopState, loadLoopState } from "../src/state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { snapshot } from "../src/ui/status.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
-import { assistantLine, fakePi, makeRepo, sh, tmpdir, waitFor, waitForFile } from "./util.js";
+import { assistantLine, fakePi, makeRepo, reviewerPi, sh, tmpdir, waitFor, waitForFile } from "./util.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LandingEntry } from "../src/types.js";
 
@@ -37,7 +37,7 @@ import type { LandingEntry } from "../src/types.js";
 // records the observers read. The review gate's pi runs are real subprocesses behind the fake
 // shim, exactly as lander.test.ts drives vetRequest and landVetted directly.
 
-const APPROVE = (reply = "the work looks right") => `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine(`VERDICT: approve\n${reply}`)}'; exit 0;; esac; done`;
+const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
 
 /** One pinned commit NOT contained in main, standing alone on main's tip — the queue shape
  * a changed tick leaves behind. Detach first: the commit must not land on main itself. */

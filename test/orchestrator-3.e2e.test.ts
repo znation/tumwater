@@ -30,6 +30,7 @@ import { enqueueLanding, queueDepth } from "../src/land-queue.js";
 import { setRef } from "../src/git.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
 import {
+  APPROVE_PI,
   assistantLine,
   fastConfig,
   fakePi,
@@ -176,7 +177,7 @@ test("a queue entry surviving a restart drains through the gate on next start", 
   // Review run approves; the role's own ticks find nothing to do.
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );
@@ -319,7 +320,7 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
   // the first poll, because the entry is queued before the orchestrator starts.
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );

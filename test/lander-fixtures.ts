@@ -92,11 +92,9 @@ export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: 
   return { root, sha, wt };
 }
 
-/** The reviewer's fake-pi shim: match the review run (the only run whose args carry a
- * VERDICT-bearing prompt), print `reply` as its one assistant turn, exit 0 — the gate reads
- * the verdict out of `reply`. Author-run shims live in test/util.ts. */
-export const reviewerPi = (reply: string): string =>
-  `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine(reply)}'; exit 0;; esac; done`;
+// The reviewer's fake-pi shim and its approver preset live in test/util.ts (next to the
+// assistant-line helpers they build on); re-exported here for the lander fixtures' imports.
+export { reviewerPi, APPROVE_PI } from "./util.js";
 
 export function request(sha: string, overrides: Partial<LandRequest> = {}): LandRequest {
   return { role: ROLE, sha, tick: 7, summary: "the work", ...overrides };
@@ -157,8 +155,6 @@ export function declareCheck(root: string, toolBody: string): void {
     JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool" } }),
   );
 }
-
-export const APPROVE_PI = reviewerPi("VERDICT: approve");
 
 export function makeBatchCtx(root: string, config?: TumwaterConfig, controller?: AbortController): BatchContext {
   return {

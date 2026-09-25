@@ -21,6 +21,7 @@ import { todayStamp } from "../src/budget.js";
 import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import {
+  APPROVE_PI,
   assistantLine,
   fastConfig,
   fakePi,
@@ -949,7 +950,7 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
   // drop mid-run. The review gate approves with zero usage so the tick's outcome is clean.
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `sleep 1`,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
