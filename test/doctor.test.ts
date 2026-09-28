@@ -843,6 +843,37 @@ test("checkOrphans itemizes at most eight orphans and trims each command, keepin
   assert.ok(r.detail.includes(`) ${shown}…; pid 45356 `), r.detail);
 });
 
+test("checkOrphans matches orphans through a root spelled as a symlink, alive or dangling", async () => {
+  const root = readyRepo();
+  const real = fs.realpathSync(root);
+  const dir = tmpdir("doctor-root-link-");
+
+  // A root whose path cannot be resolved — the repo removed under doctor's feet, or a
+  // broken symlink — must degrade to the spelling given, not crash the check, and an
+  // orphan argv naming that spelling must still be blamed on this repo.
+  const dangling = path.join(dir, "dangling");
+  fs.symlinkSync(path.join(root, "gone"), dangling);
+  assert.equal((await checkOrphans(dangling, noProcesses)).level, "ok", "an unresolvable root never crashes the check");
+  const { probe } = fakeProbe([
+    { pid: 700, command: `node ${dangling}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
+  ]);
+  const given = await checkOrphans(dangling, probe);
+  assert.equal(given.level, "fail", "an orphan naming the given spelling is still this repo's");
+  assert.match(given.detail, /^1 orphaned worktree process \(PPID 1\): pid 700 \(age 01:00, cpu 0:00\.10\) node \.tumwater\/worktrees\/qa\/dist\/src\/cli\.js gui/);
+
+  // A root given through a live symlink must also match orphans spelled with the RESOLVED
+  // path — lsof and /proc report a resolved cwd, and macOS's /var is /private/var — and the
+  // listed command is cut at the longest spelling, the resolved one.
+  const link = path.join(dir, "live");
+  fs.symlinkSync(root, link);
+  const { probe: resolvedProbe } = fakeProbe([
+    { pid: 701, command: `node ${real}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
+  ]);
+  const through = await checkOrphans(link, resolvedProbe);
+  assert.equal(through.level, "fail", "an orphan naming the resolved spelling is still this repo's");
+  assert.match(through.detail, /^1 orphaned worktree process \(PPID 1\): pid 701 \(age 01:00, cpu 0:00\.10\) node \.tumwater\/worktrees\/qa\/dist\/src\/cli\.js gui/);
+});
+
 test("runDoctor fails the verdict on an orphan — the exit code a scripted doctor keys off", async () => {
   const root = readyRepo();
   const { probe } = fakeProbe([{ pid: 8198, command: `node ${root}/.tumwater/worktrees/perf/dist/src/cli.js run` }]);
