@@ -41,7 +41,7 @@ import { checkOrphans } from "./doctor-orphans.js";
 import { checkLaunchServicesPorts } from "./launchservices.js";
 import { errorMessage, shortSha, truncate } from "./text.js";
 import { formatTime } from "./datetime.js";
-import { type CheckOutcome, type DoctorReport } from "./doctor-report.js";
+import { type CheckOutcome, type DoctorReport } from "./doctor-checks.js";
 import type { FallbackDemotion } from "./budget.js";
 import { briefFile } from "./readme.js";
 import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "./fix-claim.js";
