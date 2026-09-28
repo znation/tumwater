@@ -5,6 +5,59 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### `tumwater history --json` — the per-tick history as machine-readable data, completing the `--json` pattern (planned 2026-09-28)
+
+**Goal.** `status --json` and `report --json` exist (both landed 2026-09-28) so scripts can watch
+fleet state and spend without a GUI server or screen-scraping — but the third observability
+surface, per-tick history, still prints only an aligned table. A script that wants "which loops
+errored in the last hour and what did each tick cost" has no machine-readable answer. This plan
+gives `tumwater history` the same `--json` output shape; the payload doubles as the GUI's
+`/api/history` response, so CLI and dashboard serve byte-identical data by construction.
+
+**Approach.** The collector is already shared and pure — `readTickRows`/`tickRows` in
+src/ui/history.ts (lines 44-103) feed both `cmdHistory`'s table and the GUI's
+`handleHistory` (src/ui/gui-endpoints.ts:157-175, which sends `{ rows }` verbatim). The rows
+almost are the JSON payload; three fields are lost to rendering and must be kept raw:
+
+- src/ui/history.ts, `TickRow` (lines 38-46): add `ts: number` (the `tick_end` event's epoch ms —
+  `time` is `formatTimestamp`'s human string and discards the instant), `tokens: number`, and
+  `costUsd: number` (the raw values `tickRows` already computes at lines 56-57 before folding them
+  into the rendered `usage` string; 0 when the event carries none, matching the omit-when-zero
+  convention). The rendered `usage`/`time`/`detail` fields stay exactly as they are — the table
+  keeps its shape and every existing test holds.
+- src/cli.ts, the `history` case (lines 153-160): add `{ names: ["--json"] }` to
+  `rejectUnknownArgs`'s vocabulary (the `status`/`report` cases' pattern).
+- src/ui/history.ts, `cmdHistory` (lines 118-156): when `args.includes("--json")`, print
+  `JSON.stringify({ rows }, null, 2)` and return before the table rendering — the `readTickRows`
+  call, `-n` bounds check, and `--role` handling run exactly as before. The empty-log case prints
+  `{"rows":[]}` (a JSON document always, never the prose `no ticks yet` — the `report --json`
+  precedent: the flag's output must be parseable in every exit-0 case).
+- src/help.ts, the `tumwater history` stanza (line 46): add `[--json]` with a phrase in the
+  `status [--json]` stanza's wording style.
+- The GUI needs no change: `handleHistory` sends `readTickRows`' rows verbatim, so it gains the
+  three fields additively; the dashboard's history tab reads the fields it knows and ignores the
+  rest.
+- Tests in test/cli-history.test.ts (268 lines, already drives both `tickRows` and the CLI):
+  `--json` output parses with `JSON.parse` and its rows carry the same loop/tick/result/detail as
+  the table render of the same fixtures; `ts` equals the fixture's `tick_end` timestamp and
+  `tokens`/`costUsd` equal the raw numbers (0 where the event carries none); empty log prints
+  `{"rows":[]}` and exits 0; `--json` combines with `--role` and `-n` (bounds and role scope
+  identical to the table path); an unknown extra flag beside `--json` still fails
+  `rejectUnknownArgs`; every existing table-render test passes unchanged.
+
+**Files touched:** src/ui/history.ts, src/cli.ts, src/help.ts, test/cli-history.test.ts.
+
+**Acceptance criteria.**
+- `tumwater history --json` prints one JSON document parseable by `JSON.parse` whose `rows` match
+  `readTickRows(root, HISTORY_DEFAULT_TICKS, null)` for the same log, each row carrying `ts`,
+  `tokens`, and `costUsd` as numbers alongside the existing rendered fields.
+- `tumwater history --json --role <id> -n 5` returns exactly the same rows the plain form's table
+  shows for those flags (one row per tick, newest first, window growth included).
+- A log with no ticks prints `{"rows":[]}` and exits 0; `--json` never emits the prose
+  `no ticks yet`.
+- Plain `tumwater history` output is byte-identical to before (table tests unchanged);
+  `tumwater help history` names `--json`; `npm run test` passes.
+
 ## Done
 
 ### `tumwater report --json` — the usage report as machine-readable data, beside `status --json` (planned 2026-09-28, done 2026-09-28)
