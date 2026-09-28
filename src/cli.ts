@@ -5,26 +5,17 @@ import {
   parseCountFlag,
   parseDurationFlag,
   parsePortFlag,
-  parsePromptArgs,
   DURATION_FLAG,
   durationLabel,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
 } from "./cli-args.js";
-import { cmdAbort, cmdConfig, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake, requestWake } from "./operator-commands.js";
+import { cmdAbort, cmdConfig, cmdPause, cmdPrompt, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdLogs } from "./ui/log-commands.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { repoToplevel } from "./git.js";
 import { repoNotReady } from "./startup-gate.js";
-import {
-  type CancelOutcome,
-  cancelRolePrompt,
-  promptPreview,
-  queuedPrompts,
-  queuedRolePrompts,
-  submitRolePrompt,
-} from "./inbox.js";
 import { runDoctor } from "./doctor.js";
 import { renderDoctor } from "./ui/doctor-report.js";
 import { renderBacklogMarkdown } from "./ui/backlog-report.js";
@@ -39,8 +30,6 @@ import { runTui } from "./ui/tui.js";
 import { lanAddresses, startGui } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { errorMessage } from "./text.js";
-import { knownRoleIds, loadConfig } from "./config.js";
-import { DIRECTOR_ROLE } from "./roles.js";
 import { HELP, helpTopic } from "./help.js";
 
 // The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts
@@ -252,81 +241,10 @@ async function main(): Promise<void> {
       process.stdout.write(renderBacklogMarkdown(root) + "\n");
       break;
     }
-    case "prompt": {
+    case "prompt":
       await requireReadyRepo(root);
-      const parsed = parsePromptArgs(args);
-      // `--role <id>` scopes every mode to one loop's queue; the value is validated here, where
-      // the live config is readable, with the same message every other --role consumer uses.
-      // The director is always valid: its queue is the historical inbox (inbox.ts).
-      let role: string | null = null;
-      if (parsed.role !== null) {
-        const valid = knownRoleIds(loadConfig(root));
-        if (!valid.includes(parsed.role)) fail(`unknown role: ${parsed.role} (valid ids: ${valid.join(", ")})`);
-        role = parsed.role;
-      }
-      if (parsed.mode === "list") {
-        // Full text, verbatim: this is the inspection command that tells you what a queued
-        // prompt actually says before you cancel it. Grouped by loop — the director first (its
-        // queue is the shared one every pre-1/2 prompt landed in), then each role with queued
-        // prompts — so a per-role queue's position numbering stays unambiguous.
-        if (role !== null) {
-          const prompts = queuedRolePrompts(root, role);
-          if (prompts.length === 0) {
-            process.stdout.write(`nothing queued for ${role}\n`);
-          } else {
-            process.stdout.write(`${role}:\n`);
-            prompts.forEach((p, i) => process.stdout.write(`${i + 1}. ${p}\n`));
-          }
-          break;
-        }
-        const sections: string[] = [];
-        const director = queuedPrompts(root);
-        if (director.length > 0) {
-          sections.push(`director:\n${director.map((p, i) => `${i + 1}. ${p}`).join("\n")}`);
-        }
-        for (const r of knownRoleIds(loadConfig(root))) {
-          if (r === DIRECTOR_ROLE) continue;
-          const prompts = queuedRolePrompts(root, r);
-          if (prompts.length > 0) {
-            sections.push(`${r}:\n${prompts.map((p, i) => `${i + 1}. ${p}`).join("\n")}`);
-          }
-        }
-        if (sections.length === 0) {
-          process.stdout.write("nothing queued\n");
-        } else {
-          process.stdout.write(sections.join("\n") + "\n");
-        }
-        break;
-      }
-      if (parsed.mode === "cancel") {
-        const target = role ?? DIRECTOR_ROLE;
-        let outcome: CancelOutcome;
-        try {
-          outcome = cancelRolePrompt(root, target, parsed.position);
-        } catch (err) {
-          fail(errorMessage(err));
-        }
-        if (outcome.status === "gone") {
-          // A concurrent dequeue is a normal race, not an error: report it and exit clean.
-          process.stdout.write(`prompt ${parsed.position} is no longer queued — ${target} already took it\n`);
-        } else {
-          process.stdout.write(`cancelled: ${promptPreview(outcome.text)}\n`);
-        }
-        break;
-      }
-      const target = role ?? DIRECTOR_ROLE;
-      submitRolePrompt(root, target, parsed.text);
-      if (role === null) {
-        process.stdout.write("queued for the director loop\n");
-      } else {
-        process.stdout.write(`queued for the ${role} loop\n`);
-      }
-      // A live fleet sees the prompt now instead of whenever the sleeping loop's backoff next
-      // expires: wake just the targeted role (requestWake's marker is safe with no fleet
-      // running — the same contract as `tumwater wake`).
-      process.stdout.write(requestWake(root, [target]) + "\n");
+      await cmdPrompt(root, args);
       break;
-    }
     case "reset-counters":
     // Fall through: the five marker commands share one guard+dispatch shape — unknown-args
     // rejection against the optional --role flag, the ready-repo gate, then the

@@ -1,5 +1,13 @@
 import { knownRoleIds, loadConfig } from "./config.js";
-import { durationLabel, fail, parseDurationFlag, parseRoleFlag } from "./cli-args.js";
+import { durationLabel, fail, parseDurationFlag, parsePromptArgs, parseRoleFlag } from "./cli-args.js";
+import {
+  type CancelOutcome,
+  cancelRolePrompt,
+  promptPreview,
+  queuedPrompts,
+  queuedRolePrompts,
+  submitRolePrompt,
+} from "./inbox.js";
 import { formatTime } from "./datetime.js";
 import { errorMessage } from "./text.js";
 import { allRoleIds, DIRECTOR_ROLE } from "./roles.js";
@@ -343,4 +351,82 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
     : "";
   process.stdout.write(`fleet resumed — role loops tick again${when}${roleNote}${tail}\n`
   );
+}
+
+/** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the
+ * director (default) or one role's queue, list what is queued with per-loop position
+ * numbering, or cancel a queued prompt by position. The dispatcher in cli.ts gates on a ready
+ * repo and delegates here; list output is grouped by loop — the director first (its queue is
+ * the shared one every pre-1/2 prompt landed in), then each role with queued prompts — so a
+ * per-role queue's position numbering stays unambiguous. */
+export async function cmdPrompt(root: string, args: string[]): Promise<void> {
+  const parsed = parsePromptArgs(args);
+  // `--role <id>` scopes every mode to one loop's queue; the value is validated here, where
+  // the live config is readable, with the same message every other --role consumer uses.
+  // The director is always valid: its queue is the historical inbox (inbox.ts).
+  let role: string | null = null;
+  if (parsed.role !== null) {
+    const valid = knownRoleIds(loadConfig(root));
+    if (!valid.includes(parsed.role)) fail(`unknown role: ${parsed.role} (valid ids: ${valid.join(", ")})`);
+    role = parsed.role;
+  }
+  if (parsed.mode === "list") {
+    // Full text, verbatim: this is the inspection command that tells you what a queued
+    // prompt actually says before you cancel it.
+    if (role !== null) {
+      const prompts = queuedRolePrompts(root, role);
+      if (prompts.length === 0) {
+        process.stdout.write(`nothing queued for ${role}\n`);
+      } else {
+        process.stdout.write(`${role}:\n`);
+        prompts.forEach((p, i) => process.stdout.write(`${i + 1}. ${p}\n`));
+      }
+      return;
+    }
+    const sections: string[] = [];
+    const director = queuedPrompts(root);
+    if (director.length > 0) {
+      sections.push(`director:\n${director.map((p, i) => `${i + 1}. ${p}`).join("\n")}`);
+    }
+    for (const r of knownRoleIds(loadConfig(root))) {
+      if (r === DIRECTOR_ROLE) continue;
+      const prompts = queuedRolePrompts(root, r);
+      if (prompts.length > 0) {
+        sections.push(`${r}:\n${prompts.map((p, i) => `${i + 1}. ${p}`).join("\n")}`);
+      }
+    }
+    if (sections.length === 0) {
+      process.stdout.write("nothing queued\n");
+    } else {
+      process.stdout.write(sections.join("\n") + "\n");
+    }
+    return;
+  }
+  if (parsed.mode === "cancel") {
+    const target = role ?? DIRECTOR_ROLE;
+    let outcome: CancelOutcome;
+    try {
+      outcome = cancelRolePrompt(root, target, parsed.position);
+    } catch (err) {
+      fail(errorMessage(err));
+    }
+    if (outcome.status === "gone") {
+      // A concurrent dequeue is a normal race, not an error: report it and exit clean.
+      process.stdout.write(`prompt ${parsed.position} is no longer queued — ${target} already took it\n`);
+    } else {
+      process.stdout.write(`cancelled: ${promptPreview(outcome.text)}\n`);
+    }
+    return;
+  }
+  const target = role ?? DIRECTOR_ROLE;
+  submitRolePrompt(root, target, parsed.text);
+  if (role === null) {
+    process.stdout.write("queued for the director loop\n");
+  } else {
+    process.stdout.write(`queued for the ${role} loop\n`);
+  }
+  // A live fleet sees the prompt now instead of whenever the sleeping loop's backoff next
+  // expires: wake just the targeted role (requestWake's marker is safe with no fleet
+  // running — the same contract as `tumwater wake`).
+  process.stdout.write(requestWake(root, [target]) + "\n");
 }
