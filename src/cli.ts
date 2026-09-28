@@ -2,12 +2,9 @@
 import fs from "node:fs";
 import {
   fail,
-  parseCountFlag,
   say,
-  parseDurationFlag,
   parsePortFlag,
   DURATION_FLAG,
-  failOverDurationCap,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
@@ -21,10 +18,7 @@ import { runDoctor } from "./doctor.js";
 import { renderDoctor } from "./ui/doctor-report.js";
 import { renderBacklogMarkdown } from "./ui/backlog-report.js";
 import { cmdHistory } from "./ui/history.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS, renderReportMarkdown, renderSinceReportMarkdown } from "./ui/report.js";
-import { collectReport, collectReportSince } from "./report-data.js";
-import { collectFailureReport } from "./failure-data.js";
-import { renderFailureMarkdown } from "./failure-report.js";
+import { cmdReport } from "./ui/report.js";
 import { snapshot } from "./ui/status.js";
 import { renderStatus } from "./ui/status-render.js";
 import { runTui } from "./ui/tui.js";
@@ -174,33 +168,7 @@ async function main(): Promise<void> {
       ]);
       // --since is handled before the day-shape reads: it is a rival shape (totals over a
       // trailing window vs a series over whole days), not a modifier of either.
-      const sinceFlag = args.indexOf("--since");
-      if (sinceFlag >= 0) {
-        if (args.includes("--days"))
-          fail("report --since cannot be combined with --days (--days counts whole local days; --since totals a trailing window)");
-        if (args.includes("--failures"))
-          fail("report --since cannot be combined with --failures (the failure digest has no windowed-since mode)");
-        const ms = parseDurationFlag("--since", args[sinceFlag + 1]);
-        failOverDurationCap("report --since", ms, REPORT_SINCE_MAX_MS);
-        say(renderSinceReportMarkdown(collectReportSince(root, ms)));
-        break;
-      }
-      const daysFlag = args.indexOf("--days");
-      let days = REPORT_DEFAULT_DAYS;
-      if (daysFlag >= 0) {
-        days = parseCountFlag("--days", args[daysFlag + 1]);
-        // /api/report clamps its ?days= param to the same bound; an explicit flag fails fast
-        // instead — a typo'd "3650" must not build a ten-year series (one entry per day), and
-        // a huge value would grow it until the process runs out of memory. parseCountFlag has
-        // already rejected 0, non-decimals, and a missing value.
-        if (days > REPORT_MAX_DAYS)
-          fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(args[daysFlag + 1])})`);
-      }
-      say(
-        args.includes("--failures")
-          ? renderFailureMarkdown(collectFailureReport(root, days))
-          : renderReportMarkdown(collectReport(root, days)),
-      );
+      await cmdReport(root, args);
       break;
     }
     case "doctor": {

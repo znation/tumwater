@@ -1,16 +1,21 @@
-/** Rendering half of the usage report: turn a collected `ReportData` (report-data.ts) into the
- * bounded Markdown the CLI prints and the TUI usage pane reuses. Pure function of the data —
- * no I/O, no clock reads — so the bounds argued at collection hold here unchanged. */
-import type { ReportData, ReportDay, SinceReport } from "../report-data.js";
+/** The usage report: turn a collected `ReportData` (report-data.ts) into the bounded Markdown
+ * the CLI prints and the TUI usage pane reuses (pure function of the data — no I/O, no clock
+ * reads — so the bounds argued at collection hold here unchanged), plus `report`'s CLI command
+ * half (cmdReport), which parses the flags and drives the collectors and the renderers. */
+import { collectReport, collectReportSince, type ReportData, type ReportDay, type SinceReport } from "../report-data.js";
+import { collectFailureReport } from "../failure-data.js";
+import { renderFailureMarkdown } from "../failure-report.js";
 import { compactTokens, usd } from "../text.js";
 import { reportWindow } from "../datetime.js";
-import { durationLabel } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, parseCountFlag, parseDurationFlag, say } from "../cli-args.js";
 
 // The windowed tail read (and the REPORT_*_DAYS bounds it serves) moved to core
 // event-window.ts so the failure digest can share it without a core→ui import. Re-exported
 // here because every existing caller (cli.ts, gui.ts, the tests) imports them from this
-// module — moving them must not churn those import sites.
-export { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../event-window.js";
+// module — moving them must not churn those import sites; cmdReport binds the same constants
+// directly so it can enforce the bounds.
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../event-window.js";
+export { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS };
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
@@ -103,4 +108,42 @@ export function renderReportMarkdown(data: ReportData): string {
   const spenders = rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0);
   lines.push(`**Cost by role:** ${spenders.length === 0 ? "-" : spenders.map(([r, c]) => `${r} — ${usd(c)}`).join(" · ")}`);
   return lines.join("\n");
+}
+
+/** `tumwater report [--days <n>] [--failures] [--since <duration>]`: the command half, beside
+ * the renderers above (the cmdLogs/cmdHistory pattern of this directory): parse the flags,
+ * collect through report-data.ts / failure-data.ts, and print. Unknown-args rejection and the
+ * no-ready-repo-gate decision stay in cli.ts's case, like every other command's. */
+export async function cmdReport(root: string, args: string[]): Promise<void> {
+  // --since is handled before the day-shape reads: it is a rival shape (totals over a
+  // trailing window vs a series over whole days), not a modifier of either.
+  const sinceFlag = args.indexOf("--since");
+  if (sinceFlag >= 0) {
+    if (args.includes("--days"))
+      fail("report --since cannot be combined with --days (--days counts whole local days; --since totals a trailing window)");
+    if (args.includes("--failures"))
+      fail("report --since cannot be combined with --failures (the failure digest has no windowed-since mode)");
+    const ms = parseDurationFlag("--since", args[sinceFlag + 1]);
+    // The shared over-cap check (the same idiom logs --since and pause --for use), so the
+    // cap message cannot drift from the other capped duration flags.
+    failOverDurationCap("report --since", ms, REPORT_SINCE_MAX_MS);
+    say(renderSinceReportMarkdown(collectReportSince(root, ms)));
+    return;
+  }
+  const daysFlag = args.indexOf("--days");
+  let days = REPORT_DEFAULT_DAYS;
+  if (daysFlag >= 0) {
+    days = parseCountFlag("--days", args[daysFlag + 1]);
+    // /api/report clamps its ?days= param to the same bound; an explicit flag fails fast
+    // instead — a typo'd "3650" must not build a ten-year series (one entry per day), and
+    // a huge value would grow it until the process runs out of memory. parseCountFlag has
+    // already rejected 0, non-decimals, and a missing value.
+    if (days > REPORT_MAX_DAYS)
+      fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(args[daysFlag + 1])})`);
+  }
+  say(
+    args.includes("--failures")
+      ? renderFailureMarkdown(collectFailureReport(root, days))
+      : renderReportMarkdown(collectReport(root, days)),
+  );
 }
