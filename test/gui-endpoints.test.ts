@@ -11,17 +11,14 @@ import { tmpdir } from "./repo-fixtures.js";
 // The GET data endpoints of the dashboard (src/ui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
 // /api/prompt, /api/transcript, and /api/backlog through the live server but never these two.
-// Both handlers only read req.url and write one JSON response, so a fake req/res pair that
-// captures writeHead/end is enough; the domain work runs for real against a seeded repo.
+// Both handlers only read the parsed query (the server threads it down from the one
+// parseRequestTarget call) and write one JSON response, so a fake res that captures
+// writeHead/end is enough; the domain work runs for real against a seeded repo.
 
 interface Captured {
   status?: number;
   contentType?: string;
   body: string;
-}
-
-function fakeReq(url: string): http.IncomingMessage {
-  return { url } as unknown as http.IncomingMessage;
 }
 
 function fakeRes(): { res: http.ServerResponse; captured: Captured } {
@@ -40,7 +37,7 @@ function fakeRes(): { res: http.ServerResponse; captured: Captured } {
 
 function serveReport(root: string, query = ""): { captured: Captured; data: unknown } {
   const { res, captured } = fakeRes();
-  handleReport(fakeReq(`/api/report${query}`), res, root);
+  handleReport(new URLSearchParams(query), res, root);
   return { captured, data: JSON.parse(captured.body) };
 }
 
@@ -120,6 +117,6 @@ test("handleFailures serves the digest as JSON markdown, empty and after an erro
 
 function serveFailures(root: string, query = ""): { captured: Captured; data: unknown } {
   const { res, captured } = fakeRes();
-  handleFailures(fakeReq(`/api/failures${query}`), res, root);
+  handleFailures(new URLSearchParams(query), res, root);
   return { captured, data: JSON.parse(captured.body) };
 }

@@ -60,9 +60,10 @@ function rejectBadRole(root: string, res: http.ServerResponse, role: unknown, al
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
  * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
  * one must open its transcript: ids validate through rejectBadRole. The 400 message lists
- * exactly the ids accepted. */
-export function handleTranscript(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
-  const q = new URL(req.url ?? "", "http://localhost").searchParams;
+ * exactly the ids accepted. The query arrives pre-parsed — the server parses the target
+ * once (gui.ts's parseRequestTarget) and threads it down, so the parse idiom lives in one
+ * place and cannot disagree with the routing or the token gate about what the URL said. */
+export function handleTranscript(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
   let n = 50;
@@ -83,9 +84,9 @@ export function handleTranscript(req: http.IncomingMessage, res: http.ServerResp
  * ride the 1-second /api/status poll. index addresses the Nth entry of that file's open
  * section in the same order statusPayload lists its titles — PLANS.md ## Planned,
  * BUGS.md ## Open, QUESTIONS.md ## Open — zero-based. Unknown/missing file, missing or bad
- * index, and out-of-range index → 400 JSON error via sendJson. */
-export function handleBacklog(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
-  const q = new URL(req.url ?? "", "http://localhost").searchParams;
+ * index, and out-of-range index → 400 JSON error via sendJson. The query arrives pre-parsed
+ * (gui.ts's parseRequestTarget), like every GET-data handler here. */
+export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const file = q.get("file");
   if (file === null) {
     sendJson(res, 400, { error: `file required (valid values: plans, bugs, questions)` });
@@ -125,8 +126,7 @@ export function handleBacklog(req: http.IncomingMessage, res: http.ServerRespons
  * "Non-decimal" is the shared plain-digit rule (text.parseNonNegativeInt):
  * hex/scientific/signed/padded spellings are not counts and get the default instead of a
  * coerced value — raw Number.parseInt would read "1e3" as 1, "0x10" as 0, and "-5" as -5. */
-function windowDays(req: http.IncomingMessage): number {
-  const q = new URL(req.url ?? "", "http://localhost").searchParams;
+function windowDays(q: URLSearchParams): number {
   const n = parseNonNegativeInt(q.get("days") ?? "");
   return n === null ? REPORT_DEFAULT_DAYS : Math.min(REPORT_MAX_DAYS, Math.max(1, n));
 }
@@ -134,16 +134,16 @@ function windowDays(req: http.IncomingMessage): number {
 /** Handle GET /api/report?days=N: the usage report data (collectReport's ReportData) as
  * JSON — the dashboard's report tab renders it. The days window follows windowDays. Reads
  * files directly, so it works whether or not the fleet is running. */
-export function handleReport(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
-  sendJson(res, 200, collectReport(root, windowDays(req)));
+export function handleReport(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  sendJson(res, 200, collectReport(root, windowDays(q)));
 }
 
 /** Handle GET /api/failures?days=N: the same bounded Markdown failure digest the telemetry
  * loop feeds on and `tumwater report --failures` prints, as JSON ({ markdown }) — the
  * dashboard's failures tab renders it. The days window follows windowDays (so it can never
  * drift from /api/report's). Reads files directly, so it works with no fleet running. */
-export function handleFailures(req: http.IncomingMessage, res: http.ServerResponse, root: string): void {
-  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(req))) });
+export function handleFailures(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q))) });
 }
 
 /** Pull the prompt text out of a prompt endpoint's body — the shared validator for

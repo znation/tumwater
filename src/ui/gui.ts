@@ -111,14 +111,16 @@ export function startGui(
         res.end(GUI_PAGE);
       } else if (req.method === "GET" && pathname === "/api/status") {
         sendJson(res, 200, { ...statusPayload(root), serverBuildSha: startupBuild?.sha ?? null });
+      // The GET-data handlers receive the query from the one parsed target (route match
+      // implies target parsed — pathname is non-null only then), not a re-parse of req.url.
       } else if (req.method === "GET" && pathname === "/api/report") {
-        handleReport(req, res, root);
+        handleReport(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/failures") {
-        handleFailures(req, res, root);
+        handleFailures(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/transcript") {
-        handleTranscript(req, res, root);
+        handleTranscript(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/backlog") {
-        handleBacklog(req, res, root);
+        handleBacklog(target!.searchParams, res, root);
       } else if (req.method === "POST" && pathname === "/api/prompt") {
         await handlePrompt(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/prompt-role") {
