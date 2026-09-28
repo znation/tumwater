@@ -5,6 +5,81 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### `report --since <duration>` — totals over a trailing window, not whole days (planned 2026-09-28)
+
+**Goal.** `tumwater report` answers "how much has the fleet spent this week" but not "how much
+since the 429 storm at 10:00": `--days` counts back whole local calendar days, so a sub-day
+question rounds up to a full day and an operator reconstructing an incident's spend must count
+`logs --since` lines by hand. The events already carry `ts` and `costUsd`, and
+src/event-window.ts's `readWindowEvents` already reads a window with bounded backwards I/O, so
+a trailing-window totals view is a small second consumer of the same plumbing — the sibling of
+the planned `logs --since` (raw stream above, aggregate here).
+
+**Approach.**
+
+1. **src/event-window.ts** — one constant beside `REPORT_MAX_DAYS`: `REPORT_SINCE_MAX_MS =
+   7 × 24 × 60 × 60 × 1000`. Same rationale as the day bound: a longer window only re-reads
+   more log without adding signal, and the log rotates at 16 MB anyway.
+2. **src/report-data.ts** — a `SinceReport` interface (`sinceMs`, `fromIso` ISO string of the
+   cutoff, `totals` {tokensOut, ticks, commits, costUsd}, `ticksByRole` and `costByRole`
+   Records, `coversFullWindow`) and `collectReportSince(root, ms)`: capture one `cutoff =
+   Date.now() - ms` instant; `fromKey = formatDate(new Date(cutoff))` (datetime.ts's
+   `formatDate`, the same helper `eventDayKey` uses, so window key and event keys cannot
+   disagree); `readWindowEvents(root, fromKey)`, filter to `typeof ev.ts === "number" &&
+   ev.ts >= cutoff` (the day-keyed read may include earlier hours of the cutoff's own local
+   day — over-read is at most one day's events); aggregate tick_end/merged exactly as
+   `collectReport`'s loop does (same `typeof`-guarded tokens/cost handling, `eventRole` for
+   the per-role maps). Backlog tallies (features done / bugs fixed) are **omitted**: they are
+   counted from PLANS.md/BUGS.md `done`/`fixed` dates, which are day-granular file metadata
+   that cannot subdivide a sub-day window — the render says so rather than showing a
+   day-rounded number. Keep it a separate function, not a `collectReport` variant flag: the
+   day collector's zero-filled series and file reads have no place in a window totals view.
+3. **src/ui/report.ts** — `renderSinceReportMarkdown(data: SinceReport): string`, same voice
+   as `renderReportMarkdown`:
+   `# tumwater usage report`, blank line, `window: last <durationLabel(ms)> (since <local
+   time of the cutoff, toLocaleString>)`, blank line, the same **Totals:** phrase minus the
+   features/bugs cells, then `**Ticks by role:**` and `**Cost by role:**` lines built with
+   the same rank-by-total-desc-then-name rule and zero-value omission as
+   `renderReportMarkdown`'s (a zero-event window renders `-` for both role lines). When
+   `coversFullWindow` is false, append a note line (`note: older events rotated out of the
+   log`) so a sparse window is never mistaken for an idle fleet; when true, a final line
+   `backlog tallies (features done / bugs fixed) need the day report (--days)` states the
+   omission once, unconditionally. Pure function of the data — no clock reads.
+4. **src/cli.ts** — the `report` case's `rejectUnknownArgs` list gains
+   `{ names: ["--since"], value: true, valueName: "<duration>" }`. Before the existing flag
+   reads: when `--since` is present, `fail()` if combined with `--days` or `--failures`
+   (rival shapes: a series over whole days vs totals over a trailing window, and the failure
+   digest has no windowed-since mode — each failure names both flags). Parse with the
+   existing `parseDurationFlag("--since", …)` (src/cli-args.ts; `45s`/`90m`/`2h`/`1d`) and
+   fail when it exceeds `REPORT_SINCE_MAX_MS`, naming the bound. Then write
+   `renderSinceReportMarkdown(collectReportSince(root, ms))`.
+5. **src/help.ts** — a third report usage line after the `--failures` one:
+   `tumwater report --since <duration>` with a description naming the totals shape, the 7-day
+   bound, and the `--days`/`--failures` exclusion (the per-command view derives from the
+   full text, so one edit covers `tumwater help report`).
+6. **README.md** — extend the "Audit" table's `tumwater report` row with
+   `tumwater report --since <duration>`.
+
+**Files touched:** src/event-window.ts, src/report-data.ts, src/ui/report.ts, src/cli.ts,
+src/help.ts, README.md; tests in test/report.test.ts (seed events.jsonl directly with events
+minutes and days old, the pattern the file already uses, then call `collectReportSince` and
+`renderSinceReportMarkdown` — cutoff filtering across the day boundary, tick/commit/role
+taggregation parity with a same-seed `collectReport` slice, the rotation note, the role-rank
+order, and the zero window) and test/cli-report.test.ts if one exists for flag wiring, else
+the same CLI-exercise pattern test/cli-logs.test.ts uses (mutual-exclusion failures, the
+over-bound failure, and the rendered output).
+
+**Acceptance criteria.** (a) `tumwater report --since 6h` prints a totals block covering only
+events from the last 6 hours, with Ticks by role / Cost by role lines. (b) `--since` with
+`--days` or `--failures` fails naming both flags; a duration over 7 days fails naming the
+bound; a missing or malformed value fails with `parseDurationFlag`'s message. (c) A window
+with no events prints zero totals and `-` role lines, exiting 0; a window whose start predates
+the retained log carries the rotation note. (d) `tumwater help report` shows the new usage
+line. (e) Full suite passes.
+
+Sibling: `logs --since` (next entry) composes for drill-down — the totals flag answers "how
+much", the logs flag answers "what exactly"; neither depends on the other.
+
 ### `logs --since <duration>` — show the events of a time window, not a guess at a count (planned 2026-09-28)
 
 **Goal.** An operator reconstructing "what happened in the hour around that 429 storm" has only
