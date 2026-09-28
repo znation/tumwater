@@ -21,7 +21,6 @@ import { eventsLogPath, piLogPath } from "../paths.js";
  * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
  * loop's pi transcript (see cmdLogsTranscript). */
 export async function cmdLogs(root: string, args: string[]): Promise<void> {
-  const follow = args.includes("-f") || args.includes("--follow");
   // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
   // would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
@@ -29,13 +28,24 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // Rival shapes stay exclusive — --role swaps in a pi transcript rather than this event log
   // (--prompt requires --role, so it is excluded with it), and --since is a filter of its own
   // rather than a window to filter — and each failure names both flags.
+  const grepFlag = args.indexOf("--grep");
   const grepRaw = flagValue(args, "--grep");
   let grepPattern: string | null = null;
   let grepLower: string | null = null;
+  // A flag-shaped token sitting at the --grep value's position IS the pattern, not the flag it
+  // spells: `logs --grep -f` greps for the text "-f", and `--grep --since` greps for "--since".
+  // Every flag scan below therefore runs over `rest` — args with that one position removed — so
+  // the pattern cannot impersonate a rival flag (entering follow mode under `-f`) and a rival
+  // check cannot misfire on the pattern (rejecting a legitimate grep). With no --grep, rest is
+  // args unchanged and every scan behaves exactly as before. flagValue keeps doing the value
+  // lookup, but over `rest` from --since on: a pattern spelling a rival flag must not be read
+  // as that flag's value any more than it may be counted as the flag.
+  const rest = grepFlag >= 0 ? args.filter((_, i) => i !== grepFlag + 1) : args;
+  const follow = rest.includes("-f") || rest.includes("--follow");
   if (grepRaw !== null) {
-    if (args.includes("--role") || args.includes("--prompt"))
+    if (rest.includes("--role") || rest.includes("--prompt"))
       fail("logs --grep cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
-    if (args.includes("--since"))
+    if (rest.includes("--since"))
       fail("logs --grep cannot be combined with --since (--since is a filter of its own; --grep filters the -n view and its follow)");
     const pattern = grepRaw;
     if (pattern === undefined || pattern === "") fail("logs --grep needs a pattern");
@@ -48,12 +58,12 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // guessing a count. Rival shapes stay exclusive — follow means "from now on", -n means "last
   // N", and --role swaps in a pi transcript rather than this event log — and each failure names
   // both flags. (--prompt requires --role, so it is excluded with it.)
-  const sinceRaw = flagValue(args, "--since");
+  const sinceRaw = flagValue(rest, "--since");
   if (sinceRaw !== null) {
     if (follow)
       fail('logs --since cannot be combined with -f/--follow (follow means "from now on"; --since shows a bounded past window)');
-    if (args.includes("-n")) fail("logs --since cannot be combined with -n (a count and a window are rival shapes)");
-    if (args.includes("--role") || args.includes("--prompt"))
+    if (rest.includes("-n")) fail("logs --since cannot be combined with -n (a count and a window are rival shapes)");
+    if (rest.includes("--role") || rest.includes("--prompt"))
       fail("logs --since cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
     const ms = parseDurationFlag("--since", sinceRaw);
     failOverDurationCap("logs --since", ms, LOGS_SINCE_MAX_MS);
@@ -87,12 +97,12 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       say("note: the log's oldest retained event lies inside this window; older events may have rotated out");
     return;
   }
-  const nRaw = flagValue(args, "-n");
+  const nRaw = flagValue(rest, "-n");
   const limit = nRaw !== null ? parseCountFlag("-n", nRaw) : 50;
   // The event feed (no --role) never needs the config at all: parseRoleScope reads it only
   // when the flag is present.
-  const role = parseRoleScope(root, args);
-  const showPrompts = args.includes("--prompt");
+  const role = parseRoleScope(root, rest);
+  const showPrompts = rest.includes("--prompt");
   if (showPrompts && role === null) fail("logs --prompt needs --role <id>");
   if (role !== null) {
     await cmdLogsTranscript(root, role, limit, follow, showPrompts);

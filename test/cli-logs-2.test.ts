@@ -242,6 +242,34 @@ test("logs --grep refuses the rival shapes, naming both flags", async () => {
   assert.match(r.stderr, /--grep .*--since/);
 });
 
+test("logs --grep treats a flag-shaped pattern as text, not as the flag it spells", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs grep flag-shaped pattern");
+
+  // A rival flag's name at the PATTERN's position is the grep text: the command must exit 0
+  // with the gentle no-match note, not the combine rejection (which used to fire on the
+  // pattern itself, since every rival scan looked at the raw argument list).
+  let r = await cli(repo, "logs", "--grep", "--since");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /no events matching "--since"/);
+
+  // --prompt misfired the same way, with the --role combine message.
+  r = await cli(repo, "logs", "--grep", "--prompt");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /no events matching "--prompt"/);
+});
+
+test("logs --grep -f does not enter follow mode over its own pattern", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs grep dash-f pattern");
+  // The pattern "-f" used to be read as the follow flag itself: the command hung following
+  // an empty log instead of printing the no-match note and exiting. cli() bounds the run at
+  // 20s, so a plain exit-0 with the note IS the assertion — pre-fix this test times out.
+  const r = await cli(repo, "logs", "--grep", "-f");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /no events matching "-f"/);
+});
+
 test("logs --grep reports a missing pattern and an empty result gently", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs grep empties");
