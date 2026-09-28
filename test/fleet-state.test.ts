@@ -8,6 +8,7 @@ import {
   isFleetPaused,
   pauseRole,
   pausedRoles,
+  pausedUntil,
   resumeRole,
   pauseFleet,
   resumeFleet,
@@ -15,7 +16,7 @@ import {
   orchestratorAlive,
   type OrchestratorInfo,
 } from "../src/fleet-state.js";
-import { pausedRolesLockPath } from "../src/paths.js";
+import { pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 test("isFleetPaused reads false with no .tumwater dir and no marker", () => {
@@ -246,4 +247,76 @@ test("a crashed pause writer's lock is stolen, not waited on forever", () => {
   fs.writeFileSync(path.join(dead, "pid"), "999999999");
   assert.equal(pauseRole(root, "dry"), true, "a dead-pid lock is stolen at once");
   assert.deepEqual(pausedRoles(root), ["docs", "dry"]);
+});
+
+// --- timed pause (`tumwater pause [--role <id>] --for <duration>`, PLANS.md 2026-09-25) ---
+
+test("pauseFleet with a deadline writes { at, until } and pausedUntil reads it back", () => {
+  const root = tmpdir();
+  const until = Date.now() + 30 * 60_000;
+  assert.equal(pauseFleet(root, until), true, "a timed pause changes state like a plain one");
+  const marker = JSON.parse(fs.readFileSync(path.join(root, ".tumwater", "paused.json"), "utf8")) as {
+    at: number;
+    until: number;
+  };
+  assert.equal(marker.until, until, "the marker carries the ms-epoch deadline");
+  assert.equal(isFleetPaused(root), true);
+  assert.equal(pausedUntil(root), until, "the standing deadline is what the snapshot's pausedUntil exposes");
+});
+
+test("an expired fleet deadline reads as unpaused everywhere and a re-pause starts fresh", () => {
+  const root = tmpdir();
+  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".tumwater", "paused.json"),
+    JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000 }),
+  );
+  assert.equal(isFleetPaused(root), false, "a past deadline is not a pause");
+  assert.equal(pausedUntil(root), undefined, "an expired deadline is absent, never exposed");
+  assert.equal(pauseFleet(root), true, "a pause after expiry reports a fresh pause, not 'already paused'");
+  const marker = JSON.parse(fs.readFileSync(path.join(root, ".tumwater", "paused.json"), "utf8")) as {
+    at: number;
+    until?: number;
+  };
+  assert.equal(marker.until, undefined, "an indefinite re-pause writes the plain { at } marker");
+  assert.equal(isFleetPaused(root), true);
+});
+
+test("a fresh --for over a standing fleet pause overwrites the deadline; a plain pause no-ops", () => {
+  const root = tmpdir();
+  pauseFleet(root, Date.now() + 30 * 60_000);
+  assert.equal(pauseFleet(root), false, "a plain pause over a timed pause stays the idempotent no-op");
+  const later = Date.now() + 2 * 3_600_000;
+  assert.equal(pauseFleet(root, later), true, "a --for over a standing pause overwrites the deadline");
+  assert.equal(pausedUntil(root), later);
+});
+
+test("pauseRole with a deadline writes { roles, at, until } and expiry releases the set", () => {
+  const root = tmpdir();
+  const until = Date.now() + 2 * 3_600_000;
+  assert.equal(pauseRole(root, "clean", until), true);
+  const marker = JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")) as {
+    roles: string[];
+    until: number;
+  };
+  assert.deepEqual(marker.roles, ["clean"]);
+  assert.equal(marker.until, until);
+  assert.deepEqual(pausedRoles(root), ["clean"]);
+  // Expiry releases the whole set on the read side...
+  fs.writeFileSync(
+    pausedRolesPath(root),
+    JSON.stringify({ roles: ["clean"], at: Date.now() - 60_000, until: Date.now() - 30_000 }),
+  );
+  assert.deepEqual(pausedRoles(root), [], "a past deadline is not a pause");
+  // ...and a fresh pause starts a fresh set: the expired members already auto-resumed.
+  assert.equal(pauseRole(root, "dry"), true);
+  assert.deepEqual(pausedRoles(root), ["dry"]);
+  // A plain pause of the standing role stays the no-op; a fresh --for overwrites the shared
+  // deadline (extend or shorten); resume lifts a timed pause early like any other.
+  assert.equal(pauseRole(root, "dry"), false);
+  const sooner = Date.now() + 60_000;
+  assert.equal(pauseRole(root, "dry", sooner), true);
+  assert.equal((JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")) as { until: number }).until, sooner);
+  assert.equal(resumeRole(root, "dry"), true);
+  assert.equal(fs.existsSync(pausedRolesPath(root)), false);
 });

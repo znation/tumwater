@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  durationLabel,
   parseBranchFlag,
   parseCountFlag,
+  parseDurationFlag,
   parsePortFlag,
   parseRoleFlag,
   rejectUnknownArgs,
@@ -489,4 +491,31 @@ test("parsePromptArgs --role: accepted in every mode, never prompt content", () 
   assert.match(dup.stderr, /--role may only be given once/);
   const stray = expectFail(() => parsePromptArgs(["--list", "--role", "qa", "extra"]));
   assert.match(stray.stderr, /unexpected argument "extra" — with --list there is no prompt text/);
+});
+
+// --- parseDurationFlag (the timed pause's `--for <duration>`) ---
+
+test("parseDurationFlag accepts <n><s|m|h|d> and rejects zero, negative, unit-less, unknown-unit, and missing values", () => {
+  assert.equal(expectOk(() => parseDurationFlag("--for", "45s")), 45_000);
+  assert.equal(expectOk(() => parseDurationFlag("--for", "90m")), 90 * 60_000);
+  assert.equal(expectOk(() => parseDurationFlag("--for", "2h")), 2 * 3_600_000);
+  assert.equal(expectOk(() => parseDurationFlag("--for", "1d")), 86_400_000);
+
+  const missing = expectFail(() => parseDurationFlag("--for", undefined));
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /--for needs a value/);
+
+  for (const raw of ["0", "0m", "0s", "-5m", "30", "30x", "", "m", "1.5h", "1h30m"]) {
+    const r = expectFail(() => parseDurationFlag("--for", raw));
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--for needs a duration like 45s, 90m, 2h, or 1d/);
+  }
+});
+
+test("durationLabel phrases a parsed duration back in the parser's vocabulary", () => {
+  for (const raw of ["45s", "90m", "2h", "1d", "5m", "3d"]) {
+    assert.equal(durationLabel(parseDurationFlag("--for", raw)), raw);
+  }
+  // A whole hour reads 1h, not 60m — the largest unit the duration divides into evenly wins.
+  assert.equal(durationLabel(60 * 60_000), "1h");
 });

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import {
   cmdAbort,
   cmdPause,
@@ -355,4 +356,55 @@ test("per-role pause and resume reject unknown role ids like abort does", async 
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: ghost/);
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "no marker on failure");
+});
+
+// --- timed pause (`pause --for <duration>`) ---
+
+test("cmdPause --for writes a timed fleet marker and names the auto-resume", async () => {
+  const root = tmpdir();
+  const before = Date.now();
+  const { stdout } = await expectOk(() => cmdPause(root, ["--for", "30m"]));
+  assert.match(stdout, /fleet paused for 30m — role loops stop starting new ticks/);
+  assert.match(stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
+  const marker = JSON.parse(fs.readFileSync(pausedPath(root), "utf8")) as { at: number; until: number };
+  assert.ok(marker.until > before + 29 * 60_000 && marker.until <= before + 31 * 60_000);
+});
+
+test("cmdPause --for over a standing pause overwrites the deadline and reports it", async () => {
+  const root = tmpdir();
+  await expectOk(() => cmdPause(root, ["--for", "30m"]));
+  const { stdout } = await expectOk(() => cmdPause(root, ["--for", "2h"]));
+  assert.match(stdout, /fleet paused for 2h —/, "a fresh --for is a fresh confirmation, not 'already paused'");
+  assert.match(stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
+  const marker = JSON.parse(fs.readFileSync(pausedPath(root), "utf8")) as { until: number };
+  assert.ok(marker.until > Date.now() + 60 * 60_000, "the deadline was extended to ~2h");
+  // A plain pause over a timed pause stays today's idempotent no-op.
+  const again = await expectOk(() => cmdPause(root));
+  assert.equal(again.stdout.trim(), "already paused");
+});
+
+test("cmdPause after an expired deadline reports a fresh pause", async () => {
+  const root = tmpdir();
+  fs.mkdirSync(path.dirname(pausedPath(root)), { recursive: true });
+  fs.writeFileSync(pausedPath(root), JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000 }));
+  const { stdout } = await expectOk(() => cmdPause(root));
+  assert.match(stdout, /fleet paused/);
+  assert.doesNotMatch(stdout, /already paused/);
+});
+
+test("cmdPause --role --for writes the role marker with the deadline and overwrites on a re-pause", async () => {
+  const root = tmpdir();
+  const { stdout } = await expectOk(() => cmdPause(root, ["--role", "clean", "--for", "2h"]));
+  assert.match(stdout, /role clean paused for 2h — it stops starting new ticks/);
+  assert.match(stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
+  const readUntil = () => (JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")) as { roles: string[]; until: number }).until;
+  const first = readUntil();
+  assert.ok(first > Date.now() + 60 * 60_000);
+  // A plain pause of the standing role stays the no-op; a fresh --for overwrites the deadline.
+  const idle = await expectOk(() => cmdPause(root, ["--role", "clean"]));
+  assert.equal(idle.stdout.trim(), "role clean is already paused");
+  const second = await expectOk(() => cmdPause(root, ["--role", "clean", "--for", "1h"]));
+  assert.match(second.stdout, /role clean paused for 1h —/);
+  const now = readUntil();
+  assert.ok(now < first && now <= Date.now() + 60 * 60_000 + 5_000, "the deadline was shortened to ~1h");
 });

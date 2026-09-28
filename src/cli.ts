@@ -5,6 +5,7 @@ import {
   parseCountFlag,
   parsePortFlag,
   parsePromptArgs,
+  DURATION_FLAG,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
@@ -67,7 +68,9 @@ const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) =
  * dispatch to its operator-commands core. One copy of the guard sequence so the five cannot
  * drift on validation order or gating. */
 async function runRoleCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
-  rejectUnknownArgs(command, args, [ROLE_FLAG]);
+  // `pause` alone accepts `--for <duration>` (the timed pause); the other marker commands keep
+  // the plain --role vocabulary, so a stray --for fails fast instead of being silently ignored.
+  rejectUnknownArgs(command, args, command === "pause" ? [ROLE_FLAG, DURATION_FLAG] : [ROLE_FLAG]);
   await requireReadyRepo(root);
   await markerCommandCores[command](root, args);
 }

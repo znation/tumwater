@@ -10,7 +10,7 @@ import { promptPreview, queuedPrompts, queuedRolePromptCount } from "../inbox.js
 import { statePath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { freshLoopState, loadLoopState } from "../state.js";
-import { isFleetPaused, orchestratorAlive, pausedRoles, readOrchestratorInfo } from "../fleet-state.js";
+import { isFleetPaused, orchestratorAlive, pausedRoles, pausedUntil, readOrchestratorInfo } from "../fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing-slot.js";
 import { fleetDailyCost } from "../budget.js";
 import { queuedLandings } from "../land-queue.js";
@@ -59,6 +59,14 @@ export interface StatusSnapshot {
    * set): an idle loop in this set also reads `paused`, the same cell as under the fleet
    * pause. Fresh per poll like `paused` — no cache, for the same mid-resume reason. */
   pausedRoles: string[];
+  /** The fleet marker's standing deadline (ms epoch) while a timed pause
+   * (`tumwater pause --for <duration>`) holds — undefined for an indefinite fleet pause, a
+   * role-only pause, or an expired `until` (fleet-state's read side already treats expiry as
+   * unpaused, so the field cannot outlive the pause it describes). Fleet-scoped: only the
+   * fleet marker's deadline may be claimed by a header badge, since only it covers the whole
+   * fleet. JSON.stringify drops the undefined field, so `status --json` carries it only while
+   * a timed fleet pause stands. Fresh per poll, like `paused`. */
+  pausedUntil?: number;
   /** The running harness's build (src/build-info.ts) as the orchestrator published it: the stamp
    * plus whether main's build inputs have moved past it. Null when no harness is running or its
    * dist carries no stamp. Both dashboards render it in the header — a stale build is the one
@@ -201,6 +209,7 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     },
     paused: isFleetPaused(root),
     pausedRoles: pausedRoles(root),
+    pausedUntil: pausedUntil(root),
     landQueue,
   };
 }

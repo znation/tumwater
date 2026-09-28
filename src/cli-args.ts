@@ -38,6 +38,34 @@ export function parsePortFlag(raw: string | undefined): number {
   return n;
 }
 
+/** Parse a `--for <duration>` flag value: `<n>` followed by one unit `s`/`m`/`h`/`d`
+ * (e.g. `45s`, `90m`, `2h`, `1d`), or fail with a clear message; returns the duration in
+ * milliseconds. Zero and negative durations would write a pause marker that reads as already
+ * expired — a pause that pauses nothing — so they fail like any other malformed value. No
+ * absolute `--at` form: one way of saying "pause for a while".
+ * Exported for tests and for the pause confirmations' duration phrasing (durationLabel). */
+const UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+
+export function parseDurationFlag(flag: string, raw: string | undefined): number {
+  if (raw === undefined) fail(`${flag} needs a value`);
+  const m = /^(\d+)([smhd])$/.exec(raw);
+  if (!m || Number(m[1]) === 0)
+    fail(`${flag} needs a duration like 45s, 90m, 2h, or 1d (got ${JSON.stringify(raw)})`);
+  return Number(m[1]) * UNIT_MS[m[2] as keyof typeof UNIT_MS];
+}
+
+/** The human phrase for a parseDurationFlag duration (`45000` → `45s`, `5400000` → `90m`):
+ * the same `<n><unit>` vocabulary the parser accepts, so a pause confirmation echoes back a
+ * form the operator could re-type. The largest unit the duration divides into evenly wins, so
+ * a whole hour reads `1h`, not `60m`; sub-second remains are impossible (the parser's units
+ * bottom out at seconds). Lives beside parseDurationFlag so phrase and parser cannot drift. */
+export function durationLabel(ms: number): string {
+  for (const [unit, size] of Object.entries(UNIT_MS).reverse() as [keyof typeof UNIT_MS, number][]) {
+    if (ms % size === 0) return `${ms / size}${unit}`;
+  }
+  return `${ms}ms`; // Unreachable: every whole-second duration divides into the `s` unit.
+}
+
 /** Parse an optional `--role <id>` flag: the validated role id, or null when absent.
  * Shared by every command that scopes to one loop so their validation and error messages
  * cannot drift. `validIds` is the set of ids this command accepts — callers pass
@@ -82,6 +110,11 @@ interface FlagSpec {
  * accepted vocabulary and its rendering in rejectUnknownArgs' error messages cannot drift
  * apart. */
 export const ROLE_FLAG: FlagSpec = { names: ["--role"], value: true, valueName: "<id>" };
+
+/** The `--for <duration>` flag spec, accepted by `pause` alone (the timed pause): one
+ * definition of the flag's spelling and value shape, beside ROLE_FLAG, so the gate's accepted
+ * vocabulary and parseDurationFlag's error messages cannot drift apart. */
+export const DURATION_FLAG: FlagSpec = { names: ["--for"], value: true, valueName: "<duration>" };
 
 /** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
  * parseBranchFlag), `--once` (one full round of ticks, then exit), and `--role <id>`

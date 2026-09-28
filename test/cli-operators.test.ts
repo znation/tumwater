@@ -200,16 +200,39 @@ test("pause and resume reject stray arguments without touching the marker", asyn
   await initProject(repo, "cli pause args");
 
   // Both reject any argument they do not understand instead of ignoring it; since --role
-  // became valid, the rejection names the flag list rather than a no-arguments rule.
+  // became valid, the rejection names the flag list rather than a no-arguments rule. Pause
+  // additionally accepts --for (the timed pause), so its list is longer — and the other
+  // marker commands keep rejecting --for, so a stray deadline fails fast instead of being
+  // silently ignored.
   let r = await cli(repo, "pause", "--x");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --x \(valid flags for tumwater pause: --role <id>\)/);
+  assert.match(r.stderr, /unknown argument: --x \(valid flags for tumwater pause: --role <id>, --for <duration>\)/);
   r = await cli(repo, "resume", "extra");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: extra \(valid flags for tumwater resume: --role <id>\)/);
+  r = await cli(repo, "resume", "--for", "5m");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --for/);
 
   // The rejections happened before any marker work.
   assert.ok(!fs.existsSync(pausedPath(repo)), "no marker on failure");
+});
+
+test("pause --for writes a timed marker and resume lifts it early", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli pause timed");
+
+  const r = await cli(repo, "pause", "--for", "30m");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /fleet paused for 30m —/);
+  assert.match(r.stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
+  const m = JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { at: number; until: number };
+  assert.ok(m.until > Date.now() + 29 * 60_000, "the marker carries the ms-epoch deadline");
+
+  // Resume still lifts a timed pause early, unchanged.
+  const resume = await cli(repo, "resume");
+  assert.match(resume.stdout, /fleet resumed/);
+  assert.equal(fs.existsSync(pausedPath(repo)), false);
 });
 
 test("pause and resume name the live effect when a harness is running", async () => {

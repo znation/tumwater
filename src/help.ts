@@ -41,7 +41,7 @@ Usage:
   tumwater reset-counters [--role <id>]   Zero ticks/commits/tokens/cost (fresh observation window)
   tumwater wake [--role <id>]             Wake a backed-off fleet — the named roles (or all) tick within one poll
   tumwater abort --role <id>              Abort that loop's in-flight tick (work discarded; the loop keeps running)
-  tumwater pause [--role <id>]            Stop role loops (or just the named loop) starting new ticks; in-flight finish
+  tumwater pause [--role <id>] [--for <dur>]   Stop role loops (or just the named loop) starting new ticks; --for auto-resumes
   tumwater resume [--role <id>]           Lift a fleet or per-role pause
   tumwater stop                    Stop a running fleet (drains in-flight ticks, like Ctrl+C)
   tumwater help [<command>]        Show all commands, or one command's usage

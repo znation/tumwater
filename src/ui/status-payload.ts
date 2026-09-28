@@ -58,6 +58,11 @@ export function statusPayload(root: string): object {
     // `paused` ahead of budget/main-red — one flag covers both dashboards through loopPhase.
     paused: snap.paused,
     pausedRoles: snap.pausedRoles,
+    // The fleet marker's standing timed-pause deadline (ms epoch), absent when the fleet is
+    // not timed-paused (undefined drops from the JSON). Raw data, like paused/pausedRoles —
+    // machine-readable for `status --json`; the planned GUI pause-badge countdown reads it
+    // client-side (PLANS.md "Pause countdown").
+    pausedUntil: snap.pausedUntil,
     loops: snap.loops.map((s) => {
       // One live tail read per running loop per poll (was up to three — see renderStatus).
       // The kind follows the phase (progressKind) — see renderStatus / BUGS.md 2026-09-22.

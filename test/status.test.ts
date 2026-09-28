@@ -14,7 +14,8 @@ import { enqueueLanding } from "../src/land-queue.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { recordDailyCost } from "../src/budget.js";
 import { initProject } from "../src/init.js";
-import { landingStatePath, landQueueDir, orchestratorStatePath } from "../src/paths.js";
+import { landingStatePath, landQueueDir, orchestratorStatePath, pausedPath } from "../src/paths.js";
+import { pauseFleet, pauseRole } from "../src/fleet-state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 
@@ -540,4 +541,31 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   assert.equal(snap.inbox, 0);
   // And it agrees with the queue files the CLI's --list reads.
   assert.deepEqual(queuedRolePrompts(repo, "dry"), ["two", "three"]);
+});
+
+// --- pausedUntil: the fleet marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---
+
+test("pausedUntil carries only a standing fleet timed-pause deadline", async () => {
+  const repo = tmpdir();
+  await initProject(repo, "paused until");
+  assert.equal(snapshot(repo).pausedUntil, undefined, "no marker: absent");
+
+  pauseFleet(repo);
+  assert.equal(snapshot(repo).pausedUntil, undefined, "an indefinite fleet pause exposes no deadline");
+  assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, undefined);
+
+  const until = Date.now() + 30 * 60_000;
+  pauseFleet(repo, until);
+  assert.equal(snapshot(repo).pausedUntil, until);
+  assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, until);
+
+  // Role-only timed pauses are not fleet pauses: the fleet-scoped field stays absent.
+  pauseRole(repo, "clean", until);
+  assert.equal(snapshot(repo).pausedUntil, until, "the fleet marker still stands beside a role pause");
+
+  fs.writeFileSync(pausedPath(repo), JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000 }));
+  assert.equal(snapshot(repo).pausedUntil, undefined, "an expired deadline reads as unpaused");
+  // JSON.stringify drops the undefined field, so `status --json` carries it only while a
+  // timed fleet pause stands.
+  assert.ok(!("pausedUntil" in JSON.parse(JSON.stringify(statusPayload(repo)))));
 });

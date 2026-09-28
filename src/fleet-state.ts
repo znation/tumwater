@@ -14,7 +14,39 @@ import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath
  * evaluate it from disk without importing each other's modules — the same "single
  * definition" rule that put the daily-cost budget in src/budget.ts. */
 export function isFleetPaused(root: string): boolean {
-  return fs.existsSync(pausedPath(root));
+  return standingMarker(pausedPath(root)) !== null;
+}
+
+/** The body shape of both pause markers: the write instant plus, for a timed pause
+ * (`tumwater pause [--role <id>] --for <duration>`), the ms-epoch deadline. One shared
+ * deadline per marker — a set is paused or it is not, and each new pause write carries its
+ * own `until` (the last write winning), so per-role deadlines would buy a map plus per-role
+ * transition logic for no observed need. */
+interface PauseMarker {
+  at: number;
+  until?: number;
+}
+
+/** Read a pause marker as the standing pause it represents: null when the file is missing,
+ * unreadable, or carries an `until` in the past. The expiry rule is the read side of the
+ * timed pause: every consumer (scheduler, dashboards, a follow-up `pause`) treats an expired
+ * marker as absent, so the deadline releases the pause with no new scheduler code — the
+ * orchestrator's poll-diff sees an ordinary unpaused transition. Never throws. */
+function standingMarker(path: string): PauseMarker | null {
+  const m = readJsonFile<PauseMarker>(path);
+  if (!m || typeof m.at !== "number") return null;
+  if (m.until !== undefined && m.until <= Date.now()) return null;
+  return m;
+}
+
+/** The fleet marker's standing deadline (ms epoch) while a timed pause holds; undefined when
+ * the fleet is not timed-paused — no marker, an indefinite `pause` (no `until`), or an expired
+ * `until` (standingMarker already reads that as unpaused, so the field cannot outlive the
+ * pause it describes). Fleet-scoped on purpose: the FLEET marker's deadline is what a header
+ * badge may claim, since only it covers the whole fleet. Lives here beside isFleetPaused —
+ * one module for every marker consumer. */
+export function pausedUntil(root: string): number | undefined {
+  return standingMarker(pausedPath(root))?.until;
 }
 
 /** Pause the fleet by writing its marker, the writer half of isFleetPaused's contract; the
@@ -22,10 +54,15 @@ export function isFleetPaused(root: string): boolean {
  * written. Returns whether this call changed state: false when the marker already existed, so
  * the CLI can report "already paused" and the dashboard's toggle stays idempotent. Lives here
  * beside isFleetPaused so the producer (CLI, GUI) and every consumer read the same path. */
-export function pauseFleet(root: string): boolean {
+export function pauseFleet(root: string, untilMs?: number): boolean {
   const marker = pausedPath(root);
-  if (fs.existsSync(marker)) return false;
-  writeJsonAtomic(marker, { at: Date.now() });
+  // An already-standing pause is the idempotent no-op it has always been — except under a
+  // fresh `--for`, which overwrites the deadline (extend or shorten): the operator asked for
+  // a timed pause, not for a no-op. An expired marker is not standing (standingMarker), so a
+  // pause after expiry reports a fresh pause, never the stale "already paused".
+  const standing = standingMarker(marker);
+  if (standing && untilMs === undefined) return false;
+  writeJsonAtomic(marker, untilMs === undefined ? { at: Date.now() } : { at: Date.now(), until: untilMs });
   return true;
 }
 
@@ -47,8 +84,9 @@ export function resumeFleet(root: string): boolean {
  * can poll it every cycle without a guard. Lives here beside pauseFleet for the same
  * single-definition reason: producer (CLI, GUI) and every consumer read one module. */
 export function pausedRoles(root: string): string[] {
-  const state = readJsonFile<{ roles: unknown; at: number }>(pausedRolesPath(root));
-  return Array.isArray(state?.roles)
+  const state = readJsonFile<{ roles: unknown; at: number; until?: number }>(pausedRolesPath(root));
+  if (!state || (state.until !== undefined && state.until <= Date.now())) return [];
+  return Array.isArray(state.roles)
     ? state.roles.filter((r): r is string => typeof r === "string")
     : [];
 }
@@ -78,11 +116,21 @@ function withPausedRolesLock<T>(root: string, fn: () => T): T {
  * a dashboard toggle can report "already paused"). Custom-loop ids are stored verbatim: the
  * marker must survive config edits, which is why callers resolve built-in ids without
  * touching tumwater.json (namedRole in src/operator-commands.ts). */
-export function pauseRole(root: string, role: string): boolean {
+export function pauseRole(root: string, role: string, untilMs?: number): boolean {
   return withPausedRolesLock(root, () => {
+    const path = pausedRolesPath(root);
+    // pausedRoles already reads an expired marker as the empty set, so a pause after expiry
+    // starts a fresh set (the expired members auto-resumed; re-listing them would re-pause
+    // roles the operator's deadline already released) and reports a fresh pause.
     const current = pausedRoles(root);
-    if (current.includes(role)) return false;
-    writeJsonAtomic(pausedRolesPath(root), { roles: [...current, role], at: Date.now() });
+    if (current.includes(role)) {
+      if (untilMs === undefined) return false;
+      // The deadline is the marker's one shared field: a fresh `--for` overwrites it —
+      // extend or shorten — rather than no-oping behind "already paused".
+      writeJsonAtomic(path, { roles: current, at: Date.now(), until: untilMs });
+      return true;
+    }
+    writeJsonAtomic(path, untilMs === undefined ? { roles: [...current, role], at: Date.now() } : { roles: [...current, role], at: Date.now(), until: untilMs });
     return true;
   });
 }

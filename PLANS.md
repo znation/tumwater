@@ -102,7 +102,8 @@ deadline renders nothing, matching the unpaused read. (c) The GUI's pause badge 
 countdown while a fleet timed pause stands (its `pausedUntil`) and today's ` · paused — resume`
 otherwise, and remains a working resume link in both states. (d) Full suite passes.
 
-### Timed pause — `tumwater pause [--role <id>] --for <duration>` auto-resumes (planned 2026-09-25, refined 2026-09-28)
+## Done
+### Timed pause — `tumwater pause [--role <id>] --for <duration>` auto-resumes (planned 2026-09-25, refined 2026-09-28, done 2026-09-28)
 
 **Goal.** Today's pause is indefinite: the marker (`.tumwater/state/paused.json`, `{ at }`) or a
 paused role (`.tumwater/state/paused-roles.json`, `{ roles, at }`) stands until a manual `resume`
@@ -164,7 +165,8 @@ the standard `fail()` shape, and `pause` alone (no `--for`) behaves exactly as t
 `status --json` carries `pausedUntil` only while a fleet timed pause stands (absent for an
 indefinite fleet pause, a role-only pause, and an expired `until`). (f) Full suite passes.
 
-## Done
+
+**Done 2026-09-28 by feature.** Landed as specified, with two shape notes: the pause confirmations phrase the duration through a `durationLabel` helper beside `parseDurationFlag` (src/cli-args.ts) fed from the parsed value rather than `until - now`, so a few ms of clock skew between the two reads cannot turn "30m" into "1799999ms"; and src/help.ts's pause line now names `--for <dur>` so the flag is discoverable. Also touched beyond the list: test/cli-operators.test.ts — the pause gate's flag-list rejection message gained `--for <duration>`, `resume` is pinned to still reject it, and a CLI-level timed pause test covers the marker end to end.
 
 ### Per-role prompts 2/2 — surface the per-role queue on the dashboards (planned 2026-09-25, done 2026-09-25)
 

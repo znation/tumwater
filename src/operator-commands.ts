@@ -1,5 +1,6 @@
 import { knownRoleIds, loadConfig } from "./config.js";
-import { fail, parseRoleFlag } from "./cli-args.js";
+import { durationLabel, fail, parseDurationFlag, parseRoleFlag } from "./cli-args.js";
+import { formatTime } from "./datetime.js";
 import { errorMessage } from "./text.js";
 import { allRoleIds, DIRECTOR_ROLE } from "./roles.js";
 import { clearBackoff, loadLoopState, saveLoopState, zeroCounters } from "./state.js";
@@ -158,14 +159,38 @@ export function requestAbort(root: string, role: string): { ok: true; message: s
   return { ok: true, message: confirmation };
 }
 
+/** The parsed `--for <duration>` of one pause command: the duration as typed (ms, for the
+ * "for 30m" phrase) and the marker deadline it produced (ms epoch, for the resume-time
+ * phrase). Kept together so the confirmation cannot phrase one without the other. */
+export interface TimedPause {
+  ms: number;
+  untilMs: number;
+}
+
+/** The timed-pause clauses both pause confirmations share, in the plan's "… paused for
+ * 30m — resumes automatically at 14:05" shape. The duration phrase comes from the parsed
+ * value, not from until minus the message's own now — a few ms of clock skew between the two
+ * reads must not turn "30m" into "1799999ms". Both empty for an indefinite pause, so
+ * today's wording stands. */
+function timedPauseBits(timed: TimedPause | undefined): { forPhrase: string; note: string } {
+  if (!timed) return { forPhrase: "", note: "" };
+  return {
+    forPhrase: ` for ${durationLabel(timed.ms)}`,
+    note: ` — resumes automatically at ${formatTime(new Date(timed.untilMs))}`,
+  };
+}
+
 /** The per-role pause confirmation `tumwater pause --role` prints and the TUI's Ctrl+P
  * flashes — one literal so the two surfaces cannot drift (the same single-writer discipline
  * requestWake's wording already follows). `changed` is pauseRole's return: false reports the
- * idempotent no-op in the CLI's own words instead of a fresh confirmation. */
-export function rolePauseMessage(root: string, role: string, changed: boolean): string {
+ * idempotent no-op in the CLI's own words instead of a fresh confirmation. `timed` is the
+ * deadline this command's `--for` set, echoed back with its wall-clock resume time; the TUI
+ * (which cannot pass a deadline) omits it and keeps the plain wording. */
+export function rolePauseMessage(root: string, role: string, changed: boolean, timed?: TimedPause): string {
   if (!changed) return `role ${role} is already paused`;
   const { when, tail } = markerApplyNote(root);
-  return `role ${role} paused — it stops starting new ticks at its next eligibility check${when} (in-flight ticks finish; the rest of the fleet is unaffected)${tail}`;
+  const { forPhrase, note } = timedPauseBits(timed);
+  return `role ${role} paused${forPhrase} — it stops starting new ticks at its next eligibility check${when} (in-flight ticks finish; the rest of the fleet is unaffected)${note}${tail}`;
 }
 
 /** The per-role resume confirmation, shared between `tumwater resume --role` and the TUI's
@@ -183,7 +208,7 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
   return `role ${role} resumed — it starts ticking again at its next eligibility check${when}${fleetNote}${tail}`;
 }
 
-/** `tumwater pause [--role <id>]`: with a role, stop THAT loop from starting new ticks —
+/** `tumwater pause [--role <id>] [--for <duration>]`: with a role, stop THAT loop from starting new ticks —
  * in-flight ones finish, every other role (the director included) keeps running; without one,
  * stop every role loop from starting NEW ticks while in-flight ones finish and the director
  * keeps running (its prompts outrank operator gates, like under the budget cap). The markers
@@ -192,6 +217,14 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
  * harness is required; when none runs, say where the pause takes effect instead of failing.
  * Idempotent: a second pause reports the existing marker as-is. */
 export async function cmdPause(root: string, args: string[] = []): Promise<void> {
+  // `--for <duration>` (the timed pause): the ms-epoch deadline pauseFleet/pauseRole write
+  // into the marker and every consumer honors — the gate in cli.ts has already restricted
+  // the flag to this command, so its value is parsed (and fails fast) here, beside the
+  // writers it feeds.
+  const forIndex = args.indexOf("--for");
+  const forMs = forIndex >= 0 ? parseDurationFlag("--for", args[forIndex + 1]) : undefined;
+  const timed = forMs === undefined ? undefined : { ms: forMs, untilMs: Date.now() + forMs };
+  const untilMs = timed?.untilMs;
   // Per-role branch: pauseRole in src/fleet-state.ts is the single writer of the role marker
   // (the plan 2/2 dashboard endpoint will call it too), so CLI and dashboard cannot drift on
   // format or idempotence; a false return means the role was already in the set.
@@ -199,20 +232,23 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
   if (role) {
     // pauseRole in src/fleet-state.ts is the single writer of the role marker (the TUI's
     // Ctrl+P calls it too), so CLI and TUI cannot drift on format or idempotence; a false
-    // return means the role was already in the set, which rolePauseMessage words.
-    process.stdout.write(rolePauseMessage(root, role, pauseRole(root, role)) + "\n");
+    // return means the role was already in the set, which rolePauseMessage words — unless a
+    // `--for` stands, which overwrites the deadline and reports the fresh confirmation.
+    process.stdout.write(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed) + "\n");
     return;
   }
   // pauseFleet in src/fleet-state.ts is the single writer of the pause marker — the GUI's
   // /api/pause toggle calls it too, so the CLI and the dashboard cannot drift on format
-  // or idempotence; a false return means the marker was already there.
-  if (!pauseFleet(root)) {
+  // or idempotence; a false return means the marker was already there (a `--for` never
+  // no-ops: it overwrites the standing deadline instead).
+  if (!pauseFleet(root, untilMs)) {
     process.stdout.write("already paused\n");
     return;
   }
   const { when, tail } = markerApplyNote(root);
+  const { forPhrase, note } = timedPauseBits(timed);
   process.stdout.write(
-    `fleet paused — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${tail}\n`,
+    `fleet paused${forPhrase} — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${note}${tail}\n`,
   );
 }
 
