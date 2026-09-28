@@ -15,7 +15,7 @@ import { compactTokens } from "./text.js";
 
 /** Where the kernel killed launchservicesd on 2026-09-25 (termination reason OS_REASON_PORT_SPACE
  * at 267,967 ports) — what the warning counts toward. */
-export const LAUNCH_SERVICES_KILL_PORTS = 268_000;
+const LAUNCH_SERVICES_KILL_PORTS = 268_000;
 
 /** Warn from here. macOS logs its own "Excessive number of mach_ports" fault from ~28K, too early
  * to act on; 100K still leaves days at the fastest growth seen (~7.5K ports an hour). */
