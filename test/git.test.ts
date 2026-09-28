@@ -32,8 +32,9 @@ import {
   ensureWorktree,
   resetWorktreeToMain,
 } from "../src/worktree.js";
-// The landing-flow git helpers live in merge.ts (their only production consumer) — moved
-// there by the bugfix for the half-finished organize tick 78 move that broke main's build.
+// The landing-flow git helpers live in landing-git.ts — moved there from merge.ts (which
+// got them from git.ts in the bugfix that completed the half-finished organize tick 78 move)
+// once the lander and the batch lander started calling them directly.
 import {
   conflictedFiles,
   continueRebase,
@@ -41,7 +42,7 @@ import {
   hasConflictMarkers,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
-} from "../src/merge.js";
+} from "../src/landing-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";

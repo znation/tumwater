@@ -1,7 +1,8 @@
 import { deleteRef, headOf, patchId, setRef } from "./git.js";
 import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
-import { mergeToMain, rebaseOntoMain } from "./merge.js";
+import { mergeToMain } from "./merge.js";
+import { rebaseOntoMain } from "./landing-git.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { recordReview } from "./tick-outcome.js";
 import { saveLoopState } from "./state.js";

@@ -51,7 +51,8 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 - `src/pi.ts`: the pi subprocess integration.
 - `src/git.ts`, `src/git-diff.ts`: git plumbing and git-output parsing.
 - `src/worktree.ts`: the persistent worktree lifecycle.
-- `src/merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow.
+- `src/merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow, on top of
+  the git plumbing in `src/landing-git.ts` (rebase, conflict inspection, fast-forward).
 - `src/pi-extension/`: the bundled bounded-output pi extension.
 - `src/ui/`: TUI, GUI, status table, backlog report, transcript, and report rendering. Imported
   only by each other and `cli.ts`.

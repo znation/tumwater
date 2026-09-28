@@ -3,14 +3,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  configBytesToPreserve,
-  ffMainTo,
-  ffStackToMain,
-  mergeToMain,
-  restoreConfigBytes,
-  type MergeContext,
-} from "../src/merge.js";
+import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/landing-git.js";
+import { ffStackToMain, mergeToMain, type MergeContext } from "../src/merge.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
@@ -213,12 +207,12 @@ test("a fast-forward that git refuses reports merge_blocked without landing", as
   assert.equal(eventsOfType(root, "merged").length, 0);
 });
 
-test("the landing-flow git helpers are exported from merge.js (regression)", async () => {
-  // Organize tick 78 deleted these six functions from src/git.ts intending to move them
-  // here, but never added them — main's build broke with TS2305 in this file and in
-  // test/git.test.ts until the bugfix completed the move. Pin the placement at runtime so a
-  // half-finished re-move fails loudly instead of silently stranding the landing flow.
-  const merge = await import("../src/merge.js");
+test("the landing-flow git helpers are exported from landing-git.js (regression)", async () => {
+  // These helpers have moved twice — git.ts → merge.ts (the bugfix that completed the
+  // half-finished organize tick 78 move) → landing-git.ts (when the lander and batch lander
+  // started calling them directly). Pin the placement at runtime so a half-finished move
+  // fails loudly instead of silently stranding the landing flow.
+  const landingGit = await import("../src/landing-git.js");
   for (const name of [
     "conflictedFiles",
     "rebaseOntoMain",
@@ -227,7 +221,7 @@ test("the landing-flow git helpers are exported from merge.js (regression)", asy
     "continueRebase",
     "ffMainTo",
   ] as const) {
-    assert.equal(typeof merge[name], "function", `merge.js exports ${name}`);
+    assert.equal(typeof landingGit[name], "function", `landing-git.js exports ${name}`);
   }
   // And one of them actually works from its new home: a real rebase onto an advanced main.
   const { root, wt } = await setup();
@@ -235,8 +229,8 @@ test("the landing-flow git helpers are exported from merge.js (regression)", asy
   commitIn(wt, "branch work");
   fs.writeFileSync(path.join(root, "seed.txt"), "main advanced\n");
   commitIn(root, "main edit");
-  assert.equal(await merge.rebaseOntoMain(wt, "main"), true);
-  assert.equal(await merge.ffMainTo(root, branchName("improve"), "main"), true);
+  assert.equal(await landingGit.rebaseOntoMain(wt, "main"), true);
+  assert.equal(await landingGit.ffMainTo(root, branchName("improve"), "main"), true);
   assert.equal(sh(root, "git", "rev-parse", "main"), sh(wt, "git", "rev-parse", "HEAD"));
 });
 
