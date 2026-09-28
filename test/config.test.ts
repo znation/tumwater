@@ -28,7 +28,7 @@ import { exampleConfigPath } from "../src/paths.js";
 import { validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
-import { withCountedReads } from "./util.js";
+import { withCountedReads } from "./fs-faults.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 
 test("defaultConfig enables every role including director", () => {

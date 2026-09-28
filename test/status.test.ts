@@ -19,7 +19,8 @@ import { pauseFleet, pauseRole } from "../src/fleet-state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
-import { seedCounters, withCountedReads } from "./util.js";
+import { seedCounters } from "./loop-fixtures.js";
+import { withCountedReads } from "./fs-faults.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();

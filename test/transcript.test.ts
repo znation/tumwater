@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
-import { expectedTimestamp, writeTurnLog } from "./util.js";
+import { expectedTimestamp } from "./oracles.js";
+import { writeTurnLog } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
 

@@ -4,7 +4,7 @@ import { defaultConfig } from "../src/config.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { OnceRound } from "../src/once-round.js";
 import type { LoopRunner } from "../src/loop.js";
-import { makeLoopRunner } from "./util.js";
+import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 function configWithRole(role: string, enabled: boolean): TumwaterConfig {

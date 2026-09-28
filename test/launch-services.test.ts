@@ -11,7 +11,7 @@ import {
 } from "../src/launch-services.js";
 import type { ProcessProbe } from "../src/process.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { harnessWarnings } from "./util.js";
+import { harnessWarnings } from "./log-fixtures.js";
 
 // launchservicesd's Mach-port watch (src/launch-services.ts, BUGS.md 2026-09-28): doctor's line and
 // a running fleet's warning, both driven by a fake probe — no test reads the real Mac's daemon

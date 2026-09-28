@@ -9,7 +9,8 @@ import { buildCheckSkipWarning } from "../src/build-check-events.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
-import { eventsOfType, buildCheckFixture } from "./util.js";
+import { eventsOfType } from "./log-fixtures.js";
+import { buildCheckFixture } from "./loop-fixtures.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
 

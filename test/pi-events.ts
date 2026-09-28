@@ -1,7 +1,7 @@
 /** Builders for fake pi JSONL session event lines — the assistant/user message_end and
  * agent_start lines pi writes to a session file, as the fake-pi shim and transcript fixtures
- * need them. Split out of test/util.ts, which had grown into both the repo/fake-pi fixtures
- * and these event-line builders; every builder here is pure string shaping. */
+ * need them. Split out of the old util.ts grab-bag (now dissolved into topic-named
+ * modules); every builder here is pure string shaping. */
 
 /** A pi JSON line for an assistant message_end. */
 export function assistantLine(

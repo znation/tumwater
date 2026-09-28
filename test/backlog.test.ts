@@ -13,7 +13,7 @@ import {
   plannedPlans,
 } from "../src/backlog.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { withCountedReads } from "./util.js";
+import { withCountedReads } from "./fs-faults.js";
 
 const PLANS_MD = `# Plans
 

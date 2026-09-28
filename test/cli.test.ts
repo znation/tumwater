@@ -10,7 +10,7 @@ import { dequeuePrompt, inboxSize, queuedPrompts, submitPrompt, queuedRolePrompt
 import { truncate } from "../src/text.js";
 import { inboxDir, resetRequestPath } from "../src/paths.js";
 import { loadLoopState } from "../src/state.js";
-import { seedCounters } from "./util.js";
+import { seedCounters } from "./loop-fixtures.js";
 import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli, cliWithEnv } from "./cli-harness.js";

@@ -16,7 +16,7 @@ import {
   STATE_DIR,
 } from "../src/paths.js";
 import type { LoopRunner } from "../src/loop.js";
-import { eventsOfType, writeMarker } from "./util.js";
+import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** A recording stand-in for LoopRunner covering exactly the surface operator-requests.ts

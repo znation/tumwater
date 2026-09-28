@@ -12,7 +12,7 @@ import { pauseFleet, pausedRoles } from "../src/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { runTui } from "../src/ui/tui.js";
 import { formatDate } from "../src/datetime.js";
-import { atLocalTs as atNoon } from "./util.js";
+import { atLocalTs as atNoon } from "./oracles.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 
@@ -247,7 +247,7 @@ function seedEntry(root: string, file: string, heading: string): void {
   fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("_None yet._", `${heading}\n`));
 }
 
-/** Local-noon fixture timestamps: util.ts's atLocalTs (daysAgo, hour 12) — a fixed hour keeps
+/** Local-noon fixture timestamps: oracles.ts's atLocalTs (daysAgo, hour 12) — a fixed hour keeps
  * the fixture from straddling midnight between seeding and collectReport's own clock read. */
 
 test("Ctrl+T cycles events → transcript → project status → usage report → failures", async () => {

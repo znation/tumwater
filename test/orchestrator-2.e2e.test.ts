@@ -20,7 +20,7 @@ import { DIRECTOR_ROLE } from "../src/roles.js";
 import { todayStamp } from "../src/budget.js";
 import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { eventsOfType, writeMarker } from "./util.js";
+import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { fastConfig, makeFastRepo, startLiveOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";

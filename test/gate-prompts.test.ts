@@ -13,7 +13,7 @@ import {
 } from "../src/gate-prompts.js";
 import { parseVerdict } from "../src/review-verdict.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
-import { oneLine } from "./util.js";
+import { oneLine } from "./oracles.js";
 
 // The conflict prompt drives pi's one-shot merge-conflict resolution run. Its contract is
 // load-bearing in ways the loop-level fake-pi tests cannot see (the fake ignores prompt

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import { eventsOfType } from "./util.js";
+import { eventsOfType } from "./log-fixtures.js";
 import { fastConfig, readSamples, startLiveOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";

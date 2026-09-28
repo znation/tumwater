@@ -16,7 +16,7 @@ import { todayStamp } from "../src/budget.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { customRole, ROLES, roleById } from "../src/roles.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING, searchGuidance, VALIDATION_GAP_GUIDANCE, VALIDATION_GAP_TAGS } from "../src/role-guidance.js";
-import { oneLine } from "./util.js";
+import { oneLine } from "./oracles.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
 
 test("buildTickPrompt includes role, project prompt, rules, and extras", () => {

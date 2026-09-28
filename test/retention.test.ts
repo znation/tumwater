@@ -5,7 +5,7 @@ import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/retention.js";
 import { sessionsRootDir, toolOutputDir } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { eventsOfType } from "./util.js";
+import { eventsOfType } from "./log-fixtures.js";
 
 /** Unit tests for src/retention.ts — the session-retention prune gate (moved here from
  * test/scheduling.test.ts alongside its dueForPrune home) and the startup/poll state machine

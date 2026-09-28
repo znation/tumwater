@@ -13,7 +13,7 @@ import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import { shortSha } from "../src/text.js";
 import { piLogPath } from "../src/paths.js";
-import { eventsOfType } from "./util.js";
+import { eventsOfType } from "./log-fixtures.js";
 import { writeScript } from "./fake-commands.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -458,7 +458,7 @@ test("a stalled tool call during review warns in the event feed while the watchd
     config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
     config.toolCallStallSeconds = 2; // ...but the warning lands first
     const state = freshLoopState(ROLE);
-    // On logical time (watchdogClock, test/util.ts): once the reviewer has named its call,
+    // On logical time (watchdogClock, test/wait.ts): once the reviewer has named its call,
     // move the watchdog past the stall threshold and then the quiet window.
     const clock = watchdogClock(t);
     const review = reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);

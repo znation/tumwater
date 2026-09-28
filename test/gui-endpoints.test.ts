@@ -5,7 +5,8 @@ import path from "node:path";
 import type http from "node:http";
 import { handleReport, handleFailures } from "../src/ui/gui-endpoints.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/event-window.js";
-import { atLocalTs as at, dayKey, writeEvents } from "./util.js";
+import { atLocalTs as at, dayKey } from "./oracles.js";
+import { writeEvents } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 // The GET data endpoints of the dashboard (src/ui/gui-endpoints.ts), exercised at the unit

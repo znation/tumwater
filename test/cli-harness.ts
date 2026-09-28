@@ -1,7 +1,7 @@
 /** CLI binary scaffolding: the CLI is tested as a child process, and this is the one home for
- * running it. Split out of util.ts — which keeps the repo/fake-pi/wait fixture builders — so
- * the spawn-and-capture machinery (run-to-completion, streaming spawn, exit waits) sits beside
- * itself instead of at the bottom of the shared grab-bag. */
+ * running it. Split out of the old util.ts grab-bag (now dissolved into repo-fixtures.ts,
+ * fake-pi.ts, wait.ts and friends) so the spawn-and-capture machinery (run-to-completion,
+ * streaming spawn, exit waits) sits beside itself instead of in a shared grab-bag. */
 
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";

@@ -9,7 +9,8 @@ import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, 
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
 import { DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";import { enqueueLanding } from "../src/landing-queue.js";
-import { startLocalGui, writeMarker } from "./util.js";
+import { startLocalGui } from "./gui-fixtures.js";
+import { writeMarker } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 // The GUI's operator controls, split out of gui.test.ts: the daily budget cap

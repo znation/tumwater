@@ -78,7 +78,7 @@ export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: 
   return { root, sha, wt };
 }
 
-// The reviewer's fake-pi shim and its approver preset live in test/util.ts (next to the
+// The reviewer's fake-pi shim and its approver preset live in pi-events.ts (next to the
 // assistant-line helpers they build on); re-exported here for the lander fixtures' imports.
 export { reviewerPi, APPROVE_PI } from "./pi-events.js";
 

@@ -6,11 +6,11 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import type { HarnessEvent } from "../src/types.js";
 import { tickRows } from "../src/ui/history.js";
-import { writeEvents } from "./util.js";
+import { writeEvents } from "./log-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize, queuedRolePrompts } from "../src/inbox.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/http-body.js";
-import { startLocalGui } from "./util.js";
+import { startLocalGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 // The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,

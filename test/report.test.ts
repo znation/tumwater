@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { collectReport, collectReportSince, type ReportData } from "../src/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/ui/report.js";
-import { atLocalTs as at, dayKey, writeEvents } from "./util.js";
+import { atLocalTs as at, dayKey } from "./oracles.js";
+import { writeEvents } from "./log-fixtures.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 

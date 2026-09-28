@@ -22,7 +22,7 @@ second. `test/test-runner.ts` sets the environment up for that: it puts the real
 ahead of the xcode-select shim on macOS, turns off git's auto-maintenance and init templates,
 and starts files longest-first by the durations it records in `dist/test/.durations.json`.
 
-- Install a fake command with `writeScript` (test/util.ts), never by writing and `chmod`ing a new
+- Install a fake command with `writeScript` (test/fake-commands.ts), never by writing and `chmod`ing a new
   executable. macOS scans every newly created executable on its first exec (~150 ms, much more
   under load). `writeScript` symlinks the one committed `test/fixtures/script-shim` instead.
 - Put timing on logical time rather than real sleeps. `watchdogClock` drives runPi's quiet

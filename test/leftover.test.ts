@@ -10,7 +10,7 @@ import { enqueueLanding, queuedLandings } from "../src/landing-queue.js";
 import { landQueueDir, landingRefName } from "../src/paths.js";
 import { shortSha } from "../src/text.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { eventsOfType } from "./util.js";
+import { eventsOfType } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 // Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that puts a commit a

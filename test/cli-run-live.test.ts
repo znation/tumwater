@@ -7,7 +7,7 @@ import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { orchestratorStatePath } from "../src/paths.js";
-import { eventsOfType } from "./util.js";
+import { eventsOfType } from "./log-fixtures.js";
 import { writeScript } from "./fake-commands.js";
 import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";

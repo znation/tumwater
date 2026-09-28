@@ -6,7 +6,8 @@ import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/main-red.
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
-import { eventsOfType, harnessWarnings, baselineFixture, runsOf } from "./util.js";
+import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
+import { baselineFixture, runsOf } from "./loop-fixtures.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
 import { makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 

@@ -15,7 +15,7 @@ import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/state.js";
 import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { signalOrchestrator } from "../src/ui/operator-commands.js";
-import { seedCounters } from "./util.js";
+import { seedCounters } from "./loop-fixtures.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 

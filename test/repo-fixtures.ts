@@ -2,10 +2,11 @@
  * temp root (tmpdir), raw shell plumbing (sh), makeRepo / initializedRepo (a repo, plain or
  * run through initProject), worktreeAt (a linked role worktree), writeConfig (a seeded
  * tumwater.json), and landWork (a commit on main that counts as work for the deferral rule).
- * Split from util.ts, which keeps the assertion/format oracles and the loop-runner/GUI
- * scaffolding; the live-orchestrator, fake-pi, and fake-command families live in their own
- * modules (orchestrator-fixtures.ts, fake-pi.ts, fake-commands.ts). The dependency runs one
- * way: util.ts and the tests import from here; this module never imports util.ts.
+ * Split from the old util.ts grab-bag, now dissolved into the topic-named modules
+ * (oracles.ts, log-fixtures.ts, loop-fixtures.ts, gui-fixtures.ts); the live-orchestrator,
+ * fake-pi, and fake-command families live in their own modules (orchestrator-fixtures.ts,
+ * fake-pi.ts, fake-commands.ts). The dependency runs one way: the other test modules and
+ * the tests import from here; this module never imports them.
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";

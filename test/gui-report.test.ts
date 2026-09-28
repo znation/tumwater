@@ -8,14 +8,15 @@ import { renderFailureMarkdown } from "../src/failure-report.js";
 import { eventsLogPath } from "../src/paths.js";
 import { compactTokens } from "../src/text.js";
 import { initProject } from "../src/init.js";
-import { atLocalTs as atNoon, startLocalGui } from "./util.js";
+import { atLocalTs as atNoon } from "./oracles.js";
+import { startLocalGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
 // container, and its pure SVG chart builders are extracted from a marked region and tested.
 
-/** Local calendar-day timestamps come from util.ts's atLocalTs — the report buckets by
+/** Local calendar-day timestamps come from oracles.ts's atLocalTs — the report buckets by
  * LOCAL day, the same rule report.test.ts's fixtures follow. */
 
 function localDayKey(ms: number): string {

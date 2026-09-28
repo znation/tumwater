@@ -11,7 +11,7 @@ import { LaunchServicesWatch, launchServicesWarning } from "../src/launch-servic
 import type { ProcessProbe } from "../src/process.js";
 import { FAST_POLL_MS, makeFastRepo } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
-import { eventsOfType, harnessWarnings } from "./util.js";
+import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { waitFor } from "./wait.js";
 
 /** A probe reporting `ports` for launchservicesd, counting how often it is asked. */

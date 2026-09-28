@@ -5,7 +5,7 @@ import { OBSERVER_ROLES, ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, clearBackoff } from "../src/state.js";
-import { makeLoopRunner } from "./util.js";
+import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 /** Unit tests for the pure tick-scheduling policy in src/scheduling.ts — eligibility, fair

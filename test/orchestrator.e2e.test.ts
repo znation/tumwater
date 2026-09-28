@@ -26,10 +26,7 @@ import {
 } from "../src/state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
-import {
-  eventsOfType,
-  writeMarker,
-} from "./util.js";
+import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import {
   FAST_POLL_MS,
   fastConfig,

@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
 import { loadLoopState, saveLoopState } from "../src/state.js";
-import { makeLoopRunner } from "./util.js";
+import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 async function runnerInRepo(role = "clean"): Promise<LoopRunner> {

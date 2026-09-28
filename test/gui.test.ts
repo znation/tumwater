@@ -11,7 +11,8 @@ import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
-import { startLocalGui, writeMarker } from "./util.js";
+import { startLocalGui } from "./gui-fixtures.js";
+import { writeMarker } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 

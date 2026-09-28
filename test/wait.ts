@@ -1,6 +1,6 @@
 /** Wait-for-something helpers shared across the test suite: polling (waitFor, waitForFile,
  * waitForLogLines) and the logical clock for runPi's watchdog (watchdogClock). Split from
- * test/util.ts, whose grab-bag made these unfindable by name. */
+ * the old util.ts grab-bag, whose shared name made these unfindable. */
 import type { TestContext } from "node:test";
 import fs from "node:fs";
 

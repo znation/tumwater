@@ -14,8 +14,8 @@ import type { TickResult } from "../src/types.js";
 
 /** The live-orchestrator tier's test scaffolding — the helpers that drive a running
  * orchestrator or its landing pipeline: fast configs and repos, a start/stop wrapper around
- * runOrchestrator, and a one-entry driver for the landing pipeline. Split out of util.ts
- * (which keeps the loop-level fixtures) so the e2e tier's machinery lives beside its tier,
+ * runOrchestrator, and a one-entry driver for the landing pipeline. Split from the
+ * loop-level fixtures (loop-fixtures.ts) so the e2e tier's machinery lives beside its tier,
  * mirroring repo-fixtures.ts / lander-fixtures.ts / status-fixtures.ts. */
 
 /** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real

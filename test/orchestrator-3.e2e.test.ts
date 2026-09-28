@@ -34,7 +34,8 @@ import {
   makeFastRepo,
   startLiveOrchestrator,
 } from "./orchestrator-fixtures.js";
-import { makeLoopRunner, eventsOfType, writeMarker } from "./util.js";
+import { makeLoopRunner } from "./loop-fixtures.js";
+import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";

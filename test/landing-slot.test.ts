@@ -1,8 +1,8 @@
 /** Unit coverage for src/landing-slot.ts's bookkeeping — the usage accounting that charges a
  * landing's own pi runs (reviewer + conflict resolution) to the AUTHORING role's live state and
  * records them on the landed/land_failed event, the write-back, and the 4/5 marker's per-change
- * records. The full landing flow is pinned end-to-end through the pipeline (test/util.ts's
- * landHead) in the loop and orchestrator tests, but those drive a fake pi that reports no
+ * records. The full landing flow is pinned end-to-end through the pipeline
+ * (orchestrator-fixtures.ts's landHead) in the loop and orchestrator tests, but those drive a fake pi that reports no
  * usage, so the nonzero-usage branches were never exercised: a landing whose reviewer burns
  * tokens and cost is exactly what feeds `tumwater report` and the daily budget cap, and a broken
  * fold there would silently lose that spend. These pin the accounting branches directly. */
@@ -30,7 +30,7 @@ import { readEvents } from "../src/events.js";
 import { LoopRunner } from "../src/loop.js";
 import type { LandingEntry, PiRunResult } from "../src/types.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { makeLoopRunner } from "./util.js";
+import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, piRunResult } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
