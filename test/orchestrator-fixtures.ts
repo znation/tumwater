@@ -6,7 +6,7 @@ import { initProject } from "../src/init.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { drainMerge, newLandingPipeline, startVet, type LandingPipelineContext } from "../src/landing-drain.js";
-import { headLanding } from "../src/land-queue.js";
+import { headLanding } from "../src/landing-queue.js";
 import { Semaphore } from "../src/semaphore.js";
 import { LoopRunner } from "../src/loop.js";
 import type { TumwaterConfig } from "../src/config-schema.js";

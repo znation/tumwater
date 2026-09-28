@@ -13,7 +13,7 @@ import { freshLoopState, loadLoopState } from "../state.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles, pausedUntil, readOrchestratorInfo } from "../fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing-slot.js";
 import { fleetDailyCost } from "../budget.js";
-import { queuedLandings } from "../land-queue.js";
+import { queuedLandings } from "../landing-queue.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts. */
@@ -170,7 +170,7 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     if (r !== DIRECTOR_ROLE) roleInbox[r] = queuedRolePromptCount(root, r);
   }
   const running = orchestratorAlive(root, info);
-  // One land-queue pass per poll (land-queue.ts's stat cache keeps an unchanged queue at one
+  // One land-queue pass per poll (landing-queue.ts's stat cache keeps an unchanged queue at one
   // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator
   // still has a queue entry for what the marker names (per change, for a batch) — the
   // cross-check makes every crash ordering self-healing (a stale marker alone never displays,

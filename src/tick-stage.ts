@@ -11,7 +11,7 @@ import {
   formatCommitBody,
 } from "./commit-message.js";
 import { logEvent } from "./events.js";
-import { enqueueLanding } from "./land-queue.js";
+import { enqueueLanding } from "./landing-queue.js";
 import { recordFlow } from "./qa-coverage.js";
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is

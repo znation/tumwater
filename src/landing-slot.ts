@@ -1,7 +1,7 @@
 import type { LandingEntry, LoopState, PiRunResult, TickResult } from "./types.js";
 import { applyLandingOutcome, saveLoopState } from "./state.js";
 import { logEvent } from "./events.js";
-import { dropLanding } from "./land-queue.js";
+import { dropLanding } from "./landing-queue.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { removeQuiet } from "./files.js";
 import { landingStatePath } from "./paths.js";
@@ -9,7 +9,7 @@ import type { LoopRunner } from "./loop.js";
 
 /** The landing pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
  * (landing-drain.ts, which schedules the vets and the merge) so it lives separate from the
- * landing mechanics themselves (lander.ts and land-batch.ts: review gate, rebase, stack,
+ * landing mechanics themselves (lander.ts and landing-batch.ts: review gate, rebase, stack,
  * ff-merge). This module owns the 4/5 in-flight marker — one record per change being vetted,
  * vetted, or merged — the per-landing usage accounting, and the write-back that folds every
  * outcome into the authoring role's state and drops its queue entry. A landing's pi runs charge
@@ -177,7 +177,7 @@ export function removeLandingChange(root: string, role: string): void {
  * its pre-check (`build-check`) and before its reviewer run (`reviewing`), lander.ts's
  * reviewPinnedChange once the gate returns (`merging`, whatever it decided — a finished
  * reviewer's last turns must not sit in the cell accruing a false `no pi output` flag while the
- * change waits for its merge), and land-batch.ts around a stack's shared check. It stages
+ * change waits for its merge), and landing-batch.ts around a stack's shared check. It stages
  * `role`'s own record — every concurrent vet advances its own change's cell. A no-op for a role
  * with no record (a gate run outside the pipeline, as the unit tests drive it). Only the stage
  * changes: sha and startedAt are what the

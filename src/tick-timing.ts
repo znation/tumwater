@@ -162,7 +162,7 @@ type HandoffLandingOutcome = "finished" | "aborted" | "abandoned";
  * the landing's roles), so the feed says why `restarting onto build …` is not yet followed by
  * `orchestrator stopped`. Past `windowMs` the landing is stopped the way the drain gives up on
  * role ticks: `abort` fires the harness's internal stop, which kills its pi runs at once and
- * makes it stop at its next step boundary (lander.ts and land-batch.ts check the signal before
+ * makes it stop at its next step boundary (lander.ts and landing-batch.ts check the signal before
  * every gate, every approved landing, and each of a stack's check attempts), and a warning
  * names what was still awaited.
  * An aborted landing records `aborted` like any shutdown abort — pins kept, entries dropped,

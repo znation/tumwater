@@ -1,5 +1,5 @@
 /** The directory-of-timestamped-files queue convention shared by the director's prompt inbox
- * (inbox.ts) and the durable land queue (land-queue.ts): listing, naming, and ENOENT-tolerant
+ * (inbox.ts) and the durable land queue (landing-queue.ts): listing, naming, and ENOENT-tolerant
  * removal. Both queues are pinned through their own tests; this file pins the shared rules so
  * they cannot drift apart underneath them. */
 import test from "node:test";

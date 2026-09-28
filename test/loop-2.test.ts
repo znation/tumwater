@@ -11,7 +11,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { refSha } from "../src/git.js";
-import { queueDepth } from "../src/land-queue.js";
+import { queueDepth } from "../src/landing-queue.js";
 import { landingRefName, sessionDir } from "../src/paths.js";
 import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
 import { eventsOfType, harnessWarnings, makeLoopRunner, writeScript } from "./util.js";

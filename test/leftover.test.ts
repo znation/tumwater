@@ -6,7 +6,7 @@ import { MERGE_CONFLICT_LIMIT, recoverLeftover, type LeftoverContext } from "../
 import { commitTrailer } from "../src/commit-message.js";
 import { readEvents } from "../src/events.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
-import { enqueueLanding, queuedLandings } from "../src/land-queue.js";
+import { enqueueLanding, queuedLandings } from "../src/landing-queue.js";
 import { landQueueDir, landingRefName } from "../src/paths.js";
 import { shortSha } from "../src/text.js";
 import { ensureWorktree } from "../src/worktree.js";

@@ -226,7 +226,7 @@ export interface HarnessEvent {
   [key: string]: unknown;
 }
 
-/** One entry in the durable land queue (.tumwater/land-queue/; src/land-queue.ts): a commit
+/** One entry in the durable land queue (.tumwater/land-queue/; src/landing-queue.ts): a commit
  * the tick pinned by `refs/tumwater/landing/<role>` and enqueued at tick end. One file per
  * entry, filename-ordered (`<ts>-<seq>-<pid>.json`); the entry is dropped after EVERY landing
  * outcome, so the queue holds only unattempted landings. No attempt counter lives in the file —

@@ -5,7 +5,7 @@ import { statOrNull } from "./files.js";
  * primitive with its own data model (StatKeyedValue) and safety cap, shared by every observer
  * and loader that polls a slowly-changing file — backlog.ts's markdown sections, inbox.ts's
  * prompt contents, status.ts's loop states, config.ts's live-reloaded tumwater.json,
- * pi-models.ts's models.json, and land-queue.ts's entry contents. (The poll-cost and
+ * pi-models.ts's models.json, and landing-queue.ts's entry contents. (The poll-cost and
  * freshness contract is documented on cachedByStat below.) */
 
 /** One entry of a stat-keyed cache: the file's identity and freshness at read time plus the

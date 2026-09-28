@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { LANDING_CHECK_FAILURE_LIMIT, landApprovedChange, reviewPinnedChange } from "../src/lander.js";
-import type { BatchRoleWiring } from "../src/land-batch.js";
+import type { BatchRoleWiring } from "../src/landing-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
@@ -33,7 +33,7 @@ import {
   runBatchRecorded,
 } from "./lander-fixtures.js";
 
-// Unit coverage for the two halves of a landing — land-batch.ts's vetRequest (checkout in
+// Unit coverage for the two halves of a landing — landing-batch.ts's vetRequest (checkout in
 // _land-<role>, rebase onto main, lander.ts's review gate) and landVetted (the merge: one change
 // through landApprovedChange, or a stack with one check, one fast-forward, the re-stack, 3d's
 // prefix bisect and the one-at-a-time fallback) — driven here in queue order exactly as the

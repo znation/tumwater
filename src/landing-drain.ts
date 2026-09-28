@@ -4,7 +4,7 @@ import type { TumwaterConfig } from "./config-schema.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
 import { deleteRef, isMergedInto } from "./git.js";
-import { landVetted, vetRequest, type BatchRoleWiring, type VetVerdict } from "./land-batch.js";
+import { landVetted, vetRequest, type BatchRoleWiring, type VetVerdict } from "./landing-batch.js";
 import {
   addLandingChange,
   landingUsage,
@@ -12,7 +12,7 @@ import {
   setLandingChangeStatus,
   writeLandingOutcome,
 } from "./landing-slot.js";
-import { dropLanding, queuedLandingFiles, staleHeadFile } from "./land-queue.js";
+import { dropLanding, queuedLandingFiles, staleHeadFile } from "./landing-queue.js";
 import { warnEvent } from "./events.js";
 import { Semaphore } from "./semaphore.js";
 import { landingRefName } from "./paths.js";

@@ -7,7 +7,7 @@ import { logEvent } from "../src/events.js";
 import { queuedRolePrompts, submitPrompt } from "../src/inbox.js";
 import { initProject } from "../src/init.js";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { enqueueLanding } from "../src/land-queue.js";
+import { enqueueLanding } from "../src/landing-queue.js";
 import { pauseFleet, pausedRoles } from "../src/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { runTui } from "../src/ui/tui.js";

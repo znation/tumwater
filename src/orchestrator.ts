@@ -31,7 +31,7 @@ import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, currentBranch } from "./git.js";
-import { queuedLandingFiles } from "./land-queue.js";
+import { queuedLandingFiles } from "./landing-queue.js";
 import {
   abortableLandings,
   drainLandings,

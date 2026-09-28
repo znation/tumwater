@@ -14,7 +14,7 @@ import { refSha } from "../src/git.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { headLanding, queueDepth } from "../src/land-queue.js";
+import { headLanding, queueDepth } from "../src/landing-queue.js";
 import { eventsOfType, makeLoopRunner } from "./util.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";

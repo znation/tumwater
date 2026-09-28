@@ -8,7 +8,7 @@ import { initProject } from "../src/init.js";
 import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
 import { todayStamp } from "../src/budget.js";
-import { DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";import { enqueueLanding } from "../src/land-queue.js";
+import { DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";import { enqueueLanding } from "../src/landing-queue.js";
 import { startLocalGui, writeMarker } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 

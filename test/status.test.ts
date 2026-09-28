@@ -10,7 +10,7 @@ import { snapshot } from "../src/ui/status.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { loopPhase, sortLoopsByState } from "../src/ui/status-model.js";
-import { enqueueLanding } from "../src/land-queue.js";
+import { enqueueLanding } from "../src/landing-queue.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { recordDailyCost } from "../src/budget.js";
 import { initProject } from "../src/init.js";

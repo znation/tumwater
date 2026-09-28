@@ -26,7 +26,7 @@ export const LANDING_CHECK_FAILURE_LIMIT = 2;
  * resets that worktree to main, and queues the sha for the ORCHESTRATOR's landing pipeline
  * (landing-drain.ts, merge queue 3/5 and land-queue speed 2c), which checks it out detached in
  * the role's own `_land-<role>` worktree and runs it through the review gate here
- * (reviewPinnedChange, from land-batch.ts's vetRequest) and then the landing
+ * (reviewPinnedChange, from landing-batch.ts's vetRequest) and then the landing
  * (landApprovedChange, from its merge) — so no diff reaches main unreviewed (invariant 1) and
  * nothing is rebased inside a role worktree any more. Leftover recovery re-queues its pin onto
  * that same pipeline. This is harness code, never a role: the only model runs it starts are the
@@ -47,7 +47,7 @@ export interface LandRequest {
   body?: string;
   highFriction?: boolean;
   /** The head its vet's gate pre-check ran green on, when it ran one on exactly `sha`
-   * (GateResult.verifiedHead, carried by land-batch.ts's VetVerdict) — so a landing whose
+   * (GateResult.verifiedHead, carried by landing-batch.ts's VetVerdict) — so a landing whose
    * in-lock rebase is a no-op seeds the red-main baseline with the SHA that becomes main. */
   verifiedHead?: string;
 }
@@ -74,7 +74,7 @@ type GateOutcome =
   | { kind: "gate"; gate: GateResult; sha: string }
   | { kind: "result"; result: TickResult; discarded?: true };
 
-/** The identity every gate invocation needs from its caller — land-batch.ts's BatchContext
+/** The identity every gate invocation needs from its caller — landing-batch.ts's BatchContext
  * (and LanderContext) satisfies it, so the gate never hand-assembles a nine-field argument
  * object. */
 interface ReviewGateContext {
@@ -95,7 +95,7 @@ interface ReviewGateContext {
  * the request track the synced head so the strike-cap tell and the landing ref name the tree
  * that can actually land. On a conflict rebaseOntoMain has already aborted and restored the
  * detached pin — the gate reviews the pinned tree and mergeToMain's resolver lands it. Every
- * vet runs it before its gate (land-batch.ts's vetRequest), so a gate never judges a stale
+ * vet runs it before its gate (landing-batch.ts's vetRequest), so a gate never judges a stale
  * pin; each call rebases only its own worktree, onto main itself — never onto another queued
  * change — so concurrent vets in distinct lander worktrees cannot interfere. */
 export async function syncPinToMain(
@@ -111,7 +111,7 @@ export async function syncPinToMain(
 }
 
 /** Run one pinned change through the review gate in its lander worktree `wt` and handle the
- * immediate bookkeeping — the heart of every vet (land-batch.ts's vetRequest). Persists the
+ * immediate bookkeeping — the heart of every vet (landing-batch.ts's vetRequest). Persists the
  * verdict at once, folds the reviewer's usage, and routes
  * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-lands it),
  * rejected (ref deleted — final for this sha), and failed (a strike-cap discard — the gate
@@ -213,7 +213,7 @@ export const RETRIABLE_LANDING_RESULTS: ReadonlySet<TickResult> = new Set([
 ]);
 
 /** Land a head that already passed its OWN gate in its vet — the merge slot's one-change landing
- * and each landing of an abandoned stack's one-at-a-time fallback (land-batch.ts's landVetted)
+ * and each landing of an abandoned stack's one-at-a-time fallback (landing-batch.ts's landVetted)
  * — without a second gate. Re-gating would rebase first, and by then main has usually moved (a
  * fallback's earlier entries just landed): the rebase rewrites the approved sha, the gate's
  * exact-sha `lastApprovedHead` short-circuit misses, and every such landing paid a second build
@@ -290,7 +290,7 @@ async function landingCheckRed(
 }
 
 /** Attribute a check that went red over ONE change's tree after its vet approved it — a batch
- * bisect's last step (land-batch.ts), or a single landing's in-lock check at
+ * bisect's last step (landing-batch.ts), or a single landing's in-lock check at
  * LANDING_CHECK_FAILURE_LIMIT — by the gate's rule (PLANS.md land-queue 1/3): ask main's own
  * verdict at its current tip (mainTipVerdict — usually a cache hit, since every landing seeds
  * the SHA it moved main to). Main green → the change broke the check: rejected deterministically

@@ -15,7 +15,7 @@ import {
 } from "../src/landing-drain.js";
 import { consumeAbortRequests } from "../src/operator-requests.js";
 import { LoopRunner } from "../src/loop.js";
-import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/land-queue.js";
+import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing-queue.js";
 import { abortRequestPath, landQueueDir, landingRefName, landingStatePath, orchestratorStatePath } from "../src/paths.js";
 import { isMergedInto, refSha, setRef } from "../src/git.js";
 import { readEvents } from "../src/events.js";

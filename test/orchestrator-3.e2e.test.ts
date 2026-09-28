@@ -25,7 +25,7 @@ import {
   landingStatePath,
   worktreePath,
 } from "../src/paths.js";
-import { enqueueLanding, queueDepth } from "../src/land-queue.js";
+import { enqueueLanding, queueDepth } from "../src/landing-queue.js";
 import { setRef } from "../src/git.js";
 import { type RedeployDeps, Redeployer } from "../src/redeploy.js";
 import {

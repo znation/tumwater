@@ -8,7 +8,7 @@ import { ensureWorktree } from "../src/worktree.js";
 import { freshLoopState } from "../src/state.js";
 import { defaultConfig } from "../src/config.js";
 import { readQaCoverage } from "../src/qa-coverage.js";
-import { queueDepth, queuedLandings } from "../src/land-queue.js";
+import { queueDepth, queuedLandings } from "../src/landing-queue.js";
 import type { LoopState, PiRunResult, TickOutcome } from "../src/types.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { makeRepo, sh } from "./repo-fixtures.js";

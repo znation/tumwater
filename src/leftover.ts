@@ -1,7 +1,7 @@
 import { aheadOfMain, commitMessage, deleteRef, headOf, isMergedInto, refSha, setRef } from "./git.js";
 import { parseCommitMetadata, type CommitMetadata } from "./commit-message.js";
 import { logEvent, warnEvent } from "./events.js";
-import { enqueueLanding, queuedLandings } from "./land-queue.js";
+import { enqueueLanding, queuedLandings } from "./landing-queue.js";
 import { landingRefName } from "./paths.js";
 import { shortSha } from "./text.js";
 import type { LandingEntry, LoopState } from "./types.js";

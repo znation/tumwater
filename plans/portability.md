@@ -1077,7 +1077,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
 - Threading config to `detectBuildCheck` reaches three call sites, not two: `runScopedBuildCheck(root,
   role, scope, wt, config, timeoutMs = BUILD_CHECK_TIMEOUT_MS)` (build-check.ts:359) calls
   `detectBuildCheck(wt)` itself (:366) and serves the `gate` (src/review.ts:216 and the post-fix
-  recheck :267), `landing` (src/merge.ts:155) and `batch` (src/land-batch.ts:229) scopes;
+  recheck :267), `landing` (src/merge.ts:155) and `batch` (src/landing-batch.ts:229) scopes;
   `checkMainBaseline`
   (src/main-baseline.ts:123 — its signature grows to `checkMainBaseline(wt, config, onRun?,
   reverifyRed?)`, config required in the 2nd position: detection needs it, and an optional
@@ -1085,7 +1085,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   `runBuildCheck` at :146/:149; and `checkBuildCheck` (src/doctor.ts:274) calls it at :275. Add the
   config parameter to all three, plus `config: TumwaterConfig` on `MergeContext` (src/merge.ts:42,
   set beside `exemptPaths` in the object literal inside `LoopRunner.merge` — src/loop.ts:271;
-  review.ts's GateContext (:90) and land-batch.ts's BatchContext (:23) already hold it).
+  review.ts's GateContext (:90) and landing-batch.ts's BatchContext (:23) already hold it).
   `checkMainBaseline`'s three callers
   thread it too: src/main-red.ts's `mainRedGate` passes the `cfg` it already loads (:87) at its
   :89 call, `bugfixMainRedNote` (:68) gains the same `loadConfigCached(root).config ??
@@ -1106,7 +1106,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
 
 **Files touched.** src/types.ts, src/config-validation.ts, src/build-check-detect.ts,
 src/build-check.ts, src/prompt.ts,
-src/review.ts, src/merge.ts, src/land-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts,
+src/review.ts, src/merge.ts, src/landing-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts,
 src/loop.ts, src/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
 test/main-baseline.test.ts, test/redeploy.test.ts, test/doctor.test.ts.
 
@@ -1344,8 +1344,8 @@ matches). This entry had become the stalest audit in the file (03edeba, 2026-09-
 back, the widest gap any audit here has bridged), and the surface moved STRUCTURALLY: two
 organize landings split both of this entry's home modules. `3261751` moved check detection out
 of build-check.ts into src/build-check-detect.ts, and `7b98130` moved the batch drain out of
-lander.ts into src/land-batch.ts. The design holds unchanged; the Approach is corrected in place
-above, the Files-touched list swaps lander.ts→land-batch.ts and adds build-check-detect.ts, and
+lander.ts into src/landing-batch.ts. The design holds unchanged; the Approach is corrected in place
+above, the Files-touched list swaps lander.ts→landing-batch.ts and adds build-check-detect.ts, and
 the anchors re-pin below. One npm assumption the 09-24 audit missed joins correction 1's
 surface: the gate's SUCCESS-side strings interpolate `npm run ${check.script}` too.**
 
@@ -1378,8 +1378,8 @@ Re-pinned anchors (09-24 note's terms → today):
   :48; constructed in `LoopRunner.merge`'s object literal, exemptPaths at src/loop.ts:271 (the
   merge() body has since gained the refusal-note branch comment above it — construction
   unchanged).
-- **Batch:** src/land-batch.ts:229 (was lander.ts:447/:394) — and `BatchContext`
-  (land-batch.ts:20) ALREADY carries `config: TumwaterConfig` (:23), so the batch site needs NO
+- **Batch:** src/landing-batch.ts:229 (was lander.ts:447/:394) — and `BatchContext`
+  (landing-batch.ts:20) ALREADY carries `config: TumwaterConfig` (:23), so the batch site needs NO
   context change; lander.ts drops out of this entry entirely.
 - **Doctor:** `checkBuildCheck(root)` :274 (its `detectBuildCheck(root)` :275, the no-check `ok`
   branch :277, the stale "None declared is informational" comment :272–273), its array entry at
@@ -1417,11 +1417,11 @@ Everything else in the 09-24 note stands (its corrections 1's failure-side pins 
 above; corrections 2–4 and the maxLevels/config-precedence pins are re-verified unchanged).
 Sizing: unchanged apart from the file swap — build-check-detect.ts ~45 (union + describeCheck +
 config branch), build-check.ts ~50 (dispatch + cwd rule), main-baseline.ts ~5, main-red.ts ~3,
-redeploy.ts ~10, doctor.ts ~12, prompt.ts ~23, review/merge/land-batch ~10, loop.ts ~2,
+redeploy.ts ~10, doctor.ts ~12, prompt.ts ~23, review/merge/landing-batch ~10, loop.ts ~2,
 config-validation/types ~10, tests ~240. One run. No design question remains open.
 
 **Landed 2026-09-25 by feature** (PLANS.md Done has the detail): as designed, plus two
-audit drifts absorbed in place — the batch scope's call site moved to src/land-batch.ts
+audit drifts absorbed in place — the batch scope's call site moved to src/landing-batch.ts
 since the 09-24 audit, and `checkBuildCheck`'s config parameter is typed structurally
 (`{ check?: … } | null`), doctor passing the whole config it already loads. The 300 s
 default constant moved to build-check-detect.ts (the command variant resolves its timeoutMs

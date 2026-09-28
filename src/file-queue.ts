@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** The directory-of-timestamped-files queue convention shared by the director's prompt inbox
- * (inbox.ts) and the durable land queue (land-queue.ts): one file per entry, ordered by
+ * (inbox.ts) and the durable land queue (landing-queue.ts): one file per entry, ordered by
  * filename across processes and listed by a directory read. Split out because both queues
  * would otherwise carry their own copy of the listing, naming, and ENOENT-tolerant removal
  * rules — exactly the parts that must not drift between the two. */
