@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { readJsonFile, writeJsonAtomic } from "./json-files.js";
-import { SUPERVISED_ENV } from "./supervisor.js";
+import { readJsonFile, writeJsonAtomic } from "../src/json-files.js";
+import { SUPERVISED_ENV } from "../src/supervisor.js";
 
 /** Run the compiled unit tests with node:test — the target of package.json's `test` script.
  * With no arguments it runs every dist/test/*.test.js EXCEPT the `*.e2e.test.js` tier — the
@@ -73,7 +73,7 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
   return { names: picked.map((n) => n.name), files: picked.map((n) => n.file) };
 }
 
-/** The compiled test directory this build's tests live in (dist/test, sibling of dist/src). */
+/** The compiled test directory this build's tests live in (dist/test, this module's own dir). */
 function defaultDistDir(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "test");
 }

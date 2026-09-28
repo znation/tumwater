@@ -87,7 +87,7 @@ test("parsePsOutput reads BSD and procps rows, keeps argv spaces, and skips junk
   const rows = parsePsOutput(
     [
       "    1     0     0 35-22:43:52 425:10.18 /sbin/launchd", // macOS: dd-hh:mm:ss, mm:ss.hh
-      "88052     1   501 2-21:44:01   0:03.12 node dist/src/test-runner.js",
+      "88052     1   501 2-21:44:01   0:03.12 node dist/test/test-runner.js",
       " 4242     1  1000    01:02:03 00:00:05 node /r/.tumwater/worktrees/qa/dist/src/cli.js gui --port 41602", // procps
       "  777   776   501     00:04 0:00.00", // a zombie: no argv at all
       "not a ps row",
@@ -96,7 +96,7 @@ test("parsePsOutput reads BSD and procps rows, keeps argv spaces, and skips junk
   );
   assert.deepEqual(rows, [
     { pid: 1, ppid: 0, uid: 0, etime: "35-22:43:52", time: "425:10.18", command: "/sbin/launchd" },
-    { pid: 88052, ppid: 1, uid: 501, etime: "2-21:44:01", time: "0:03.12", command: "node dist/src/test-runner.js" },
+    { pid: 88052, ppid: 1, uid: 501, etime: "2-21:44:01", time: "0:03.12", command: "node dist/test/test-runner.js" },
     {
       pid: 4242,
       ppid: 1,

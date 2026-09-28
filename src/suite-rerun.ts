@@ -100,8 +100,8 @@ function segmentRunsFullSuite(words: readonly string[]): boolean {
     return false;
   }
   if (bin === "node") {
-    // `node dist/src/test-runner.js` — what `npm test` runs after compiling. The runner must be
-    // node's entry point: a `sed -n 1,80p src/test-runner.ts` read or a `pkill -f test-runner`
+    // `node dist/test/test-runner.js` — what `npm test` runs after compiling. The runner must be
+    // node's entry point: a `sed -n 1,80p test/test-runner.ts` read or a `pkill -f test-runner`
     // names the file without running it.
     const entry = firstNonFlag(words, 1);
     return entry >= 0 && (words[entry] ?? "").endsWith("test-runner.js") && !hasFilter(words.slice(entry + 1));

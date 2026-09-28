@@ -7,7 +7,7 @@ npm test merge                             # only test files whose name contains
 npm run test:e2e                           # live-orchestrator e2e tier, kept out of the gate
 ```
 
-Tests fake pi with a shell shim on PATH, so they run offline. `src/test-runner.ts` keeps the
+Tests fake pi with a shell shim on PATH, so they run offline. `test/test-runner.ts` keeps the
 harness's own variables out of the suite (`TUMWATER_PI_BIN`, which outranks PATH, and the
 supervisor's marker), so a suite a fleet starts sees the same fakes as one run by hand. Drop any
 new variable the harness honors there too. The e2e tier stays out of the gating suite because its
@@ -18,7 +18,7 @@ wall-clock waits are not load-proof. Non-npm projects can replace the gate's che
 
 The suite is bound by process creation, not by its own code: a run starts ~12,000 git processes
 plus hundreds of npm, CLI and fake-pi children, and macOS tops out at a few thousand spawns a
-second. `src/test-runner.ts` sets the environment up for that: it puts the real git binary
+second. `test/test-runner.ts` sets the environment up for that: it puts the real git binary
 ahead of the xcode-select shim on macOS, turns off git's auto-maintenance and init templates,
 and starts files longest-first by the durations it records in `dist/test/.durations.json`.
 

@@ -92,7 +92,7 @@ function descendantCount(children: Map<number, number[]>, pid: number): number {
  * no lock, write no event and touch no state file, so nothing else in the harness can see
  * them. A process is this repo's when its argv names a path under `.tumwater/worktrees/`
  * (absolute; or relative, confirmed by cwd where it can be — relativeArgvIsOurs) or when its
- * cwd lies under it: a leaked `node dist/src/test-runner.js` names no worktree at all.
+ * cwd lies under it: a leaked `node dist/test/test-runner.js` names no worktree at all.
  *
  * PPID 1 is what keeps the live fleet out: a running orchestrator's pi runs and build checks
  * have the orchestrator as parent, and the orchestrator and its supervisor run from the repo

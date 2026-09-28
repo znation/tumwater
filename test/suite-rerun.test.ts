@@ -22,8 +22,8 @@ test("runsFullSuite flags an unfiltered suite run or `npm ci`, however the line 
     "npm run-script test",
     "cd /tmp/revrun && npm ci --no-audit --no-fund 2>&1 | tail -3 && npm test 2>&1 | tail -12",
     "rm -rf /tmp/rev && git archive HEAD | tar -x -C /tmp/rev && cd /tmp/rev && npm ci --silent",
-    "cd /tmp/reviewcopy && node dist/src/test-runner.js 2>&1 | tail -12",
-    "TUMWATER_TRACE_FOLLOW=1 node dist/src/test-runner.js > /tmp/full-trace.log 2>&1", // env prefix
+    "cd /tmp/reviewcopy && node dist/test/test-runner.js 2>&1 | tail -12",
+    "TUMWATER_TRACE_FOLLOW=1 node dist/test/test-runner.js > /tmp/full-trace.log 2>&1", // env prefix
     "for i in 1 2 3; do npm run test 2>&1 | grep -E \"ℹ fail\" ; done", // loop body
     "(cd /tmp/land-check && npm test)", // subshell
     "time npm test",
@@ -39,9 +39,9 @@ test("runsFullSuite leaves filtered runs and mere mentions of the runner alone",
     "rm -rf /tmp/rev-scratch && cp -R wt /tmp/rev-scratch && cd /tmp/rev-scratch && npm test pi 2>&1 | tail -15",
     "npm test -- build-check",
     "npm run test merge",
-    "cd /tmp/tw-review && node dist/src/test-runner.js orchestrator-3 2>&1 | tail -6",
+    "cd /tmp/tw-review && node dist/test/test-runner.js orchestrator-3 2>&1 | tail -6",
     "node --test dist/test/pi.test.js 2>&1 | grep -E \"✖\"", // node's own runner on one file
-    "sed -n '1,80p' src/test-runner.ts", // reading the runner is not running it
+    "sed -n '1,80p' test/test-runner.ts", // reading the runner is not running it
     "pkill -f test-runner",
     "ps aux | grep -E \"cli\\.js|test-runner|npm test\" | grep -v grep", // quoted pattern is data
     "grep -rn 'npm test' README.md",
@@ -62,7 +62,7 @@ test("suiteRerunWarning names the first full-suite run and counts the rest; filt
     suiteRerunWarning([
       bash("git diff main --stat"),
       bash("npm test gui 2>&1 | tail -15"),
-      bash("node dist/src/test-runner.js review"),
+      bash("node dist/test/test-runner.js review"),
       { toolName: "read", args: { path: "src/review.ts" } },
       // A non-bash tool whose args happen to carry a command string is not a shell run.
       { toolName: "grep", args: { command: "npm test" } },
@@ -76,7 +76,7 @@ test("suiteRerunWarning names the first full-suite run and counts the rest; filt
     bash("cd /tmp/revrun && npm ci --no-audit\nnpm test 2>&1 | tail -15"),
     bash("npm test gui"),
     // pi omits toolName on some start events: a nameless call with a command is still bash.
-    { toolName: "", args: { command: "cd /tmp/revrun && node dist/src/test-runner.js" } },
+    { toolName: "", args: { command: "cd /tmp/revrun && node dist/test/test-runner.js" } },
   ]);
   assert.equal(
     warning,

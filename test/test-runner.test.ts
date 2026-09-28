@@ -6,7 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
-import { orderByDuration, selectTestFiles, suiteEnv, suiteGitEnv } from "../src/test-runner.js";
+import { orderByDuration, selectTestFiles, suiteEnv, suiteGitEnv } from "./test-runner.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
@@ -145,7 +145,7 @@ test("suiteEnv drops the harness's own variables, so an operator's TUMWATER_PI_B
 });
 
 /** The compiled entry point, as a developer's `npm test <filter>` spawns it. */
-const runnerPath = fileURLToPath(new URL("../src/test-runner.js", import.meta.url));
+const runnerPath = fileURLToPath(new URL("./test-runner.js", import.meta.url));
 
 /** The runner's env with the outer node --test's child marker removed: inheriting it would
  * make the nested node --test run think it is a test child and write nothing to stdout. */
@@ -156,7 +156,7 @@ function runnerEnv(): NodeJS.ProcessEnv {
 }
 
 // main() itself — the spawn, the filter announcement, the durations ledger, the exit code —
-// only runs when dist/src/test-runner.js is the program, so these exercise it as a subprocess.
+// only runs when dist/test/test-runner.js is the program, so these exercise it as a subprocess.
 // json-object is the suite's cheapest file (fractions of a second), keeping the nested run
 // well inside a tick's budget.
 

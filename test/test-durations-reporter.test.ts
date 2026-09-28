@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { TestEvent } from "node:test/reporters";
-import durationsReporter from "../src/test-durations-reporter.js";
+import durationsReporter from "./test-durations-reporter.js";
 
 /** What the durations reporter does with a hand-fed event stream: only nesting-0 pass/fail
  * events with a file contribute their duration, summed per compiled basename, and the whole

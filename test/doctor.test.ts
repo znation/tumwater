@@ -700,7 +700,7 @@ test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, t
       { pid: 8198, etime: "18:34:12", time: "0:41.20", command: `node ${root}/.tumwater/worktrees/perf/dist/src/cli.js run` },
       // The leaked build-check runner: no worktree in its argv at all, only in its cwd — and its
       // `node --test` workers still have it as their parent.
-      { pid: 88052, etime: "2-21:44:01", time: "0:03.12", command: "node dist/src/test-runner.js" },
+      { pid: 88052, etime: "2-21:44:01", time: "0:03.12", command: "node dist/test/test-runner.js" },
       { pid: 88160, ppid: 88052, command: "node --test a.test.js" },
       { pid: 95649, ppid: 88160, time: "4:44.00", command: "node a.test.js" },
       // The qa GUI (2026-09-23): a relative worktree argv, its cwd a scratch dir since deleted.
@@ -718,7 +718,7 @@ test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, t
     detail:
       "3 orphaned worktree processes (PPID 1): " +
       "pid 8198 (age 18:34:12, cpu 0:41.20) node .tumwater/worktrees/perf/dist/src/cli.js run; " +
-      "pid 88052 (age 2-21:44:01, cpu 0:03.12, +2 descendants) node dist/src/test-runner.js; " +
+      "pid 88052 (age 2-21:44:01, cpu 0:03.12, +2 descendants) node dist/test/test-runner.js; " +
       "pid 73241 (age 07:24:10, cpu 0:02.50) node .tumwater/worktrees/qa/dist/src/cli.js gui --port 41602 --all-interfaces" +
       " — nothing reaps these; kill each with its descendants",
   });
@@ -770,9 +770,9 @@ test("checkOrphans asks cwds only of parentless processes this user can inspect"
   const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "bugfix");
   const { probe, asked } = fakeProbe(
     [
-      { pid: 10, command: "node dist/src/test-runner.js" },
+      { pid: 10, command: "node dist/test/test-runner.js" },
       // Another user's process: lsof and /proc cannot read its cwd, so it is never asked.
-      { pid: 11, uid: uid + 1, command: "node dist/src/test-runner.js" },
+      { pid: 11, uid: uid + 1, command: "node dist/test/test-runner.js" },
       { pid: 12, ppid: 10, command: "node --test a.test.js" },
     ],
     { 10: wt, 11: wt, 12: wt },
@@ -780,7 +780,7 @@ test("checkOrphans asks cwds only of parentless processes this user can inspect"
   assert.deepEqual(await checkOrphans(root, probe), {
     level: "fail",
     detail:
-      "1 orphaned worktree process (PPID 1): pid 10 (age 01:00, cpu 0:00.10, +1 descendant) node dist/src/test-runner.js" +
+      "1 orphaned worktree process (PPID 1): pid 10 (age 01:00, cpu 0:00.10, +1 descendant) node dist/test/test-runner.js" +
       " — nothing reaps these; kill each with its descendants",
   });
   assert.deepEqual(asked, [[10]]);
@@ -807,14 +807,14 @@ test("checkOrphans degrades instead of crashing doctor: no table warns, unreadab
     },
   });
   // Nothing named in argv, but the scan was partial: a warn, never a false all-clear.
-  const partial = await checkOrphans(root, noLsof([{ pid: 20, command: "node dist/src/test-runner.js" }]));
+  const partial = await checkOrphans(root, noLsof([{ pid: 20, command: "node dist/test/test-runner.js" }]));
   assert.equal(partial.level, "warn");
   assert.match(partial.detail, /^none named in argv, but process cwds are unreadable \(spawn lsof ENOENT\)/);
   // An argv match still fails the check, and says the cwd half did not run.
   const found = await checkOrphans(
     root,
     noLsof([
-      { pid: 20, command: "node dist/src/test-runner.js" },
+      { pid: 20, command: "node dist/test/test-runner.js" },
       { pid: 21, command: `node ${root}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
     ]),
   );
