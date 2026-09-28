@@ -73,6 +73,19 @@ test("isNegatedRefusal negates none and n/a under markdown decoration", () => {
   assert.ok(!isNegatedRefusal("**it would delete user data**"), "a real reason under emphasis stays a refusal");
 });
 
+// BUGS.md 2026-09-28: a parenthesized explanation after the negation (`none (no entry refused
+// this run)`) left isNegatedRefusal false — the dash-appended explanation was tolerated but its
+// parenthesized dress was not, so a work-completed reply ending `TUMWATER_REFUSED: none (…)` was
+// a "genuine" refusal whose tested work the harness hard-reset, the same destruction the
+// previous fixes in this guard closed. The explanation is appended to the token, not part of it.
+test("isNegatedRefusal negates none and n/a with a trailing parenthesized explanation", () => {
+  for (const reason of ["none (no entry refused this run)", "None (nothing to do)", "n/a (nothing fits)", "N/A (no open bugs)", "none (nothing to do).", "none (see (a) above)", "none (a) (b)"])
+    assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
+  assert.ok(!isNegatedRefusal("the tests still fail (see log)"), "a real reason with a trailing note stays a refusal");
+  assert.ok(!isNegatedRefusal("none of the attempted fixes work (repro attached)"), "a reason beginning with the word none stays a refusal");
+  assert.ok(!isNegatedRefusal("(no)ne"), "a bracket inside the token cannot collapse into a negation");
+});
+
 test("isNegatedRefusal keeps a real reason a refusal", () => {
   for (const reason of [
     "it would delete user data",

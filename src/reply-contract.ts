@@ -46,7 +46,9 @@ export function extractRefusal(text: string): string | null {
  * explanation (`(none — no entry refused this run)`), with trailing sentence punctuation
  * (`None.`, `N/A!`) still negating (BUGS.md 2026-09-28), and under markdown decoration
  * (`**none**`, `` `n/a` ``, `(**None**) — nothing refused`) still negating (BUGS.md
- * 2026-09-28). A refusal is a deliberate, affirmative
+ * 2026-09-28), and with a trailing parenthesized explanation (`none (no entry refused this
+ * run)`, `n/a (nothing to do).`) still negating (BUGS.md 2026-09-28). A refusal is a
+ * deliberate, affirmative
  * declaration; classifying a reply as one must not depend on the model never naming the
  * sentinel (BUGS.md 2026-09-23 — the prompt lists the line beside the reply-contract fields,
  * so a compliant model fills it in on every reply). */
@@ -66,7 +68,10 @@ export function isNegatedRefusal(reason: string | null | undefined): boolean {
   const normalized = unbracket(bare(unbold(raw)));
   for (const candidate of [raw, unwrapped, normalized]) {
     if (candidate === "" || candidate === "none" || candidate === "n/a") return true;
-    if (/^(none|n\/a)\b([ \t]*[—–-].*)?$/.test(candidate)) return true;
+    // The appended-explanation form: a dash (`none — bug filed normally`) or a parenthesized
+    // note (`none (no entry refused this run)`) riding after the token. Anchored right after
+    // the token, so `none of the …` — a reason that begins with the word — stays a refusal.
+    if (/^(none|n\/a)\b([ \t]*[—–-].*|[ \t]*\(.*)?$/.test(candidate)) return true;
   }
   return false;
 }
