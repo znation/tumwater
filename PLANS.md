@@ -457,7 +457,7 @@ commands, the last write winning with its own deadline.
    `<n><s|m|h|d>` (e.g. `45s`, `90m`, `2h`, `1d`), rejects zero, negatives, a missing or unknown
    unit, and a missing value via `fail()`; returns the duration in ms. No absolute `--at` form —
    one way of saying it.
-2. **src/cli.ts** — the marker-command arg gate (`runRoleCommand`'s `rejectUnknownArgs(command,
+2. **src/cli.ts** — the marker-command arg gate (`runMarkerCommand`'s `rejectUnknownArgs(command,
    args, [ROLE_FLAG])`) accepts `--for <duration>` for `pause` only; the other marker commands
    keep rejecting it.
 3. **src/fleet-state.ts** — `pauseFleet(root, untilMs?)` writes `{ at, until? }`, `pauseRole`

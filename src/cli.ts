@@ -37,7 +37,7 @@ async function requireReadyRepo(root: string): Promise<void> {
   if (notReady !== null) fail(notReady);
 }
 
-/** The marker commands that share runRoleCommand's guard+dispatch shape below. */
+/** The marker commands that share runMarkerCommand's guard+dispatch shape below. */
 type MarkerCommand = "reset-counters" | "wake" | "abort" | "pause" | "resume";
 
 /** The marker-writing core of each marker command, keyed by its CLI name (the consumer half
@@ -55,7 +55,7 @@ const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) =
  * reject unknown args (each takes only the optional --role flag), gate on a ready repo, then
  * dispatch to its operator-commands core. One copy of the guard sequence so the five cannot
  * drift on validation order or gating. */
-async function runRoleCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
+async function runMarkerCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
   // `pause` alone accepts `--for <duration>` (the timed pause); the other marker commands keep
   // the plain --role vocabulary, so a stray --for fails fast instead of being silently ignored.
   rejectUnknownArgs(command, args, command === "pause" ? [ROLE_FLAG, DURATION_FLAG] : [ROLE_FLAG]);
@@ -214,14 +214,14 @@ async function main(): Promise<void> {
     case "reset-counters":
     // Fall through: the five marker commands share one guard+dispatch shape — unknown-args
     // rejection against the optional --role flag, the ready-repo gate, then the
-    // operator-commands core — so runRoleCommand holds it once instead of five copies
+    // operator-commands core — so runMarkerCommand holds it once instead of five copies
     // drifting. The case labels above are exactly MarkerCommand's members, which is what
     // makes the cast below exhaustive.
     case "wake":
     case "abort":
     case "pause":
     case "resume": {
-      await runRoleCommand(root, command as MarkerCommand, args);
+      await runMarkerCommand(root, command as MarkerCommand, args);
       break;
     }
     case "stop": {
