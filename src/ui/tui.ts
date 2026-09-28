@@ -47,6 +47,25 @@ const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
 const RESET = "\x1b[0m";
 
+// TUI rendering repeats one shape: wrap text in an escape pair, clipping it to the pane
+// width. These helpers centralize that for the bold/dim headers and prompts and the clipped
+// body lists; short unclipped styles (the "recent activity" header, the DIM body/empty-note
+// wraps further down) stay styled inline.
+function boldLine(text: string, width: number): string {
+  return `${BOLD}${clipToWidth(text, width)}${RESET}`;
+}
+
+function dimLine(text: string, width: number): string {
+  return `${DIM}${clipToWidth(text, width)}${RESET}`;
+}
+
+/** Clip each body line to the pane width, keeping at most `budget` of them — "head" keeps
+ * the top of the list (backlog files are newest-first), "tail" the bottom (event feeds). */
+function clipLines(lines: string[], width: number, budget: number, keep: "head" | "tail"): string[] {
+  const clipped = lines.map((l) => clipToWidth(l, width));
+  return keep === "head" ? clipped.slice(0, budget) : clipped.slice(-budget);
+}
+
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
  * typed prompts into the inbox. Works alongside (not instead of) `tumwater run`. */
 export async function runTui(root: string): Promise<void> {
@@ -173,13 +192,11 @@ export async function runTui(root: string): Promise<void> {
     let emptyNote = "(no events yet)";
     const role = view > 0 && view <= roleIds.length ? roleIds[view - 1] : undefined; // defined: view is clamped above
     if (role) {
-      header = `${BOLD}${clipToWidth(
+      header = boldLine(
         `transcript: ${role} — Ctrl+P pause · Ctrl+A abort · Ctrl+W wake · Ctrl+R prompt · Ctrl+T to cycle`,
         width,
-      )}${RESET}`;
-      body = readTranscript(root, role, eventBudget)
-        .map((l) => clipToWidth(l, width))
-        .slice(-eventBudget);
+      );
+      body = clipLines(readTranscript(root, role, eventBudget), width, eventBudget, "tail");
       emptyNote = "(no transcript yet)";
     } else if (view === roleIds.length + 1) {
       // Project status: planned features, open bugs, and open questions from
@@ -189,14 +206,17 @@ export async function runTui(root: string): Promise<void> {
       const bugEntries = openBugEntries(root);
       const questionEntries = openQuestionEntries(root);
       if (selectedEntry === null) {
-        header = `${BOLD}${clipToWidth("project status — Ctrl+T to cycle", width)}${RESET}`;
-        body = backlogLines(
-          planEntries.map((e) => e.title),
-          bugEntries.map((e) => e.title),
-          questionEntries.map((e) => e.title),
-        )
-          .map((l) => clipToWidth(l, width))
-          .slice(0, eventBudget);
+        header = boldLine("project status — Ctrl+T to cycle", width);
+        body = clipLines(
+          backlogLines(
+            planEntries.map((e) => e.title),
+            bugEntries.map((e) => e.title),
+            questionEntries.map((e) => e.title),
+          ),
+          width,
+          eventBudget,
+          "head",
+        );
       } else {
         // Entry browsing: the selected entry's full body under a header naming its section
         // and title. A stale selection (an entry removed from the file since the last render)
@@ -204,17 +224,15 @@ export async function runTui(root: string): Promise<void> {
         const flat = flatEntries();
         const sel = flat.length > 0 ? Math.min(selectedEntry, flat.length - 1) : null;
         if (sel === null) {
-          header = `${BOLD}${clipToWidth("project status — Ctrl+T to cycle", width)}${RESET}`;
-          body = ["(no planned features, open bugs, or open questions)"]
-            .map((l) => clipToWidth(l, width))
-            .slice(0, eventBudget);
+          header = boldLine("project status — Ctrl+T to cycle", width);
+          body = clipLines(["(no planned features, open bugs, or open questions)"], width, eventBudget, "head");
         } else {
           const e = flat[sel]!;
           const win = entryBodyWindow(e.body, entryScroll, eventBudget, width);
           // The scroll affordance appears only while the body overflows the pane — short
           // entries keep today's exact header.
           const browse = win.total > eventBudget ? "↑↓ browse · PgUp/PgDn scroll" : "↑↓ browse";
-          header = `${BOLD}${clipToWidth(`${e.label}: ${e.title} — ${browse} · Ctrl+T cycle`, width)}${RESET}`;
+          header = boldLine(`${e.label}: ${e.title} — ${browse} · Ctrl+T cycle`, width);
           body = win.lines;
         }
       }
@@ -227,19 +245,17 @@ export async function runTui(root: string): Promise<void> {
       // The scroll affordance appears only while the body overflows the pane — a fitting
       // report keeps the plain header (the browse-hint pattern entry mode already uses).
       const scroll = win.total > eventBudget ? "PgUp/PgDn scroll · " : "";
-      header = `${BOLD}${clipToWidth(`${label} — ${scroll}Ctrl+T to cycle`, width)}${RESET}`;
+      header = boldLine(`${label} — ${scroll}Ctrl+T to cycle`, width);
       body = win.lines;
     } else {
       header = `${BOLD}recent activity${RESET}`;
-      body = readEvents(root, eventBudget)
-        .map((e) => clipToWidth(formatEvent(e), width))
-        .slice(-eventBudget);
+      body = clipLines(readEvents(root, eventBudget).map((e) => formatEvent(e)), width, eventBudget, "tail");
     }
 
     const parts = [status, ""];
     if (hasQuestions) {
       parts.push(
-        `${BOLD}${clipToWidth(`questions: ${snap.questions} awaiting answers (see QUESTIONS.md)`, width)}${RESET}`,
+        boldLine(`questions: ${snap.questions} awaiting answers (see QUESTIONS.md)`, width),
       );
     }
     for (const [i, preview] of queued.entries()) {
@@ -248,11 +264,11 @@ export async function runTui(root: string): Promise<void> {
     parts.push(header);
     parts.push(body.length ? body.map((l) => `${DIM}${l}${RESET}`).join("\n") : `${DIM}${emptyNote}${RESET}`);
     parts.push("");
-    if (flash && Date.now() < flashUntil) parts.push(`${BOLD}${clipToWidth(flash, width)}${RESET}`);
+    if (flash && Date.now() < flashUntil) parts.push(boldLine(flash, width));
     parts.push(
       rolePromptFor
-        ? `${DIM}${clipToWidth(`prompt for ${rolePromptFor}: Enter to send · Esc to cancel · Ctrl+C to quit`, width)}${RESET}`
-        : `${DIM}${clipToWidth("type a prompt for the project, Enter to send · Ctrl+B edit budget · Ctrl+C to quit", width)}${RESET}`,
+        ? dimLine(`prompt for ${rolePromptFor}: Enter to send · Esc to cancel · Ctrl+C to quit`, width)
+        : dimLine("type a prompt for the project, Enter to send · Ctrl+B edit budget · Ctrl+C to quit", width),
     );
     // Window long prompts around the cursor so its position stays visible.
     parts.push(`> ${renderInputView(input, cursor, width)}`);
