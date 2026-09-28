@@ -27,6 +27,24 @@ export function formatTime(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
+/** Epoch ms as a local calendar-day key (`YYYY-MM-DD`) — the epoch-ms form of formatDate:
+ * the day-bucketing rule the event log's day key (eventDayKey), the windowed readers' window
+ * keys, the daily-budget stamp, and the failure digest's cluster dates all render through, so
+ * what counts as one day cannot drift per consumer (local, never UTC — the same rule
+ * formatDate holds). */
+export function dayKey(ms: number): string {
+  return formatDate(new Date(ms));
+}
+
+/** Epoch ms as a local `YYYY-MM-DD HH:MM:SS` stamp — date and wall-clock time in one string,
+ * built from one Date so the two halves cannot disagree across a midnight crossing. Shared by
+ * the transcript's run separators, the history table's time cell, and the review-gate prompt's
+ * rejection context, so a timestamp reads identically at every surface. */
+export function formatTimestamp(ms: number): string {
+  const d = new Date(ms);
+  return `${formatDate(d)} ${formatTime(d)}`;
+}
+
 /** Local midnight of the day `offsetFromToday` days before `now` (0 = today): the day-count
  * arithmetic the usage report and the failure digest share, so their windows select the same
  * calendar days. The Date constructor handles month/year edges; `now` is passed explicitly so

@@ -1,6 +1,6 @@
 import { shortSha } from "./text.js";
 import { dateLine } from "./prompt.js";
-import { formatDate, formatTime } from "./datetime.js";
+import { formatTimestamp } from "./datetime.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
@@ -151,7 +151,7 @@ export function buildRejectedReviewNote(review: {
       : "(no reasons recorded)";
   let context = "";
   if (review.at !== undefined) {
-    context = ` (${formatDate(new Date(review.at))} ${formatTime(new Date(review.at))}`;
+    context = ` (${formatTimestamp(review.at)}`;
     if (review.head) context += `, head ${review.head.slice(0, 7)}`;
     context += ")";
   }

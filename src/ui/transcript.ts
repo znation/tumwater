@@ -1,7 +1,7 @@
 import { parsePiEventLine } from "../pi-event-line.js";
 import { statRoleLog, type TailState, withTail } from "./tail.js";
 import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
-import { formatDate, formatTime } from "../datetime.js";
+import { formatTimestamp } from "../datetime.js";
 
 /** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its
  * run's separator) or a lone retry warning / run separator. Exported because transcript-tail.ts
@@ -11,12 +11,6 @@ export type TranscriptEntry = string[];
 const THINKING_MAX_CHARS = 80;
 const TEXT_LINE_MAX_COLS = 120;
 const TEXT_LINES_PER_MESSAGE = 4;
-
-/** Local wall-clock time for an epoch-ms timestamp (e.g. `2026-08-23 14:32:05`). */
-function formatTimestamp(ms: number): string {
-  const d = new Date(ms);
-  return `${formatDate(d)} ${formatTime(d)}`;
-}
 
 type ContentBlock = {
   type?: unknown;

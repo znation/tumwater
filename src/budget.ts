@@ -9,12 +9,12 @@
 
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, TickResult } from "./types.js";
-import { formatDate } from "./datetime.js";
+import { dayKey } from "./datetime.js";
 
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other
  * wall-clock display in the harness (lastTickCell). */
 export function todayStamp(now = Date.now()): string {
-  return formatDate(new Date(now));
+  return dayKey(now);
 }
 
 /** This loop's spend for the local day (the daily cost budget window): $0 when its stamp is

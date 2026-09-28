@@ -1,5 +1,5 @@
 import { durationLabel, fail, failOverDurationCap, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
-import { formatDate } from "../datetime.js";
+import { dayKey } from "../datetime.js";
 import { LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
 import { parseEventLine, readEvents } from "../events.js";
 import type { HarnessEvent } from "../types.js";
@@ -57,12 +57,12 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       fail("logs --since cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
     const ms = parseDurationFlag("--since", args[sinceFlag + 1]);
     failOverDurationCap("logs --since", ms, LOGS_SINCE_MAX_MS);
-    // The window key is the cutoff's local calendar day, from the same formatDate helper
+    // The window key is the cutoff's local calendar day, from the shared dayKey helper
     // eventDayKey buckets events with, so the read's day keys cannot disagree with the ts
     // filter below; the day-keyed read may include earlier hours of that day, which the
     // ts filter removes (over-read is at most one day's events).
     const cutoff = Date.now() - ms;
-    const window = readWindowEvents(root, formatDate(new Date(cutoff)));
+    const window = readWindowEvents(root, dayKey(cutoff));
     const events = window.events.filter((e) => typeof e.ts === "number" && e.ts >= cutoff);
     // The retained log provably covers the window when either proof holds: the day-keyed
     // reader saw a complete line older than the window's first day (coversFullWindow), or —

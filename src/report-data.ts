@@ -11,7 +11,7 @@ import { readTextOrNull } from "./files.js";
 import { readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
 import { fenceTracker, sectionLines } from "./backlog.js";
-import { dayAt, dayWindow, formatDate } from "./datetime.js";
+import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
 import type { HarnessEvent } from "./types.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
@@ -115,12 +115,12 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
     throw new Error(`sinceMs must be between 1 and REPORT_SINCE_MAX_MS (got ${sinceMs})`);
   const now = Date.now();
   const cutoff = now - sinceMs;
-  // The window key is the cutoff's local calendar day, from the same formatDate helper
+  // The window key is the cutoff's local calendar day, from the shared dayKey helper
   // eventDayKey buckets events with, so the read's day keys cannot disagree with the ts
   // filter below; the day-keyed read may include earlier hours of that day, which the ts
   // filter removes (over-read is at most one day's events). Future-dated events are dropped
   // here too, matching collectReport (its day map only holds the window's days).
-  const fromKey = formatDate(new Date(cutoff));
+  const fromKey = dayKey(cutoff);
   const raw = readWindowEvents(root, fromKey);
   const acc: UsageFold = { ticks: 0, ticksByRole: {}, costByRole: {}, tokensOut: 0, commits: 0, costUsd: 0 };
   for (const ev of raw.events) {

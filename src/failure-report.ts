@@ -5,7 +5,7 @@
 import type { TickResult } from "./types.js";
 import { collectFailureReport, type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
 import { shortSha } from "./text.js";
-import { dayLabel, formatDate, formatTime, reportWindow } from "./datetime.js";
+import { dayKey, dayLabel, formatTime, reportWindow } from "./datetime.js";
 
 /** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
  * The CLI keeps the usage report's 14-day default; the role reads one day so a cluster
@@ -223,5 +223,5 @@ function stateChangeStamp(ts: number): string {
  * most REPORT_MAX_DAYS), so the year is redundant on the line and the bytes are better spent
  * on the top-N budget. */
 function dayShort(ts: number): string {
-  return formatDate(new Date(ts)).slice(5);
+  return dayKey(ts).slice(5);
 }

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { formatDate } from "./datetime.js";
+import { dayKey } from "./datetime.js";
 import { isJsonObject } from "./json-object.js";
 import {
   ensureParentDir,
@@ -103,7 +103,7 @@ export function parseEventLine(line: string): HarnessEvent | null {
  * numeric timestamp. The one day-bucketing rule the windowed reader (event-window.ts) and the
  * usage/failure reports all apply, so they agree on what counts as one day. */
 export function eventDayKey(ev: HarnessEvent): string | null {
-  return typeof ev.ts === "number" ? formatDate(new Date(ev.ts)) : null;
+  return typeof ev.ts === "number" ? dayKey(ev.ts) : null;
 }
 
 /** The loop id an event is filed under, or "?" when absent or empty — the guard the usage
