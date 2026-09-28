@@ -1,7 +1,5 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -15,6 +13,7 @@ import {
   terminateChild,
   withoutLaunchServicesCheckIn,
 } from "../src/process.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead
 // holder's merge lock must be breakable) and state.ts's orchestrator-alive status. Its
@@ -179,7 +178,7 @@ test("systemProcessProbe.cwds rejects when no lookup could run at all — no lso
   // error carries no numeric exit status with stdout, so the probe must reject rather than
   // hand back a silent empty map that would read as "no orphans" in doctor's check.
   if (process.platform === "linux") t.skip("the lsof path is not taken on Linux");
-  const emptyBin = fs.mkdtempSync(path.join(os.tmpdir(), "no-lsof-"));
+  const emptyBin = tmpdir("no-lsof-");
   const originalPath = process.env.PATH;
   process.env.PATH = emptyBin;
   try {
@@ -187,7 +186,6 @@ test("systemProcessProbe.cwds rejects when no lookup could run at all — no lso
   } finally {
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
-    fs.rmSync(emptyBin, { recursive: true, force: true });
   }
 });
 

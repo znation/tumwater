@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import {
   BASH_LIMIT_CHARS,
@@ -13,6 +12,7 @@ import {
   writeFullOutput,
   default as boundedOutput,
 } from "../src/pi-extension/bounded-output.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 const cps = (text: string): number => Array.from(text).length;
 const MARKER_RE = /\.\.\.(\d+) chars/;
@@ -261,7 +261,7 @@ test("boundBashResult returns empty output untouched", () => {
 });
 
 test("writeFullOutput writes into .tumwater/log/tool-output named by toolCallId", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bound-"));
+  const dir = tmpdir("bound-");
   fs.mkdirSync(path.join(dir, ".tumwater"));
   const nested = path.join(dir, "worktrees", "feature");
   fs.mkdirSync(nested, { recursive: true });
@@ -269,47 +269,41 @@ test("writeFullOutput writes into .tumwater/log/tool-output named by toolCallId"
   assert.ok(file, "returns the written path");
   assert.equal(file, path.join(dir, ".tumwater", "log", "tool-output", "call-42.log"));
   assert.equal(fs.readFileSync(file!, "utf-8"), "full output text");
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("writeFullOutput returns null when no ancestor has .tumwater/", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bound-none-"));
+  const dir = tmpdir("bound-none-");
   assert.equal(writeFullOutput("text", "call-1", dir), null);
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("writeFullOutput returns null when the write fails instead of throwing", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bound-fail-"));
+  const dir = tmpdir("bound-fail-");
   fs.mkdirSync(path.join(dir, ".tumwater", "log"), { recursive: true });
   // .tumwater/log/tool-output exists as a regular file, so the recursive mkdirSync inside
   // writeFullOutput throws: the catch must turn that into null (a failing write can never
   // crash a tick's tool_result handling), and nothing is written.
   fs.writeFileSync(path.join(dir, ".tumwater", "log", "tool-output"), "occupied");
   assert.equal(writeFullOutput("text", "call-9", dir), null);
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("findTumwaterRoot gives up after 64 levels without .tumwater/ instead of looping forever", () => {
   // A chain deeper than the walk's 64-level cap, with no .tumwater/ on any ancestor of it:
   // the walk exhausts its depth budget and returns null (it must terminate by depth, not
   // only by reaching the filesystem root).
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), "bound-deep-"));
+  const base = tmpdir("bound-deep-");
   const deep = path.join(base, ...Array(70).fill("d"));
   fs.mkdirSync(deep, { recursive: true });
   assert.equal(findTumwaterRoot(deep), null);
-  fs.rmSync(base, { recursive: true, force: true });
 });
 
 test("findTumwaterRoot walks up to the harness root", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bound-root-"));
+  const dir = tmpdir("bound-root-");
   fs.mkdirSync(path.join(dir, ".tumwater"));
   const deep = path.join(dir, "a", "b", "c");
   fs.mkdirSync(deep, { recursive: true });
   assert.equal(findTumwaterRoot(deep), dir);
-  const bare = fs.mkdtempSync(path.join(os.tmpdir(), "bound-bare-"));
+  const bare = tmpdir("bound-bare-");
   assert.equal(findTumwaterRoot(bare), null);
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.rmSync(bare, { recursive: true, force: true });
 });
 
 // ---- pi extension adapter --------------------------------------------------
@@ -365,7 +359,7 @@ test("writeFullOutput falls back to a timestamped name when the tool call has no
   // Parallel tool mode names files by toolCallId; a call without one (or with a junk-free
   // empty id) still gets a file — named by the current time instead of crashing or
   // colliding on a bare ".log".
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bound-id-"));
+  const dir = tmpdir("bound-id-");
   fs.mkdirSync(path.join(dir, ".tumwater"));
   const nested = path.join(dir, "worktrees", "feature");
   fs.mkdirSync(nested, { recursive: true });
@@ -373,7 +367,6 @@ test("writeFullOutput falls back to a timestamped name when the tool call has no
   assert.ok(file, "returns the written path");
   assert.match(file!, /result-\d+\.log$/, "timestamped name");
   assert.equal(fs.readFileSync(file!, "utf-8"), "full output text");
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("adapter bounds oversized bash results using pi's fullOutputPath", () => {
