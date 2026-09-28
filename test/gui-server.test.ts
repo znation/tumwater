@@ -6,7 +6,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize, queuedRolePrompts } from "../src/inbox.js";
-import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/gui-endpoints.js";
+import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/http-body.js";
 import { startLocalGui } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 

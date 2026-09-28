@@ -20,8 +20,8 @@ import {
   handleReport,
   handleTranscript,
   handleWake,
-  sendJson,
 } from "./gui-endpoints.js";
+import { sendJson } from "./http-body.js";
 
 /** Constant-time credential comparison for the shared-token gate: `timingSafeEqual` throws
  * on unequal lengths, so the length equality is the guard. A naive `===` string compare
