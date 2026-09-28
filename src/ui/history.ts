@@ -1,7 +1,8 @@
 import { fail, parseCountFlag, parseRoleScope, say } from "../cli-args.js";
 import { readEvents } from "../events.js";
 import { formatTimestamp } from "../datetime.js";
-import { collapseWhitespace, compactTokens, displayWidth, padToWidth, shortSpanPhrase, truncate, usd } from "../text.js";
+import { collapseWhitespace, displayWidth, padToWidth, shortSpanPhrase, truncate } from "../text.js";
+import { usageText } from "./event-format.js";
 import type { HarnessEvent } from "../types.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
@@ -54,17 +55,13 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
     const e = scoped[i];
     if (!e || e.type !== "tick_end") continue;
     const startTs = starts.get(`${e.loop}#${e.tick}`);
-    const tokens = Number(e.tokens ?? 0);
-    const costUsd = Number(e.costUsd ?? 0);
     rows.push({
       time: formatTimestamp(e.ts),
       loop: String(e.loop),
       tick: Number(e.tick),
       result: String(e.result),
       durationMs: startTs === undefined ? null : Math.max(0, e.ts - startTs),
-      usage:
-        (tokens > 0 ? `${compactTokens(tokens)} tok` : "") +
-        (costUsd > 0 ? `${tokens > 0 ? " · " : ""}${usd(costUsd)}` : ""),
+      usage: usageText(e),
       detail: truncate(collapseWhitespace(String(e.summary ?? e.error ?? "")), DETAIL_MAX),
     });
   }
