@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `logs --grep <text>` — show only the events whose type or rendered line matches (planned 2026-09-28)
+_None yet._
+
+## Done
+
+### `logs --grep <text>` — show only the events whose type or rendered line matches (planned 2026-09-28, done 2026-09-28)
 
 **Goal.** The event feed has count- and window-shaped tools (`-n`, the landed `--since`) but
 no filter: an operator chasing `land_failed` or `review_rejected` lines must pipe `logs` through
@@ -55,7 +59,16 @@ filter applies to the seeded window and to every subsequently followed event. (d
 and no `-f` prints `no events matching "<pattern>"` and exits 0. (e) `tumwater help logs`
 shows the new flag and the scan-window note. (f) Full suite passes.
 
-## Done
+**Landed 2026-09-28 by feature.** Two deviations from the written approach, both
+improvements: the `--grep` check sits at the top of `cmdLogs` (before the `--since` branch,
+not just before the `--role` branch) and `--grep` also fails against `--since` naming both
+flags — the `--since` branch returns before any later check could fire, so the plan's
+placement would have silently dropped the filter instead of failing; and the help stanza's
+usage line keeps `--since <duration>` while gaining `--grep <text>` (the plan's proposed line
+dropped `--since`, which would have removed an existing flag from the help). Everything else
+as written: `matchesGrep` over `` `${e.type} ${formatEvent(e)}` ``, the filter applied to
+both the seeded window and the `followFile` callback, the empty-result line, and seven new
+tests in test/cli-logs.test.ts. Suite 1925/1926 (1 skipped).
 
 ### `report --since <duration>` — totals over a trailing window, not whole days (planned 2026-09-28, done 2026-09-28)
 

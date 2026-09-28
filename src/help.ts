@@ -31,9 +31,12 @@ Usage:
                                    Totals over a trailing window (capped at 7d) — tokens/ticks/commits/cost since a point in time; not combinable with --days or --failures
   tumwater doctor                  Pre-flight check: node, git, repo, config, fallback model, pi, locks, build, orphans, mach ports (read-only; exit 0/1)
   tumwater config                 Show the effective config (defaults + tumwater.json) as JSON
-  tumwater logs [-f] [-n N] [--since <duration>]
+  tumwater logs [-f] [-n N] [--since <duration>] [--grep <text>]
                                    Show (and follow) harness events; --since shows the
-                                   events of the past window (capped at 7d)
+                                   events of the past window (capped at 7d); --grep shows
+                                   only events whose type or rendered line matches,
+                                   case-insensitively (-n bounds the scanned window, not
+                                   the printed rows)
   tumwater logs --role <id> [-f] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
                                    (--prompt also shows each run's exact prompt text)

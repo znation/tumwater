@@ -230,6 +230,7 @@ async function main(): Promise<void> {
         { names: ["-f", "--follow"] },
         { names: ["-n"], value: true, valueName: "<count>" },
         { names: ["--since"], value: true, valueName: "<duration>" },
+        { names: ["--grep"], value: true, valueName: "<text>" },
         ROLE_FLAG,
         { names: ["--prompt"] },
       ]);

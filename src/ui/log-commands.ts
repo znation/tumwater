@@ -2,6 +2,7 @@ import { durationLabel, fail, parseCountFlag, parseDurationFlag, parseRoleScope 
 import { formatDate } from "../datetime.js";
 import { LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
 import { parseEventLine, readEvents } from "../events.js";
+import type { HarnessEvent } from "../types.js";
 import { formatEvent } from "./event-format.js";
 import { statOrNull } from "../files.js";
 import { followFile } from "./tail.js";
@@ -21,6 +22,26 @@ import { eventsLogPath, piLogPath } from "../paths.js";
  * loop's pi transcript (see cmdLogsTranscript). */
 export async function cmdLogs(root: string, args: string[]): Promise<void> {
   const follow = args.includes("-f") || args.includes("--follow");
+  // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
+  // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
+  // would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
+  // (review_rejected, land_failed) be filtered even where the rendering paraphrases them.
+  // Rival shapes stay exclusive — --role swaps in a pi transcript rather than this event log
+  // (--prompt requires --role, so it is excluded with it), and --since is a filter of its own
+  // rather than a window to filter — and each failure names both flags.
+  const grepFlag = args.indexOf("--grep");
+  let grepPattern: string | null = null;
+  let grepLower: string | null = null;
+  if (grepFlag >= 0) {
+    if (args.includes("--role") || args.includes("--prompt"))
+      fail("logs --grep cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
+    if (args.includes("--since"))
+      fail("logs --grep cannot be combined with --since (--since is a filter of its own; --grep filters the -n view and its follow)");
+    const pattern = args[grepFlag + 1];
+    if (pattern === undefined || pattern === "") fail("logs --grep needs a pattern");
+    grepPattern = pattern;
+    grepLower = pattern.toLowerCase();
+  }
   // `--since <duration>` is the window-shaped view over the same event log the -n view dumps:
   // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the
   // survivors oldest-first, so an operator can ask for "the hour around that 429 storm" without
@@ -78,8 +99,17 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     await cmdLogsTranscript(root, role, limit, follow, showPrompts);
     return;
   }
-  for (const e of readEvents(root, limit)) process.stdout.write(formatEvent(e) + "\n");
-  if (!follow) return;
+  // -n bounds the scan, not the print: the matched subset of the last `limit` events is what
+  // appears, so `-n 200 --grep land_failed` may print 3 rows from 200 scanned.
+  const shown = grepLower
+    ? readEvents(root, limit).filter((e) => matchesGrep(e, grepLower))
+    : readEvents(root, limit);
+  for (const e of shown) process.stdout.write(formatEvent(e) + "\n");
+  if (!follow) {
+    if (grepPattern !== null && shown.length === 0)
+      process.stdout.write(`no events matching "${grepPattern}"\n`);
+    return;
+  }
   const file = eventsLogPath(root);
   // Seed the offset from what is on disk without creating anything: followFile tolerates a
   // missing file (its poll re-stats every interval), so a read-only command never leaves a
@@ -87,10 +117,19 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   followFile(file, statOrNull(file)?.size ?? 0, (lines) => {
     for (const line of lines.filter(Boolean)) {
       const e = parseEventLine(line);
-      if (e) process.stdout.write(formatEvent(e) + "\n");
+      // The filter holds across rotation: every event the follow callback sees goes through
+      // the same match rule as the seeded window.
+      if (e && (grepLower === null || matchesGrep(e, grepLower)))
+        process.stdout.write(formatEvent(e) + "\n");
     }
   });
   await new Promise(() => {}); // Follow until Ctrl+C.
+}
+
+/** The --grep match rule: case-insensitive substring over the raw event type prefixed to the
+ * rendered line — exactly the haystack the operator would otherwise read. */
+function matchesGrep(e: HarnessEvent, patternLower: string): boolean {
+  return `${e.type} ${formatEvent(e)}`.toLowerCase().includes(patternLower);
 }
 
 /** `tumwater logs --role <id>`: print (and optionally follow) one loop's pi transcript —
