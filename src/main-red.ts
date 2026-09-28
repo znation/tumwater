@@ -31,18 +31,21 @@ import { ensureDetachedWorktree } from "./worktree.js";
  * cold then too, and an operator restarting into a still-red main should see why nothing lands. */
 let lastMainRedSha: string | null = null;
 
+/** The red-main message's shared spine — the SHA, script, and failure headline a red baseline
+ * carries, phrased once so the once-per-SHA warning and the main_red outcome cannot drift apart
+ * over what main looks like. `action` is the consequence each caller names. */
+function redMainMessage(red: { sha: string; script?: string; outputTail?: string[] }, action: string): string {
+  const firstLine = failureHeadline(red.outputTail);
+  return `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — ${action}`;
+}
+
 /** Log the fleet-wide red-main warning for `red`'s SHA at most once per process. Module-level
  * (with lastMainRedSha) so the gate and the bugfix handoff share one guard: whichever observes
  * the red first logs it, the other stays silent. */
 function warnMainRedOnce(root: string, red: { sha: string; script?: string; outputTail?: string[] }): void {
   if (lastMainRedSha === red.sha) return;
   lastMainRedSha = red.sha;
-  const firstLine = failureHeadline(red.outputTail);
-  warnEvent(
-    root,
-    "harness",
-    `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — code merges blocked until main is green`,
-  );
+  warnEvent(root, "harness", redMainMessage(red, "code merges blocked until main is green"));
 }
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
@@ -108,15 +111,14 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
   if (baseline.baseline?.status === "red") {
     const red = baseline.baseline;
     warnMainRedOnce(root, red);
-    const firstLine = failureHeadline(red.outputTail);
     return {
       result: "main_red",
       summary: "code merges blocked until main is green",
       // The cause rides the outcome so the tick's `tick_end` carries it (loop.ts folds it into
       // state.lastError before logging): the digest itemizes the outcome that blocks every
       // merge, instead of leaving it a bare count behind a once-per-SHA warning (BUGS.md
-      // 2026-09-28). Same vocabulary as warnMainRedOnce above.
-      error: `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — authoring skipped until main is green`,
+      // 2026-09-28).
+      error: redMainMessage(red, "authoring skipped until main is green"),
     };
   }
   return null;
