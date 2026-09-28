@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  checkFailureReasons,
   clipBuildTail,
   failureHeadline,
   runBuildCheck,
@@ -341,6 +342,11 @@ test("a landing- or batch-scope timeout is a deterministic reject, not an enviro
     events.some((e) => e.type === "build_check" && e.scope === "landing" && e.status === "failed"),
     "the rejected timeout is priced as a failed check in the feed",
   );
+  assert.equal(
+    events.filter((e) => e.type === "build_check" && e.scope !== "gate").length,
+    2,
+    "an on-time timeout rejects on its first occurrence — no retry is owed",
+  );
   assert.ok(
     events.some((e) => e.type === "warning" && /rejecting the merge/.test(String(e.message))),
     "the operator sees why the landing did not proceed",
@@ -391,6 +397,63 @@ test("a merge-scope check killed by an external signal rejects, naming the signa
   const warning = readEvents(root).find((e) => e.type === "warning");
   assert.match(String(warning?.message ?? ""), /was killed by SIGKILL after \d+(?:\.\d+)?s/);
   assert.doesNotMatch(String(warning?.message ?? ""), /timed out/);
+});
+
+// A merge-scope timeout whose deadline demonstrably fired late is the same weather a kill is:
+// the harness's own evidence (deadlineLateMs) says the host slept through the deadline, so the
+// check ran seconds and was killed at a wake — no verdict about the tree, and not a slow suite
+// (BUGS.md 2026-09-28). It owes the killed path's one retry, whose verdict stands; each
+// attempt is priced as its own event.
+test("a merge-scope timeout the host slept through is retried once, and the clean retry's verdict stands", async (t) => {
+  const { root, wt } = buildCheckFixture();
+  // The 2026-09-21 pattern: a Date-only mock jumps the wall clock the way a host sleep does,
+  // while the real deadline timer keeps its schedule — so the timer fires minutes late.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const pending = runScopedBuildCheck(root, ROLE, "landing", wt, {
+    check: { command: "if [ -f retried ]; then exit 0; else touch retried; sleep 30; fi", timeoutSeconds: 2 },
+  });
+  await until(() => fs.existsSync(path.join(wt, "retried")), 10_000);
+  t.mock.timers.tick(10_000); // the host sleeps 10 s through the 2 s deadline
+  const result = await pending;
+  assert.equal(result!.outcome.status, "passed", "the clean retry's verdict stands");
+  const events = eventsOfType(root, "build_check");
+  assert.equal(events.length, 2, "each attempt is priced as its own build_check event");
+  assert.equal(events[0]?.status, "skipped");
+  assert.equal(events[1]?.status, "passed");
+});
+
+// When the weather persists, the retry's verdictless timeout still rejects — never merge
+// unverified — but the reason must not wear the "build check failed" prefix a genuine red
+// gets: the tree is unverified, not red, and the prefix would send the author hunting a test
+// failure that never happened (BUGS.md 2026-09-28).
+test("a merge-scope timeout late on both attempts rejects unverified, without the red-build prefix", async (t) => {
+  const { root, wt } = buildCheckFixture();
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const pending = runScopedBuildCheck(root, ROLE, "landing", wt, {
+    check: {
+      command: "if [ -f retried ]; then touch retried2; sleep 30; else touch retried; sleep 30; fi",
+      timeoutSeconds: 2,
+    },
+  });
+  await until(() => fs.existsSync(path.join(wt, "retried")), 10_000);
+  t.mock.timers.tick(10_000); // the first deadline fires 8s late → one retry is owed
+  await until(() => fs.existsSync(path.join(wt, "retried2")), 10_000);
+  t.mock.timers.tick(10_000); // the retry's deadline fires late too → its verdict stands
+  const result = await pending;
+  assert.equal(result!.outcome.status, "failed", "an unverified tree must not land");
+  assert.match(
+    result!.outcome.outputTail?.[0] ?? "",
+    /landing build check timed out after 10s \(its 2s deadline fired 8s late: the host was asleep or the harness stalled\); the tree is unverified/,
+  );
+  const reasons = checkFailureReasons(result!.check, result!.outcome);
+  assert.equal(reasons[0], result!.outcome.outputTail?.[0], "the reason keeps its own wording verbatim");
+  assert.doesNotMatch(reasons[0] ?? "", /^build check failed/);
+  const events = eventsOfType(root, "build_check");
+  assert.equal(events.length, 2, "the verdictless first attempt and the retry each priced one event");
+  assert.equal(events[0]?.status, "skipped");
+  assert.equal(events[1]?.status, "failed");
+  const warning = readEvents(root).find((e) => e.type === "warning");
+  assert.match(String(warning?.message ?? ""), /rejecting the merge/);
 });
 
 test("a gate check killed on every attempt stays skipped, and the warning names the signal — not the timeout", async () => {

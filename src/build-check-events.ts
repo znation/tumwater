@@ -23,7 +23,7 @@ export type BuildCheckScope = "gate" | "landing" | "batch";
  * BuildCheckRun.deadlineLateMs), because "timed out after 300s" for a check that ran 712 s is
  * the false claim BUGS.md 2026-09-21 recorded. The exact lateness is on the build_check event
  * either way; this only keeps sub-second jitter out of the one-line warning. */
-const DEADLINE_LATE_TOLERANCE_MS = 5_000;
+export const DEADLINE_LATE_TOLERANCE_MS = 5_000;
 
 /** Per-scope wording for the environmental-skip warning. The call sites' current messages
  * are identical apart from these words, so keying them on the scope keeps each surface's feed

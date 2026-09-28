@@ -5,6 +5,7 @@ import {
   SCOPE_WORDS,
   buildCheckEvent,
   buildCheckSkipWarning,
+  DEADLINE_LATE_TOLERANCE_MS,
   timedOutPhrase,
   type BuildCheckScope,
 } from "./build-check-events.js";
@@ -90,6 +91,11 @@ export interface BuildCheckOutcome {
   /** When the check's process group ran — absent when nothing was spawned (a broken toolchain,
    * no npm). */
   run?: BuildCheckRun;
+  /** Set when runScopedBuildCheck remapped a verdict-less merge-scope outcome (a kill, or a
+   * timeout whose deadline fired on time) to "failed": the tree is unverified, not red.
+   * checkFailureReasons passes such reasons through verbatim — the "build check failed" prefix
+   * would send the author hunting a test failure that never happened (BUGS.md 2026-09-28). */
+  unverified?: boolean;
 }
 
 /** When one check's process group actually ran, as runScriptGroup observed it: carried on
@@ -219,6 +225,14 @@ export function describeCheck(check: BuildCheck): string {
  * single landing's in-lock check. */
 export function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcome): string[] {
   const tail = outcome.outputTail ?? [];
+  // An unverified rejection already says what happened — the check never finished, the tree is
+  // unverified — so its reason keeps its own wording verbatim: prefixing it with "build check
+  // failed" would read as a deterministic tree failure and send the author hunting a test
+  // failure that never happened (BUGS.md 2026-09-28). The empty-tail fallback keeps the safe
+  // default should a remap ever lose its reason line.
+  if (outcome.unverified) {
+    return tail.length > 0 ? tail : [`build check failed (${describeCheck(check)})`];
+  }
   const headline = failureHeadline(tail);
   const what = describeCheck(check);
   return headline !== undefined
@@ -370,11 +384,22 @@ export async function runScopedBuildCheck(
       const startedAt = Date.now();
       const first = await runBuildCheck(wt, check, timeoutMs);
       durationMs = Date.now() - startedAt;
-      if (first.status !== "skipped" || first.skipReason !== "killed") return first;
       // A check the harness did not stop itself says nothing about the tree — its death is
-      // another run's doing — so retry once; the second attempt's outcome stands. The killed
-      // first attempt is priced as its own event (the feed must answer how long a check took),
-      // then the final event below records the retry's classified outcome.
+      // another run's doing. At a merge scope, a timeout whose deadline demonstrably fired
+      // late is the same weather: the harness's own evidence (run.deadlineLateMs, the
+      // measurement BUGS.md 2026-09-21 added) says the deadline passed while the host slept or
+      // the harness stalled, so the check ran seconds and was killed at a wake — it made no
+      // verdict about the tree and was not a slow suite. Both owe one retry from a clean
+      // attempt; the second attempt's outcome stands. The verdict-less first attempt is priced
+      // as its own event (the feed must answer how long a check took), then the final event
+      // below records the retry's classified outcome.
+      const lateDeadlineTimeout =
+        first.status === "skipped" &&
+        first.skipReason === "timeout" &&
+        MERGE_SCOPES.has(scope) &&
+        (first.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS;
+      if (first.status !== "skipped" || (first.skipReason !== "killed" && !lateDeadlineTimeout))
+        return first;
       logEvent(root, buildCheckEvent(role, scope, first, durationMs));
       const retryStart = Date.now();
       const retry = await runBuildCheck(wt, check, timeoutMs);
@@ -382,11 +407,15 @@ export async function runScopedBuildCheck(
       return retry;
     },
   );
-  // A timeout or signal kill at a merge scope is not environmental: no verdict about the tree
-  // was reached, and this is the check whose whole job is to catch a semantic conflict before
-  // it lands, so it rejects deterministically — the author keeps its commit and retries.
-  // no-npm and a broken toolchain still say nothing about the tree, and the gate scope still
-  // proceeds to the model reviewer, which the landing path's own check backs up.
+  // A signal kill at a merge scope, or a timeout whose deadline fired on time (real slowness,
+  // a genuinely hung or oversized suite), made no verdict about the tree — and this is the
+  // check whose whole job is to catch a semantic conflict before it lands, so it rejects
+  // deterministically — the author keeps its commit and retries. A timeout whose deadline
+  // fired late has already had its retry above: the lateness is the harness's own evidence the
+  // host slept, so a second verdict-less attempt is recorded as unverified rather than read
+  // again as weather (BUGS.md 2026-09-28). no-npm and a broken toolchain still say nothing
+  // about the tree, and the gate scope still proceeds to the model reviewer, which the landing
+  // path's own check backs up.
   const unverifiedSkip =
     raw.status === "skipped" &&
     (raw.skipReason === "timeout" || raw.skipReason === "killed") &&
@@ -396,7 +425,13 @@ export async function runScopedBuildCheck(
       ? `${SCOPE_WORDS[scope].label} was killed by ${raw.killedBy} after ${durationMs / 1000}s; the tree is unverified`
       : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; the tree is unverified`;
   const outcome: BuildCheckOutcome = unverifiedSkip
-    ? { status: "failed", script: checkScriptName(check), outputTail: [unverifiedReason], run: raw.run }
+    ? {
+        status: "failed",
+        script: checkScriptName(check),
+        outputTail: [unverifiedReason],
+        run: raw.run,
+        unverified: true,
+      }
     : raw;
   logEvent(root, buildCheckEvent(role, scope, outcome, durationMs));
   if (outcome.status === "skipped") {
