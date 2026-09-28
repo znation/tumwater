@@ -18,7 +18,7 @@ local git repo, and no remote is ever touched.
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
 
-Current main (`f7e504f2`): build clean, suite 2003/2004 (1 skipped).
+Current main (`ca4d0ef5`): build clean, suite 2013/2014 (1 skipped).
 <!-- tumwater:status:end -->
 
 ## Usage
@@ -36,7 +36,7 @@ Then, from another terminal:
 | To | Run |
 | --- | --- |
 | Watch the fleet | `tumwater tui`, or `tumwater gui` for the browser dashboard at http://127.0.0.1:7180 |
-| Watch per-tick history | `tumwater history [--role <id>] [-n N]` |
+| Watch per-tick history | `tumwater history [--role <id>] [-n N]`, or `tumwater history --json` for the rows as JSON |
 | Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --since <duration>`, `tumwater logs --grep <text>`, `tumwater logs --role <id>`, `tumwater backlog` (planned features, open bugs, open questions as Markdown) |
 | Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director; add `--role <id>` to aim it at one loop's next tick |
 | Control the loops | `tumwater pause [--for <duration>]` / `resume [--role <id>]` (fleet or one loop; `--for 2h` auto-resumes, capped at 90d), `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
