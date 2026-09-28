@@ -8,7 +8,7 @@ of always-on specialists do the rest: each loop owns one concern, lands one chan
 sleeps when it has nothing to do, and wakes when main moves. All project state lives in the
 local git repo, and no remote is ever touched.
 
-![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, per-loop pause/resume toggles, the shared backlog of planned features and open bugs, the event feed, and the director prompt box](docs/gui.png)
+![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, per-loop pause/resume toggles, the shared backlog of planned features and open bugs, the event feed, a per-tick history tab, and the director prompt box](docs/gui.png)
 
 ## Status
 
@@ -18,7 +18,7 @@ local git repo, and no remote is ever touched.
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
 
-Current main (`713835af`): build clean, suite 1927/1928 (1 skipped).
+Current main (`495525f6`): build clean, suite 1952/1953 (1 skipped).
 <!-- tumwater:status:end -->
 
 ## Usage
@@ -39,7 +39,7 @@ Then, from another terminal:
 | Watch per-tick history | `tumwater history [--role <id>] [-n N]` |
 | Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --since <duration>`, `tumwater logs --grep <text>`, `tumwater logs --role <id>`, `tumwater backlog` (planned features, open bugs, open questions as Markdown) |
 | Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director; add `--role <id>` to aim it at one loop's next tick |
-| Control the loops | `tumwater pause [--for <duration>]` / `resume [--role <id>]` (fleet or one loop; `--for 2h` auto-resumes), `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
+| Control the loops | `tumwater pause [--for <duration>]` / `resume [--role <id>]` (fleet or one loop; `--for 2h` auto-resumes, capped at 90d), `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
 | Audit | `tumwater doctor` (pre-flight), `tumwater report` (usage and cost), `tumwater report --since <duration>` (totals over a trailing window, capped at 7d), `tumwater report --failures` |
 
 `tumwater help` lists every command and flag; `tumwater help <command>` shows one command's usage. `gui --all-interfaces` exposes the dashboard, and
