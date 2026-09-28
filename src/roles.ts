@@ -10,7 +10,12 @@ import {
   VALIDATION_GAP_GUIDANCE,
 } from "./role-guidance.js";
 
+/** One loop's identity and instruction set: `id` is the key every surface names the loop
+ * by, and `find` is the role-specific half of its tick prompt. */
 export interface Role {
+  /** The loop's unique identifier — the .tumwater/state/<id>.json state file's name, the
+   * tumwater.json roles.<id> config key, and what every --role CLI flag names. Built-in ids
+   * are fixed; a custom loop's id is whatever its config declares. */
   id: string;
   /** Human-readable role name used only in the tick prompt's self-description
    * ("You are the "<id>" loop (<title>)"), where it glosses a custom loop's
