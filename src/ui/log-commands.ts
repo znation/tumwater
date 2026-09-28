@@ -1,4 +1,4 @@
-import { durationLabel, fail, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
 import { formatDate } from "../datetime.js";
 import { LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
 import { parseEventLine, readEvents } from "../events.js";
@@ -56,8 +56,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     if (args.includes("--role") || args.includes("--prompt"))
       fail("logs --since cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
     const ms = parseDurationFlag("--since", args[sinceFlag + 1]);
-    if (ms > LOGS_SINCE_MAX_MS)
-      fail(`logs --since is capped at ${durationLabel(LOGS_SINCE_MAX_MS)} (got ${durationLabel(ms)})`);
+    failOverDurationCap("logs --since", ms, LOGS_SINCE_MAX_MS);
     // The window key is the cutoff's local calendar day, from the same formatDate helper
     // eventDayKey buckets events with, so the read's day keys cannot disagree with the ts
     // filter below; the day-keyed read may include earlier hours of that day, which the

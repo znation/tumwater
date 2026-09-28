@@ -7,7 +7,7 @@ import {
   parseDurationFlag,
   parsePortFlag,
   DURATION_FLAG,
-  durationLabel,
+  failOverDurationCap,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
@@ -181,8 +181,7 @@ async function main(): Promise<void> {
         if (args.includes("--failures"))
           fail("report --since cannot be combined with --failures (the failure digest has no windowed-since mode)");
         const ms = parseDurationFlag("--since", args[sinceFlag + 1]);
-        if (ms > REPORT_SINCE_MAX_MS)
-          fail(`report --since is capped at ${durationLabel(REPORT_SINCE_MAX_MS)} (got ${durationLabel(ms)})`);
+        failOverDurationCap("report --since", ms, REPORT_SINCE_MAX_MS);
         say(renderSinceReportMarkdown(collectReportSince(root, ms)));
         break;
       }

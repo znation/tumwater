@@ -89,6 +89,18 @@ export function durationLabel(ms: number): string {
   return `${ms}ms`; // Unreachable: every whole-second duration divides into the `s` unit.
 }
 
+/** The shared over-cap check for duration-valued flags: fail with the one message shape —
+ * `<flag> is capped at <max label> (got <value label>)` — so every capped duration names
+ * both bounds in the same phrasing and the sites cannot drift apart (the same idiom the
+ * --since windows and pause --for share). Callers parse the flag themselves and pass only
+ * the parsed value and its cap; a value at or under the cap returns silently. An optional
+ * hint appends command-specific guidance after the got-label, as pause --for points at the
+ * standing-pause alternative. */
+export function failOverDurationCap(flag: string, ms: number, maxMs: number, hint?: string): void {
+  if (ms <= maxMs) return;
+  fail(`${flag} is capped at ${durationLabel(maxMs)} (got ${durationLabel(ms)})${hint ? ` — ${hint}` : ""}`);
+}
+
 /** Parse an optional `--role <id>` flag: the validated role id, or null when absent.
  * Shared by every command that scopes to one loop so their validation and error messages
  * cannot drift. `validIds` is the set of ids this command accepts — callers pass

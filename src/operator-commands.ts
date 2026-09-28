@@ -1,5 +1,5 @@
 import { knownRoleIds, loadConfig } from "./config.js";
-import { durationLabel, fail, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "./cli-args.js";
+import { durationLabel, fail, failOverDurationCap, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "./cli-args.js";
 import {
   type CancelOutcome,
   cancelRolePrompt,
@@ -244,8 +244,13 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
   // Fail fast beside the parse, before any marker is written: an over-cap deadline is a
   // standing pause in disguise, and the message names the command that is one (the same
   // capped-flag idiom the --since windows in cli.ts use).
-  if (forMs !== undefined && forMs > PAUSE_FOR_MAX_MS)
-    fail(`pause --for is capped at ${durationLabel(PAUSE_FOR_MAX_MS)} (got ${durationLabel(forMs)}) — for a longer or standing pause run bare \`tumwater pause\` (lift it with \`tumwater resume\`)`);
+  if (forMs !== undefined)
+    failOverDurationCap(
+      "pause --for",
+      forMs,
+      PAUSE_FOR_MAX_MS,
+      "for a longer or standing pause run bare `tumwater pause` (lift it with `tumwater resume`)",
+    );
   const timed = forMs === undefined ? undefined : { ms: forMs, untilMs: Date.now() + forMs };
   const untilMs = timed?.untilMs;
   // Per-role branch: pauseRole in src/fleet-state.ts is the single writer of the role marker
