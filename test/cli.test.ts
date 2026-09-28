@@ -17,9 +17,10 @@ import { cli } from "./cli-harness.js";
 //
 // Split across files so node --test runs them in parallel processes — nearly every test here
 // spawns the CLI, so each file is CPU-bound on its own. This file holds help/version, status,
-// init, and the prompt queue's enqueue/list basics; cli-2.test.ts carries the queue's
-// cancel/role/strictness cases, run's startup preflight, and the argument-strictness test;
-// the other child-process CLI tests live in their command's topic file: cli-gui.test.ts
+// init, and the prompt queue's enqueue/list basics; cli-prompt-queue.test.ts carries the
+// queue's cancel/role cases, cli-preflight.test.ts run's startup preflight, and
+// cli-arg-strictness.test.ts the argument-strictness tests; the other child-process CLI tests
+// live in their command's topic file: cli-gui.test.ts
 // (gui), cli-run-live.test.ts (run's lifecycle), doctor.test.ts, report.test.ts,
 // status.test.ts (status --json), and tui.test.ts.
 

@@ -1,22 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, queuedPrompts, submitPrompt, queuedRolePrompts, submitRolePrompt } from "../src/inbox.js";
-import { inboxDir, resetRequestPath } from "../src/paths.js";
-import { loadLoopState } from "../src/state.js";
-import { seedCounters } from "./loop-fixtures.js";
-import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
-import { cli, cliWithEnv } from "./cli-harness.js";
+import { inboxDir } from "../src/paths.js";
+import { makeRepo } from "./repo-fixtures.js";
+import { cli } from "./cli-harness.js";
 
-// The second half of the CLI's child-process tests, split from cli.test.ts so node --test
-// runs them in parallel processes (each test spawns the CLI, so the file is CPU-bound on
-// its own). This file holds the prompt queue's cancel/role/flag-strictness cases, run's
-// startup preflight, and the cross-command argument-strictness test; cli.test.ts keeps
-// help/version, status, and init.
+// The prompt queue's child-process tests: cancel/list/flag-validation, per-role queues, and
+// the broken-config policy the list mode follows. Spawned via the CLI so node --test can run
+// them in parallel processes; the shared spawn helpers live in cli-harness.ts.
 test("prompt --cancel fails on out-of-range or non-numeric positions without side effects", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt cancel validation");
@@ -144,96 +138,6 @@ test("prompt --list and --cancel reject duplicates, combinations, and stray posi
   assert.equal(inboxSize(repo), 0, "nothing enqueued on failure");
 });
 
-test("prompt rejects unknown double-dash flags instead of baking them into content", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli prompt unknown flag");
-
-  // Before parsePromptArgs existed, `tumwater prompt --foo text` enqueued "--foo text" as the
-  // prompt — the same class of hole init's parseInitArgs closed. The flag must fail and leave
-  // the queue untouched.
-  const r = await cli(repo, "prompt", "--foo", "text");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --foo/);
-  assert.match(r.stderr, /--list, --cancel <n>/);
-  assert.equal(inboxSize(repo), 0, "the flag was not baked into queued content");
-});
-
-test("prompt keeps single-dash positionals as prompt content", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli prompt single dash");
-
-  // Only double-dash tokens are flags; a leading single dash is free-form content, like the
-  // bullets init accepts.
-  const r = await cli(repo, "prompt", "-x");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /queued for the director loop/);
-  assert.equal(dequeuePrompt(repo), "-x");
-});
-
-test("run fails fast with a clear message when pi is missing from PATH", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli run validation");
-
-  // A PATH that has git (so the repo checks pass) but no pi: without the startup check,
-  // the orchestrator would start and every tick of every loop would die with
-  // "failed to spawn pi: spawn pi ENOENT".
-  const binDir = tmpdir();
-  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-  fs.symlinkSync(gitPath, path.join(binDir, "git"));
-
-  const r = await cliWithEnv(repo, { PATH: binDir }, ["run"]);
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /pi not found on PATH/);
-});
-
-// plans/portability.md §5/7 criteria 2 and 4: the env override works without editing any
-// file, and a failure names the resolved value, its source, and the install hint — a wrong
-// agentBin must not read as "pi is not installed".
-test("run fails fast naming the resolved agentBin and its source when it is not an executable", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli run agentBin fail");
-  const binDir = tmpdir();
-  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-  fs.symlinkSync(gitPath, path.join(binDir, "git"));
-
-  // TUMWATER_PI_BIN overrides for one invocation — including overriding the default into a
-  // failure whose text names the variable, not the ambient PATH.
-  const r = await cliWithEnv(repo, { PATH: binDir, TUMWATER_PI_BIN: "/no/such/pi-override" }, ["run"]);
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /\/no\/such\/pi-override/);
-  assert.match(r.stderr, /TUMWATER_PI_BIN/);
-  assert.match(r.stderr, /install it/);
-  assert.doesNotMatch(r.stderr, /pi not found on PATH/);
-
-  // A configured agentBin fails with the same shape, naming tumwater.json's key.
-  const cfg = defaultConfig();
-  cfg.agentBin = "/also/missing/pi";
-  writeConfig(repo, cfg);
-  const r2 = await cliWithEnv(repo, { PATH: binDir }, ["run"]);
-  assert.equal(r2.code, 1);
-  assert.match(r2.stderr, /\/also\/missing\/pi/);
-  assert.match(r2.stderr, /agentBin in tumwater\.json/);
-});
-
-test("status and init fail fast with a clear message when git is missing from PATH", async () => {
-  // Without git on PATH, every repo probe used to report "not a git repository (run `git
-  // init` first)" — pointing at the wrong fix for a machine that has no git installed.
-  const binDir = tmpdir(); // empty: no git (the CLI child runs via an absolute node path)
-
-  let r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["status"]);
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /git not found on PATH/);
-  assert.ok(!r.stderr.includes("not a git repository"), "no misleading repo error");
-
-  // init has its own gate (it does not go through requireReadyRepo).
-  r = await cliWithEnv(makeRepo(), { PATH: binDir }, ["init", "Build a thing."]);
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /git not found on PATH/);
-});
-
-/** A fresh ephemeral port for live-server spawns: grab one from the OS, hand it back, and
- * use it before anything else claims it. */
-
 // --- prompt --role: per-role queues from the CLI (PLANS.md "Per-role prompts 1/2") ---
 
 test("prompt --role queues for one loop only, wakes it, and validates the role", async () => {
@@ -294,67 +198,4 @@ test("prompt --list groups queues by loop and --cancel removes from the named lo
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task two"]);
   assert.deepEqual(queuedRolePrompts(repo, "readme"), ["docs task"]);
   assert.deepEqual(queuedPrompts(repo), ["director task"]);
-});
-
-// --- argument strictness, cross-command: every command must reject unknown arguments ---
-// (the per-command validation lives in each command's tests; this one walks several commands
-// because the regression class is parser-wide, not command-local).
-
-test("commands reject unknown arguments instead of silently ignoring them", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli strict args");
-  seedCounters(repo, "feature");
-  seedCounters(repo, "clean");
-
-  // A misspelled --role used to be ignored: reset-counters would zero EVERY loop instead of
-  // the one named. Now it fails and leaves every counter (and no fleet marker) untouched.
-  let r = await cli(repo, "reset-counters", "--rol", "feature");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --rol/);
-  assert.match(r.stderr, /--role <id>/);
-  assert.equal(loadLoopState(repo, "feature").ticks, 7, "no reset happened");
-  assert.equal(loadLoopState(repo, "clean").ticks, 7, "no reset happened");
-  assert.ok(!fs.existsSync(resetRequestPath(repo)), "no marker written");
-
-  // A misspelled --port used to be ignored: gui would serve on the default port.
-  r = await cli(repo, "gui", "--portt", "8080");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --portt/);
-
-  // A doubled short flag used to be ignored: logs would run one-shot instead of following.
-  r = await cli(repo, "logs", "-ff");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: -ff/);
-
-  // `run` takes exactly one flag (--branch); anything else is rejected and names it.
-  r = await cli(repo, "run", "--verbose");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --verbose/);
-  assert.match(r.stderr, /valid flags for tumwater run: --branch <name>/);
-
-  // ...including version and help, which used to accept anything silently: `version --json`
-  // printed a version as if it had answered the query, and `help extra` printed usage.
-  r = await cli(repo, "version", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /takes no arguments/);
-
-  // `help <command>` now prints that command's usage stanza; only a NON-command token is
-  // still an error — pointed back at the full list instead of pretending it was answered.
-  r = await cli(repo, "help", "gui");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /tumwater gui/);
-
-  r = await cli(repo, "help", "extra");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /no help topic: extra/);
-
-  // Stray non-flag tokens are rejected too.
-  r = await cli(repo, "reset-counters", "--role", "feature", "extra");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: extra/);
-  assert.equal(loadLoopState(repo, "feature").ticks, 7, "no reset happened");
-
-  // Valid combinations still work.
-  r = await cli(repo, "logs", "-n", "3", "--role", "clean");
-  assert.equal(r.code, 0);
 });
