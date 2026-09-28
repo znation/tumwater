@@ -5,7 +5,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater report --json` — the usage report as machine-readable data, beside `status --json` (planned 2026-09-28)
+## Done
+
+### `tumwater report --json` — the usage report as machine-readable data, beside `status --json` (planned 2026-09-28, done 2026-09-28)
 
 **Goal.** Scripts and cron jobs can watch fleet spend and throughput (`report --days` series,
 `report --since` totals) today only by parsing Markdown. `status --json` already established the
@@ -49,8 +51,6 @@ renderer for `JSON.stringify` of the collector's return value:
 - `tumwater report --json --failures` exits non-zero with the combined-flag message; plain
   `--days`/`--since`/`--failures` Markdown output is byte-identical to before.
 - `tumwater help report` names `--json`; `npm run test` passes.
-
-## Done
 
 ### GUI history tab — the dashboard shows the per-tick history `tumwater history` prints (planned 2026-09-28, done 2026-09-28)
 

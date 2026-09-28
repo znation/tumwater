@@ -620,3 +620,78 @@ test("report --days above the shared bound fails fast with the offending value",
   assert.equal(ok.code, 0, `expected exit 0 at the bound:\n${ok.stdout}\n${ok.stderr}`);
   assert.match(ok.stdout, /\(90 days\)/);
 });
+
+// ---- report --json ----
+
+test("report --json --days prints the collector's payload; the Markdown render is untouched", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(3), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 2, result: "no_change", tokens: 42 }),
+  ]);
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    `# Plans\n\n## Planned\n\n## Done\n\n- Epitaph (planned 2026-09-01, done ${dayKey(at(0))}; commit abc)\n`,
+  );
+
+  const json = await runCli(root, "report", "--json", "--days", "4");
+  assert.equal(json.code, 0);
+  const parsed = JSON.parse(json.out); // one document, parseable, nothing else on the stream
+  const direct = collectReport(root, 4);
+  assert.deepEqual(parsed, direct, "--json prints the collector's own payload");
+  assert.equal(parsed.days, 4);
+  assert.equal(parsed.from, dayKey(at(3)));
+  assert.equal(parsed.to, dayKey(at(0)));
+  assert.equal(parsed.totals.tokensOut, 542);
+  assert.equal(parsed.totals.featuresDone, 1);
+
+  // The same fixtures through the Markdown path render identically: --json swapped only the
+  // printing, not the collection, so both views agree on the numbers they show.
+  const md = await runCli(root, "report", "--days", "4");
+  assert.equal(md.code, 0);
+  assert.equal(md.out, renderReportMarkdown(direct) + "\n");
+  assert.match(md.out, /542 output tokens/);
+  assert.match(md.out, /1 features done/);
+
+  const help = await runCli(root, "help", "report");
+  assert.equal(help.code, 0);
+  assert.match(help.out, /--json/);
+});
+
+test("report --json --since prints the window totals with the coverage proof", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "tick_end", tick: 2, result: "no_change", tokens: 999 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 777, costUsd: 0.5 }),
+  ]);
+
+  const json = await runCli(root, "report", "--json", "--since", "6h");
+  assert.equal(json.code, 0);
+  const parsed = JSON.parse(json.out);
+  // The cutoff instant is the collector's own now, so only its payload fields are pinned;
+  // fromIso is checked as a fresh ISO string rather than deep-equalled across two nows.
+  const direct = collectReportSince(root, 6 * HOUR);
+  assert.equal(parsed.sinceMs, 6 * HOUR);
+  assert.notEqual(Date.parse(parsed.fromIso), NaN, "fromIso is an ISO instant");
+  assert.deepEqual(parsed.totals, direct.totals);
+  assert.deepEqual(parsed.ticksByRole, direct.ticksByRole);
+  assert.deepEqual(parsed.costByRole, direct.costByRole);
+  assert.equal(parsed.totals.ticks, 1);
+  assert.equal(parsed.totals.tokensOut, 777);
+  assert.deepEqual(parsed.ticksByRole, { feature: 1 });
+  assert.equal(parsed.coversFullWindow, true, "the log reaches back before the cutoff");
+  assert.ok(!("series" in parsed), "the since shape carries totals, not a day series");
+});
+
+test("report --failures --json fails fast: the digest has no agreed JSON shape", async () => {
+  const root = makeRepo();
+  const refused = await runCli(root, "report", "--failures", "--json");
+  assert.notEqual(refused.code, 0);
+  assert.match(refused.out, /report --failures cannot be combined with --json/);
+  assert.match(refused.out, /no agreed JSON shape/);
+
+  // --since --json stays legal: --json composes with both report shapes, only the digest
+  // refuses it — the failure names --failures, not the JSON flag alone.
+  const sinceJson = await runCli(root, "report", "--json", "--since", "6h");
+  assert.equal(sinceJson.code, 0);
+});

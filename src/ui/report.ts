@@ -118,6 +118,11 @@ export function renderReportMarkdown(data: ReportData): string {
  * collect through report-data.ts / failure-data.ts, and print. Unknown-args rejection and the
  * no-ready-repo-gate decision stay in cli.ts's case, like every other command's. */
 export async function cmdReport(root: string, args: string[]): Promise<void> {
+  // --failures has no JSON form: the digest is a clustered narrative with no agreed shape,
+  // and inventing one here would pin a schema nobody asked for. Failing fast (same style as
+  // the mutual exclusions below) beats printing Markdown a --json caller cannot parse.
+  if (args.includes("--failures") && args.includes("--json"))
+    fail("report --failures cannot be combined with --json (the failure digest is a clustered narrative with no agreed JSON shape; a machine-readable form is a separate plan if ever wanted)");
   // --since is handled before the day-shape reads: it is a rival shape (totals over a
   // trailing window vs a series over whole days), not a modifier of either.
   const sinceFlag = args.indexOf("--since");
@@ -130,7 +135,10 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     // The shared over-cap check (the same idiom logs --since and pause --for use), so the
     // cap message cannot drift from the other capped duration flags.
     failOverDurationCap("report --since", ms, REPORT_SINCE_MAX_MS);
-    say(renderSinceReportMarkdown(collectReportSince(root, ms)));
+    // --json swaps the renderer for the collector's own payload, exactly as status --json
+    // does: bounds and cap checks above are shared, only the printing differs.
+    const since = collectReportSince(root, ms);
+    say(args.includes("--json") ? JSON.stringify(since, null, 2) : renderSinceReportMarkdown(since));
     return;
   }
   const daysFlag = args.indexOf("--days");
@@ -143,6 +151,10 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     // already rejected 0, non-decimals, and a missing value.
     if (days > REPORT_MAX_DAYS)
       fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(args[daysFlag + 1])})`);
+  }
+  if (args.includes("--json")) {
+    say(JSON.stringify(collectReport(root, days), null, 2));
+    return;
   }
   say(
     args.includes("--failures")

@@ -24,10 +24,13 @@ Usage:
   tumwater status [--json]         One-shot status table (--json prints machine-readable
                                    fleet state — the GUI's /api/status payload minus the
                                    serving process's serverBuildSha)
-  tumwater report [--days N]       Markdown usage report — tokens/ticks/commits per day (default 14 days)
+  tumwater report [--days N] [--json]
+                                   Markdown usage report — tokens/ticks/commits per day (default
+                                   14 days); --json prints machine-readable usage data — the
+                                   collector's own payload, not the Markdown render
   tumwater report --failures [--days N]
                                    Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
-  tumwater report --since <duration>
+  tumwater report --since <duration> [--json]
                                    Totals over a trailing window (capped at 7d) — tokens/ticks/commits/cost since a point in time; not combinable with --days or --failures
   tumwater doctor                  Pre-flight check: node, git, repo, config, fallback model, pi, locks, build, orphans, mach ports (read-only; exit 0/1)
   tumwater config                 Show the effective config (defaults + tumwater.json) as JSON
