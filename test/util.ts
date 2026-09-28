@@ -11,6 +11,8 @@ import type { TumwaterConfig } from "../src/config-schema.js";
 import type { HarnessEvent } from "../src/types.js";
 import { readEvents } from "../src/events.js";
 import { startGui } from "../src/ui/gui.js";
+import { piLogPath } from "../src/paths.js";
+import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
 
 /** Collapse all whitespace runs to single spaces: prompts are hard-wrapped and formatting
  * ticks reflow them, so assertions match content with whitespace collapsed — a phrase wrapped
@@ -57,6 +59,26 @@ export function writeEvents(root: string, lines: unknown[]): void {
     file,
     lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + "\n",
   );
+}
+
+/** Write a synthetic pi session log of `turns` complete runs — the fixture most transcript
+ * and tail tests need: run i is agentStart, userLine(`prompt ${i}`) at FIXED_TS + i·60s, and
+ * assistantBlocks with text `turn ${i}`. Creates the log's directory and returns the temp root
+ * and log file path. Callers that need a shape past the standard turns (a pending separator, a
+ * stale marker, per-run noise) append extra lines with fs.appendFileSync instead of hand-rolling
+ * the whole loop, and turn-count variants pass a different `turns`. */
+export function writeTurnLog(turns: number): { root: string; file: string } {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const lines: string[] = [];
+  for (let i = 1; i <= turns; i++) {
+    lines.push(agentStart());
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+  return { root, file };
 }
 
 /** Local wall-clock rendering of an epoch-ms timestamp as `YYYY-MM-DD HH:MM:SS` — the same

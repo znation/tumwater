@@ -7,7 +7,7 @@ import { readTranscriptTail } from "../src/ui/transcript-tail.js";
 import { formatTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/ui/tail.js";
-import { expectedTimestamp } from "./util.js";
+import { expectedTimestamp, writeTurnLog } from "./util.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { recreateSmallerOnOpen, vanishOnOpen } from "./fs-faults.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
@@ -18,16 +18,7 @@ function reviewMarker(): string {
 }
 
 test("readTranscriptTail matches a full re-read on a small log", () => {
-  const root = tmpdir();
-  const file = piLogPath(root, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const lines: string[] = [];
-  for (let i = 1; i <= 3; i++) {
-    lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
-    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  const { file } = writeTurnLog(3);
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -40,16 +31,7 @@ test("readTranscriptTail matches a full re-read on a small log", () => {
 });
 
 test("readTranscriptTail honors limit=0: slice(-0) must not widen the window", () => {
-  const root = tmpdir();
-  const file = piLogPath(root, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const lines: string[] = [];
-  for (let i = 1; i <= 3; i++) {
-    lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
-    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  const { file } = writeTurnLog(3);
 
   // A zero-sized window is the empty list — not slice(-0)'s whole window (the arming scan
   // already bounds a limit-0 walk to the newest run, so the breach shows as that run's

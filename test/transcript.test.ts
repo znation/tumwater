@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
-import { expectedTimestamp } from "./util.js";
+import { expectedTimestamp, writeTurnLog } from "./util.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
 
@@ -318,16 +318,9 @@ test("readTranscript polls incrementally: appends only, live separator, no dupli
 });
 
 test("readTranscript honors limit=1 while a pending separator is live: slice(-0) must not widen the window", () => {
-  const root = tmpdir();
-  const file = piLogPath(root, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const lines: string[] = [];
-  for (let i = 1; i <= 3; i++) {
-    lines.push(agentStart(), userLine(`prompt ${i}`, FIXED_TS + i * 60_000), assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  }
+  const { root, file } = writeTurnLog(3);
   // A just-started run: its separator is pending and no turn has landed yet.
-  lines.push(agentStart(), userLine("prompt 4", FIXED_TS + 4 * 60_000));
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  fs.appendFileSync(file, [agentStart(), userLine("prompt 4", FIXED_TS + 4 * 60_000)].join("\n") + "\n");
 
   // The pending separator consumes the whole limit-1 budget: exactly the separator, never
   // the whole ring — take==0 hit entries.slice(-0), which is slice(0) because -0 === 0.
@@ -364,16 +357,7 @@ test("readTranscript reseeds when rotation replaces the file", () => {
 });
 
 test("readTranscript keeps only the newest entries past the retention cap", () => {
-  const root = tmpdir();
-  const file = piLogPath(root, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const lines: string[] = [];
-  for (let i = 1; i <= 250; i++) {
-    lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
-    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  const { root } = writeTurnLog(250);
 
   // 250 runs exceed the 200-entry retention cap; a request for 50 is still exact.
   const out = readTranscript(root, "feature", 50);
