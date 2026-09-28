@@ -10,7 +10,7 @@ import { freshLoopState } from "../src/state.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "../src/types.js";
-import { writeScript } from "./util.js";
+import { writeScript } from "./fake-commands.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";

@@ -19,7 +19,8 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/types.js";
-import { eventsOfType, writeScript } from "./util.js";
+import { eventsOfType } from "./util.js";
+import { writeScript } from "./fake-commands.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 

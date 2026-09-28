@@ -1,14 +1,14 @@
 import type { PiRunResult } from "../src/types.js";
 import { assistantLine } from "./pi-events.js";
-import { pathPrepend, writeScript } from "./util.js";
+import { pathPrepend, writeScript } from "./fake-commands.js";
 import { tmpdir } from "./repo-fixtures.js";
 import path from "node:path";
 
 // --- The fake pi shim (fakePi/fakePiIdle/recordingFakePi/piRunResult), split out of util.ts ---
 // Every helper here installs or models a fake `pi` executable: tests run offline against these
 // shims on PATH, never a real model (see PRINCIPLES.md). The generic install machinery they
-// sit on — writeScript/pathPrepend, the fake-command-on-PATH technique — stays in util.ts,
-// which also uses it directly (buildCheckFixture).
+// sit on — writeScript/pathPrepend, the fake-command-on-PATH technique — lives in
+// fake-commands.ts; util.ts builds on it too (buildCheckFixture).
 
 // A shim on PATH runs only when nothing outranks PATH in resolveAgentBin, and TUMWATER_PI_BIN
 // does: an inherited one (an operator's wrapper around the real pi, which a fleet's pi tool
