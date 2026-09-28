@@ -25,6 +25,10 @@ export interface Role {
   find: string;
 }
 
+/** The director loop's id — a target that is not in ROLES (allRoleIds appends it) and is
+ * driven by operator prompts, not a find prompt: an un-targeted `tumwater prompt` queues
+ * there. It keeps running through a fleet-wide `pause` (which stops only the role loops);
+ * an un-targeted `stop` signals the whole orchestrator, director included. */
 export const DIRECTOR_ROLE = "director";
 
 /** The opinionated role catalog. Every loop runs one role; a role's `find` text is
