@@ -464,6 +464,30 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
   }
 });
 
+test("gui /api/history grows its role-filtered scan window until it reaches the role's ticks", async () => {
+  // The dilution case the CLI's `history --role` fix pinned: the first window (n*2+50 events)
+  // fills with a busy sibling loop's tick_ends, so the filtered rows fall short while the
+  // role's older ticks sit just past it. The endpoint must grow the scan like cmdHistory,
+  // not return fewer rows (or an empty set) for a role the retained log covers.
+  const repo = makeRepo();
+  await initProject(repo, "history api dilution");
+  const events: HarnessEvent[] = [];
+  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, loop: "qa", type: "tick_end", tick: i + 1, result: "changed", summary: `qa fix ${i}` });
+  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, loop: "clean", type: "tick_end", tick: i + 1, result: "no_change" });
+  writeEvents(repo, events);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const d = (await (await fetch(base + "/api/history?role=qa&n=5")).json()) as { rows: { loop: string; tick: number }[] };
+    assert.deepEqual(d.rows.map((r) => [r.loop, r.tick]), [["qa", 5], ["qa", 4], ["qa", 3], ["qa", 2], ["qa", 1]], "all 5 qa rows despite the diluting sibling");
+    // The honest shortfall: the log holds fewer qa ticks than asked and the scan reached the
+    // log's start — what exists is returned, not an error or a hang.
+    const short = (await (await fetch(base + "/api/history?role=qa&n=10")).json()) as { rows: unknown[] };
+    assert.equal(short.rows.length, 5);
+  } finally {
+    server.close();
+  }
+});
+
 test("gui /api/history serves an empty row set when the event log is missing, and the page carries the history tab", async () => {
   const repo = makeRepo();
   await initProject(repo, "history empty test");

@@ -71,6 +71,30 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
   return rows;
 }
 
+/** The last `limit` completed ticks read from root's event log, filtered to `role` when
+ * given (newest first) — the scan cmdHistory and the GUI's handleHistory share, so the two
+ * surfaces cannot drift. A window twice the ask plus slack: tick_start lines and unrelated
+ * events interleave with the tick_end rows scanned for, and a skipped tick's end rides a start
+ * that may sit outside any smaller window. A role filter dilutes that window (every other
+ * loop's events occupy it too), so while the filtered rows fall short AND the scan filled its
+ * window — meaning the log may hold older events — grow the window and re-read: a quiet role
+ * in a busy fleet must still get its last `limit` ticks whenever the retained log holds them
+ * — never a bare "no ticks yet" for a role whose ticks sit just past the first window.
+ * `events.length < window` means the scan reached the log's start, so the shortfall is real
+ * and the loop stops; HISTORY_SCAN_MAX_EVENTS bounds the growth so one ask cannot scan
+ * without end. */
+export function readTickRows(root: string, limit: number, role: string | null): TickRow[] {
+  let window = limit * 2 + 50;
+  let events = readEvents(root, window);
+  let rows = tickRows(events, limit, role);
+  while (rows.length < limit && events.length >= window && window < HISTORY_SCAN_MAX_EVENTS) {
+    window = Math.min(window * 4, HISTORY_SCAN_MAX_EVENTS);
+    events = readEvents(root, window);
+    rows = tickRows(events, limit, role);
+  }
+  return rows;
+}
+
 /** One aligned table line: fixed-width columns over the row set (the widths derive from the
  * rows actually shown, so a single-row table has no padding gap), then the free-text detail. */
 function renderRow(row: TickRow, widths: { loop: number; tick: number; result: number; duration: number; usage: number }): string {
@@ -100,23 +124,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // The config is read (through loadConfigCached, never throwing) only when --role is present:
   // a read-only view must not refuse a transiently broken tumwater.json.
   const role = parseRoleScope(root, args);
-  // A window twice the ask plus slack: tick_start lines and unrelated events interleave with
-  // the tick_end rows scanned for, and a skipped tick's end rides a start that may sit outside
-  // any smaller window. A --role filter dilutes that window (every other loop's events occupy
-  // it too), so while the filtered rows fall short AND the scan filled its window — meaning the
-  // log may hold older events — grow the window and re-read: a quiet role in a busy fleet must
-  // still get its last `limit` ticks whenever the retained log holds them — never a bare
-  // "no ticks yet" for a role whose ticks sit just past the first window. `events.length < window` means
-  // the scan reached the log's start, so the shortfall is real and the loop stops; the cap
-  // above bounds the growth so one ask cannot scan without end.
-  let window = limit * 2 + 50;
-  let events = readEvents(root, window);
-  let rows = tickRows(events, limit, role);
-  while (rows.length < limit && events.length >= window && window < HISTORY_SCAN_MAX_EVENTS) {
-    window = Math.min(window * 4, HISTORY_SCAN_MAX_EVENTS);
-    events = readEvents(root, window);
-    rows = tickRows(events, limit, role);
-  }
+  const rows = readTickRows(root, limit, role);
   if (rows.length === 0) {
     say("no ticks yet");
     return;
