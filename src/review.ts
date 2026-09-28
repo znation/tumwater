@@ -10,7 +10,7 @@ import { runPi } from "./pi.js";
 import { readPrinciples } from "./prompt.js";
 import { buildReviewPrompt } from "./gate-prompts.js";
 import { parseVerdict } from "./review-verdict.js";
-import { saveLoopState } from "./state.js";
+import { recordReview, saveLoopState } from "./state.js";
 import { shortSha } from "./text.js";
 import { BUILD_CHECK_TIMEOUT_MS, runScopedBuildCheck } from "./build-check.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "./build-check-report.js";
@@ -113,7 +113,7 @@ export async function reviewAheadOfMain(
   // either way), discard the branch by resetting it to main, and log review_rejected.
   // Callers attach `run` when a pi run was consumed.
   const reject = async (reasons: string[], durationMs?: number): Promise<GateResult> => {
-    state.lastReview = { verdict: "reject", reasons, head, at: Date.now() };
+    recordReview(state, "reject", reasons, head);
     state.unreviewFailures = 0;
     await resetWorktreeToMain(wt, mainBranch);
     logEvent(root, {
@@ -212,7 +212,7 @@ export async function reviewAheadOfMain(
         // nothing judged this diff. main-red.ts's gate and the bugfix handoff own the repair,
         // and the author's next tick re-lands the change once main is green again.
         const detail = `main ${shortSha(main.sha)} is red — not this change's failure`;
-        state.lastReview = { verdict: "failed", reasons: [detail], head, at: Date.now() };
+        recordReview(state, "failed", [detail], head);
         warnEvent(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; landing kept`);
         return { decision: "failed", detail, mainRed: true };
       }
@@ -321,7 +321,7 @@ export async function reviewAheadOfMain(
     // reviewer must never destroy committed work (BUGS.md 2026-09-20). Only a run that
     // completed and replied without a parseable VERDICT is a strike against this HEAD.
     if (!pi.ok) {
-      state.lastReview = { verdict: "failed", reasons: [message], head, at: Date.now() };
+      recordReview(state, "failed", [message], head);
       return { decision: "failed", detail: message, run: pi };
     }
     // Consecutive failures of THIS HEAD only: a new commit (new HEAD) starts fresh. Read
@@ -329,7 +329,7 @@ export async function reviewAheadOfMain(
     const prev = state.lastReview;
     const sameHead = prev?.verdict === "failed" && prev.head === head;
     state.unreviewFailures = (sameHead ? (state.unreviewFailures ?? 0) : 0) + 1;
-    state.lastReview = { verdict: "failed", reasons: [message], head, at: Date.now() };
+    recordReview(state, "failed", [message], head);
     let discarded = false;
     if ((state.unreviewFailures ?? 0) >= REVIEW_FAILURE_LIMIT) {
       await resetWorktreeToMain(wt, mainBranch);
@@ -350,7 +350,7 @@ export async function reviewAheadOfMain(
   // approval to the diff it judged; unreadable, it clears any older one (no reuse at all).
   state.lastApprovedHead = head;
   state.lastApprovedPatchId = (await patchId(wt, mainBranch, head)) ?? undefined;
-  state.lastReview = { verdict: "approve", reasons: verdict.reasons, head, at: Date.now() };
+  recordReview(state, "approve", verdict.reasons, head);
   state.unreviewFailures = 0;
   await git(wt, "reset", "--hard", "HEAD");
   logEvent(root, {

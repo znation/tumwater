@@ -89,6 +89,15 @@ export function restoreMidTickWake(s: LoopState): boolean {
   return true;
 }
 
+/** Record the review gate's verdict on a HEAD into `lastReview` — the field the author's next
+ * tick prompt injects (tick-prompt.ts's buildRejectedReviewNote) and the same-head strike
+ * counter reads (review.ts's unreviewFailures). Mutates `s` in place; the timestamp is
+ * stamped here so every call site shares one Date.now() read and the shape stays in one place
+ * (types.ts's lastReview). */
+export function recordReview(s: LoopState, verdict: string, reasons: string[], head?: string): void {
+  s.lastReview = { verdict, reasons, ...(head === undefined ? {} : { head }), at: Date.now() };
+}
+
 /** Next step of a backoff ladder: initial (capped) on the first step, then multiplied, capped. */
 export function nextBackoffSeconds(current: number, ladder: BackoffConfig): number {
   const { initialSeconds, factor, maxSeconds } = ladder;

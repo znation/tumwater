@@ -3,7 +3,7 @@ import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { mergeToMain, rebaseOntoMain } from "./merge.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
-import { saveLoopState } from "./state.js";
+import { recordReview, saveLoopState } from "./state.js";
 import { setLandingStage } from "./landing-slot.js";
 import type { BuildCheckOutcome } from "./build-check.js";
 import { checkFailureReasons } from "./build-check-report.js";
@@ -318,7 +318,7 @@ export async function attributeRedCheck(
   if (main.status === "unavailable") {
     reasons.push(`main's own baseline was unavailable (${main.why}), so the red ${label} is attributed to this change`);
   }
-  state.lastReview = { verdict: "reject", reasons, head, at: Date.now() };
+  recordReview(state, "reject", reasons, head);
   state.unreviewFailures = 0;
   saveLoopState(ctx.root, state);
   await deleteRef(ctx.root, landingRefName(role));
