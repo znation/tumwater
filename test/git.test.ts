@@ -42,7 +42,7 @@ import {
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "../src/merge.js";
-import { branchName } from "../src/paths.js";
+import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
@@ -1060,6 +1060,58 @@ test("aheadOfMainFiles omits files only main gained after the branch forked (thr
   fs.writeFileSync(path.join(wt, "branch-only.txt"), "on branch\n");
   await commitAll(wt, "branch change");
   assert.deepEqual(await aheadOfMainFiles(wt, "main"), ["branch-only.txt"]);
+});
+
+test("concurrent ensureWorktree calls serialize: the queued call adopts the worktree the first made", async () => {
+  // Both callers probe a worktree that does not exist yet, so both enter serializeSetup;
+  // the second queues behind the first and must find the worktree usable by its turn —
+  // the queued-ahead branch the landing pipeline's concurrent vets once fell through
+  // (two clear-and-add steps interleaving, the loser's vet a terminal error). Without
+  // the serialization the two `worktree add` calls race and one of them fails.
+  const repo = makeRepo();
+  const first = ensureWorktree(repo, "clean", "main");
+  const second = ensureWorktree(repo, "clean", "main");
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(b, a, "both callers get the same worktree path");
+  assert.equal(await currentBranch(a), branchName("clean"), "the worktree is on its role branch");
+  assert.ok(fs.existsSync(path.join(a, "seed.txt")), "the worktree holds main's tree");
+  // Exactly one registration exists for the role: a lost race would leave a duplicate
+  // (or a registration whose directory was pruned) behind.
+  const list = sh(repo, "git", "worktree", "list", "--porcelain");
+  const forRole = list.split("\n").filter((l) => l.startsWith("worktree ")).filter((l) => l.endsWith("/worktrees/clean"));
+  assert.equal(forRole.length, 1, `exactly one registration for the role:\n${list}`);
+});
+
+test("concurrent ensureDetachedWorktree calls serialize and both resolve to the detached checkout", async () => {
+  // The mirror's two first callers race the same way the role worktrees' do; the queued
+  // one reports "not created by me" (false) and still falls through to the shared
+  // checkout/reset tail, so both end on the exact ref with a clean tree.
+  const repo = makeRepo();
+  const head = sh(repo, "git", "rev-parse", "main");
+  const dir = mirrorWorktreePath(repo);
+  const first = ensureDetachedWorktree(repo, dir, head);
+  const second = ensureDetachedWorktree(repo, dir, head);
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(b, a, "both callers get the same checkout");
+  assert.equal(sh(a, "git", "rev-parse", "HEAD"), head, "checked out at the requested ref");
+  assert.equal(await currentBranch(a), null, "the checkout is detached");
+  assert.equal(sh(a, "git", "status", "--porcelain"), "", "the checkout is clean");
+});
+
+test("abortSync survives a worktree pointer whose target is not a directory", async () => {
+  // A .git pointer file naming an existing-but-not-a-directory target leaves the
+  // file-based merge/rebase state check uncertain: abortSync must fall back to running
+  // the real aborts (which fail harmlessly here) instead of throwing — a corrupted
+  // worktree must not break the tick that tries to clean it.
+  const dir = tmpdir("stray-gitdir-");
+  fs.writeFileSync(path.join(dir, ".git"), `gitdir: ${path.join(dir, "stray-file")}\n`);
+  fs.writeFileSync(path.join(dir, "stray-file"), "a file, not a gitdir\n");
+  await abortSync(dir); // must resolve, not throw
+  assert.equal(
+    fs.readFileSync(path.join(dir, "stray-file"), "utf8"),
+    "a file, not a gitdir\n",
+    "the fallback aborts touched nothing",
+  );
 });
 
 test("commitMessage returns the full message and null for an unknown sha", async () => {
