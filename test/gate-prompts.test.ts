@@ -69,16 +69,31 @@ test("buildConflictPrompt keeps the project building and ends by stopping", () =
 // author loop retries the same rejected work with no idea why it was refused.
 
 test("buildRejectedReviewNote carries every reason, numbered in order", () => {
-  const note = buildRejectedReviewNote(["violates zero-deps principle", "half-done: no tests"]);
+  const note = buildRejectedReviewNote({ reasons: ["violates zero-deps principle", "half-done: no tests"] });
   assert.match(note, /rejected in review/);
   assert.ok(note.includes("1. violates zero-deps principle\n2. half-done: no tests"), "numbered list");
   assert.match(note, /Address the objections or take a different approach/);
 });
 
 test("buildRejectedReviewNote degrades to a placeholder when no reasons were recorded", () => {
-  const note = buildRejectedReviewNote([]);
+  const note = buildRejectedReviewNote({ reasons: [] });
   assert.ok(note.includes("(no reasons recorded)"), "says so rather than listing nothing");
   assert.match(note, /rejected in review/);
+});
+
+// A rejection persists until a later reviewed landing overwrites it, and the paths that never
+// reach a model review (the md-only exemption) leave it standing: without the timestamp an
+// objection main has since satisfied keeps riding every later prompt as if fresh (BUGS.md,
+// undated rejection note).
+test("buildRejectedReviewNote dates the verdict and names the reviewed head", () => {
+  const at = new Date(2026, 8, 24, 1, 20, 32).getTime();
+  const note = buildRejectedReviewNote({ reasons: ["md-only edit"], at, head: "127157a4deadbeef" });
+  assert.match(note, /rejected in review \(2026-09-24 01:20:32, head 127157a\):/);
+});
+
+test("buildRejectedReviewNote omits the context when the review recorded neither time nor head", () => {
+  const note = buildRejectedReviewNote({ reasons: ["md-only edit"] });
+  assert.match(note, /rejected in review:/);
 });
 
 // The red-main handoff note is the only signal a red main reaches the healer through: the

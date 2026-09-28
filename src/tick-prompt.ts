@@ -99,7 +99,7 @@ export function assembleTickPrompt(
   // failed — every tick starts a fresh session, so the full reasons ride along on the next
   // prompt until the role's next reviewed change replaces them.
   if (state.lastReview?.verdict === "reject") {
-    prompt += `\n\n${buildRejectedReviewNote(state.lastReview.reasons)}`;
+    prompt += `\n\n${buildRejectedReviewNote(state.lastReview)}`;
   }
   // Likewise a change leftover recovery discarded as unmergeable: named until the role queues
   // its next change (the discarding tick itself appends it after recovery — see runTick).

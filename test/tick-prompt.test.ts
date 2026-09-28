@@ -182,6 +182,27 @@ test("a rejected review rides along on the next tick's prompt, reasons intact", 
   assert.match(result.prompt, /the test lies about coverage/);
 });
 
+// The note must carry the rejection's timestamp and head: an undated verdict rides every later
+// prompt as if fresh even after main satisfied the objection, because the paths that never
+// reach a model review leave lastReview standing (BUGS.md, undated rejection note).
+test("the rejected-review note on the next tick's prompt is dated and names the reviewed head", () => {
+  const result = assembleTickPrompt({
+    root: root(),
+    config: defaultConfig(),
+    role: "feature",
+    state: state({
+      lastReview: {
+        verdict: "reject",
+        reasons: ["md-only BUGS.md edit"],
+        head: "8b58124aabcdef",
+        at: new Date(2026, 8, 24, 1, 20, 32).getTime(),
+      },
+    }),
+  });
+  assert.ok(result);
+  assert.match(result.prompt, /rejected in review \(2026-09-24 01:20:32, head 8b58124\):/);
+});
+
 test("a conflict discard note rides along, with its attempt count", () => {
   const result = assembleTickPrompt({
     root: root(),

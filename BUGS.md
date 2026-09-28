@@ -5,7 +5,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A rejection note rides every later prompt undated: a `reject` in `lastReview` is injected verbatim until some future landing overwrites it, so an objection main has since satisfied keeps telling the author to address a verdict that no longer holds (found by telemetry loop 2026-09-25)
+_None yet._
+
+## Fixed
+
+### A rejection note rides every later prompt undated: a `reject` in `lastReview` is injected verbatim until some future landing overwrites it, so an objection main has since satisfied keeps telling the author to address a verdict that no longer holds (found by telemetry loop 2026-09-25, fixed 2026-09-28)
 
 **Symptom:** This tick's telemetry prompt carries "Your previous change was rejected in review: 1. md-only BUGS.md edit moves … to Fixed, but none of the symbols its Fix paragraph names exist on this tree: setLandingStage — land the fix in the same commit, or keep the bug Open until the code exists". That verdict was true when issued — `setLandingStage` entered main with 127157a4 (2026-09-24 01:32), after the rejected edit was gated — and became false half an hour later. The note carries no date, so telling stale from live took archaeology: the symbol's introduction commit from `git log -S`, plus the digest's outcome table (5 telemetry ticks today, none of them the editing tick) to establish the rejection predates the digest's window. The digest correctly reports telemetry rejections 0 today — the event is out of its 1-day window — so the undated note is the only trace of the stale verdict, and nothing else names it.
 
@@ -17,7 +21,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Suspected cause:** `buildRejectedReviewNote(reasons)` takes only the reasons array (src/gate-prompts.ts); the `at` and `head` fields sit on `state.lastReview` unused, and nothing revalidates the note against main before injecting it.
 
-## Fixed
+**Fix:** `buildRejectedReviewNote` now takes the whole `lastReview` record, not just its reasons: when `at` is recorded it renders "Your previous change was rejected in review (2026-09-24 01:20:32, head 8b58124):", naming the reviewed head in short form, and with neither field it degrades to the previous undated shape (src/gate-prompts.ts). src/tick-prompt.ts passes `state.lastReview` through instead of slicing out the reasons. Pinned by test/gate-prompts.test.ts (the dated shape with head, the degraded shape without) and test/tick-prompt.test.ts (the assembled next-tick prompt carries the date and head); the two orchestrator-level rejection tests (test/loop-3.test.ts, test/loop-4.test.ts) now assert the dated prefix. Full suite: 1873 pass, 0 fail.
+
+**Validation gap:** real-run-needed — the note-shape unit test pinned the builder from reasons alone and stayed green while the bug rode live prompts, so confirming staleness took a real fleet run's prompt chain (37 hours of undated rides) plus `git log -S` archaeology to date the objection against main's history.
 
 ### A suite that a fleet runs inherits the operator's `TUMWATER_PI_BIN`, which outranks the fake pis the suite puts on PATH: every fake-pi test spawns the agent binary it names (found 2026-09-28, fixed 2026-09-28)
 

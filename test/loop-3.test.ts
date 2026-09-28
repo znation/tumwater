@@ -537,7 +537,7 @@ test("a rejected change rides along on the role's next tick prompt with its reas
     assert.equal(runs.length, 2, "exactly two author runs were recorded");
     assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
     const second = runs[1] ?? "";
-    assert.match(second, /Your previous change was rejected in review:/);
+    assert.match(second, /Your previous change was rejected in review \(/);
     assert.match(second, /1\. breaks the zero-dep rule/);
     assert.match(second, /2\. no regression test/);
     assert.match(second, /Address the objections or take a different approach\./);

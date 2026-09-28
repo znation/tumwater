@@ -223,7 +223,7 @@ test("a bold-numbered rejection reaches the author's next-tick note numbered onc
   );
   assert.equal(v?.verdict, "reject");
   assert.equal(
-    buildRejectedReviewNote(v!.reasons),
+    buildRejectedReviewNote({ reasons: v!.reasons }),
     "Your previous change was rejected in review:\n" +
       "1. The helper drops errors. `run` swallows the throw.\n2. No test covers it.\n" +
       "Address the objections or take a different approach.",

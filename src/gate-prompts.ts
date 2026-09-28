@@ -1,5 +1,6 @@
 import { shortSha } from "./text.js";
 import { dateLine } from "./prompt.js";
+import { formatDate, formatTime } from "./datetime.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
@@ -136,11 +137,25 @@ Rules for this run:
 
 /** The note injected into a role's next tick prompt after its previous change was rejected in
  * review. Every tick starts a fresh pi session, so this is the only cross-tick memory of what
- * was built and why it failed — it carries the full reasons, not a summary of them. */
-export function buildRejectedReviewNote(reasons: string[]): string {
+ * was built and why it failed — it carries the full reasons, not a summary of them. The whole
+ * `lastReview` rides in, not just the reasons: the timestamp and reviewed head let the author
+ * weigh a stale objection against main's current state (main may have satisfied it since). */
+export function buildRejectedReviewNote(review: {
+  reasons: string[];
+  at?: number;
+  head?: string;
+}): string {
   const list =
-    reasons.length > 0 ? reasons.map((r, i) => `${i + 1}. ${r}`).join("\n") : "(no reasons recorded)";
-  return `Your previous change was rejected in review:\n${list}\nAddress the objections or take a different approach.`;
+    review.reasons.length > 0
+      ? review.reasons.map((r, i) => `${i + 1}. ${r}`).join("\n")
+      : "(no reasons recorded)";
+  let context = "";
+  if (review.at !== undefined) {
+    context = ` (${formatDate(new Date(review.at))} ${formatTime(new Date(review.at))}`;
+    if (review.head) context += `, head ${review.head.slice(0, 7)}`;
+    context += ")";
+  }
+  return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.`;
 }
 
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change

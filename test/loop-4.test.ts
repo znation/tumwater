@@ -344,7 +344,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
     assert.equal(runs.length, 2, "two author runs and nothing from the landing");
     assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
     const second = runs[1] ?? "";
-    assert.match(second, /Your previous change was rejected in review:/);
+    assert.match(second, /Your previous change was rejected in review \(/);
     assert.match(second, /build check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/);
   } finally {
     restore();
