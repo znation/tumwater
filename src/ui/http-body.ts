@@ -34,6 +34,9 @@ export const MAX_BODY_BYTES = 64 * 1024;
  * can therefore never exceed the cap plus one chunk. */
 let inFlightBufferedBytes = 0;
 
+/** The wire bytes readBody is currently holding, across all in-flight requests — the
+ * observable the oversized-body regression test reads (see the counter below for why it is
+ * these bytes and not a heap delta). */
 export function bufferedBodyBytes(): number {
   return inFlightBufferedBytes;
 }

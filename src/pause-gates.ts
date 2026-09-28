@@ -23,6 +23,8 @@ interface PauseGates {
   pausedRoles: Set<string>;
 }
 
+/** A fresh pause-gate state: nothing seen paused yet, so the first poll of an unpaused fleet
+ * logs nothing. */
 export function newPauseGateState(): PauseGateState {
   return { prevUserPaused: false, prevPausedRoles: new Set() };
 }

@@ -42,6 +42,8 @@ interface BudgetGateState {
   fallbackConfig: TumwaterConfig;
 }
 
+/** A fresh budget-gate poll state: gate open, fallback breaker idle, no fallback view cached
+ * yet (so the first poll of an unchanged config logs nothing). */
 export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
   return { prevGate: "open", breaker: IDLE_FALLBACK_BREAKER, from: null, fallbackConfig: config };
 }

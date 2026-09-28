@@ -18,6 +18,8 @@ interface LiveConfigReload {
   poll(): TumwaterConfig;
 }
 
+/** A live config reloader over the given wiring; poll it once per scheduler cycle (see
+ * LiveConfigReload for the contract). */
 export function newLiveConfigReload(deps: {
   root: string;
   /** The startup config: the first live config and the config_changed baseline (seeded so the
