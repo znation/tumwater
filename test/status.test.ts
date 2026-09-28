@@ -18,7 +18,8 @@ import { landingStatePath, landQueueDir, orchestratorStatePath, pausedPath } fro
 import { pauseFleet, pauseRole } from "../src/fleet-state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
-import { withCountedReads } from "./util.js";
+import { cli } from "./cli-harness.js";
+import { seedCounters, withCountedReads } from "./util.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();
@@ -558,4 +559,61 @@ test("pausedUntil carries only a standing fleet timed-pause deadline", async () 
   // JSON.stringify drops the undefined field, so `status --json` carries it only while a
   // timed fleet pause stands.
   assert.ok(!("pausedUntil" in JSON.parse(JSON.stringify(statusPayload(repo)))));
+});
+
+// --- `status --json` through the real CLI entry point: the machine-readable fleet state --
+// the same document GET /api/status serves, printed with no server. The CLI runs as a child
+// process, so the deep-equal below compares its parsed stdout against statusPayload(root)
+// computed in this process for the same root; both read only from disk and nothing mutates
+// the temp repo between the reads.
+
+test("status --json prints the /api/status payload; bare status keeps the table", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli status json");
+  seedCounters(repo, "feature");
+
+  let r = await cli(repo, "status", "--json");
+  assert.equal(r.code, 0);
+  const doc = JSON.parse(r.stdout) as Record<string, unknown>;
+  // Top-level fields -- the same document GET /api/status serves for this root. `pid` is
+  // absent while no harness runs (undefined does not survive JSON.stringify).
+  for (const field of ["running", "inbox", "inboxPrompts", "budget", "loops", "events", "plans", "bugs", "questions"]) {
+    assert.ok(field in doc, `top-level ${field} present`);
+  }
+  assert.equal(doc.running, false, "no harness running");
+  assert.ok(!("pid" in doc), "no pid while the harness is not running");
+
+  // Per-loop fields on every row.
+  const loops = doc.loops as Array<Record<string, unknown>>;
+  assert.ok(loops.length > 0);
+  for (const l of loops) {
+    for (const field of ["role", "phase", "ticks", "commits", "generated", "peakCtx", "costUsd", "todayUsd", "lastResult", "lastSummary", "lastTickEndedAt"]) {
+      assert.ok(field in l, `loop field ${field} present`);
+    }
+  }
+  // Seeded counters surface verbatim -- the JSON is state-file data, not a re-rendering.
+  const feature = loops.find((l) => l.role === "feature");
+  assert.ok(feature, "feature loop row present");
+  assert.equal(feature!.ticks, 7);
+  assert.equal(feature!.commits, 3);
+  assert.equal(feature!.generated, 424242);
+  assert.equal(feature!.costUsd, 1.5);
+
+  // Deep-equal against the same root's payload in this process -- one definition of fleet
+  // state as JSON (status-payload.statusPayload) feeds both surfaces, so they cannot drift.
+  // Both sides go through a JSON round-trip: that is exactly what the endpoint and the flag
+  // emit.
+  assert.deepEqual(doc, JSON.parse(JSON.stringify(statusPayload(repo))));
+
+  // Bare status still renders the table -- same command, human surface unchanged.
+  r = await cli(repo, "status");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /loop/);
+  assert.match(r.stdout, /last result/);
+  assert.match(r.stdout, /feature/);
+
+  // A misspelled flag is rejected like every other unknown argument.
+  r = await cli(repo, "status", "--jsonn");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --jsonn/);
 });

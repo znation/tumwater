@@ -8,7 +8,9 @@ import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, inboxSize, queuedPrompts, submitPrompt, queuedRolePrompts, submitRolePrompt } from "../src/inbox.js";
 import { truncate } from "../src/text.js";
-import { inboxDir } from "../src/paths.js";
+import { inboxDir, resetRequestPath } from "../src/paths.js";
+import { loadLoopState } from "../src/state.js";
+import { seedCounters } from "./util.js";
 import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli, cliWithEnv } from "./cli-harness.js";
@@ -17,11 +19,12 @@ import { cli, cliWithEnv } from "./cli-harness.js";
 // tested as a child process — the spawn helpers (CLI, cli, cliWithEnv, spawnCli,
 // exitCode) live in cli-harness.ts, beside the run-to-completion capture they share.
 //
-// Split in two so node --test runs the halves in parallel processes — nearly every test here
-// spawns the CLI, so each half is CPU-bound on its own. This half holds help/version, status
-// and init, prompt, and run's startup preflight; cli-2.test.ts holds gui, argument
-// validation, status --json, tui, doctor, report, and run's lifecycle. Keep the two roughly
-// equal in measured duration when moving tests between them.
+// Split across files so node --test runs them in parallel processes — nearly every test here
+// spawns the CLI, so each file is CPU-bound on its own. This file holds help/version, status
+// and init, prompt, run's startup preflight, and the cross-command argument-strictness test;
+// the other child-process CLI tests live in their command's topic file: cli-gui.test.ts
+// (gui), cli-run-live.test.ts (run's lifecycle), doctor.test.ts, report.test.ts,
+// status.test.ts (status --json), and tui.test.ts.
 
 test("help and no command print usage", async () => {
   const dir = tmpdir();
@@ -587,4 +590,67 @@ test("prompt --list groups queues by loop and --cancel removes from the named lo
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task two"]);
   assert.deepEqual(queuedRolePrompts(repo, "readme"), ["docs task"]);
   assert.deepEqual(queuedPrompts(repo), ["director task"]);
+});
+
+// --- argument strictness, cross-command: every command must reject unknown arguments ---
+// (the per-command validation lives in each command's tests; this one walks several commands
+// because the regression class is parser-wide, not command-local).
+
+test("commands reject unknown arguments instead of silently ignoring them", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli strict args");
+  seedCounters(repo, "feature");
+  seedCounters(repo, "clean");
+
+  // A misspelled --role used to be ignored: reset-counters would zero EVERY loop instead of
+  // the one named. Now it fails and leaves every counter (and no fleet marker) untouched.
+  let r = await cli(repo, "reset-counters", "--rol", "feature");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --rol/);
+  assert.match(r.stderr, /--role <id>/);
+  assert.equal(loadLoopState(repo, "feature").ticks, 7, "no reset happened");
+  assert.equal(loadLoopState(repo, "clean").ticks, 7, "no reset happened");
+  assert.ok(!fs.existsSync(resetRequestPath(repo)), "no marker written");
+
+  // A misspelled --port used to be ignored: gui would serve on the default port.
+  r = await cli(repo, "gui", "--portt", "8080");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --portt/);
+
+  // A doubled short flag used to be ignored: logs would run one-shot instead of following.
+  r = await cli(repo, "logs", "-ff");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: -ff/);
+
+  // `run` takes exactly one flag (--branch); anything else is rejected and names it.
+  r = await cli(repo, "run", "--verbose");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --verbose/);
+  assert.match(r.stderr, /valid flags for tumwater run: --branch <name>/);
+
+  // ...including version and help, which used to accept anything silently: `version --json`
+  // printed a version as if it had answered the query, and `help extra` printed usage.
+  r = await cli(repo, "version", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /takes no arguments/);
+
+  // `help <command>` now prints that command's usage stanza; only a NON-command token is
+  // still an error — pointed back at the full list instead of pretending it was answered.
+  r = await cli(repo, "help", "gui");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /tumwater gui/);
+
+  r = await cli(repo, "help", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no help topic: extra/);
+
+  // Stray non-flag tokens are rejected too.
+  r = await cli(repo, "reset-counters", "--role", "feature", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: extra/);
+  assert.equal(loadLoopState(repo, "feature").ticks, 7, "no reset happened");
+
+  // Valid combinations still work.
+  r = await cli(repo, "logs", "-n", "3", "--role", "clean");
+  assert.equal(r.code, 0);
 });

@@ -14,6 +14,7 @@ import { runTui } from "../src/ui/tui.js";
 import { formatDate } from "../src/datetime.js";
 import { atLocalTs as atNoon } from "./util.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
+import { cli } from "./cli-harness.js";
 
 
 /** A fake-TTY harness around runTui: no real terminal is involved. The isTTY flags are
@@ -1100,4 +1101,30 @@ test("role-prompt mode keeps its own draft, refuses Ctrl+B, and Esc/Ctrl+R resto
   } finally {
     await tui.quit();
   }
+});
+
+// --- `tui` through the real CLI entry point: main()'s tui case (arg rejection -> readiness
+// gate -> runTui) as a child process. A spawned child has no TTY, so the happy path ends in
+// a clean error and the whole wiring is observable without a terminal.
+
+test("tui gates on repo readiness, rejects extra args, and fails cleanly without a terminal", async () => {
+  // Not a git repo: the readiness gate fires before any TUI work -- a regression that dropped
+  // requireReadyRepo here would crash deep in snapshot() instead of naming the fix.
+  let r = await cli(tmpdir(), "tui");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /not a git repository/);
+
+  const repo = makeRepo();
+  await initProject(repo, "cli tui test");
+
+  // A ready repo: runTui's TTY requirement surfaces as a clean CLI error (exit 1) and the
+  // command exits rather than hanging -- which also bounds this test if that ever regresses.
+  r = await cli(repo, "tui");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /needs an interactive terminal/);
+
+  // Like every other no-flag command, tui rejects stray arguments instead of ignoring them.
+  r = await cli(repo, "tui", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /takes no arguments/);
 });

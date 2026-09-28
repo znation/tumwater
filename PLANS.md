@@ -575,7 +575,7 @@ documents — `once.active && !runner.state.running && once.isSettled(runner)` n
 in the orchestrator's scheduling pass (src/orchestrator.ts) — which also hardens unscoped once
 rounds for work roles. (3) The run-flag tests landed in test/cli-args.test.ts (vocabulary) and
 test/orchestrator-once.e2e.test.ts (CLI behavior, where the run e2e suite lives) rather than
-test/cli.test.ts; test/cli-2.test.ts's existing unknown-argument regex still matches the
+test/cli.test.ts; test/cli.test.ts's existing unknown-argument regex still matches the
 widened valid-flags list. Full suite: 1808 gating tests pass; e2e tier 72/72.
 
 **Goal.** `tumwater run --once` (Done, 2026-09-25) always runs every enabled role, and an
@@ -688,7 +688,7 @@ its existing queue untouched, roles get `inboxDir(root)/<role>/`.
 
 Files touched: src/inbox.ts, src/paths.ts, src/cli-args.ts, src/cli.ts, src/help.ts (usage
 stanza), src/tick-prompt.ts, src/prompt.ts, src/loop.ts, src/operator-commands.ts (caller only);
-tests in test/inbox.test.ts, test/cli.test.ts (or cli-2), test/prompt.test.ts, and a tick-level
+tests in test/inbox.test.ts, test/cli.test.ts, test/prompt.test.ts, and a tick-level
 test that the dequeued text lands in the assembled prompt.
 
 Acceptance criteria. (a) `tumwater prompt --role qa hello` queues only for qa: qa's next tick

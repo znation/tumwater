@@ -25,14 +25,17 @@ import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
+import { execFileSync } from "node:child_process";
 import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { vanishOnReadFile } from "./fs-faults.js";
+import { fakePi } from "./fake-pi.js";
+import { cli, cliWithEnv } from "./cli-harness.js";
 
 // Unit coverage for the pre-flight environment check (src/doctor.ts): every check's ok/fail/warn
 // branches plus report composition and rendering. The binary checks take an explicit PATH so the
 // missing branch is exercised by passing "" — no PATH mutation, no spawning. The CLI wiring
-// (`tumwater doctor` exit codes) is covered in cli.test.ts territory; here we pin the module's
-// own behavior, including its read-only guarantee against .tumwater/.
+// (`tumwater doctor` exit codes through main()) is pinned at the bottom of this file; the rest
+// pins the module's own behavior, including its read-only guarantee against .tumwater/.
 
 /** A bin dir holding executable files with the given names — a deterministic PATH for the binary checks. */
 function fakeBins(...names: string[]): string {
@@ -942,4 +945,80 @@ test("runDoctor reports a phantom fix record as a warn that never fails the verd
   assert.equal(claims?.level, "warn");
   assert.match(claims?.detail ?? "", /runScriptGroup/);
   assert.equal(report.verdict, "ready to run");
+});
+
+// --- doctor through the real CLI entry point: main()'s wiring the in-process pins above
+// cannot see — doctor runs WITHOUT a readiness gate (it must report why the environment
+// isn't ready, not refuse like status), renders the full report to stdout, rejects unknown
+// arguments, and honors the exit-code contract that makes it scriptable: 0 when no check
+// fails, 1 otherwise. Warnings never fail.
+
+test("doctor runs outside a git repo — reports every problem instead of gating", async () => {
+  // A bare directory with a PATH holding only git (no pi): every check's outcome is
+  // deterministic, and the command must not refuse to run like status does. Without the
+  // missing-gate regression this would print "not a git repository" to stderr and exit 1
+  // without ever showing the other checks.
+  const binDir = tmpdir();
+  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+
+  const r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["doctor"]);
+  assert.equal(r.code, 1, `expected exit 1 with failing checks:\n${r.stdout}\n${r.stderr}`);
+  // The full report is printed — one line per check in fixed order, not the first error.
+  assert.match(r.stdout, /tumwater doctor — harness not running/);
+  assert.match(r.stdout, /ok\s+git binary/);
+  assert.match(r.stdout, /fail\s+repo\s+not a git repository/);
+  assert.match(r.stdout, /fail\s+init\s+not initialized/);
+  assert.match(r.stdout, /fail\s+pi binary\s+pi not found on PATH/);
+  assert.match(r.stdout, /ok\s+state dir/);
+  assert.match(r.stdout, /ok\s+merge lock/);
+  assert.match(r.stdout, /warn\s+project check/);
+  // No ps on this PATH either: the orphan scan degrades to a warn instead of crashing doctor.
+  assert.match(r.stdout, /warn\s+orphans\s+could not scan the process table/);
+  // The verdict counts the fails (repo + init + pi) and nothing else.
+  assert.match(r.stdout, /3 problems/);
+});
+
+test("doctor exits 0 on a ready repo; a stale merge lock warns without failing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli doctor test");
+
+  // A stale merge lock (dead pid) is a warning: it self-heals on the next merge, so it must
+  // not flip the exit code — scripts key off 0/1 for real problems only.
+  const lockDir = path.join(repo, ".tumwater", "merge.lock");
+  fs.mkdirSync(lockDir, { recursive: true });
+  fs.writeFileSync(path.join(lockDir, "pid"), String(2_000_000_000)); // beyond any pid space
+
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "doctor");
+    assert.equal(r.code, 0, `expected exit 0 on a ready repo:\n${r.stdout}\n${r.stderr}`);
+    assert.match(r.stdout, /tumwater doctor — harness not running/);
+    for (const line of [
+      /ok\s+git binary/,
+      /ok\s+repo\s+repo at \S+ — on branch main/,
+      /ok\s+init/,
+      /ok\s+pi binary/,
+      /ok\s+state dir/,
+      /warn\s+merge lock\s+stale — will be broken on next merge/,
+      /warn\s+project check/,
+      // The real process-table scan: a fresh repo has no worktree, so no orphan either.
+      /ok\s+orphans\s+none/,
+    ]) {
+      assert.match(r.stdout, line);
+    }
+    assert.match(r.stdout, /ready to run/);
+  } finally {
+    restore();
+  }
+});
+
+test("doctor rejects unknown arguments", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli doctor args");
+
+  // Like every other no-flag command, doctor takes no arguments at all.
+  const r = await cli(repo, "doctor", "--verbose");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /takes no arguments/);
 });
