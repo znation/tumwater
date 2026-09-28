@@ -1,4 +1,4 @@
-import { fail, parseCountFlag, parseRoleScope } from "../cli-args.js";
+import { fail, parseCountFlag, parseRoleScope, say } from "../cli-args.js";
 import { readEvents } from "../events.js";
 import { formatDate, formatTime } from "../datetime.js";
 import { collapseWhitespace, compactTokens, shortSpanPhrase, truncate, usd } from "../text.js";
@@ -98,7 +98,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // any smaller window.
   const rows = tickRows(readEvents(root, limit * 2 + 50), limit, role);
   if (rows.length === 0) {
-    process.stdout.write("no ticks yet\n");
+    say("no ticks yet");
     return;
   }
   const widths = {
@@ -108,5 +108,5 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     duration: Math.max(...rows.map((r) => (r.durationMs === null ? 1 : shortSpanPhrase(r.durationMs).length))),
     usage: Math.max(...rows.map((r) => r.usage.length)),
   };
-  process.stdout.write(rows.map((r) => renderRow(r, widths)).join("\n") + "\n");
+  say(rows.map((r) => renderRow(r, widths)).join("\n"));
 }

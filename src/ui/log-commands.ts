@@ -1,4 +1,4 @@
-import { durationLabel, fail, parseCountFlag, parseDurationFlag, parseRoleScope } from "../cli-args.js";
+import { durationLabel, fail, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
 import { formatDate } from "../datetime.js";
 import { LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
 import { parseEventLine, readEvents } from "../events.js";
@@ -75,17 +75,17 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       window.coversFullWindow ||
       (oldest !== undefined && typeof oldest.ts === "number" && oldest.ts <= cutoff);
     if (events.length === 0) {
-      process.stdout.write(`no events in ${durationLabel(ms)}\n`);
+      say(`no events in ${durationLabel(ms)}`);
       return;
     }
-    for (const e of events) process.stdout.write(formatEvent(e) + "\n");
+    for (const e of events) say(formatEvent(e));
     // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows:
     // with no rows at all (a fresh install's missing log among them) there is nothing sparse to
     // explain, and a flat "rotated out" claim would be false for a log that never had events.
     // The hedged phrasing stays true whenever it prints: the oldest retained event being inside
     // the window is exactly the unproven case, whether the cause is rotation or idleness.
     if (!covered)
-      process.stdout.write("note: the log's oldest retained event lies inside this window; older events may have rotated out\n");
+      say("note: the log's oldest retained event lies inside this window; older events may have rotated out");
     return;
   }
   const nFlag = args.indexOf("-n");
@@ -104,10 +104,10 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   const shown = grepLower
     ? readEvents(root, limit).filter((e) => matchesGrep(e, grepLower))
     : readEvents(root, limit);
-  for (const e of shown) process.stdout.write(formatEvent(e) + "\n");
+  for (const e of shown) say(formatEvent(e));
   if (!follow) {
     if (grepPattern !== null && shown.length === 0)
-      process.stdout.write(`no events matching "${grepPattern}"\n`);
+      say(`no events matching "${grepPattern}"`);
     return;
   }
   const file = eventsLogPath(root);
@@ -120,7 +120,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       // The filter holds across rotation: every event the follow callback sees goes through
       // the same match rule as the seeded window.
       if (e && (grepLower === null || matchesGrep(e, grepLower)))
-        process.stdout.write(formatEvent(e) + "\n");
+        say(formatEvent(e));
     }
   });
   await new Promise(() => {}); // Follow until Ctrl+C.
@@ -147,7 +147,7 @@ async function cmdLogsTranscript(
   const opts = { includePrompts: showPrompts };
 
   const printEntry = (lines: string[]) => {
-    if (lines.length > 0) process.stdout.write(lines.join("\n") + "\n");
+    if (lines.length > 0) say(lines.join("\n"));
   };
 
   // Initial window: the last `limit` entries of what is on disk. readTranscriptTail scans back
@@ -157,7 +157,7 @@ async function cmdLogsTranscript(
   let offset = 0;
   const tail = readTranscriptTail(file, limit, opts); // null when there's no log yet (or it's empty).
   if (!tail) {
-    process.stdout.write(`no transcript yet for ${role}\n`);
+    say(`no transcript yet for ${role}`);
   } else {
     for (const entry of tail.entries) printEntry(entry);
     offset = tail.end;

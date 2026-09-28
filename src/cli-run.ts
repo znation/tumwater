@@ -3,7 +3,7 @@
  * command it dispatches already delegates to a module (operator-commands.ts, ui/log-commands.ts,
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
 import { enabledRoleIds } from "./config.js";
-import { fail, parseBranchFlag, parseInitArgs, parseRoleFlag } from "./cli-args.js";
+import { fail, parseBranchFlag, parseInitArgs, parseRoleFlag, say } from "./cli-args.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles } from "./fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "./startup-gate.js";
 import { initProject } from "./init.js";
@@ -23,29 +23,29 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
   const { prompt, branch, adopt, dryRun } = parseInitArgs(args);
   const result = await initProject(root, prompt, branch ?? undefined, { adopt, dryRun });
   if (result.adopted) {
-    process.stdout.write(
-      `${result.dryRun ? "would adopt" : "adopting"} an existing repo: the project brief goes in TUMWATER.md and README.md is left untouched\n`,
+    say(
+      `${result.dryRun ? "would adopt" : "adopting"} an existing repo: the project brief goes in TUMWATER.md and README.md is left untouched`,
     );
   }
   if (result.dryRun) {
     if (result.repoInitialized && result.branch) {
-      process.stdout.write(`dry run — would initialize a new git repository on branch ${result.branch}\n`);
+      say(`dry run — would initialize a new git repository on branch ${result.branch}`);
     }
     const list = (names: string[]) => (names.length > 0 ? names.join(", ") : "nothing");
-    process.stdout.write(`dry run — would create: ${list(result.created)}\n`);
-    process.stdout.write(`would leave alone: ${list(result.leftAlone)}\n`);
-    process.stdout.write("nothing written; re-run without --dry-run to apply\n");
+    say(`dry run — would create: ${list(result.created)}`);
+    say(`would leave alone: ${list(result.leftAlone)}`);
+    say("nothing written; re-run without --dry-run to apply");
     return;
   }
   if (result.created.length === 0) {
-    process.stdout.write("already initialized; nothing to do\n");
+    say("already initialized; nothing to do");
     return;
   }
   if (result.repoInitialized && result.branch) {
-    process.stdout.write(`initialized a new git repository on branch ${result.branch}\n`);
+    say(`initialized a new git repository on branch ${result.branch}`);
   }
-  process.stdout.write(`created ${result.created.join(", ")}${result.committed ? " (committed)" : ""}\n`);
-  process.stdout.write("next: `tumwater run` in one terminal, `tumwater tui` in another\n");
+  say(`created ${result.created.join(", ")}${result.committed ? " (committed)" : ""}`);
+  say("next: `tumwater run` in one terminal, `tumwater tui` in another");
 }
 
 /** `tumwater run`: boot the fleet and stream its event feed to this terminal until it stops.
@@ -86,7 +86,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const stop = () => {
     if (stopping) process.exit(130);
     stopping = true;
-    process.stdout.write("\nstopping — waiting for in-flight ticks (Ctrl+C again to force)\n");
+    say("\nstopping — waiting for in-flight ticks (Ctrl+C again to force)");
     controller.abort();
   };
   process.on("SIGINT", stop);
@@ -106,14 +106,14 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // Name the resolved root when it differs from the cwd: an operator who started the fleet
   // from a subdirectory must see where .tumwater/ actually lives.
   const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
-  process.stdout.write(
+  say(
     once
-      ? `tumwater once on branch ${mainBranch}${rootNote} — one round, then exit\n`
-      : `tumwater running on branch ${mainBranch}${build}${rootNote} — Ctrl+C to stop\n`,
+      ? `tumwater once on branch ${mainBranch}${rootNote} — one round, then exit`
+      : `tumwater running on branch ${mainBranch}${build}${rootNote} — Ctrl+C to stop`,
   );
-  process.stdout.write(`loops: ${roles.join(", ")}\n`);
-  process.stdout.write("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n\n");
-  const unsubscribe = subscribeEvents((e) => process.stdout.write(formatEvent(e) + "\n"));
+  say(`loops: ${roles.join(", ")}`);
+  say("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n");
+  const unsubscribe = subscribeEvents((e) => say(formatEvent(e)));
   // Snapshot each role's tick counter so the once summary can tell this round's ticks from
   // the persisted history (the state file accumulates across rounds).
   const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).ticks] as const));
@@ -132,7 +132,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   } finally {
     unsubscribe();
   }
-  if (once) process.stdout.write(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun) + "\n");
+  if (once) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
@@ -214,7 +214,7 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
       spawnChild: (signal) => spawnRunChild(signal, runArgs),
       stopping: () => stopping,
       onRespawn: (generation) =>
-        process.stdout.write(`\nrestarting on the new build (generation ${generation})\n\n`),
+        say(`\nrestarting on the new build (generation ${generation})\n`),
       onCrashLoop: () =>
         process.stderr.write("tumwater: the harness restarted itself too many times in a minute — giving up\n"),
       // Re-ask the startup gate for the reason: a generation that dies right after a respawn

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import {
   fail,
   parseCountFlag,
+  say,
   parseDurationFlag,
   parsePortFlag,
   DURATION_FLAG,
@@ -124,17 +125,17 @@ async function main(): Promise<void> {
         throw err;
       }
       const tokenSuffix = token ? `/?token=${encodeURIComponent(token)}` : "";
-      process.stdout.write(`tumwater gui at http://127.0.0.1:${port}${tokenSuffix} — Ctrl+C to stop\n`);
+      say(`tumwater gui at http://127.0.0.1:${port}${tokenSuffix} — Ctrl+C to stop`);
       if (allInterfaces) {
         // Name the concrete URLs teammates can open (token included, so they are openable
         // as printed), and say what exposure means: without a token the dashboard has no
         // auth and its prompt box steers the fleet; with one, the token is the gate.
         for (const addr of lanAddresses())
-          process.stdout.write(`             also at http://${addr}:${port}${tokenSuffix}\n`);
-        process.stdout.write(
+          say(`             also at http://${addr}:${port}${tokenSuffix}`);
+        say(
           token
-            ? `listening on ALL interfaces — token-protected; prompting the director requires the token\n`
-            : `listening on ALL interfaces — no auth; anyone reaching it can prompt the director\n`,
+            ? "listening on ALL interfaces — token-protected; prompting the director requires the token"
+            : "listening on ALL interfaces — no auth; anyone reaching it can prompt the director",
         );
       }
       await new Promise(() => {}); // Serve until Ctrl+C.
@@ -148,11 +149,9 @@ async function main(): Promise<void> {
         // serving process's own `serverBuildSha`, printed with no server. A query, not a
         // health verdict: exit 0 on any successful read and let scripts interpret fields
         // themselves ("running": false is data, not failure).
-        process.stdout.write(JSON.stringify(statusPayload(root), null, 2) + "\n");
+        say(JSON.stringify(statusPayload(root), null, 2));
       } else {
-        process.stdout.write(
-          renderStatus(root, snapshot(root), process.stdout.isTTY ? process.stdout.columns : undefined) + "\n",
-        );
+        say(renderStatus(root, snapshot(root), process.stdout.isTTY ? process.stdout.columns : undefined));
       }
       break;
     case "config": {
@@ -184,7 +183,7 @@ async function main(): Promise<void> {
         const ms = parseDurationFlag("--since", args[sinceFlag + 1]);
         if (ms > REPORT_SINCE_MAX_MS)
           fail(`report --since is capped at ${durationLabel(REPORT_SINCE_MAX_MS)} (got ${durationLabel(ms)})`);
-        process.stdout.write(renderSinceReportMarkdown(collectReportSince(root, ms)) + "\n");
+        say(renderSinceReportMarkdown(collectReportSince(root, ms)));
         break;
       }
       const daysFlag = args.indexOf("--days");
@@ -198,10 +197,10 @@ async function main(): Promise<void> {
         if (days > REPORT_MAX_DAYS)
           fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(args[daysFlag + 1])})`);
       }
-      process.stdout.write(
-        (args.includes("--failures")
+      say(
+        args.includes("--failures")
           ? renderFailureMarkdown(collectFailureReport(root, days))
-          : renderReportMarkdown(collectReport(root, days))) + "\n",
+          : renderReportMarkdown(collectReport(root, days)),
       );
       break;
     }
@@ -210,7 +209,7 @@ async function main(): Promise<void> {
       // so it must run outside a git repo and print fail lines rather than throwing.
       rejectUnknownArgs("doctor", args, []);
       const report = await runDoctor(root);
-      process.stdout.write(renderDoctor(report) + "\n");
+      say(renderDoctor(report));
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }
@@ -238,7 +237,7 @@ async function main(): Promise<void> {
       // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
       // command prints three empty sections in any directory (report's rationale, not config's).
       rejectUnknownArgs("backlog", args, []);
-      process.stdout.write(renderBacklogMarkdown(root) + "\n");
+      say(renderBacklogMarkdown(root));
       break;
     }
     case "prompt":
@@ -275,7 +274,7 @@ async function main(): Promise<void> {
       const pkg = JSON.parse(
         fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
       ) as { version: string };
-      process.stdout.write(pkg.version + "\n");
+      say(pkg.version);
       break;
     }
     case "help":
@@ -291,7 +290,7 @@ async function main(): Promise<void> {
         const topic = helpTopic(name);
         if (topic === null)
           fail(`no help topic: ${name} (try \`tumwater help\` for the full command list)`);
-        process.stdout.write(topic + "\n");
+        say(topic);
       } else {
         process.stdout.write(HELP);
       }

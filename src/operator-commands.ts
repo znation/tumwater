@@ -1,5 +1,5 @@
 import { knownRoleIds, loadConfig } from "./config.js";
-import { durationLabel, fail, parseDurationFlag, parsePromptArgs, parseRoleFlag } from "./cli-args.js";
+import { durationLabel, fail, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "./cli-args.js";
 import {
   type CancelOutcome,
   cancelRolePrompt,
@@ -107,7 +107,7 @@ function requestResetCounters(root: string, roles: string[]): string {
  * dashboards so a fresh observation window can begin. Scheduling fields and pi session
  * continuity are untouched: loops keep sleeping/waking exactly as before. */
 export async function cmdResetCounters(root: string, args: string[]): Promise<void> {
-  process.stdout.write(requestResetCounters(root, targetRoles(root, args)) + "\n");
+  say(requestResetCounters(root, targetRoles(root, args)));
 }
 
 /** The marker-writing core of `wake`, shared with the GUI's POST /api/wake: clear the named
@@ -129,7 +129,7 @@ export function requestWake(root: string, roles: string[]): string {
  * fixed — try again", so the named roles tick within one poll instead of sleeping until
  * their backoff expires. */
 export async function cmdWake(root: string, args: string[]): Promise<void> {
-  process.stdout.write(requestWake(root, targetRoles(root, args)) + "\n");
+  say(requestWake(root, targetRoles(root, args)));
 }
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot
@@ -145,7 +145,7 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
   if (!role) fail("abort requires --role <id> (e.g. `--role feature`)");
   const result = requestAbort(root, role);
   if (!result.ok) fail(result.error);
-  process.stdout.write(result.message + "\n");
+  say(result.message);
 }
 
 /** The marker-writing core of `abort`, shared with the GUI's POST /api/abort: drop the
@@ -257,7 +257,7 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
     // Ctrl+P calls it too), so CLI and TUI cannot drift on format or idempotence; a false
     // return means the role was already in the set, which rolePauseMessage words — unless a
     // `--for` stands, which overwrites the deadline and reports the fresh confirmation.
-    process.stdout.write(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed) + "\n");
+    say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed));
     return;
   }
   // pauseFleet in src/fleet-state.ts is the single writer of the pause marker — the GUI's
@@ -265,13 +265,13 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
   // or idempotence; a false return means the marker was already there (a `--for` never
   // no-ops: it overwrites the standing deadline instead).
   if (!pauseFleet(root, untilMs)) {
-    process.stdout.write("already paused\n");
+    say("already paused");
     return;
   }
   const { when, tail } = markerApplyNote(root);
   const { forPhrase, note } = timedPauseBits(timed);
-  process.stdout.write(
-    `fleet paused${forPhrase} — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${note}${tail}\n`,
+  say(
+    `fleet paused${forPhrase} — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${note}${tail}`,
   );
 }
 
@@ -315,9 +315,9 @@ export async function cmdStop(root: string): Promise<void> {
   // already stopped — say so and exit clean rather than surfacing Node's raw kill error;
   // anything else (EPERM on a recycled pid, …) comes back as signalOrchestrator's message.
   if (signalOrchestrator(info.pid) === "signalled")
-    process.stdout.write("stop requested — the fleet drains its in-flight ticks and exits (the same path as Ctrl+C)\n");
+    say("stop requested — the fleet drains its in-flight ticks and exits (the same path as Ctrl+C)");
   else
-    process.stdout.write("the orchestrator exited before the stop signal landed — nothing is running\n");
+    say("the orchestrator exited before the stop signal landed — nothing is running");
 }
 
 /** `tumwater config`: print the effective merged config — exactly what `loadConfig(root)`
@@ -334,7 +334,7 @@ export async function cmdConfig(root: string): Promise<void> {
   } catch (err) {
     fail(errorMessage(err));
   }
-  process.stdout.write(JSON.stringify(config, null, 2) + "\n");
+  say(JSON.stringify(config, null, 2));
 }
 
 /** `tumwater resume [--role <id>]`: with a role, lift that one role's pause (removed from the
@@ -347,13 +347,13 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
     // resumeRole (src/fleet-state.ts) is the single remover of the per-role marker; a false
     // return means the role was never paused — the changed-state contract roleResumeMessage
     // words ("is already paused" vs "was not paused").
-    process.stdout.write(roleResumeMessage(root, role, resumeRole(root, role)) + "\n");
+    say(roleResumeMessage(root, role, resumeRole(root, role)));
     return;
   }
   // resumeFleet (src/fleet-state.ts) is the single remover, shared with the GUI toggle; a false
   // return means there was no marker to lift.
   if (!resumeFleet(root)) {
-    process.stdout.write("not paused\n");
+    say("not paused");
     return;
   }
   const { when, tail } = markerApplyNote(root);
@@ -364,8 +364,7 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
   const roleNote = still.length > 0
     ? ` (${still.join(", ")} ${still.length === 1 ? "is" : "are"} still individually paused — \`tumwater resume --role <id>\` lifts each)`
     : "";
-  process.stdout.write(`fleet resumed — role loops tick again${when}${roleNote}${tail}\n`
-  );
+  say(`fleet resumed — role loops tick again${when}${roleNote}${tail}`);
 }
 
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the
@@ -391,10 +390,10 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     if (role !== null) {
       const prompts = queuedRolePrompts(root, role);
       if (prompts.length === 0) {
-        process.stdout.write(`nothing queued for ${role}\n`);
+        say(`nothing queued for ${role}`);
       } else {
-        process.stdout.write(`${role}:\n`);
-        prompts.forEach((p, i) => process.stdout.write(`${i + 1}. ${p}\n`));
+        say(`${role}:`);
+        prompts.forEach((p, i) => say(`${i + 1}. ${p}`));
       }
       return;
     }
@@ -411,9 +410,9 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
       }
     }
     if (sections.length === 0) {
-      process.stdout.write("nothing queued\n");
+      say("nothing queued");
     } else {
-      process.stdout.write(sections.join("\n") + "\n");
+      say(sections.join("\n"));
     }
     return;
   }
@@ -427,21 +426,21 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     }
     if (outcome.status === "gone") {
       // A concurrent dequeue is a normal race, not an error: report it and exit clean.
-      process.stdout.write(`prompt ${parsed.position} is no longer queued — ${target} already took it\n`);
+      say(`prompt ${parsed.position} is no longer queued — ${target} already took it`);
     } else {
-      process.stdout.write(`cancelled: ${promptPreview(outcome.text)}\n`);
+      say(`cancelled: ${promptPreview(outcome.text)}`);
     }
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
   submitRolePrompt(root, target, parsed.text);
   if (role === null) {
-    process.stdout.write("queued for the director loop\n");
+    say("queued for the director loop");
   } else {
-    process.stdout.write(`queued for the ${role} loop\n`);
+    say(`queued for the ${role} loop`);
   }
   // A live fleet sees the prompt now instead of whenever the sleeping loop's backoff next
   // expires: wake just the targeted role (requestWake's marker is safe with no fleet
   // running — the same contract as `tumwater wake`).
-  process.stdout.write(requestWake(root, [target]) + "\n");
+  say(requestWake(root, [target]));
 }

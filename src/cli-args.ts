@@ -10,6 +10,15 @@ import { errorMessage, parsePositiveInt } from "./text.js";
  * and gui.ts's query-param validation, so one definition of a valid count/position covers both
  * input surfaces without the UI layer importing this module. */
 
+/** Write one line to stdout — the `say(text)` idiom every CLI command's user-facing output
+ * renders through (status lines, confirmations, report bodies, log events), the stdout twin
+ * of fail() below: `process.stdout.write(text + "\n")`, spelled once so the trailing newline
+ * and the write target cannot drift per call site. Text carrying its own interior newlines
+ * (multi-line reports) passes through verbatim; say() only supplies the final newline. */
+export function say(text: string): void {
+  process.stdout.write(text + "\n");
+}
+
 /** The single uniform failure exit for CLI flag/argument validation and command preflight:
  * write a `tumwater: <message>` line to stderr and exit 1. Declared `never` because every
  * caller relies on it stopping execution — code after a fail() call is unreachable. */
