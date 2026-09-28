@@ -5,7 +5,50 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater report --json` — the usage report as machine-readable data, beside `status --json` (planned 2026-09-28)
+
+**Goal.** Scripts and cron jobs can watch fleet spend and throughput (`report --days` series,
+`report --since` totals) today only by parsing Markdown. `status --json` already established the
+pattern — the exact payload the renderers consume, printed with `JSON.stringify(..., null, 2)`
+(src/cli.ts, the `status` case). This plan gives `report` the same output shape so an operator can
+track cost/outcomes programmatically without a running GUI server or screen-scraping.
+
+**Approach.** The collectors already return the exact structures (`ReportData`/`ReportDay` in
+src/report-data.ts:55-85, `SinceReport` in src/report-data.ts:87-110 — including
+`coversFullWindow`, which a script needs to distinguish a sparse window from a truncated one);
+the Markdown renderers in src/ui/report.ts are pure functions of them. So `--json` only swaps the
+renderer for `JSON.stringify` of the collector's return value:
+
+- src/cli.ts, the `report` case (~line 121): add `{ names: ["--json"] }` to `rejectUnknownArgs`'s
+  vocabulary.
+- src/ui/report.ts, `cmdReport` (lines 120-152): in both the `--since` branch and the `--days`
+  branch, when `args.includes("--json")`, `say(JSON.stringify(<collector result>, null, 2))`
+  instead of the Markdown render — collectors run exactly as before, bounds and cap checks
+  untouched.
+- `--failures --json` fails fast with `fail(...)` in the established combined-flag message style
+  (cf. the `--since`/`--failures` mutual exclusions at lines 125-128): the failure digest is a
+  clustered narrative with no agreed JSON shape, and inventing one is a separate plan if ever
+  wanted — the error says so. `--since --days --json` keeps failing with the existing message.
+- src/help.ts: extend the two `tumwater report` stanzas with `--json` ("machine-readable
+  usage data — the collector's own payload, not the Markdown render") in the same wording style
+  as the `status [--json]` stanza.
+- Tests in test/report.test.ts (which already drives `cmdReport` through collectors and
+  renders): `--json --days N` parses as JSON, round-trips `days`/`from`/`to`, and its `series`
+  totals match the Markdown render of the same fixtures; `--json --since` parses and carries
+  `coversFullWindow` and the totals; `--failures --json` fails with the message naming the
+  exclusion. test/failure-report.test.ts:593 pins `--failure` (typo) as unknown — it must keep
+  passing unchanged.
+
+**Files touched:** src/cli.ts, src/ui/report.ts, src/help.ts, test/report.test.ts.
+
+**Acceptance criteria.**
+- `tumwater report --json --days 3` prints one JSON document parseable by `JSON.parse`, equal in
+  content to `collectReport(root, 3)` for the same log fixtures.
+- `tumwater report --json --since 2h` prints `collectReportSince`'s output verbatim, including
+  `coversFullWindow` and the per-role maps.
+- `tumwater report --json --failures` exits non-zero with the combined-flag message; plain
+  `--days`/`--since`/`--failures` Markdown output is byte-identical to before.
+- `tumwater help report` names `--json`; `npm run test` passes.
 
 ## Done
 
