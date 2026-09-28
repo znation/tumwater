@@ -5,6 +5,54 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### `tumwater history [--role <id>] [-n N]` — one row per completed tick, newest first (planned 2026-09-28)
+
+**Goal.** The dashboards show each loop's *last* result and `tumwater logs` streams raw event
+lines, but an operator asking "what did the fleet do over the last hour — which ticks burned
+money, which failed, what did they say" must scroll and mentally pair `tick_start`/`tick_end`
+lines. Every datum already rides the event log (src/loop.ts logs `tick_start {tick}` and
+`tick_end {tick, result, summary, error, tokens?, costUsd?}`), so a read-only table view is a
+thin rendering over an existing record — the same shape `logs` already has, tick-shaped.
+
+**Approach.** One new read-only command beside `logs`, reusing its plumbing.
+
+1. **src/ui/history.ts** (new file, the observing half like src/ui/log-commands.ts) — a pure
+   collector `tickRows(events, limit, role)` plus the printing `cmdHistory(root, args)`. Read
+   the log through the existing cached tail scan `readEvents(root, limit * 2 + 50)` (a larger
+   window than the ask, since `tick_start`s and unrelated events interleave with the `tick_end`
+   rows it scans for), then take the newest `limit` `tick_end` events: one row per completed
+   tick — local time, loop, tick number, result, duration (`tick_end.ts − tick_start.ts`,
+   paired on the same `loop` and `tick`; a start outside the scanned window — log rotation, or
+   a `skipped` tick that never started — renders `—`, never a fabricated duration), tokens and
+   cost when the event carries them (omitted when absent, matching the payload's omit-when-zero
+   convention), then the summary or the error, truncated to keep each row one line. Newest
+   first. Default `-n 20`; `parseCountFlag` bounds it to a new `HISTORY_MAX_TICKS = 200` (same
+   shape as the report's window bound: more rows only re-read more log with no added signal).
+   `--role <id>` filters by loop via `parseRoleFlag` (config-aware, exactly as `cmdLogs` reads
+   it, so user-defined loops work). No `-f`: `logs -f` already follows raw events and a
+   re-following table adds nothing; history is a one-shot window. An empty or missing log
+   prints `no ticks yet` and exits 0 — read-only, stdout only, no state file created.
+2. **src/cli.ts** — a `history` dispatch case beside `logs`: `rejectUnknownArgs("history",
+   args, [{ names: ["-n"], value: true, valueName: "<count>" }, ROLE_FLAG])`, then
+   `requireReadyRepo` and `cmdHistory`.
+3. **src/help.ts** — one stanza in HELP between `logs` and `backlog` (the per-command view
+   derives from the full text, so one edit covers `tumwater help history`).
+4. **README.md** — one row in the usage table ("Watch per-tick history | `tumwater history
+   [--role <id>] [-n N]`").
+
+**Files touched:** src/ui/history.ts, src/cli.ts, src/help.ts, README.md; tests in
+test/cli-history.test.ts (the collector's pairing/filter/bounds as unit cases plus one CLI
+smoke run over a seeded event log, the pattern test/cli-logs.test.ts already uses).
+
+**Acceptance criteria.** (a) `tumwater history` prints the last 20 completed ticks newest-first,
+one row each, with time, loop, tick number, result, duration, tokens/cost when present, and the
+summary (or error) truncated to one line; a tick whose start is not in the scanned window shows
+`—` for duration. (b) `--role <id>` restricts rows to that loop, including user-defined ids;
+`-n` accepts 1–200 and fails zero, negative, and non-numeric values with the standard
+`fail()` message. (c) Unknown flags are rejected by the standard gate; an empty or missing event
+log prints `no ticks yet` and exits 0. (d) `tumwater help history` shows the command's stanza.
+(e) Full suite passes.
+
 ### Pause countdown — show when a timed pause auto-resumes (`status`/TUI header badge, GUI pause badge) (planned 2026-09-25, refined 2026-09-28)
 
 **Depends on** the "Timed pause" entry under `## Planned` in this file (it adds `pause --for`
