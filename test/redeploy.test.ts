@@ -784,10 +784,16 @@ test("compileStaged compiles the mirror worktree with the project's tsc and stam
   fs.mkdirSync(path.join(root, "node_modules"));
   fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+  // A stale staging dir left by an earlier attempt at the same head (an interrupted run, a
+  // crashed compile) is replaced before the compile, never merged with: nothing it held may
+  // survive into the fresh build.
+  fs.mkdirSync(stagingDir(root, head), { recursive: true });
+  fs.writeFileSync(path.join(stagingDir(root, head), "stale.js"), "old\n");
   const result = await compileStaged(root, mirror, head);
   assert.deepEqual(result, { ok: true, detail: "" });
   const staged = stagingDir(root, head);
   assert.ok(fs.existsSync(path.join(staged, "src/a.js")), "compiled output lands in the staging dir");
+  assert.equal(fs.existsSync(path.join(staged, "stale.js")), false, "the fresh compile wiped the stale dir, not merged with it");
   assert.equal(readBuildInfo(staged)?.sha, head, "stamped with the compiled head");
   assert.equal(readBuildInfo(staged)?.root, path.resolve(root), "the stamp names the project root, not the mirror");
 
@@ -799,6 +805,11 @@ test("compileStaged compiles the mirror worktree with the project's tsc and stam
   const failed = await compileStaged(root, mirror2, bad);
   assert.equal(failed.ok, false);
   assert.match(failed.detail, /tsc exited 2.*TS2322/);
+  // tsc still emits output for code that merely has type errors, so a failed compile leaves
+  // partial files in the staging dir — but never a stamp: ok:true and the stamp stand or fall
+  // together, so nothing downstream can mistake a failed attempt's dir for a real build.
+  assert.ok(fs.existsSync(path.join(stagingDir(root, bad), "src/a.js")), "the failed compile still emits partial output");
+  assert.equal(readBuildInfo(stagingDir(root, bad)), null, "a failed compile leaves the staging dir unstamped");
 });
 
 test("compileStaged borrows an ancestor's typescript: a project with no install of its own still rebuilds", async () => {
