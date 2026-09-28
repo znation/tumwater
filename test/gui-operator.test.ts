@@ -167,6 +167,20 @@ test("the dashboard page renders the preformatted land-queue badge from the payl
   );
 });
 
+// The operator module is served through string interpolation into GUI_CLIENT_JS, so a
+// stray newline or lost indent at either splice boundary would ship a silently different
+// dashboard script while the module and its region tests all still pass. Pin the splice:
+// the assembled script must contain the module's constant verbatim, end to end.
+test("GUI_CLIENT_JS carries the operator module as a byte-exact contiguous splice", async () => {
+  const { GUI_CLIENT_JS } = await import("../src/ui/gui-client.js");
+  const { GUI_CLIENT_OPERATOR_JS } = await import("../src/ui/gui-client-operator.js");
+  assert.ok(
+    GUI_CLIENT_JS.includes(GUI_CLIENT_OPERATOR_JS),
+    "the operator module's constant must appear verbatim in the assembled script " +
+      "(a mismatch means the interpolation gained or lost bytes at a splice boundary)",
+  );
+});
+
 // Free-state regression (BUGS.md, 2026-09-14): an all-free fleet's badge must be plain,
 // unclickable text — no <a id=budgetbadge>, so the page's delegated click handler cannot
 // open a cap editor that could never bind. The budget-edit block runs in the page's script

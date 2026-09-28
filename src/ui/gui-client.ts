@@ -4,11 +4,13 @@
  * /api/wake, /api/abort, /api/pause-role). Split out of gui-page.ts — which keeps the page's markup
  * and CSS shell — because this runs in the browser as a separate runtime that cannot import
  * the harness modules; it keeps its own copies of the small display formatters (see
- * text.ts). The report tab's chart builders live in gui-client-report.ts, interpolated
- * into this template by string concatenation so the served script is byte-identical to
- * the pre-split single blob; edit here when the fleet view, badges, transcript, or
- * prompt form change. */
+ * text.ts). Two cohesive slices live in their own modules, interpolated into this template
+ * as byte-exact splices so the served script is byte-identical to the pre-split single
+ * blob: the report tab's chart builders in gui-client-report.ts, and the header's operator
+ * controls (budget editor, fleet pause) in gui-client-operator.ts; edit here when the fleet
+ * view, badges, transcript, or prompt form change. */
 import { GUI_CLIENT_REPORT_JS } from "./gui-client-report.js";
+import { GUI_CLIENT_OPERATOR_JS } from "./gui-client-operator.js";
 export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   // A failed API call, named for the operator: endpoint, HTTP status, and the server's
   // error text — every error body this server sends is JSON {error} except the 404's
@@ -155,101 +157,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
     }
   }
 
-  // budget-edit:start
-  // The header's daily cost budget badge is editable: clicking swaps just that fragment for
-  // an inline input + set/cancel; saving POSTs /api/budget, which writes tumwater.json through
-  // the same shared setter as the TUI's Ctrl+B. No optimistic local state: on success the
-  // badge re-renders from the next 1 s poll (the orchestrator picks the new cap up within ~2
-  // s), and a failed save flashes the server's error and keeps the editor open so the operator
-  // can fix it. lastStatus is the latest /api/status payload, kept so cancel can restore the
-  // badge without waiting for the next poll.
-  let lastStatus = null;
-  // The serving process's startup build sha, remembered from the first successful poll so a
-  // later change (a redeploy re-execs the server) reloads this page onto the new code.
-  let serverBuildSha = null;
-  let budgetEditing = false;
-  function renderBudgetBadge(d) {
-    if (budgetEditing) return; // keep the editor until set/cancel decides
-    // An all-free fleet has no spend a cap could ever bind: its badge is plain text (no
-    // link, no pointer) so it cannot open a cap editor that would never take effect. Every
-    // other state keeps the clickable badge — the affordance for editing the cap.
-    document.getElementById("budgetwrap").innerHTML = d.budget && d.budget.free
-      ? "<span>" + esc(d.budgetBadge || "") + "</span>"
-      : "<a href='#' id='budgetbadge'>" + esc(d.budgetBadge || "") + "</a>";
-  }
-  function openBudgetEditor() {
-    budgetEditing = true;
-    // Pre-filled with the current cap — empty when disabled (empty means "no cap" on save).
-    const cap = lastStatus && lastStatus.budget && lastStatus.budget.capUsd > 0 ? String(lastStatus.budget.capUsd) : "";
-    document.getElementById("budgetwrap").innerHTML =
-      "<input type='number' min='0' step='0.01' id='budgetinput' value='" + esc(cap) + "' style='width:9em;padding:2px 6px'>"
-      + " <button id='budgetset'>set</button> <button id='budgetcancel'>cancel</button>";
-    const input = document.getElementById("budgetinput");
-    input.focus();
-    input.select();
-  }
-  function showFlash(msg) {
-    const f = document.getElementById("flash");
-    f.textContent = msg;
-    setTimeout(() => (f.textContent = ""), 3000);
-  }
-  async function saveBudget() {
-    const input = document.getElementById("budgetinput");
-    if (!input) return;
-    // A type=number input reports value "" both for a field the operator cleared on purpose
-    // (post 0 = no cap, below) and for text the browser rejected ("$25", "5,000") — the two
-    // look identical through .value. validity.badInput tells them apart, so a typo flashes an
-    // error instead of silently disabling the spend cap; stay in edit mode so it can be fixed.
-    if (input.validity && input.validity.badInput) {
-      showFlash("budget must be a number of 0 or more (clear the field for no cap)");
-      return;
-    }
-    // Empty means "no cap" (0 disables).
-    const value = input.value === "" ? 0 : Number(input.value);
-    try {
-      await postJson("/api/budget", { maxDailyCostUsd: value });
-      budgetEditing = false; // the next poll re-renders the badge from the payload
-    } catch (e) {
-      showFlash("error: " + e.message); // stay in edit mode so the operator can fix it
-    }
-  }
-  document.addEventListener("click", (ev) => {
-    if (ev.target.closest("#budgetbadge")) { ev.preventDefault(); openBudgetEditor(); return; }
-    if (ev.target.id === "budgetset") { saveBudget(); return; }
-    if (ev.target.id === "budgetcancel") { budgetEditing = false; renderBudgetBadge(lastStatus); }
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && ev.target.id === "budgetinput") saveBudget(); // Enter saves, like set
-  });
-  // budget-edit:end
-
-  // pause-control:start
-  // The header's fleet pause/resume control: one click POSTs /api/pause, the same operator
-  // gate "tumwater pause" / "resume" write, so a shell-less operator watching the dashboard
-  // (e.g. over "gui --all-interfaces") can halt a runaway fleet. No optimistic state: the
-  // badge re-renders from the next 1 s poll's d.paused (the marker is persistent state —
-  // pausing before startup starts an already-paused fleet), and a failed POST flashes the
-  // server's error so the operator knows the marker did not change.
-  function renderPauseBadge(d) {
-    document.getElementById("pausewrap").innerHTML = d.paused
-      ? "<a href='#' id='pausebadge'> · paused — resume</a>"
-      : "<a href='#' id='pausebadge'> · pause</a>";
-  }
-  async function togglePause() {
-    // The opposite of the last server-reported state; the poll re-renders the badge after a
-    // successful POST, so the control never paints a state the marker does not hold. Routes
-    // through the shared apiFetch guard, like every other endpoint call.
-    const target = !(lastStatus && lastStatus.paused);
-    try {
-      await postJson("/api/pause", { paused: target });
-    } catch (e) {
-      showFlash("error: " + e.message); // no optimistic state; fix and click again
-    }
-  }
-  document.addEventListener("click", (ev) => {
-    if (ev.target.closest("#pausebadge")) { ev.preventDefault(); togglePause(); }
-  });
-  // pause-control:end
+${GUI_CLIENT_OPERATOR_JS}
 
   let transcriptRole = null; // loop whose transcript panel is open (null = closed)
   let backlogKey = null; // "file:index" of the open backlog entry (null = closed) — mutually
