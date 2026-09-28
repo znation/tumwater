@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { submitPrompt } from "../src/inbox.js";
-import { piLogPath } from "../src/paths.js";
+import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";
@@ -222,4 +222,142 @@ test("logs --role -f prints each turn exactly once across the initial window and
   } finally {
     s.kill();
   }
+});
+
+// --- logs --since (a bounded past window of the event log) ---
+
+// Seed events.jsonl directly with events at fixed ages before `now` (the pattern this file
+// uses for the transcript view): each line a HarnessEvent-shaped tick_start, distinguishable
+// by its tick number in the rendered line.
+function seedEvents(repo: string, agesMs: number[], now = Date.now()): void {
+  const file = eventsLogPath(repo);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    agesMs.map((age, i) => JSON.stringify({ ts: now - age, loop: "clean", type: "tick_start", tick: i + 1 })).join("\n") + "\n",
+  );
+}
+
+test("logs --since prints only the events of the window, oldest-first", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs since window");
+  seedEvents(repo, [2 * 86_400_000, 90 * 60_000, 45 * 60_000, 10 * 60_000]);
+
+  const r = await cli(repo, "logs", "--since", "1h");
+  assert.equal(r.code, 0);
+  // tick #3 (45m) and #4 (10m) sit inside the 1h window, oldest-first; #1 (2d) is outside on
+  // both the day key and ts, #2 (90m) only on ts — the day-keyed read over-reads the cutoff's
+  // own day, and the ts filter must remove it.
+  const three = r.stdout.indexOf("tick #3 started");
+  const four = r.stdout.indexOf("tick #4 started");
+  assert.ok(three > -1 && four > three, r.stdout);
+  assert.ok(!r.stdout.includes("tick #1 started"), r.stdout);
+  assert.ok(!r.stdout.includes("tick #2 started"), r.stdout);
+  // The 2-day-old line proves the retained log reaches back before the window's first day,
+  // so the window is known complete: no rotation note.
+  assert.ok(!r.stdout.includes("note:"), r.stdout);
+});
+
+test("logs --since proves same-day coverage by timestamp, not day key", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs since same-day");
+  // Every event is today, so no line can carry a day key older than the window's first day —
+  // the day-keyed proof is structurally unavailable. But the log's oldest retained event (90m)
+  // predates the 1h cutoff, which is itself proof the retained log covers the whole window:
+  // the log is append-only and chronological, so everything after that event is present.
+  seedEvents(repo, [90 * 60_000, 45 * 60_000, 10 * 60_000]);
+
+  const r = await cli(repo, "logs", "--since", "1h");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("tick #2 started") && r.stdout.includes("tick #3 started"), r.stdout);
+  assert.ok(!r.stdout.includes("note:"), `no note when the log provably covers the window:\n${r.stdout}`);
+});
+
+test("logs --since refuses the rival shapes, naming both flags", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs since exclusions");
+
+  let r = await cli(repo, "logs", "--since", "30m", "-f");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--since .*-f/);
+
+  r = await cli(repo, "logs", "--since", "30m", "--follow");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--since .*--follow/);
+
+  r = await cli(repo, "logs", "--since", "30m", "-n", "5");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--since .*-n/);
+
+  r = await cli(repo, "logs", "--since", "30m", "--role", "clean");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--since .*--role/);
+
+  // --prompt requires --role, so it is excluded with it.
+  r = await cli(repo, "logs", "--since", "30m", "--prompt");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--since .*--prompt/);
+});
+
+test("logs --since validates its duration against the 7-day cap", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs since validation");
+
+  let r = await cli(repo, "logs", "--since", "8d");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /capped at 7d/);
+
+  r = await cli(repo, "logs", "--since");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--since needs a value/);
+
+  r = await cli(repo, "logs", "--since", "45x");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--since needs a duration like 45s, 90m, 2h, or 1d/);
+
+  r = await cli(repo, "logs", "--since", "0s");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--since needs a duration/);
+});
+
+test("logs --since reports an empty window gently, with no rotation claim", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs since empty");
+
+  // No log file at all (fresh install): friendly empty line, exit 0, and no note — there is
+  // no evidence any event ever rotated away, so claiming rotation would be false outright.
+  let r = await cli(repo, "logs", "--since", "5m");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^no events in 5m\n$/);
+  assert.ok(!r.stdout.includes("note:"), r.stdout);
+
+  // An empty window over a log that demonstrably reaches back before it: same gentle shape.
+  seedEvents(repo, [9 * 86_400_000]);
+  r = await cli(repo, "logs", "--since", "7d");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^no events in 7d\n$/);
+  assert.ok(!r.stdout.includes("note:"), r.stdout);
+});
+
+test("logs --since notes only an unproven window that has rows", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs since rotation");
+
+  // The sole retained event (10m) lies inside the 2h window, and the read reached the file
+  // start without finding anything older — the window cannot be proven complete (the cause
+  // may be rotation or a young log), so the rows are followed by the hedged note.
+  seedEvents(repo, [10 * 60_000]);
+  const r = await cli(repo, "logs", "--since", "2h");
+  assert.equal(r.code, 0);
+  const rows = r.stdout.indexOf("tick #1 started");
+  const note = r.stdout.indexOf("note: the log's oldest retained event lies inside this window");
+  assert.ok(rows > -1 && note > rows, r.stdout);
+});
+
+test("tumwater help logs documents --since", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs since help");
+  const r = await cli(repo, "help", "logs");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /--since <duration>/);
 });

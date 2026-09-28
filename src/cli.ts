@@ -212,6 +212,7 @@ async function main(): Promise<void> {
       rejectUnknownArgs("logs", args, [
         { names: ["-f", "--follow"] },
         { names: ["-n"], value: true, valueName: "<count>" },
+        { names: ["--since"], value: true, valueName: "<duration>" },
         ROLE_FLAG,
         { names: ["--prompt"] },
       ]);

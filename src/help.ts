@@ -29,7 +29,9 @@ Usage:
                                    Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
   tumwater doctor                  Pre-flight check: node, git, repo, config, fallback model, pi, locks, build, orphans, mach ports (read-only; exit 0/1)
   tumwater config                 Show the effective config (defaults + tumwater.json) as JSON
-  tumwater logs [-f] [-n N]        Show (and follow) harness events
+  tumwater logs [-f] [-n N] [--since <duration>]
+                                   Show (and follow) harness events; --since shows the
+                                   events of the past window (capped at 7d)
   tumwater logs --role <id> [-f] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
                                    (--prompt also shows each run's exact prompt text)

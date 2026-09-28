@@ -13,7 +13,7 @@ question rounds up to a full day and an operator reconstructing an incident's sp
 `logs --since` lines by hand. The events already carry `ts` and `costUsd`, and
 src/event-window.ts's `readWindowEvents` already reads a window with bounded backwards I/O, so
 a trailing-window totals view is a small second consumer of the same plumbing — the sibling of
-the planned `logs --since` (raw stream above, aggregate here).
+the landed `logs --since` (under `## Done` below; raw stream, aggregate here).
 
 **Approach.**
 
@@ -77,70 +77,13 @@ with no events prints zero totals and `-` role lines, exiting 0; a window whose 
 the retained log carries the rotation note. (d) `tumwater help report` shows the new usage
 line. (e) Full suite passes.
 
-Sibling: `logs --since` (next entry) composes for drill-down — the totals flag answers "how
-much", the logs flag answers "what exactly"; neither depends on the other.
-
-### `logs --since <duration>` — show the events of a time window, not a guess at a count (planned 2026-09-28)
-
-**Goal.** An operator reconstructing "what happened in the hour around that 429 storm" has only
-count-shaped tools: `logs -n N` dumps the last N events and the operator guesses N until the
-window appears, while `tumwater report --days` aggregates whole days and the landed
-`history` command (under `## Done` below) renders tick-shaped rows over `tick_end` only — neither
-shows the raw interleaved event stream of a bounded time window. Every event already carries
-`ts`, and src/event-window.ts's `readWindowEvents` already reads a window with bounded backwards
-I/O (day-keyed), so a `--since` flag is thin rendering over existing plumbing, not a new reader.
-
-**Approach.**
-
-1. **src/event-window.ts** — one constant beside `REPORT_MAX_DAYS`: `LOGS_SINCE_MAX_MS = 7 ×
-   24 × 60 × 60 × 1000`. Same rationale as the report bound: a longer window only re-reads more
-   log and renders more lines without adding signal, and the log rotates at 16 MB
-   (`EVENTS_MAX_BYTES` in src/events.ts) anyway, so a huge window mostly reads rotated-away
-   nothing. No change to `readWindowEvents` itself — it already returns exactly what this
-   consumer needs (oldest-first events plus `coversFullWindow`).
-2. **src/ui/log-commands.ts** — in `cmdLogs`, before the existing flag reads: when `--since` is
-   present, `fail()` if it is combined with `-f`, `-n`, or `--role` (`--prompt` already requires
-   `--role`, so it is excluded too — follow means "from now", a count and a window are rival
-   shapes, and the `--role` view is a pi transcript, not the event log; each failure names both
-   flags). Parse the value with the existing `parseDurationFlag("--since", …)`
-   (src/cli-args.ts, added by the timed-pause plan — `45s`/`90m`/`2h`/`1d`), and fail when it
-   exceeds `LOGS_SINCE_MAX_MS`, naming the bound. Then: `cutoff = Date.now() - ms`; read
-   `readWindowEvents(root, formatDate(new Date(cutoff)))` (`formatDate` from src/datetime.ts,
-   the same helper `eventDayKey` uses, so the window key and the event keys cannot disagree);
-   filter to `typeof ev.ts === "number" && ev.ts >= cutoff` (the day-keyed read may include
-   earlier hours of the cutoff's own local day — over-read is at most one day's events); print
-   the survivors oldest-first through `formatEvent`, the same loop the `-n` path uses. When
-   `coversFullWindow` is false, append one note line (`note: older events rotated out of the
-   log`) so a sparse window is never mistaken for a quiet fleet. An empty window prints `no
-   events in <durationLabel(ms)>` and exits 0 — `durationLabel` (beside the parser) phrases the
-   window back the way the operator typed it. Read-only, stdout only.
-3. **src/cli.ts** — the `logs` case's `rejectUnknownArgs` list gains
-   `{ names: ["--since"], value: true, valueName: "<duration>" }`.
-4. **src/help.ts** — extend the logs stanza's first usage line to
-   `tumwater logs [-f] [-n N] [--since <duration>]` (the per-command view derives from the full
-   text; the `--role` line is unchanged since `--since` excludes it).
-5. **README.md** — extend the "Check state" table row with `tumwater logs --since <duration>`.
-
-**Files touched:** src/event-window.ts, src/ui/log-commands.ts, src/cli.ts, src/help.ts,
-README.md; tests in test/cli-logs.test.ts (seed an events.jsonl with events minutes and days
-old by writing the file directly, the pattern the file already uses, then exercise the CLI —
-window filtering, the mutual-exclusion failures, the empty window, and the rotation note).
-
-**Acceptance criteria.** (a) `tumwater logs --since 30m` prints only events from the last 30
-minutes, oldest-first, in the same line format as plain `logs`. (b) `--since` with `-f`, `-n`,
-or `--role` fails naming both flags; a duration over 7 days fails naming the bound; a missing
-or malformed value fails with `parseDurationFlag`'s message. (c) An empty window prints `no
-events in <duration>` and exits 0; a window whose start predates the retained log prints the
-rotation note after the rows. (d) `tumwater help logs` shows the new flag. (e) Full suite
-passes.
-
-Sibling: `logs --grep` (next entry) composes with this one — when both flags stand, the window
-is read first and the pattern filters its events; this entry's mutual-exclusion list is
-unchanged.
+Sibling: the landed `logs --since` (under `## Done` below) composes for drill-down — the
+totals flag answers "how much", the logs flag answers "what exactly"; neither depends on the
+other.
 
 ### `logs --grep <text>` — show only the events whose type or rendered line matches (planned 2026-09-28)
 
-**Goal.** The event feed has count- and window-shaped tools (`-n`, the planned `--since`) but
+**Goal.** The event feed has count- and window-shaped tools (`-n`, the landed `--since`) but
 no filter: an operator chasing `land_failed` or `review_rejected` lines must pipe `logs` through
 an external grep, and `logs -f | grep` is a worse deal than it looks — the pipe dies when the
 terminal's grep exits, while `logs -f` itself keeps following across log rotation (followFile
@@ -189,6 +132,81 @@ and no `-f` prints `no events matching "<pattern>"` and exits 0. (e) `tumwater h
 shows the new flag and the scan-window note. (f) Full suite passes.
 
 ## Done
+
+### `logs --since <duration>` — show the events of a time window, not a guess at a count (planned 2026-09-28, done 2026-09-28)
+
+**Goal.** An operator reconstructing "what happened in the hour around that 429 storm" has only
+count-shaped tools: `logs -n N` dumps the last N events and the operator guesses N until the
+window appears, while `tumwater report --days` aggregates whole days and the landed
+`history` command (under `## Done` below) renders tick-shaped rows over `tick_end` only — neither
+shows the raw interleaved event stream of a bounded time window. Every event already carries
+`ts`, and src/event-window.ts's `readWindowEvents` already reads a window with bounded backwards
+I/O (day-keyed), so a `--since` flag is thin rendering over existing plumbing, not a new reader.
+
+**Refinement (2026-09-28, after review of the first landing).** The rotation note was proven
+wrong in two common cases and has been rebuilt: (1) coverage is now proven two ways — the
+reader's day-key proof (`coversFullWindow`) or, for the same-day case the day key cannot decide,
+a timestamp proof (the file's own oldest retained event predating the cutoff; the log is
+append-only and chronological, so everything after it is present) — so `logs --since 1h` over a
+log whose oldest event is 90 minutes old no longer claims rotation; (2) the note only ever rides
+rows — an empty window prints no note, so a fresh install (no log file at all) is never told
+data "rotated away" that never existed; and (3) the note is hedged (`note: the log's oldest
+retained event lies inside this window; older events may have rotated out`), staying true
+whether the cause is rotation or a young log.
+
+**Approach.**
+
+1. **src/event-window.ts** — one constant beside `REPORT_MAX_DAYS`: `LOGS_SINCE_MAX_MS = 7 ×
+   24 × 60 × 60 × 1000`. Same rationale as the report bound: a longer window only re-reads more
+   log and renders more lines without adding signal, and the log rotates at 16 MB
+   (`EVENTS_MAX_BYTES` in src/events.ts) anyway, so a huge window mostly reads rotated-away
+   nothing. No change to `readWindowEvents` itself — it already returns exactly what this
+   consumer needs (oldest-first events plus `coversFullWindow`).
+2. **src/ui/log-commands.ts** — in `cmdLogs`, before the existing flag reads: when `--since` is
+   present, `fail()` if it is combined with `-f`, `-n`, or `--role` (`--prompt` already requires
+   `--role`, so it is excluded too — follow means "from now", a count and a window are rival
+   shapes, and the `--role` view is a pi transcript, not the event log; each failure names both
+   flags). Parse the value with the existing `parseDurationFlag("--since", …)`
+   (src/cli-args.ts, added by the timed-pause plan — `45s`/`90m`/`2h`/`1d`), and fail when it
+   exceeds `LOGS_SINCE_MAX_MS`, naming the bound. Then: `cutoff = Date.now() - ms`; read
+   `readWindowEvents(root, formatDate(new Date(cutoff)))` (`formatDate` from src/datetime.ts,
+   the same helper `eventDayKey` uses, so the window key and the event keys cannot disagree);
+   filter to `typeof ev.ts === "number" && ev.ts >= cutoff` (the day-keyed read may include
+   earlier hours of the cutoff's own local day — over-read is at most one day's events); print
+   the survivors oldest-first through `formatEvent`, the same loop the `-n` path uses. Coverage
+   of the window is proven two ways: `coversFullWindow` (a retained line older than the
+   window's first day) or the timestamp proof above (when the read reached the file start
+   without the day-key proof, `window.events[0]` is the file's oldest retained event). When
+   coverage is unproven and the window has rows, append the hedged note line after them so a
+   sparse window is never mistaken for a quiet fleet. An empty window prints
+   `no events in <durationLabel(ms)>` and exits 0 with no note — `durationLabel` (beside the
+   parser) phrases the window back the way the operator typed it. Read-only, stdout only.
+3. **src/cli.ts** — the `logs` case's `rejectUnknownArgs` list gains
+   `{ names: ["--since"], value: true, valueName: "<duration>" }`.
+4. **src/help.ts** — the `logs` stanza's first usage line becomes
+   `tumwater logs [-f] [-n N] [--since <duration>]` with a description line noting the cap
+   (the per-command view derives from the full text; the `--role` line is unchanged since
+   `--since` excludes it).
+5. **README.md** — extend the "Check state" table row with `tumwater logs --since <duration>`.
+
+**Files touched:** src/event-window.ts, src/ui/log-commands.ts, src/cli.ts, src/help.ts,
+README.md; tests in test/cli-logs.test.ts (seed an events.jsonl with events minutes and days
+old by writing the file directly, the pattern the file already uses, then exercise the CLI —
+window filtering, the same-day timestamp proof, the mutual-exclusion failures, the empty
+window without a note, the hedged note after rows, and the help text).
+
+**Acceptance criteria.** (a) `tumwater logs --since 30m` prints only events from the last 30
+minutes, oldest-first, in the same line format as plain `logs`. (b) `--since` with `-f`, `-n`,
+or `--role` fails naming both flags; a duration over 7 days fails naming the bound; a missing
+or malformed value fails with `parseDurationFlag`'s message. (c) An empty window prints
+`no events in <duration>` and exits 0 with no rotation note (a fresh install included); a
+window whose completeness cannot be proven prints the hedged rotation note after the rows; a
+window whose oldest retained event predates the cutoff — same day or not — prints no note.
+(d) `tumwater help logs` shows the new flag. (e) Full suite passes.
+
+Sibling: `logs --grep` (next entry) composes with this one — when both flags stand, the window
+is read first and the pattern filters its events; this entry's mutual-exclusion list is
+unchanged.
 
 ### Pause countdown — show when a timed pause auto-resumes (`status`/TUI header badge, GUI pause badge) (planned 2026-09-25, refined 2026-09-28, done 2026-09-28)
 
