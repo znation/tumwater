@@ -61,6 +61,18 @@ test("isNegatedRefusal negates none and n/a with trailing sentence punctuation",
   assert.ok(!isNegatedRefusal("Nothing here was refused."), "a real reason with a period stays a refusal");
 });
 
+// BUGS.md 2026-09-28 (re-land): a markdown-decorated negation (`**none**`) left isNegatedRefusal
+// false — emphasis and code spans are formatting wrapped around the token, not part of the
+// reason, but the candidates compared the raw token — so a work-completed reply ending
+// `TUMWATER_REFUSED: **none**` was a "genuine" refusal whose tested work the harness
+// hard-reset, the same destruction the previous two fixes in this guard closed. Decoration can
+// also sit inside the brackets around a dash-appended shape, so the strippings must compose.
+test("isNegatedRefusal negates none and n/a under markdown decoration", () => {
+  for (const reason of ["**none**", "*none*", "`none`", "**N/A**", "**None.**", "(**none**)", "**none** — nothing refused", "(`n/a`) — nothing refused", "(**None**) — nothing refused"])
+    assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
+  assert.ok(!isNegatedRefusal("**it would delete user data**"), "a real reason under emphasis stays a refusal");
+});
+
 test("isNegatedRefusal keeps a real reason a refusal", () => {
   for (const reason of [
     "it would delete user data",

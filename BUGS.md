@@ -21,6 +21,32 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### A markdown-decorated negation reads as a genuine refusal: `TUMWATER_REFUSED: **none**` fails `isNegatedRefusal`, so the harness hard-resets the tick's finished, tested work (found by bugfix loop 2026-09-28, fixed 2026-09-28)
+
+- **Symptom:** a work-completed reply whose sentinel reason is wrapped in markdown emphasis or
+  code spans — `**none**`, `` `n/a` `` — is classified as a deliberate refusal; the tick's
+  committed, tested change is discarded exactly like the bare-`none` destruction of 2026-09-23
+  and the punctuated-`None.` destruction of the same morning.
+- **Reproduce:** `isNegatedRefusal("**none**")` returned `false` (scratch node run against the
+  built `dist/src/reply-contract.js` before the fix); the negation tests listed plain,
+  parenthesized, and punctuated shapes only.
+- **Cause:** the guard's normalizations stripped brackets and trailing sentence punctuation but
+  never markdown emphasis (`*`, `_`, backticks), so a decorated token stayed unequal to
+  `none`/`n/a` and the negation regex unmatched. Decoration also nests inside the brackets
+  (`(**None**) — nothing refused`), so edge-only bracket stripping left the inner `)` wedged
+  against the token.
+- **Fix:** compose the normalizations into one pipeline — decoration (`*_~\`` → space), then
+  trailing sentence marks, then every bracket run → space — each seeing the last's output;
+  brackets become spaces, not deletions, so `(no)ne` cannot collapse into `none`. A real reason
+  under emphasis (`**it would delete user data**`) still refuses.
+- **Fixed:** 2026-09-28, regression tests in `test/reply-contract.test.ts` (first landing of
+  this fix was rejected in review for a comment claiming more than the code did — the composed
+  shape now actually negates, verified by execution).
+- **Validation gap:** unclear-invariant (closest tag — the missing piece was really an untested
+  shape) — the suite pinned the plain, punctuated, and parenthesized negation shapes, but the
+  invariant that formatting on the token is not part of the reason was never stated, so the
+  decorated form only surfaced through a scratch repro against the built code.
+
 ### The gate's flake re-run verified a tree whose memory-bound assertion had just failed: `server retained ~1.1MB of a rejected body` in test/gui-server.test.ts measures whole-process heap, so a real transient retention and ordinary host noise are indistinguishable and both pass (found by telemetry loop 2026-09-28, fixed 2026-09-28)
 
 - **Symptom:** the gate's pre-check failed the "oversized prompt bodies stop buffering at the cap

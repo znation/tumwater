@@ -43,20 +43,28 @@ export function extractRefusal(text: string): string | null {
 
 /** True when a TUMWATER_REFUSED reason negates the refusal instead of carrying it: empty,
  * `none`, or `n/a` — including a parenthesized form of either, with or without an appended
- * explanation (`(none — no entry refused this run)`), and with trailing sentence punctuation
- * (`None.`, `N/A!`) still negating (BUGS.md 2026-09-28). A refusal is a deliberate, affirmative
+ * explanation (`(none — no entry refused this run)`), with trailing sentence punctuation
+ * (`None.`, `N/A!`) still negating (BUGS.md 2026-09-28), and under markdown decoration
+ * (`**none**`, `` `n/a` ``, `(**None**) — nothing refused`) still negating (BUGS.md
+ * 2026-09-28). A refusal is a deliberate, affirmative
  * declaration; classifying a reply as one must not depend on the model never naming the
  * sentinel (BUGS.md 2026-09-23 — the prompt lists the line beside the reply-contract fields,
  * so a compliant model fills it in on every reply). */
 export function isNegatedRefusal(reason: string | null | undefined): boolean {
   const raw = (reason ?? "").trim().toLowerCase();
   const unwrapped = raw.replace(/^[([{]+\s*|\s*[)\]}]+$/g, "").trim();
-  // Trailing sentence marks are punctuation on a negation, not part of the reason — no real
-  // objection consists of `none` or `n/a` plus a period, so punctuated shapes join the
-  // candidates with both normalizations composed (`(none).` → strip the mark, then the parens).
+  // The normalizations compose in one pipeline — markdown decoration, then trailing sentence
+  // marks, then brackets — each seeing the output of the last, because the wrappings nest
+  // (`(**None**) — nothing refused` is decoration inside brackets around the dash-appended
+  // shape). Decoration and marks are stripped as formatting on the token; a bracket run becomes
+  // a space rather than a deletion, so `(no)ne` cannot collapse into `none`, and the space the
+  // dash-append regex already tolerates keeps `none) — …` from wedging a stray bracket against
+  // the token. A real objection still carries words beyond the token under every stripping.
+  const unbold = (s: string) => s.replace(/[*_~`]+/g, " ").trim();
   const bare = (s: string) => s.replace(/[.!,;:?!*]+$/, "").trim();
-  const unbracket = (s: string) => s.replace(/^[([{]+\s*|\s*[)\]}]+$/g, "").trim();
-  for (const candidate of [raw, unwrapped, bare(raw), bare(unwrapped), unbracket(bare(raw))]) {
+  const unbracket = (s: string) => s.replace(/[([{)\]}]+/g, " ").trim();
+  const normalized = unbracket(bare(unbold(raw)));
+  for (const candidate of [raw, unwrapped, normalized]) {
     if (candidate === "" || candidate === "none" || candidate === "n/a") return true;
     if (/^(none|n\/a)\b([ \t]*[—–-].*)?$/.test(candidate)) return true;
   }
