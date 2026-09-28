@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectReport, type ReportData } from "../src/report-data.js";
-import { renderReportMarkdown } from "../src/ui/report.js";
+import { collectReport, collectReportSince, type ReportData } from "../src/report-data.js";
+import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/ui/report.js";
 import { atLocalTs as at, dayKey, writeEvents } from "./util.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
@@ -414,4 +414,180 @@ test("tumwater report prints the Markdown report and validates --days", async ()
     assert.notEqual(r.code, 0, `--days ${bad} fails`);
     assert.match(r.out, /--days needs a positive integer/);
   }
+});
+
+// ---- report --since <duration> ----
+
+const HOUR = 3_600_000;
+const ago = (ms: number): number => Date.now() - ms;
+
+test("collectReportSince totals a trailing window: cutoff filter, role split, and coverage proofs", () => {
+  const root = tmpdir();
+  const cutoff = ago(6 * HOUR); // Recompute the expected cutoff below from the returned sinceMs.
+  writeEvents(root, [
+    // Oldest: 7h ago — outside the 6h window (and older than the cutoff instant, so it proves
+    // the retained log reaches back past the window start even when its local day matches the
+    // cutoff's own day, the case a day-keyed read cannot decide).
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "tick_end", tick: 1, result: "no_change", tokens: 999 }),
+    JSON.stringify({ ts: ago(6.5 * HOUR), loop: "feature", type: "merged", commit: "old1234", summary: "outside" }),
+    // Inside the window: two ticks and one commit.
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "tick_end", tick: 2, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "bugfix", type: "tick_end", tick: 3, result: "no_change" }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "inside" }),
+    // Future-dated: dropped, matching collectReport's day-map guard.
+    JSON.stringify({ ts: Date.now() + HOUR, loop: "feature", type: "tick_end", tick: 4, result: "changed", tokens: 5000, costUsd: 9 }),
+    "this line is not json", // malformed lines are ignored
+  ]);
+  const data = collectReportSince(root, 6 * HOUR);
+
+  assert.equal(data.sinceMs, 6 * HOUR);
+  const cutoffIso = new Date(cutoff).toISOString();
+  assert.ok(
+    Math.abs(Date.parse(data.fromIso) - Date.parse(cutoffIso)) < 60_000,
+    `fromIso ${data.fromIso} is the window's cutoff instant (±1min for test elapsed time)`,
+  );
+  assert.equal(data.totals.ticks, 2);
+  assert.equal(data.totals.tokensOut, 100);
+  assert.equal(data.totals.commits, 1);
+  assert.ok(Math.abs(data.totals.costUsd - 0.1) < 1e-9);
+  assert.deepEqual(data.ticksByRole, { feature: 1, bugfix: 1 });
+  assert.deepEqual(data.costByRole, { feature: 0.1 }, "zero-cost ticks leave no cost key");
+  assert.equal(data.coversFullWindow, true, "the log's oldest event predates the cutoff");
+});
+
+test("collectReportSince aggregation matches a same-seed collectReport slice", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 321, costUsd: 0.2 }),
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "bugfix", type: "tick_end", tick: 2, result: "no_change", tokens: 11 }),
+    JSON.stringify({ ts: ago(2 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
+  ]);
+  const since = collectReportSince(root, HOUR);
+  assert.equal(since.totals.ticks, 2);
+  assert.equal(since.totals.tokensOut, 332);
+  assert.equal(since.totals.commits, 1);
+  assert.ok(Math.abs(since.totals.costUsd - 0.2) < 1e-9);
+  // The same seed through the day collector: its 2-day window contains every seeded event
+  // whenever the test itself has not crossed local midnight in the last 10 minutes, so the
+  // two collectors must agree on the four totals. (Around midnight the day collector's window
+  // legitimately spans two days the since view does not — the hand-computed assertions above
+  // carry the check on their own.)
+  if (dayKey(ago(10 * 60_000)) === dayKey(Date.now())) {
+    const day = collectReport(root, 2);
+    assert.equal(day.totals.ticks, since.totals.ticks);
+    assert.equal(day.totals.tokensOut, since.totals.tokensOut);
+    assert.equal(day.totals.commits, since.totals.commits);
+    assert.ok(Math.abs(day.totals.costUsd - since.totals.costUsd) < 1e-9);
+  }
+});
+
+test("collectReportSince proves coverage on a same-day log start and notes a log born inside the window", () => {
+  // The log's oldest event is 7h old and the cutoff is 6h ago: the two may share a local day
+  // (the day-keyed read then cannot prove coverage by itself), yet the oldest event's ts
+  // predates the cutoff — no rotation note may fire.
+  const proven = tmpdir();
+  writeEvents(proven, [
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "tick_end", tick: 1, result: "no_change" }),
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "tick_end", tick: 2, result: "no_change" }),
+  ]);
+  assert.equal(collectReportSince(proven, 6 * HOUR).coversFullWindow, true);
+  assert.ok(!renderSinceReportMarkdown(collectReportSince(proven, 6 * HOUR)).includes("rotated"));
+
+  // A log born inside the window (a fresh install's first hour): the oldest retained event
+  // lies inside the window with no proof older data was not rotated away — the report notes
+  // the possible truncation instead of silently presenting a sparse window as complete.
+  const truncated = tmpdir();
+  writeEvents(truncated, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "no_change" }),
+  ]);
+  const t = collectReportSince(truncated, 6 * HOUR);
+  assert.equal(t.coversFullWindow, false);
+  assert.match(renderSinceReportMarkdown(t), /the log's oldest retained event lies inside this window/);
+});
+
+test("collectReportSince treats an empty or missing event log as fully covered, not truncated", () => {
+  const empty = tmpdir(); // No events.jsonl at all — a fresh directory.
+  const data = collectReportSince(empty, 6 * HOUR);
+  assert.deepEqual(data.totals, { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0 });
+  assert.deepEqual(data.ticksByRole, {});
+  assert.deepEqual(data.costByRole, {});
+  assert.equal(data.coversFullWindow, true, "nothing was ever logged, so nothing rotated away");
+  const out = renderSinceReportMarkdown(data);
+  assert.ok(!out.includes("rotated"), "a missing log must not claim events rotated out");
+  assert.match(out, /backlog tallies \(features done \/ bugs fixed\) need the day report/);
+});
+
+test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and zero window", () => {
+  const zero = renderSinceReportMarkdown({
+    sinceMs: HOUR,
+    fromIso: new Date(ago(HOUR)).toISOString(),
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0 },
+    ticksByRole: {},
+    costByRole: {},
+    coversFullWindow: true,
+  });
+  assert.match(zero, /^# tumwater usage report/);
+  assert.match(zero, /window: last 1h \(since /);
+  assert.match(zero, /\*\*Totals:\*\* 0 output tokens · 0 ticks · 0 commits · \$0\.00/);
+  assert.match(zero, /\*\*Ticks by role:\*\* -/);
+  assert.match(zero, /\*\*Cost by role:\*\* -/);
+  assert.ok(!zero.includes("rotated"));
+
+  const data = renderSinceReportMarkdown({
+    sinceMs: 90 * 60_000,
+    fromIso: new Date(ago(90 * 60_000)).toISOString(),
+    totals: { tokensOut: 1500, ticks: 5, commits: 1, costUsd: 0.75 },
+    // Equal totals rank by name asc; a zero-cost role is omitted from the cost line.
+    ticksByRole: { bugfix: 2, feature: 2, clean: 1 },
+    costByRole: { feature: 0.75, bugfix: 0 },
+    coversFullWindow: true,
+  });
+  assert.match(data, /window: last 90m \(since /);
+  assert.match(data, /\*\*Totals:\*\* 1500 output tokens · 5 ticks · 1 commits · \$0\.75/);
+  assert.match(data, /\*\*Ticks by role:\*\* bugfix — 2 · feature — 2 · clean — 1/);
+  assert.match(data, /\*\*Cost by role:\*\* feature — \$0\.75/);
+  assert.match(data, /backlog tallies \(features done \/ bugs fixed\) need the day report \(--days\)/);
+});
+
+test("tumwater report --since prints the window totals and validates its flags", async () => {
+  const root = makeRepo();
+  // The event log is append-only and chronological: seed oldest first, like every log the
+  // harness itself writes (a reverse-ordered log is malformed input, not a coverage case).
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "tick_end", tick: 2, result: "no_change", tokens: 999 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 777, costUsd: 0.5 }),
+  ]);
+
+  const ok = await runCli(root, "report", "--since", "6h");
+  assert.equal(ok.code, 0);
+  assert.match(ok.out, /^# tumwater usage report/m);
+  assert.match(ok.out, /window: last 6h \(since /);
+  assert.match(ok.out, /777 output tokens/);
+  assert.match(ok.out, /\*\*Ticks by role:\*\* feature — 1/);
+  assert.ok(!ok.out.includes("999"), "the 8h-old event is outside the 6h window");
+  assert.match(ok.out, /backlog tallies \(features done \/ bugs fixed\) need the day report/);
+
+  for (const rival of [["--days", "3"], ["--failures"]]) {
+    const r = await runCli(root, "report", "--since", "6h", ...rival);
+    assert.notEqual(r.code, 0, `--since with ${rival[0]} fails`);
+    assert.match(r.out, new RegExp(`report --since cannot be combined with ${rival[0]}`), "the failure names the rival");
+    assert.match(r.out, /--since/, "the failure names both flags");
+  }
+
+  const over = await runCli(root, "report", "--since", "8d");
+  assert.notEqual(over.code, 0);
+  assert.match(over.out, /capped at 7d/);
+
+  for (const bad of ["abc", ""]) {
+    const r = await runCli(root, "report", "--since", bad);
+    assert.notEqual(r.code, 0, `--since ${bad} fails`);
+    assert.match(r.out, /--since needs a duration like 45s, 90m, 2h, or 1d/);
+  }
+  const missing = await runCli(root, "report", "--since");
+  assert.notEqual(missing.code, 0);
+  assert.match(missing.out, /--since needs a value/);
+
+  const help = await runCli(root, "help", "report");
+  assert.equal(help.code, 0);
+  assert.match(help.out, /report --since <duration>/);
 });

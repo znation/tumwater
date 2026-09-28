@@ -20,6 +20,12 @@ export const REPORT_MAX_DAYS = 90;
  * read share one bound. */
 export const LOGS_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** The `tumwater report --since <duration>` window's cap: 7 days. The same bound as the logs
+ * view above, for the same rationale — a longer window only re-reads more log without adding
+ * signal, and the log rotates at 16 MB (EVENTS_MAX_BYTES in events.ts) anyway. Lives here so
+ * the CLI's flag validation and the collector's window read share one bound. */
+export const REPORT_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** What one windowed read of events.jsonl yielded. */
 interface EventWindow {
   /** Events whose local day is on or after the `fromKey` the read was asked for, oldest first. */

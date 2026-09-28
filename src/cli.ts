@@ -3,9 +3,11 @@ import fs from "node:fs";
 import {
   fail,
   parseCountFlag,
+  parseDurationFlag,
   parsePortFlag,
   parsePromptArgs,
   DURATION_FLAG,
+  durationLabel,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
@@ -27,8 +29,8 @@ import { runDoctor } from "./doctor.js";
 import { renderDoctor } from "./ui/doctor-report.js";
 import { renderBacklogMarkdown } from "./ui/backlog-report.js";
 import { cmdHistory } from "./ui/history.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, renderReportMarkdown } from "./ui/report.js";
-import { collectReport } from "./report-data.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS, renderReportMarkdown, renderSinceReportMarkdown } from "./ui/report.js";
+import { collectReport, collectReportSince } from "./report-data.js";
 import { collectFailureReport } from "./failure-data.js";
 import { renderFailureMarkdown } from "./failure-report.js";
 import { snapshot } from "./ui/status.js";
@@ -180,7 +182,22 @@ async function main(): Promise<void> {
       rejectUnknownArgs("report", args, [
         { names: ["--days"], value: true, valueName: "<n>" },
         { names: ["--failures"] },
+        { names: ["--since"], value: true, valueName: "<duration>" },
       ]);
+      // --since is handled before the day-shape reads: it is a rival shape (totals over a
+      // trailing window vs a series over whole days), not a modifier of either.
+      const sinceFlag = args.indexOf("--since");
+      if (sinceFlag >= 0) {
+        if (args.includes("--days"))
+          fail("report --since cannot be combined with --days (--days counts whole local days; --since totals a trailing window)");
+        if (args.includes("--failures"))
+          fail("report --since cannot be combined with --failures (the failure digest has no windowed-since mode)");
+        const ms = parseDurationFlag("--since", args[sinceFlag + 1]);
+        if (ms > REPORT_SINCE_MAX_MS)
+          fail(`report --since is capped at ${durationLabel(REPORT_SINCE_MAX_MS)} (got ${durationLabel(ms)})`);
+        process.stdout.write(renderSinceReportMarkdown(collectReportSince(root, ms)) + "\n");
+        break;
+      }
       const daysFlag = args.indexOf("--days");
       let days = REPORT_DEFAULT_DAYS;
       if (daysFlag >= 0) {

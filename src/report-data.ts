@@ -8,7 +8,7 @@
  * layer, so a core consumer (as /api/report already is) never forces a core→ui import. */
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
-import { readWindowEvents } from "./event-window.js";
+import { readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
 import { fenceTracker, sectionLines } from "./backlog.js";
 import { dayAt, dayWindow, formatDate } from "./datetime.js";
@@ -43,6 +43,83 @@ export interface ReportData {
     featuresDone: number;
     bugsFixed: number;
   };
+}
+
+/** Fleet usage over a trailing window of `sinceMs` ending now: the same tick_end/merged
+ * aggregation as `collectReport` but keyed to a cutoff instant rather than whole local days.
+ * Backlog tallies (features done / bugs fixed) are deliberately absent: they are counted from
+ * PLANS.md/BUGS.md `done`/`fixed` dates, which are day-granular file metadata that cannot
+ * subdivide a sub-day window — the render says so instead of showing a day-rounded number. */
+export interface SinceReport {
+  sinceMs: number; // the requested window length
+  fromIso: string; // ISO string of the cutoff instant (window start)
+  totals: {
+    tokensOut: number;
+    ticks: number;
+    commits: number;
+    costUsd: number;
+  };
+  ticksByRole: Record<string, number>;
+  costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
+  /** True when the report provably reflects every event the window could have contained:
+   * the day-keyed read proved the log reaches back before the cutoff's day, the log's oldest
+   * retained event predates the cutoff instant (the same-day case a day key cannot decide),
+   * or the retained log holds no events at all — nothing ever existed that could have rotated
+   * away, so an empty or missing log must not read as a truncated history. False means events
+   * were aggregated from a log whose oldest event lies inside the window with no proof that
+   * older data was not rotated away — the render adds a note so a sparse window is never
+   * mistaken for an idle fleet. */
+  coversFullWindow: boolean;
+}
+
+/** Aggregate fleet usage over the trailing `sinceMs` window ending now, from the event log
+ * only (tick_end/merged — see SinceReport for why the backlog files are not read). Kept a
+ * separate function rather than a `collectReport` variant flag: the day collector's
+ * zero-filled series and backlog-file reads have no place in a window totals view. */
+export function collectReportSince(root: string, sinceMs: number): SinceReport {
+  if (sinceMs <= 0 || sinceMs > REPORT_SINCE_MAX_MS)
+    throw new Error(`sinceMs must be between 1 and REPORT_SINCE_MAX_MS (got ${sinceMs})`);
+  const now = Date.now();
+  const cutoff = now - sinceMs;
+  // The window key is the cutoff's local calendar day, from the same formatDate helper
+  // eventDayKey buckets events with, so the read's day keys cannot disagree with the ts
+  // filter below; the day-keyed read may include earlier hours of that day, which the ts
+  // filter removes (over-read is at most one day's events). Future-dated events are dropped
+  // here too, matching collectReport (its day map only holds the window's days).
+  const fromKey = formatDate(new Date(cutoff));
+  const raw = readWindowEvents(root, fromKey);
+  const totals = { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0 };
+  const ticksByRole: Record<string, number> = {};
+  const costByRole: Record<string, number> = {};
+  for (const ev of raw.events) {
+    if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
+    if (ev.type === "tick_end") {
+      const role = eventRole(ev);
+      ticksByRole[role] = (ticksByRole[role] ?? 0) + 1;
+      totals.ticks++;
+      totals.tokensOut += typeof ev.tokens === "number" ? ev.tokens : 0;
+      const cost = typeof ev.costUsd === "number" ? ev.costUsd : 0;
+      totals.costUsd += cost;
+      // Zero-cost ticks contribute nothing, so they leave no key — the render's "$0 roles are
+      // omitted" rule then holds on the aggregation itself, not just at display time.
+      if (cost !== 0) costByRole[role] = (costByRole[role] ?? 0) + cost;
+    } else if (ev.type === "merged") {
+      totals.commits++;
+    }
+  }
+  // The retained log provably covers the window when either proof holds: the day-keyed reader
+  // saw a complete line older than the cutoff's day (coversFullWindow), or — the same-day case
+  // the day key cannot decide — the file's own oldest retained event predates the cutoff
+  // instant. An empty (or missing) log also proves coverage vacuously: with no retained events
+  // nothing can have rotated away, and printing a rotation note over a fresh install would
+  // claim a history that never existed. When neither proof holds, the oldest retained event
+  // lies inside the window and the render notes the possible truncation.
+  const oldest = raw.events[0];
+  const coversFullWindow =
+    raw.coversFullWindow ||
+    raw.events.length === 0 ||
+    (oldest !== undefined && typeof oldest.ts === "number" && oldest.ts <= cutoff);
+  return { sinceMs, fromIso: new Date(cutoff).toISOString(), totals, ticksByRole, costByRole, coversFullWindow };
 }
 
 /** A file's text, or "" when missing/unreadable — a report degrades to zeros, never throws. */

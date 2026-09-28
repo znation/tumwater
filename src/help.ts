@@ -27,6 +27,8 @@ Usage:
   tumwater report [--days N]       Markdown usage report — tokens/ticks/commits per day (default 14 days)
   tumwater report --failures [--days N]
                                    Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
+  tumwater report --since <duration>
+                                   Totals over a trailing window (capped at 7d) — tokens/ticks/commits/cost since a point in time; not combinable with --days or --failures
   tumwater doctor                  Pre-flight check: node, git, repo, config, fallback model, pi, locks, build, orphans, mach ports (read-only; exit 0/1)
   tumwater config                 Show the effective config (defaults + tumwater.json) as JSON
   tumwater logs [-f] [-n N] [--since <duration>]

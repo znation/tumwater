@@ -40,7 +40,7 @@ Then, from another terminal:
 | Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --since <duration>`, `tumwater logs --role <id>`, `tumwater backlog` (planned features, open bugs, open questions as Markdown) |
 | Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director; add `--role <id>` to aim it at one loop's next tick |
 | Control the loops | `tumwater pause [--for <duration>]` / `resume [--role <id>]` (fleet or one loop; `--for 2h` auto-resumes), `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
-| Audit | `tumwater doctor` (pre-flight), `tumwater report` (usage and cost), `tumwater report --failures` |
+| Audit | `tumwater doctor` (pre-flight), `tumwater report` (usage and cost), `tumwater report --since <duration>` (totals over a trailing window, capped at 7d), `tumwater report --failures` |
 
 `tumwater help` lists every command and flag; `tumwater help <command>` shows one command's usage. `gui --all-interfaces` exposes the dashboard, and
 with it the director prompt, to your whole network, so pair it with `--token <secret>`.
