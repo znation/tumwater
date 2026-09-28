@@ -18,11 +18,10 @@ import { eventsOfType, harnessWarnings, makeLoopRunner } from "./util.js";
 import { writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
-import { APPROVE_PI, assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
+import { APPROVE_PI, assistantLine, errorLine, reviewerPi, thinkingOnlyLine } from "./pi-events.js";
 
-const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
 // Thrash flag (plans/refusal-and-thrash.md item b): a changed tick whose authoring run burned
 // BOTH more than thrashTurns turns and thrashMinutes of wall clock is flagged high-friction —
 // one warning event carrying both thresholds, the outcome flag, the reviewer prompt's
@@ -36,7 +35,7 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
   const reviewArgs = path.join(tmpdir(), "review-args");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      reviewerPi("VERDICT: approve", reviewArgs),
       // Two assistant turns with thrashTurns set to 1 AND thrashMinutes set to 0 → past both
       // thresholds, so the flag fires.
       `printf '%s\\n' '${assistantLine("first turn of work")}'`,
@@ -87,7 +86,7 @@ test("a changed tick past only thrashTurns is not flagged high-friction", async 
   const reviewArgs = path.join(tmpdir(), "review-args");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      reviewerPi("VERDICT: approve", reviewArgs),
       // Two turns with thrashTurns set to 1 is past the turn threshold; the default
       // thrashMinutes of 30 is nowhere near → only the turns side fires. Both are required, so
       // an ordinary fast tick is NOT flagged (the false positive BUGS.md 2026-09-19 recorded).
@@ -124,7 +123,7 @@ test("an ordinary changed tick under both thresholds is not flagged high-frictio
   const reviewArgs = path.join(tmpdir(), "review-args");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      reviewerPi("VERDICT: approve", reviewArgs),
       `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
     ].join("\n"),

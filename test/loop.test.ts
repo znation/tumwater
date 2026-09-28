@@ -16,7 +16,7 @@ import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
 import { eventsOfType, makeLoopRunner } from "./util.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle } from "./fake-pi.js";
+import { fakePi, fakePiIdle, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
 
@@ -595,10 +595,6 @@ test("a config request naming a disallowed key applies customLoops and warns nam
     restore();
   }
 });
-
-// A shell fragment for fake-pi scripts: create a session file in the --session-dir pi was given,
-// so the harness's resume/continue guard (hasResumableSession) sees a session to continue.
-const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
 
 test("worktree changes commit even when pi forgets the summary line: the subject names the changed files", async () => {
   const repo = await initializedRepo();

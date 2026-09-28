@@ -174,7 +174,7 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
   const reviewArgs = path.join(tmpdir(), "recovery-review-args");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$@" > '${reviewArgs}'; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      reviewerPi("VERDICT: approve", reviewArgs),
       `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );

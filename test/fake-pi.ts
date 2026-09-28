@@ -17,6 +17,12 @@ import path from "node:path";
 // covers a test file run directly with `node --test`. Tests of the variable set it themselves.
 delete process.env.TUMWATER_PI_BIN;
 
+/** A shell fragment for fake-pi scripts: create a session file in the --session-dir pi was
+ * given, so the harness's resume/continue guard (hasResumableSession) sees a session to
+ * continue. The loop tests repeated this fragment verbatim; shared here so a change to how
+ * the session dir must be seeded cannot drift between the copies. */
+export const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
+
 /** Install a fake `pi` executable at the front of PATH for the duration of a test.
  * The script runs with the worktree as cwd. Returns a restore function. */
 export function fakePi(script: string): () => void {
