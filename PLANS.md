@@ -5,7 +5,81 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### GUI history tab — the dashboard shows the per-tick history `tumwater history` prints (planned 2026-09-28)
+
+**Goal.** The browser dashboard renders fleet state, transcripts, backlog, the event feed, the
+usage report, and the failure digest — but not the per-tick history an operator reaches for
+first after anything goes wrong: which loop ran, when, what it produced, what it cost, and
+whether it passed. Today that answer exists only in a terminal (`tumwater history`). The data
+and the collector both already exist — every row is derived from `tick_end` events by the pure
+`tickRows(events, limit, role)` in src/ui/history.ts, written for exactly this kind of sharing
+("the CLI and the tests share this collector") — so this is one GET endpoint plus one client
+tab, no new state and no new collection logic.
+
+**Approach.** Serve the collector's rows over a new read-only GET endpoint and render them as
+a fourth dashboard view, following the /api/report + report-tab pattern end to end.
+
+1. **src/ui/gui-endpoints.ts** — new `handleHistory(q, res, root)` for
+   `GET /api/history?role=<id>&n=N`, placed beside handleReport (same comment style, same
+   query-pre-parsed note). Rules fixed here so the implementer has no fork:
+   - `n`: optional. Absent → `HISTORY_DEFAULT_TICKS` (20). Present → `parseNonNegativeInt`
+     (returns null → 400 `n must be a non-negative integer (got …)`, the handleBacklog index
+     discipline), then clamp to `[1, HISTORY_MAX_TICKS]` (200) like `windowDays` clamps days —
+     the GUI clamps where the CLI fails fast, its established convention.
+   - `role`: optional. Absent or empty string → all loops. Present → passed straight through
+     as `tickRows`' role filter with no config validation (unlike /api/transcript's
+     rejectBadRole): a filter is not a target, an id with no ticks legitimately yields zero
+     rows, and validating would force the endpoint to read the config — /api/report and
+     /api/failures read nothing but files, and history stays in that family.
+   - Data: `tickRows(readEvents(root, n * 2 + 50), n, role)` — the identical window
+     arithmetic `cmdHistory` uses (tick_start lines and unrelated events interleave with the
+     tick_end rows, so the scanned window is twice the ask plus slack). `readEvents` scans the
+     log file directly with its own stat-keyed cache, so the endpoint works with no fleet
+     running, like the report endpoints.
+   - Response: `sendJson(res, 200, { rows })` where rows are the `TickRow[]` as-is (time,
+     loop, tick, result, durationMs nullable, usage string possibly empty, detail truncated
+     client-side-visible at DETAIL_MAX=72 already by the collector). Errors: 400 JSON via
+     sendJson for bad `n`; never 500 for a missing log (readEvents scans to []).
+2. **src/ui/gui.ts** — one route line before the POST handlers:
+   `} else if (req.method === "GET" && pathname === "/api/history") { handleHistory(target!.searchParams, res, root); }`,
+   beside the other GET-data routes.
+3. **src/ui/gui-page.ts** — the nav gains a fourth anchor
+   (`<a href="#" id="tab-history">history</a>` after tab-failures) and the body a
+   `<div id="history" hidden></div>` after #failures.
+4. **src/ui/gui-client.ts** — `switchView` accepts "history": guard list, `#history` hidden
+   toggle, `tab-history` active-class toggle, and `if (v === "history") fetchHistory();` on
+   every activation (re-clicking refetches — same model as report/failures, no polling; history
+   moves at tick granularity). Update the two `"fleet" | "report" | "failures"` comments to
+   include history. The existing `viewnav` click listener needs no change (`a.id.slice(4)`
+   already yields "history").
+5. **src/ui/gui-client-history.ts** (new, beside gui-client-report.ts) — `fetchHistory()`:
+   `getJson("/api/history")`, then render into #history a table with the CLI's seven columns
+   (time, loop, tick as `#N`, result, duration — `durationMs === null` renders `—`, usage,
+   detail), reusing the page's existing table styling; empty rows render the muted line
+   `no ticks yet — click the tab again to refresh` (matching fetchFailures' muted header
+   pattern). Server sends data, browser stays a thin viewer.
+6. **test/gui-server.test.ts** — endpoint tests beside the existing /api/report and
+   /api/backlog cases: seed an events.jsonl with interleaved tick_start/tick_end/unrelated
+   events (the same pattern the history CLI tests use) and assert (a) rows match
+   `tickRows`'s output — newest first, durations from tick_start pairs, `null` duration when
+   the start is outside the window; (b) `role=<id>` filters to that loop and an id with no
+   ticks returns `rows: []` with 200; (c) `n` clamps at 200 and a non-integer `n` returns
+   400; (d) a missing event log returns `rows: []` with 200; (e) GET / returns HTML containing
+   `tab-history` and `id="history"`.
+
+**Files touched:** src/ui/gui-endpoints.ts, src/ui/gui.ts, src/ui/gui-page.ts,
+src/ui/gui-client.ts, src/ui/gui-client-history.ts (new); tests in test/gui-server.test.ts.
+No CLI, help, or README changes — the command set is untouched; the screenshot in docs/ is
+refreshed by the docs loop whenever it next runs, not by this plan.
+
+**Acceptance criteria.** (a) `GET /api/history` returns `{ rows }` identical to what
+`tumwater history` derives for the same window (newest first, one row per completed tick),
+with `role` filtering and `n` defaulting/clamping exactly as specified above. (b) The
+dashboard gains a working history tab: click renders the rows as a table, re-click refetches,
+an empty log shows the `no ticks yet` line, and the other tabs are unaffected. (c) All five
+endpoint tests pass and the full suite passes. (d) No fleet needs to be running for the
+tab or the endpoint to serve data.
+
 
 ## Done
 
