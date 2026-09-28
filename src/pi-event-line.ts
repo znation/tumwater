@@ -87,6 +87,19 @@ export interface OpenToolCall {
   lastActivityAt: number;
 }
 
+/** The call's full raw command text from a tool-execution event's args (bash-like tools name
+ * it `command`, some `cmd`; other tools yield ""). The two open-call trackers (src/pi.ts's
+ * stall warning, src/ui/progress.ts's dashboard flag) store this beside the display label
+ * because anything that inspects the command's shape must see the raw text: the label
+ * truncates at 32 chars, so an operator past that point would be invisible there. */
+export function toolCallCommand(args: unknown): string {
+  if (!args || typeof args !== "object") return "";
+  const a = args as Record<string, unknown>;
+  if (typeof a.command === "string") return a.command;
+  if (typeof a.cmd === "string") return a.cmd;
+  return "";
+}
+
 /** Fold one tool-execution event into an open-call list, mutating it in place — the single
  * definition of the tracking state machine both consumers need (see OpenToolCall): start opens
  * a call under its id with the caller-computed label (each surface names its calls for itself),

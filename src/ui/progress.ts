@@ -1,4 +1,5 @@
-import { applyToolExecutionEvent, parsePiEventLine, type OpenToolCall } from "../pi-event-line.js";
+import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "../pi-event-line.js";
+import { commandBuffersOutput } from "../pi.js";
 import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
 import { defaultConfig, loadConfigCached } from "../config.js";
 import { landWorktreePath } from "../paths.js";
@@ -178,12 +179,16 @@ function feedLine(progress: LiveProgress, event: ProgressEvent): void {
       // Track the open call for the stall flag — pi runs a message's tool calls concurrently
       // by default, so several can be open at once and end in completion order. The state
       // machine is shared with runPi's warning (pi.ts); only the fallback label differs here.
+      // The full raw command rides along because the flag classifies the command's shape,
+      // and describeToolCall's label truncates at 32 chars — an operator past that point
+      // would be invisible there.
       applyToolExecutionEvent(
         progress.openToolCalls ??= [],
         event.type,
         event.toolCallId,
         event.partialResult,
         label ?? "tool",
+        toolCallCommand(event.args),
       );
       break;
     }
@@ -246,7 +251,11 @@ export function toolCallStallMs(root: string): number {
 /** The label of the first open tool call that has been silent for at least `stallMs` — the
  * in-flight cell's stall flag. Silence is a property of wall-clock time, not of any single
  * line, so this runs on every read rather than in feedLine; `now` and `stallMs` are injectable
- * for tests (freshly fed lines stamp Date.now(), so nothing is stalled right after parsing). */
+ * for tests (freshly fed lines stamp Date.now(), so nothing is stalled right after parsing).
+ * A call whose stdout is piped or redirected holds its bytes away from pi until it exits
+ * (BUGS.md 2026-09-28: the tick prompt itself prescribes `npm run test 2>&1 | tail`), so its
+ * silence is the prescribed shape and never evidence of a hang — the same classification
+ * runPi's warning applies, so the state cell and the event feed agree on "stalled". */
 export function stalledToolLabel(
   open: LiveProgress["openToolCalls"],
   now = Date.now(),
@@ -254,6 +263,7 @@ export function stalledToolLabel(
 ): string | undefined {
   if (!open || stallMs <= 0) return undefined;
   for (const call of open) {
+    if (commandBuffersOutput(call.command || call.label)) continue;
     if (now - call.lastActivityAt >= stallMs) return call.label;
   }
   return undefined;

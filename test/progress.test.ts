@@ -493,6 +493,37 @@ test("stalledToolLabel names the first call silent past the threshold", () => {
   );
 });
 
+test("stalledToolLabel skips a call whose stdout is piped or redirected — the tick prompt's own verify shape", () => {
+  const now = Date.now();
+  // End-to-end through the parser: the full raw command rides the open call (BUGS.md
+  // 2026-09-28, the dashboard half of the piped-stall fix), and a piped verify command
+  // silent past the threshold is the prescribed shape, never a stall.
+  const piped = "npm run test 2>&1 | tail -8";
+  const p = parseProgress([SESSION, toolStart("bash", { command: piped })], 0);
+  assert.equal(p.openToolCalls?.[0]?.command, piped, "the full raw command rides the open call");
+  assert.equal(
+    stalledToolLabel(p.openToolCalls, now + 301_000),
+    undefined,
+    "a piped verify command silent past the threshold is not flagged",
+  );
+  // The display label truncates at 32 chars, so a redirect operator can live entirely past
+  // it — the classification must read the raw command, never the label.
+  const redirected = "npm run test --run ./test/long-suite-name.test.ts > /tmp/tw-out.log";
+  const p2 = parseProgress([SESSION, toolStart("bash", { command: redirected })], 0);
+  assert.ok(!p2.openToolCalls?.[0]?.label.includes(">"), "the redirect is invisible in the label");
+  assert.equal(stalledToolLabel(p2.openToolCalls, now + 301_000), undefined);
+  // A bare (live-stdout) call beside a silent piped one is still named.
+  const both = parseProgress(
+    [
+      SESSION,
+      toolStart("bash", { command: piped }),
+      JSON.stringify({ type: "tool_execution_start", toolCallId: "c2", toolName: "bash", args: { command: "find / -name x" } }),
+    ],
+    0,
+  );
+  assert.equal(stalledToolLabel(both.openToolCalls, now + 301_000), "bash find / -name x");
+});
+
 test("toolCallStallMs resolves the configured threshold, defaulting to five minutes", () => {
   assert.equal(toolCallStallMs(tmpdir()), 300_000, "no tumwater.json — the documented default");
   const root = tmpdir();

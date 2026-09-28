@@ -1,5 +1,5 @@
 import { extractRefusal, hasVerdictLine, isNegatedRefusal, isNothingToDo } from "./reply-contract.js";
-import { applyToolExecutionEvent, piEventType, type OpenToolCall } from "./pi-event-line.js";
+import { applyToolExecutionEvent, piEventType, toolCallCommand, type OpenToolCall } from "./pi-event-line.js";
 import { describeToolCall } from "./text.js";
 import { isJsonObject } from "./json-object.js";
 
@@ -214,13 +214,7 @@ export class PiStreamParser {
       // classifies the command's shape (piped or redirected output cannot reach pi live),
       // and describeToolCall's label truncates at 32 chars — an operator past that point
       // would be invisible there.
-      const a = isJsonObject(event.args) ? event.args : undefined;
-      const command =
-        typeof a?.command === "string"
-          ? a.command
-          : typeof a?.cmd === "string"
-            ? a.cmd
-            : "";
+      const command = toolCallCommand(event.args);
       applyToolExecutionEvent(
         this.openToolCalls,
         event.type,
