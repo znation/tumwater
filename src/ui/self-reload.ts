@@ -73,6 +73,11 @@ interface ReloadWatch {
   stop(): void;
 }
 
+/** The watch's injectable seams, re-exported as one type: a dashboard embedding the watch
+ * (gui.ts's startGui) accepts them plus its own re-exec seam so tests can drive the wiring
+ * without real timers, dist stamps, or spawned processes. */
+export type ReloadWatchSeams = Pick<ReloadWatchOptions, "readDisk" | "isSelfHostedImpl" | "intervalMs">;
+
 /** Watch for a newer compiled tree on disk and fire `onTrigger` at most once. The gate: null
  * `startupInfo` ⇒ never reload (checked before `isSelfHosted`, which takes a non-null
  * BuildInfo); not self-hosted ⇒ never reload. Only then does the interval re-read the disk

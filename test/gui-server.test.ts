@@ -10,8 +10,11 @@ import { writeEvents } from "./log-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize, queuedRolePrompts } from "../src/inbox.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/http-body.js";
+import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
+import { startGui } from "../src/ui/gui.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
+import { waitFor } from "./wait.js";
 
 // The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,
 // raw-socket framing edge cases, and dropped clients. Each test pins a survivability
@@ -503,6 +506,48 @@ test("gui /api/history serves an empty row set when the event log is missing, an
     const page = await (await fetch(base + "/")).text();
     assert.match(page, /id="tab-history"/);
     assert.match(page, /id="history" hidden/);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui closes its server and re-execs exactly once when a newer build appears on disk", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui self-reload wiring");
+
+  // The self-reload wiring (startGui's onTrigger: close, then re-exec) is the half of the
+  // redeploy story createReloadWatch's own tests cannot pin — they drive the watch with a
+  // test-local callback, so a gui that never closed its server or re-execed twice would pass
+  // those. The watch only polls a self-hosted install, which a temp repo is not, so the test
+  // injects the watch's seams instead: disk stamp reads come from a local variable, the
+  // self-hosted gate is stubbed true, and the re-exec is a counter, never a spawn.
+  const startup = readBuildInfo();
+  assert.ok(startup, "the suite runs from a stamped dist");
+  let disk: BuildInfo | null = startup;
+  let reexecs = 0;
+  const server = await startGui(repo, 0, false, "", {
+    isSelfHostedImpl: async () => true,
+    readDisk: () => disk,
+    intervalMs: 10,
+    reexec: () => {
+      reexecs++;
+    },
+  });
+  try {
+    // A stamp naming the startup sha is not a newer build: several polls pass, nothing fires.
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(reexecs, 0, "an unchanged dist stamp never reloads");
+    assert.equal(server.listening, true, "the server is still serving the current build");
+
+    // A redeploy swaps dist/ under the serving process: the watch closes the server — the
+    // re-exec's fresh process takes the port — and re-execs. Firing latches: a stamp that
+    // changes again while the old process still winds down must not re-exec twice.
+    disk = { ...startup, sha: `${startup.sha}-newer` };
+    await waitFor(() => reexecs > 0, "the reload watch fires on a newer dist stamp", 5000);
+    assert.equal(server.listening, false, "the server closed before the re-exec");
+    disk = { ...startup, sha: "third-sha" };
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(reexecs, 1, "the reload fires at most once per process");
   } finally {
     server.close();
   }

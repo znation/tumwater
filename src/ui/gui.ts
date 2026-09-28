@@ -7,7 +7,7 @@ import http from "node:http";
 import os from "node:os";
 import { GUI_PAGE } from "./gui-page.js";
 import { statusPayload } from "./status-payload.js";
-import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reload.js";
+import { captureStartupBuild, createReloadWatch, reexecSelf, type ReloadWatchSeams } from "./self-reload.js";
 import { errorMessage } from "../text.js";
 import {
   handleAbort,
@@ -130,12 +130,18 @@ function parseRequestTarget(req: http.IncomingMessage): URL | null {
  * the caller's deliberate choice — and an optional shared token (`gui --token <secret>`,
  * passed as `token`) gates every route: requests must carry it as `Authorization: Bearer
  * <token>` or `?token=`, anything else gets a 401 JSON error. An empty token means no
- * check — byte-for-byte the open server. Resolves once it is listening. */
+ * check — byte-for-byte the open server. Resolves once it is listening.
+ *
+ * `watch` overrides the self-reload watch's seams (self-reload.ts's injectables) plus the
+ * re-exec itself; production callers omit it and get the real disk-stamp poll and the real
+ * reexecSelf — tests inject fakes so the wiring (close, then re-exec, at most once) is
+ * assertable without launching a process or touching this dist's own stamp. */
 export function startGui(
   root: string,
   port: number,
   allInterfaces = false,
   token = "",
+  watch: ReloadWatchSeams & { reexec?: () => void } = {},
 ): Promise<http.Server> {
   // The serving process's own startup stamp: added to every /api/status payload so the page can
   // notice a newer server (a redeploy or manual build re-execs this process) and reload itself.
@@ -203,9 +209,10 @@ export function startGui(
   const reloadWatch = createReloadWatch({
     root,
     startupInfo: startupBuild,
+    ...watch,
     onTrigger: () => {
       server.close();
-      reexecSelf();
+      (watch.reexec ?? reexecSelf)();
     },
   });
   void reloadWatch.start();
