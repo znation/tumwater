@@ -61,14 +61,15 @@ export function parsePortFlag(raw: string | undefined): number {
   return n;
 }
 
+/** Milliseconds per unit, the multiplier parseDurationFlag's regex group is applied to. */
+const UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+
 /** Parse a `--for <duration>` flag value: `<n>` followed by one unit `s`/`m`/`h`/`d`
  * (e.g. `45s`, `90m`, `2h`, `1d`), or fail with a clear message; returns the duration in
  * milliseconds. Zero and negative durations would write a pause marker that reads as already
  * expired — a pause that pauses nothing — so they fail like any other malformed value. No
  * absolute `--at` form: one way of saying "pause for a while".
  * Exported for tests and for the pause confirmations' duration phrasing (durationLabel). */
-const UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
-
 export function parseDurationFlag(flag: string, raw: string | undefined): number {
   if (raw === undefined) fail(`${flag} needs a value`);
   const m = /^(\d+)([smhd])$/.exec(raw);
