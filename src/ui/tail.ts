@@ -114,9 +114,11 @@ export function statRoleLog<T>(
 /** Follow an append-only file from byte `offset`, delivering every complete line at or past
  * it exactly once — both what is already on disk and everything appended later. Polls every
  * `intervalMs` (default 500ms — the harness's follow cadence); a torn trailing line without
- * its newline is held back until completed, and rotation/truncation (file shrinks) restarts
- * from the beginning of the new content. A missing file simply delivers nothing until it
- * appears. Returns a stop function that ends polling.
+ * its newline is held back until completed, and rotation/truncation restarts from the
+ * beginning of the new content — detected by a shrink (the same-path truncate) and by an
+ * inode change (the rename + fresh file whose replacement can outgrow the old offset within
+ * one poll interval, which size alone reads as an append). A missing file simply delivers
+ * nothing until it appears. Returns a stop function that ends polling.
  *
  * Polling is unconditional (setInterval + stat) rather than fs.watchFile's change detection:
  * watchFile only fires when the stat differs from its asynchronously established baseline, so
@@ -128,15 +130,26 @@ export function followFile(
   intervalMs = 500,
 ): () => void {
   let stopped = false;
+  // The dev/ino pair of the file the current `offset` was measured against — null until the
+  // first successful stat, so the caller's seed offset is honored on the opening poll.
+  let seen: { dev: number; ino: number } | null = null;
   const poll = (): void => {
     if (stopped) return;
-    let size: number;
+    let st: fs.Stats;
     try {
-      size = fs.statSync(file).size;
+      st = fs.statSync(file);
     } catch {
       return; // Not created yet (or vanished); the next poll re-checks.
     }
-    if (size < offset) offset = 0; // Rotated or truncated: re-read the new content from the
+    // Rotation is an inode change, not only a shrink: a replacement file that reaches the old
+    // offset's byte count before the next poll is indistinguishable from an append by size
+    // alone, and reading it from the stale offset delivers the new content's tail as a
+    // mangled mid-line fragment while its head is never delivered (withTail's TailState
+    // carries the same dev/ino guard for the same reason).
+    if (seen && (st.dev !== seen.dev || st.ino !== seen.ino)) offset = 0;
+    seen = { dev: st.dev, ino: st.ino };
+    const size = st.size;
+    if (size < offset) offset = 0; // Truncated in place: re-read the new content from the
     // start. The old bytes live in the renamed inode, so nothing is delivered twice — and
     // lines written between rotation and this poll are not skipped.
     if (size === offset) return;

@@ -93,6 +93,31 @@ test("followFile survives rotation: lines appended after a rename+rewrite are no
   }
 });
 
+test("followFile survives a rotation whose replacement outgrows the old offset within one poll: the new content is delivered whole, not from the stale offset", async () => {
+  const file = path.join(tmpdir(), "rotate-grow.jsonl");
+  fs.writeFileSync(file, "old line\n");
+  const seen: string[] = [];
+  const stop = followFile(file, fs.statSync(file).size, (lines) => {
+    for (const line of lines.filter(Boolean)) seen.push(line);
+  }, 25);
+  try {
+    await new Promise((r) => setTimeout(r, 100)); // let polls run while nothing changes
+
+    // Rotation where the fresh file is written LONGER than the old offset before the next
+    // poll: size alone reads as an append, so only the dev/ino guard catches it — the stale
+    // offset would deliver the new content's tail as a mangled mid-line fragment and lose
+    // its head.
+    fs.renameSync(file, file + ".1");
+    fs.writeFileSync(file, "x".repeat(40) + "\n" + "fresh\n");
+    assert.ok(await waitFor(() => seen.length === 2), `expected the replacement's whole content, got ${JSON.stringify(seen)}`);
+    assert.deepEqual(seen, ["x".repeat(40), "fresh"]);
+  } finally {
+    stop();
+  }
+  fs.rmSync(file, { force: true });
+  fs.rmSync(file + ".1", { force: true });
+});
+
 test("followFile waits for a missing file to appear", async () => {
   const file = path.join(tmpdir(), "late.jsonl"); // does not exist yet
   const seen: string[] = [];

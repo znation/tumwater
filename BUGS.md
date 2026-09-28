@@ -9,6 +9,15 @@ _None open._
 
 ## Fixed
 
+### `tumwater logs -f` detects rotation by shrink alone, so a rotation whose replacement file outgrows the old offset within one poll interval reads as an append: the new log's head is never delivered and its first line comes out a mangled mid-line fragment (found by bugfix loop 2026-09-28, fixed 2026-09-28)
+
+- **Symptom:** a `logs -f` (or any followFile) stream that spans a log rotation silently skips the replacement log's first lines whenever the fresh file is written past the old consumed offset before the next 500ms poll — and the one line straddling that offset is delivered as a truncated fragment starting mid-line. The shrink path (truncate-in-place, or a fresh empty file seen before it grows) was guarded; the inode-swap-with-growth path was not.
+- **Reproduce:** follow a file seeded past its content, `renameSync` it away and `writeFileSync` a replacement LONGER than the old offset before the next poll → the callback receives the replacement's tail from the stale offset (e.g. 31 of 40 `x`s) instead of its whole content. Scratch repro against the built module confirmed; now pinned as a regression test.
+- **Cause:** `followFile`'s poll compared sizes only (`size < offset` → restart); its sibling `withTail`'s TailState has carried a dev/ino rotation guard all along, so the follow path simply predates/missed the pattern.
+- **Fix:** `followFile` now stats dev/ino each poll and restarts from offset 0 when either changes (the caller's seed offset is still honored on the opening poll); the shrink check stays for same-inode truncation.
+- **Fixed:** 2026-09-28, regression test in `test/tail.test.ts` (`followFile survives a rotation whose replacement outgrows the old offset within one poll…`).
+- **Validation gap:** no-observability (closest tag — the failure left a visible trace in any affected follow stream but none in the suite): the only rotation test covered the shrink variant, so the inode-swap shape shipped with zero coverage and every existing test stayed green; nothing else was missing once that scenario existed.
+
 ### `tumwater history` drops an empty cell instead of padding it, so any tick with no usage renders its detail column one position left of its neighbors — a ragged table whenever usage and usage-less ticks mix (found by bugfix loop 2026-09-28, fixed 2026-09-28)
 
 - **Symptom:** in a `history` table mixing ticks that carry tokens/cost with ticks that carry neither (skipped ticks, some error paths), the usage-less rows' detail text starts one column-width further left than the others: `renderRow` filtered empty cells out of the join (`cell !== ""`) instead of letting `padEnd` keep them, and `usage` is the one cell that can ever be empty — and it sits mid-row, so dropping it shifts everything after it. The shipped examples all had usage on every row, so the raggedness was invisible until a real fleet log mixed the two.
