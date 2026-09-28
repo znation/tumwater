@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { initProject } from "../src/init.js";
 import { tickRows, HISTORY_MAX_TICKS } from "../src/ui/history.js";
+import { displayWidth } from "../src/text.js";
 import { expectedTimestamp, writeEvents } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
@@ -226,6 +227,26 @@ test("history -n accepts 1..200 and fails zero, negative, non-numeric, and over-
   assert.equal(one.code, 0);
   assert.equal(one.stdout.trim().split("\n").length, 1);
   assert.match(one.stdout, /bugfix/);
+});
+
+test("history keeps the loop column aligned when a loop name holds a wide character", async () => {
+  // CJK/emoji render two terminal columns per code point but count as one UTF-16 code unit:
+  // a width table built from `.length` and padded with padEnd leaves that row's later columns
+  // shifted left against its ASCII neighbors.
+  const repo = makeRepo();
+  await initProject(repo, "cli history wide alignment");
+  writeEvents(repo, [
+    { ts: 1787222691956, loop: "feature", type: "tick_end", tick: 7, result: "changed", summary: "added a widget" },
+    { ts: 1787222700000, loop: "翻译", type: "tick_end", tick: 3, result: "no_change", summary: "tidied" },
+  ]);
+  const r = await cli(repo, "history");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trim().split("\n");
+  assert.equal(lines.length, 2);
+  // The `#tick` cell opens the first padded column, so its display column must be identical
+  // across rows — the boundary the earlier cells pad up to.
+  const cols = lines.map((l) => displayWidth(l.slice(0, l.indexOf("#"))));
+  assert.equal(new Set(cols).size, 1, `loop columns align across rows: ${lines.join(" | ")}`);
 });
 
 test("history rejects unknown flags, prints no ticks yet on an empty log, and has a help stanza", async () => {

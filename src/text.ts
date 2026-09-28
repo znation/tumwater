@@ -88,6 +88,16 @@ export function displayWidth(s: string): number {
   return total;
 }
 
+/** Pad `s` with trailing spaces until it occupies exactly `width` terminal display columns —
+ * the display-width sibling of String#padEnd, which counts UTF-16 code units and under-pads
+ * any cell holding wide characters (CJK, emoji), letting its column drift right. Text already
+ * past `width` is returned unchanged; callers clip first when a cell must not exceed the
+ * column. Shared by the aligned tables (status-render.ts, history.ts). */
+export function padToWidth(text: string, width: number): string {
+  const pad = width - displayWidth(text);
+  return pad > 0 ? text + " ".repeat(pad) : text;
+}
+
 /** Clip `s` to `width` terminal display columns with a trailing ellipsis when over — the
  * column-budget sibling of truncate, which caps by character budget. Widths are measured by
  * displayWidth, so East Asian wide characters and emoji count their real two columns and a

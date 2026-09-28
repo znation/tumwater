@@ -3,7 +3,7 @@ import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
 import { dailyCost, fleetDailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
-import { clipToWidth, compactTokens, usd } from "../text.js";
+import { clipToWidth, compactTokens, displayWidth, padToWidth, usd } from "../text.js";
 import { formatTime, pad2 } from "../datetime.js";
 import {
   buildBadge,
@@ -197,7 +197,10 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     "",
   ];
   const allRows = [...rows, totalsRow];
-  const widths = cols.map((c, i) => Math.max(c.length, ...allRows.map((r) => (r[i] ?? "").length)));
+  // Widths are measured in terminal display columns (displayWidth), not UTF-16 code units:
+  // a cell holding CJK or emoji renders two columns per code point, and a code-unit measure
+  // lets that row's later cells drift right of the header's.
+  const widths = cols.map((c, i) => Math.max(displayWidth(c), ...allRows.map((r) => displayWidth(r[i] ?? ""))));
 
   if (maxWidth !== undefined) {
     let overflow = widths.reduce((a, b) => a + b, 0) + COLUMN_GAP * (cols.length - 1) - maxWidth;
@@ -211,7 +214,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   }
 
   const fmt = (r: string[]) =>
-    r.map((cell, i) => clipToWidth(cell, widths[i] ?? 0).padEnd(widths[i] ?? 0)).join("  ").trimEnd();
+    r.map((cell, i) => padToWidth(clipToWidth(cell, widths[i] ?? 0), widths[i] ?? 0)).join("  ").trimEnd();
   const separator = widths.map((w) => "-".repeat(w)).join("  ");
   lines.push(fmt(cols));
   lines.push(separator);

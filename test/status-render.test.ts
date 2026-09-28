@@ -4,6 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
+import { displayWidth } from "../src/text.js";
 import { buildBadge, loopPhase } from "../src/ui/status-model.js";
 import type { StatusSnapshot } from "../src/ui/status.js";
 import { applyLandingOutcome, applyTickOutcome, freshLoopState } from "../src/state.js";
@@ -805,6 +806,53 @@ test("status table appends the next run column after last result", () => {
   // A fresh state is due immediately (nextRunAt 0): the idle row reads now.
   const row = lines.find((l) => l.startsWith("clean ")) ?? "";
   assert.equal(cellAt(row, headers.indexOf("next run")), "now");
+});
+
+/** `line` expanded to one entry per terminal display column — a wide character fills both of
+ * its columns. The alignment probe's substrate: misalignment is invisible to character-index
+ * arithmetic but obvious column-by-column. */
+function columns(line: string): string[] {
+  const out: string[] = [];
+  for (const ch of line) for (let k = 0; k < displayWidth(ch); k++) out.push(ch);
+  return out;
+}
+
+test("status table keeps every column boundary aligned when a cell holds a wide character", () => {
+  // A custom loop's summary carries CJK text (two terminal columns per code point): widths
+  // derived from UTF-16 code units under-measure it, and code-unit padding leaves that row's
+  // later columns shifted left against the header and every ASCII row.
+  const snap = snapshotWith([
+    { role: "clean" },
+    { role: "dry", lastResult: "changed", lastSummary: "翻译了三个文件" },
+  ]);
+  const lines = renderStatus(tmpdir(), snap).split("\n");
+  // The separator line (index 3) names each column's boundary in display columns: the
+  // cumulative width of its dash runs plus the two-space gaps.
+  const boundaries: number[] = [];
+  let w = 0;
+  for (const seg of (lines[3] ?? "").split("  ")) {
+    w += displayWidth(seg);
+    boundaries.push(w);
+    w += 2;
+  }
+  // Every fully-populated table line (the column header, the two data rows) must place each
+  // cell exactly between its neighbors: at every interior boundary the two gap columns are
+  // blank and the next cell's content starts right after them. A row whose wide-character
+  // cell was measured and padded by UTF-16 code units renders wider than its column, and its
+  // later cells drift right — the drift shows up as blank padding where content belongs.
+  // (The totals row is exempt: several of its cells are legitimately empty.)
+  const sep2 = lines.findIndex((l, i) => i > 3 && l.startsWith("---"));
+  const table = [lines[2] ?? "", ...lines.slice(4, sep2 < 0 ? lines.length : sep2)];
+  assert.equal(table.length, 3, "column header plus two data rows render");
+  for (const line of table) {
+    const c = columns(line);
+    for (const b of boundaries.slice(0, -1)) {
+      assert.ok(c.length > b + 2, `line reaches past boundary ${b}: ${line}`);
+      assert.equal(c[b], " ", `gap before boundary ${b} is not blank in: ${line}`);
+      assert.equal(c[b + 1], " ", `gap after boundary ${b} is not blank in: ${line}`);
+      assert.notEqual(c[b + 2], " ", `next cell does not start at boundary ${b}+2 in: ${line}`);
+    }
+  }
 });
 
 test("a loop with queued prompts carries a p:N marker on its state cell", () => {

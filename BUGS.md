@@ -9,6 +9,15 @@ _None open._
 
 ## Fixed
 
+### The aligned tables size and pad their columns in UTF-16 code units, so a cell holding a wide character (CJK, emoji) renders its row's later columns shifted right of the header and its ASCII neighbors (found by bugfix loop 2026-09-28, fixed 2026-09-28)
+
+- **Symptom:** in `tumwater status` (and the TUI's status pane) and `tumwater history`, any row whose cell contains an East Asian wide character or emoji shows every column after that cell starting at a different display column than the same column in the header and the other rows — a ragged table. Custom loop names and tick summaries (model output) can carry such characters; both surfaces derive from user/model text.
+- **Reproduce:** render a status snapshot whose loop's `lastSummary` is `翻译了三个文件`, or seed a history event log with `loop: "翻译"`, and compare the display columns of the following cells across rows: the wide-character row's cells sit 3+ columns right. Both cases are pinned as regression tests.
+- **Cause:** `renderStatus` computed column widths from `String#length` and padded cells with `padEnd` — both count UTF-16 code units, while `clipToWidth` (which the cells were clipped with) correctly counts terminal display columns. `renderRow` in history.ts carried the same two mistakes. A wide character occupies two display columns but one code unit, so the cell renders wider than its column and the pad cannot bring it back.
+- **Fix:** `text.ts` gains `padToWidth` (the display-width sibling of `padEnd`); `status-render.ts` now measures widths with `displayWidth` and pads with `padToWidth`, and `history.ts` does the same for its four padded cells.
+- **Fixed:** 2026-09-28, regression tests in `test/status-render.test.ts` (`status table keeps every column boundary aligned when a cell holds a wide character`) and `test/cli-history.test.ts` (`history keeps the loop column aligned when a loop name holds a wide character`).
+- **Validation gap:** no-observability (closest tag — the ragged table is plainly visible in real output but left no trace the suite could fail on): every existing table assertion read cells by character index or matched rows with whitespace-flexible regexes, both blind to display-column drift, so the misrender passed every test while shipping; nothing else was missing once a wide-character fixture existed.
+
 ### `tumwater history`'s window growth only chases short row counts, so a window boundary that cuts inside a tick's own event block renders a started tick's duration as a dash even though the log holds its tick_start (found by bugfix loop 2026-09-28, fixed 2026-09-28)
 
 - **Symptom:** a `history` (or GUI history tab) row shows `—` for a tick whose `tick_start` IS in the event log. The default scan window (`limit*2+50` events) can end inside a tick's own block: every `tick_end` the ask needs sits within the window, but the oldest one's `tick_start` sits just before the boundary — and because the row count is satisfied, growth keyed on short rows alone never re-reads. A busy fleet's interleaved non-tick events (merges, prompts) make the span between tick_ends large enough to hit this with everyday sizes.

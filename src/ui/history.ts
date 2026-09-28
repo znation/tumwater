@@ -1,7 +1,7 @@
 import { fail, parseCountFlag, parseRoleScope, say } from "../cli-args.js";
 import { readEvents } from "../events.js";
 import { formatDate, formatTime } from "../datetime.js";
-import { collapseWhitespace, compactTokens, shortSpanPhrase, truncate, usd } from "../text.js";
+import { collapseWhitespace, compactTokens, displayWidth, padToWidth, shortSpanPhrase, truncate, usd } from "../text.js";
 import type { HarnessEvent } from "../types.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
@@ -111,13 +111,16 @@ export function readTickRows(root: string, limit: number, role: string | null): 
  * misaligning that row against its neighbors; trimEnd strips only the trailing pad. */
 function renderRow(row: TickRow, widths: { loop: number; tick: number; result: number; duration: number; usage: number }): string {
   const duration = row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs);
+  // Cells pad to terminal display columns (padToWidth), not UTF-16 code units: a loop name
+  // holding CJK or emoji renders two columns per code point, and a code-unit padEnd lets
+  // that row's later columns drift right of its ASCII neighbors.
   return [
     row.time,
-    row.loop.padEnd(widths.loop),
-    `#${String(row.tick).padEnd(widths.tick)}`,
-    row.result.padEnd(widths.result),
-    duration.padEnd(widths.duration),
-    row.usage.padEnd(widths.usage),
+    padToWidth(row.loop, widths.loop),
+    `#${padToWidth(String(row.tick), widths.tick)}`,
+    padToWidth(row.result, widths.result),
+    padToWidth(duration, widths.duration),
+    padToWidth(row.usage, widths.usage),
     row.detail,
   ]
     .join("  ")
@@ -140,12 +143,14 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     say("no ticks yet");
     return;
   }
+  // Widths in terminal display columns (displayWidth), for the same reason the cells pad
+  // with padToWidth below.
   const widths = {
-    loop: Math.max(...rows.map((r) => r.loop.length)),
+    loop: Math.max(...rows.map((r) => displayWidth(r.loop))),
     tick: Math.max(...rows.map((r) => String(r.tick).length)),
-    result: Math.max(...rows.map((r) => r.result.length)),
+    result: Math.max(...rows.map((r) => displayWidth(r.result))),
     duration: Math.max(...rows.map((r) => (r.durationMs === null ? 1 : shortSpanPhrase(r.durationMs).length))),
-    usage: Math.max(...rows.map((r) => r.usage.length)),
+    usage: Math.max(...rows.map((r) => displayWidth(r.usage))),
   };
   say(rows.map((r) => renderRow(r, widths)).join("\n"));
 }
