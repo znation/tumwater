@@ -225,6 +225,59 @@ test("a queued entry whose sha main already holds is dropped without a vet", asy
   assert.equal(readEvents(root).some((e) => e.type === "landed" || e.type === "land_failed"), false, "no outcome was written");
 });
 
+test("a full dedupe cache never wedges the drain: every already-merged entry still drops", async () => {
+  // The dedupe verdict cache is bounded at 128 entries, and its eviction arms — prune the
+  // stale-head verdicts first, then clear — had no coverage in any tier: no realistic fleet
+  // queues 129 landings between two main moves. Two phases drive both arms with entries main
+  // already holds, so no vet and no pi run is ever needed: if the eviction ever wedges the
+  // drain (a throw mid-prune, an entry wrongly kept queued), the queue depth and the event
+  // log say so. Each phase's entries come from a commit-tree chain built in one spawn —
+  // 500 spawns one-by-one would dwarf the drain itself.
+  const root = makeRepo();
+  const initialTip = sh(root, "git", "rev-parse", "main");
+  // 300 already-merged commits at one constant head: every sha the drain's dedupe reads as
+  // merged, every verdict cached against the same head.
+  sh(
+    root,
+    "bash",
+    "-c",
+    'head=$(git rev-parse main); tree=$(git rev-parse main^{tree}); ' +
+      'for i in $(seq 1 300); do c=$(git commit-tree "$tree" -p "$head" -m "filler $i"); head=$c; done; ' +
+      'git update-ref refs/heads/main "$head"',
+  );
+  const phaseOne = sh(root, "git", "rev-list", "main", `^${initialTip}`).split("\n");
+  assert.equal(phaseOne.length, 300);
+  for (const sha of phaseOne) enqueueLanding(root, entry("improve", sha));
+  assert.equal(queueDepth(root), 300);
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
+
+  await pumpUntil(ctx, pipeline, drained(root, pipeline), "the first cache-filling queue to drain");
+  assert.equal(queueDepth(root), 0, "every already-merged entry was dropped through the eviction churn");
+  assert.equal(readEvents(root).some((e) => e.type === "landed" || e.type === "land_failed"), false, "no outcome was written");
+
+  // Second arm: a cache holding phase-one verdicts against the OLD head, then a poll whose
+  // main has moved — the eviction must prune the stale-head verdicts (the clear alone would
+  // also thrash a cache that could have kept fresh-head entries) and the new entries must
+  // still dedupe. 200 fresh misses guarantee the cache crosses 128 during this drain no
+  // matter what earlier tests in this process left in it.
+  sh(
+    root,
+    "bash",
+    "-c",
+    'head=$(git rev-parse main); tree=$(git rev-parse main^{tree}); ' +
+      'for i in $(seq 1 200); do c=$(git commit-tree "$tree" -p "$head" -m "filler 2-$i"); head=$c; done; ' +
+      'git update-ref refs/heads/main "$head"',
+  );
+  const phaseTwo = sh(root, "git", "rev-list", "main", `^${phaseOne[0]}`).split("\n");
+  assert.equal(phaseTwo.length, 200);
+  for (const sha of phaseTwo) enqueueLanding(root, entry("improve", sha));
+
+  await pumpUntil(ctx, pipeline, drained(root, pipeline), "the stale-head queue to drain");
+  assert.equal(queueDepth(root), 0, "every entry deduped against the new head");
+  assert.equal(pipeline.vetting.size, 0, "no vet ever started: everything was already merged");
+  assert.equal(readEvents(root).some((e) => e.type === "landed" || e.type === "land_failed"), false, "still no outcome was written");
+});
+
 test("a torn head is dropped with a warning and the healthy entry behind it lands", async () => {
   const root = makeRepo();
   const sha = pinnedCommit(root, "improve");
