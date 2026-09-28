@@ -54,15 +54,18 @@ export function lanAddresses(
   return out;
 }
 
-/** The request target's path component (query string stripped), or null when `req.url` is
- * not a parseable URL — such requests fall through to 404 instead of throwing into the
- * handler's 500 catch. Routing compares this exact pathname, never the raw target: a
- * startsWith on req.url answered ANY path prefixing a route (e.g. /api/transcripts?role=…
- * returned 200 transcript data), and an equality check on the raw target would miss query
- * strings on exact routes (/api/status?x → 404). */
-function requestPathname(req: http.IncomingMessage): string | null {
+/** The request target parsed once (path, query, and the token gate all read the same
+ * object), or null when `req.url` is not a parseable URL — such requests fall through to
+ * 404 instead of throwing into the handler's 500 catch, token gate included: the gate reads
+ * the same parsed target rather than re-parsing, so a malformed target answers 401 there
+ * like the 404 it earns on the token-less server, never a 500 for a bad request.
+ * Routing compares the exact pathname, never the raw target: a startsWith on req.url
+ * answered ANY path prefixing a route (e.g. /api/transcripts?role=… returned 200 transcript
+ * data), and an equality check on the raw target would miss query strings on exact routes
+ * (/api/status?x → 404). */
+function parseRequestTarget(req: http.IncomingMessage): URL | null {
   try {
-    return new URL(req.url ?? "", "http://localhost").pathname;
+    return new URL(req.url ?? "", "http://localhost");
   } catch {
     return null; // Unparseable target — not a route.
   }
@@ -87,7 +90,8 @@ export function startGui(
   const startupBuild = captureStartupBuild();
   const server = http.createServer(async (req, res) => {
     try {
-      const pathname = requestPathname(req);
+      const target = parseRequestTarget(req);
+      const pathname = target?.pathname ?? null;
       // Opt-in shared-token gate, ahead of every route: with a token set, the page and all
       // /api endpoints require it as `Authorization: Bearer <token>` or `?token=`; anything
       // else — including `GET /` — gets the same JSON 401 every handler uses, deliberately
@@ -96,8 +100,7 @@ export function startGui(
       if (token) {
         const auth = req.headers.authorization ?? "";
         const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
-        const query = new URL(req.url ?? "", "http://localhost").searchParams;
-        const provided = bearer || query.get("token") || "";
+        const provided = bearer || target?.searchParams.get("token") || "";
         if (!tokenMatches(token, provided)) {
           sendJson(res, 401, { error: "token required" });
           return;
@@ -129,7 +132,8 @@ export function startGui(
       } else if (req.method === "POST" && pathname === "/api/abort") {
         await handleAbort(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/pause-role") {
-        await handlePauseRole(req, res, root);      } else {
+        await handlePauseRole(req, res, root);
+      } else {
         res.writeHead(404, { "content-type": "text/plain" });
         res.end("not found");
       }

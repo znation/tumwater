@@ -187,6 +187,39 @@ test("gui answers 404, not 500, for a request target the URL parser rejects", as
   }
 });
 
+test("gui answers 401, not 500, for a malformed target on a token-gated server", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui malformed target token test");
+  const { server, port } = await startLocalGui(repo, "s3cret");
+  try {
+    // The token gate reads the same parsed request target as the router, so a target the
+    // URL parser rejects must answer the gate's 401 (the token check simply finds nothing
+    // to match), never the 500 a gate-side re-parse throw would produce — the same bad
+    // request that earns 404 on the token-less server in the test above.
+    const socket = net.connect(port, "127.0.0.1");
+    let response = "";
+    socket.on("data", (d: Buffer) => {
+      response += d.toString("ascii");
+    });
+    const ended = new Promise<void>((resolve) => socket.on("end", () => resolve()));
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write("GET http://[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n", () => resolve());
+    });
+    await ended;
+
+    assert.match(response, /^HTTP\/1\.1 401/, `expected 401, got: ${response.split("\r\n")[0]}`);
+    assert.match(response, /token required/);
+    socket.destroy();
+
+    // The gate still admits a well-formed request carrying the token.
+    const ok = await fetch(`http://127.0.0.1:${port}/api/status?token=s3cret`);
+    assert.equal(ok.status, 200);
+  } finally {
+    server.close();
+  }
+});
+
 test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui body bound test");
