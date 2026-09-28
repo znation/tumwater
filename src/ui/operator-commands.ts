@@ -1,4 +1,4 @@
-import { knownRoleIds, loadConfig, loadConfigSafe } from "../config.js";
+import { knownRoleIds, loadConfig, loadConfigCached, loadConfigSafe } from "../config.js";
 import { durationLabel, fail, failOverDurationCap, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "../cli-args.js";
 import {
   type CancelOutcome,
@@ -376,15 +376,31 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
  * per-role queue's position numbering stays unambiguous. */
 export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   const parsed = parsePromptArgs(args);
-  // `--role <id>` scopes every mode to one loop's queue; the value is validated here, where
-  // the live config is readable, with the same message every other --role consumer uses.
-  // The director is always valid: its queue is the historical inbox (inbox.ts).
-  let role: string | null = null;
-  if (parsed.role !== null) {
-    const valid = knownRoleIds(loadConfig(root));
-    if (!valid.includes(parsed.role)) fail(`unknown role: ${parsed.role} (valid ids: ${valid.join(", ")})`);
-    role = parsed.role;
+  // `--role <id>` scopes every mode to one loop's queue; the value is validated here, with
+  // the same message every other --role consumer uses. The director is always valid: its
+  // queue is the historical inbox (inbox.ts).
+  //
+  // Where the id set comes from differs by mode, following parseRoleScope's split: --list is
+  // a read-only view, so a transiently broken tumwater.json must not take it down — it falls
+  // back to the built-in catalog (loadConfigCached), exactly like cmdLogs/cmdHistory's --role
+  // scope, at the cost of a broken config hiding a custom loop's queued section. The
+  // state-changing modes (enqueue, cancel) instead read through loadConfig and fail loudly
+  // when an id was given: before writing to a named loop's queue the operator is owed the
+  // config error, not a built-ins-only guess about whether the loop exists. With no --role
+  // neither state-changing mode reads the config at all — the director queue (inbox.ts) needs
+  // none, and a broken tumwater.json must not block steering the director.
+  const validIds = parsed.mode === "list"
+    ? (() => {
+        const { config } = loadConfigCached(root);
+        return config ? knownRoleIds(config) : allRoleIds();
+      })()
+    : parsed.role !== null
+      ? knownRoleIds(loadConfig(root))
+      : null;
+  if (validIds !== null && parsed.role !== null && !validIds.includes(parsed.role)) {
+    fail(`unknown role: ${parsed.role} (valid ids: ${validIds.join(", ")})`);
   }
+  const role = parsed.role;
   if (parsed.mode === "list") {
     // Full text, verbatim: this is the inspection command that tells you what a queued
     // prompt actually says before you cancel it.
@@ -403,7 +419,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     if (director.length > 0) {
       sections.push(`director:\n${director.map((p, i) => `${i + 1}. ${p}`).join("\n")}`);
     }
-    for (const r of knownRoleIds(loadConfig(root))) {
+    for (const r of validIds as string[]) {
       if (r === DIRECTOR_ROLE) continue;
       const prompts = queuedRolePrompts(root, r);
       if (prompts.length > 0) {

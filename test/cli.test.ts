@@ -376,6 +376,43 @@ test("prompt --cancel fails on out-of-range or non-numeric positions without sid
   assert.equal(inboxSize(repo), 1, "nothing touched on failure");
 });
 
+// The read-only list mode follows parseRoleScope's broken-config policy (the same one
+// logs --role applies): a transiently broken tumwater.json must not take the inspection
+// command down, while the state-changing modes keep the loud config error when an id is
+// named — and never read the config at all when the target is the director queue.
+test("prompt --list survives a broken tumwater.json; named-role writes still fail loudly", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "broken config prompt list");
+  fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
+  submitPrompt(repo, "survives");
+
+  let r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /^1\. survives$/m);
+
+  // The fallback relaxes the config READ, not the id validation: an unknown id is refused.
+  r = await cli(repo, "prompt", "--list", "--role", "qa");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /nothing queued for qa/);
+  r = await cli(repo, "prompt", "--list", "--role", "nope");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role/);
+
+  // Writing to a named loop's queue is owed the config error, not a built-ins-only guess.
+  r = await cli(repo, "prompt", "--role", "qa", "ship it");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /not valid JSON/);
+  assert.equal(inboxSize(repo), 1, "the broken config let nothing be written");
+
+  // No --role: the director queue needs no config read, so steering still works.
+  r = await cli(repo, "prompt", "steer the director");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /queued for the director loop/);
+  r = await cli(repo, "prompt", "--cancel", "2");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /cancelled: steer the director/);
+});
+
 test("prompt --cancel reports a concurrently dequeued prompt as gone and exits clean", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt cancel race");
