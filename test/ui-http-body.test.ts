@@ -132,7 +132,11 @@ test("a body of exactly MAX_BODY_BYTES is accepted; one byte more is rejected wi
     const parsed = await pending;
     assert.equal(parsed, null);
     assert.equal(res.status, 413);
-    assert.deepEqual(JSON.parse(res.body), { error: "body too large" });
+    // The 413 names both the cap and the offending size, so the operator can see how
+    // far over they are (this body is one byte past MAX_BODY_BYTES).
+    assert.deepEqual(JSON.parse(res.body), {
+      error: `body too large: request is ${MAX_BODY_BYTES + 1} bytes, over the ${MAX_BODY_BYTES} byte (${MAX_BODY_BYTES / 1024} KiB) cap`,
+    });
   }
 });
 

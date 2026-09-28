@@ -18,7 +18,8 @@ export function sendJson(res: http.ServerResponse, status: number, body: unknown
 }
 
 /** Max request body for /api/prompt, in wire bytes. Over it the promise rejects
- * ("body too large") and buffering STOPS — later chunks are drained and discarded, so a client
+ * ("body too large: ... over the N byte (64 KiB) cap", naming both the cap and the rejected
+ * size) and buffering STOPS — later chunks are drained and discarded, so a client
  * that keeps uploading after the cap cannot grow the buffer past ~one chunk over the limit.
  * Without the stop, every late chunk was still appended to the body long after the rejection:
  * an unbounded allocation on a network-facing endpoint. */
@@ -65,7 +66,14 @@ function readBody(req: http.IncomingMessage): Promise<string> {
         releaseBuffer();
         cleanup();
         req.resume(); // keep draining so the upload can finish and the socket closes cleanly
-        reject(new Error("body too large"));
+        // Name the offending value and the fix, like every sibling error: the operator
+        // pasting an oversized prompt into the dashboard sees how far over they are
+        // instead of an unquantified "body too large".
+        reject(
+          new Error(
+            `body too large: request is ${bytes} bytes, over the ${MAX_BODY_BYTES} byte (${MAX_BODY_BYTES / 1024} KiB) cap`,
+          ),
+        );
         return;
       }
       chunks.push(chunk);
@@ -107,7 +115,7 @@ export async function readJsonObject(
   try {
     body = await readBody(req);
   } catch (err) {
-    sendJson(res, 413, { error: errorMessage(err) }); // body too large
+    sendJson(res, 413, { error: errorMessage(err) }); // body too large: ... over the ... cap
     return null;
   }
   let parsed: unknown;
