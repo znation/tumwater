@@ -23,7 +23,7 @@ const EXAMPLE_MAX = 120;
 const SUMMARY_MAX = 100;
 
 /** A normalized cluster of like error/warning/rejection strings. */
-export interface Cluster {
+interface Cluster {
   key: string; // the normalized form, the grouping key
   count: number;
   roles: string[]; // unique, sorted
