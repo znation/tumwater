@@ -214,8 +214,7 @@ export class PiStreamParser {
       // classifies the command's shape (piped or redirected output cannot reach pi live),
       // and describeToolCall's label truncates at 32 chars — an operator past that point
       // would be invisible there.
-      const a =
-        event.args && typeof event.args === "object" ? (event.args as Record<string, unknown>) : undefined;
+      const a = isJsonObject(event.args) ? event.args : undefined;
       const command =
         typeof a?.command === "string"
           ? a.command

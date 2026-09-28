@@ -270,11 +270,10 @@ export function saveConfig(root: string, config: TumwaterConfig): void {
  * meaningful for `piArgs` and `customLoops`). */
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const body = Object.keys(obj)
+  if (isJsonObject(value)) {
+    const body = Object.keys(value)
       .sort()
-      .map((k) => `${JSON.stringify(k)}:${stableJson(obj[k])}`)
+      .map((k) => `${JSON.stringify(k)}:${stableJson(value[k])}`)
       .join(",");
     return `{${body}}`;
   }

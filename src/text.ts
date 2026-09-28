@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isJsonObject } from "./json-object.js";
 
 /** Shared text-shaping helpers for human-facing one-line text — the observability layer's
  * display labels (live progress, transcripts, tool-call descriptions), tick commit subjects and
@@ -231,11 +232,11 @@ export function rateLimitHoldPhrase(holdMs: unknown, escalation: unknown): strin
  * name; the other candidate keys are shown verbatim. */
 export function describeToolCall(toolName: string, args: unknown): string {
   let detail = "";
-  if (args && typeof args === "object") {
-    const a = args as Record<string, unknown>;
-    const candidate = a.path ?? a.file_path ?? a.command ?? a.cmd ?? a.pattern ?? a.url;
+  if (isJsonObject(args)) {
+    const candidate = args.path ?? args.file_path ?? args.command ?? args.cmd ?? args.pattern ?? args.url;
     if (typeof candidate === "string") {
-      detail = candidate === a.path || candidate === a.file_path ? path.basename(candidate) : candidate;
+      detail =
+        candidate === args.path || candidate === args.file_path ? path.basename(candidate) : candidate;
     }
   }
   detail = truncate(collapseWhitespace(detail), 32);
