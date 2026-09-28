@@ -181,6 +181,33 @@ export async function startLocalGui(
   return { server, base: `http://127.0.0.1:${addr.port}`, port: addr.port };
 }
 
+// --- Counting fs.readFileSync stub (the stat-keyed-cache tests) ---
+
+/** Swap fs.readFileSync for a pass-through that counts matching reads for the duration of
+ * `body`, then restore the original — the idiom behind the stat-keyed-cache tests, which
+ * assert that a warm cache costs zero reads and a miss exactly one. `match` filters what
+ * counts (default: every read); snapshot tests use it to count one state file's reads while
+ * the reader touches many. `body` may call the live `readSoFar` getter to assert mid-body —
+ * an assertion placed after `body` would also count the reads its own calls trigger.
+ * Returns the final matching-read count. */
+export function withCountedReads(
+  body: (readSoFar: () => number) => void,
+  match: (file: unknown) => boolean = () => true,
+): number {
+  let reads = 0;
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  try {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
+      if (match(args[0])) reads += 1;
+      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
+    };
+    body(() => reads);
+  } finally {
+    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
+  }
+  return reads;
+}
+
 // --- CLI binary scaffolding (cli/cliWithEnv/spawnCli/exitCode) lives in cli-harness.ts ---
 // --- The fake pi shim (fakePi/fakePiIdle/recordingFakePi/piRunResult) lives in fake-pi.ts ---
 

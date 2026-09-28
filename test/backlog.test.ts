@@ -13,6 +13,7 @@ import {
   plannedPlans,
 } from "../src/backlog.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { withCountedReads } from "./util.js";
 
 const PLANS_MD = `# Plans
 
@@ -363,25 +364,17 @@ test("an unchanged file is served from the stat-keyed cache without re-reading",
   const root = tmpdir();
   fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
   assert.equal(plannedPlans(root).length, 2); // populates the cache
-  let reads = 0;
-  const originalReadFileSync = fs.readFileSync.bind(fs);
-  try {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
-      reads += 1;
-      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
-    };
+  withCountedReads((reads) => {
     assert.deepEqual(plannedPlans(root), [
       "Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)",
       "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)",
     ]);
-    assert.equal(reads, 0); // unchanged since the first read — no file I/O at all
+    assert.equal(reads(), 0); // unchanged since the first read — no file I/O at all
     // Each call still gets its own array: mutating one result must not poison the cache.
     const a = plannedPlans(root);
     a.push("mutated by caller");
     assert.equal(plannedPlans(root).length, 2);
-  } finally {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
-  }
+  });
 });
 
 test("repeated entry reads of an unchanged file re-parse nothing (stat-keyed cache hit)", () => {
@@ -391,26 +384,18 @@ test("repeated entry reads of an unchanged file re-parse nothing (stat-keyed cac
   const root = tmpdir();
   fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
   assert.equal(plannedPlanEntries(root).length, 2); // populates the cache
-  let reads = 0;
-  const originalReadFileSync = fs.readFileSync.bind(fs);
-  try {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
-      reads += 1;
-      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
-    };
+  withCountedReads((reads) => {
     assert.equal(plannedPlanEntries(root).length, 2);
     assert.equal(openBugEntries(root).length, 0); // a different file/section key misses once…
     fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD); // …and the write invalidates it
     assert.equal(openBugEntries(root).length, 2);
-    assert.equal(reads, 1, "only the new BUGS.md was read; PLANS.md came from cache");
+    assert.equal(reads(), 1, "only the new BUGS.md was read; PLANS.md came from cache");
     // Each call still gets its own objects: mutating one result must not poison the cache.
     const before = plannedPlanEntries(root)[0]!.body;
     const a = plannedPlanEntries(root);
     a[0]!.body = "mutated by caller";
     assert.equal(plannedPlanEntries(root)[0]!.body, before); // original body restored
-  } finally {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
-  }
+  });
 });
 
 test("a same-size edit is picked up via mtime, not just size", () => {

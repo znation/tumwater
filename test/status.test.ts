@@ -18,6 +18,7 @@ import { landingStatePath, landQueueDir, orchestratorStatePath, pausedPath } fro
 import { pauseFleet, pauseRole } from "../src/fleet-state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { withCountedReads } from "./util.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();
@@ -80,23 +81,17 @@ test("snapshot serves unchanged loop state from the stat-keyed cache without re-
   saveLoopState(repo, state);
   assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 3); // populates the cache
 
-  let cleanReads = 0;
-  const originalReadFileSync = fs.readFileSync.bind(fs);
-  try {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
-      if (typeof args[0] === "string" && args[0].endsWith(`${path.sep}state${path.sep}clean.json`))
-        cleanReads += 1;
-      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
-    };
-    const snap = snapshot(repo);
-    assert.equal(snap.loops.find((l) => l.role === "clean")!.ticks, 3); // unchanged — served from cache
-    assert.equal(cleanReads, 0); // no re-read of the state file at all
-    // Each poll still gets its own objects: mutating one snapshot must not poison later ones.
-    snap.loops.find((l) => l.role === "clean")!.ticks = 99;
-    assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 3);
-  } finally {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
-  }
+  withCountedReads(
+    (reads) => {
+      const snap = snapshot(repo);
+      assert.equal(snap.loops.find((l) => l.role === "clean")!.ticks, 3); // unchanged — served from cache
+      assert.equal(reads(), 0); // no re-read of the state file at all
+      // Each poll still gets its own objects: mutating one snapshot must not poison later ones.
+      snap.loops.find((l) => l.role === "clean")!.ticks = 99;
+      assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 3);
+    },
+    (file) => typeof file === "string" && file.endsWith(`${path.sep}state${path.sep}clean.json`),
+  );
 
   // A same-size edit is picked up via mtime, not just size: ticks 3 → 4 keeps the file's byte
   // length identical, so utimes forces a distinct mtime regardless of filesystem timestamp
@@ -121,21 +116,16 @@ test("snapshot reads the orchestrator info file once per poll", async () => {
   );
   assert.equal(snapshot(repo).running, true); // first read
 
-  let reads = 0;
-  const originalReadFileSync = fs.readFileSync.bind(fs);
-  try {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
-      if (typeof args[0] === "string" && args[0].endsWith(`${path.sep}state${path.sep}orchestrator.json`))
-        reads += 1;
-      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
-    };
-    const snap = snapshot(repo);
-    assert.equal(snap.pid, process.pid); // the info was read and used for the pid…
-    assert.equal(snap.running, true); // …and for the liveness check from that same read
-    assert.equal(reads, 1); // one read serves both — not two
-  } finally {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
-  }
+  const reads = withCountedReads(
+    () => {
+      const snap = snapshot(repo);
+      assert.equal(snap.pid, process.pid); // the info was read and used for the pid…
+      assert.equal(snap.running, true); // …and for the liveness check from that same read
+    },
+    (file) =>
+      typeof file === "string" && file.endsWith(`${path.sep}state${path.sep}orchestrator.json`),
+  );
+  assert.equal(reads, 1); // one read serves both — not two
 });
 
 test("snapshot carries the daily cost budget aggregated from persisted loop state", async () => {

@@ -28,6 +28,7 @@ import { exampleConfigPath } from "../src/paths.js";
 import { show, validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
+import { withCountedReads } from "./util.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 
 test("defaultConfig enables every role including director", () => {
@@ -604,15 +605,9 @@ test("an unchanged tumwater.json is served from the stat-keyed cache without re-
   const dir = tmpdir();
   writeConfig(dir, { model: "sonnet" });
   assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // populates the cache
-  let reads = 0;
-  const originalReadFileSync = fs.readFileSync.bind(fs);
-  try {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
-      reads += 1;
-      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
-    };
+  withCountedReads((reads) => {
     assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // unchanged — no file I/O at all
-    assert.equal(reads, 0);
+    assert.equal(reads(), 0);
     // Each call still gets its own config: mutating one result must not poison the cache.
     const cfg = loadConfigCached(dir).config!;
     cfg.maxConcurrent = 99;
@@ -620,9 +615,7 @@ test("an unchanged tumwater.json is served from the stat-keyed cache without re-
     cfg.roles.plan.enabled = false;
     assert.equal(loadConfigCached(dir).config?.maxConcurrent, defaultConfig().maxConcurrent);
     assert.equal(loadConfigCached(dir).config?.roles.plan?.enabled, true);
-  } finally {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
-  }
+  });
 });
 
 test("a same-size tumwater.json edit is picked up via mtime, not just size", () => {
@@ -645,23 +638,15 @@ test("a broken tumwater.json is not cached: every poll retries and a repair reco
   writeConfig(dir, { model: "sonnet" });
   assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // healthy baseline is cached
   fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
-  let reads = 0;
-  const originalReadFileSync = fs.readFileSync.bind(fs);
-  try {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
-      reads += 1;
-      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
-    };
+  const reads = withCountedReads(() => {
     const broken = loadConfigCached(dir);
     assert.equal(broken.config, undefined);
     assert.match(broken.error ?? "", /not valid JSON/);
     // Still torn on the next poll: retried with a fresh read (nothing was cached), so a
     // repair is picked up immediately — a cached error would wedge last-known-good forever.
     assert.match(loadConfigCached(dir).error ?? "", /not valid JSON/);
-    assert.equal(reads, 2);
-  } finally {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
-  }
+  });
+  assert.equal(reads, 2);
   writeConfig(dir, { model: "haiku" });
   assert.equal(loadConfigCached(dir).config?.model, "haiku"); // repaired — fresh load
 });
