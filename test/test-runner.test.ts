@@ -5,7 +5,8 @@ import { test } from "node:test";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { orderByDuration, selectTestFiles, suiteGitEnv } from "../src/test-runner.js";
+import { SUPERVISED_ENV } from "../src/supervisor.js";
+import { orderByDuration, selectTestFiles, suiteEnv, suiteGitEnv } from "../src/test-runner.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
@@ -113,6 +114,34 @@ test("suiteGitEnv appends maintenance.auto=false after any env-injected git conf
 
   // An unparsable count is treated as none rather than propagated.
   assert.equal(suiteGitEnv({ GIT_CONFIG_COUNT: "junk" }).GIT_CONFIG_COUNT, "1");
+});
+
+test("suiteEnv drops the harness's own variables, so an operator's TUMWATER_PI_BIN cannot displace the suite's fake pis", () => {
+  // BUGS.md 2026-09-28: resolveAgentBin prefers TUMWATER_PI_BIN to PATH, and a fleet's build
+  // checks and pi tool calls inherit the operator's export, so every fake-pi test spawned the
+  // binary it named instead of the shim the test had put on PATH.
+  const base: NodeJS.ProcessEnv = {
+    PATH: "/no/such/dir", // no git on it, so the macOS shim workaround leaves PATH alone
+    TUMWATER_PI_BIN: "/opt/pi-wrapper/pi",
+    [SUPERVISED_ENV]: "1",
+    NODE_OPTIONS: "--max-old-space-size=4096",
+    HOME: "/home/operator",
+  };
+  const scratch = tmpdir("suite-env-");
+  const env = suiteEnv(scratch, base);
+  assert.equal("TUMWATER_PI_BIN" in env, false, "resolveAgentBin must fall through to the fakes on PATH");
+  assert.equal(SUPERVISED_ENV in env, false, "a CLI child's `run` must take its supervisor half");
+
+  // Everything else rides through, NODE_OPTIONS included (it carries the harness's LaunchServices
+  // preload and the operator's own flags), alongside what the suite adds for git.
+  assert.equal(env.NODE_OPTIONS, "--max-old-space-size=4096");
+  assert.equal(env.HOME, "/home/operator");
+  assert.equal(env.PATH, "/no/such/dir");
+  assert.equal(env.GIT_TEMPLATE_DIR, path.join(scratch, "git-templates"));
+  assert.equal(env.GIT_CONFIG_KEY_0, "maintenance.auto");
+  // main() hands in process.env itself, so the result is a copy.
+  assert.equal(base.TUMWATER_PI_BIN, "/opt/pi-wrapper/pi");
+  assert.equal(base[SUPERVISED_ENV], "1");
 });
 
 /** The compiled entry point, as a developer's `npm test <filter>` spawns it. */

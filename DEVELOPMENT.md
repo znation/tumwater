@@ -7,9 +7,12 @@ npm test merge                             # only test files whose name contains
 npm run test:e2e                           # live-orchestrator e2e tier, kept out of the gate
 ```
 
-Tests fake pi with a shell shim on PATH, so they run offline. The e2e tier stays out of the gating
-suite because its wall-clock waits are not load-proof. Non-npm projects can replace the gate's
-check with `check.command` in tumwater.json (`command`, optional `cwd` and `timeoutSeconds`).
+Tests fake pi with a shell shim on PATH, so they run offline. `src/test-runner.ts` keeps the
+harness's own variables out of the suite (`TUMWATER_PI_BIN`, which outranks PATH, and the
+supervisor's marker), so a suite a fleet starts sees the same fakes as one run by hand. Drop any
+new variable the harness honors there too. The e2e tier stays out of the gating suite because its
+wall-clock waits are not load-proof. Non-npm projects can replace the gate's check with
+`check.command` in tumwater.json (`command`, optional `cwd` and `timeoutSeconds`).
 
 ## Keeping the suite fast
 

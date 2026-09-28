@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
+import { SUPERVISED_ENV } from "./supervisor.js";
 
 /** Run the compiled unit tests with node:test — the target of package.json's `test` script.
  * With no arguments it runs every dist/test/*.test.js EXCEPT the `*.e2e.test.js` tier — the
@@ -17,8 +18,8 @@ import { readJsonFile, writeJsonAtomic } from "./json-files.js";
  * `npm run test:e2e` deliberately brings the tier back. A filter that matches nothing is an
  * error listing what exists, and node --test's exit code always propagates, so both humans and
  * the gate can rely on it. Files start longest-first by the durations earlier runs recorded
- * (orderByDuration), and the run gets a git-cheap environment (suiteEnv). The selection and
- * ordering logic is pure and exported (selectTestFiles, orderByDuration) so
+ * (orderByDuration), and the run gets a hermetic, git-cheap environment (suiteEnv). The
+ * selection and ordering logic is pure and exported (selectTestFiles, orderByDuration) so
  * test/test-runner.test.ts pins its rules without spawning anything; the spawn lives in main()
  * behind an import guard, because this module is imported by that very test file and a
  * top-level run would recurse into node --test. */
@@ -150,15 +151,31 @@ function whichOnPath(name: string, pathVar: string): string | undefined {
   return undefined;
 }
 
-/** Build the suite's environment in `scratch` (a directory the caller removes after the run):
- * suiteGitEnv's config, an empty GIT_TEMPLATE_DIR (every `git init` otherwise copies the
- * sample hooks), and on macOS a way around the xcode-select shim. /usr/bin/git there is a
- * stub that re-resolves the developer directory on every call before exec'ing the real git —
- * ~10 ms extra per spawn, roughly tripling what each git call costs. When the first git on
- * PATH is that stub, a symlink to the real binary (`xcrun --find git`, the same file the stub
- * would exec) goes first on PATH instead. Any other git — Linux, Homebrew — is left alone. */
-function suiteEnv(scratch: string): NodeJS.ProcessEnv {
-  const env = suiteGitEnv(process.env);
+/** Build the suite's environment from `base` in `scratch` (a directory the caller removes after
+ * the run): `base` without the harness's own variables (below), suiteGitEnv's config, an empty
+ * GIT_TEMPLATE_DIR (every `git init` otherwise copies the sample hooks), and on macOS a way
+ * around the xcode-select shim. /usr/bin/git there is a stub that re-resolves the developer
+ * directory on every call before exec'ing the real git — ~10 ms extra per spawn, roughly
+ * tripling what each git call costs. When the first git on PATH is that stub, a symlink to the
+ * real binary (`xcrun --find git`, the same file the stub would exec) goes first on PATH
+ * instead. Any other git — Linux, Homebrew — is left alone.
+ *
+ * The harness's variables: a fleet's build checks and pi tool calls run with the harness's own
+ * environment, so a suite they start inherits what the operator exported and the supervisor
+ * set, while a suite run by hand does not. Two of those change what the tests exercise:
+ * - TUMWATER_PI_BIN outranks PATH in resolveAgentBin, so an operator's override (a wrapper
+ *   around the real pi, plans/portability.md) displaced every fake pi the suite puts on PATH:
+ *   the fake-pi tests ran the agent it named (BUGS.md 2026-09-28). Tests of the variable set it
+ *   themselves; test/fake-pi.ts drops it too, for a file run directly with `node --test`.
+ * - SUPERVISED_ENV marks the orchestrator child, so a `tumwater run` that inherits it skips its
+ *   supervisor half. test/cli-harness.ts also drops it from every CLI child it starts.
+ * NODE_OPTIONS is kept: the LaunchServices preload the harness adds there only changes where
+ * process.title is stored (the suite's assertions about it hold either way), and it carries the
+ * operator's own Node flags. */
+export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env = suiteGitEnv(base);
+  delete env.TUMWATER_PI_BIN;
+  delete env[SUPERVISED_ENV];
   const templates = path.join(scratch, "git-templates");
   fs.mkdirSync(templates);
   env.GIT_TEMPLATE_DIR = templates;
