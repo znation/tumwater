@@ -24,7 +24,7 @@ import {
   handleWake,
 } from "./gui-endpoints.js";
 import { sendJson } from "./http-body.js";
-import { fail, parsePortFlag, say } from "../cli-args.js";
+import { fail, flagValue, parsePortFlag, say } from "../cli-args.js";
 
 /** Constant-time credential comparison for the shared-token gate: `timingSafeEqual` throws
  * on unequal lengths, so the length equality is the guard. A naive `===` string compare
@@ -63,8 +63,8 @@ export function lanAddresses(
  * drift from the server it drives. Flag-vocabulary rejection stays in cli.ts with the other
  * cases; everything gui-specific after that gate is this function's job. */
 export async function cmdGui(root: string, args: string[]): Promise<void> {
-  const portFlag = args.indexOf("--port");
-  const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
+  const portRaw = flagValue(args, "--port");
+  const port = portRaw !== null ? parsePortFlag(portRaw) : 7180;
   const allInterfaces = args.includes("--all-interfaces");
   // A valueless or empty --token is a CLI error, not an open server: an operator who
   // asked for protection must never silently get none. A flag-looking value is the
@@ -72,10 +72,10 @@ export async function cmdGui(root: string, args: string[]): Promise<void> {
   // known flag, so `--token --all-interfaces` would serve with the literal secret
   // "--all-interfaces" (--all-interfaces still takes effect, since it is read straight
   // from args) while the real secret sits unreached after another flag.
-  const tokenFlag = args.indexOf("--token");
-  const token = tokenFlag >= 0 ? (args[tokenFlag + 1] ?? "") : "";
-  if (tokenFlag >= 0 && !token) fail("--token requires a non-empty secret (e.g. `--token s3cret`)");
-  if (tokenFlag >= 0 && token.startsWith("--"))
+  const tokenRaw = flagValue(args, "--token");
+  const token = tokenRaw ?? "";
+  if (tokenRaw !== null && !token) fail("--token requires a non-empty secret (e.g. `--token s3cret`)");
+  if (tokenRaw !== null && token.startsWith("--"))
     fail(
       `--token got the flag-looking value "${token}" instead of a secret — write the secret as its own argument (e.g. \`tumwater gui --token s3cret --all-interfaces\`)`,
     );

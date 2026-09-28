@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   durationLabel,
+  flagValue,
   parseBranchFlag,
   parseCountFlag,
   parseDurationFlag,
@@ -89,6 +90,22 @@ test("parseCountFlag accepts positive integers and rejects everything else", () 
     assert.equal(r.code, 1);
     assert.match(r.stderr, /-n needs a positive integer \(got .+\)/);
   }
+});
+
+// --- flagValue ---
+
+/** The tri-state the valued-flag sites rely on: null means the flag is absent (the caller
+ * applies its default), undefined means the flag is present but last (the parse helpers
+ * fail with their `needs a value` messages), and a string — including the empty string —
+ * is the value token the parse helpers validate. */
+test("flagValue distinguishes absent, trailing, and present flags", () => {
+  assert.equal(flagValue(["run", "--role", "feature"], "--role"), "feature");
+  assert.equal(flagValue(["run", "--role"], "--role"), undefined);
+  assert.equal(flagValue(["run", "--token", ""], "--token"), "");
+  assert.equal(flagValue(["run", "--once"], "--role"), null);
+  assert.equal(flagValue([], "--role"), null);
+  // Only the first occurrence wins, matching the indexOf the call sites replaced.
+  assert.equal(flagValue(["--role", "a", "--role", "b"], "--role"), "a");
 });
 
 // --- parsePortFlag ---

@@ -27,6 +27,19 @@ export function fail(message: string): never {
   process.exit(1);
 }
 
+/** The raw value token that follows a valued flag in `args`: null when the flag is absent,
+ * the following token when present (undefined when the flag is the final argument, so the
+ * parse helpers fail with their `needs a value` messages rather than the caller silently
+ * applying its default). The one place for the indexOf/args[i+1] pairing every value-flag
+ * site repeated by hand, so the pairing's edge cases — a trailing valued flag, an
+ * empty-string value — are decided in exactly one spot. Callers that also need the flag's
+ * index (to claim the pair against stray arguments) keep their own indexOf, which the
+ * parseInitArgs/parsePromptArgs claim bookkeeping does. */
+export function flagValue(args: string[], flag: string): string | null | undefined {
+  const i = args.indexOf(flag);
+  return i < 0 ? null : args[i + 1];
+}
+
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
  * Unvalidated, NaN/0/negative limits make readEvents' `slice(-limit)` dump the whole log
  * (or drop leading lines) instead of showing the requested tail. */
@@ -109,9 +122,8 @@ export function failOverDurationCap(flag: string, ms: number, maxMs: number, hin
  * catalog alone, which keeps in-process callers (and tests) that have no config working.
  */
 export function parseRoleFlag(args: string[], validIds?: string[]): string | null {
-  const i = args.indexOf("--role");
-  if (i < 0) return null;
-  const role = args[i + 1];
+  const role = flagValue(args, "--role");
+  if (role === null) return null;
   if (!role) fail("--role needs a role id (e.g. `--role feature`)");
   const ids = validIds ?? allRoleIds();
   if (!ids.includes(role)) fail(`unknown role: ${role} (valid ids: ${ids.join(", ")})`);
@@ -122,9 +134,8 @@ export function parseRoleFlag(args: string[], validIds?: string[]): string | nul
  * shape as parseRoleFlag, so every command that scopes to one branch validates identically.
  * A missing value fails fast instead of silently falling back to the checked-out branch. */
 export function parseBranchFlag(args: string[]): string | null {
-  const i = args.indexOf("--branch");
-  if (i < 0) return null;
-  const branch = args[i + 1];
+  const branch = flagValue(args, "--branch");
+  if (branch === null) return null;
   if (!branch || branch.startsWith("-"))
     fail("--branch needs a branch name (e.g. `--branch release/2.0`)");
   return branch;

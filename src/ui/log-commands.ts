@@ -1,4 +1,4 @@
-import { durationLabel, fail, failOverDurationCap, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
 import { dayKey } from "../datetime.js";
 import { LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
 import { parseEventLine, readEvents } from "../events.js";
@@ -29,15 +29,15 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // Rival shapes stay exclusive — --role swaps in a pi transcript rather than this event log
   // (--prompt requires --role, so it is excluded with it), and --since is a filter of its own
   // rather than a window to filter — and each failure names both flags.
-  const grepFlag = args.indexOf("--grep");
+  const grepRaw = flagValue(args, "--grep");
   let grepPattern: string | null = null;
   let grepLower: string | null = null;
-  if (grepFlag >= 0) {
+  if (grepRaw !== null) {
     if (args.includes("--role") || args.includes("--prompt"))
       fail("logs --grep cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
     if (args.includes("--since"))
       fail("logs --grep cannot be combined with --since (--since is a filter of its own; --grep filters the -n view and its follow)");
-    const pattern = args[grepFlag + 1];
+    const pattern = grepRaw;
     if (pattern === undefined || pattern === "") fail("logs --grep needs a pattern");
     grepPattern = pattern;
     grepLower = pattern.toLowerCase();
@@ -48,14 +48,14 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // guessing a count. Rival shapes stay exclusive — follow means "from now on", -n means "last
   // N", and --role swaps in a pi transcript rather than this event log — and each failure names
   // both flags. (--prompt requires --role, so it is excluded with it.)
-  const sinceFlag = args.indexOf("--since");
-  if (sinceFlag >= 0) {
+  const sinceRaw = flagValue(args, "--since");
+  if (sinceRaw !== null) {
     if (follow)
       fail('logs --since cannot be combined with -f/--follow (follow means "from now on"; --since shows a bounded past window)');
     if (args.includes("-n")) fail("logs --since cannot be combined with -n (a count and a window are rival shapes)");
     if (args.includes("--role") || args.includes("--prompt"))
       fail("logs --since cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
-    const ms = parseDurationFlag("--since", args[sinceFlag + 1]);
+    const ms = parseDurationFlag("--since", sinceRaw);
     failOverDurationCap("logs --since", ms, LOGS_SINCE_MAX_MS);
     // The window key is the cutoff's local calendar day, from the shared dayKey helper
     // eventDayKey buckets events with, so the read's day keys cannot disagree with the ts
@@ -87,8 +87,8 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       say("note: the log's oldest retained event lies inside this window; older events may have rotated out");
     return;
   }
-  const nFlag = args.indexOf("-n");
-  const limit = nFlag >= 0 ? parseCountFlag("-n", args[nFlag + 1]) : 50;
+  const nRaw = flagValue(args, "-n");
+  const limit = nRaw !== null ? parseCountFlag("-n", nRaw) : 50;
   // The event feed (no --role) never needs the config at all: parseRoleScope reads it only
   // when the flag is present.
   const role = parseRoleScope(root, args);

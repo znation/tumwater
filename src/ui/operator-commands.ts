@@ -1,5 +1,5 @@
 import { knownRoleIds, loadConfig, loadConfigCached, loadConfigSafe } from "../config.js";
-import { durationLabel, fail, failOverDurationCap, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "../cli-args.js";
 import {
   type CancelOutcome,
   cancelRolePrompt,
@@ -70,9 +70,8 @@ const NO_HARNESS_ERROR = "no harness is running — start it with `tumwater run`
  * (the config problem, or "unknown role" naming every valid id). Returns null when no
  * --role is given. */
 function namedRole(root: string, args: string[]): string | null {
-  const i = args.indexOf("--role");
-  if (i < 0) return null;
-  const role = args[i + 1];
+  const role = flagValue(args, "--role");
+  if (role === null) return null;
   if (role && allRoleIds().includes(role)) return role;
   try {
     return parseRoleFlag(args, knownRoleIds(loadConfig(root)));
@@ -240,8 +239,8 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
   // into the marker and every consumer honors — the gate in cli.ts has already restricted
   // the flag to this command, so its value is parsed (and fails fast) here, beside the
   // writers it feeds.
-  const forIndex = args.indexOf("--for");
-  const forMs = forIndex >= 0 ? parseDurationFlag("--for", args[forIndex + 1]) : undefined;
+  const forRaw = flagValue(args, "--for");
+  const forMs = forRaw !== null ? parseDurationFlag("--for", forRaw) : undefined;
   // Fail fast beside the parse, before any marker is written: an over-cap deadline is a
   // standing pause in disguise, and the message names the command that is one (the same
   // capped-flag idiom the --since windows in cli.ts use).

@@ -1,4 +1,4 @@
-import { fail, parseCountFlag, parseRoleScope, say } from "../cli-args.js";
+import { fail, flagValue, parseCountFlag, parseRoleScope, say } from "../cli-args.js";
 import { readEvents } from "../events.js";
 import { formatTimestamp } from "../datetime.js";
 import { collapseWhitespace, displayWidth, padToWidth, shortSpanPhrase, truncate } from "../text.js";
@@ -138,10 +138,10 @@ function renderRow(row: TickRow, widths: { loop: number; tick: number; result: n
  * Read-only: stdout only, no state file created — a missing or empty event log prints
  * `no ticks yet` and exits 0. */
 export async function cmdHistory(root: string, args: string[]): Promise<void> {
-  const nFlag = args.indexOf("-n");
-  const limit = nFlag >= 0 ? parseCountFlag("-n", args[nFlag + 1]) : HISTORY_DEFAULT_TICKS;
+  const nRaw = flagValue(args, "-n");
+  const limit = nRaw !== null ? parseCountFlag("-n", nRaw) : HISTORY_DEFAULT_TICKS;
   if (limit > HISTORY_MAX_TICKS)
-    fail(`-n must be between 1 and ${HISTORY_MAX_TICKS} (got ${JSON.stringify(args[nFlag + 1])})`);
+    fail(`-n must be between 1 and ${HISTORY_MAX_TICKS} (got ${JSON.stringify(nRaw)})`);
   // The config is read (through loadConfigCached, never throwing) only when --role is present:
   // a read-only view must not refuse a transiently broken tumwater.json.
   const role = parseRoleScope(root, args);

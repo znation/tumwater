@@ -8,7 +8,7 @@ import { renderFailureMarkdown } from "../failure-report.js";
 import { compactTokens, usd } from "../text.js";
 import { reportWindow } from "../datetime.js";
 import { eventsRotationLabel } from "../events.js";
-import { durationLabel, fail, failOverDurationCap, parseCountFlag, parseDurationFlag, say } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, say } from "../cli-args.js";
 
 // The windowed tail read (and the REPORT_*_DAYS bounds it serves) moved to core
 // event-window.ts so the failure digest can share it without a core→ui import. Re-exported
@@ -125,13 +125,13 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     fail("report --failures cannot be combined with --json (the failure digest is a clustered narrative with no agreed JSON shape; a machine-readable form is a separate plan if ever wanted)");
   // --since is handled before the day-shape reads: it is a rival shape (totals over a
   // trailing window vs a series over whole days), not a modifier of either.
-  const sinceFlag = args.indexOf("--since");
-  if (sinceFlag >= 0) {
+  const sinceRaw = flagValue(args, "--since");
+  if (sinceRaw !== null) {
     if (args.includes("--days"))
       fail("report --since cannot be combined with --days (--days counts whole local days; --since totals a trailing window)");
     if (args.includes("--failures"))
       fail("report --since cannot be combined with --failures (the failure digest has no windowed-since mode)");
-    const ms = parseDurationFlag("--since", args[sinceFlag + 1]);
+    const ms = parseDurationFlag("--since", sinceRaw);
     // The shared over-cap check (the same idiom logs --since and pause --for use), so the
     // cap message cannot drift from the other capped duration flags.
     failOverDurationCap("report --since", ms, REPORT_SINCE_MAX_MS);
@@ -141,16 +141,16 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     say(args.includes("--json") ? JSON.stringify(since, null, 2) : renderSinceReportMarkdown(since));
     return;
   }
-  const daysFlag = args.indexOf("--days");
+  const daysRaw = flagValue(args, "--days");
   let days = REPORT_DEFAULT_DAYS;
-  if (daysFlag >= 0) {
-    days = parseCountFlag("--days", args[daysFlag + 1]);
+  if (daysRaw !== null) {
+    days = parseCountFlag("--days", daysRaw);
     // /api/report clamps its ?days= param to the same bound; an explicit flag fails fast
     // instead — a typo'd "3650" must not build a ten-year series (one entry per day), and
     // a huge value would grow it until the process runs out of memory. parseCountFlag has
     // already rejected 0, non-decimals, and a missing value.
     if (days > REPORT_MAX_DAYS)
-      fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(args[daysFlag + 1])})`);
+      fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(daysRaw)})`);
   }
   if (args.includes("--json")) {
     say(JSON.stringify(collectReport(root, days), null, 2));
