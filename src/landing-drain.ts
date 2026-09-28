@@ -3,7 +3,7 @@ import path from "node:path";
 import type { TumwaterConfig } from "./config-schema.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { LoopRunner } from "./loop.js";
-import { deleteRef, isMergedInto } from "./git.js";
+import { branchHead, deleteRef, isMergedInto } from "./git.js";
 import { landVetted, vetRequest, type BatchRoleWiring, type VetVerdict } from "./landing-batch.js";
 import {
   addLandingChange,
@@ -274,12 +274,44 @@ export function vetLimit(maxConcurrent: number): number {
  * already holds (a crash between the fast-forward and the drop) is dropped without a run, with
  * its marker record; a crash mid-vet leaves both entry and ref, so the entry is vetted again —
  * the established crash semantics. */
+/** Already-merged verdicts cached per (root, sha) against the main head they were computed
+ * against. drainVetting re-runs its dedupe against main every poll, but a queued entry's sha is
+ * fixed and merge-base --is-ancestor against the same head always returns the same answer — the
+ * verdict can only change when main itself moves (a landing's fast-forward). Serving the verdict
+ * from this cache makes a poll whose queue is waiting on busy authors or the merge slot cost one
+ * branchHead ref-file read instead of one git spawn per entry, and a moved main recomputes each
+ * entry's verdict once (the new head misses the cache). Bounded: verdicts computed against an
+ * older head are stale falses no future poll can reuse, so they are the first pruned. */
+const mergedIntoMainCache = new Map<string, { head: string; merged: boolean }>();
+const MERGED_INTO_MAIN_CACHE_MAX = 128;
+
+/** The cached dedupe verdict for `sha` against main at `head`, computing it through
+ * isMergedInto on a cache miss. `head` is the caller's already-resolved main head ("" when main
+ * does not exist yet — isMergedInto then fails and reads false, a verdict worth caching like any
+ * other since the key matches). */
+async function mergedIntoMain(root: string, sha: string, mainBranch: string, head: string): Promise<boolean> {
+  const key = `${root}\u0000${sha}`;
+  const hit = mergedIntoMainCache.get(key);
+  if (hit && hit.head === head) return hit.merged;
+  const merged = await isMergedInto(root, sha, mainBranch);
+  if (mergedIntoMainCache.size >= MERGED_INTO_MAIN_CACHE_MAX && !mergedIntoMainCache.has(key)) {
+    for (const [k, v] of mergedIntoMainCache) if (v.head !== head) mergedIntoMainCache.delete(k);
+    if (mergedIntoMainCache.size >= MERGED_INTO_MAIN_CACHE_MAX) mergedIntoMainCache.clear();
+  }
+  mergedIntoMainCache.set(key, { head, merged });
+  return merged;
+}
+
 async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeline): Promise<void> {
   dropTornHead(ctx.root);
-  for (const { entry, file } of queuedLandingFiles(ctx.root)) {
+  const queue = queuedLandingFiles(ctx.root);
+  // One main-head read per poll with a non-empty queue (branchHead's ref-file fast path — no
+  // spawn), serving every entry's cached dedupe verdict below.
+  const mainHead = queue.length === 0 ? "" : ((await branchHead(ctx.root, ctx.mainBranch)) ?? "");
+  for (const { entry, file } of queue) {
     if (p.vetting.size >= vetLimit(ctx.semaphore.limit)) return;
     if (liveRoles(p).has(entry.role)) continue;
-    if (await isMergedInto(ctx.root, entry.sha, ctx.mainBranch)) {
+    if (await mergedIntoMain(ctx.root, entry.sha, ctx.mainBranch, mainHead)) {
       dropLanding(file);
       removeLandingChange(ctx.root, entry.role);
       continue;
