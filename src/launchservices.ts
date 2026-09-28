@@ -8,7 +8,7 @@
  * hand, an older build, another tool. This module says so where an operator looks, days ahead.
  * Dependency direction: doctor and orchestrator → launchservices → process (the probe). */
 
-import type { CheckOutcome } from "./doctor.js";
+import type { CheckOutcome } from "./doctor-report.js";
 import { warnEvent } from "./events.js";
 import { type ProcessProbe, systemProcessProbe } from "./process.js";
 import { compactTokens } from "./text.js";

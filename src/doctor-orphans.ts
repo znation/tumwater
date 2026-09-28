@@ -3,7 +3,7 @@ import path from "node:path";
 import { worktreesDir } from "./paths.js";
 import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "./process.js";
 import { errorMessage, truncate } from "./text.js";
-import type { CheckOutcome } from "./doctor.js";
+import type { CheckOutcome } from "./doctor-report.js";
 
 /** The orphan-process check of `tumwater doctor`, split out of doctor.ts: it is the one
  * doctor check that inspects the operating system's process table (argv, cwd, parent-child

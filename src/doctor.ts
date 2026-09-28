@@ -40,6 +40,7 @@ import { checkOrphans } from "./doctor-orphans.js";
 import { checkLaunchServicesPorts } from "./launchservices.js";
 import { errorMessage, shortSha, truncate } from "./text.js";
 import { formatTime } from "./datetime.js";
+import { type CheckOutcome, type DoctorReport } from "./doctor-report.js";
 import type { FallbackDemotion } from "./budget.js";
 import { briefFile } from "./readme.js";
 import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "./fix-claim.js";
@@ -55,21 +56,6 @@ import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHays
  * without a running harness) and none runs the project's build/test: that can take minutes and
  * belongs in the review gate / red-main check, not a pre-flight. */
 
-/** One line of the doctor report: a check's verdict plus what it found. "ok" and "warn" never
- * affect the exit code; only "fail" does (the CLI sets process.exitCode = 1 on any fail). The
- * orphan check lives in doctor-orphans.ts and returns this shape too. */
-export interface CheckOutcome {
-  level: "ok" | "warn" | "fail";
-  detail: string;
-}
-
-/** The full pre-flight report: a header carrying harness state, one entry per check in fixed
- * order, and the verdict line. */
-interface DoctorReport {
-  header: string;
-  checks: Array<{ name: string } & CheckOutcome>;
-  verdict: string;
-}
 
 /** The Node.js major version this harness supports — the floor declared in package.json's
  * `engines` (">=20"). The build targets ES2023 and the code deliberately stays off Node
@@ -481,11 +467,4 @@ export async function runDoctor(
   return { header, checks, verdict: problems === 0 ? "ready to run" : `${problems} problem${problems > 1 ? "s" : ""}` };
 }
 
-/** Render the report: a header line, one line per check (level, name, detail), and the
- * verdict. Warnings never affect the exit code — only fails do. */
-export function renderDoctor(report: DoctorReport): string {
-  const lines = [report.header];
-  for (const c of report.checks) lines.push(`${c.level.padEnd(5)} ${c.name.padEnd(12)} ${c.detail}`);
-  lines.push(report.verdict);
-  return lines.join("\n");
-}
+

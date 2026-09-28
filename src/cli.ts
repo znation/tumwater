@@ -23,7 +23,8 @@ import {
   queuedRolePrompts,
   submitRolePrompt,
 } from "./inbox.js";
-import { renderDoctor, runDoctor } from "./doctor.js";
+import { runDoctor } from "./doctor.js";
+import { renderDoctor } from "./doctor-report.js";
 import { renderBacklogMarkdown } from "./ui/backlog-report.js";
 import { cmdHistory } from "./ui/history.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, renderReportMarkdown } from "./ui/report.js";

@@ -15,9 +15,9 @@ import {
   checkAgentBinary,
   checkRepo,
   checkStateDir,
-  renderDoctor,
   runDoctor,
 } from "../src/doctor.js";
+import { renderDoctor } from "../src/doctor-report.js";
 import { checkOrphans } from "../src/doctor-orphans.js";
 import { GIT_MISSING_MESSAGE } from "../src/git.js";
 import type { ProcessProbe, ProcessRow } from "../src/process.js";
