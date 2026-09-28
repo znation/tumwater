@@ -162,7 +162,7 @@ export function requestAbort(root: string, role: string): { ok: true; message: s
 /** The parsed `--for <duration>` of one pause command: the duration as typed (ms, for the
  * "for 30m" phrase) and the marker deadline it produced (ms epoch, for the resume-time
  * phrase). Kept together so the confirmation cannot phrase one without the other. */
-export interface TimedPause {
+interface TimedPause {
   ms: number;
   untilMs: number;
 }
