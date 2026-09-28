@@ -113,6 +113,27 @@ test("isNegatedRefusal negates none and n/a with a punctuation-separated explana
   assert.ok(!isNegatedRefusal("none of the attempted fixes work; repro attached"), "a word after the token starts the reason, punctuation or not");
 });
 
+// BUGS.md 2026-09-28: a quoted negation (`"none"`, `none "nothing to do"`) left isNegatedRefusal
+// false — straight quotes are decoration around the token or the opening mark of an appended
+// note (punctuation, which cannot begin a reason word), but neither the wrapping strip beside
+// the brackets nor the appended-note separator class recognized them, so a work-completed reply
+// ending that way was a "genuine" refusal whose tested work the harness hard-reset, the same
+// destruction the previous fixes in this guard closed.
+test("isNegatedRefusal negates none and n/a under quoting", () => {
+  for (const reason of [
+    '"none"',
+    "'n/a'",
+    '"None."',
+    '"(**none**)"',
+    'none "nothing to do"',
+    "n/a 'no open bugs'",
+    'none "no entry refused this run".',
+  ])
+    assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
+  assert.ok(!isNegatedRefusal('"user data would be deleted"'), "a real reason under quotes stays a refusal");
+  assert.ok(!isNegatedRefusal('none of the attempted fixes work "per the log"'), "a word after the token starts the reason, quoted or not");
+});
+
 test("isNegatedRefusal keeps a real reason a refusal", () => {
   for (const reason of [
     "it would delete user data",
