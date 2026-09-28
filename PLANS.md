@@ -81,17 +81,23 @@ countdown where the pause is already visible.
    line (the `tumwater · …` push, after `budgetBadge`), reusing the render's existing one-clock
    `now`. `tumwater status` and the TUI's status pane both go through `renderStatus`
    (src/ui/tui.ts imports it), so they pick the badge up unchanged.
-3. **src/ui/gui-client.ts** — the `pausewrap` badge (the `d.paused ? " · paused — resume" …`
-   branch): the badge keeps its existing `d.paused` gate and, when the payload's `pausedUntil`
-   stands on top of it, renders ` · paused — auto-resumes in 12m — resume` as the link text
-   (recomputed on each 1 s poll, like the rest of the badge); a pause without a deadline keeps
-   today's wording. The link keeps its resume behavior either way — lifting early stays one
-   click. No endpoint or payload change: the parent plan already puts `pausedUntil` on the
-   payload for exactly this consumer, and `pausedUntil` standing implies `d.paused` (the
-   snapshot omits the field unless the fleet marker stands unexpired).
+3. **src/ui/gui-client-operator.ts** — `renderPauseBadge`, the header's fleet pause/resume
+   control (it renders into the `#pausewrap` element the `d.paused ? " · paused — resume" :
+   " · pause"` branch; gui-client.ts only calls the function, the client JS template lives in
+   gui-client-operator.ts — edit there): the badge keeps its existing `d.paused` gate and, when
+   the payload's `pausedUntil` stands on top of it, renders ` · paused — auto-resumes in 12m —
+   resume` as the link text (recomputed on each 1 s poll, like the rest of the badge — that is
+   why the countdown is client-side rather than a preformatted payload badge: the ticking
+   number must re-render between polls); a pause without a deadline keeps today's wording. The
+   link keeps its resume behavior either way — lifting early stays one click. No endpoint or
+   payload change: `pausedUntil` is already on the payload (src/ui/status-payload.ts, dropped
+   from the JSON when undefined, with a comment reserving it for exactly this consumer), and
+   `pausedUntil` standing implies `d.paused` (the snapshot omits the field unless the fleet
+   marker stands unexpired).
 
-**Files touched:** src/ui/status-model.ts, src/ui/status-render.ts, src/ui/gui-client.ts;
-tests in test/status-model.test.ts, test/status-render.test.ts, test/gui.test.ts (the badge is
+**Files touched:** src/ui/status-model.ts, src/ui/status-render.ts, src/ui/gui-client-operator.ts;
+tests in test/status-model.test.ts, test/status-render.test.ts, test/gui-operator.test.ts (the
+pause badge and its POST toggle are already covered there — extend those cases; the badge is
 client-side rendering over the payload the parent plan already pins).
 
 **Acceptance criteria.** (a) `pauseBadge` reads empty for an absent or past `pausedUntil` and
