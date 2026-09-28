@@ -29,6 +29,7 @@ import {
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
   agentBinSourceLabel,
+  findAgentBinary,
   piMissingMessage,
 } from "./readiness.js";
 import { resolveAgentBin } from "./pi.js";
@@ -79,26 +80,14 @@ export function checkNodeVersion(version: string = process.versions.node): Check
   };
 }
 
-/** Resolve a required binary on PATH: its absolute path when found, else `missing` at fail
- * level — the shared shape of the git and pi checks below, so both resolve and report
- * identically. `describeFound` optionally rewords the ok detail (the agent-binary check
- * names where a non-default value came from); git passes none and keeps today's text. */
-function checkBinary(
-  name: string,
-  missing: string,
-  pathEnv: string,
-  describeFound?: (found: string) => string,
-): CheckOutcome {
-  const found = findOnPath(name, pathEnv);
-  if (!found) return { level: "fail", detail: missing };
-  return { level: "ok", detail: describeFound ? describeFound(found) : found };
-}
-
 /** git binary — fail with the shared GIT_MISSING_MESSAGE so every entry point reports the
  * same fix for a machine without git installed. Takes an explicit PATH so tests can exercise
- * the missing branch by passing "" (no PATH mutation, no spawning). */
+ * the missing branch by passing "" (no PATH mutation, no spawning). The agent-binary check's
+ * rule is richer (bare name vs path-shaped) and lives in readiness.ts's findAgentBinary. */
 export function checkGitBinary(pathEnv: string = process.env.PATH ?? ""): CheckOutcome {
-  return checkBinary("git", GIT_MISSING_MESSAGE, pathEnv);
+  const found = findOnPath("git", pathEnv);
+  if (!found) return { level: "fail", detail: GIT_MISSING_MESSAGE };
+  return { level: "ok", detail: found };
 }
 
 /** Repo ready — the git.ts predicates in requireReadyRepo's order, so doctor and the
@@ -233,9 +222,10 @@ export function checkFallbackModel(
 /** Agent binary (plans/portability.md §5/7) — resolves TUMWATER_PI_BIN → agentBin → "pi"
  * through the same resolveAgentBin the spawn uses, so doctor and the harness can never
  * disagree about which pi runs (a malformed tumwater.json resolves to defaults; checkInit
- * reports the config problem separately). A bare name resolves through the shared
- * checkBinary helper — the same PATH resolution the git check uses; a path-shaped value is
- * tested directly with accessSync(X_OK), already normalized against the process cwd at
+ * reports the config problem separately). Executability is readiness.ts's shared
+ * findAgentBinary — the same bare-name PATH lookup, path-shaped accessSync(X_OK) rule, and
+ * null-on-unusable verdict the startup gate asks — so doctor cannot pass a binary the gate
+ * would reject. resolveAgentBin normalizes path-shaped values against the process cwd at
  * resolution time, so what doctor tests is exactly what spawns. The ok detail names the
  * resolved path AND its source whenever the value is not the PATH default, so a configured
  * binary is never mistaken for the ambient one; the check label stays "pi binary". */
@@ -245,17 +235,11 @@ export function checkAgentBinary(
 ): CheckOutcome {
   const { config } = loadConfigSafe(root);
   const resolved = resolveAgentBin(config ?? {});
-  if (resolved.source === "default") return checkBinary("pi", piMissingMessage(resolved), pathEnv);
+  const found = findAgentBinary(resolved, pathEnv);
+  if (!found) return { level: "fail", detail: piMissingMessage(resolved) };
+  if (resolved.source === "default") return { level: "ok", detail: found };
   const from = agentBinSourceLabel(resolved.source);
-  const describeFound = (found: string) => `${found} — resolved from ${from}`;
-  if (!resolved.bin.includes("/"))
-    return checkBinary(resolved.bin, piMissingMessage(resolved), pathEnv, describeFound);
-  try {
-    fs.accessSync(resolved.bin, fs.constants.X_OK);
-    return { level: "ok", detail: describeFound(resolved.bin) };
-  } catch {
-    return { level: "fail", detail: piMissingMessage(resolved) };
-  }
+  return { level: "ok", detail: `${found} — resolved from ${from}` };
 }
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing

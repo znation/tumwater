@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import { findOnPath } from "./files.js";
+
 /** The pre-flight messages behind the readiness gate. startup-gate.ts answers with the first
  * unmet precondition (cmdRun and requireReadyRepo fail on it, the self-redeploy refuses a swap
  * on it) and doctor.ts reports each one individually, but every surface describes the same
@@ -46,4 +49,25 @@ export function piMissingMessage(resolved: ResolvedAgentBin): string {
   if (resolved.source === "default") return PI_MISSING_MESSAGE;
   const from = agentBinSourceLabel(resolved.source);
   return `pi not found — resolved "${resolved.bin}" from ${from} is not an executable — install it (https://github.com/badlogic/pi-mono) or point ${from} at a working pi binary`;
+}
+
+/** Is the resolved agent binary executable right now? Returns the usable path, or null when
+ * the startup gate should refuse to boot and doctor should fail its check. This is the whole
+ * executability rule in one place so the two askers cannot drift: a path-shaped value (already
+ * normalized against the process cwd by resolveAgentBin) is tested directly with
+ * accessSync(X_OK); a bare name resolves through PATH. `pathEnv` is injectable so tests need
+ * no PATH mutation — the gate and doctor both default it to the process PATH. */
+export function findAgentBinary(
+  resolved: ResolvedAgentBin,
+  pathEnv: string = process.env.PATH ?? "",
+): string | null {
+  if (resolved.bin.includes("/")) {
+    try {
+      fs.accessSync(resolved.bin, fs.constants.X_OK);
+      return resolved.bin;
+    } catch {
+      return null;
+    }
+  }
+  return findOnPath(resolved.bin, pathEnv);
 }

@@ -10,6 +10,7 @@ import {
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
+  findAgentBinary,
   piMissingMessage,
 } from "./readiness.js";
 import { errorMessage } from "./text.js";
@@ -73,15 +74,9 @@ export async function runStartupCheck(
   // config; resolveAgentBin normalizes path-shaped values against THIS process's cwd, which
   // every generation inherits, so what is checked here is exactly what the ticks spawn.
   const resolved = resolveAgentBin(config);
-  if (resolved.bin.includes("/")) {
-    try {
-      fs.accessSync(resolved.bin, fs.constants.X_OK);
-    } catch {
-      return { problem: piMissingMessage(resolved) };
-    }
-  } else if (!findOnPath(resolved.bin)) {
-    return { problem: piMissingMessage(resolved) };
-  }
+  // The shared executability rule (readiness.ts's findAgentBinary — the same one doctor's
+  // checkAgentBinary asks), so the gate can never boot a fleet whose doctor report disagrees.
+  if (!findAgentBinary(resolved)) return { problem: piMissingMessage(resolved) };
   const branch = await resolveMainBranch(root, config, branchArg);
   if ("problem" in branch) return branch;
   return { config, mainBranch: branch.mainBranch };
