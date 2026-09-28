@@ -9,7 +9,8 @@ import { tmpdir } from "./repo-fixtures.js";
 
 // Tests for src/config-write.ts — the harness-mediated write paths split out of src/config.ts
 // (the budget setter behind both dashboards, and the director's config request file). Tests for
-// src/config.ts itself and for src/config-validation.ts live in test/config.test.ts.
+// src/config.ts itself live in test/config.test.ts and for src/config-validation.ts in
+// test/config-validation.test.ts.
 
 // setDailyBudgetUsd — the shared setter behind the TUI's Ctrl+B editor and the GUI's
 // /api/budget endpoint: fresh read-modify-write of ONE key, atomic (tmp + rename), errors as
