@@ -9,6 +9,15 @@ _None open._
 
 ## Fixed
 
+### `tumwater history`'s window growth only chases short row counts, so a window boundary that cuts inside a tick's own event block renders a started tick's duration as a dash even though the log holds its tick_start (found by bugfix loop 2026-09-28, fixed 2026-09-28)
+
+- **Symptom:** a `history` (or GUI history tab) row shows `—` for a tick whose `tick_start` IS in the event log. The default scan window (`limit*2+50` events) can end inside a tick's own block: every `tick_end` the ask needs sits within the window, but the oldest one's `tick_start` sits just before the boundary — and because the row count is satisfied, growth keyed on short rows alone never re-reads. A busy fleet's interleaved non-tick events (merges, prompts) make the span between tick_ends large enough to hit this with everyday sizes.
+- **Reproduce:** seed a 55-event log — `tick_start #1`, 41 unrelated events, `tick_end #1`, 10 unrelated events, `tick_start #2`, `tick_end #2` — and run `history -n 2`: the window is 54 events, so tick 1's start is dropped and its row reads `—` despite the log holding it. Scratch repro against the built CLI confirmed; now pinned as a CLI-level regression test.
+- **Cause:** `readTickRows` grew its window only while `rows.length < limit`. But every `tick_end` the harness logs follows its `tick_start` (`tick()` logs the start before `runTick`, skipped results included), so an unpaired start is either just past the window or lost to rotation — the first case is fixable by scanning, the second only costs the bounded scan.
+- **Fix:** the growth loop now also fires while any row's `durationMs` is null (same `events.length >= window` fill check and `HISTORY_SCAN_MAX_EVENTS` bound), so the window grows until unpaired starts are re-paired or the log's start proves them gone.
+- **Fixed:** 2026-09-28, regression test in `test/cli-history.test.ts` (`history grows the scan window to pair a tick_start the first window's boundary cut off`).
+- **Validation gap:** no-observability (closest tag — the misrender was plainly visible in the command's output but left no trace the suite could fail on): pairing was unit-tested at `tickRows` level and window growth at row-count level, so both halves stayed green while the composed path rendered the wrong cell; nothing else was missing once the boundary-cut scenario existed.
+
 ### `tumwater logs -f` detects rotation by shrink alone, so a rotation whose replacement file outgrows the old offset within one poll interval reads as an append: the new log's head is never delivered and its first line comes out a mangled mid-line fragment (found by bugfix loop 2026-09-28, fixed 2026-09-28)
 
 - **Symptom:** a `logs -f` (or any followFile) stream that spans a log rotation silently skips the replacement log's first lines whenever the fresh file is written past the old consumed offset before the next 500ms poll — and the one line straddling that offset is delivered as a truncated fragment starting mid-line. The shrink path (truncate-in-place, or a fresh empty file seen before it grows) was guarded; the inode-swap-with-growth path was not.

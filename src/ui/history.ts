@@ -75,19 +75,28 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
  * given (newest first) — the scan cmdHistory and the GUI's handleHistory share, so the two
  * surfaces cannot drift. A window twice the ask plus slack: tick_start lines and unrelated
  * events interleave with the tick_end rows scanned for, and a skipped tick's end rides a start
- * that may sit outside any smaller window. A role filter dilutes that window (every other
- * loop's events occupy it too), so while the filtered rows fall short AND the scan filled its
- * window — meaning the log may hold older events — grow the window and re-read: a quiet role
- * in a busy fleet must still get its last `limit` ticks whenever the retained log holds them
- * — never a bare "no ticks yet" for a role whose ticks sit just past the first window.
- * `events.length < window` means the scan reached the log's start, so the shortfall is real
- * and the loop stops; HISTORY_SCAN_MAX_EVENTS bounds the growth so one ask cannot scan
- * without end. */
+ * that may sit outside any smaller window. Two shortfalls grow the window (and re-read) while
+ * the scan filled it — `events.length >= window` means the log may hold older events — under
+ * the same HISTORY_SCAN_MAX_EVENTS bound so one ask cannot scan without end:
+ * - Rows fall short. A role filter dilutes the window (every other loop's events occupy it
+ *   too), so a quiet role in a busy fleet must still get its last `limit` ticks whenever the
+ *   retained log holds them — never a bare "no ticks yet" for a role whose ticks sit just
+ *   past the first window.
+ * - A row's tick_start went unpaired. The window boundary can cut inside a tick's own event
+ *   block: every tick_end of the ask sits within the window but the oldest one's tick_start
+ *   sits just before it, so the row renders a dash though the log holds the start. Every
+ *   tick_end the harness logs follows its tick_start (tick() logs the start before runTick,
+ *   skipped results included), so an unpaired start is either just past the window or lost
+ *   to rotation — growing re-pairs the former, and the latter only costs the bounded scan. */
 export function readTickRows(root: string, limit: number, role: string | null): TickRow[] {
   let window = limit * 2 + 50;
   let events = readEvents(root, window);
   let rows = tickRows(events, limit, role);
-  while (rows.length < limit && events.length >= window && window < HISTORY_SCAN_MAX_EVENTS) {
+  while (
+    (rows.length < limit || rows.some((r) => r.durationMs === null)) &&
+    events.length >= window &&
+    window < HISTORY_SCAN_MAX_EVENTS
+  ) {
     window = Math.min(window * 4, HISTORY_SCAN_MAX_EVENTS);
     events = readEvents(root, window);
     rows = tickRows(events, limit, role);

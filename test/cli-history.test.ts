@@ -132,6 +132,37 @@ test("history CLI keeps the detail column aligned across usage and usage-less ro
   assert.equal(detail0, detail1, "detail columns align across a row with no usage");
 });
 
+test("history grows the scan window to pair a tick_start the first window's boundary cut off", async () => {
+  // The default window (limit*2+50) can end inside a tick's own event block: every tick_end
+  // the ask needs sits within it, but the oldest one's tick_start sits just before the
+  // boundary — and since the row count is satisfied, growth keyed on short rows alone never
+  // re-read. The log holds the start, so the row must show its duration, not a dash.
+  const repo = makeRepo();
+  await initProject(repo, "cli history boundary");
+  const events: HarnessEvent[] = [{ ts: 1000, loop: "feature", type: "tick_start", tick: 1 } as HarnessEvent];
+  // Unrelated events inflate the span between the two tick_ends past the first window: 41
+  // merged events put tick 1's end at depth 54 of a 55-event log, exactly one event short of
+  // carrying its own start (window = 2*2+50 = 54).
+  for (let i = 0; i < 41; i++) events.push({ ts: 1001 + i, loop: "other", type: "merged" } as HarnessEvent);
+  events.push(
+    { ts: 5000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "work", tokens: 100, costUsd: 0.01 } as HarnessEvent,
+  );
+  for (let i = 0; i < 10; i++) events.push({ ts: 5001 + i, loop: "other", type: "merged" } as HarnessEvent);
+  events.push(
+    { ts: 10000, loop: "feature", type: "tick_start", tick: 2 } as HarnessEvent,
+    { ts: 11000, loop: "feature", type: "tick_end", tick: 2, result: "changed", summary: "work 2" } as HarnessEvent,
+  );
+  writeEvents(repo, events);
+  const r = await cli(repo, "history", "-n", "2");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trim().split("\n");
+  assert.equal(lines.length, 2);
+  // Newest first: tick 2 pairs inside the first window (1s); tick 1's start only pairs once
+  // the window grows — 4s, from its start at ts 1000 to its end at ts 5000.
+  assert.match(lines[0]!, /#2\s+changed\s+1s\s+work 2/);
+  assert.match(lines[1]!, /#1\s+changed\s+4s\s+100 tok · \$0\.01\s+work/);
+});
+
 test("history prints one row per completed tick, newest first", async () => {
   const repo = await seededHistoryRepo();
   const r = await cli(repo, "history");
