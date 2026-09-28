@@ -1,0 +1,171 @@
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import assert from "node:assert/strict";
+import { newBudgetGateState, pollBudgetGate } from "../src/budget-gates.js";
+import { IDLE_FALLBACK_BREAKER, recordDailyCost } from "../src/budget.js";
+import { defaultConfig } from "../src/config.js";
+import { readEvents } from "../src/events.js";
+import { freshLoopState } from "../src/state.js";
+import type { TumwaterConfig } from "../src/config-schema.js";
+import { tmpdir } from "./repo-fixtures.js";
+
+/** A models.json with one all-zero-cost provider (free) and a priced one (paid). */
+const MODELS_JSON = JSON.stringify({
+  providers: {
+    free: {
+      models: [{ id: "qwen-free", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
+    },
+    paid: {
+      models: [{ id: "gpt-x", cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.4 } }],
+    },
+  },
+});
+
+/** Only priced models: the configured fallback cannot resolve to a free one. */
+const PAID_ONLY_JSON = JSON.stringify({
+  providers: { paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.4 } }] } },
+});
+
+function writeModels(dir: string, content: string): string {
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "models.json");
+  fs.writeFileSync(file, content);
+  return file;
+}
+
+/** A fleet at a paid top-level model, a free fallback configured, one role pinned to the
+ * paid model, and a reviewer override — everything the fallback view must strip. */
+function configWith(capUsd: number): TumwaterConfig {
+  const cfg = defaultConfig();
+  cfg.provider = "paid";
+  cfg.model = "gpt-x";
+  cfg.fallbackModel = { provider: "free", model: "qwen-free" };
+  cfg.maxDailyCostUsd = capUsd;
+  cfg.roles.feature = { ...cfg.roles.feature, provider: "paid", model: "gpt-x", enabled: true };
+  cfg.review = { ...cfg.review, provider: "paid", model: "gpt-x" };
+  return cfg;
+}
+
+/** A loop that has already spent `usd` today (recorded against the real clock, matching
+ * pollBudgetGate's own Date.now() read). */
+function spent(usd: number) {
+  const s = freshLoopState("feature");
+  recordDailyCost(s, usd);
+  return s;
+}
+
+function poll(root: string, state: ReturnType<typeof newBudgetGateState>, cfg: TumwaterConfig, modelsPath: string, states = [spent(0)]) {
+  return pollBudgetGate(state, { root, states, liveConfig: cfg, modelsPath });
+}
+
+test("pollBudgetGate keeps the gate open under the cap and hands the live config straight through", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(5)]);
+  assert.equal(p.gate, "open");
+  assert.equal(p.onFallback, false);
+  assert.equal(p.roleConfig, cfg); // same object: no view is derived while budget remains
+  assert.deepEqual(readEvents(root), []); // no transition, no events
+});
+
+test("crossing the cap engages the fallback once: one event, the derived role view, no re-derives", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+  const over = [spent(10)]; // exactly at the cap (>=)
+
+  const p = poll(root, state, cfg, models, over);
+  assert.equal(p.gate, "fallback");
+  assert.equal(p.onFallback, true);
+  // The role view: the free pair installed top-level, every override dropped, everything
+  // else (the cap itself among it) untouched.
+  assert.equal(p.roleConfig.provider, "free");
+  assert.equal(p.roleConfig.model, "qwen-free");
+  assert.equal(p.roleConfig.maxDailyCostUsd, 10);
+  assert.equal(p.roleConfig.roles.feature?.model, undefined);
+  assert.equal(p.roleConfig.roles.feature?.provider, undefined);
+  assert.equal(p.roleConfig.review.model, undefined);
+
+  // Exactly one edge-triggered event, naming the fallback that took over.
+  const events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_fallback"]);
+  const ev = events[0]!;
+  assert.equal(ev.loop, "harness");
+  assert.equal(ev.provider, "free");
+  assert.equal(ev.model, "qwen-free");
+  assert.equal(ev.capUsd, 10);
+  assert.ok(typeof ev.spentUsd === "number" && ev.spentUsd >= 10);
+
+  // A second poll with the same live config: no new event, the same derived view
+  // (memoized on the config object, not re-derived every poll).
+  const p2 = poll(root, state, cfg, models, over);
+  assert.equal(p2.gate, "fallback");
+  assert.equal(p2.onFallback, true);
+  assert.equal(p2.roleConfig, state.fallbackConfig); // still the one derived view
+  assert.equal(readEvents(root).length, 1); // edge-triggered: no second budget_fallback
+});
+
+test("raising the cap resumes the gate: one budget_resumed event and the live config again", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+  poll(root, state, cfg, models, [spent(10)]); // engage the fallback first
+
+  const raised = configWith(100);
+  const p = poll(root, state, raised, models, [spent(10)]);
+  assert.equal(p.gate, "open");
+  assert.equal(p.onFallback, false);
+  assert.equal(p.roleConfig, raised); // the fallback view is dropped at once
+  assert.deepEqual(readEvents(root).map((e) => e.type), ["budget_fallback", "budget_resumed"]);
+});
+
+test("a fallback pi prices above zero cannot engage: the gate pauses and the event says why", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, PAID_ONLY_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "paused");
+  assert.equal(p.onFallback, false);
+  assert.equal(p.roleConfig, cfg); // no fallback view while nothing is engaged
+
+  const events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_paused"]);
+  assert.equal(events[0]!.fallbackRejected, "free/qwen-free"); // the pair the operator asked for
+  assert.equal(events[0]!.capUsd, 10);
+});
+
+test("a demoted fallback keeps the gate paused and the role view: demotion never promotes to the paid model", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+  // The breaker already tripped: three consecutive failures on the engaged pair, a probe
+  // allowed from now on. Keyed to the same pair and cap the poll re-keys against, so the
+  // judgment survives the rekey.
+  state.breaker = {
+    ...IDLE_FALLBACK_BREAKER,
+    pair: "free/qwen-free",
+    capUsd: 10,
+    failures: 3,
+    probeAt: 0, // demoted; the probe is already due
+  };
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "paused"); // free but not serving: paused, like no fallback at all
+  assert.equal(p.onFallback, true); // yet ticks parked in flight still run on the free pair
+  assert.equal(p.roleConfig.provider, "free");
+  assert.equal(p.roleConfig.roles.feature?.model, undefined);
+
+  const events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_paused"]);
+  assert.equal(events[0]!.fallbackDemoted, "free/qwen-free");
+  assert.equal(events[0]!.failures, 3);
+});
