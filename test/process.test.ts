@@ -1,5 +1,7 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -160,6 +162,32 @@ test("systemProcessProbe.cwds on Linux reads /proc, strips ' (deleted)', and ski
     );
   } finally {
     if (original) Object.defineProperty(process, "platform", original);
+  }
+});
+
+test("systemProcessProbe.cwds takes the lsof success path when every named pid is readable", async (t) => {
+  // The vanished-pid test above only reaches lsof's exit-1 partial-result path; this is the
+  // other half of the same branch — every pid readable, lsof exits 0, and the map comes
+  // straight from its output.
+  if (process.platform === "linux") t.skip("the lsof path is not taken on Linux");
+  const cwds = await systemProcessProbe.cwds([process.pid]);
+  assert.deepEqual([...cwds], [[process.pid, fs.realpathSync(process.cwd())]]);
+});
+
+test("systemProcessProbe.cwds rejects when no lookup could run at all — no lsof on PATH", async (t) => {
+  // A missing lsof (or a timeout, or a signal) is a real failure, not an empty answer: the
+  // error carries no numeric exit status with stdout, so the probe must reject rather than
+  // hand back a silent empty map that would read as "no orphans" in doctor's check.
+  if (process.platform === "linux") t.skip("the lsof path is not taken on Linux");
+  const emptyBin = fs.mkdtempSync(path.join(os.tmpdir(), "no-lsof-"));
+  const originalPath = process.env.PATH;
+  process.env.PATH = emptyBin;
+  try {
+    await assert.rejects(systemProcessProbe.cwds([process.pid]));
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+    fs.rmSync(emptyBin, { recursive: true, force: true });
   }
 });
 
