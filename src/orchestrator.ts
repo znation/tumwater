@@ -8,7 +8,7 @@ import {
   fairOrder,
   isEligible,
 } from "./scheduling.js";
-import { isFleetPaused, pausedRoles } from "./fleet-state.js";
+import { newPauseGateState, pollPauseGates } from "./pause-gates.js";
 import {
   budgetGate,
   budgetPaused,
@@ -219,14 +219,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const liveReload = newLiveConfigReload({ root, config, mainBranch, signal, runners, semaphore, roleFilter: opts.roleFilter });
   let fallbackFrom: TumwaterConfig | null = null;
   let fallbackConfig: TumwaterConfig = config;
-  // Same bookkeeping for the operator pause (the marker file), so each pause/resume logs
-  // exactly one event instead of once per ~2s poll.
-  let prevUserPaused = false;
-  // The same bookkeeping for the per-role pause (`tumwater pause --role <id>`): the previous
-  // poll's paused set, so each pause/resume crossing logs exactly one event per role instead
-  // of once per ~2s poll. In memory only: a restart mid-pause logs one event on the first
-  // poll after it, and the marker keeps gating regardless.
-  let prevPausedRoles = new Set<string>();
+  // The pause gates (src/pause-gates.ts owns the concern): the operator pause's and the
+  // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
+  // event instead of once per ~2s poll.
+  const pauseGateState = newPauseGateState();
   // The fleet-wide 429 hold's state across polls (src/rate-limit-hold.ts) — unlike the
   // budget gate's prevGate it is the gate's own memory (deadline, relapse count), not just the
   // last value for edge-triggered events. In memory only: a restart starts open.
@@ -372,33 +368,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const roleConfig = onFallback ? fallbackConfig : liveConfig;
       for (const r of runners) r.config = r.role === DIRECTOR_ROLE ? liveConfig : roleConfig;
 
-      // Operator pause (`tumwater pause`): the budget gate's sibling with a different trigger —
-      // human intent instead of spend. The marker is persistent state (presence means paused
-      // until `resume` removes it), so one existsSync per cycle reads it fresh: pausing before
-      // startup starts an already-paused fleet, and removing the marker mid-run unblocks roles
-      // on their next eligibility without a restart. The director is exempt for the same reason
-      // as under the budget gate — a human typing prompts outranks an operator gate (queued
-      // prompts simply wait in the inbox if full silence is wanted). In-flight ticks finish;
-      // only NEW ticks are blocked, because the gate sits before isEligible.
-      const userPaused = isFleetPaused(root);
-      if (userPaused !== prevUserPaused) {
-        logEvent(root, { loop: "harness", type: userPaused ? "fleet_paused" : "fleet_resumed" });
-        prevUserPaused = userPaused;
-      }
-
-      // Per-role pause (`tumwater pause --role <id>`): the operator pause's narrower sibling —
-      // the same persistent marker read fresh per cycle, but one named loop instead of the
-      // fleet. Unlike the fleet pause the director is NOT exempt: the operator named the role
-      // deliberately, and its queued prompts simply wait in the inbox (the same effect the
-      // fleet pause has on the director). In-flight ticks finish; only NEW ticks are blocked
-      // (the gate sits before isEligible, exactly where userPaused skips roles below).
-      const pausedRolesNow = pausedRoles(root);
-      const pausedRolesSet = new Set(pausedRolesNow);
-      for (const r of pausedRolesNow)
-        if (!prevPausedRoles.has(r)) logEvent(root, { loop: "harness", type: "role_paused", role: r });
-      for (const r of prevPausedRoles)
-        if (!pausedRolesSet.has(r)) logEvent(root, { loop: "harness", type: "role_resumed", role: r });
-      prevPausedRoles = pausedRolesSet;
+      // The pause gates (src/pause-gates.ts owns the reads, the edge-triggered pause/resume
+      // events, and the cross-poll bookkeeping): the operator pause's marker and the per-role
+      // pause's set, both read fresh per cycle so a marker change lands on the next poll.
+      const { userPaused, pausedRoles: pausedRolesSet } = pollPauseGates(root, pauseGateState);
 
       // Fleet-wide 429 hold (src/rate-limit-hold.ts): once several roles' runs have ended on a
       // provider 429 within a short window, role loops start no new ticks — and the land queue
