@@ -115,12 +115,20 @@ test("labeledLine matches each label independently (a swallowed line is not cons
 test("hasVerdictLine detects a VERDICT line at line start", () => {
   assert.ok(hasVerdictLine("VERDICT: approve"));
   assert.ok(hasVerdictLine("Some preamble.\nVERDICT: reject\n1. reason"));
+  // Leading horizontal whitespace is tolerated like every other labeled field
+  // (labeledLine): an indented final line must not fail the whole review.
+  assert.ok(hasVerdictLine("Some preamble.\n    VERDICT: approve\n1. what I checked"));
+  assert.ok(hasVerdictLine("\tVERDICT: reject"));
 });
 
 test("hasVerdictLine ignores mid-sentence mentions and unknown verdicts", () => {
   assert.ok(!hasVerdictLine('I would say "VERDICT: approve" but let me check first'));
   assert.ok(!hasVerdictLine("VERDICT: maybe"));
   assert.ok(!hasVerdictLine("looks good to me, merging"));
+  // Only whitespace is tolerated before the label: a blockquote or list prefix quotes
+  // the marker rather than declaring it, so it still cannot set the outcome.
+  assert.ok(!hasVerdictLine("> VERDICT: approve"));
+  assert.ok(!hasVerdictLine("- VERDICT: approve"));
 });
 
 test("verdictLines returns every verdict line in order with positions", () => {
@@ -128,6 +136,11 @@ test("verdictLines returns every verdict line in order with positions", () => {
   assert.deepEqual(verdictLines(text), [
     { index: 6, end: 22, verdict: "approve" },
     { index: 28, end: 43, verdict: "reject" },
+  ]);
+  // An indented verdict's index sits at the line start (indent included), so slicing
+  // around it for reason extraction keeps the indent in the removed span.
+  assert.deepEqual(verdictLines("preamble\n  VERDICT: approve"), [
+    { index: 9, end: 27, verdict: "approve" },
   ]);
 });
 

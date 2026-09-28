@@ -80,15 +80,19 @@ export function extractFlow(text: string): FlowResult | null {
 
 // The review gate's verdict line as stated in buildReviewPrompt (prompt.ts): the reviewer
 // ends with exactly `VERDICT: approve` or `VERDICT: reject`. Anchored at line start so prose
-// that merely mentions "VERDICT:" mid-sentence cannot set the outcome. One source of truth,
-// two derived regexes — stateless detection for pi.ts's per-message scan, and a global one
-// for review.ts's extraction (matchAll clones it internally, so sharing is safe).
-const VERDICT_LINE_SOURCE = "^VERDICT:\\s*(approve|reject)\\b";
+// that merely mentions "VERDICT:" mid-sentence cannot set the outcome, but leading horizontal
+// whitespace is tolerated exactly like labeledLine (the REFUSED/SUMMARY/WHY/RISK/VERIFIED/FLOW
+// family): a reviewer who nests or indents the final line must not fail the whole review as
+// "no parseable verdict" while an identically indented refusal would still count. One source
+// of truth, two derived regexes — stateless detection for pi.ts's per-message scan, and a
+// global one for review.ts's extraction (matchAll clones it internally, so sharing is safe).
+const VERDICT_LINE_SOURCE = "^[ \\t]*VERDICT:\\s*(approve|reject)\\b";
 const VERDICT_LINE = new RegExp(VERDICT_LINE_SOURCE, "m");
 const VERDICT_LINES = new RegExp(VERDICT_LINE_SOURCE, "gm");
 
 /** True when `text` carries a parseable verdict line (pi.ts's stream parser records the
- * last assistant message carrying one as the run's verdictText). */
+ * last assistant message carrying one as the run's verdictText). Line-anchored with leading
+ * horizontal whitespace allowed, like every other labeled field in the reply contract. */
 export function hasVerdictLine(text: string): boolean {
   return VERDICT_LINE.test(text);
 }
